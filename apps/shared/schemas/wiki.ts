@@ -1,0 +1,66 @@
+﻿import { z } from "zod";
+
+export const wikiCategorySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  sort_order: z.number().int(),
+  parent_id: z.string().nullable(),
+});
+
+export const createWikiCategorySchema = z.object({
+  name: z.string().min(1).max(120),
+  slug: z.string().min(1).max(120).optional(),
+  sort_order: z.number().int().default(0),
+  parent_id: z.string().optional(),
+});
+
+export const wikiArticleSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  slug: z.string(),
+  category_id: z.string(),
+  body_json: z.string(),
+  sort_order: z.number().int(),
+  archived_at: z.string().nullable(),
+  created_by: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const createWikiArticleSchema = z.object({
+  title: z.string().min(1).max(200),
+  slug: z.string().optional(),
+  category_id: z.string(),
+  body_json: z.string().min(1),
+  sort_order: z.number().int().default(0),
+});
+
+export const updateWikiArticleSchema = createWikiArticleSchema.partial().extend({
+  archived_at: z.string().datetime().nullable().optional(),
+});
+
+export const wikiArticleVersionSchema = z.object({
+  id: z.string(),
+  article_id: z.string(),
+  version_no: z.number().int(),
+  title: z.string(),
+  slug: z.string(),
+  category_id: z.string(),
+  body_json: z.string(),
+  sort_order: z.number().int(),
+  archived_at: z.string().nullable(),
+  source_action: z.string(),
+  created_by: z.string(),
+  created_at: z.string(),
+});
+
+export const wikiArticleVersionsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+export const wikiVersionCompareQuerySchema = z.object({
+  from_version_id: z.string(),
+  to_version_id: z.string(),
+});

@@ -1,0 +1,20 @@
+{
+  "title": "Events",
+  "view.cards": "Cards",
+  "view.calendar": "Month",
+  "view.week": "Week",
+  "view.day": "Day",
+  "filter.type": "Event type",
+  "filter.archived": "Archived only",
+  "button.join": "Join",
+  "button.leave": "Leave",
+  "button.create": "Create Event",
+  "field.capacity": "Capacity",
+  "field.startsAt": "Starts",
+  "field.endsAt": "Ends",
+  "confirm.discardUnsaved.title": "Discard unsaved changes?",
+  "confirm.discardUnsaved.description": "Your current event edits will be lost.",
+  "confirm.timeConflict.title": "Time conflict warning",
+  "confirm.timeConflict.description": "Conflicts with: {{titles}}. Join anyway?",
+  "empty": "No events"
+}

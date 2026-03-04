@@ -1,0 +1,707 @@
+import { hasRoleAtLeast, type PushMessage } from "@guild/shared";
+import {
+  BookOutlined,
+  CalendarOutlined,
+  ControlOutlined,
+  DashboardOutlined,
+  FireOutlined,
+  LeftOutlined,
+  MoonOutlined,
+  NotificationOutlined,
+  PictureOutlined,
+  RightOutlined,
+  SettingOutlined,
+  TeamOutlined,
+  ThunderboltOutlined,
+  TranslationOutlined,
+  ToolOutlined,
+  UserOutlined,
+} from "../../utils/icons";
+import { listThemeIds } from "@infini-dev-kit/frontend/theme/theme-specs";
+import type { ThemeId } from "@infini-dev-kit/frontend/theme/theme-types";
+import { ScrollProgress, InfiniButton, SidebarLabel, SidebarExpandOverlay } from "@infini-dev-kit/frontend/components";
+import { useBridge, useThemeSnapshot, loadLocaleFonts } from "@infini-dev-kit/frontend/provider";
+import type { IconProps } from "@tabler/icons-react";
+import {
+  ActionIcon,
+  Alert,
+  AppShell as MantineAppShell,
+  Badge,
+  Group,
+  Indicator,
+  Menu,
+  Popover,
+  ScrollArea,
+  Stack,
+  Text,
+  Title,
+  UnstyledButton,
+} from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
+import { useQueryClient } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
+import i18n from "i18next";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
+import { apiRequest } from "../../api/client";
+import { queryKeys } from "../../api/query-keys";
+import { PageHeaderContext } from "../../context/PageHeaderContext";
+import { useNotificationPresentation } from "../../hooks/useNotificationPresentation";
+import { useNotificationSync } from "../../hooks/useNotificationSync";
+import { useAuthStore } from "../../stores/auth";
+import { useNotificationStore, type NotificationFeature } from "../../stores/notifications";
+import { usePreferencesStore } from "../../stores/preferences";
+import { isExternalViewSearch } from "../../utils/external-view";
+import { AppErrorOverlay } from "../shared/AppErrorOverlay";
+import { EmptyState } from "../shared/EmptyState";
+import { OverlayRegistrar } from "../shared/OverlayRegistrar";
+import { BottomNav } from "./BottomNav";
+import { CmdKSearch } from "./CmdKSearch";
+import { UserProfileDropdown } from "./UserProfileDropdown";
+import { ViewingAsSelector, type ViewingAsRole } from "./ViewingAsSelector";
+import "./AppShell.css";
+
+type NavItem = {
+  to: string;
+  labelKey: string;
+  icon: ComponentType<IconProps>;
+  requiresSession?: boolean;
+  requiresModerator?: boolean;
+  feature?: NotificationFeature;
+};
+
+const SIDEBAR_WIDTH = 236;
+const SIDEBAR_COLLAPSED_WIDTH = 56;
+
+const NAV_ITEMS: NavItem[] = [
+  { to: "/", labelKey: "nav.dashboard", icon: DashboardOutlined },
+  { to: "/announcements", labelKey: "nav.announcements", icon: NotificationOutlined, feature: "announcements" },
+  { to: "/roster", labelKey: "nav.roster", icon: TeamOutlined, feature: "members" },
+  { to: "/events", labelKey: "nav.events", icon: CalendarOutlined },
+  { to: "/guild-war", labelKey: "nav.guild-war", icon: ThunderboltOutlined },
+  { to: "/gallery", labelKey: "nav.gallery", icon: PictureOutlined },
+  { to: "/wiki", labelKey: "nav.wiki", icon: BookOutlined },
+  {
+    to: "/admin",
+    labelKey: "nav.admin",
+    icon: SettingOutlined,
+    requiresSession: true,
+    requiresModerator: true,
+  },
+  { to: "/tools", labelKey: "nav.tools", icon: ToolOutlined },
+  { to: "/profile", labelKey: "nav.profile", icon: UserOutlined, requiresSession: true },
+  { to: "/settings", labelKey: "nav.settings", icon: ControlOutlined },
+];
+
+function isPathActive(pathname: string, target: string): boolean {
+  if (target === "/") {
+    return pathname === "/";
+  }
+
+  return pathname === target || pathname.startsWith(`${target}/`);
+}
+
+/**
+ * Renders <Outlet /> with route transition animation.
+ *
+ * When the View Transition API is supported (`defaultViewTransition` on the router),
+ * the browser handles the old→new cross-fade via ::view-transition pseudos.
+ * On older browsers, falls back to a CSS slide-in on the new content only.
+ */
+const HAS_VIEW_TRANSITIONS = typeof document !== "undefined" && "startViewTransition" in document;
+
+function AnimatedOutlet({ pathname, enabled }: { pathname: string; enabled: boolean }) {
+  const [animKey, setAnimKey] = useState(0);
+  const prevPathRef = useRef(pathname);
+
+  // When View Transitions are available, the router handles the animation.
+  // We only need the manual CSS fallback for browsers without the API.
+  const useFallbackAnim = enabled && !HAS_VIEW_TRANSITIONS;
+
+  useEffect(() => {
+    if (pathname !== prevPathRef.current) {
+      prevPathRef.current = pathname;
+      if (useFallbackAnim) {
+        setAnimKey((k) => k + 1);
+      }
+    }
+  }, [pathname, useFallbackAnim]);
+
+  return (
+    <div key={useFallbackAnim ? animKey : 0} className={useFallbackAnim ? "app-route-slide-in" : undefined}>
+      <Outlet />
+    </div>
+  );
+}
+
+function normalizeViewingAs(role: string | null, isExternalView: boolean): ViewingAsRole {
+  if (isExternalView) {
+    return "external";
+  }
+  if (role === "admin") {
+    return "admin";
+  }
+  if (role === "moderator") {
+    return "moderator";
+  }
+  return "member";
+}
+
+function syncViewSearch(nextRole: ViewingAsRole) {
+  const url = new URL(window.location.href);
+  if (nextRole === "external") {
+    url.searchParams.set("view", "external");
+  } else {
+    url.searchParams.delete("view");
+  }
+  window.history.replaceState({}, "", url);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+export function AppShell() {
+  const { t } = useTranslation("common");
+  const navigate = useNavigate();
+  const bridge = useBridge();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const searchStr = useRouterState({ select: (state) => state.location.searchStr });
+  const { theme: themeSnapshot, motion: motionSnapshot } = useThemeSnapshot();
+  const isExternalView = isExternalViewSearch(searchStr);
+  const isMobile = useMediaQuery("(max-width: 767px)") ?? false;
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
+  const isSidebarCollapsed = !isSidebarExpanded;
+  const sidebarWidth = isSidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH;
+  const hideNavigation = pathname === "/login" || pathname.startsWith("/register/");
+  const shouldAnimateRoute = !hideNavigation && motionSnapshot.effectiveMode !== "off";
+  const queryClient = useQueryClient();
+
+  const { user, clearSession } = useAuthStore();
+  const { locale, setLocale, pushNotificationSound } = usePreferencesStore();
+  const notificationFeatures = useNotificationStore((state) => state.features);
+  const pushEntries = useNotificationStore((state) => state.pushHistory);
+  const markFeatureAsRead = useNotificationStore((state) => state.markFeatureAsRead);
+  const markPushAsRead = useNotificationStore((state) => state.markPushAsRead);
+  const themeIds = useMemo(() => listThemeIds(), []);
+  const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
+  const [permissionBanner, setPermissionBanner] = useState<string | null>(null);
+  const [headerActions, setHeaderActions] = useState<ReactNode>(null);
+  const [viewingAs, setViewingAs] = useState<ViewingAsRole>(() =>
+    normalizeViewingAs(user?.role ?? null, isExternalView),
+  );
+  const previousPathnameRef = useRef(pathname);
+  const pageHeaderContextValue = useMemo(() => ({ setActions: setHeaderActions }), []);
+
+  useEffect(() => {
+    void i18n.changeLanguage(locale);
+    document.documentElement.dataset.locale = locale;
+    if (locale === "zh") {
+      void loadLocaleFonts(locale);
+    }
+  }, [locale]);
+
+  useEffect(() => {
+    setViewingAs(normalizeViewingAs(user?.role ?? null, isExternalView));
+  }, [isExternalView, user?.role]);
+
+  useEffect(() => {
+    const previousPathname = previousPathnameRef.current;
+    previousPathnameRef.current = pathname;
+    if (pathname !== "/" || previousPathname === "/") {
+      return;
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      const main = document.querySelector<HTMLElement>(".app-content");
+      if (main) {
+        main.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      }
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    });
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onUnauthorized = (event: Event) => {
+      const detail = (event as CustomEvent<{ returnTo?: string }>).detail;
+      const returnTo =
+        detail?.returnTo && detail.returnTo.startsWith("/")
+          ? detail.returnTo
+          : `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (window.location.pathname === "/login") {
+        return;
+      }
+      void navigate({
+        to: "/login",
+        search: {
+          reason: "expired",
+          returnTo,
+        },
+      });
+    };
+
+    const onForbidden = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: string }>).detail;
+      setPermissionBanner(detail?.message ?? "You do not have permission for this action.");
+    };
+
+    window.addEventListener("guild-api-unauthorized", onUnauthorized as EventListener);
+    window.addEventListener("guild-api-forbidden", onForbidden as EventListener);
+    return () => {
+      window.removeEventListener("guild-api-unauthorized", onUnauthorized as EventListener);
+      window.removeEventListener("guild-api-forbidden", onForbidden as EventListener);
+    };
+  }, [navigate]);
+
+  const handlePushMessage = useCallback(
+    (message: PushMessage) => {
+      if (message.type === "entity_changed" && message.entity_type === "event") {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+      }
+      if (message.type === "event_reminder") {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+      }
+      if (message.type === "announcement_published") {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+      }
+      if (message.type === "member_online") {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+      }
+    },
+    [queryClient],
+  );
+
+  useNotificationSync({
+    enabled: Boolean(user),
+    onMessage: handlePushMessage,
+  });
+  useNotificationPresentation({
+    enabled: Boolean(user),
+    showToast: true,
+    playSound: pushNotificationSound,
+  });
+
+  const logout = async () => {
+    try {
+      await apiRequest<{ ok: true }>("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Keep client state deterministic even if server-side session already expired.
+    } finally {
+      clearSession();
+      void navigate({ to: "/login" });
+    }
+  };
+
+  const visibleNavItems = useMemo(
+    () =>
+      NAV_ITEMS.filter((item) => {
+        if (isExternalView && (item.to === "/profile" || item.to === "/admin")) {
+          return false;
+        }
+        if (item.requiresSession && !user) {
+          return false;
+        }
+        if (item.requiresModerator && (!user || !hasRoleAtLeast(user.role, "moderator"))) {
+          return false;
+        }
+        return true;
+      }),
+    [isExternalView, user],
+  );
+
+  const mobileMainItems = visibleNavItems.filter((item) =>
+    ["/", "/events", "/guild-war", "/roster"].includes(item.to),
+  );
+  const mobileMoreItems = visibleNavItems.filter(
+    (item) => !["/", "/events", "/guild-war", "/roster"].includes(item.to),
+  );
+
+  const notificationState = useMemo(
+    () => ({
+      announcements: notificationFeatures.announcements.hasNew,
+      members: notificationFeatures.members.hasNew,
+    }),
+    [notificationFeatures.announcements.hasNew, notificationFeatures.members.hasNew],
+  );
+
+  const navHasNew = useCallback(
+    (item: NavItem) =>
+      item.feature === "announcements"
+        ? notificationState.announcements
+        : item.feature === "members"
+          ? notificationState.members
+          : false,
+    [notificationState],
+  );
+
+  const markFeatureAsReadForPath = useCallback(
+    (to: string) => {
+      if (to === "/announcements") {
+        markFeatureAsRead("announcements");
+      }
+      if (to === "/roster") {
+        markFeatureAsRead("members");
+      }
+    },
+    [markFeatureAsRead],
+  );
+
+  const pushHasUnread = useMemo(
+    () => pushEntries.some((entry) => entry.readAt === null),
+    [pushEntries],
+  );
+
+  const handlePushNotificationClick = useCallback(
+    (entryId: string, type: PushMessage["type"]) => {
+      markPushAsRead(entryId);
+
+      if (type === "announcement_published") {
+        if (user) {
+          markFeatureAsRead("announcements");
+        }
+        void navigate({ to: "/announcements" });
+        return;
+      }
+
+      if (type === "member_online") {
+        if (user) {
+          markFeatureAsRead("members");
+        }
+        void navigate({ to: "/roster" });
+        return;
+      }
+
+      if (type === "event_reminder") {
+        void navigate({ to: "/events" });
+      }
+    },
+    [markFeatureAsRead, markPushAsRead, navigate, user],
+  );
+
+  const selectedNavKey = useMemo(() => {
+    const matches = visibleNavItems
+      .filter((item) => isPathActive(pathname, item.to))
+      .sort((left, right) => right.to.length - left.to.length);
+    return matches[0]?.to ?? "";
+  }, [pathname, visibleNavItems]);
+
+  const activePageTitle = useMemo(() => {
+    const activeItem = visibleNavItems
+      .filter((item) => isPathActive(pathname, item.to))
+      .sort((left, right) => right.to.length - left.to.length)[0];
+    return t(activeItem?.labelKey ?? "nav.dashboard");
+  }, [pathname, t, visibleNavItems]);
+
+  const canSwitchView = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
+
+  if (hideNavigation) {
+    return (
+      <PageHeaderContext.Provider value={pageHeaderContextValue}>
+        <div className="app-login-layout">
+          <main className="app-login-content">
+            <div className="app-login-panel">
+              <Outlet />
+            </div>
+          </main>
+        </div>
+      </PageHeaderContext.Provider>
+    );
+  }
+
+  return (
+    <PageHeaderContext.Provider value={pageHeaderContextValue}>
+      <MantineAppShell
+        className="app-shell-root"
+        layout="alt"
+        header={{ height: isMobile ? 56 : 64 }}
+        navbar={!isMobile ? { width: sidebarWidth, breakpoint: "md" } : undefined}
+        padding={0}
+      >
+        <ScrollProgress thicknessPx={3} zIndex={1000} />
+        <OverlayRegistrar />
+        <AppErrorOverlay />
+
+        {!isMobile ? (
+          <MantineAppShell.Navbar
+            className={`app-sider ${isSidebarCollapsed ? "app-sider--collapsed" : ""}`}
+          >
+            <div className="app-brand">
+              <div className="app-brand-main">
+                <div
+                  className={`app-brand-mark ${isSidebarCollapsed ? "app-brand-mark--has-expand" : ""}`}
+                  style={{ position: "relative" }}
+                >
+                  <FireOutlined />
+                  <SidebarExpandOverlay
+                    collapsed={isSidebarCollapsed}
+                    onExpand={() => setIsSidebarExpanded(true)}
+                    className="app-brand-expand-overlay"
+                  >
+                    <RightOutlined />
+                  </SidebarExpandOverlay>
+                </div>
+                <SidebarLabel collapsed={isSidebarCollapsed} className="app-brand-title-wrap">
+                  <Title order={4} className="app-brand-title">
+                    {t("app.title")}
+                  </Title>
+                </SidebarLabel>
+              </div>
+              {!isSidebarCollapsed ? (
+                <div className="app-sider-controls">
+                  <ActionIcon
+                    variant="subtle"
+                    className="app-sider-control-btn"
+                    aria-label="Collapse sidebar"
+                    onClick={() => {
+                      setIsSidebarExpanded(false);
+                    }}
+                  >
+                    <LeftOutlined />
+                  </ActionIcon>
+                </div>
+              ) : null}
+            </div>
+
+            {canSwitchView ? (
+              <ViewingAsSelector
+                value={viewingAs}
+                compact={isSidebarCollapsed}
+                onChange={(nextRole) => {
+                  setViewingAs(nextRole);
+                  syncViewSearch(nextRole);
+                }}
+              />
+            ) : null}
+
+            <ScrollArea className="app-sider-menu" type="scroll" scrollbarSize={6}>
+              <Stack gap={8} p={8}>
+                {visibleNavItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = item.to === selectedNavKey;
+                  return (
+                    <UnstyledButton
+                      key={item.to}
+                      title={isSidebarCollapsed ? t(item.labelKey) : undefined}
+                      className={`app-nav-item ${active ? "app-nav-item--active" : ""}`}
+                      onClick={() => {
+                        markFeatureAsReadForPath(item.to);
+                        void navigate({ to: item.to as never });
+                      }}
+                    >
+                      <Group gap={10} wrap="nowrap" justify="flex-start">
+                        <Indicator disabled={!navHasNew(item)} offset={2} size={7} inline>
+                          <span className="app-nav-icon">
+                            <Icon />
+                          </span>
+                        </Indicator>
+                        <SidebarLabel collapsed={isSidebarCollapsed} className="app-nav-label">{t(item.labelKey)}</SidebarLabel>
+                      </Group>
+                    </UnstyledButton>
+                  );
+                })}
+              </Stack>
+            </ScrollArea>
+          </MantineAppShell.Navbar>
+        ) : null}
+
+        <MantineAppShell.Header className="app-header">
+          <div className="app-header__left">
+            <Text fw={700} className="app-header__page-title">
+              {activePageTitle}
+            </Text>
+          </div>
+
+          <div className="app-header__center">{headerActions}</div>
+
+          <div className="app-header__right">
+            <div className="app-header-tools">
+              {!isMobile ? <CmdKSearch /> : null}
+              <Popover width={420} position="bottom-end" shadow="md" withArrow>
+                <Popover.Target>
+                  <ActionIcon variant="subtle" className="app-header-icon-btn" aria-label={t("label.notifications")}>
+                    <Indicator
+                      disabled={
+                        !Boolean(
+                          user &&
+                            (pushHasUnread ||
+                              notificationFeatures.announcements.hasNew ||
+                              notificationFeatures.members.hasNew),
+                        )
+                      }
+                      offset={1}
+                      size={8}
+                      inline
+                    >
+                      <NotificationOutlined />
+                    </Indicator>
+                  </ActionIcon>
+                </Popover.Target>
+                <Popover.Dropdown className="app-header-notifications-popover">
+                  <div className="app-header-notifications-overlay">
+                    <div className="app-header-notifications-head">
+                      <Text fw={600}>{t("label.notifications")}</Text>
+                    </div>
+
+                    {pushEntries.length === 0 ? (
+                      <EmptyState title={t("notification.empty")} />
+                    ) : (
+                      <Stack gap={6} className="app-header-notifications-list">
+                        {pushEntries.map((item) => (
+                          <UnstyledButton
+                            key={item.id}
+                            className={`app-header-notification-item ${
+                              item.readAt === null ? "app-header-notification-item--unread" : ""
+                            }`}
+                            onClick={() => handlePushNotificationClick(item.id, item.type)}
+                          >
+                            <div className="app-header-notification-row">
+                              <Stack gap={4} align="flex-start">
+                                <Group gap={8} wrap="nowrap">
+                                  <Text fw={600}>{item.title}</Text>
+                                  {item.type === "announcement_published" ? (
+                                    <Badge variant="light" color="blue">
+                                      {t("notification.type.announcement")}
+                                    </Badge>
+                                  ) : null}
+                                  {item.type === "event_reminder" ? (
+                                    <Badge variant="light" color="yellow">
+                                      {t("notification.type.eventReminder")}
+                                    </Badge>
+                                  ) : null}
+                                  {item.type === "member_online" ? (
+                                    <Badge variant="light" color="teal">
+                                      {t("notification.type.memberOnline")}
+                                    </Badge>
+                                  ) : null}
+                                </Group>
+                                <Group gap={8}>
+                                  <Text c="dimmed" size="sm">
+                                    {item.message}
+                                  </Text>
+                                </Group>
+                              </Stack>
+                              <Text c="dimmed" className="app-header-notification-time">
+                                {formatDistanceToNow(new Date(item.occurredAt), { addSuffix: true })}
+                              </Text>
+                            </div>
+                          </UnstyledButton>
+                        ))}
+                      </Stack>
+                    )}
+                  </div>
+                </Popover.Dropdown>
+              </Popover>
+
+              <Menu shadow="md" width={220} position="bottom-end" withinPortal>
+                <Menu.Target>
+                  <ActionIcon variant="subtle" className="app-header-icon-btn" aria-label={t("label.theme")}>
+                    <MoonOutlined />
+                  </ActionIcon>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  {themeIds.map((themeId) => (
+                    <Menu.Item
+                      key={themeId}
+                      onClick={() => {
+                        const nextThemeId = themeId as ThemeId;
+                        bridge.setTheme(nextThemeId);
+                      }}
+                      style={{ fontWeight: themeSnapshot.id === themeId ? 700 : 400 }}
+                    >
+                      {themeId}
+                    </Menu.Item>
+                  ))}
+                </Menu.Dropdown>
+              </Menu>
+
+              <Menu shadow="md" width={160} position="bottom-end" withinPortal>
+                <Menu.Target>
+                  <ActionIcon variant="subtle" className="app-header-icon-btn" aria-label={t("label.locale")}>
+                    <TranslationOutlined />
+                  </ActionIcon>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item onClick={() => setLocale("en")} style={{ fontWeight: locale === "en" ? 700 : 400 }}>
+                    English
+                  </Menu.Item>
+                  <Menu.Item onClick={() => setLocale("zh")} style={{ fontWeight: locale === "zh" ? 700 : 400 }}>
+                    中文
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+            </div>
+
+            {user ? (
+              <UserProfileDropdown user={user} onLogout={logout} compact />
+            ) : (
+              <InfiniButton onClick={() => void navigate({ to: "/login" })}>
+                {t("action.login")}
+              </InfiniButton>
+            )}
+          </div>
+        </MantineAppShell.Header>
+
+        <MantineAppShell.Main className={`app-content ${isMobile ? "app-content-mobile" : ""}`}>
+          <main className="app-main">
+            {isExternalView ? (
+              <Alert color="blue" variant="light" className="app-banner">
+                External view is enabled. Editing and private fields are hidden.
+              </Alert>
+            ) : null}
+            {!isOnline ? (
+              <Alert color="yellow" variant="light" className="app-banner" role="status" aria-live="polite">
+                You are offline. Some actions may fail until connection is restored.
+              </Alert>
+            ) : null}
+            {permissionBanner ? (
+              <Alert
+                color="red"
+                variant="light"
+                className="app-banner"
+                role="status"
+                aria-live="polite"
+                withCloseButton
+                onClose={() => setPermissionBanner(null)}
+              >
+                {permissionBanner}
+              </Alert>
+            ) : null}
+            <div className="app-route-container">
+              <AnimatedOutlet pathname={pathname} enabled={shouldAnimateRoute} />
+            </div>
+          </main>
+        </MantineAppShell.Main>
+
+        {isMobile ? (
+          <BottomNav
+            pathname={pathname}
+            mainItems={mobileMainItems.map((item) => ({
+              to: item.to,
+              label: t(item.labelKey),
+              icon: item.icon,
+              isNew: navHasNew(item),
+            }))}
+            moreItems={mobileMoreItems.map((item) => ({
+              to: item.to,
+              label: t(item.labelKey),
+              icon: item.icon,
+              isNew: navHasNew(item),
+            }))}
+            onNavigate={markFeatureAsReadForPath}
+          />
+        ) : null}
+      </MantineAppShell>
+    </PageHeaderContext.Provider>
+  );
+}

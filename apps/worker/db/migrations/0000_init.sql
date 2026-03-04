@@ -1,0 +1,3 @@
+﻿CREATE TABLE IF NOT EXISTS _placeholder (
+  id TEXT PRIMARY KEY
+);

@@ -1,0 +1,21 @@
+{
+  "title": "Dashboard",
+  "welcome": "Welcome back, {{name}}",
+  "error": "Failed to load dashboard data",
+  "empty": "No data",
+  "card.upcomingEvents.title": "Upcoming Events",
+  "card.upcomingEvents.unit": "events",
+  "card.mySignups.title": "My Signups",
+  "card.mySignups.unit": "events",
+  "card.activeMembers.title": "Active Members",
+  "card.activeMembers.unit": "online",
+  "card.activeMembers.activeRatio": "Active / Total",
+  "card.activeMembers.eventsWeek": "Events / Week",
+  "card.activeMembers.winRate": "All War Win Rate",
+  "card.activeMembers.activeEvents": "Active Events",
+  "card.activeMembers.summaryHint": "Realtime guild activity snapshot",
+  "card.notifications.title": "Notifications",
+  "card.lastWar.title": "Last Guild War",
+  "card.lastWar.result": "Result",
+  "card.lastWar.kills": "Kills"
+}

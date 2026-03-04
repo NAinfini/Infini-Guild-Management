@@ -1,0 +1,157 @@
+import { InfiniCard, InfiniNumberTicker, StaggerList } from "@infini-dev-kit/frontend/components";
+import { Avatar, Badge, Button, Group, RingProgress, Stack, Text, Tooltip } from "@mantine/core";
+import {
+  IconArrowRight,
+  IconCalendarEvent,
+  IconClock,
+  IconFriends,
+  IconSwords,
+  IconTargetArrow,
+} from "@tabler/icons-react";
+import { motion } from "motion/react";
+import { useTranslation } from "react-i18next";
+import { CalendarEventOutlined, CopyOutlined, LockOutlined, UnlockOutlined } from "../../utils/icons";
+import { MemberGrid2x5 } from "../shared/MemberGrid2x5";
+import { EmptyState } from "../shared/EmptyState";
+import {
+  cardHeading,
+  dashboardEventVariants,
+  eventTypeTagColor,
+  formatDateTime,
+  type DashboardUpcomingEventRow,
+} from "./shared";
+
+const EVENT_TYPE_ICON: Record<string, React.ReactNode> = {
+  weekly_mission: <IconTargetArrow size={12} />,
+  guild_war: <IconSwords size={12} />,
+  social: <IconFriends size={12} />,
+  other: <IconCalendarEvent size={12} />,
+};
+
+function eventTypeIcon(type: string): React.ReactNode {
+  return EVENT_TYPE_ICON[type] ?? EVENT_TYPE_ICON.other;
+}
+
+type UpcomingEventsCardProps = {
+  upcomingEventsCount: number;
+  featuredRows: DashboardUpcomingEventRow[];
+  rows: DashboardUpcomingEventRow[];
+  isExternalView: boolean;
+  hasUser: boolean;
+  isSignupPending: (eventId: string) => boolean;
+  onToggleSignup: (eventId: string, joined: boolean) => void;
+  onCopySignup: (eventId: string, title: string) => void;
+  onOpenEvent: (eventId: string) => void;
+};
+
+export function UpcomingEventsCard({
+  upcomingEventsCount,
+  featuredRows,
+  rows,
+  isExternalView,
+  hasUser,
+  isSignupPending,
+  onToggleSignup,
+  onCopySignup,
+  onOpenEvent,
+}: UpcomingEventsCardProps) {
+  const { t } = useTranslation("dashboard");
+  const safeUpcomingCount = Math.max(0, upcomingEventsCount);
+  const hasAnyRows = featuredRows.length > 0 || rows.length > 0;
+
+  return (
+    <InfiniCard className="dashboard-card" overrides={{ glow: { variant: "spotlight", glowIntensity: 0.2 } }}>
+      {cardHeading(t("card.upcomingEvents.title"), <CalendarEventOutlined size={18} />)}
+        {safeUpcomingCount > 0 ? (
+          <Text size="xl" fw={700} mt={8}>
+            <InfiniNumberTicker value={safeUpcomingCount} /> {t("card.upcomingEvents.unit")}
+          </Text>
+        ) : null}
+        {!hasAnyRows ? (
+          <EmptyState title={t("empty")} />
+        ) : (
+          <Stack gap={8} mt={12}>
+            {[...featuredRows, ...rows].slice(0, 5).map((item) => {
+              const signedUpCount = item.members.length;
+              const capacity = item.item.capacity ?? 0;
+              const percentage = capacity > 0 ? Math.round((signedUpCount / capacity) * 100) : 100;
+              const startDate = new Date(item.item.start_at);
+              const month = startDate.toLocaleString("en-US", { month: "short" }).toUpperCase();
+              const day = startDate.getDate();
+
+              return (
+                <div
+                  key={item.item.id}
+                  style={{
+                    padding: "12px",
+                    background: "color-mix(in srgb, var(--infini-color-surface, #fff) 95%, var(--infini-color-text, #111827))",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <Group gap={12} wrap="nowrap" align="center">
+                    <Stack gap={0} align="center" style={{ minWidth: 50 }}>
+                      <Text size="xs" c="dimmed" fw={600}>{month}</Text>
+                      <Text size="xl" fw={700}>{day}</Text>
+                    </Stack>
+                    <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+                      <Text fw={600} size="sm" truncate>{item.item.title}</Text>
+                      {item.item.description ? (
+                        <Text size="xs" c="dimmed" lineClamp={1}>
+                          {item.item.description}
+                        </Text>
+                      ) : null}
+                      <Group gap={6}>
+                        <Badge size="xs" color={eventTypeTagColor(item.item.type)} variant="light" leftSection={eventTypeIcon(item.item.type)}>
+                          {item.item.type}
+                        </Badge>
+                        <Group gap={4}>
+                          <IconClock size={12} style={{ opacity: 0.6 }} />
+                          <Text size="xs" c="dimmed">
+                            {startDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}
+                          </Text>
+                        </Group>
+                      </Group>
+                    </Stack>
+                    <Group gap={4}>
+                      {item.members.slice(0, 5).map((member) => (
+                        <Tooltip key={member.user.id} label={member.user.username} withArrow>
+                          <Avatar size={40} radius="xl" src={member.user.avatar_url}>
+                            {member.user.username.slice(0, 2).toUpperCase()}
+                          </Avatar>
+                        </Tooltip>
+                      ))}
+                      {item.members.length > 5 ? (
+                        <Text size="xs" c="dimmed" fw={600}>
+                          +{item.members.length - 5}
+                        </Text>
+                      ) : null}
+                    </Group>
+                    <Stack gap={2} align="center">
+                      <RingProgress
+                        size={40}
+                        thickness={3}
+                        sections={[{ value: percentage, color: "var(--infini-color-primary, #3b82f6)" }]}
+                        label={
+                          <Text size="10px" ta="center" fw={600}>
+                            {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}
+                          </Text>
+                        }
+                      />
+                    </Stack>
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      onClick={() => onOpenEvent(item.item.id)}
+                      style={{ minWidth: 32, padding: "4px 8px" }}
+                    >
+                      <IconArrowRight size={16} />
+                    </Button>
+                  </Group>
+                </div>
+              );
+            })}
+          </Stack>
+        )}
+    </InfiniCard>
+  );
+}

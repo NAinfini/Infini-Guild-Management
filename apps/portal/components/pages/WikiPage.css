@@ -1,0 +1,75 @@
+.wiki-page-grid {
+  width: 100%; display: grid; gap: 12px;
+  grid-template-columns: 260px minmax(0, 1fr);
+  align-items: start;
+  min-height: calc(100vh - 240px);
+}
+
+.wiki-page-grid--mobile {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: auto;
+}
+
+.wiki-page-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  min-height: 600px;
+}
+
+.wiki-page-column--mobile {
+  min-height: auto;
+}
+
+.wiki-category-tree-card,
+.wiki-article-list-card,
+.wiki-article-editor-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.wiki-category-tree-card {
+  flex: 0 0 auto;
+  min-height: 180px;
+  max-height: 360px;
+}
+
+.wiki-article-list-card,
+.wiki-article-editor-card {
+  flex: 1 1 auto;
+  min-height: 280px;
+}
+
+.wiki-category-tree-card > div,
+.wiki-article-list-card > div,
+.wiki-article-editor-card > div {
+  height: 100%;
+}
+
+.wiki-category-tree-card > div {
+  overflow: auto;
+}
+
+.wiki-article-item {
+  width: 100%; cursor: pointer; text-align: left;
+  border-radius: 8px; border: 1px solid transparent;
+  padding: 8px; background: transparent;
+  transition: background var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease), border-color var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease);
+}
+
+.wiki-article-item:hover {
+  border-color: color-mix(in srgb, var(--infini-color-text, #111827) 16%, transparent);
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 6%, transparent);
+}
+
+.wiki-article-item--active {
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, transparent);
+  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 28%, transparent);
+}
+
+.wiki-version-history-card {
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 95%, var(--infini-color-text, #111827) 5%);
+  border-color: color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
+}
+

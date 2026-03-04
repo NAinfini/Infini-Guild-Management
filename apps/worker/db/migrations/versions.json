@@ -1,0 +1,12 @@
+{
+  "mode": "v1-dev-baseline",
+  "current_version": "1.x-dev",
+  "baseline_schema": "0000_core_schema.sql",
+  "compat_migrations": [
+    "0000_init.sql",
+    "0001_events_attachments.sql",
+    "0002_war_templates.sql",
+    "0003_wiki_article_versions.sql"
+  ],
+  "versioning_rules": "../versions/README.md"
+}

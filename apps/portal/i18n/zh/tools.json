@@ -1,0 +1,10 @@
+{
+  "title": "工具",
+  "sandbox.title": "HTML 头衔沙盒",
+  "sandbox.placeholder": "输入头衔文本",
+  "sandbox.preview": "预览",
+  "sandbox.copyHtml": "复制 HTML",
+  "sandbox.copyExample": "复制示例",
+  "theme.title": "主题展示",
+  "theme.current": "当前主题："
+}

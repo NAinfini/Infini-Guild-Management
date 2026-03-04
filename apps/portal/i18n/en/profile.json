@@ -1,0 +1,15 @@
+{
+  "title": "My Profile",
+  "tab.profile": "Profile",
+  "tab.availability": "Availability",
+  "tab.account": "Account",
+  "field.bio": "Bio",
+  "field.titleHtml": "Title HTML",
+  "field.vacationStart": "Vacation start",
+  "field.vacationEnd": "Vacation end",
+  "field.discordId": "Discord ID",
+  "button.uploadImages": "Upload images",
+  "button.uploadAudio": "Upload audio",
+  "button.changePassword": "Change password",
+  "button.changeUsername": "Change username"
+}

@@ -1,0 +1,625 @@
+.dashboard-page [data-variant="filled"],
+.dashboard-page .mantine-Text-root[data-variant="dimmed"] {
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 72%, black 28%);
+}
+
+/* ── Dashboard card padding (GlowCard has no built-in padding) ── */
+.dashboard-card > div:last-child {
+  padding: 16px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 460px);
+  gap: 16px;
+  align-items: start;
+}
+
+.dashboard-grid-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dashboard-grid--external {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 460px);
+}
+
+.dashboard-slot {
+  min-width: 0;
+  overflow: visible;
+}
+
+.dashboard-card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.dashboard-card-title-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--infini-color-primary, #3b82f6);
+  opacity: 0.85;
+}
+
+.dashboard-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.dashboard-featured-strip {
+  margin-top: 12px;
+}
+
+.dashboard-featured-list {
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.dashboard-featured-list--overflow {
+  scroll-snap-type: x mandatory;
+}
+
+.dashboard-featured-item {
+  flex: 0 0 240px;
+  border: 1px solid color-mix(in srgb, var(--infini-color-primary, #3b82f6) 28%, transparent);
+  border-radius: 10px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 8%, var(--infini-color-surface, #ffffff));
+}
+
+.dashboard-featured-list--overflow .dashboard-featured-item {
+  scroll-snap-align: start;
+}
+
+.dashboard-event-item {
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 94%, transparent);
+}
+
+.dashboard-event-content {
+  width: 100%;
+}
+
+.dashboard-event-actions {
+  width: 100%;
+}
+
+.dashboard-stats-circles {
+  width: 100%;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.dashboard-stats-circle-item {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dashboard-stats-circle {
+  margin: 0;
+}
+
+.dashboard-stats-circle-center {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+}
+
+.dashboard-stats-circle-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.dashboard-stats-circle-subvalue {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.dashboard-stats-circle-label {
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* ── Signup Day Boxes (8-box grid: yesterday + today + 6 future) ── */
+
+.signup-boxes {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.signup-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 6px;
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 94%, transparent);
+  min-width: 0;
+  transition: border-color var(--infini-motion-hover, 150ms) var(--infini-motion-easing, ease);
+}
+
+.signup-box--today {
+  border-color: var(--infini-color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 5%, var(--infini-color-surface, #ffffff));
+}
+
+.signup-box--yesterday {
+  opacity: 0.65;
+}
+
+.signup-box-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
+}
+
+.signup-box-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 55%, transparent);
+  line-height: 1;
+}
+
+.signup-box--today .signup-box-label {
+  color: var(--infini-color-primary, #3b82f6);
+}
+
+.signup-box-date {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--infini-color-text, #111827);
+  line-height: 1;
+}
+
+.signup-box-events {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.signup-box-empty {
+  display: block;
+  text-align: center;
+  font-size: 13px;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 25%, transparent);
+  line-height: 1;
+  padding: 2px 0;
+}
+
+.signup-box-event {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 3px 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--infini-motion-hover, 120ms) var(--infini-motion-easing, ease);
+  min-width: 0;
+}
+
+.signup-box-event:hover {
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, transparent);
+}
+
+.signup-box-event-dot {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.signup-box-event-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--infini-color-text, #111827);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signup-box-event-time {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 50%, transparent);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-notifications {
+  width: 100%;
+}
+
+.dashboard-notifications-mark-read-btn {
+  padding-inline: 0;
+  text-align: right;
+}
+
+.dashboard-notification-button {
+  text-align: left;
+  height: auto;
+  padding-inline: 0;
+}
+
+.dashboard-notification-row {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dashboard-notification-time {
+  font-size: 12px;
+}
+
+@media (max-width: 1199px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-grid-column {
+    gap: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-stats-circles {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  .dashboard-stats-circle-item {
+    flex: 1 1 100%;
+  }
+
+  .signup-boxes {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* ── War Card ── */
+
+.war-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.war-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.war-nav-btn {
+  min-width: 28px !important;
+  min-height: 28px !important;
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--infini-color-text, #111827) !important;
+}
+
+.war-nav-counter {
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+  text-align: center;
+  user-select: none;
+}
+
+.war-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+/* ── Info row: name/time + result badge ── */
+
+.war-info-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.war-info-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.war-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.war-share-btn {
+  min-width: 26px !important;
+  min-height: 26px !important;
+  width: 26px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--infini-color-text, #111827) !important;
+  opacity: 0.7;
+  transition: opacity 150ms ease;
+}
+
+.war-share-btn:hover {
+  opacity: 1;
+}
+
+/* ── Result badge ── */
+
+.war-result-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--war-result-color, #888);
+  background: color-mix(in srgb, var(--war-result-color, #888) 10%, var(--infini-color-surface, #fff));
+  border: 1px solid color-mix(in srgb, var(--war-result-color, #888) 22%, transparent);
+}
+
+/* ── VS bar header ── */
+
+.war-vs-bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 4px 0;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 45%, transparent);
+}
+
+.war-vs-bar-team {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  flex: 1;
+  min-width: 0;
+}
+
+.war-vs-bar-team--us {
+  color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 70%, var(--infini-color-text, #e5e5e5));
+  text-align: right;
+}
+
+.war-vs-bar-team--enemy {
+  color: color-mix(in srgb, var(--infini-color-text, #e5e5e5) 60%, var(--infini-color-danger, #ef4444));
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Comparison bars ── */
+
+.war-compare-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.war-compare-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.war-compare-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 55%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  width: 100%;
+}
+
+.war-compare-label-icon {
+  display: inline-flex;
+  align-items: center;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 60%, transparent);
+}
+
+.war-compare-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.war-compare-val {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+}
+
+.war-compare-val--left {
+  text-align: right;
+  color: var(--infini-color-text, #111827);
+}
+
+.war-compare-val--right {
+  text-align: left;
+  color: color-mix(in srgb, var(--infini-color-text, #e5e5e5) 65%, transparent);
+}
+
+.war-compare-bar {
+  flex: 1;
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+}
+
+.war-compare-bar-fill {
+  height: 100%;
+  transition: width 400ms ease;
+}
+
+.war-compare-bar-fill--own {
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 55%, var(--infini-color-surface, #fff));
+  border-radius: 3px 0 0 3px;
+}
+
+.war-compare-bar-fill--own.war-compare-bar-fill--winning {
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 80%, var(--infini-color-surface, #fff));
+}
+
+.war-compare-bar-fill--enemy {
+  background: color-mix(in srgb, var(--infini-color-danger, #ef4444) 40%, var(--infini-color-surface, #fff));
+  border-radius: 0 3px 3px 0;
+}
+
+.war-compare-bar-fill--enemy.war-compare-bar-fill--winning {
+  background: color-mix(in srgb, var(--infini-color-danger, #ef4444) 65%, var(--infini-color-surface, #fff));
+}
+
+/* ── MVP section ── */
+
+.war-mvp-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 8%, transparent);
+}
+
+.war-mvp-section-header {
+  letter-spacing: 0.08em;
+  margin-bottom: 2px;
+}
+
+.war-mvp-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.war-mvp-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.war-mvp-avatar {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--infini-color-text, #111827) 10%, var(--infini-color-surface, #fff));
+  color: var(--infini-color-text, #111827);
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 15%, transparent);
+}
+
+.war-mvp-chip-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.war-mvp-chip-name {
+  line-height: 1.2;
+}
+
+.war-mvp-chip-label {
+  line-height: 1.2;
+  font-size: 10px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.war-mvp-chip-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 50%, transparent);
+}
+
+.war-mvp-chip-value {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--infini-color-text, #111827);
+}
+
+/* ── War History Row Highlight Animation ── */
+
+@keyframes war-history-highlight {
+  0% { background-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 25%, transparent); }
+  100% { background-color: transparent; }
+}
+
+.war-history-row-highlight {
+  animation: war-history-highlight 1.2s ease-out;
+}
+

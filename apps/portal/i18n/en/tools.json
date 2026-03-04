@@ -1,0 +1,10 @@
+{
+  "title": "Tools",
+  "sandbox.title": "HTML Title Sandbox",
+  "sandbox.placeholder": "Enter title text",
+  "sandbox.preview": "Preview",
+  "sandbox.copyHtml": "Copy HTML",
+  "sandbox.copyExample": "Copy Example",
+  "theme.title": "Theme Showcase",
+  "theme.current": "Current theme:"
+}

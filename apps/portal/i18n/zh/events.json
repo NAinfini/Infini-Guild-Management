@@ -1,0 +1,20 @@
+{
+  "title": "活动",
+  "view.cards": "卡片",
+  "view.calendar": "月",
+  "view.week": "周",
+  "view.day": "日",
+  "filter.type": "活动类型",
+  "filter.archived": "仅归档",
+  "button.join": "报名",
+  "button.leave": "退出",
+  "button.create": "创建活动",
+  "field.capacity": "人数上限",
+  "field.startsAt": "开始",
+  "field.endsAt": "结束",
+  "confirm.discardUnsaved.title": "放弃未保存更改？",
+  "confirm.discardUnsaved.description": "当前活动编辑内容将丢失。",
+  "confirm.timeConflict.title": "时间冲突提醒",
+  "confirm.timeConflict.description": "与以下活动冲突：{{titles}}。仍要报名吗？",
+  "empty": "暂无活动"
+}

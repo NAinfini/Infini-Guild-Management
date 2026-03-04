@@ -1,0 +1,15 @@
+{
+  "title": "我的资料",
+  "tab.profile": "资料",
+  "tab.availability": "可用时间",
+  "tab.account": "账号",
+  "field.bio": "简介",
+  "field.titleHtml": "称号 HTML",
+  "field.vacationStart": "请假开始",
+  "field.vacationEnd": "请假结束",
+  "field.discordId": "Discord ID",
+  "button.uploadImages": "上传图片",
+  "button.uploadAudio": "上传音频",
+  "button.changePassword": "修改密码",
+  "button.changeUsername": "修改用户名"
+}

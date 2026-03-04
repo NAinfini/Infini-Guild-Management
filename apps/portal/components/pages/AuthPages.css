@@ -1,0 +1,261 @@
+/* ═══════════════════════════════════════════════
+   Login Page — Full-screen atmospheric layout
+   ═══════════════════════════════════════════════ */
+
+.login-page {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--infini-color-bg, #0a0a1a);
+}
+
+.login-page__bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at 15% 20%, color-mix(in srgb, var(--infini-color-primary, #3b82f6) 28%, transparent) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 25%, color-mix(in srgb, var(--infini-color-accent, #8b5cf6) 22%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 85%, color-mix(in srgb, var(--infini-color-secondary, #22d3ee) 18%, transparent) 0%, transparent 55%),
+    radial-gradient(ellipse at 70% 60%, color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, transparent) 0%, transparent 45%);
+  animation: login-bg-drift 16s ease-in-out infinite alternate;
+}
+
+@keyframes login-bg-drift {
+  0%   { filter: hue-rotate(0deg) brightness(1); }
+  50%  { filter: hue-rotate(12deg) brightness(1.05); }
+  100% { filter: hue-rotate(-8deg) brightness(0.95); }
+}
+
+.login-page__bubbles {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.login-page__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  padding: clamp(20px, 4vw, 40px);
+  width: 100%;
+  max-width: 480px;
+}
+
+/* ── Brand heading ── */
+
+.login-page__heading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.login-page__brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.login-page__brand-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 22%, transparent);
+  color: var(--infini-color-primary, #3b82f6);
+  font-size: 22px;
+  box-shadow: 0 0 24px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 30%, transparent);
+}
+
+.login-page__brand-text {
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-family: var(--infini-font-display, inherit);
+}
+
+.login-page__subtitle {
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 11px !important;
+  opacity: 0.7;
+}
+
+/* ── Form card ── */
+
+.login-page__card {
+  width: 100%;
+  border-radius: 20px;
+  padding: clamp(24px, 4vw, 36px);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.2),
+    0 0 0 1px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 8%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 6%, transparent);
+}
+
+.login-page__card .mantine-TextInput-input,
+.login-page__card .mantine-PasswordInput-input {
+  background: color-mix(in srgb, var(--infini-color-surface, #1a1a2e) 60%, transparent);
+  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 16%, transparent);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.login-page__card .mantine-TextInput-input:focus,
+.login-page__card .mantine-PasswordInput-input:focus {
+  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 50%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 12%, transparent);
+}
+
+/* ── Password field actions (eye + caps lock) ── */
+
+.login-page__password-actions {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 1;
+}
+
+.login-page__eye-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: color-mix(in srgb, var(--infini-color-text, #e2e8f0) 60%, transparent);
+  transition: color 150ms ease;
+}
+
+.login-page__eye-btn:hover {
+  color: var(--infini-color-text, #e2e8f0);
+}
+
+.login-page__caps-icon {
+  color: #eab308;
+  animation: login-caps-fadein 200ms ease;
+}
+
+@keyframes login-caps-fadein {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Back to portal link ── */
+
+.login-page__back-link {
+  display: flex;
+  justify-content: center;
+}
+
+.login-page__back-anchor {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: background 200ms ease, color 200ms ease;
+}
+
+.login-page__back-anchor:hover {
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 12%, transparent);
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 560px) {
+  .login-page__content {
+    gap: 20px;
+    padding: 16px;
+    max-width: 100%;
+  }
+
+  .login-page__card {
+    border-radius: 16px;
+    padding: 20px;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   Legacy auth layout (kept for other auth pages)
+   ═══════════════════════════════════════════════ */
+
+.auth-page-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(300px, 60%) minmax(320px, 40%);
+  background:
+    var(--infini-gradient-ambient, radial-gradient(circle at 8% 10%, rgba(59, 130, 246, 0.14), transparent 62%)),
+    var(--infini-color-bg, #f4f7fb);
+}
+
+.auth-page-shell--centered {
+  grid-template-columns: 1fr;
+  place-items: center;
+}
+
+.auth-form-column {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 3vw, 34px);
+}
+
+.auth-card {
+  width: min(460px, 100%);
+  border-radius: 18px;
+  box-shadow: var(--infini-depth-card, var(--infini-shadow, 0 10px 28px rgba(15, 23, 42, 0.14)));
+}
+
+.auth-form-title {
+  margin-top: 0;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auth-brand-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 20%, transparent);
+  color: var(--infini-color-primary, #3b82f6);
+}
+
+.auth-brand-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+@media (max-width: 991px) {
+  .auth-page-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .auth-form-column {
+    min-height: auto;
+    padding-top: 16px;
+  }
+}

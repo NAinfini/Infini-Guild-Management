@@ -1,0 +1,444 @@
+/* Split layout: Pool left, Teams right (vertical stack) */
+.guild-war-dnd-split {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  align-items: flex-start;
+}
+
+.guild-war-dnd-pool {
+  flex: 0 0 auto;
+  width: 500px;
+  position: sticky;
+  top: 12px;
+}
+
+.guild-war-dnd-teams-wrap {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+.guild-war-dnd-teams {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.guild-war-dnd-teams > * {
+  width: 100%;
+}
+
+.guild-war-section-heading { margin: 0; font-size: 16px; font-weight: 600; }
+
+/* Active tab top controls row */
+.guild-war-active-controls-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.guild-war-active-controls-row > * {
+  flex: 1 1 320px;
+  min-width: 280px;
+}
+
+.guild-war-active-top-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.guild-war-active-top-card { height: 100%; }
+.guild-war-column-card {
+  padding: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--infini-radius, 8px);
+  box-shadow: var(--infini-depth-card, none);
+  transition: box-shadow var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+  overflow: visible;
+}
+
+.guild-war-column-card--over {
+  border-color: var(--infini-color-primary, #3b82f6) !important;
+  box-shadow: var(--infini-glow-primary, 0 0 8px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 30%, transparent));
+}
+.guild-war-column-stack {
+  width: 100%;
+  flex: 1;
+  display: grid;
+  gap: 8px;
+}
+
+.guild-war-dnd-pool .guild-war-column-stack {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.guild-war-dnd-teams .guild-war-column-stack {
+  grid-template-columns: repeat(5, 1fr);
+}
+.guild-war-column-status { width: 100%; }
+
+/* Pool column header accent */
+.guild-war-dnd-pool .guild-war-column-card {
+  border-left: 3px solid var(--infini-color-primary, #3b82f6);
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--infini-color-primary, #3b82f6) 4%, var(--infini-color-surface, #ffffff)) 0%,
+      var(--infini-color-surface, #ffffff) 100%
+    );
+}
+
+/* Team column subtle top accent */
+.guild-war-dnd-teams .guild-war-column-card {
+  border-top: 2px solid color-mix(in srgb, var(--infini-color-accent, #8b5cf6) 50%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--infini-color-accent, #8b5cf6) 3%, var(--infini-color-surface, #ffffff)) 0%,
+      var(--infini-color-surface, #ffffff) 100%
+    );
+}
+
+.guild-war-pinned-roles-grid {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 8px 10px; border-radius: 8px;
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 86%, var(--infini-color-text, #111827) 14%);
+}
+
+.guild-war-pinned-role-label {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 65%, transparent);
+}
+
+.guild-war-pinned-role-select { width: 100%; margin-top: 4px; }
+.guild-war-pinned-role-tag { margin-top: 4px; }
+
+.guild-war-member-card {
+  width: 100%; cursor: grab;
+  border: var(--infini-border-width, 1px) solid color-mix(in srgb, var(--infini-color-text, #111827) 16%, transparent);
+  border-radius: var(--infini-radius, 8px);
+  background: var(--infini-color-surface, #ffffff);
+  padding: 8px 10px; text-align: left;
+  box-shadow: var(--infini-depth-card, none);
+  transition:
+    border-color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease),
+    box-shadow var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease),
+    background-color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease),
+    transform var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+}
+
+.guild-war-member-card:hover:not(:disabled) {
+  box-shadow: var(--infini-depth-card-hover, var(--infini-shadow-hover, none));
+  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 35%, transparent);
+  transform: translateY(-1px);
+}
+
+.guild-war-member-card:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--infini-depth-card, none);
+}
+
+.guild-war-member-card--disabled { cursor: default; opacity: 0.7; }
+.guild-war-member-card--matched {
+  border-color: var(--infini-color-warning, #f59e0b);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--infini-color-warning, #f59e0b) 25%, transparent);
+}
+
+.guild-war-member-card--selected {
+  border-color: var(--infini-color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 8%, var(--infini-color-surface, #ffffff));
+  box-shadow: var(--infini-glow-primary, 0 0 0 2px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 20%, transparent));
+}
+
+.guild-war-legend-chip {
+  border: var(--infini-border-width, 1px) solid color-mix(in srgb, var(--infini-color-text, #111827) 18%, transparent);
+  border-radius: 999px; padding: 4px 10px; cursor: pointer;
+  background: transparent;
+  color: var(--guild-war-legend-color, var(--infini-color-text, #111827));
+  box-shadow: var(--infini-shadow-sm, none);
+  transition: border-color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease), background-color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease), transform var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease), box-shadow var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+}
+
+.guild-war-legend-chip:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--guild-war-legend-color, var(--infini-color-primary, #3b82f6)) 52%, transparent);
+  background: color-mix(in srgb, var(--guild-war-legend-color, var(--infini-color-primary, #3b82f6)) 10%, transparent);
+  box-shadow: var(--infini-shadow-hover, none);
+}
+
+.guild-war-legend-chip--active {
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 12%, transparent);
+  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 40%, transparent);
+}
+
+@media (max-width: 1199px) {
+  .guild-war-active-controls-row { flex-direction: column; }
+}
+
+.war-history-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 92%, var(--infini-color-text, #111827) 8%);
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
+}
+
+.war-history-summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.war-history-filters__group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.war-history-filters__divider {
+  width: 1px;
+  height: 28px;
+  background: color-mix(in srgb, var(--infini-color-text, #111827) 16%, transparent);
+}
+
+.war-history-list-card,
+.war-history-detail-card {
+  width: 100%;
+  border-radius: 12px;
+  border-color: color-mix(in srgb, var(--infini-color-text, #111827) 16%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--infini-color-surface, #ffffff) 96%, var(--infini-color-primary, #3b82f6) 4%) 0%,
+      color-mix(in srgb, var(--infini-color-surface, #ffffff) 98%, transparent) 100%
+    );
+}
+
+.war-history-list-toolbar {
+  margin-bottom: 10px;
+}
+
+.war-history-list-toolbar .mantine-TextInput-root {
+  width: min(520px, 100%);
+}
+
+.war-history-list-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.war-history-list-empty {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed color-mix(in srgb, var(--infini-color-text, #111827) 20%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 95%, var(--infini-color-text, #111827) 5%);
+}
+
+.war-history-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 6%, transparent);
+}
+
+.war-history-detail-title {
+  font-size: 18px;
+  letter-spacing: .01em;
+}
+
+.war-history-result-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+}
+
+.war-history-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.war-history-stat-card {
+  padding: 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 94%, var(--infini-color-text, #111827) 6%);
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+}
+
+.war-history-stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 62%, transparent);
+  margin-bottom: 6px;
+}
+
+.war-history-stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--infini-color-text, #111827);
+}
+
+.war-history-stat-value--vs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.war-history-stat-value--own {
+  color: var(--infini-color-primary, #3b82f6);
+}
+
+.war-history-stat-value--enemy {
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 52%, transparent);
+}
+
+.war-history-stat-separator {
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 32%, transparent);
+  font-weight: 400;
+}
+
+.war-history-mvp-card,
+.war-history-teams-card,
+.war-history-chart-card,
+.war-history-team-card {
+  border-radius: 10px;
+  border-color: color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 96%, var(--infini-color-text, #111827) 4%);
+}
+
+.war-history-team-stack {
+  width: 100%;
+}
+
+.guild-war-analytics-layout {
+  width: 100%;
+}
+
+.guild-war-analytics-control-panel {
+  border-radius: 12px;
+  border-color: color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 97%, var(--infini-color-text, #111827) 3%);
+}
+
+.guild-war-analytics-control-panel--top {
+  background:
+    radial-gradient(
+      circle at top right,
+      color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, transparent) 0%,
+      transparent 58%
+    ),
+    color-mix(in srgb, var(--infini-color-surface, #ffffff) 97%, var(--infini-color-text, #111827) 3%);
+}
+
+.guild-war-analytics-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guild-war-analytics-toolbar__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.guild-war-analytics-toolbar__item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.guild-war-analytics-toolbar__item--grow {
+  flex: 1 1 380px;
+  min-width: 280px;
+}
+
+.guild-war-analytics-toolbar__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 62%, transparent);
+}
+
+.guild-war-analytics-main-grid {
+  display: grid;
+  align-items: stretch;
+}
+
+.guild-war-analytics-chart-card {
+  border-radius: 12px;
+  border-color: color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  background:
+    radial-gradient(
+      circle at 85% 8%,
+      color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, transparent) 0%,
+      transparent 45%
+    ),
+    color-mix(in srgb, var(--infini-color-surface, #ffffff) 97%, var(--infini-color-text, #111827) 3%);
+  transition: none !important;
+}
+
+.guild-war-analytics-chart-card--center {
+  width: 100%;
+  min-height: 486px;
+}
+
+.guild-war-analytics-control-panel--left,
+.guild-war-analytics-control-panel--right {
+  min-height: 486px;
+}
+
+@media (max-width: 991px) {
+  .war-history-filters__divider {
+    display: none;
+  }
+
+  .war-history-filters__group {
+    flex-wrap: wrap;
+  }
+
+  .guild-war-analytics-main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .guild-war-analytics-chart-card--center,
+  .guild-war-analytics-control-panel--left,
+  .guild-war-analytics-control-panel--right {
+    min-height: 0;
+  }
+
+  .guild-war-dnd-split {
+    flex-direction: column;
+  }
+
+  .guild-war-dnd-pool {
+    flex: none;
+    width: 100%;
+    position: static;
+  }
+
+  .guild-war-dnd-teams > * {
+    width: 100%;
+  }
+}
+

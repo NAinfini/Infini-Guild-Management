@@ -1,0 +1,47 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noImplicitAny": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "declaration": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
+    "types": ["node", "vite/client", "@cloudflare/workers-types"],
+    "paths": {
+      "@infini-dev-kit/frontend": ["../Infini-Dev-Kit/frontend"],
+      "@infini-dev-kit/frontend/*": ["../Infini-Dev-Kit/frontend/*"],
+      "@infini-dev-kit/utils": ["../Infini-Dev-Kit/utils"],
+      "@infini-dev-kit/utils/*": ["../Infini-Dev-Kit/utils/*"],
+      "@infini-dev-kit/api-client": ["../Infini-Dev-Kit/api-client"],
+      "@infini-dev-kit/api-client/*": ["../Infini-Dev-Kit/api-client/*"],
+      "@infini-dev-kit/bot-core": ["../Infini-Dev-Kit/bot-core"],
+      "@infini-dev-kit/bot-discord": ["../Infini-Dev-Kit/bot-discord"],
+      "@infini-dev-kit/bot-wechat": ["../Infini-Dev-Kit/bot-wechat"],
+      "@portal": ["apps/portal"],
+      "@portal/*": ["apps/portal/*"],
+      "@guild/shared": ["apps/shared"],
+      "@guild/shared/*": ["apps/shared/*"]
+    },
+    "noEmit": true
+  },
+  "include": [
+    "apps/shared/**/*.ts",
+    "apps/portal/**/*.ts",
+    "apps/portal/**/*.tsx",
+    "apps/portal/vite.config.ts",
+    "apps/worker/**/*.ts",
+    "apps/worker/drizzle.config.ts",
+    "apps/bot-runtime/**/*.ts"
+  ]
+}
