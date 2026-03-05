@@ -40,6 +40,34 @@ export type GuildWarAnalyticsMemberStat = {
   damage_taken: number;
 };
 
+export type ModifierBreakdown = {
+  factor: string;
+  ratio: number;
+  weight: number;
+  contribution: number;
+};
+
+export type AnalyticsWarEntry = WarHistory & {
+  team_size: number;
+  modifier: number;
+  modifier_breakdown: ModifierBreakdown[];
+};
+
+export type AnalyticsSettings = {
+  reference_duration_minutes: number;
+  modifier_weight_kda: number;
+  modifier_weight_towers: number;
+  modifier_weight_credits: number;
+  modifier_weight_distance: number;
+  modifier_weight_basehp: number;
+};
+
+export type GuildWarAnalyticsResponse = {
+  wars: AnalyticsWarEntry[];
+  member_stats: GuildWarAnalyticsMemberStat[];
+  analytics_settings: AnalyticsSettings;
+};
+
 export type GuildWarActiveResponse = {
   event: unknown;
   teams: WarTeam[];
@@ -81,12 +109,12 @@ export function fetchGuildWarHistoryDetail(id: string): Promise<GuildWarHistoryD
 export function fetchGuildWarAnalytics(params: {
   war_ids?: string[];
   user_ids?: string[];
-}): Promise<{ wars: WarHistory[]; member_stats: GuildWarAnalyticsMemberStat[] }> {
+}): Promise<GuildWarAnalyticsResponse> {
   const query = new URLSearchParams();
   if (params.war_ids && params.war_ids.length > 0) query.set("war_ids", params.war_ids.join(","));
   if (params.user_ids && params.user_ids.length > 0) query.set("user_ids", params.user_ids.join(","));
 
-  return apiRequest<{ wars: WarHistory[]; member_stats: GuildWarAnalyticsMemberStat[] }>(
+  return apiRequest<GuildWarAnalyticsResponse>(
     `/api/guild-war/analytics${query.size > 0 ? `?${query.toString()}` : ""}`,
   );
 }

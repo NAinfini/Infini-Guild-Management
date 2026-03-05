@@ -1,5 +1,6 @@
-import { InfiniCard, InfiniNumberTicker, InfiniProgressRing } from "@infini-dev-kit/frontend/components";
-import { Group, Text } from "@mantine/core";
+import { InfiniCard, NumberTicker } from "@infini-dev-kit/frontend/components";
+import { Group, RingProgress, Text } from "@mantine/core";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { TeamOutlined } from "../../utils/icons";
 import { cardHeading } from "./shared";
@@ -10,6 +11,24 @@ type ActiveMembersCardProps = {
   allWarWinRate: number;
   activeEventsCount: number;
 };
+
+function renderRing(
+  value: number,
+  label: ReactNode,
+  color: string,
+) {
+  return (
+    <RingProgress
+      className="dashboard-stats-circle"
+      size={100}
+      thickness={10}
+      roundCaps
+      sections={[{ value, color }]}
+      label={label}
+      rootColor="var(--infini-color-border)"
+    />
+  );
+}
 
 export function ActiveMembersCard({
   activeMemberCount,
@@ -27,55 +46,46 @@ export function ActiveMembersCard({
   const weeklyEventsPercent = Math.min(100, (safeActiveEventsCount / 7) * 100);
 
   return (
-    <InfiniCard className="dashboard-card" overrides={{ glow: { variant: "spotlight", glowIntensity: 0.25 } }}>
+    <InfiniCard className="dashboard-card" interactive={false} overrides={{ glow: { variant: "spotlight", glowIntensity: 0.25 } }}>
       {cardHeading(t("card.activeMembers.title"), <TeamOutlined size={18} />)}
       <Group className="dashboard-stats-circles" gap={10} mt={12} align="flex-start">
         <div className="dashboard-stats-circle-item">
-          <InfiniProgressRing
-            className="dashboard-stats-circle"
-            value={activeMemberPercent}
-            size={100}
-            strokeWidth={10}
-            glow
-            label={
+          {renderRing(
+            activeMemberPercent,
+            <span className="dashboard-stats-circle-center">
               <span className="dashboard-stats-circle-value">
-                <InfiniNumberTicker value={safeActiveMemberCount} />
+                <NumberTicker value={safeActiveMemberCount} />
                 <span className="dashboard-stats-circle-subvalue">/{safeTotalMembersCount}</span>
               </span>
-            }
-          />
+            </span>,
+            "infini-primary",
+          )}
           <Text className="dashboard-stats-circle-label">{t("card.activeMembers.activeRatio")}</Text>
         </div>
 
         <div className="dashboard-stats-circle-item">
-          <InfiniProgressRing
-            className="dashboard-stats-circle"
-            value={weeklyEventsPercent}
-            size={100}
-            strokeWidth={10}
-            glow
-            label={
+          {renderRing(
+            weeklyEventsPercent,
+            <span className="dashboard-stats-circle-center">
               <span className="dashboard-stats-circle-value">
-                <InfiniNumberTicker value={safeActiveEventsCount} />
+                <NumberTicker value={safeActiveEventsCount} />
               </span>
-            }
-          />
+            </span>,
+            "infini-success",
+          )}
           <Text className="dashboard-stats-circle-label">{t("card.activeMembers.eventsWeek")}</Text>
         </div>
 
         <div className="dashboard-stats-circle-item">
-          <InfiniProgressRing
-            className="dashboard-stats-circle"
-            value={safeWinRate}
-            size={100}
-            strokeWidth={10}
-            glow
-            label={
+          {renderRing(
+            safeWinRate,
+            <span className="dashboard-stats-circle-center">
               <span className="dashboard-stats-circle-value">
-                <InfiniNumberTicker value={safeWinRate} decimals={1} suffix="%" />
+                <NumberTicker value={safeWinRate} decimals={1} suffix="%" />
               </span>
-            }
-          />
+            </span>,
+            "infini-warning",
+          )}
           <Text className="dashboard-stats-circle-label">{t("card.activeMembers.winRate")}</Text>
         </div>
       </Group>

@@ -14,13 +14,13 @@ type AdminAuditSectionProps = {
   auditDateTo: string;
   onAuditDateFromChange: (value: string) => void;
   onAuditDateToChange: (value: string) => void;
-  onResetDateRange: () => void;
-  onApplyFilters: () => void;
+  onSetDatePreset: (preset: "1d" | "7d" | "1m") => void;
   onDownloadFilteredCsv: () => void;
   onDownloadFilteredJson: () => void;
   searchPlaceholder: string;
-  last90DaysLabel: string;
-  applyLabel: string;
+  lastDayLabel: string;
+  last7DaysLabel: string;
+  lastMonthLabel: string;
   downloadFilteredCsvLabel: string;
   downloadFilteredJsonLabel: string;
   exportAuditLogPending: boolean;
@@ -36,18 +36,6 @@ type AdminAuditSectionProps = {
   maskIdentifier: (value: string, isAdmin: boolean) => string;
   formatAuditDiffHeader: (diffTitle: string | null, detailText: string | null) => string;
   formatDateTime: (iso: string | null) => string;
-  archiveTitle: string;
-  auditMonthsLoading: boolean;
-  auditMonths: string[];
-  selectedArchiveMonth: string | undefined;
-  onSelectedArchiveMonthChange: (value: string | undefined) => void;
-  archiveCountLabel: string;
-  archiveCsvTooLarge: boolean;
-  archiveTooLargeMessage: string;
-  onDownloadCsv: () => void;
-  canExportArchive: boolean;
-  exportCooldownSeconds: number;
-  downloadCsvLabel: string;
 };
 
 export function AdminAuditSection({
@@ -58,13 +46,13 @@ export function AdminAuditSection({
   auditDateTo,
   onAuditDateFromChange,
   onAuditDateToChange,
-  onResetDateRange,
-  onApplyFilters,
+  onSetDatePreset,
   onDownloadFilteredCsv,
   onDownloadFilteredJson,
   searchPlaceholder,
-  last90DaysLabel,
-  applyLabel,
+  lastDayLabel,
+  last7DaysLabel,
+  lastMonthLabel,
   downloadFilteredCsvLabel,
   downloadFilteredJsonLabel,
   exportAuditLogPending,
@@ -80,62 +68,53 @@ export function AdminAuditSection({
   maskIdentifier,
   formatAuditDiffHeader,
   formatDateTime,
-  archiveTitle,
-  auditMonthsLoading,
-  auditMonths,
-  selectedArchiveMonth,
-  onSelectedArchiveMonthChange,
-  archiveCountLabel,
-  archiveCsvTooLarge,
-  archiveTooLargeMessage,
-  onDownloadCsv,
-  canExportArchive,
-  exportCooldownSeconds,
-  downloadCsvLabel,
 }: AdminAuditSectionProps) {
   return (
     <Stack gap={12}>
       {heading}
-      <InfiniCard>
-        <Group wrap="wrap" gap={8}>
-          <TextInput
-            placeholder={searchPlaceholder}
-            style={{ width: 320 }}
-            aria-label="Search audit logs"
-            value={auditSearch}
-            onChange={(event) => onAuditSearchChange(event.currentTarget.value)}
-          />
-          <TextInput
-            type="date"
-            value={auditDateFrom}
-            onChange={(event) => onAuditDateFromChange(event.currentTarget.value)}
-            aria-label="Audit date from"
-            style={{ width: 170 }}
-          />
-          <TextInput
-            type="date"
-            value={auditDateTo}
-            onChange={(event) => onAuditDateToChange(event.currentTarget.value)}
-            aria-label="Audit date to"
-            style={{ width: 170 }}
-          />
-          <Button onClick={onResetDateRange}>{last90DaysLabel}</Button>
-          <Button onClick={onApplyFilters}>{applyLabel}</Button>
-          <Button
-            variant="light"
-            onClick={onDownloadFilteredCsv}
-            loading={exportAuditLogPending}
-          >
-            {downloadFilteredCsvLabel}
-          </Button>
-          <Button
-            variant="light"
-            onClick={onDownloadFilteredJson}
-            loading={exportAuditLogPending}
-          >
-            {downloadFilteredJsonLabel}
-          </Button>
-        </Group>
+      <InfiniCard interactive={false}>
+        <div style={{ padding: "1.2rem" }}>
+          <Group wrap="wrap" gap={8}>
+            <TextInput
+              placeholder={searchPlaceholder}
+              style={{ width: 200 }}
+              aria-label="Search audit logs"
+              value={auditSearch}
+              onChange={(event) => onAuditSearchChange(event.currentTarget.value)}
+            />
+            <TextInput
+              type="date"
+              value={auditDateFrom}
+              onChange={(event) => onAuditDateFromChange(event.currentTarget.value)}
+              aria-label="Audit date from"
+              style={{ width: 170 }}
+            />
+            <TextInput
+              type="date"
+              value={auditDateTo}
+              onChange={(event) => onAuditDateToChange(event.currentTarget.value)}
+              aria-label="Audit date to"
+              style={{ width: 170 }}
+            />
+            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("1d")}>{lastDayLabel}</Button>
+            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("7d")}>{last7DaysLabel}</Button>
+            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("1m")}>{lastMonthLabel}</Button>
+            <Button
+              variant="light"
+              onClick={onDownloadFilteredCsv}
+              loading={exportAuditLogPending}
+            >
+              {downloadFilteredCsvLabel}
+            </Button>
+            <Button
+              variant="light"
+              onClick={onDownloadFilteredJson}
+              loading={exportAuditLogPending}
+            >
+              {downloadFilteredJsonLabel}
+            </Button>
+          </Group>
+        </div>
       </InfiniCard>
 
       <AuditLogViewer
@@ -151,18 +130,6 @@ export function AdminAuditSection({
         maskIdentifier={maskIdentifier}
         formatAuditDiffHeader={formatAuditDiffHeader}
         formatDateTime={formatDateTime}
-        archiveTitle={archiveTitle}
-        auditMonthsLoading={auditMonthsLoading}
-        auditMonths={auditMonths}
-        selectedArchiveMonth={selectedArchiveMonth}
-        onSelectedArchiveMonthChange={onSelectedArchiveMonthChange}
-        archiveCountLabel={archiveCountLabel}
-        archiveCsvTooLarge={archiveCsvTooLarge}
-        archiveTooLargeMessage={archiveTooLargeMessage}
-        onDownloadCsv={onDownloadCsv}
-        canExportArchive={canExportArchive}
-        exportCooldownSeconds={exportCooldownSeconds}
-        downloadCsvLabel={downloadCsvLabel}
       />
     </Stack>
   );

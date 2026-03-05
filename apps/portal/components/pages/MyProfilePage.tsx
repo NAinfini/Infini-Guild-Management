@@ -4,9 +4,10 @@ import { arrayMove, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Badge, Button, Grid, Group, Tabs, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { useQueryClient } from "@tanstack/react-query";
+import { IconGripVertical } from "@tabler/icons-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiRequest } from "../../api/client";
 import { queryKeys } from "../../api/query-keys";
@@ -21,7 +22,6 @@ import {
   verifyMyDiscordLink,
   unlinkMyDiscord,
 } from "../../api/mutations/users";
-import { usePageHeaderActions } from "../../context/PageHeaderContext";
 import { useAppError } from "../../hooks/useAppError";
 import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
 import { useProfileData } from "../../hooks/data/useProfileData";
@@ -30,25 +30,22 @@ import { useMediaUpload } from "../../hooks/useMediaUpload";
 import { useAuthStore } from "../../stores/auth";
 import { ProfileAccountTab } from "../feature/profile/ProfileAccountTab";
 import { ProfileAvailabilityTab } from "../feature/profile/ProfileAvailabilityTab";
+import { ProfileMediaTab } from "../feature/profile/ProfileMediaTab";
 import { ProfilePreviewCard } from "../feature/profile/ProfilePreviewCard";
 import { ProfileProfileTab } from "../feature/profile/ProfileProfileTab";
 import { PageLayout } from "../layout/PageLayout";
 import "./MyProfilePage.css";
 
-const LazyTipTapEditor = lazy(() =>
-  import("../shared/TipTapEditor").then((mod) => ({ default: mod.TipTapEditor })),
-);
-
 type SortableClassRowProps = {
   value: string;
   index: number;
   isPrimary: boolean;
-  onSetPrimary: () => void;
   onRemove: () => void;
 };
 
 function SortableClassRow(props: SortableClassRowProps) {
-  const { value, index, isPrimary, onSetPrimary, onRemove } = props;
+  const { value, index, isPrimary, onRemove } = props;
+  const { t } = useTranslation("profile");
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: value });
 
   return (
@@ -61,15 +58,12 @@ function SortableClassRow(props: SortableClassRowProps) {
       }}
       className={`my-profile-sortable-row ${isDragging ? "my-profile-sortable-row--dragging" : ""}`.trim()}
     >
-      <Button size="xs" {...attributes} {...listeners} aria-label={`Drag class ${value}`}>
-        Drag
-      </Button>
+      <div {...attributes} {...listeners} style={{ cursor: "grab", display: "flex", alignItems: "center" }} aria-label={t("classRow.aria.drag", { value })}>
+        <IconGripVertical size={18} />
+      </div>
       <Badge color={isPrimary ? "yellow" : "gray"}>{value}</Badge>
-      <Button size="xs" onClick={onSetPrimary} disabled={isPrimary}>
-        Set Primary
-      </Button>
-      <Button size="xs" color="red" onClick={onRemove}>
-        Remove
+      <Button size="xs" color="infini-danger" onClick={onRemove}>
+        {t("classRow.remove")}
       </Button>
       <Text c="dimmed" size="sm" style={{ fontSize: 12 }}>
         #{index + 1}
@@ -118,7 +112,7 @@ export function MyProfilePage() {
   const imageUploader = useMediaUpload(
     async (files) => {
       if (!user) {
-        throw new Error("Missing user session");
+        throw new Error(t("message.sessionMissing"));
       }
       return uploadProfileImages(user.id, files);
     },
@@ -134,11 +128,11 @@ export function MyProfilePage() {
   const audioUploader = useMediaUpload(
     async (files) => {
       if (!user) {
-        throw new Error("Missing user session");
+        throw new Error(t("message.sessionMissing"));
       }
       const file = files[0];
       if (!file) {
-        throw new Error("Audio file is required");
+        throw new Error(t("message.audioFileRequired"));
       }
       return uploadProfileAudio(user.id, file);
     },
@@ -198,7 +192,7 @@ export function MyProfilePage() {
       ? (availabilityData as Record<string, unknown>)[dayKey]
       : null;
     if (!Array.isArray(raw)) {
-      return "No availability blocks";
+      return t("availability.none");
     }
     const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
     let minutesUntilNext = Number.POSITIVE_INFINITY;
@@ -219,17 +213,17 @@ export function MyProfilePage() {
       const startTotal = startHour * 60 + startMinute;
       const endTotal = endHour * 60 + endMinute;
       if (currentMinutes >= startTotal && currentMinutes < endTotal) {
-        return "Active now";
+        return t("availability.activeNow");
       }
       if (startTotal > currentMinutes) {
         minutesUntilNext = Math.min(minutesUntilNext, startTotal - currentMinutes);
       }
     }
     if (Number.isFinite(minutesUntilNext)) {
-      return `Next active window in ${Math.max(1, Math.round(minutesUntilNext))} min`;
+      return t("availability.nextWindowMinutes", { minutes: Math.max(1, Math.round(minutesUntilNext)) });
     }
-    return "No more active windows today";
-  }, [availabilityData]);
+    return t("availability.noneToday");
+  }, [availabilityData, t]);
 
   const moveListItem = <T,>(list: T[], index: number, delta: number): T[] => {
     const nextIndex = index + delta;
@@ -246,31 +240,36 @@ export function MyProfilePage() {
     return next;
   };
 
-  const saveProfile = async () => {
-    if (!user) return;
-
-    const payload = {
-      bio: bio || null,
-      title_html: titleHtml || null,
-      wechat_name: wechatName || null,
-      power,
-      classes: classList,
-      video_urls: videoList,
-      images: imageList,
-      vacation_start: vacationStart || null,
-      vacation_end: vacationEnd || null,
-      availability: availabilityData,
-      discord_reminder_opt_out: discordReminderOptOut,
-    };
-
-    try {
-      const updatedProfile = await updateMyProfile(user.id, payload);
+  const saveProfileMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error("Missing user session");
+      return updateMyProfile(user.id, {
+        bio: bio || null,
+        title_html: titleHtml || null,
+        wechat_name: wechatName || null,
+        power,
+        classes: classList,
+        video_urls: videoList,
+        images: imageList,
+        vacation_start: vacationStart || null,
+        vacation_end: vacationEnd || null,
+        availability: availabilityData,
+        discord_reminder_opt_out: discordReminderOptOut,
+      });
+    },
+    onSuccess: async (updatedProfile) => {
       setProfile(updatedProfile);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user.id) });
-      notifications.show({ color: "green", message: "Profile saved" });
-    } catch (error) {
-      showError(error, "Failed to save profile");
-    }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
+      notifications.show({ color: "infini-success", message: t("message.profileSaved") });
+    },
+    onError: (error) => {
+      showError(error, t("message.profileSaveFailed"));
+    },
+  });
+
+  const saveProfile = () => {
+    if (!user) return;
+    saveProfileMutation.mutate();
   };
 
   const uploadImages = async () => {
@@ -279,9 +278,9 @@ export function MyProfilePage() {
       const uploaded = await imageUploader.upload();
       if (!uploaded) return;
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user.id) });
-      notifications.show({ color: "green", message: "Images uploaded" });
+      notifications.show({ color: "infini-success", message: t("message.imagesUploaded") });
     } catch (error) {
-      showError(error, "Image upload failed");
+      showError(error, t("message.imageUploadFailed"));
     }
   };
 
@@ -291,9 +290,9 @@ export function MyProfilePage() {
       const uploaded = await audioUploader.upload();
       if (!uploaded) return;
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user.id) });
-      notifications.show({ color: "green", message: "Audio uploaded" });
+      notifications.show({ color: "infini-success", message: t("message.audioUploaded") });
     } catch (error) {
-      showError(error, "Audio upload failed");
+      showError(error, t("message.audioUploadFailed"));
     }
   };
 
@@ -304,11 +303,11 @@ export function MyProfilePage() {
     }
     const normalized = CLASS_NAMES.find((className) => className.toLowerCase() === next);
     if (!normalized) {
-      notifications.show({ color: "yellow", message: "Please select a valid class" });
+      notifications.show({ color: "infini-warning", message: t("message.classInvalid") });
       return;
     }
     if (classList.includes(normalized)) {
-      notifications.show({ color: "yellow", message: "Class already exists" });
+      notifications.show({ color: "infini-warning", message: t("message.classDuplicate") });
       return;
     }
     setClassList((current) => [...current, normalized]);
@@ -321,15 +320,15 @@ export function MyProfilePage() {
       return;
     }
     if (!isAllowedVideoUrl(next)) {
-      showError(new Error("Unsupported video host"), "Only YouTube/Bilibili/Vimeo/TikTok/Douyin URLs are allowed");
+      showError(new Error(t("message.videoHostUnsupported")), t("message.videoHostAllowedOnly"));
       return;
     }
     if (videoList.includes(next)) {
-      notifications.show({ color: "yellow", message: "Video URL already exists" });
+      notifications.show({ color: "infini-warning", message: t("message.videoUrlDuplicate") });
       return;
     }
     if (videoList.length >= 10) {
-      notifications.show({ color: "yellow", message: "Maximum 10 video URLs" });
+      notifications.show({ color: "infini-warning", message: t("message.videoUrlLimit") });
       return;
     }
     setVideoList((current) => [...current, next]);
@@ -351,104 +350,152 @@ export function MyProfilePage() {
     });
   };
 
-  const removeImage = async (key: string) => {
-    if (!user) {
-      return;
-    }
-    try {
-      await deleteProfileImage(user.id, key);
+  const removeImageMutation = useMutation({
+    mutationFn: (key: string) => {
+      if (!user) throw new Error("Missing user session");
+      return deleteProfileImage(user.id, key);
+    },
+    onSuccess: async (_data, key) => {
       setImageList((current) => current.filter((item) => item !== key));
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user.id) });
-      notifications.show({ color: "green", message: "Image removed" });
-    } catch (error) {
-      showError(error, "Failed to remove image");
-    }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
+      notifications.show({ color: "infini-success", message: t("message.imageRemoved") });
+    },
+    onError: (error) => {
+      showError(error, t("message.imageRemoveFailed"));
+    },
+  });
+
+  const removeImage = (key: string) => {
+    if (!user) return;
+    removeImageMutation.mutate(key);
   };
 
-  const removeAudio = async () => {
-    if (!user) {
-      return;
-    }
-    try {
-      await deleteProfileAudio(user.id);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user.id) });
-      notifications.show({ color: "green", message: "Audio removed" });
-    } catch (error) {
-      showError(error, "Failed to remove audio");
-    }
+  const removeAudioMutation = useMutation({
+    mutationFn: () => {
+      if (!user) throw new Error("Missing user session");
+      return deleteProfileAudio(user.id);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
+      notifications.show({ color: "infini-success", message: t("message.audioRemoved") });
+    },
+    onError: (error) => {
+      showError(error, t("message.audioRemoveFailed"));
+    },
+  });
+
+  const removeAudio = () => {
+    if (!user) return;
+    removeAudioMutation.mutate();
   };
 
-  const verifyDiscordLink = async () => {
-    if (!user || !discordCode.trim()) return;
-    try {
+  const verifyDiscordMutation = useMutation({
+    mutationFn: () => {
+      if (!user || !discordCode.trim()) throw new Error("Missing user or code");
+      return verifyMyDiscordLink(user.id, { code: discordCode.trim() });
+    },
+    onMutate: () => {
       setIsDiscordLinking(true);
-      const response = await verifyMyDiscordLink(user.id, { code: discordCode.trim() });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user.id) });
+    },
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
       setDiscordCode("");
-      notifications.show({ color: "green", message: `Discord linked: ${response.discord_id}` });
-    } catch (error) {
-      showError(error, "Discord link failed");
-    } finally {
+      notifications.show({ color: "infini-success", message: t("message.discordLinked", { discordId: response.discord_id }) });
+    },
+    onError: (error) => {
+      showError(error, t("message.discordLinkFailed"));
+    },
+    onSettled: () => {
       setIsDiscordLinking(false);
-    }
+    },
+  });
+
+  const verifyDiscordLink = () => {
+    if (!user || !discordCode.trim()) return;
+    verifyDiscordMutation.mutate();
   };
 
-  const unlinkDiscord = async () => {
-    if (!user) return;
-    try {
-      await unlinkMyDiscord(user.id);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user.id) });
+  const unlinkDiscordMutation = useMutation({
+    mutationFn: () => {
+      if (!user) throw new Error("Missing user session");
+      return unlinkMyDiscord(user.id);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
-      notifications.show({ color: "green", message: "Discord unlinked" });
-    } catch (error) {
-      showError(error, "Discord unlink failed");
-    }
+      notifications.show({ color: "infini-success", message: t("message.discordUnlinked") });
+    },
+    onError: (error) => {
+      showError(error, t("message.discordUnlinkFailed"));
+    },
+  });
+
+  const unlinkDiscord = () => {
+    if (!user) return;
+    unlinkDiscordMutation.mutate();
   };
 
-  const changePassword = async () => {
-    if (!user) return;
-    try {
-      await changeMyPassword(user.id, {
+  const changePasswordMutation = useMutation({
+    mutationFn: () => {
+      if (!user) throw new Error("Missing user session");
+      return changeMyPassword(user.id, {
         currentPassword,
         newPassword,
         confirmNewPassword,
       });
+    },
+    onSuccess: () => {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmNewPassword("");
-      notifications.show({ color: "green", message: "Password changed" });
-    } catch (error) {
-      showError(error, "Password change failed");
-    }
+      notifications.show({ color: "infini-success", message: t("message.passwordChanged") });
+    },
+    onError: (error) => {
+      showError(error, t("message.passwordChangeFailed"));
+    },
+  });
+
+  const changePassword = () => {
+    if (!user) return;
+    changePasswordMutation.mutate();
   };
 
-  const changeUsername = async () => {
-    if (!user) return;
-    try {
-      await changeMyUsername(user.id, {
+  const changeUsernameMutation = useMutation({
+    mutationFn: () => {
+      if (!user) throw new Error("Missing user session");
+      return changeMyUsername(user.id, {
         currentPassword: currentPasswordForUsername,
         newUsername,
       });
-      notifications.show({ color: "green", message: "Username changed. Please log in again." });
+    },
+    onSuccess: () => {
+      notifications.show({ color: "infini-success", message: t("message.usernameChanged") });
       setCurrentPasswordForUsername("");
       setNewUsername("");
       clearSession();
       void navigate({ to: "/login" });
-    } catch (error) {
-      showError(error, "Username change failed");
-    }
+    },
+    onError: (error) => {
+      showError(error, t("message.usernameChangeFailed"));
+    },
+  });
+
+  const changeUsername = () => {
+    if (!user) return;
+    changeUsernameMutation.mutate();
   };
 
-  const logout = async () => {
-    try {
-      await apiRequest<{ ok: true }>("/api/auth/logout", { method: "POST" });
-    } catch {
-      // Keep client state deterministic even if backend session has expired.
-    } finally {
+  const logoutMutation = useMutation({
+    mutationFn: () => apiRequest<{ ok: true }>("/api/auth/logout", { method: "POST" }),
+    onSettled: () => {
       clearSession();
       void navigate({ to: "/login" });
-    }
+    },
+  });
+
+  const logout = () => {
+    logoutMutation.mutate();
   };
 
   const profile = profileQuery.data?.profile;
@@ -482,37 +529,35 @@ export function MyProfilePage() {
     wechatName,
   ]);
   useBeforeUnloadPrompt(isDirty);
-  const pageHeaderActions = useMemo(
-    () => (isDirty ? <Badge color="yellow">Unsaved changes</Badge> : <Badge color="green">Saved</Badge>),
-    [isDirty],
-  );
-  usePageHeaderActions(pageHeaderActions);
 
   return (
     <PageLayout
       title={t("title")}
-      subtitle="Account Workspace"
+      subtitle={t("subtitle")}
       className="my-profile-page"
     >
       <Grid gutter="md">
-        <Grid.Col span={{ base: 12, lg: 4 }}>
-          <ProfilePreviewCard
-            username={user?.username ?? "-"}
-            wechatName={wechatName}
-            power={power}
-            primaryClass={classList[0] ?? "-"}
-            imageCount={imageList.length}
-            videoCount={videoList.length}
-            hasAudio={Boolean(profile?.audio_key)}
-            discordId={profile?.discord_id ?? null}
-            activeNowEstimate={activeNowEstimate}
-            bio={bio}
-          />
+        <Grid.Col span={{ base: 12, lg: 3 }}>
+          <div style={{ position: "sticky", top: 16 }}>
+            <ProfilePreviewCard
+              username={user?.username ?? "-"}
+              wechatName={wechatName}
+              power={power}
+              primaryClass={classList[0] ?? "-"}
+              imageCount={imageList.length}
+              videoCount={videoList.length}
+              hasAudio={Boolean(profile?.audio_key)}
+              discordId={profile?.discord_id ?? null}
+              activeNowEstimate={activeNowEstimate}
+              bio={bio}
+            />
+          </div>
         </Grid.Col>
-        <Grid.Col span={{ base: 12, lg: 8 }}>
+        <Grid.Col span={{ base: 12, lg: 9 }}>
           <Tabs value={activeTab} onChange={(value) => value && setActiveTab(value)}>
             <Tabs.List>
               <Tabs.Tab value="profile">{t("tab.profile")}</Tabs.Tab>
+              <Tabs.Tab value="media">{t("tab.media")}</Tabs.Tab>
               <Tabs.Tab value="availability">{t("tab.availability")}</Tabs.Tab>
               <Tabs.Tab value="account">{t("tab.account")}</Tabs.Tab>
             </Tabs.List>
@@ -524,24 +569,10 @@ export function MyProfilePage() {
                 classDraft={classDraft}
                 classOptions={classOptions}
                 classList={classList}
-                videoDraft={videoDraft}
-                videoList={videoList}
-                imageList={imageList}
-                profileAudioKey={profile?.audio_key ?? null}
                 discordId={profile?.discord_id ?? null}
-                titleEditor={(
-                  <Suspense fallback={null}>
-                    <LazyTipTapEditor
-                      value={titleHtml}
-                      onChange={setTitleHtml}
-                      placeholder={t("field.titleHtml")}
-                      mode="html"
-                    />
-                  </Suspense>
-                )}
+                titleHtml={titleHtml}
+                onTitleHtmlChange={setTitleHtml}
                 bio={bio}
-                imageUploader={imageUploader}
-                audioUploader={audioUploader}
                 classSensors={classSensors}
                 onWechatNameChange={setWechatName}
                 onPowerChange={setPower}
@@ -554,18 +585,27 @@ export function MyProfilePage() {
                     value={value}
                     index={index}
                     isPrimary={index === 0}
-                    onSetPrimary={() =>
-                      setClassList((current) => {
-                        const picked = current[index];
-                        if (!picked) return current;
-                        return [picked, ...current.filter((_, valueIndex) => valueIndex !== index)];
-                      })
-                    }
                     onRemove={() =>
                       setClassList((current) => current.filter((_, valueIndex) => valueIndex !== index))
                     }
                   />
                 )}
+                onBioChange={setBio}
+                onSaveProfile={saveProfile}
+                savePending={saveProfileMutation.isPending}
+                isDirty={isDirty}
+                fieldBioPlaceholder={t("field.bio")}
+              />
+            </Tabs.Panel>
+
+            <Tabs.Panel value="media" pt="sm">
+              <ProfileMediaTab
+                videoDraft={videoDraft}
+                videoList={videoList}
+                imageList={imageList}
+                profileAudioKey={profile?.audio_key ?? null}
+                imageUploader={imageUploader}
+                audioUploader={audioUploader}
                 onVideoDraftChange={setVideoDraft}
                 onAddVideoUrl={addVideoUrl}
                 onMoveVideo={(index, delta) =>
@@ -574,8 +614,6 @@ export function MyProfilePage() {
                 onRemoveVideo={(index) =>
                   setVideoList((current) => current.filter((_, valueIndex) => valueIndex !== index))
                 }
-                onBioChange={setBio}
-                onSaveProfile={saveProfile}
                 onUploadImages={() => {
                   void uploadImages();
                 }}
@@ -591,9 +629,6 @@ export function MyProfilePage() {
                 onRemoveAudio={() => {
                   void removeAudio();
                 }}
-                fieldBioPlaceholder={t("field.bio")}
-                buttonUploadImagesLabel={t("button.uploadImages")}
-                buttonUploadAudioLabel={t("button.uploadAudio")}
               />
             </Tabs.Panel>
 
@@ -649,5 +684,3 @@ export function MyProfilePage() {
     </PageLayout>
   );
 }
-
-

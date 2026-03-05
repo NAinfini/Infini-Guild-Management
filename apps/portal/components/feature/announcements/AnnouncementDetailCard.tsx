@@ -1,5 +1,5 @@
 import type { Announcement } from "@guild/shared";
-import { MotionButton } from "@infini-dev-kit/frontend/components";
+import { DepthToggle } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import {
   Alert,
@@ -9,15 +9,15 @@ import {
   Group,
   Loader,
   Modal,
-  Select,
   Stack,
-  Switch,
   Text,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
 import { format } from "date-fns";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { IconArchive, IconPin, IconCalendarTime, IconBrandDiscord, IconBrandWechat } from "@tabler/icons-react";
 import { PencilOutlined } from "@portal/utils/icons";
 import { EmptyState } from "../../shared/EmptyState";
 import { TipTapEditor } from "../../shared/TipTapEditor";
@@ -37,21 +37,6 @@ function fromDateTimeLocalValue(value: string): string {
   return value ? value.replace("T", " ") : "";
 }
 
-function statusBadgeColor(status: Announcement["status"]): string {
-  switch (status) {
-    case "draft":
-      return "gray";
-    case "scheduled":
-      return "blue";
-    case "published":
-      return "green";
-    case "archived":
-      return "red";
-    default:
-      return "gray";
-  }
-}
-
 type AnnouncementDetailCardProps = {
   title: ReactNode;
   canEdit: boolean;
@@ -61,15 +46,14 @@ type AnnouncementDetailCardProps = {
   isError: boolean;
   warningMessage: ReactNode;
   savePending: boolean;
-  archivePending: boolean;
-  draftStatus: Announcement["status"];
-  onDraftStatusChange: (value: Announcement["status"]) => void;
   titleValue: string;
   onTitleChange: (value: string) => void;
   bodyJson: string;
   onBodyJsonChange: (value: string) => void;
   pinned: boolean;
   onPinnedChange: (value: boolean) => void;
+  scheduleEnabled: boolean;
+  onScheduleEnabledChange: (value: boolean) => void;
   notifyDiscord: boolean;
   onNotifyDiscordChange: (value: boolean) => void;
   notifyWechat: boolean;
@@ -79,9 +63,9 @@ type AnnouncementDetailCardProps = {
   expiresAt: string;
   onExpiresAtChange: (value: string) => void;
   onSaveDraft: () => void;
-  onPublishNow: () => void;
-  onSchedule: () => void;
-  onArchive: () => void;
+  onPublish: () => void;
+  archived: boolean;
+  onArchivedChange: (value: boolean) => void;
   onImageUpload: (file: File) => Promise<string>;
   isDirty: boolean;
   emptyTitle: ReactNode;
@@ -96,15 +80,14 @@ export function AnnouncementDetailCard({
   isError,
   warningMessage,
   savePending,
-  archivePending,
-  draftStatus,
-  onDraftStatusChange,
   titleValue,
   onTitleChange,
   bodyJson,
   onBodyJsonChange,
   pinned,
   onPinnedChange,
+  scheduleEnabled,
+  onScheduleEnabledChange,
   notifyDiscord,
   onNotifyDiscordChange,
   notifyWechat,
@@ -114,28 +97,53 @@ export function AnnouncementDetailCard({
   expiresAt,
   onExpiresAtChange,
   onSaveDraft,
-  onPublishNow,
-  onSchedule,
-  onArchive,
+  onPublish,
+  archived,
+  onArchivedChange,
   onImageUpload,
   isDirty,
   emptyTitle,
 }: AnnouncementDetailCardProps) {
   const { t } = useTranslation("announcements");
   const [editing, setEditing] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<"publish" | "archive" | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"publish" | "publishNow" | null>(null);
 
   const handleConfirm = () => {
-    if (confirmAction === "publish") {
-      onPublishNow();
-    } else if (confirmAction === "archive") {
-      onArchive();
+    if (confirmAction === "publish" || confirmAction === "publishNow") {
+      onPublish();
     }
     setConfirmAction(null);
   };
 
+  const handlePublishClick = () => {
+    const hasTime = publishAt.trim().length > 0;
+    if (scheduleEnabled && hasTime) {
+      // Publish on time — schedule it
+      setConfirmAction("publish");
+    } else if (scheduleEnabled && !hasTime) {
+      // Toggle checked but no time set — ask user
+      setConfirmAction("publishNow");
+    } else if (!scheduleEnabled && hasTime) {
+      // Time set but toggle unchecked — ask user
+      setConfirmAction("publishNow");
+    } else {
+      // No schedule, no time — publish now
+      setConfirmAction("publish");
+    }
+  };
+
+  const confirmTitle = confirmAction === "publishNow"
+    ? t("modal.publishDecision")
+    : t("modal.publishAnnouncement");
+
+  const confirmText = confirmAction === "publishNow"
+    ? t("confirm.publishDecision")
+    : scheduleEnabled && publishAt.trim()
+      ? t("confirm.schedule")
+      : t("confirm.publish");
+
   return (
-    <InfiniCard className="announcements-detail-card">
+    <InfiniCard className="announcements-detail-card" interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={12}>
           {/* ── Header ── */}
@@ -144,13 +152,13 @@ export function AnnouncementDetailCard({
             {canEdit && selectedId && selected ? (
               editing ? (
                 <Group gap={8}>
-                  {isDirty ? <Badge color="yellow">Unsaved</Badge> : <Badge color="green">Saved</Badge>}
+                  {isDirty ? <Badge color="infini-warning">{t("status.unsaved")}</Badge> : <Badge color="infini-success">{t("status.saved")}</Badge>}
                   <Button
                     variant="default"
                     size="compact-sm"
                     onClick={() => setEditing(false)}
                   >
-                    Done
+                    {t("action.done")}
                   </Button>
                 </Group>
               ) : (
@@ -160,14 +168,14 @@ export function AnnouncementDetailCard({
                   leftSection={<PencilOutlined size={14} />}
                   onClick={() => setEditing(true)}
                 >
-                  Edit
+                  {t("action.edit")}
                 </Button>
               )
             ) : null}
           </Group>
 
           {isLoading ? <Loader size="sm" /> : null}
-          {isError ? <Alert color="yellow" title={warningMessage} /> : null}
+          {isError ? <Alert color="infini-warning" title={warningMessage} /> : null}
 
           {/* ── Reader View (default for everyone) ── */}
           {!isLoading && !isError && selected && !editing ? (
@@ -179,16 +187,11 @@ export function AnnouncementDetailCard({
 
               {/* Meta badges */}
               <Group gap={8} wrap="wrap">
-                {canEdit ? (
-                  <Badge color={statusBadgeColor(selected.status)}>
-                    {selected.status.toUpperCase()}
-                  </Badge>
-                ) : null}
                 {canEdit && selected.status === "scheduled" && selected.publish_at ? (
-                  <Badge color="blue">Scheduled: {formatDateTime(selected.publish_at)}</Badge>
+                  <Badge color="infini-primary">{t("meta.scheduled", { datetime: formatDateTime(selected.publish_at) })}</Badge>
                 ) : null}
                 {canEdit && selected.expires_at ? (
-                  <Badge variant="outline">Expires: {formatDateTime(selected.expires_at)}</Badge>
+                  <Badge variant="outline">{t("meta.expires", { datetime: formatDateTime(selected.expires_at) })}</Badge>
                 ) : null}
               </Group>
 
@@ -203,7 +206,7 @@ export function AnnouncementDetailCard({
 
               {/* Footer metadata */}
               <Text c="dimmed" size="sm">
-                Updated: {formatDateTime(selected.updated_at)}
+                {t("meta.updated", { datetime: formatDateTime(selected.updated_at) })}
               </Text>
             </Stack>
           ) : null}
@@ -233,56 +236,70 @@ export function AnnouncementDetailCard({
               {/* Right: Settings Sidebar */}
               <div className="announcement-editor-sidebar">
                 <Stack gap={16}>
-                  {/* Publishing */}
-                  <Stack gap={8}>
-                    <Text fw={600} size="sm" c="dimmed" tt="uppercase" style={{ letterSpacing: "0.05em" }}>
-                      Publishing
-                    </Text>
-                    <Select
-                      value={draftStatus}
-                      onChange={(value) => value && onDraftStatusChange(value as Announcement["status"])}
-                      aria-label="Announcement status"
-                      data={[
-                        { value: "draft", label: "Draft" },
-                        { value: "scheduled", label: "Scheduled" },
-                        { value: "published", label: "Published" },
-                        { value: "archived", label: "Archived" },
-                      ]}
-                      size="sm"
-                    />
-                    <label className="announcement-switch-label">
-                      <Switch
-                        checked={pinned}
-                        onChange={(event) => onPinnedChange(event.currentTarget.checked)}
+                  {/* Top row: Pin, Archive, Publish On Time — icon-only DepthToggles */}
+                  <Group gap={8} wrap="nowrap">
+                    <Tooltip label={pinned ? t("action.unpin") : t("action.pin")} withArrow>
+                      <DepthToggle
+                        pressed={pinned}
+                        onToggle={onPinnedChange}
+                        type="secondary"
+                        iconOnly
                         size="sm"
+                        before={<IconPin size={16} />}
+                        aria-label={pinned ? t("action.unpin") : t("action.pin")}
                       />
-                      <span>{t("field.pinned")}</span>
-                    </label>
-                  </Stack>
+                    </Tooltip>
+                    <Tooltip label={t("action.archive")} withArrow>
+                      <DepthToggle
+                        pressed={archived}
+                        onToggle={onArchivedChange}
+                        type="secondary"
+                        iconOnly
+                        size="sm"
+                        before={<IconArchive size={16} />}
+                        aria-label={t("action.archive")}
+                      />
+                    </Tooltip>
+                    <Tooltip label={t("action.publishOnTime")} withArrow>
+                      <DepthToggle
+                        pressed={scheduleEnabled}
+                        onToggle={onScheduleEnabledChange}
+                        type="secondary"
+                        iconOnly
+                        size="sm"
+                        before={<IconCalendarTime size={16} />}
+                        aria-label={t("action.publishOnTime")}
+                      />
+                    </Tooltip>
+                  </Group>
 
                   <Divider />
 
-                  {/* Notifications */}
+                  {/* Notifications — DepthToggles */}
                   <Stack gap={8}>
                     <Text fw={600} size="sm" c="dimmed" tt="uppercase" style={{ letterSpacing: "0.05em" }}>
-                      Notifications
+                      {t("section.notifications")}
                     </Text>
-                    <label className="announcement-switch-label">
-                      <Switch
-                        checked={notifyDiscord}
-                        onChange={(event) => onNotifyDiscordChange(event.currentTarget.checked)}
+                    <Group gap={8} wrap="wrap">
+                      <DepthToggle
+                        pressed={notifyDiscord}
+                        onToggle={onNotifyDiscordChange}
+                        type="secondary"
                         size="sm"
-                      />
-                      <span>Discord</span>
-                    </label>
-                    <label className="announcement-switch-label">
-                      <Switch
-                        checked={notifyWechat}
-                        onChange={(event) => onNotifyWechatChange(event.currentTarget.checked)}
+                        before={<IconBrandDiscord size={16} />}
+                      >
+                        {t("notify.discord")}
+                      </DepthToggle>
+                      <DepthToggle
+                        pressed={notifyWechat}
+                        onToggle={onNotifyWechatChange}
+                        type="secondary"
                         size="sm"
-                      />
-                      <span>WeChat</span>
-                    </label>
+                        before={<IconBrandWechat size={16} />}
+                      >
+                        {t("notify.wechat")}
+                      </DepthToggle>
+                    </Group>
                   </Stack>
 
                   <Divider />
@@ -290,7 +307,7 @@ export function AnnouncementDetailCard({
                   {/* Schedule */}
                   <Stack gap={8}>
                     <Text fw={600} size="sm" c="dimmed" tt="uppercase" style={{ letterSpacing: "0.05em" }}>
-                      Schedule
+                      {t("section.schedule")}
                     </Text>
                     <div>
                       <Text size="xs" c="dimmed">{t("field.publishAt")}</Text>
@@ -318,38 +335,17 @@ export function AnnouncementDetailCard({
 
                   {/* Actions */}
                   <Stack gap={8}>
-                    <Text fw={600} size="sm" c="dimmed" tt="uppercase" style={{ letterSpacing: "0.05em" }}>
-                      Actions
-                    </Text>
                     <Button fullWidth onClick={onSaveDraft} loading={savePending}>
-                      Save Draft
+                      {t("action.saveDraft")}
                     </Button>
-                    <MotionButton type="primary" fullWidth onClick={() => setConfirmAction("publish")} loading={savePending}>
-                      Publish Now
-                    </MotionButton>
-                    <Button
-                      fullWidth
-                      variant="default"
-                      onClick={onSchedule}
-                      loading={savePending}
-                      disabled={!publishAt.trim()}
-                    >
-                      Schedule
-                    </Button>
-                    <Button
-                      fullWidth
-                      color="red"
-                      variant="light"
-                      onClick={() => setConfirmAction("archive")}
-                      loading={archivePending}
-                    >
-                      {t("action.archive")}
+                    <Button fullWidth color="infini-primary" onClick={handlePublishClick} loading={savePending}>
+                      {t("action.publish")}
                     </Button>
                   </Stack>
 
                   {/* Meta */}
                   <Text c="dimmed" size="xs">
-                    Updated: {formatDateTime(selected.updated_at)}
+                    {t("meta.updated", { datetime: formatDateTime(selected.updated_at) })}
                   </Text>
                 </Stack>
               </div>
@@ -364,27 +360,48 @@ export function AnnouncementDetailCard({
       <Modal
         opened={confirmAction !== null}
         onClose={() => setConfirmAction(null)}
-        title={confirmAction === "publish" ? "Publish Announcement" : "Archive Announcement"}
+        title={confirmTitle}
         centered
         size="sm"
       >
         <Stack gap={16}>
-          <Text>
-            {confirmAction === "publish"
-              ? "This will make the announcement visible to all members immediately. Continue?"
-              : "This will archive the announcement and hide it from the main list. Continue?"}
-          </Text>
+          <Text>{confirmText}</Text>
           <Group justify="flex-end" gap={8}>
             <Button variant="default" onClick={() => setConfirmAction(null)}>
-              Cancel
+              {t("action.cancel")}
             </Button>
-            <Button
-              color={confirmAction === "archive" ? "red" : undefined}
-              onClick={handleConfirm}
-              loading={confirmAction === "publish" ? savePending : archivePending}
-            >
-              {confirmAction === "publish" ? "Publish" : "Archive"}
-            </Button>
+            {confirmAction === "publishNow" ? (
+              <>
+                <Button
+                  variant="light"
+                  onClick={() => {
+                    onScheduleEnabledChange(true);
+                    setConfirmAction(null);
+                  }}
+                  disabled={!publishAt.trim()}
+                >
+                  {t("action.scheduleLater")}
+                </Button>
+                <Button
+                  onClick={() => {
+                    onScheduleEnabledChange(false);
+                    handleConfirm();
+                  }}
+                  loading={savePending}
+                >
+                  {t("action.publishImmediately")}
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={handleConfirm}
+                loading={savePending}
+              >
+                {scheduleEnabled && publishAt.trim()
+                  ? t("action.schedule")
+                  : t("action.publish")}
+              </Button>
+            )}
           </Group>
         </Stack>
       </Modal>

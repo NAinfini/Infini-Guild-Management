@@ -3,7 +3,7 @@ import { nanoid } from "nanoid";
 
 type JsonValue = Record<string, unknown>;
 
-const etagCache = new Map<string, string>();
+const etagCache = new Map<string, { etag: string; data: unknown }>();
 
 type ApiRequestErrorOptions = {
   status: number;
@@ -46,10 +46,10 @@ export async function apiRequest<TResponse>(
   const headers = new Headers(init.headers);
   headers.set("X-Request-Id", nanoid());
 
-  const etag = etagCache.get(input);
+  const cached = etagCache.get(input);
   const method = (init.method ?? "GET").toUpperCase();
-  if (etag && method === "GET") {
-    headers.set("If-None-Match", etag);
+  if (cached && method === "GET") {
+    headers.set("If-None-Match", cached.etag);
   }
   if (init.ifMatch) {
     headers.set("If-Match", init.ifMatch);
@@ -83,8 +83,10 @@ export async function apiRequest<TResponse>(
   }
 
   const responseEtag = response.headers.get("ETag");
-  if (responseEtag) {
-    etagCache.set(input, responseEtag);
+
+  // 304 Not Modified — return cached response body
+  if (response.status === 304 && cached) {
+    return cached.data as TResponse;
   }
 
   if (!response.ok) {
@@ -151,7 +153,13 @@ export async function apiRequest<TResponse>(
     return {} as TResponse;
   }
 
-  return (await response.json()) as TResponse;
+  const data = (await response.json()) as TResponse;
+
+  if (responseEtag) {
+    etagCache.set(input, { etag: responseEtag, data });
+  }
+
+  return data;
 }
 
 export async function apiDownload(

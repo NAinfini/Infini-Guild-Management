@@ -1,8 +1,39 @@
 // Domain: Auth & Identity
-// Tables: users, user_auth_password, invite_links, discord_link_codes, sessions
+// Tables: roles, role_permissions, users, user_auth_password, invite_links, discord_link_codes, sessions
 // Dependencies: none (root domain)
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { nowUtc } from "./shared";
+
+export const roles = sqliteTable(
+  "roles",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    level: integer("level").notNull(),
+    color: text("color"),
+    isBuiltin: integer("is_builtin", { mode: "boolean" }).notNull().default(false),
+    createdAt: text("created_at").notNull().default(nowUtc),
+    updatedAt: text("updated_at").notNull().default(nowUtc),
+  },
+  (table) => ({
+    idxLevel: index("idx_roles_level").on(table.level, table.id),
+  }),
+);
+
+export const rolePermissions = sqliteTable(
+  "role_permissions",
+  {
+    roleId: text("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+    permission: text("permission").notNull(),
+    granted: integer("granted", { mode: "boolean" }).notNull().default(true),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.roleId, table.permission] }),
+    idxPermission: index("idx_role_permissions_permission").on(table.permission),
+  }),
+);
 
 export const users = sqliteTable(
   "users",

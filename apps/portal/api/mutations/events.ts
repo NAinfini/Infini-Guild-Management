@@ -64,3 +64,15 @@ export function uploadEventImages(eventId: string, files: File[]): Promise<{ key
     body: formData,
   });
 }
+
+export function addEventParticipant(
+  eventId: string,
+  userId: string,
+): Promise<{ id: string; event_id: string; user_id: string; joined_at: string }> {
+  return apiRequest<{ id: string; event_id: string; user_id: string; joined_at: string }>(`/api/events/${eventId}/participants`, {
+    method: "POST",
+    bodyJson: {
+      user_id: userId,
+    },
+  });
+}

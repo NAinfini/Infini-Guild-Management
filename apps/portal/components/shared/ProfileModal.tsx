@@ -1,6 +1,7 @@
 import type { MemberProfile, User } from "@guild/shared";
 import { Button, Modal, Stack, Text } from "@mantine/core";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useTranslation } from "react-i18next";
 import DOMPurify from "dompurify";
 import { MediaGallery } from "./MediaGallery";
 import styles from "./ProfileModal.module.css";
@@ -28,6 +29,7 @@ export function ProfileModal({
   canEdit = false,
   resolveMediaUrl = defaultMediaResolver,
 }: ProfileModalProps) {
+  const { t } = useTranslation("common");
   const [avatarLoaded, setAvatarLoaded] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const safeTitleHtml = useMemo(
@@ -132,27 +134,27 @@ export function ProfileModal({
               </div>
               <div className={styles.infoGrid}>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>NAME</span>
+                  <span className={styles.fieldLabel}>{t("profile.field.name")}</span>
                   <Text fw={700}>{user.username}</Text>
                 </div>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>ACTIVE TIME</span>
+                  <span className={styles.fieldLabel}>{t("profile.field.activeTime")}</span>
                   <Text>{activeTime}</Text>
                 </div>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>POWER</span>
+                  <span className={styles.fieldLabel}>{t("profile.field.power")}</span>
                   <Text>{profile.power}</Text>
                 </div>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>TITLE</span>
+                  <span className={styles.fieldLabel}>{t("profile.field.title")}</span>
                   <span dangerouslySetInnerHTML={{ __html: safeTitleHtml || "-" }} />
                 </div>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>CLASS</span>
+                  <span className={styles.fieldLabel}>{t("profile.field.class")}</span>
                   <Text>{profile.classes.join(", ") || "-"}</Text>
                 </div>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>BIO</span>
+                  <span className={styles.fieldLabel}>{t("profile.field.bio")}</span>
                   <Text>{profile.bio ?? "-"}</Text>
                 </div>
               </div>
@@ -168,7 +170,7 @@ export function ProfileModal({
             {canEdit && onEdit ? (
               <div className={styles.editAction}>
                 <Button onClick={onEdit} aria-label={`Edit profile for ${user.username}`}>
-                  Edit Profile
+                  {t("profile.editProfile")}
                 </Button>
               </div>
             ) : null}

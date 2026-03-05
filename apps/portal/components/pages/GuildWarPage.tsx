@@ -10,8 +10,8 @@ import {
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { buildEChartsTheme } from "@infini-dev-kit/frontend/theme/echarts/echarts-adapter";
 import { useThemeSnapshot } from "@infini-dev-kit/frontend/provider";
-import { InfiniNumberTicker } from "@infini-dev-kit/frontend/components";
-import { Alert, Button, Card, Group, Loader, Stack, Tabs, Text } from "@mantine/core";
+import { NumberTicker } from "@infini-dev-kit/frontend/components";
+import { Alert, Button, Card, Group, Loader, Select, Stack, Switch, TagsInput, Text, TextInput, Tabs } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -19,7 +19,7 @@ import { BarChart, LineChart } from "echarts/charts";
 import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
-import { Suspense, lazy, useEffect, useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   applyGuildWarTemplate,
@@ -32,7 +32,6 @@ import {
   postGuildWarResults,
   updateGuildWarMemberStats,
 } from "../../api/mutations/guild-war";
-import { isApiRequestError } from "../../api/client";
 import { queryKeys } from "../../api/query-keys";
 import { fetchEventDetail } from "../../api/queries/events";
 import {
@@ -45,11 +44,11 @@ import { useGuildWarData } from "../../hooks/data/useGuildWarData";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { fetchUsersList } from "../../api/queries/users";
-import { portalConfirm } from "../../overlays";
 import { useAuthStore } from "../../stores/auth";
 import { copyPlainText } from "../../utils/copy";
 import { PageLayout } from "../layout/PageLayout";
-import type { HistoryColumn, HistorySummaryRow } from "../feature/guild-war/WarHistoryTab";
+import type { ColumnDef } from "@tanstack/react-table";
+import type { HistoryMemberStatsUpdate, HistorySummaryRow } from "../feature/guild-war/WarHistoryTab";
 import { useGuildWarActiveController } from "../feature/guild-war/useGuildWarActiveController";
 import "./GuildWarPage.css";
 
@@ -64,15 +63,6 @@ const LazyWarMemberDetailModal = lazy(() =>
 );
 const LazyGuildWarActiveTopCard = lazy(() =>
   import("../feature/guild-war/GuildWarActiveTopCard").then((mod) => ({ default: mod.GuildWarActiveTopCard })),
-);
-const LazyGuildWarMoveMemberCard = lazy(() =>
-  import("../feature/guild-war/GuildWarMoveMemberCard").then((mod) => ({ default: mod.GuildWarMoveMemberCard })),
-);
-const LazyGuildWarRoleTagsCard = lazy(() =>
-  import("../feature/guild-war/GuildWarRoleTagsCard").then((mod) => ({ default: mod.GuildWarRoleTagsCard })),
-);
-const LazyGuildWarTeamSetupCard = lazy(() =>
-  import("../feature/guild-war/GuildWarTeamSetupCard").then((mod) => ({ default: mod.GuildWarTeamSetupCard })),
 );
 const LazyGuildWarDragBoard = lazy(() =>
   import("../feature/guild-war/GuildWarDragBoard").then((mod) => ({ default: mod.GuildWarDragBoard })),
@@ -104,7 +94,7 @@ function formatDateTime(iso: string): string {
 }
 
 function renderCounter(value: number | null | undefined) {
-  return <InfiniNumberTicker value={value ?? 0} />;
+  return <NumberTicker value={value ?? 0} />;
 }
 
 function downloadFileBlob(filename: string, blob: Blob) {
@@ -132,7 +122,6 @@ type DragMemberColumn = {
   title: ReactNode;
   locked: boolean;
   members: DragMemberItem[];
-  pinnedRoles?: Partial<Record<PinnedRoleKey, string>>;
 };
 
 type MovePayload = {
@@ -144,16 +133,19 @@ type MovePayload = {
   undoing?: boolean;
 };
 
-type PinnedRoleKey = "dps" | "heal" | "tank" | "lead";
+type TeamRoleEditorState = {
+  userId: string;
+  tags: string[];
+};
 
-const ROLE_TAG_PRESETS = ["tank", "dps", "healer", "support", "shotcaller", "flex"] as const;
+const ROLE_TAG_PRESETS = ["tank", "dps", "heal", "lead", "support", "flex"] as const;
 const ANALYTICS_SELECTION_SOFT_CAP = 10;
 const ANALYTICS_SELECTION_HARD_CAP = 20;
 
 const message = {
-  success: (content: string) => notifications.show({ color: "green", message: content }),
-  warning: (content: string) => notifications.show({ color: "yellow", message: content }),
-  info: (content: string) => notifications.show({ color: "blue", message: content }),
+  success: (content: string) => notifications.show({ color: "infini-success", message: content }),
+  warning: (content: string) => notifications.show({ color: "infini-warning", message: content }),
+  info: (content: string) => notifications.show({ color: "infini-primary", message: content }),
 };
 
 type TabItem = {
@@ -377,34 +369,54 @@ function metricValueOrNullFromWarMember(
   return value === null ? null : value;
 }
 
-function normalizePinnedRoleTag(value: string | null | undefined): PinnedRoleKey | null {
-  if (!value) {
-    return null;
+const LOWER_IS_BETTER_METRICS: Set<AnalyticsMetricKey> = new Set(["deaths", "damage_taken"]);
+
+function normalizeMetricValue(
+  rawValue: number,
+  metric: AnalyticsMetricKey,
+  durationMinutes: number | null,
+  referenceDuration: number,
+  modifier: number,
+): number {
+  let timeNormalized = rawValue;
+  if (durationMinutes !== null && durationMinutes > 0) {
+    timeNormalized = (rawValue / durationMinutes) * referenceDuration;
   }
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "dps") {
-    return "dps";
+  if (modifier !== 1 && modifier > 0) {
+    if (LOWER_IS_BETTER_METRICS.has(metric)) {
+      timeNormalized = timeNormalized / modifier;
+    } else {
+      timeNormalized = timeNormalized * modifier;
+    }
   }
-  if (normalized === "heal" || normalized === "healer" || normalized === "healing") {
-    return "heal";
-  }
-  if (normalized === "tank") {
-    return "tank";
-  }
-  if (normalized === "lead" || normalized === "leader" || normalized === "shotcaller") {
-    return "lead";
-  }
-  return null;
+  return Number(timeNormalized.toFixed(2));
 }
 
-function pinnedRoleToTag(role: PinnedRoleKey): string {
-  if (role === "heal") {
-    return "healer";
+function splitRoleTags(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
   }
-  if (role === "lead") {
-    return "lead";
+  const result: string[] = [];
+  for (const part of value.split(",")) {
+    const tag = part.trim();
+    if (!tag) {
+      continue;
+    }
+    result.push(tag);
   }
-  return role;
+  return result;
+}
+
+function joinRoleTags(tags: readonly string[]): string | null {
+  const result: string[] = [];
+  for (const rawTag of tags) {
+    const tag = rawTag.trim();
+    if (!tag) {
+      continue;
+    }
+    result.push(tag);
+  }
+  return result.length > 0 ? result.join(", ") : null;
 }
 
 function parseUserIdFromDragId(value: string): string | null {
@@ -476,10 +488,14 @@ export function GuildWarPage() {
   const [analyticsTopN, setAnalyticsTopN] = useState(10);
   const [analyticsSelectedTeams, setAnalyticsSelectedTeams] = useState<string[]>([]);
   const [analyticsTeamAggregation, setAnalyticsTeamAggregation] = useState<"total" | "average">("total");
+  const [analyticsNormEnabled, setAnalyticsNormEnabled] = useState(true);
+  const [modifierWeights, setModifierWeights] = useState({ kda: 0.30, towers: 0.10, credits: 0.30, distance: 0.15, basehp: 0.15 });
+  const [modifierWeightsInitialized, setModifierWeightsInitialized] = useState(false);
   const [historyViewMode, setHistoryViewMode] = useState<"table" | "chart">("table");
   const [historyChartMetric, setHistoryChartMetric] = useState<AnalyticsMetricKey>("damage");
   const [historyDateFrom, setHistoryDateFrom] = useState("");
   const [historyDateTo, setHistoryDateTo] = useState("");
+  const [teamRoleEditors, setTeamRoleEditors] = useState<Record<string, TeamRoleEditorState>>({});
 
   // Check localStorage for war search navigation from dashboard
   const initialTabKey = useMemo(() => {
@@ -490,12 +506,6 @@ export function GuildWarPage() {
     return undefined;
   }, []);
   const {
-    selectedMoveUserId,
-    setSelectedMoveUserId,
-    selectedMoveTarget,
-    setSelectedMoveTarget,
-    selectedRoleUserId,
-    setSelectedRoleUserId,
     selectedDragUserIds,
     setSelectedDragUserIds,
     selectionAnchorUserId,
@@ -563,7 +573,6 @@ export function GuildWarPage() {
       setSelectedEventId(first.id);
     }
   }, [selectedEventId, warEventsQuery.data]);
-  const activePoolStatus = null;
 
   useEffect(() => {
     if (selectedHistoryId) return;
@@ -637,7 +646,7 @@ export function GuildWarPage() {
         event_id: selectedEventId,
         teams: [
           {
-            team_name: "Alpha",
+            team_name: t("active.defaultTeamAlpha"),
             sort_order: 0,
             members: alpha.map((member, index) => ({
               user_id: member.user_id,
@@ -645,7 +654,7 @@ export function GuildWarPage() {
             })),
           },
           {
-            team_name: "Bravo",
+            team_name: t("active.defaultTeamBravo"),
             sort_order: 1,
             members: bravo.map((member, index) => ({
               user_id: member.user_id,
@@ -664,38 +673,6 @@ export function GuildWarPage() {
     },
     onError: (error) => {
       showError(error, t("message.teamsInitFailed"));
-    },
-  });
-
-  const moveMutation = useMutation({
-    mutationFn: (payload: MovePayload) =>
-      moveGuildWarMember({
-        event_id: payload.event_id,
-        user_id: payload.user_id,
-        to: payload.to,
-        etag: payload.etag,
-      }),
-    onSuccess: async () => {
-      message.success(t("message.memberMoved"));
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.guildWar.active(selectedEventId ?? "none"),
-      });
-    },
-    onError: async (error) => {
-      if (isApiRequestError(error) && error.status === 409) {
-        const shouldRefresh = await portalConfirm({
-          title: t("confirm.conflict.title"),
-          description: t("confirm.conflict.description"),
-          intent: "warning",
-        });
-        if (shouldRefresh) {
-          void queryClient.invalidateQueries({
-            queryKey: queryKeys.guildWar.active(selectedEventId ?? "none"),
-          });
-        }
-        return;
-      }
-      showError(error, t("message.memberMoveFailed"));
     },
   });
 
@@ -721,10 +698,10 @@ export function GuildWarPage() {
         message.success(
           pendingMove.moves.length === 1
             ? t("message.memberMoved")
-            : `Moved ${pendingMove.moves.length} members`,
+            : t("message.membersMoved", { count: pendingMove.moves.length }),
         );
       } catch (error) {
-        showError(error, pendingMove.moves.length > 1 ? "Batch move commit failed" : t("message.memberMoveFailed"));
+        showError(error, pendingMove.moves.length > 1 ? t("message.batchMoveCommitFailed") : t("message.memberMoveFailed"));
       }
     };
     void commitQueuedMoves();
@@ -733,13 +710,13 @@ export function GuildWarPage() {
   const roleTagMutation = useMutation({
     mutationFn: updateGuildWarRoleTag,
     onSuccess: async () => {
-      message.success("Role tag updated");
+      message.success(t("message.roleTagUpdated"));
       await queryClient.invalidateQueries({
         queryKey: queryKeys.guildWar.active(selectedEventId ?? "none"),
       });
     },
     onError: (error) => {
-      showError(error, "Failed to update role tag");
+      showError(error, t("message.roleTagUpdateFailed"));
     },
   });
 
@@ -859,14 +836,16 @@ export function GuildWarPage() {
   const updateMemberStatsMutation = useMutation({
     mutationFn: ({
       historyId,
-      userId,
-      payload,
+      updates,
     }: {
       historyId: string;
-      userId: string;
-      payload: Record<string, unknown>;
-    }) => updateGuildWarMemberStats(historyId, userId, payload),
+      updates: HistoryMemberStatsUpdate[];
+    }) =>
+      Promise.all(
+        updates.map((update) => updateGuildWarMemberStats(historyId, update.userId, update.payload)),
+      ),
     onSuccess: async () => {
+      message.success(t("history.saveStatsSuccess"));
       await queryClient.invalidateQueries({
         queryKey: queryKeys.guildWar.historyDetail(selectedHistoryId),
       });
@@ -875,48 +854,7 @@ export function GuildWarPage() {
       });
     },
     onError: (error) => {
-      showError(error, "Failed to update member stat");
-    },
-  });
-
-  const saveTeamsMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedEventId) {
-        throw new Error("Missing event id");
-      }
-
-      return saveGuildWarTeams({
-        event_id: selectedEventId,
-        teams: orderedTeams.map((team, teamIndex) => {
-          const isLocked = teamDraftLocks[team.id] ?? team.is_locked;
-          const nextName = (teamDraftNames[team.id] ?? team.team_name).trim();
-          const nextNotes = (teamDraftNotes[team.id] ?? team.notes ?? "").trim();
-          return {
-            team_name: nextName.length > 0 ? nextName : team.team_name,
-            sort_order: teamIndex,
-            notes: nextNotes.length > 0 ? nextNotes : undefined,
-            is_locked: isLocked,
-            members: team.members.map((member, memberIndex) => ({
-              user_id: member.user_id,
-              role_tag: member.role_tag ?? undefined,
-              sort_order: memberIndex,
-            })),
-          };
-        }),
-        pool_members: pool.map((member) => ({ user_id: member.userId })),
-      });
-    },
-    onSuccess: async () => {
-      message.success("Guild war team layout saved");
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.guildWar.active(selectedEventId ?? "none"),
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.guildWar.historyAll(),
-      });
-    },
-    onError: (error) => {
-      showError(error, "Failed to save team layout");
+      showError(error, t("history.saveStatsFailed"));
     },
   });
 
@@ -983,26 +921,52 @@ export function GuildWarPage() {
     });
   }, [activeTeams]);
 
-  const moveCandidates = [
-    ...orderedTeams.flatMap((team) =>
-      team.members.map((member) => ({
-        value: member.user_id,
-        label: `${member.user_id} (${team.team_name})`,
-      })),
-    ),
-    ...pool.map((member) => ({
-      value: member.userId,
-      label: `${member.userId} (Pool)`,
-    })),
-  ];
+  useEffect(() => {
+    setTeamRoleEditors((current) => {
+      const next: Record<string, TeamRoleEditorState> = {};
+      let changed = false;
 
-  const moveTargetOptions = [
-    { value: "pool", label: "Pool" },
-    ...orderedTeams.map((team) => ({
-      value: team.id,
-      label: (teamDraftNames[team.id] ?? team.team_name).trim() || team.team_name,
-    })),
-  ];
+      for (const team of orderedTeams) {
+        if (team.members.length === 0) {
+          continue;
+        }
+        const existing = current[team.id];
+        const existingValid = existing
+          ? team.members.some((member) => member.user_id === existing.userId)
+          : false;
+        if (existing && existingValid) {
+          next[team.id] = existing;
+          continue;
+        }
+        const firstMember = team.members[0];
+        if (!firstMember) {
+          continue;
+        }
+        next[team.id] = {
+          userId: firstMember.user_id,
+          tags: splitRoleTags(firstMember.role_tag),
+        };
+        changed = true;
+      }
+
+      if (Object.keys(current).length !== Object.keys(next).length) {
+        changed = true;
+      }
+
+      if (!changed) {
+        for (const [teamId, editor] of Object.entries(next)) {
+          const currentEditor = current[teamId];
+          if (!currentEditor || currentEditor.userId !== editor.userId || !shallowArrayEqual(currentEditor.tags, editor.tags)) {
+            changed = true;
+            break;
+          }
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, [orderedTeams]);
+
   const lockedTeamIds = useMemo(
     () =>
       new Set(
@@ -1012,8 +976,6 @@ export function GuildWarPage() {
       ),
     [orderedTeams, teamDraftLocks],
   );
-  const activeTeamMembers = orderedTeams.flatMap((team) => team.members);
-  const selectedRoleMember = activeTeamMembers.find((member) => member.user_id === selectedRoleUserId) ?? null;
   const activeMemberDetailByUserId = useMemo(() => {
     const map = new Map<
       string,
@@ -1069,16 +1031,6 @@ export function GuildWarPage() {
       containerId: team.id,
       title: (teamDraftNames[team.id] ?? team.team_name).trim() || team.team_name,
       locked: lockedTeamIds.has(team.id),
-      pinnedRoles: team.members.reduce<Partial<Record<PinnedRoleKey, string>>>((acc, member) => {
-        const role = normalizePinnedRoleTag(member.role_tag);
-        if (!role) {
-          return acc;
-        }
-        if (!acc[role]) {
-          acc[role] = member.user_id;
-        }
-        return acc;
-      }, {}),
       members: team.members.map((member) => {
         const userData = userDataMap.get(member.user_id);
         return {
@@ -1134,9 +1086,6 @@ export function GuildWarPage() {
 
   const activeDragItem = activeDragItemId ? dragItemMap.get(activeDragItemId) ?? null : null;
   const selectedDragUserIdSet = useMemo(() => new Set(selectedDragUserIds), [selectedDragUserIds]);
-  const selectedMoveSource = selectedMoveUserId
-    ? memberContainerMap.get(`member:${selectedMoveUserId}`) ?? undefined
-    : undefined;
   const draggableUserOrder = useMemo(
     () => dragColumns.flatMap((column) => column.members.map((member) => member.userId)),
     [dragColumns],
@@ -1184,7 +1133,7 @@ export function GuildWarPage() {
       return;
     }
     if (undoMove) {
-      message.warning("A move is already queued. Cancel it or wait for commit.");
+      message.warning(t("message.moveQueueBusy"));
       return;
     }
     const firstPayload = payloads[0];
@@ -1212,51 +1161,10 @@ export function GuildWarPage() {
       if (!onlyMove) {
         return;
       }
-      message.info(`Queued move ${onlyMove.userId}: ${onlyMove.from} -> ${onlyMove.to}. Auto-commit in 5s.`);
+      message.info(t("message.moveQueuedSingle", { userId: onlyMove.userId, from: onlyMove.from, to: onlyMove.to }));
       return;
     }
-    message.info(`Queued ${normalizedMoves.length} members for move. Auto-commit in 5s.`);
-  };
-
-  const handleAssignPinnedRole = (containerId: string, role: PinnedRoleKey, userId: string | null) => {
-    if (!canManageActive || !selectedEventId || containerId === "pool") {
-      return;
-    }
-    if (lockedTeamIds.has(containerId)) {
-      message.warning("Team is locked");
-      return;
-    }
-    const team = orderedTeams.find((item) => item.id === containerId);
-    if (!team) {
-      return;
-    }
-
-    const targetTag = pinnedRoleToTag(role);
-    const currentPinned = team.members.find((member) => normalizePinnedRoleTag(member.role_tag) === role) ?? null;
-
-    void (async () => {
-      try {
-        if (currentPinned && currentPinned.user_id !== userId) {
-          await roleTagMutation.mutateAsync({
-            event_id: selectedEventId,
-            user_id: currentPinned.user_id,
-            role_tag: null,
-          });
-        }
-        if (userId) {
-          const currentForUser = team.members.find((member) => member.user_id === userId) ?? null;
-          if (!currentForUser || currentForUser.role_tag !== targetTag) {
-            await roleTagMutation.mutateAsync({
-              event_id: selectedEventId,
-              user_id: userId,
-              role_tag: targetTag,
-            });
-          }
-        }
-      } catch (error) {
-        showError(error, "Failed to update pinned role");
-      }
-    })();
+    message.info(t("message.moveQueuedMulti", { count: normalizedMoves.length }));
   };
 
   const handleSelectMember = (userId: string, event: MouseEvent<HTMLButtonElement>) => {
@@ -1361,34 +1269,249 @@ export function GuildWarPage() {
     );
   };
 
-  const historyColumns: HistoryColumn<HistorySummaryRow>[] = [
+  const activePoolStatus = null;
+
+  const teamStatusContentByContainerId = useMemo<Record<string, ReactNode>>(() => {
+    if (!canManageActive) {
+      return {};
+    }
+    const result: Record<string, ReactNode> = {};
+    for (let teamIndex = 0; teamIndex < orderedTeams.length; teamIndex += 1) {
+      const team = orderedTeams[teamIndex];
+      if (!team) {
+        continue;
+      }
+      const draftName = teamDraftNames[team.id] ?? team.team_name;
+      const draftNotes = teamDraftNotes[team.id] ?? team.notes ?? "";
+      const draftLocked = teamDraftLocks[team.id] ?? team.is_locked;
+      const roleEditor = teamRoleEditors[team.id];
+      const selectedMember = team.members.find((member) => member.user_id === roleEditor?.userId) ?? null;
+      const selectedMemberRoleTags = splitRoleTags(selectedMember?.role_tag ?? null);
+      result[team.id] = (
+        <Stack gap={8}>
+          <Group gap={8} wrap="wrap" align="center">
+            <Switch
+              size="sm"
+              checked={draftLocked}
+              onLabel={t("active.teamSetup.locked")}
+              offLabel={t("active.teamSetup.open")}
+              onChange={(event) =>
+                setTeamDraftLocks((current) => ({
+                  ...current,
+                  [team.id]: event.currentTarget.checked,
+                }))
+              }
+            />
+            <Button
+              size="xs"
+              variant="light"
+              onClick={() => moveTeamOrder(team.id, "up")}
+              disabled={draftLocked || teamIndex === 0}
+            >
+              {t("active.teamSetup.moveUp")}
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              onClick={() => moveTeamOrder(team.id, "down")}
+              disabled={draftLocked || teamIndex === orderedTeams.length - 1}
+            >
+              {t("active.teamSetup.moveDown")}
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              onClick={() => {
+                void copyPlainText(`${draftName.trim() || team.team_name}: ${team.members.map((member) => `@${member.user_id}`).join(", ")}`);
+                message.success(t("active.teamCopied"));
+              }}
+            >
+              {t("active.teamSetup.copyLabel")}
+            </Button>
+          </Group>
+          <Group gap={8} wrap="wrap" grow>
+            <TextInput
+              value={draftName}
+              onChange={(event) =>
+                setTeamDraftNames((current) => ({
+                  ...current,
+                  [team.id]: event.currentTarget.value,
+                }))
+              }
+              disabled={draftLocked}
+              aria-label={`Team name for ${team.team_name}`}
+              placeholder={t("active.teamSetup.namePlaceholder")}
+              style={{ flex: "1 1 180px" }}
+            />
+            <TextInput
+              value={draftNotes}
+              onChange={(event) =>
+                setTeamDraftNotes((current) => ({
+                  ...current,
+                  [team.id]: event.currentTarget.value,
+                }))
+              }
+              disabled={draftLocked}
+              aria-label={`Team notes for ${team.team_name}`}
+              placeholder={t("active.teamSetup.notesPlaceholder")}
+              style={{ flex: "2 1 220px" }}
+            />
+          </Group>
+          <Group gap={8} wrap="wrap" align="flex-end">
+            <Select
+              value={roleEditor?.userId ?? null}
+              onChange={(value) => {
+                const nextUserId = value ?? "";
+                const nextMember = team.members.find((member) => member.user_id === nextUserId);
+                setTeamRoleEditors((current) => ({
+                  ...current,
+                  [team.id]: {
+                    userId: nextUserId,
+                    tags: splitRoleTags(nextMember?.role_tag ?? null),
+                  },
+                }));
+              }}
+              data={team.members.map((member) => ({
+                value: member.user_id,
+                label: member.user_id,
+              }))}
+              placeholder={t("active.teamSetup.roleTags.memberPlaceholder")}
+              aria-label={t("active.teamSetup.roleTags.memberLabel")}
+              disabled={draftLocked || team.members.length === 0}
+              searchable
+              style={{ flex: "1 1 200px", minWidth: 180 }}
+            />
+            <Button
+              size="xs"
+              variant="light"
+              color="infini-danger"
+              disabled={draftLocked || !selectedEventId || !roleEditor?.userId}
+              loading={roleTagMutation.isPending}
+              onClick={() => {
+                if (!selectedEventId || !roleEditor?.userId) {
+                  return;
+                }
+                setTeamRoleEditors((current) => ({
+                  ...current,
+                  [team.id]: {
+                    userId: roleEditor.userId,
+                    tags: [],
+                  },
+                }));
+                roleTagMutation.mutate({
+                  event_id: selectedEventId,
+                  user_id: roleEditor.userId,
+                  role_tag: null,
+                });
+              }}
+            >
+              {t("active.teamSetup.roleTags.clear")}
+            </Button>
+          </Group>
+          <TagsInput
+            value={roleEditor?.tags ?? []}
+            onChange={(values) =>
+              setTeamRoleEditors((current) => {
+                const currentEditor = current[team.id];
+                if (!currentEditor) {
+                  return current;
+                }
+                return {
+                  ...current,
+                  [team.id]: {
+                    ...currentEditor,
+                    tags: values,
+                  },
+                };
+              })
+            }
+            data={Array.from(new Set([...ROLE_TAG_PRESETS, ...(roleEditor?.tags ?? [])]))}
+            disabled={draftLocked || team.members.length === 0}
+            placeholder={t("active.teamSetup.roleTags.tagsPlaceholder")}
+            aria-label={t("active.teamSetup.roleTags.tagsLabel")}
+            clearable
+          />
+          <Group gap={8} wrap="wrap" justify="space-between" align="center">
+            <Text size="xs" c="dimmed">
+              {t("active.teamSetup.roleTags.current", {
+                tags: selectedMemberRoleTags.join(", ") || t("active.teamSetup.roleTags.noTag"),
+              })}
+            </Text>
+            <Button
+              size="xs"
+              variant="light"
+              disabled={draftLocked || !selectedEventId || !roleEditor?.userId}
+              loading={roleTagMutation.isPending}
+              onClick={() => {
+                if (!selectedEventId || !roleEditor?.userId) {
+                  return;
+                }
+                roleTagMutation.mutate({
+                  event_id: selectedEventId,
+                  user_id: roleEditor.userId,
+                  role_tag: joinRoleTags(roleEditor.tags),
+                });
+              }}
+            >
+              {t("active.teamSetup.roleTags.apply")}
+            </Button>
+          </Group>
+        </Stack>
+      );
+    }
+    return result;
+  }, [
+    canManageActive,
+    moveTeamOrder,
+    orderedTeams,
+    roleTagMutation.isPending,
+    roleTagMutation.mutate,
+    selectedEventId,
+    t,
+    teamDraftLocks,
+    teamDraftNames,
+    teamDraftNotes,
+    teamRoleEditors,
+  ]);
+
+  const historyColumns: ColumnDef<HistorySummaryRow, unknown>[] = [
     {
-      title: t("history.table.name"),
-      dataIndex: "war_name",
-      key: "war_name",
+      header: t("history.table.name"),
+      id: "war_name",
+      accessorKey: "war_name",
     },
     {
-      title: "Enemy",
-      dataIndex: "enemy_name",
-      key: "enemy_name",
-      render: (value) => (typeof value === "string" && value ? value : "-"),
+      header: "Enemy",
+      id: "enemy_name",
+      accessorKey: "enemy_name",
+      cell: ({ getValue }) => {
+        const v = getValue();
+        return typeof v === "string" && v ? v : "-";
+      },
     },
     {
-      title: t("history.table.result"),
-      dataIndex: "result",
-      key: "result",
-      render: (value) => (typeof value === "string" ? value : "-"),
+      header: t("history.table.result"),
+      id: "result",
+      accessorKey: "result",
+      cell: ({ getValue }) => {
+        const v = getValue();
+        return typeof v === "string" ? v : "-";
+      },
     },
     {
-      title: t("history.table.kills"),
-      key: "kills",
-      render: (_, row) => `${row.own_kills ?? 0} / ${row.enemy_kills ?? 0}`,
+      header: t("history.table.kills"),
+      id: "kills",
+      enableSorting: false,
+      cell: ({ row }) => `${row.original.own_kills ?? 0} / ${row.original.enemy_kills ?? 0}`,
     },
     {
-      title: t("history.table.date"),
-      dataIndex: "created_at",
-      key: "created_at",
-      render: (value) => (typeof value === "string" ? formatDateTime(value) : "-"),
+      header: t("history.table.date"),
+      id: "created_at",
+      accessorKey: "created_at",
+      cell: ({ getValue }) => {
+        const v = getValue();
+        return typeof v === "string" ? formatDateTime(v) : "-";
+      },
     },
   ];
 
@@ -1469,6 +1592,69 @@ export function GuildWarPage() {
   const analyticsMetricLabel = getMetricLabel(analyticsMetric);
   const analyticsMetricLabels = analyticsSelectedMetrics.map(getMetricLabel);
 
+  // Build normalization context from analytics API response
+  const analyticsSettings = analyticsQuery.data?.analytics_settings;
+  const referenceDuration = analyticsSettings?.reference_duration_minutes ?? 30;
+
+  // Sync modifier weights from server once loaded
+  useEffect(() => {
+    if (analyticsSettings && !modifierWeightsInitialized) {
+      setModifierWeights({
+        kda: analyticsSettings.modifier_weight_kda,
+        towers: analyticsSettings.modifier_weight_towers,
+        credits: analyticsSettings.modifier_weight_credits,
+        distance: analyticsSettings.modifier_weight_distance,
+        basehp: analyticsSettings.modifier_weight_basehp,
+      });
+      setModifierWeightsInitialized(true);
+    }
+  }, [analyticsSettings, modifierWeightsInitialized]);
+
+  const warNormContext = useMemo(() => {
+    const wars = analyticsQuery.data?.wars ?? [];
+    const map = new Map<string, { durationMinutes: number | null; modifier: number }>();
+    for (const war of wars) {
+      map.set(war.id, {
+        durationMinutes: war.duration_minutes,
+        modifier: war.modifier,
+      });
+    }
+    return map;
+  }, [analyticsQuery.data?.wars]);
+
+  const getNormalizedMetricValue = useCallback(
+    (warId: string, member: Parameters<typeof metricValueFromWarMember>[0], metric: AnalyticsMetricKey): number => {
+      const raw = metricValueFromWarMember(member, metric);
+      if (!analyticsNormEnabled) return raw;
+      const ctx = warNormContext.get(warId);
+      if (!ctx) return raw;
+      if (metric === "kda") {
+        // KDA: normalize K/D/A individually, then compute ratio
+        const normK = normalizeMetricValue(member.kills ?? 0, "kills", ctx.durationMinutes, referenceDuration, ctx.modifier);
+        const normD = normalizeMetricValue(member.deaths ?? 0, "deaths", ctx.durationMinutes, referenceDuration, ctx.modifier);
+        const normA = normalizeMetricValue(member.assists ?? 0, "assists", ctx.durationMinutes, referenceDuration, ctx.modifier);
+        return Number(((normK + normA) / Math.max(normD, 1)).toFixed(2));
+      }
+      return normalizeMetricValue(raw, metric, ctx.durationMinutes, referenceDuration, ctx.modifier);
+    },
+    [analyticsNormEnabled, referenceDuration, warNormContext],
+  );
+
+  const getNormalizedMetricValueOrNull = useCallback(
+    (warId: string, member: Parameters<typeof metricValueOrNullFromWarMember>[0], metric: AnalyticsMetricKey): number | null => {
+      const raw = metricValueOrNullFromWarMember(member, metric);
+      if (raw === null) return null;
+      if (!analyticsNormEnabled) return raw;
+      const ctx = warNormContext.get(warId);
+      if (!ctx) return raw;
+      if (metric === "kda") {
+        return getNormalizedMetricValue(warId, member, metric);
+      }
+      return normalizeMetricValue(raw, metric, ctx.durationMinutes, referenceDuration, ctx.modifier);
+    },
+    [analyticsNormEnabled, getNormalizedMetricValue, referenceDuration, warNormContext],
+  );
+
   useEffect(() => {
     if (!analyticsFocusedUser && analyticsSelectableUserIds.length > 0) {
       setAnalyticsFocusedUser(analyticsSelectableUserIds[0] ?? "");
@@ -1494,41 +1680,12 @@ export function GuildWarPage() {
     return analyticsSelectableUserIds.slice(0, Math.min(3, analyticsSelectableUserIds.length));
   }, [analyticsSelectableUserIds, analyticsSelectedUsers]);
 
-  const analyticsCompareSummaryRows = useMemo(() => {
-    return analyticsCompareUserIds
-      .map((userId) => {
-        const values = analyticsTimeline
-          .map((war) => {
-            const member = war.member_stats.find((item) => item.user_id === userId);
-            if (!member) {
-              return null;
-            }
-            return metricValueFromWarMember(member, analyticsMetric);
-          })
-          .filter((value): value is number => value !== null);
-        if (values.length === 0) {
-          return null;
-        }
-        const total = values.reduce((sum, value) => sum + value, 0);
-        return {
-          key: userId,
-          user_id: userId,
-          participation: values.length,
-          total: Number(total.toFixed(2)),
-          average: Number((total / values.length).toFixed(2)),
-          best: Math.max(...values),
-        };
-      })
-      .filter((row): row is NonNullable<typeof row> => Boolean(row))
-      .sort((left, right) => right.total - left.total);
-  }, [analyticsCompareUserIds, analyticsMetric, analyticsTimeline]);
-
   const analyticsRankingRows = useMemo(() => {
     const valuesByUser = new Map<string, number[]>();
     for (const war of analyticsTimeline) {
       for (const member of war.member_stats) {
         const current = valuesByUser.get(member.user_id) ?? [];
-        current.push(metricValueFromWarMember(member, analyticsMetric));
+        current.push(getNormalizedMetricValue(war.id, member, analyticsMetric));
         valuesByUser.set(member.user_id, current);
       }
     }
@@ -1542,7 +1699,7 @@ export function GuildWarPage() {
       .filter((row) => row.participation >= analyticsMinParticipation)
       .sort((left, right) => right.score - left.score)
       .slice(0, analyticsTopN);
-  }, [analyticsAggregation, analyticsMetric, analyticsMinParticipation, analyticsTimeline, analyticsTopN]);
+  }, [analyticsAggregation, analyticsMetric, analyticsMinParticipation, analyticsTimeline, analyticsTopN, getNormalizedMetricValue]);
 
   const analyticsTeamSeries = useMemo(() => {
     const seriesMap = new Map<string, Array<{ warId: string; warName: string; value: number }>>();
@@ -1551,7 +1708,7 @@ export function GuildWarPage() {
         if (analyticsSelectedTeams.length > 0 && !analyticsSelectedTeams.includes(team.team_name)) {
           continue;
         }
-        const values = team.members.map((member) => metricValueFromWarMember(member, analyticsMetric));
+        const values = team.members.map((member) => getNormalizedMetricValue(war.id, member, analyticsMetric));
         const score =
           analyticsTeamAggregation === "average"
             ? Number((values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length)).toFixed(2))
@@ -1569,7 +1726,7 @@ export function GuildWarPage() {
       teamName,
       points,
     }));
-  }, [analyticsMetric, analyticsSelectedTeams, analyticsTeamAggregation, analyticsTimeline]);
+  }, [analyticsMetric, analyticsSelectedTeams, analyticsTeamAggregation, analyticsTimeline, getNormalizedMetricValue]);
 
   const analyticsPlayerRows = useMemo(() => {
     if (analyticsSelectedUsers.length === 0) return [];
@@ -1583,12 +1740,12 @@ export function GuildWarPage() {
       analyticsSelectedUsers.forEach((userId, userIndex) => {
         const member = war.member_stats.find((item) => item.user_id === userId);
         analyticsSelectedMetrics.forEach((metric, metricIndex) => {
-          row[`user${userIndex}_metric${metricIndex}`] = member ? metricValueOrNullFromWarMember(member, metric) : null;
+          row[`user${userIndex}_metric${metricIndex}`] = member ? getNormalizedMetricValueOrNull(war.id, member, metric) : null;
         });
       });
       return row;
     });
-  }, [analyticsSelectedUsers, analyticsSelectedMetrics, analyticsTimeline]);
+  }, [analyticsSelectedUsers, analyticsSelectedMetrics, analyticsTimeline, getNormalizedMetricValueOrNull]);
 
   const analyticsChartOption = useMemo(() => {
     if (analyticsMode === "player") {
@@ -1825,31 +1982,13 @@ export function GuildWarPage() {
     }
   };
 
-  const commitHistoryMemberMetric = (
-    userId: string,
-    key:
-      | "kills"
-      | "deaths"
-      | "assists"
-      | "damage"
-      | "healing"
-      | "building_damage"
-      | "credits"
-      | "damage_taken",
-    value: number,
-  ) => {
-    if (!selectedHistoryId) {
+  const saveHistoryMemberStats = async (updates: HistoryMemberStatsUpdate[]) => {
+    if (!selectedHistoryId || updates.length === 0) {
       return;
     }
-    if (!Number.isFinite(value)) {
-      return;
-    }
-    updateMemberStatsMutation.mutate({
+    await updateMemberStatsMutation.mutateAsync({
       historyId: selectedHistoryId,
-      userId,
-      payload: {
-        [key]: Math.max(0, Math.floor(value)),
-      },
+      updates,
     });
   };
   useLoadWarningToast(
@@ -1865,7 +2004,7 @@ export function GuildWarPage() {
   );
 
   return (
-    <PageLayout title={t("title")} subtitle="Guild War Modules" className="guild-war-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} className="guild-war-page">
       <PageTabs
         destroyInactiveTabPane
         initialActiveKey={initialTabKey}
@@ -1899,13 +2038,13 @@ export function GuildWarPage() {
                     onActiveSearchChange={setActiveSearch}
                     matchLabel={
                       matchedItemIds.length === 0
-                        ? "No matches"
-                        : `Match ${activeMatchIndex + 1} / ${matchedItemIds.length}`
+                        ? t("active.noMatches")
+                        : t("active.matchLabel", { current: activeMatchIndex + 1, total: matchedItemIds.length })
                     }
                     onPrevMatch={() => setSearchJumpIndex((current) => current - 1)}
                     onNextMatch={() => setSearchJumpIndex((current) => current + 1)}
                     hasMatches={matchedItemIds.length > 0}
-                    searchPlaceholder="Search user / role / stats"
+                    searchPlaceholder={t("active.searchPlaceholder")}
                     initTeamsLabel={t("active.initTeams")}
                     selectedTemplateId={selectedTemplateId}
                     templateOptions={templateOptions}
@@ -1939,12 +2078,12 @@ export function GuildWarPage() {
                 </Suspense>
 
                 {undoMove && undoRemainingSec > 0 ? (
-                  <Alert color="blue" variant="light">
+                  <Alert color="infini-primary" variant="light">
                     <Group justify="space-between" align="center" wrap="wrap" gap="xs">
                       <Text size="sm">
                         {undoMove.moves.length === 1
-                          ? `Queued ${undoMove.moves[0]?.userId ?? "-"} -> ${undoMove.moves[0]?.to ?? "-"}. Commit in ${undoRemainingSec}s`
-                          : `Queued ${undoMove.moves.length} members. Commit in ${undoRemainingSec}s`}
+                          ? t("active.undo.single", { userId: undoMove.moves[0]?.userId ?? "-", to: undoMove.moves[0]?.to ?? "-", seconds: undoRemainingSec })
+                          : t("active.undo.multi", { count: undoMove.moves.length, seconds: undoRemainingSec })}
                       </Text>
                       <Button
                         size="xs"
@@ -1953,115 +2092,12 @@ export function GuildWarPage() {
                           setUndoMove(null);
                         }}
                       >
-                        Cancel
+                        {t("active.undo.cancel")}
                       </Button>
                     </Group>
                   </Alert>
                 ) : null}
 
-                {canManageActive ? (
-                  <div className="guild-war-active-controls-row">
-                    <Suspense fallback={<Card><Spin /></Card>}>
-                      <LazyGuildWarMoveMemberCard
-                      title={t("active.moveMember")}
-                      selectedMoveUserId={selectedMoveUserId}
-                      selectedMoveTarget={selectedMoveTarget}
-                      moveCandidates={moveCandidates}
-                      moveTargetOptions={moveTargetOptions}
-                      memberPlaceholder={t("active.member")}
-                      targetPlaceholder={t("active.target")}
-                      moveLabel={t("active.move")}
-                      movePending={moveMutation.isPending}
-                      moveDisabled={!selectedMoveUserId || !selectedMoveTarget || !selectedEventId || Boolean(undoMove)}
-                      onSelectedMoveUserIdChange={setSelectedMoveUserId}
-                      onSelectedMoveTargetChange={setSelectedMoveTarget}
-                      onMove={() => {
-                        if (!selectedEventId || !selectedMoveUserId || !selectedMoveTarget) {
-                          return;
-                        }
-                        if (selectedMoveTarget !== "pool" && lockedTeamIds.has(selectedMoveTarget)) {
-                          message.warning("Target team is locked");
-                          return;
-                        }
-                        queueMoveWithUndo([
-                          {
-                            event_id: selectedEventId,
-                            user_id: selectedMoveUserId,
-                            to: selectedMoveTarget,
-                            from: selectedMoveSource,
-                            etag: activeQuery.data?.etag ?? undefined,
-                          },
-                        ]);
-                      }}
-                    />
-                  </Suspense>
-
-                  <Suspense fallback={<Card><Spin /></Card>}>
-                    <LazyGuildWarRoleTagsCard
-                      selectedRoleUserId={selectedRoleUserId}
-                      selectedRoleMember={selectedRoleMember}
-                      activeTeamMembers={activeTeamMembers}
-                      roleTagPresets={ROLE_TAG_PRESETS}
-                      canAssignRoleTag={Boolean(selectedEventId && selectedRoleUserId)}
-                      roleTagPending={roleTagMutation.isPending}
-                      onSelectedRoleUserIdChange={setSelectedRoleUserId}
-                      onAssignRoleTag={(tag) => {
-                        if (!selectedEventId || !selectedRoleUserId) {
-                          return;
-                        }
-                        roleTagMutation.mutate({
-                          event_id: selectedEventId,
-                          user_id: selectedRoleUserId,
-                          role_tag: tag,
-                        });
-                      }}
-                    />
-                  </Suspense>
-                  </div>
-                ) : null}
-
-                {canManageActive ? (
-                  <Suspense fallback={<Card><Spin /></Card>}>
-                    <LazyGuildWarTeamSetupCard
-                      teams={orderedTeams}
-                      teamDraftNames={teamDraftNames}
-                      teamDraftNotes={teamDraftNotes}
-                      teamDraftLocks={teamDraftLocks}
-                      savePending={saveTeamsMutation.isPending}
-                      saveDisabled={!selectedEventId || orderedTeams.length === 0}
-                      onTeamLockChange={(teamId, checked) =>
-                        setTeamDraftLocks((current) => ({
-                          ...current,
-                          [teamId]: checked,
-                        }))
-                      }
-                      onTeamNameChange={(teamId, value) =>
-                        setTeamDraftNames((current) => ({
-                          ...current,
-                          [teamId]: value,
-                        }))
-                      }
-                      onTeamNotesChange={(teamId, value) =>
-                        setTeamDraftNotes((current) => ({
-                          ...current,
-                          [teamId]: value,
-                        }))
-                      }
-                      onMoveTeamOrder={moveTeamOrder}
-                      onCopyTeamLabel={(teamId, draftName) => {
-                        const team = orderedTeams.find((item) => item.id === teamId);
-                        if (!team) {
-                          return;
-                        }
-                        const teamLabel = draftName.trim() || team.team_name;
-                        const mentions = team.members.map((member) => `@${member.user_id}`).join(", ");
-                        void copyPlainText(`${teamLabel}: ${mentions}`);
-                        message.success("Team mentions copied");
-                      }}
-                      onSaveTeams={() => saveTeamsMutation.mutate()}
-                    />
-                  </Suspense>
-                ) : null}
                 <Suspense fallback={<Card><Spin /></Card>}>
                   <LazyGuildWarDragBoard
                     dragColumns={dragColumns}
@@ -2070,17 +2106,15 @@ export function GuildWarPage() {
                     activePoolStatus={activePoolStatus}
                     selectedUserIds={selectedDragUserIdSet}
                     activeSearch={activeSearch}
-                    selectedCount={selectedDragUserIds.length}
-                    selectionHint={`Selected: ${selectedDragUserIds.length} member(s). Ctrl/Shift + click to multi-select, then drag one selected card.`}
                     activeDragItem={activeDragItem}
                     toMemberDomId={toMemberDomId}
                     sensors={sensors}
                     onSelectMember={handleSelectMember}
                     onOpenMember={canManageActive ? (userId) => setActiveDetailUserId(userId) : undefined}
-                    onAssignPinnedRole={canManageActive ? handleAssignPinnedRole : undefined}
                     onDragStart={handleDragStart}
                     onDragCancel={handleDragCancel}
                     onDragEnd={handleDragEnd}
+                    teamStatusContentByContainerId={teamStatusContentByContainerId}
                   />
                 </Suspense>
 
@@ -2147,7 +2181,8 @@ export function GuildWarPage() {
                     });
                   }}
                   postResultsPending={postResultsMutation.isPending}
-                  onCommitMemberMetric={commitHistoryMemberMetric}
+                  onSaveMemberStats={saveHistoryMemberStats}
+                  saveMemberStatsPending={updateMemberStatsMutation.isPending}
                   renderCounter={renderCounter}
                   historyDetailTitle={t("history.detail")}
                   historyResultLabel={t("history.result")}
@@ -2220,6 +2255,11 @@ export function GuildWarPage() {
                   echarts={echarts}
                   chartThemeName={chartThemeName}
                   chartOption={analyticsChartOption}
+                  normEnabled={analyticsNormEnabled}
+                  onNormEnabledChange={setAnalyticsNormEnabled}
+                  modifierWeights={modifierWeights}
+                  onModifierWeightsChange={setModifierWeights}
+                  referenceDuration={referenceDuration}
                 />
               </Suspense>
             ),
@@ -2229,4 +2269,3 @@ export function GuildWarPage() {
     </PageLayout>
   );
 }
-

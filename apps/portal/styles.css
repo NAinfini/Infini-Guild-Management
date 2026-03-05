@@ -104,3 +104,17 @@ html[data-locale="zh"] h5,
 html[data-locale="zh"] h6 {
   font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
 }
+
+/* Theme-aware switch state colors (off: error, on: success). */
+input[role="switch"]:not(:disabled):not([data-disabled]) + *,
+.mantine-Switch-input:not(:disabled):not([data-disabled]) + .mantine-Switch-track {
+  --switch-bg: var(--ant-color-error) !important;
+  --switch-bd: color-mix(in srgb, var(--ant-color-error) 68%, var(--mantine-color-body)) !important;
+  --switch-text-color: var(--mantine-color-white) !important;
+}
+
+input[role="switch"]:not(:disabled):not([data-disabled]):is(:checked, [data-checked]) + *,
+.mantine-Switch-input:not(:disabled):not([data-disabled]):is(:checked, [data-checked]) + .mantine-Switch-track {
+  --switch-bg: var(--ant-color-success) !important;
+  --switch-bd: color-mix(in srgb, var(--ant-color-success) 68%, var(--mantine-color-body)) !important;
+}

@@ -1,4 +1,4 @@
-import { notifications } from "@mantine/notifications";
+﻿import { notifications } from "@mantine/notifications";
 import { useMutation } from "@tanstack/react-query";
 import { Button, Group, Progress, Stack, Text } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
@@ -62,7 +62,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
   const deleteImageMutation = useMutation({
     mutationFn: (key: string) => deleteProfileImage(member.user.id, key),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: "Image removed" });
+      notifications.show({ color: "infini-success", message: "Image removed" });
       await onRefresh();
     },
     onError: (error) => onError(error, "Failed to remove image"),
@@ -71,7 +71,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
   const deleteAudioMutation = useMutation({
     mutationFn: () => deleteProfileAudio(member.user.id),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: "Audio removed" });
+      notifications.show({ color: "infini-success", message: "Audio removed" });
       await onRefresh();
     },
     onError: (error) => onError(error, "Failed to remove audio"),
@@ -83,7 +83,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
         video_urls: member.profile.video_urls.filter((item) => item !== videoUrl),
       }),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: "Video removed" });
+      notifications.show({ color: "infini-success", message: "Video removed" });
       await onRefresh();
     },
     onError: (error) => onError(error, "Failed to remove video"),
@@ -95,7 +95,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
       if (!result) {
         return;
       }
-      notifications.show({ color: "green", message: "Images uploaded" });
+      notifications.show({ color: "infini-success", message: "Images uploaded" });
       await onRefresh();
       imageUploader.reset();
     } catch (error) {
@@ -109,7 +109,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
       if (!result) {
         return;
       }
-      notifications.show({ color: "green", message: "Audio uploaded" });
+      notifications.show({ color: "infini-success", message: "Audio uploaded" });
       await onRefresh();
       audioUploader.reset();
     } catch (error) {
@@ -169,7 +169,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
               {isAdmin ? (
                 <Button
                   size="xs"
-                  color="red"
+                  color="infini-danger"
                   style={{ position: "absolute", top: 2, right: 2, paddingInline: 6 }}
                   onClick={() => deleteImageMutation.mutate(key)}
                   loading={deleteImageMutation.isPending}
@@ -194,7 +194,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
               {isAdmin ? (
                 <Button
                   size="xs"
-                  color="red"
+                  color="infini-danger"
                   onClick={() => removeVideoMutation.mutate(videoUrl)}
                   loading={removeVideoMutation.isPending}
                   aria-label="Remove video URL"
@@ -216,7 +216,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
           </Text>
           {isAdmin ? (
             <Button
-              color="red"
+              color="infini-danger"
               onClick={() => deleteAudioMutation.mutate()}
               loading={deleteAudioMutation.isPending}
               aria-label="Remove profile audio"
@@ -231,7 +231,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
 
       {isModerator ? (
         <>
-          <InfiniCard>
+          <InfiniCard interactive={false}>
             <div style={{ padding: "1.2rem" }}>
               <Text fw={600} size="sm" mb={8}>Upload Images</Text>
               <Stack gap={8}>
@@ -242,7 +242,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                   aria-label="Select profile images for upload"
                   onChange={(event) => imageUploader.selectFiles(event.target.files)}
                 />
-                {imageUploader.error ? <Text c="red" size="sm">{imageUploader.error}</Text> : null}
+                {imageUploader.error ? <Text c="infini-danger" size="sm">{imageUploader.error}</Text> : null}
                 {imageUploader.isConverting || imageUploader.isUploading ? (
                   <Stack style={{ width: "100%" }} gap={4}>
                     <Progress value={imageUploader.conversionProgress} size="sm" animated />
@@ -260,13 +260,13 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             </div>
           </InfiniCard>
 
-          <InfiniCard>
+          <InfiniCard interactive={false}>
             <div style={{ padding: "1.2rem" }}>
               <Text fw={600} size="sm" mb={8}>Upload Audio</Text>
               <Stack gap={8}>
                 <Text c="dimmed" size="sm">Audio is converted to Opus/Ogg (48kbps, 16kHz, mono) before upload.</Text>
                 {audioUploader.supportError ? (
-                  <Text c="yellow" size="sm">{audioUploader.supportError}</Text>
+                  <Text c="infini-warning" size="sm">{audioUploader.supportError}</Text>
                 ) : null}
                 <input
                   type="file"
@@ -275,7 +275,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                   disabled={Boolean(audioUploader.supportError)}
                   onChange={(event) => audioUploader.selectFiles(event.target.files)}
                 />
-                {audioUploader.error ? <Text c="red" size="sm">{audioUploader.error}</Text> : null}
+                {audioUploader.error ? <Text c="infini-danger" size="sm">{audioUploader.error}</Text> : null}
                 {audioUploader.isConverting || audioUploader.isUploading ? (
                   <Stack style={{ width: "100%" }} gap={4}>
                     <Progress value={audioUploader.conversionProgress} size="sm" animated />
@@ -297,4 +297,5 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
     </Stack>
   );
 }
+
 

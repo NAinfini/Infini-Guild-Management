@@ -1,23 +1,31 @@
-﻿import {
+import {
   ERROR_STATUS,
+  PERMISSIONS,
+  ROLES,
+  adminRoleSchema,
   auditLogSchema,
   batchDeactivateSchema,
   batchRoleChangeSchema,
   botSettingsSchema,
+  createRoleSchema,
+  createAdminMemberSchema,
+  deleteRoleSchema,
   createInviteLinkSchema,
   hasRoleAtLeast,
   inviteLinkSchema,
   inviteLinkStatsSchema,
+  type Permission,
   type ErrorCode,
   type Role,
   type StandardErrorResponse,
+  updateRoleSchema,
 } from "@guild/shared";
 import { and, desc, eq, gt, gte, inArray, isNull, like, lte, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { customAlphabet, nanoid } from "nanoid";
-import { auditLog, inviteLinks, sessions, userAuthPassword, users } from "../db/schema";
+import { auditLog, inviteLinks, memberProfiles, rolePermissions, roles, sessions, userAuthPassword, users } from "../db/schema";
 import type { Bindings } from "../index";
 import { writeAuditLog } from "../services/audit";
 import { createPasswordHash, resolveSession } from "../services/auth";
@@ -88,6 +96,128 @@ export const adminRoutes = new Hono();
 function getDb(c: Context) {
   const env = c.env as Bindings;
   return drizzle(env.DB);
+}
+
+const BUILTIN_ROLE_DEFAULTS: Record<Role, { name: string; level: number; color: string }> = {
+  admin: { name: "Admin", level: 3, color: "red" },
+  moderator: { name: "Moderator", level: 2, color: "blue" },
+  member: { name: "Member", level: 1, color: "gray" },
+};
+
+const MODERATOR_DEFAULT_PERMISSIONS = new Set<Permission>([
+  "admin.users.view",
+  "admin.users.edit",
+  "admin.invite.view",
+  "admin.audit.view",
+  "admin.bot.view",
+  "admin.status.view",
+  "guildwar.manage",
+  "guildwar.history.edit",
+  "events.manage",
+  "announcements.manage",
+  "gallery.upload",
+  "wiki.edit",
+]);
+
+const MEMBER_DEFAULT_PERMISSIONS = new Set<Permission>(["gallery.upload"]);
+
+function defaultPermissionGranted(roleId: string, permission: Permission): boolean {
+  if (roleId === "admin") {
+    return true;
+  }
+  if (roleId === "moderator") {
+    return MODERATOR_DEFAULT_PERMISSIONS.has(permission);
+  }
+  if (roleId === "member") {
+    return MEMBER_DEFAULT_PERMISSIONS.has(permission);
+  }
+  return false;
+}
+
+function emptyPermissionRecord(): Record<Permission, boolean> {
+  return Object.fromEntries(PERMISSIONS.map((permission) => [permission, false])) as Record<Permission, boolean>;
+}
+
+function fullAdminPermissionRecord(): Record<Permission, boolean> {
+  return Object.fromEntries(PERMISSIONS.map((permission) => [permission, true])) as Record<Permission, boolean>;
+}
+
+function parsePermissionRecord(
+  roleId: string,
+  permissionRows: Array<{ permission: string; granted: boolean }>,
+): Record<Permission, boolean> {
+  const record = roleId === "admin" ? fullAdminPermissionRecord() : emptyPermissionRecord();
+  for (const row of permissionRows) {
+    const permission = row.permission as Permission;
+    if (!PERMISSIONS.includes(permission)) {
+      continue;
+    }
+    record[permission] = roleId === "admin" ? true : row.granted;
+  }
+  return record;
+}
+
+async function replaceRolePermissions(
+  db: ReturnType<typeof getDb>,
+  roleId: string,
+  permissionRecord: Record<Permission, boolean>,
+): Promise<void> {
+  await db.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+  await db.insert(rolePermissions).values(
+    PERMISSIONS.map((permission) => ({
+      roleId,
+      permission,
+      granted: permissionRecord[permission],
+    })),
+  );
+}
+
+async function ensureBuiltinRolesAndPermissions(db: ReturnType<typeof getDb>): Promise<void> {
+  const existingRoleRows = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(inArray(roles.id, [...ROLES]));
+  const existingRoleSet = new Set(existingRoleRows.map((row) => row.id));
+
+  for (const roleId of ROLES) {
+    if (existingRoleSet.has(roleId)) {
+      continue;
+    }
+    const defaults = BUILTIN_ROLE_DEFAULTS[roleId];
+    await db.insert(roles).values({
+      id: roleId,
+      name: defaults.name,
+      level: defaults.level,
+      color: defaults.color,
+      isBuiltin: true,
+    });
+  }
+
+  const permissionRows = await db
+    .select({
+      roleId: rolePermissions.roleId,
+      permission: rolePermissions.permission,
+    })
+    .from(rolePermissions)
+    .where(inArray(rolePermissions.roleId, [...ROLES]));
+  const existingPermissionSet = new Set(permissionRows.map((row) => `${row.roleId}:${row.permission}`));
+  const missingRows: Array<typeof rolePermissions.$inferInsert> = [];
+  for (const roleId of ROLES) {
+    for (const permission of PERMISSIONS) {
+      const key = `${roleId}:${permission}`;
+      if (existingPermissionSet.has(key)) {
+        continue;
+      }
+      missingRows.push({
+        roleId,
+        permission,
+        granted: defaultPermissionGranted(roleId, permission),
+      });
+    }
+  }
+  if (missingRows.length > 0) {
+    await db.insert(rolePermissions).values(missingRows);
+  }
 }
 
 function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {
@@ -1523,6 +1653,91 @@ adminRoutes.patch("/users/batch/delete", async (c) => {
   return c.json({ ok: true, updated: existingUsers.length });
 });
 
+adminRoutes.post("/users", async (c) => {
+  const sessionUser = await requireRole(c, "admin");
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) {
+    return body;
+  }
+
+  const parsed = createAdminMemberSchema.safeParse(body);
+  if (!parsed.success) {
+    return buildError(c, "VALIDATION_ERROR", "Invalid create member payload", parsed.error.flatten());
+  }
+
+  const username = parsed.data.username;
+  const db = getDb(c);
+  const existing = (
+    await db
+      .select({
+        id: users.id,
+        deletedAt: users.deletedAt,
+      })
+      .from(users)
+      .where(eq(users.username, username))
+      .limit(1)
+  )[0];
+
+  if (existing && existing.deletedAt === null) {
+    return buildError(c, "CONFLICT", "Username already taken");
+  }
+
+  const userId = nanoid();
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await createPasswordHash(temporaryPassword);
+
+  try {
+    await db.insert(users).values({
+      id: userId,
+      username,
+      role: "member",
+      isActive: true,
+      deletedAt: null,
+    });
+    await db.insert(userAuthPassword).values({
+      userId,
+      passwordHash: passwordHash.passwordHash,
+      salt: passwordHash.salt,
+    });
+    await db.insert(memberProfiles).values({
+      id: nanoid(),
+      userId,
+      power: 0,
+      classes: "[]",
+      images: "[]",
+      videoUrls: "[]",
+      discordReminderOptOut: false,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("UNIQUE constraint failed: users.username")) {
+      return buildError(c, "CONFLICT", "Username already taken");
+    }
+    throw error;
+  }
+
+  await writeAuditLog(c, {
+    entityType: "user",
+    action: "admin_create_member",
+    actorId: sessionUser.id,
+    entityId: userId,
+    detailText: JSON.stringify({ username }),
+  });
+
+  return c.json(
+    {
+      ok: true,
+      user_id: userId,
+      username,
+      temporary_password: temporaryPassword,
+    },
+    201,
+  );
+});
+
 adminRoutes.patch("/users/:id/role", async (c) => {
   const sessionUser = await requireRole(c, "admin");
   if (sessionUser instanceof Response) {
@@ -1753,6 +1968,376 @@ adminRoutes.post("/users/:id/reset-password", async (c) => {
   return c.json({ ok: true, temporary_password: temporaryPassword });
 });
 
+adminRoutes.get("/roles", async (c) => {
+  const sessionUser = await requireRole(c, "admin");
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const db = getDb(c);
+  await ensureBuiltinRolesAndPermissions(db);
+
+  const roleRows = await db
+    .select({
+      id: roles.id,
+      name: roles.name,
+      level: roles.level,
+      color: roles.color,
+      isBuiltin: roles.isBuiltin,
+      createdAt: roles.createdAt,
+      updatedAt: roles.updatedAt,
+    })
+    .from(roles)
+    .orderBy(desc(roles.level), roles.name);
+
+  const roleIds = roleRows.map((row) => row.id);
+  const permissionRows =
+    roleIds.length > 0
+      ? await db
+          .select({
+            roleId: rolePermissions.roleId,
+            permission: rolePermissions.permission,
+            granted: rolePermissions.granted,
+          })
+          .from(rolePermissions)
+          .where(inArray(rolePermissions.roleId, roleIds))
+      : [];
+
+  const assignedRows = await db
+    .select({
+      roleId: users.role,
+      count: sql<number>`count(*)`,
+    })
+    .from(users)
+    .where(isNull(users.deletedAt))
+    .groupBy(users.role);
+  const assignedCountByRole = new Map<string, number>(
+    assignedRows.map((row) => [row.roleId, Number(row.count ?? 0)]),
+  );
+
+  return c.json(
+    roleRows.map((row) =>
+      adminRoleSchema.parse({
+        id: row.id,
+        name: row.name,
+        level: row.level,
+        color: row.color,
+        is_builtin: row.isBuiltin,
+        created_at: row.createdAt,
+        updated_at: row.updatedAt,
+        permissions: parsePermissionRecord(
+          row.id,
+          permissionRows
+            .filter((permissionRow) => permissionRow.roleId === row.id)
+            .map((permissionRow) => ({
+              permission: permissionRow.permission,
+              granted: permissionRow.granted,
+            })),
+        ),
+        assigned_user_count: assignedCountByRole.get(row.id) ?? 0,
+      }),
+    ),
+  );
+});
+
+adminRoutes.post("/roles", async (c) => {
+  const sessionUser = await requireRole(c, "admin");
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) {
+    return body;
+  }
+  const parsed = createRoleSchema.safeParse(body);
+  if (!parsed.success) {
+    return buildError(c, "VALIDATION_ERROR", "Invalid role payload", parsed.error.flatten());
+  }
+
+  const roleId = (parsed.data.id?.trim() || `custom_${nanoid(10).toLowerCase()}`).toLowerCase();
+  if ((ROLES as readonly string[]).includes(roleId)) {
+    return buildError(c, "CONFLICT", "Built-in role ids are reserved");
+  }
+
+  const db = getDb(c);
+  await ensureBuiltinRolesAndPermissions(db);
+
+  const existing = (
+    await db
+      .select({ id: roles.id })
+      .from(roles)
+      .where(eq(roles.id, roleId))
+      .limit(1)
+  )[0];
+  if (existing) {
+    return buildError(c, "CONFLICT", "Role id already exists");
+  }
+
+  await db.insert(roles).values({
+    id: roleId,
+    name: parsed.data.name.trim(),
+    level: parsed.data.level,
+    color: parsed.data.color ?? null,
+    isBuiltin: false,
+  });
+
+  const permissionRecord = emptyPermissionRecord();
+  for (const permission of PERMISSIONS) {
+    permissionRecord[permission] = Boolean(parsed.data.permissions?.[permission]);
+  }
+  await replaceRolePermissions(db, roleId, permissionRecord);
+
+  await writeAuditLog(c, {
+    entityType: "role",
+    action: "create",
+    actorId: sessionUser.id,
+    entityId: roleId,
+    detailText: JSON.stringify({
+      name: parsed.data.name.trim(),
+      level: parsed.data.level,
+      color: parsed.data.color ?? null,
+      permissions: permissionRecord,
+    }),
+  });
+
+  const created = (
+    await db
+      .select({
+        id: roles.id,
+        name: roles.name,
+        level: roles.level,
+        color: roles.color,
+        isBuiltin: roles.isBuiltin,
+        createdAt: roles.createdAt,
+        updatedAt: roles.updatedAt,
+      })
+      .from(roles)
+      .where(eq(roles.id, roleId))
+      .limit(1)
+  )[0];
+
+  if (!created) {
+    return buildError(c, "SERVER_ERROR", "Failed to create role");
+  }
+
+  return c.json(
+    adminRoleSchema.parse({
+      id: created.id,
+      name: created.name,
+      level: created.level,
+      color: created.color,
+      is_builtin: created.isBuiltin,
+      created_at: created.createdAt,
+      updated_at: created.updatedAt,
+      permissions: permissionRecord,
+      assigned_user_count: 0,
+    }),
+    201,
+  );
+});
+
+adminRoutes.patch("/roles/:id", async (c) => {
+  const sessionUser = await requireRole(c, "admin");
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const parsedRoleId = deleteRoleSchema.shape.id.safeParse(c.req.param("id"));
+  if (!parsedRoleId.success) {
+    return buildError(c, "VALIDATION_ERROR", "Invalid role id", parsedRoleId.error.flatten());
+  }
+  const roleId = parsedRoleId.data;
+
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) {
+    return body;
+  }
+  const parsed = updateRoleSchema.safeParse(body);
+  if (!parsed.success) {
+    return buildError(c, "VALIDATION_ERROR", "Invalid role update payload", parsed.error.flatten());
+  }
+
+  const db = getDb(c);
+  await ensureBuiltinRolesAndPermissions(db);
+
+  const existing = (
+    await db
+      .select({
+        id: roles.id,
+        name: roles.name,
+        level: roles.level,
+        color: roles.color,
+        isBuiltin: roles.isBuiltin,
+      })
+      .from(roles)
+      .where(eq(roles.id, roleId))
+      .limit(1)
+  )[0];
+  if (!existing) {
+    return buildError(c, "NOT_FOUND", "Role not found");
+  }
+
+  if (existing.isBuiltin && parsed.data.level !== undefined && parsed.data.level !== existing.level) {
+    return buildError(c, "CONFLICT", "Built-in role level is fixed");
+  }
+  if (!existing.isBuiltin && parsed.data.level !== undefined && parsed.data.level > 2) {
+    return buildError(c, "VALIDATION_ERROR", "Custom role level must be 1 or 2");
+  }
+
+  const roleUpdatePayload: Partial<typeof roles.$inferInsert> = {};
+  if (parsed.data.name !== undefined) {
+    roleUpdatePayload.name = parsed.data.name.trim();
+  }
+  if (parsed.data.level !== undefined) {
+    roleUpdatePayload.level = parsed.data.level;
+  }
+  if (parsed.data.color !== undefined) {
+    roleUpdatePayload.color = parsed.data.color ?? null;
+  }
+
+  if (Object.keys(roleUpdatePayload).length > 0) {
+    await db
+      .update(roles)
+      .set({
+        ...roleUpdatePayload,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(roles.id, roleId));
+  }
+
+  if (roleId === "admin") {
+    await replaceRolePermissions(db, roleId, fullAdminPermissionRecord());
+  } else if (parsed.data.permissions) {
+    const currentPermissionRows = await db
+      .select({ permission: rolePermissions.permission, granted: rolePermissions.granted })
+      .from(rolePermissions)
+      .where(eq(rolePermissions.roleId, roleId));
+    const nextPermissionRecord = parsePermissionRecord(roleId, currentPermissionRows);
+    for (const permission of PERMISSIONS) {
+      if (Object.prototype.hasOwnProperty.call(parsed.data.permissions, permission)) {
+        nextPermissionRecord[permission] = Boolean(parsed.data.permissions[permission]);
+      }
+    }
+    await replaceRolePermissions(db, roleId, nextPermissionRecord);
+  }
+
+  const [updatedRole] = await db
+    .select({
+      id: roles.id,
+      name: roles.name,
+      level: roles.level,
+      color: roles.color,
+      isBuiltin: roles.isBuiltin,
+      createdAt: roles.createdAt,
+      updatedAt: roles.updatedAt,
+    })
+    .from(roles)
+    .where(eq(roles.id, roleId))
+    .limit(1);
+  if (!updatedRole) {
+    return buildError(c, "SERVER_ERROR", "Failed to load updated role");
+  }
+
+  const permissionRows = await db
+    .select({
+      permission: rolePermissions.permission,
+      granted: rolePermissions.granted,
+    })
+    .from(rolePermissions)
+    .where(eq(rolePermissions.roleId, roleId));
+
+  const assignedCountRow = (
+    await db
+      .select({ count: sql<number>`count(*)` })
+      .from(users)
+      .where(and(sql`${users.role} = ${roleId}`, isNull(users.deletedAt)))
+      .limit(1)
+  )[0];
+  const assignedCount = Number(assignedCountRow?.count ?? 0);
+
+  const parsedRole = adminRoleSchema.parse({
+    id: updatedRole.id,
+    name: updatedRole.name,
+    level: updatedRole.level,
+    color: updatedRole.color,
+    is_builtin: updatedRole.isBuiltin,
+    created_at: updatedRole.createdAt,
+    updated_at: updatedRole.updatedAt,
+    permissions: parsePermissionRecord(roleId, permissionRows),
+    assigned_user_count: assignedCount,
+  });
+
+  await writeAuditLog(c, {
+    entityType: "role",
+    action: "update",
+    actorId: sessionUser.id,
+    entityId: roleId,
+    detailText: JSON.stringify({
+      fields: parsed.data,
+      assigned_user_count: assignedCount,
+    }),
+  });
+
+  return c.json(parsedRole);
+});
+
+adminRoutes.delete("/roles/:id", async (c) => {
+  const sessionUser = await requireRole(c, "admin");
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const parsedRoleId = deleteRoleSchema.shape.id.safeParse(c.req.param("id"));
+  if (!parsedRoleId.success) {
+    return buildError(c, "VALIDATION_ERROR", "Invalid role id", parsedRoleId.error.flatten());
+  }
+  const roleId = parsedRoleId.data;
+
+  const db = getDb(c);
+  await ensureBuiltinRolesAndPermissions(db);
+
+  const existing = (
+    await db
+      .select({
+        id: roles.id,
+        isBuiltin: roles.isBuiltin,
+      })
+      .from(roles)
+      .where(eq(roles.id, roleId))
+      .limit(1)
+  )[0];
+  if (!existing) {
+    return buildError(c, "NOT_FOUND", "Role not found");
+  }
+  if (existing.isBuiltin) {
+    return buildError(c, "CONFLICT", "Built-in roles cannot be deleted");
+  }
+
+  const assignedCountRow = (
+    await db
+      .select({ count: sql<number>`count(*)` })
+      .from(users)
+      .where(and(sql`${users.role} = ${roleId}`, isNull(users.deletedAt)))
+      .limit(1)
+  )[0];
+  const assignedCount = Number(assignedCountRow?.count ?? 0);
+  if (assignedCount > 0) {
+    return buildError(c, "CONFLICT", "Role is assigned to users", { assigned_user_count: assignedCount });
+  }
+
+  await db.delete(roles).where(eq(roles.id, roleId));
+
+  await writeAuditLog(c, {
+    entityType: "role",
+    action: "delete",
+    actorId: sessionUser.id,
+    entityId: roleId,
+  });
+
+  return c.json({ ok: true });
+});
+
 adminRoutes.get("/bot-settings", async (c) => {
   const sessionUser = await requireRole(c, "admin");
   if (sessionUser instanceof Response) {
@@ -1928,3 +2513,105 @@ adminRoutes.get("/status", async (c) => {
     crons: "ok",
   });
 });
+
+// --- Analytics Settings ---
+
+const ANALYTICS_SETTINGS_KEY = "config/analytics-settings.json";
+
+type AnalyticsSettings = {
+  reference_duration_minutes: number;
+  modifier_weight_kda: number;
+  modifier_weight_towers: number;
+  modifier_weight_credits: number;
+  modifier_weight_distance: number;
+  modifier_weight_basehp: number;
+};
+
+function defaultAnalyticsSettingsAdmin(): AnalyticsSettings {
+  return {
+    reference_duration_minutes: 30,
+    modifier_weight_kda: 0.30,
+    modifier_weight_towers: 0.10,
+    modifier_weight_credits: 0.30,
+    modifier_weight_distance: 0.15,
+    modifier_weight_basehp: 0.15,
+  };
+}
+
+adminRoutes.get("/analytics-settings", async (c) => {
+  const sessionUser = await requireRole(c, "member");
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const env = c.env as Bindings;
+  const object = await env.MEDIA.get(ANALYTICS_SETTINGS_KEY);
+  if (!object) {
+    return c.json(defaultAnalyticsSettingsAdmin());
+  }
+
+  try {
+    const parsed = JSON.parse(await object.text()) as AnalyticsSettings;
+    return c.json({ ...defaultAnalyticsSettingsAdmin(), ...parsed });
+  } catch {
+    return c.json(defaultAnalyticsSettingsAdmin());
+  }
+});
+
+adminRoutes.patch("/analytics-settings", async (c) => {
+  const sessionUser = await requireRole(c, "member");
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) {
+    return body;
+  }
+
+  const record = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+  const defaults = defaultAnalyticsSettingsAdmin();
+
+  const settings: AnalyticsSettings = {
+    reference_duration_minutes:
+      typeof record.reference_duration_minutes === "number" && record.reference_duration_minutes > 0
+        ? record.reference_duration_minutes
+        : defaults.reference_duration_minutes,
+    modifier_weight_kda: typeof record.modifier_weight_kda === "number" ? record.modifier_weight_kda : defaults.modifier_weight_kda,
+    modifier_weight_towers: typeof record.modifier_weight_towers === "number" ? record.modifier_weight_towers : defaults.modifier_weight_towers,
+    modifier_weight_credits: typeof record.modifier_weight_credits === "number" ? record.modifier_weight_credits : defaults.modifier_weight_credits,
+    modifier_weight_distance: typeof record.modifier_weight_distance === "number" ? record.modifier_weight_distance : defaults.modifier_weight_distance,
+    modifier_weight_basehp: typeof record.modifier_weight_basehp === "number" ? record.modifier_weight_basehp : defaults.modifier_weight_basehp,
+  };
+
+  // Normalize weights to sum to 1.0
+  const weightSum =
+    settings.modifier_weight_kda +
+    settings.modifier_weight_towers +
+    settings.modifier_weight_credits +
+    settings.modifier_weight_distance +
+    settings.modifier_weight_basehp;
+
+  if (weightSum > 0) {
+    settings.modifier_weight_kda = Number((settings.modifier_weight_kda / weightSum).toFixed(4));
+    settings.modifier_weight_towers = Number((settings.modifier_weight_towers / weightSum).toFixed(4));
+    settings.modifier_weight_credits = Number((settings.modifier_weight_credits / weightSum).toFixed(4));
+    settings.modifier_weight_distance = Number((settings.modifier_weight_distance / weightSum).toFixed(4));
+    settings.modifier_weight_basehp = Number((settings.modifier_weight_basehp / weightSum).toFixed(4));
+  }
+
+  const env = c.env as Bindings;
+  await env.MEDIA.put(ANALYTICS_SETTINGS_KEY, JSON.stringify(settings), {
+    httpMetadata: { contentType: "application/json" },
+  });
+
+  await writeAuditLog(c, {
+    entityType: "analytics_settings",
+    action: "update",
+    actorId: sessionUser.id,
+    entityId: "default",
+  });
+
+  return c.json(settings);
+});
+

@@ -8,9 +8,15 @@ import type {
   warTeamSchema,
   warTeamMemberSchema,
 } from "../schemas/guild-war";
-import type { wikiCategorySchema, wikiArticleSchema, wikiArticleVersionSchema } from "../schemas/wiki";
-import type { galleryItemSchema } from "../schemas/gallery";
-import type { inviteLinkSchema, inviteLinkStatsSchema, auditLogSchema } from "../schemas/admin";
+import type { wikiCategorySchema, wikiArticleSchema } from "../schemas/wiki";
+import type { galleryItemSchema, galleryCommentSchema } from "../schemas/gallery";
+import type {
+  inviteLinkSchema,
+  inviteLinkStatsSchema,
+  auditLogSchema,
+  adminRoleSchema,
+  rolePermissionsSchema,
+} from "../schemas/admin";
 import type { botTaskSchema, botSettingsSchema } from "../schemas/bot";
 
 export type User = z.infer<typeof userSchema>;
@@ -24,11 +30,13 @@ export type WarTeam = z.infer<typeof warTeamSchema>;
 export type WarTeamMember = z.infer<typeof warTeamMemberSchema>;
 export type WikiCategory = z.infer<typeof wikiCategorySchema>;
 export type WikiArticle = z.infer<typeof wikiArticleSchema>;
-export type WikiArticleVersion = z.infer<typeof wikiArticleVersionSchema>;
 export type GalleryItem = z.infer<typeof galleryItemSchema>;
+export type GalleryComment = z.infer<typeof galleryCommentSchema>;
 export type InviteLink = z.infer<typeof inviteLinkSchema>;
 export type InviteLinkStats = z.infer<typeof inviteLinkStatsSchema>;
 export type AuditLogEntry = z.infer<typeof auditLogSchema>;
+export type AdminRole = z.infer<typeof adminRoleSchema>;
+export type RolePermissions = z.infer<typeof rolePermissionsSchema>;
 export type BotTask = z.infer<typeof botTaskSchema>;
 export type BotSettings = z.infer<typeof botSettingsSchema>;
 
@@ -83,10 +91,26 @@ export type AnnouncementPublishedPushMessage = {
   published_at: string;
 };
 
+export type HeartbeatMessage = {
+  type: "heartbeat";
+  tab_id: string;
+  seq: number;
+  sent_at: string;
+};
+
+export type HeartbeatAckMessage = {
+  type: "heartbeat_ack";
+  tab_id: string;
+  seq: number;
+  server_at: string;
+  connections: number;
+};
+
 export type PushMessage =
   | EntityChangedPushMessage
   | MemberOnlinePushMessage
   | EventReminderPushMessage
-  | AnnouncementPublishedPushMessage;
+  | AnnouncementPublishedPushMessage
+  | HeartbeatAckMessage;
 
 export type RoleLevel = { admin: 3; moderator: 2; member: 1 };

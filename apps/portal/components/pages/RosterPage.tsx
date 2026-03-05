@@ -1,6 +1,6 @@
 import type { MemberProfile, User } from "@guild/shared";
 import { CLASS_NAMES, hasRoleAtLeast } from "@guild/shared";
-import { StaggerList } from "@infini-dev-kit/frontend/components";
+import { DepthToggle, InfiniCard, StaggerList } from "@infini-dev-kit/frontend/components";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -13,14 +13,14 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { useClipboard } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
 import { IconSearch } from "@tabler/icons-react";
 import { motion } from "motion/react";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FocusEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../../api/query-keys";
 import { fetchUsersListWithOptions } from "../../api/queries/users";
-import { useCopy } from "../../hooks/useCopy";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useAuthStore } from "../../stores/auth";
@@ -102,7 +102,7 @@ export function RosterPage() {
   const navigate = useNavigate();
   const isExternalView = useExternalView();
   const sessionUser = useAuthStore((state) => state.user);
-  const { copyText } = useCopy();
+  const clipboard = useClipboard();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [classFilter, setClassFilter] = useState<string[]>(() => readStoredClassFilter());
@@ -297,44 +297,40 @@ export function RosterPage() {
     stopHoverAudio();
   };
 
-  const toggleAudioMute = () => {
-    setAudioMuted((prev) => {
-      const next = !prev;
-      if (next && hoverAudioRef.current && !hoverAudioRef.current.paused) {
-        hoverAudioRef.current.pause();
-      }
-      return next;
-    });
-  };
-
   const audioControlContent = (
     <Group gap={8} align="center" wrap="nowrap" className="roster-audio-popover">
-      <Button
-        size="xs"
-        variant="default"
-        onClick={toggleAudioMute}
-        aria-label={audioMuted ? "Unmute" : "Mute"}
-        style={{ padding: "0 8px" }}
+      <DepthToggle
+        pressed={audioMuted}
+        onToggle={(nextPressed) => {
+          if (nextPressed && hoverAudioRef.current && !hoverAudioRef.current.paused) {
+            hoverAudioRef.current.pause();
+          }
+          setAudioMuted(nextPressed);
+        }}
+        type="secondary"
+        size="sm"
+        iconOnly
+        aria-label={audioMuted ? t("audio.aria.unmute") : t("audio.aria.mute")}
       >
         {audioMuted ? <VolumeMutedOutlined size={18} /> : <VolumeOutlined size={18} />}
-      </Button>
+      </DepthToggle>
       <div className="roster-volume-control">
-        <Text size="xs" c="dimmed" className="roster-volume-label">Volume</Text>
-        <Slider min={0} max={100} value={audioVolume} onChange={setAudioVolume} aria-label="Roster audio volume" />
+        <Text size="xs" c="dimmed" className="roster-volume-label">{t("audio.volume")}</Text>
+        <Slider min={0} max={100} value={audioVolume} onChange={setAudioVolume} aria-label={t("audio.aria.volumeSlider")} />
       </div>
     </Group>
   );
 
   return (
-    <PageLayout title={t("title")} subtitle="Member Directory" className="roster-page">
-      <InfiniCard className="roster-filter-card">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} className="roster-page">
+      <InfiniCard className="roster-filter-card" interactive={false}>
         <div style={{ padding: "1.2rem" }}>
         <Group wrap="wrap" gap="md" className="roster-filter-controls">
           <TextInput
             className="roster-search-input"
             value={search}
-            placeholder={isExternalView ? "Search username" : "Search username / wechat"}
-            aria-label={isExternalView ? "Search by username" : "Search by username or wechat name"}
+            placeholder={isExternalView ? t("search.placeholder.usernameOnly") : t("search.placeholder.usernameWechat")}
+            aria-label={isExternalView ? t("search.aria.usernameOnly") : t("search.aria.usernameWechat")}
             onChange={(event) => setSearch(event.currentTarget.value)}
             leftSection={<IconSearch size={14} />}
           />
@@ -343,41 +339,41 @@ export function RosterPage() {
             value={classFilter}
             onChange={setClassFilter}
             data={CLASS_NAMES.map((className) => ({ value: className, label: className }))}
-            placeholder="Filter class"
-            aria-label="Filter roster by class"
+            placeholder={t("filter.class.placeholder")}
+            aria-label={t("filter.class.aria")}
             clearable
             searchable
           />
           <Select
             className="roster-sort-select"
             value={sortMode}
-            aria-label="Sort roster"
+            aria-label={t("sort.aria")}
             onChange={(value) => { if (value) setSortMode(value as RosterSortMode); }}
             data={[
-              { value: "power", label: "Power (desc)" },
-              { value: "username", label: "Username (A-Z)" },
-              { value: "class", label: "Class" },
+              { value: "power", label: t("sort.powerDesc") },
+              { value: "username", label: t("sort.usernameAsc") },
+              { value: "class", label: t("sort.class") },
             ]}
           />
           {audioControlContent}
           <Text size="sm" c="dimmed" className="roster-count-text">
-            Showing {renderedRows.length}/{sortedRows.length}
+            {t("count.showing", { visible: renderedRows.length, total: sortedRows.length })}
           </Text>
         </Group>
         </div>
       </InfiniCard>
 
       {sortedRows.length === 0 ? (
-        <InfiniCard className="roster-empty-card">
+        <InfiniCard className="roster-empty-card" interactive={false}>
           <EmptyState
-            title={debouncedSearch || classFilter.length > 0 ? "No members match your filters" : "No members found"}
+            title={debouncedSearch || classFilter.length > 0 ? t("empty.filtered") : t("empty.default")}
             actions={
               <Button
                 variant="default"
                 onClick={() => { setSearch(""); setClassFilter([]); }}
                 disabled={!debouncedSearch && classFilter.length === 0}
               >
-                Reset filters
+                {t("action.resetFilters")}
               </Button>
             }
           />
@@ -386,7 +382,7 @@ export function RosterPage() {
 
       {sortedRows.length > 0 ? (
         shouldVirtualize ? (
-          <div ref={virtualScrollRef} className="roster-virtual-scroll" role="grid" aria-label="Roster member grid">
+          <div ref={virtualScrollRef} className="roster-virtual-scroll" role="grid" aria-label={t("grid.aria")}>
             <div className="roster-virtual-inner" style={{ height: rowVirtualizer.getTotalSize() }}>
               {virtualRows.map((virtualRow) => {
                 const members = rowChunks[virtualRow.index] ?? [];
@@ -417,7 +413,7 @@ export function RosterPage() {
             </div>
           </div>
         ) : (
-          <div role="grid" aria-label="Roster member grid">
+          <div role="grid" aria-label={t("grid.aria")}>
             <StaggerList className="roster-card-grid" staggerMs={30} key={`${debouncedSearch}|${classFilter.join(",")}|${sortMode}`}>
               {renderedRows.map((entry) => (
                 <motion.div key={entry.user.id} role="gridcell" variants={rosterCardVariants} className="roster-card-cell">
@@ -438,7 +434,7 @@ export function RosterPage() {
 
       {!shouldVirtualize && sortedRows.length > renderedRows.length ? (
         <div className="roster-load-more">
-          <Button variant="default" onClick={() => setVisibleCount((count) => count + 20)}>Load more</Button>
+          <Button variant="default" onClick={() => setVisibleCount((count) => count + 20)}>{t("action.loadMore")}</Button>
         </div>
       ) : null}
 
@@ -453,7 +449,13 @@ export function RosterPage() {
           )}
           onEdit={() => {
             if (!selected || !sessionUser) return;
-            void copyText(selected.profile.title_html ?? "", { successText: "Title copied" });
+            const value = (selected.profile.title_html ?? "").trim();
+            if (value) {
+              clipboard.copy(value);
+              notifications.show({ color: "infini-success", message: t("message.titleCopied") });
+            } else {
+              notifications.show({ color: "infini-warning", message: t("message.nothingToCopy") });
+            }
             if (sessionUser.id === selected.user.id) {
               void navigate({ to: "/profile" });
               return;

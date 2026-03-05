@@ -4,7 +4,10 @@ import {
   auditLogQuerySchema,
   batchDeactivateSchema,
   batchRoleChangeSchema,
+  createAdminMemberSchema,
   createInviteLinkSchema,
+  createRoleSchema,
+  updateRoleSchema,
 } from "../schemas/admin";
 import {
   changePasswordSchema,
@@ -27,8 +30,6 @@ import { updateProfileSchema } from "../schemas/user";
 import {
   createWikiArticleSchema,
   createWikiCategorySchema,
-  wikiArticleVersionsQuerySchema,
-  wikiVersionCompareQuerySchema,
   updateWikiArticleSchema,
 } from "../schemas/wiki";
 
@@ -531,24 +532,6 @@ export const API_REGISTRY = {
     path: "/api/wiki/articles/:slug",
     auth: "optional",
   },
-  wikiArticleVersionsList: {
-    method: "GET",
-    path: "/api/wiki/articles/:id/versions",
-    auth: "optional",
-    request: wikiArticleVersionsQuerySchema,
-  },
-  wikiArticleVersionsCompare: {
-    method: "GET",
-    path: "/api/wiki/articles/:id/versions/compare",
-    auth: "optional",
-    request: wikiVersionCompareQuerySchema,
-  },
-  wikiArticleVersionRollback: {
-    method: "POST",
-    path: "/api/wiki/articles/:id/versions/:versionId/rollback",
-    auth: "session",
-    role: "moderator",
-  },
   wikiArticleCreate: {
     method: "POST",
     path: "/api/wiki/articles",
@@ -667,6 +650,13 @@ export const API_REGISTRY = {
     role: "admin",
     request: adminRoleUpdateSchema,
   },
+  adminUserCreate: {
+    method: "POST",
+    path: "/api/admin/users",
+    auth: "session",
+    role: "admin",
+    request: createAdminMemberSchema,
+  },
   adminUserDeactivate: {
     method: "PATCH",
     path: "/api/admin/users/:id/deactivate",
@@ -728,6 +718,32 @@ export const API_REGISTRY = {
     auth: "session",
     role: "admin",
     request: botSettingsSchema,
+  },
+  adminRolesList: {
+    method: "GET",
+    path: "/api/admin/roles",
+    auth: "session",
+    role: "admin",
+  },
+  adminRoleCreate: {
+    method: "POST",
+    path: "/api/admin/roles",
+    auth: "session",
+    role: "admin",
+    request: createRoleSchema,
+  },
+  adminRoleUpdate: {
+    method: "PATCH",
+    path: "/api/admin/roles/:id",
+    auth: "session",
+    role: "admin",
+    request: updateRoleSchema,
+  },
+  adminRoleDelete: {
+    method: "DELETE",
+    path: "/api/admin/roles/:id",
+    auth: "session",
+    role: "admin",
   },
   adminStatus: {
     method: "GET",

@@ -35,9 +35,7 @@ Drizzle schema has been split into modules under:
 
 ## Existing Files
 
-- `0000_core_schema.sql` = active v1 baseline schema.
-- `0000_init.sql`, `0001_events_attachments.sql`, `0002_war_templates.sql`, `0003_wiki_article_versions.sql`
-  are retained for compatibility with existing local states.
+- `0000_core_schema.sql` = active v1 baseline schema (all tables consolidated here).
 
 ## Snapshot + Between-Version Migration Rules
 

@@ -1,4 +1,4 @@
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+﻿import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import type { UploadStatus, UploadTask } from "./shared";
 
@@ -35,7 +35,7 @@ export function GalleryUploadQueueCard({
   }
 
   return (
-    <InfiniCard>
+    <InfiniCard interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={8}>
           <Text fw={600}>{uploadQueueTitle}</Text>
@@ -67,7 +67,7 @@ export function GalleryUploadQueueCard({
                 mt={6}
               />
               {task.error ? (
-                <Text c="red" size="sm" mt={4}>
+                <Text c="infini-danger" size="sm" mt={4}>
                   {task.error}
                 </Text>
               ) : null}
@@ -78,4 +78,5 @@ export function GalleryUploadQueueCard({
     </InfiniCard>
   );
 }
+
 

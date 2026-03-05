@@ -214,7 +214,7 @@ Drizzle schema is modular — each domain is a separate file in `apps/worker/db/
 | `events.ts` | `events`, `event_participants` | Events & Signups |
 | `announcements.ts` | `announcements` | Announcements |
 | `guild-war.ts` | `war_history`, `war_teams`, `war_team_members`, `war_pool_members`, `war_templates` | Guild War |
-| `wiki.ts` | `wiki_categories`, `wiki_articles`, `wiki_article_versions` | Wiki |
+| `wiki.ts` | `wiki_categories`, `wiki_articles` | Wiki |
 | `gallery.ts` | `gallery_items` | Gallery |
 | `audit.ts` | `audit_log` | Audit Log |
 | `bot.ts` | `bot_delivery_log`, `bot_discord_event_messages` | Bot Integration |

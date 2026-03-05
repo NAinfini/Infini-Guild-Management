@@ -1,6 +1,6 @@
 import { hasRoleAtLeast } from "@guild/shared";
 import { MotionButton } from "@infini-dev-kit/frontend/components";
-import { Button, Group, TextInput } from "@mantine/core";
+import { Button, Group, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -13,7 +13,6 @@ import {
 } from "../../api/mutations/gallery";
 import { queryKeys } from "../../api/query-keys";
 import { fetchGallery } from "../../api/queries/gallery";
-import { usePageHeaderActions } from "../../context/PageHeaderContext";
 import { useAppError } from "../../hooks/useAppError";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
@@ -58,6 +57,8 @@ export function GalleryPage() {
   const [videoCaption, setVideoCaption] = useState("");
   const [uploadQueue, setUploadQueue] = useState<UploadTask[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [addMediaModalOpen, setAddMediaModalOpen] = useState(false);
+  const [addMediaTab, setAddMediaTab] = useState<"image" | "video">("image");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [lightboxId, setLightboxId] = useState<string | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState(1);
@@ -105,9 +106,10 @@ export function GalleryPage() {
   const createVideoMutation = useMutation({
     mutationFn: createGalleryVideo,
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.videoCreated") });
+      notifications.show({ color: "infini-success", message: t("message.videoCreated") });
       setVideoUrl("");
       setVideoCaption("");
+      setAddMediaModalOpen(false);
       await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
     },
     onError: (error) => {
@@ -133,7 +135,7 @@ export function GalleryPage() {
       return ids.length;
     },
     onSuccess: async (count) => {
-      notifications.show({ color: "green", message: `Deleted ${count} item(s)` });
+      notifications.show({ color: "infini-success", message: t("message.bulkDeleted", { count }) });
       setSelectedIds([]);
       await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
     },
@@ -173,10 +175,30 @@ export function GalleryPage() {
         status: file.size > MAX_GALLERY_IMAGE_SIZE_BYTES ? ("error" as UploadStatus) : ("queued" as UploadStatus),
         error:
           file.size > MAX_GALLERY_IMAGE_SIZE_BYTES
-            ? `File too large (max 10 MB): ${file.name}`
+            ? t("message.fileTooLarge", { fileName: file.name })
             : undefined,
       }));
     setUploadQueue((current) => [...current, ...mapped]);
+  };
+
+  const openAddMediaModal = (tab: "image" | "video") => {
+    setAddMediaTab(tab);
+    setAddMediaModalOpen(true);
+  };
+
+  const handleDropzoneDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDropzoneDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDropzoneDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(false);
+    selectFiles(event.dataTransfer.files);
   };
 
   const runUploadQueue = useCallback(async () => {
@@ -219,7 +241,7 @@ export function GalleryPage() {
               ? {
                   ...item,
                   status: "error",
-                  error: `Upload failed: ${errorText || fallback}`,
+                  error: t("message.uploadTaskFailed", { error: errorText || fallback }),
                 }
               : item,
           ),
@@ -228,7 +250,7 @@ export function GalleryPage() {
     }
 
     await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
-    notifications.show({ color: "green", message: t("message.uploaded") });
+    notifications.show({ color: "infini-success", message: t("message.uploaded") });
   }, [queuedCount, queryClient, t, uploadQueue]);
 
   const clearFinishedUploads = useCallback(() => {
@@ -283,77 +305,100 @@ export function GalleryPage() {
     return () => window.removeEventListener("keydown", handler);
   }, [lightboxItem, lightboxIndex, rows.length]);
 
-  const uploadActions = useMemo(
-    () =>
-      canUpload ? (
-        <Group gap={8} wrap="wrap">
-          <MotionButton
-            type="primary"
-            onClick={() => {
-              void runUploadQueue();
-            }}
-            loading={uploadingCount > 0}
-            disabled={queuedCount === 0}
-          >
-            {uploadImagesLabel}
-          </MotionButton>
-          <Button onClick={clearFinishedUploads} disabled={uploadQueue.every((item) => item.status !== "done")}>
-            {clearDoneLabel}
-          </Button>
-          <TextInput
-            className="gallery-video-url-input"
-            placeholder={videoUrlPlaceholder}
-            value={videoUrl}
-            aria-label="Gallery video URL"
-            onChange={(event) => setVideoUrl(event.currentTarget.value)}
-          />
-          <TextInput
-            className="gallery-video-caption-input"
-            placeholder={captionPlaceholder}
-            value={videoCaption}
-            aria-label="Gallery video caption"
-            onChange={(event) => setVideoCaption(event.currentTarget.value)}
-          />
-          <MotionButton
-            onClick={() =>
-              createVideoMutation.mutate({
-                type: "video",
-                url: videoUrl,
-                caption: videoCaption || undefined,
-              })
-            }
-            loading={createVideoMutation.isPending}
-            disabled={!videoUrl.trim()}
-          >
-            {addVideoLabel}
-          </MotionButton>
-        </Group>
-      ) : null,
-    [
-      canUpload,
-      clearFinishedUploads,
-      clearDoneLabel,
-      createVideoMutation.isPending,
-      createVideoMutation.mutate,
-      addVideoLabel,
-      captionPlaceholder,
-      queuedCount,
-      runUploadQueue,
-      uploadQueue,
-      uploadImagesLabel,
-      uploadingCount,
-      videoUrlPlaceholder,
-      videoCaption,
-      videoUrl,
-    ],
-  );
-  usePageHeaderActions(uploadActions);
   useLoadWarningToast(galleryQuery.isError, t("common:loadErrorRetry"));
-  const emptyTitle = typeFilter || dateFrom || dateTo ? "No media match your filters" : "No media uploaded yet";
-  const emptyDescription = canUpload ? "Use the uploader above to add the first image." : undefined;
+  const emptyTitle = typeFilter || dateFrom || dateTo ? t("empty.filtered") : t("empty.default");
+  const emptyDescription = canUpload ? t("empty.hintUpload") : undefined;
 
   return (
-    <PageLayout title={t("title")} subtitle="Media Library" className="gallery-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} className="gallery-page">
+      <Modal
+        opened={addMediaModalOpen}
+        onClose={() => setAddMediaModalOpen(false)}
+        title={t("modal.addMedia.title")}
+        size="lg"
+      >
+        <Tabs value={addMediaTab} onChange={(value) => setAddMediaTab((value as "image" | "video") ?? "image")}>
+          <Tabs.List>
+            <Tabs.Tab value="image">{t("modal.addMedia.tabImage")}</Tabs.Tab>
+            <Tabs.Tab value="video">{t("modal.addMedia.tabVideo")}</Tabs.Tab>
+          </Tabs.List>
+
+          <Tabs.Panel value="image" pt="sm">
+            <Stack gap={10}>
+              <div
+                className={`gallery-dropzone gallery-dropzone--modal${isDragOver ? " gallery-dropzone--active" : ""}`}
+                onDragOver={handleDropzoneDragOver}
+                onDragLeave={handleDropzoneDragLeave}
+                onDrop={handleDropzoneDrop}
+              >
+                <Text>{t("dropzone")}</Text>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={(event) => selectFiles(event.target.files)}
+                  aria-label="Select gallery images"
+                />
+              </div>
+              <Group gap={8} wrap="wrap" justify="space-between">
+                <Group gap={8} wrap="wrap">
+                  <MotionButton
+                    type="primary"
+                    onClick={() => {
+                      void runUploadQueue();
+                    }}
+                    loading={uploadingCount > 0}
+                    disabled={queuedCount === 0}
+                  >
+                    {uploadImagesLabel}
+                  </MotionButton>
+                  <Button onClick={clearFinishedUploads} disabled={uploadQueue.every((item) => item.status !== "done")}>
+                    {clearDoneLabel}
+                  </Button>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  {t("upload.summary", { queued: queuedCount, uploading: uploadingCount, total: uploadQueue.length })}
+                </Text>
+              </Group>
+            </Stack>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="video" pt="sm">
+            <Stack gap={10}>
+              <TextInput
+                className="gallery-video-url-input"
+                placeholder={videoUrlPlaceholder}
+                value={videoUrl}
+                aria-label={t("field.videoUrlAria")}
+                onChange={(event) => setVideoUrl(event.currentTarget.value)}
+              />
+              <TextInput
+                className="gallery-video-caption-input"
+                placeholder={captionPlaceholder}
+                value={videoCaption}
+                aria-label={t("field.captionAria")}
+                onChange={(event) => setVideoCaption(event.currentTarget.value)}
+              />
+              <Group justify="flex-end">
+                <MotionButton
+                  onClick={() =>
+                    createVideoMutation.mutate({
+                      type: "video",
+                      url: videoUrl,
+                      caption: videoCaption || undefined,
+                    })
+                  }
+                  loading={createVideoMutation.isPending}
+                  disabled={!videoUrl.trim()}
+                >
+                  {addVideoLabel}
+                </MotionButton>
+              </Group>
+            </Stack>
+          </Tabs.Panel>
+        </Tabs>
+      </Modal>
+
       <GalleryFiltersCard
         typeFilter={typeFilter}
         onTypeFilterChange={setTypeFilter}
@@ -369,26 +414,15 @@ export function GalleryPage() {
           setDateFrom("");
           setDateTo("");
         }}
-        canUpload={canUpload}
-        isDragOver={isDragOver}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setIsDragOver(true);
-        }}
-        onDragLeave={() => setIsDragOver(false)}
-        onDrop={(event) => {
-          event.preventDefault();
-          setIsDragOver(false);
-          selectFiles(event.dataTransfer.files);
-        }}
-        onSelectFiles={selectFiles}
         canModerate={canModerate}
+        canUpload={canUpload}
         selectedCount={selectedIds.length}
         onBulkDelete={() => bulkDeleteMutation.mutate(selectedIds)}
         bulkDeletePending={bulkDeleteMutation.isPending}
+        onAddMedia={() => openAddMediaModal("image")}
         filterTypeLabel={t("filter.type")}
-        dropzoneLabel={t("dropzone")}
         bulkDeleteLabel={t("action.bulkDelete")}
+        addMediaLabel={t("action.addMedia")}
       />
 
       <GalleryUploadQueueCard
@@ -418,7 +452,7 @@ export function GalleryPage() {
         emptyTitle={emptyTitle}
         emptyDescription={emptyDescription}
         disableResetFilters={!typeFilter && !dateFrom && !dateTo}
-        resetFiltersLabel="Reset filters"
+        resetFiltersLabel={t("action.resetFilters")}
         onResetFilters={() => {
           setTypeFilter(undefined);
           setDateFrom("");
@@ -464,3 +498,4 @@ export function GalleryPage() {
     </PageLayout>
   );
 }
+

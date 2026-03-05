@@ -6,6 +6,8 @@ export const wikiCategorySchema = z.object({
   slug: z.string(),
   sort_order: z.number().int(),
   parent_id: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
 });
 
 export const createWikiCategorySchema = z.object({
@@ -24,6 +26,7 @@ export const wikiArticleSchema = z.object({
   sort_order: z.number().int(),
   archived_at: z.string().nullable(),
   created_by: z.string(),
+  updated_by: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -38,29 +41,4 @@ export const createWikiArticleSchema = z.object({
 
 export const updateWikiArticleSchema = createWikiArticleSchema.partial().extend({
   archived_at: z.string().datetime().nullable().optional(),
-});
-
-export const wikiArticleVersionSchema = z.object({
-  id: z.string(),
-  article_id: z.string(),
-  version_no: z.number().int(),
-  title: z.string(),
-  slug: z.string(),
-  category_id: z.string(),
-  body_json: z.string(),
-  sort_order: z.number().int(),
-  archived_at: z.string().nullable(),
-  source_action: z.string(),
-  created_by: z.string(),
-  created_at: z.string(),
-});
-
-export const wikiArticleVersionsQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
-});
-
-export const wikiVersionCompareQuerySchema = z.object({
-  from_version_id: z.string(),
-  to_version_id: z.string(),
 });

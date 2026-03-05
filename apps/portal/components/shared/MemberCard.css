@@ -1,4 +1,4 @@
-.member-card {
+﻿.member-card {
   width: 100%;
   border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
   border-radius: 16px;
@@ -34,7 +34,7 @@
   --member-glow-info: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 40%, transparent);
   --member-glow-success: color-mix(in srgb, var(--infini-color-success, #10b981) 38%, transparent);
   --member-glow-warning: color-mix(in srgb, var(--infini-color-warning, #f59e0b) 42%, transparent);
-  --member-glow-error: color-mix(in srgb, var(--infini-color-error, #ef4444) 35%, transparent);
+  --member-glow-error: color-mix(in srgb, var(--infini-color-danger, #ef4444) 35%, transparent);
 }
 
 .member-card--animated {
@@ -84,7 +84,7 @@
 }
 
 .member-card__status-dot--vacation {
-  background: var(--infini-color-error, #ef4444);
+  background: var(--infini-color-danger, #ef4444);
 }
 
 .member-card__meta-row { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
@@ -144,8 +144,8 @@
 }
 
 .member-card--dark-red {
-  background: color-mix(in srgb, var(--infini-color-error, #ef4444) 8%, var(--infini-color-surface, #ffffff));
-  border-color: color-mix(in srgb, var(--infini-color-error, #ef4444) 24%, transparent);
+  background: color-mix(in srgb, var(--infini-color-danger, #ef4444) 8%, var(--infini-color-surface, #ffffff));
+  border-color: color-mix(in srgb, var(--infini-color-danger, #ef4444) 24%, transparent);
 }
 
 @keyframes memberCardTilt3D {
@@ -176,4 +176,5 @@
 @media (prefers-reduced-motion: reduce) {
   .member-card, .member-card--animated, .member-card__frame:hover .member-card--animated { transition: none; animation: none; }
 }
+
 

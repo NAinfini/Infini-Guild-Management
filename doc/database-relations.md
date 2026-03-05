@@ -137,7 +137,9 @@ erDiagram
         text id PK
         text event_id FK "nullable"
         text war_name
+        text enemy_name "nullable"
         text result "win | loss | draw, nullable"
+        real duration_minutes "nullable, > 0"
         int own_kills "nullable"
         int own_towers "nullable"
         int own_base_hp "nullable"
@@ -222,21 +224,6 @@ erDiagram
         text created_by FK
         text created_at
         text updated_at
-    }
-
-    wiki_article_versions {
-        text id PK
-        text article_id FK
-        int version_no "unique with article_id"
-        text title
-        text slug
-        text category_id FK
-        text body_json "TipTap JSON"
-        int sort_order
-        text archived_at "nullable"
-        text source_action "default update"
-        text created_by FK
-        text created_at
     }
 
     %% ═══════════════════════════════════════
@@ -356,10 +343,6 @@ erDiagram
     wiki_categories ||--o{ wiki_categories : "parent (self-ref)"
     wiki_categories ||--o{ wiki_articles : "categorized"
     users ||--o{ wiki_articles : "created by"
-    wiki_articles ||--o{ wiki_article_versions : "version history"
-    wiki_categories ||--o{ wiki_article_versions : "category snapshot"
-    users ||--o{ wiki_article_versions : "versioned by"
-
     %% Gallery domain
     users ||--o{ gallery_items : "uploaded by"
     gallery_items ||--o{ gallery_likes : "likes (CASCADE)"
@@ -406,7 +389,7 @@ gallery_items
 | Events & Signups | events, event_participants | users |
 | Announcements | announcements | users |
 | Guild War | war_history, war_teams, war_team_members, war_pool_members, war_templates | users, events |
-| Wiki | wiki_categories, wiki_articles, wiki_article_versions | users |
+| Wiki | wiki_categories, wiki_articles | users |
 | Gallery | gallery_items, gallery_likes, gallery_comments | users |
 | Audit Log | audit_log | users |
 | Bot Delivery | bot_delivery_log, bot_discord_event_messages, bot_wechat_event_messages | events |

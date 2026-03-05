@@ -1,6 +1,7 @@
-import type { MemberProfile, User } from "@guild/shared";
+﻿import type { MemberProfile, User } from "@guild/shared";
 import { loginSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Alert,
@@ -8,6 +9,7 @@ import {
   Checkbox,
   Stack,
   Text,
+  TextInput,
 } from "@mantine/core";
 import {
   BubbleBackground,
@@ -17,7 +19,6 @@ import {
   LampHeading,
   MagneticElement,
 } from "@infini-dev-kit/frontend/components";
-import { InfiniFloatingLabelInput } from "@infini-dev-kit/frontend/components/infini";
 import { IconArrowLeft, IconEye, IconEyeOff, IconKeyboard } from "@tabler/icons-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -90,7 +91,7 @@ export function LoginPage() {
     handleSubmit,
     watch,
     setValue,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(LOGIN_FORM_SCHEMA),
     defaultValues: {
@@ -108,20 +109,19 @@ export function LoginPage() {
   const usernameValue = watch("username");
   const passwordValue = watch("password");
 
-  const onSubmit = async (values: LoginFormValues) => {
-    setSubmitError(null);
-    setApiFieldErrors({});
-    try {
-      const response = await apiRequest<AuthSessionResponse>("/api/auth/login", {
+  const loginMutation = useMutation({
+    mutationFn: (values: LoginFormValues) =>
+      apiRequest<AuthSessionResponse>("/api/auth/login", {
         method: "POST",
         bodyJson: values,
-      });
+      }),
+    onSuccess: (response) => {
       setSession(response.user, response.profile);
-
       const fallback = "/";
       const target = isSafeReturnTo(search.returnTo) ? search.returnTo : fallback;
       void navigate({ to: target });
-    } catch (error) {
+    },
+    onError: (error) => {
       if (isApiRequestError(error) && error.status === 400) {
         const mapped = parseValidationFieldErrors(error.details);
         setApiFieldErrors({
@@ -135,7 +135,13 @@ export function LoginPage() {
       }
       const messageText = error instanceof Error ? error.message : t("invalidCredentials");
       setSubmitError(messageText);
-    }
+    },
+  });
+
+  const onSubmit = (values: LoginFormValues) => {
+    setSubmitError(null);
+    setApiFieldErrors({});
+    loginMutation.mutate(values);
   };
 
   const usernameError = errors.username?.message ?? apiFieldErrors.username;
@@ -160,45 +166,47 @@ export function LoginPage() {
                 <FireOutlined />
               </span>
               <GradientText animated duration={4} className="login-page__brand-text">
-                Infini Guild
+                {t("brand.name")}
               </GradientText>
             </div>
           </LampHeading>
           <Text c="dimmed" size="sm" ta="center" className="login-page__subtitle">
-            Portal Access
+            {t("login.subtitle")}
           </Text>
         </div>
 
         <GlassEffect className="login-page__card" blur={16} opacity={0.1} borderOpacity={0.15}>
-          {search.reason === "expired" ? <Alert color="yellow" title={t("sessionExpired")} /> : null}
-          {search.reason === "required" ? <Alert color="blue" title={t("loginRequired")} /> : null}
-          {submitError ? <Alert color="red" title={submitError} /> : null}
+          {search.reason === "expired" ? <Alert color="infini-warning" title={t("sessionExpired")} /> : null}
+          {search.reason === "required" ? <Alert color="infini-primary" title={t("loginRequired")} /> : null}
+          {submitError ? <Alert color="infini-danger" title={submitError} /> : null}
 
           <form onSubmit={handleSubmit(onSubmit)}>
-            <Stack gap={16}>
-              <InfiniFloatingLabelInput
-                label={t("field.username")}
-                value={usernameValue}
-                onChange={(val) => setValue("username", val)}
-                error={usernameError}
-                focusGlow
-              />
+            <Stack gap={20}>
+              <div className={`login-floating-field${usernameValue.length > 0 ? " login-floating-field--filled" : ""}`}>
+                <TextInput
+                  value={usernameValue}
+                  onChange={(event) => setValue("username", event.currentTarget.value)}
+                  error={usernameError}
+                  classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
+                  label={t("field.username")}
+                />
+              </div>
 
               <div
-                style={{ position: "relative" }}
+                className={`login-floating-field${passwordValue.length > 0 ? " login-floating-field--filled" : ""}`}
                 onClickCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
                 onKeyUpCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
                 onKeyDownCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
               >
-                <InfiniFloatingLabelInput
+                <TextInput
                   label={t("field.password")}
                   type={showPassword ? "text" : "password"}
                   value={passwordValue}
-                  onChange={(val) => {
-                    setValue("password", val);
+                  onChange={(event) => {
+                    setValue("password", event.currentTarget.value);
                   }}
                   error={passwordError}
-                  focusGlow
+                  classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
                 />
                 <div className="login-page__password-actions">
                   {isCapsLockOn ? (
@@ -217,7 +225,7 @@ export function LoginPage() {
 
               <Checkbox {...register("stay_logged_in")} label={t("field.stayLoggedIn")} />
 
-              <InfiniButton htmlType="submit" loading={isSubmitting}>
+              <InfiniButton htmlType="submit" loading={loginMutation.isPending}>
                 {t("button.login")}
               </InfiniButton>
 

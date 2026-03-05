@@ -1,16 +1,18 @@
 import type { Announcement } from "@guild/shared";
-import { MotionButton } from "@infini-dev-kit/frontend/components";
+import { DepthToggle } from "@infini-dev-kit/frontend/components";
 import {
   Button,
   Divider,
+  Group,
   Modal,
   Stack,
-  Switch,
   Text,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { IconPin, IconCalendarTime, IconBrandDiscord, IconBrandWechat } from "@tabler/icons-react";
 import { TipTapEditor, TIPTAP_DEFAULT_JSON } from "../../shared/TipTapEditor";
 
 function toDateTimeLocalValue(value: string): string {
@@ -47,19 +49,23 @@ export function CreateAnnouncementModal({
   const [title, setTitle] = useState("");
   const [bodyJson, setBodyJson] = useState(TIPTAP_DEFAULT_JSON);
   const [pinned, setPinned] = useState(false);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [publishAt, setPublishAt] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [notifyDiscord, setNotifyDiscord] = useState(true);
   const [notifyWechat, setNotifyWechat] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<"publish" | "publishNow" | null>(null);
 
   const reset = () => {
     setTitle("");
     setBodyJson(TIPTAP_DEFAULT_JSON);
     setPinned(false);
+    setScheduleEnabled(false);
     setPublishAt("");
     setExpiresAt("");
     setNotifyDiscord(true);
     setNotifyWechat(false);
+    setConfirmAction(null);
   };
 
   const handleClose = () => {
@@ -85,11 +91,33 @@ export function CreateAnnouncementModal({
     notify_wechat: notifyWechat,
   });
 
+  const handlePublishClick = () => {
+    const hasTime = publishAt.trim().length > 0;
+    if (scheduleEnabled && hasTime) {
+      setConfirmAction("publish");
+    } else if (scheduleEnabled && !hasTime) {
+      setConfirmAction("publishNow");
+    } else if (!scheduleEnabled && hasTime) {
+      setConfirmAction("publishNow");
+    } else {
+      setConfirmAction("publish");
+    }
+  };
+
+  const handlePublishConfirm = (asScheduled: boolean) => {
+    if (asScheduled) {
+      onCreateByStatus(buildPayload("scheduled"));
+    } else {
+      onCreateByStatus(buildPayload("published"));
+    }
+    setConfirmAction(null);
+  };
+
   return (
     <Modal
       opened={opened}
       onClose={handleClose}
-      title="New Announcement"
+      title={t("modal.newAnnouncement")}
       centered
       size="xl"
       closeOnClickOutside={false}
@@ -110,7 +138,7 @@ export function CreateAnnouncementModal({
               placeholder={t("field.body")}
               editable={true}
               onImageUpload={async () => {
-                throw new Error("Save as draft first before uploading images");
+                throw new Error(t("error.uploadImageDraft"));
               }}
             />
           </Stack>
@@ -119,44 +147,59 @@ export function CreateAnnouncementModal({
         {/* Right: Settings */}
         <div className="create-announcement-sidebar">
           <Stack gap={16}>
-            {/* Publishing */}
-            <Stack gap={8}>
-              <Text fw={600} size="sm" c="dimmed" tt="uppercase" style={{ letterSpacing: "0.05em" }}>
-                Publishing
-              </Text>
-              <label className="announcement-switch-label">
-                <Switch
-                  checked={pinned}
-                  onChange={(event) => setPinned(event.currentTarget.checked)}
+            {/* Top row: Pin, Publish On Time — icon-only DepthToggles */}
+            <Group gap={8} wrap="nowrap">
+              <Tooltip label={pinned ? t("action.unpin") : t("action.pin")} withArrow>
+                <DepthToggle
+                  pressed={pinned}
+                  onToggle={setPinned}
+                  type="secondary"
+                  iconOnly
                   size="sm"
+                  before={<IconPin size={16} />}
+                  aria-label={pinned ? t("action.unpin") : t("action.pin")}
                 />
-                <span>{t("field.pinned")}</span>
-              </label>
-            </Stack>
+              </Tooltip>
+              <Tooltip label={t("action.publishOnTime")} withArrow>
+                <DepthToggle
+                  pressed={scheduleEnabled}
+                  onToggle={setScheduleEnabled}
+                  type="secondary"
+                  iconOnly
+                  size="sm"
+                  before={<IconCalendarTime size={16} />}
+                  aria-label={t("action.publishOnTime")}
+                />
+              </Tooltip>
+            </Group>
 
             <Divider />
 
-            {/* Notifications */}
+            {/* Notifications — DepthToggles */}
             <Stack gap={8}>
               <Text fw={600} size="sm" c="dimmed" tt="uppercase" style={{ letterSpacing: "0.05em" }}>
-                Notifications
+                {t("section.notifications")}
               </Text>
-              <label className="announcement-switch-label">
-                <Switch
-                  checked={notifyDiscord}
-                  onChange={(event) => setNotifyDiscord(event.currentTarget.checked)}
+              <Group gap={8} wrap="wrap">
+                <DepthToggle
+                  pressed={notifyDiscord}
+                  onToggle={setNotifyDiscord}
+                  type="secondary"
                   size="sm"
-                />
-                <span>Discord</span>
-              </label>
-              <label className="announcement-switch-label">
-                <Switch
-                  checked={notifyWechat}
-                  onChange={(event) => setNotifyWechat(event.currentTarget.checked)}
+                  before={<IconBrandDiscord size={16} />}
+                >
+                  {t("notify.discord")}
+                </DepthToggle>
+                <DepthToggle
+                  pressed={notifyWechat}
+                  onToggle={setNotifyWechat}
+                  type="secondary"
                   size="sm"
-                />
-                <span>WeChat</span>
-              </label>
+                  before={<IconBrandWechat size={16} />}
+                >
+                  {t("notify.wechat")}
+                </DepthToggle>
+              </Group>
             </Stack>
 
             <Divider />
@@ -164,7 +207,7 @@ export function CreateAnnouncementModal({
             {/* Schedule */}
             <Stack gap={8}>
               <Text fw={600} size="sm" c="dimmed" tt="uppercase" style={{ letterSpacing: "0.05em" }}>
-                Schedule
+                {t("section.schedule")}
               </Text>
               <div>
                 <Text size="xs" c="dimmed">{t("field.publishAt")}</Text>
@@ -198,29 +241,71 @@ export function CreateAnnouncementModal({
                 onClick={() => onCreateByStatus(buildPayload("draft"))}
                 loading={creating}
               >
-                Save as Draft
+                {t("action.saveAsDraft")}
               </Button>
-              <MotionButton
-                type="primary"
-                fullWidth
-                onClick={() => onCreateByStatus(buildPayload("published"))}
-                loading={creating}
-              >
-                Publish Now
-              </MotionButton>
               <Button
                 fullWidth
-                variant="default"
-                onClick={() => onCreateByStatus(buildPayload("scheduled"))}
+                color="infini-primary"
+                onClick={handlePublishClick}
                 loading={creating}
-                disabled={!publishAt.trim()}
               >
-                Schedule
+                {t("action.publish")}
               </Button>
             </Stack>
           </Stack>
         </div>
       </div>
+
+      {/* Publish decision modal */}
+      <Modal
+        opened={confirmAction !== null}
+        onClose={() => setConfirmAction(null)}
+        title={t("modal.publishAnnouncement")}
+        centered
+        size="sm"
+      >
+        <Stack gap={16}>
+          <Text>
+            {confirmAction === "publishNow"
+              ? t("confirm.publishDecision")
+              : scheduleEnabled && publishAt.trim()
+                ? t("confirm.schedule")
+                : t("confirm.publish")}
+          </Text>
+          <Group justify="flex-end" gap={8}>
+            <Button variant="default" onClick={() => setConfirmAction(null)}>
+              {t("action.cancel")}
+            </Button>
+            {confirmAction === "publishNow" ? (
+              <>
+                <Button
+                  variant="light"
+                  onClick={() => {
+                    setScheduleEnabled(true);
+                    setConfirmAction(null);
+                  }}
+                  disabled={!publishAt.trim()}
+                >
+                  {t("action.scheduleLater")}
+                </Button>
+                <Button
+                  onClick={() => handlePublishConfirm(false)}
+                  loading={creating}
+                >
+                  {t("action.publishImmediately")}
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={() => handlePublishConfirm(scheduleEnabled && !!publishAt.trim())}
+                loading={creating}
+              >
+                {scheduleEnabled && publishAt.trim() ? t("action.schedule") : t("action.publish")}
+              </Button>
+            )}
+          </Group>
+        </Stack>
+      </Modal>
     </Modal>
   );
 }

@@ -1,19 +1,16 @@
 import type { Event } from "@guild/shared";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { addDays, differenceInHours } from "date-fns";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { joinEvent, leaveEvent } from "../../api/mutations/events";
 import { queryKeys } from "../../api/query-keys";
 import { fetchEventDetail, fetchEventsList } from "../../api/queries/events";
 import { fetchGuildWarHistory, fetchGuildWarHistoryDetail } from "../../api/queries/guild-war";
 import { fetchUsersList } from "../../api/queries/users";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
-import { portalToast } from "../../overlays";
 import { useAuthStore } from "../../stores/auth";
-import { buildMentionList, copyPlainText } from "../../utils/copy";
 import { PageLayout } from "../layout/PageLayout";
 import {
   type DashboardLastWarMvp,
@@ -85,7 +82,6 @@ function buildUpcomingEventRow(
 export function DashboardPage() {
   const { t } = useTranslation("dashboard");
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
   const now = useMemo(() => getDashboardNow(), []);
@@ -173,19 +169,6 @@ export function DashboardPage() {
     },
   });
 
-  const toggleSignupMutation = useMutation({
-    mutationFn: async ({ eventId, joined }: { eventId: string; joined: boolean }) =>
-      (joined ? leaveEvent(eventId) : joinEvent(eventId)),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.upcomingEventDetailsAll() });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.mySignupsAll() });
-    },
-    onError: (error) => {
-      const messageText = error instanceof Error ? error.message : "Failed to update signup";
-      portalToast({ title: messageText, status: "error" });
-    },
-  });
-
   const upcomingEvents = upcomingEventsQuery.data?.data ?? [];
   const users = usersQuery.data?.data ?? [];
   const activeMemberCount = users.filter((entry) => entry.user.is_active && entry.user.deleted_at === null).length;
@@ -241,19 +224,19 @@ export function DashboardPage() {
       const topBuilding = [...stats].sort((l, r) => (r.building_damage ?? 0) - (l.building_damage ?? 0))[0];
       return {
         damage: {
-          label: "Damage",
+          label: t("card.lastWar.mvp.damage"),
           name: topDamage ? resolveName(topDamage.user_id) : "-",
           initials: topDamage ? initials(topDamage.user_id) : "?",
           value: topDamage?.damage ?? 0,
         },
         healing: {
-          label: "Healing",
+          label: t("card.lastWar.mvp.healing"),
           name: topHealing ? resolveName(topHealing.user_id) : "-",
           initials: topHealing ? initials(topHealing.user_id) : "?",
           value: topHealing?.healing ?? 0,
         },
         building: {
-          label: "Building",
+          label: t("card.lastWar.mvp.building"),
           name: topBuilding ? resolveName(topBuilding.user_id) : "-",
           initials: topBuilding ? initials(topBuilding.user_id) : "?",
           value: topBuilding?.building_damage ?? 0,
@@ -310,26 +293,6 @@ export function DashboardPage() {
     void navigate({ to: "/events" });
   };
 
-  const handleCopySignup = async (eventId: string, title: string) => {
-    const members = participantsByEventId.get(eventId) ?? [];
-    const output = buildMentionList(
-      members.map((entry) => ({
-        username: entry.user.username,
-        wechatName: entry.profile.wechat_name,
-      })),
-      title,
-    );
-    await copyPlainText(output);
-    portalToast({ title: "Signup mentions copied", status: "success" });
-  };
-
-  const handleToggleSignup = (eventId: string, joined: boolean) => {
-    if (!user || isExternalView) {
-      return;
-    }
-    toggleSignupMutation.mutate({ eventId, joined });
-  };
-
   const hasError =
     upcomingEventsQuery.isError ||
     warQuery.isError ||
@@ -343,7 +306,7 @@ export function DashboardPage() {
   return (
     <PageLayout
       title={t("title")}
-      subtitle={t("welcome", { name: user?.username ?? "Guild member" })}
+      subtitle={t("welcome", { name: user?.username ?? t("welcomeFallback") })}
       className="dashboard-page"
     >
       <div className={dashboardGridClassName}>
@@ -363,15 +326,6 @@ export function DashboardPage() {
               upcomingEventsCount={upcomingEvents.length}
               featuredRows={featuredEventRows}
               rows={upcomingEventRows}
-              isExternalView={isExternalView}
-              hasUser={Boolean(user)}
-              isSignupPending={(eventId) =>
-                toggleSignupMutation.isPending && toggleSignupMutation.variables?.eventId === eventId
-              }
-              onToggleSignup={handleToggleSignup}
-              onCopySignup={(eventId, title) => {
-                void handleCopySignup(eventId, title);
-              }}
               onOpenEvent={openEventDetail}
             />
           </div>

@@ -1,8 +1,8 @@
 import { EVENT_TYPES, type Event } from "@guild/shared";
+import { modals } from "@mantine/modals";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useBeforeUnloadPrompt } from "../../../hooks/useBeforeUnloadPrompt";
-import { portalConfirm } from "../../../overlays";
 
 type EditorSnapshot = {
   mode: "create" | "edit";
@@ -216,10 +216,17 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
 
   const closeEditor = useCallback(async () => {
     if (isEditorDirty) {
-      const confirmed = await portalConfirm({
-        title: t("confirm.discardUnsaved.title"),
-        description: t("confirm.discardUnsaved.description"),
-        intent: "warning",
+      const confirmed = await new Promise<boolean>((resolve) => {
+        modals.openConfirmModal({
+          title: t("confirm.discardUnsaved.title"),
+          children: t("confirm.discardUnsaved.description"),
+          confirmProps: { color: "infini-warning" },
+          onConfirm: () => resolve(true),
+          onCancel: () => resolve(false),
+          closeOnConfirm: true,
+          closeOnCancel: true,
+          centered: true,
+        });
       });
       if (!confirmed) {
         return false;
@@ -229,7 +236,6 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
     setEditorBaseline(null);
     return true;
   }, [isEditorDirty, t]);
-
   const closeEditorAfterSave = useCallback(() => {
     setEditorOpen(false);
     setEditorBaseline(null);

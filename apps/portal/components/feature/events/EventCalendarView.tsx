@@ -2,7 +2,6 @@ import type { Event } from "@guild/shared";
 import { EventMonthView } from "./EventMonthView";
 
 type EventCalendarViewProps = {
-  showAvailabilityOverlay: boolean;
   canManage: boolean;
   eventsByDay: Map<string, Event[]>;
   availabilityDayPeakByDay: Map<number, number>;
@@ -13,7 +12,6 @@ type EventCalendarViewProps = {
 };
 
 export function EventCalendarView({
-  showAvailabilityOverlay,
   canManage,
   eventsByDay,
   availabilityDayPeakByDay,
@@ -24,7 +22,6 @@ export function EventCalendarView({
 }: EventCalendarViewProps) {
   return (
     <EventMonthView
-      showAvailabilityOverlay={showAvailabilityOverlay}
       onSelectDate={onSelectDate}
       canManage={canManage}
       eventsByDay={eventsByDay}

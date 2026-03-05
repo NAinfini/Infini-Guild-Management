@@ -44,9 +44,11 @@ export function handleAppError(error: unknown, c: Context): Response {
   }
 
   if (error instanceof Error) {
+    console.error(`[handleAppError] ${c.req.method} ${c.req.path}:`, error.message, error.stack);
     return c.json(buildErrorBody(c, 500, error.message || "Internal server error"), 500);
   }
 
+  console.error(`[handleAppError] ${c.req.method} ${c.req.path}: non-Error thrown:`, error);
   return c.json(buildErrorBody(c, 500, "Internal server error"), 500);
 }
 

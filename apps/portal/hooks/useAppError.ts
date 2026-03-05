@@ -1,4 +1,4 @@
-import { notifications } from "@mantine/notifications";
+﻿import { notifications } from "@mantine/notifications";
 import i18n from "i18next";
 import { useCallback } from "react";
 import { isApiRequestError } from "../api/client";
@@ -8,7 +8,7 @@ function showErrorToast(text: string) {
   const delivered = portalToast({ title: text, status: "error" });
   if (!delivered) {
     notifications.show({
-      color: "red",
+      color: "infini-danger",
       message: text,
       autoClose: 6000,
       withCloseButton: true,
@@ -58,3 +58,4 @@ export function useAppError() {
 
   return { showError };
 }
+

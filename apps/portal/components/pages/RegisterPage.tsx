@@ -1,7 +1,7 @@
-import type { MemberProfile, User } from "@guild/shared";
+﻿import type { MemberProfile, User } from "@guild/shared";
 import { registerSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
   Alert,
@@ -75,7 +75,7 @@ export function RegisterPage() {
     register,
     handleSubmit,
     watch,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
@@ -106,27 +106,19 @@ export function RegisterPage() {
       ),
   });
 
-  const onSubmit = async (values: RegisterFormValues) => {
-    setSubmitError(null);
-    setApiFieldErrors({});
-    if (
-      usernameAvailabilityQuery.data &&
-      !usernameAvailabilityQuery.data.available &&
-      values.username.trim() === debouncedUsername
-    ) {
-      setSubmitError(t("usernameUnavailable"));
-      return;
-    }
-    try {
+  const registerMutation = useMutation({
+    mutationFn: async (values: RegisterFormValues) => {
       await apiRequest<{ user: User }>(`/api/auth/register/${inviteCode}`, {
         method: "POST",
         bodyJson: values,
       });
-
-      const session = await apiRequest<AuthSessionResponse>("/api/auth/me");
+      return apiRequest<AuthSessionResponse>("/api/auth/me");
+    },
+    onSuccess: (session) => {
       setSession(session.user, session.profile);
       void navigate({ to: "/" });
-    } catch (error) {
+    },
+    onError: (error) => {
       if (isApiRequestError(error) && error.status === 400) {
         const mapped = parseValidationFieldErrors(error.details);
         setApiFieldErrors({
@@ -140,7 +132,21 @@ export function RegisterPage() {
         return;
       }
       setSubmitError(error instanceof Error ? error.message : t("inviteInvalid"));
+    },
+  });
+
+  const onSubmit = (values: RegisterFormValues) => {
+    setSubmitError(null);
+    setApiFieldErrors({});
+    if (
+      usernameAvailabilityQuery.data &&
+      !usernameAvailabilityQuery.data.available &&
+      values.username.trim() === debouncedUsername
+    ) {
+      setSubmitError(t("usernameUnavailable"));
+      return;
     }
+    registerMutation.mutate(values);
   };
 
   const usernameError = errors.username?.message ?? apiFieldErrors.username;
@@ -150,9 +156,9 @@ export function RegisterPage() {
   return (
     <div className="auth-page-shell">
       <AuthHero
-        eyebrow="Invite Access"
-        title="Join The Guild Workspace"
-        subtitle="Complete your invitation onboarding and unlock your member dashboard."
+        eyebrow={t("register.hero.eyebrow")}
+        title={t("register.hero.title")}
+        subtitle={t("register.hero.subtitle")}
       />
       <div className="auth-form-column">
         <GlassEffect className="auth-card" blur={14} opacity={0.12}>
@@ -161,9 +167,9 @@ export function RegisterPage() {
               <FireOutlined />
             </span>
             <div className="auth-brand-copy">
-              <Text fw={700}>Infini Guild</Text>
+              <Text fw={700}>{t("brand.name")}</Text>
               <Text c="dimmed" size="sm">
-                Invitation Registration
+                {t("register.brand.subtitle")}
               </Text>
             </div>
           </div>
@@ -171,8 +177,8 @@ export function RegisterPage() {
             {t("title.register")}
           </Title>
 
-          {submitError ? <Alert color="red" title={submitError} /> : null}
-          {isCapsLockOn ? <Alert color="yellow" title={t("capsLockWarning")} /> : null}
+          {submitError ? <Alert color="infini-danger" title={submitError} /> : null}
+          {isCapsLockOn ? <Alert color="infini-warning" title={t("capsLockWarning")} /> : null}
 
           <form onSubmit={handleSubmit(onSubmit)}>
             <Stack gap={12}>
@@ -213,20 +219,20 @@ export function RegisterPage() {
                 onBlur={() => setIsCapsLockOn(false)}
               />
 
-              <InfiniButton htmlType="submit" loading={isSubmitting}>
+              <InfiniButton htmlType="submit" loading={registerMutation.isPending}>
                 {t("button.register")}
               </InfiniButton>
 
               <div className="auth-social">
                 <Text c="dimmed" className="auth-social-label">
-                  Social sign-in
+                  {t("register.social.title")}
                 </Text>
                 <Group grow gap={0}>
                   <InfiniButton className="auth-social-btn auth-social-btn--discord" disabled>
-                    Discord
+                    {t("register.social.discord")}
                   </InfiniButton>
                   <InfiniButton className="auth-social-btn auth-social-btn--wechat" disabled>
-                    WeChat
+                    {t("register.social.wechat")}
                   </InfiniButton>
                 </Group>
               </div>
@@ -237,3 +243,4 @@ export function RegisterPage() {
     </div>
   );
 }
+

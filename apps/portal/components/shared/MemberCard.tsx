@@ -1,4 +1,4 @@
-import type { ClassName, MemberProfile, User } from "@guild/shared";
+﻿import type { ClassName, MemberProfile, User } from "@guild/shared";
 import { CLASS_COLOR_GROUP, CLASS_NAMES } from "@guild/shared";
 import DOMPurify from "dompurify";
 import { memo, useMemo } from "react";
@@ -132,3 +132,4 @@ export const MemberCard = memo(function MemberCard({
     </div>
   );
 });
+

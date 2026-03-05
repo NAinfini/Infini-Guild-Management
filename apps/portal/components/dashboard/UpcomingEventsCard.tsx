@@ -1,4 +1,4 @@
-import { InfiniCard, InfiniNumberTicker, StaggerList } from "@infini-dev-kit/frontend/components";
+import { InfiniCard, NumberTicker } from "@infini-dev-kit/frontend/components";
 import { Avatar, Badge, Button, Group, RingProgress, Stack, Text, Tooltip } from "@mantine/core";
 import {
   IconArrowRight,
@@ -8,16 +8,12 @@ import {
   IconSwords,
   IconTargetArrow,
 } from "@tabler/icons-react";
-import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
-import { CalendarEventOutlined, CopyOutlined, LockOutlined, UnlockOutlined } from "../../utils/icons";
-import { MemberGrid2x5 } from "../shared/MemberGrid2x5";
+import { CalendarEventOutlined } from "../../utils/icons";
 import { EmptyState } from "../shared/EmptyState";
 import {
   cardHeading,
-  dashboardEventVariants,
   eventTypeTagColor,
-  formatDateTime,
   type DashboardUpcomingEventRow,
 } from "./shared";
 
@@ -36,11 +32,6 @@ type UpcomingEventsCardProps = {
   upcomingEventsCount: number;
   featuredRows: DashboardUpcomingEventRow[];
   rows: DashboardUpcomingEventRow[];
-  isExternalView: boolean;
-  hasUser: boolean;
-  isSignupPending: (eventId: string) => boolean;
-  onToggleSignup: (eventId: string, joined: boolean) => void;
-  onCopySignup: (eventId: string, title: string) => void;
   onOpenEvent: (eventId: string) => void;
 };
 
@@ -48,23 +39,18 @@ export function UpcomingEventsCard({
   upcomingEventsCount,
   featuredRows,
   rows,
-  isExternalView,
-  hasUser,
-  isSignupPending,
-  onToggleSignup,
-  onCopySignup,
   onOpenEvent,
 }: UpcomingEventsCardProps) {
-  const { t } = useTranslation("dashboard");
+  const { t, i18n } = useTranslation("dashboard");
   const safeUpcomingCount = Math.max(0, upcomingEventsCount);
   const hasAnyRows = featuredRows.length > 0 || rows.length > 0;
 
   return (
-    <InfiniCard className="dashboard-card" overrides={{ glow: { variant: "spotlight", glowIntensity: 0.2 } }}>
+    <InfiniCard className="dashboard-card" interactive={false} overrides={{ glow: { variant: "spotlight", glowIntensity: 0.2 } }}>
       {cardHeading(t("card.upcomingEvents.title"), <CalendarEventOutlined size={18} />)}
         {safeUpcomingCount > 0 ? (
           <Text size="xl" fw={700} mt={8}>
-            <InfiniNumberTicker value={safeUpcomingCount} /> {t("card.upcomingEvents.unit")}
+            <NumberTicker value={safeUpcomingCount} /> {t("card.upcomingEvents.unit")}
           </Text>
         ) : null}
         {!hasAnyRows ? (
@@ -76,7 +62,7 @@ export function UpcomingEventsCard({
               const capacity = item.item.capacity ?? 0;
               const percentage = capacity > 0 ? Math.round((signedUpCount / capacity) * 100) : 100;
               const startDate = new Date(item.item.start_at);
-              const month = startDate.toLocaleString("en-US", { month: "short" }).toUpperCase();
+              const month = startDate.toLocaleString(i18n.language, { month: "short" }).toUpperCase();
               const day = startDate.getDate();
 
               return (
@@ -102,24 +88,24 @@ export function UpcomingEventsCard({
                       ) : null}
                       <Group gap={6}>
                         <Badge size="xs" color={eventTypeTagColor(item.item.type)} variant="light" leftSection={eventTypeIcon(item.item.type)}>
-                          {item.item.type}
+                          {t(`common:eventType.${item.item.type}`)}
                         </Badge>
                         <Group gap={4}>
                           <IconClock size={12} style={{ opacity: 0.6 }} />
                           <Text size="xs" c="dimmed">
-                            {startDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}
+                            {startDate.toLocaleTimeString(i18n.language, { hour: "2-digit", minute: "2-digit", hour12: false })}
                           </Text>
                         </Group>
                       </Group>
                     </Stack>
-                    <Group gap={4}>
-                      {item.members.slice(0, 5).map((member) => (
-                        <Tooltip key={member.user.id} label={member.user.username} withArrow>
-                          <Avatar size={40} radius="xl" src={member.user.avatar_url}>
-                            {member.user.username.slice(0, 2).toUpperCase()}
-                          </Avatar>
-                        </Tooltip>
-                      ))}
+                      <Group gap={4}>
+                        {item.members.slice(0, 5).map((member) => (
+                          <Tooltip key={member.user.id} label={member.user.username} withArrow>
+                            <Avatar size={40} radius="xl">
+                              {member.user.username.slice(0, 2).toUpperCase()}
+                            </Avatar>
+                          </Tooltip>
+                        ))}
                       {item.members.length > 5 ? (
                         <Text size="xs" c="dimmed" fw={600}>
                           +{item.members.length - 5}

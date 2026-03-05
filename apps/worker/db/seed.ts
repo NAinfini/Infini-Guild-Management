@@ -14,6 +14,8 @@ import {
   galleryLikes,
   inviteLinks,
   memberProfiles,
+  rolePermissions,
+  roles,
   userAuthPassword,
   users,
   warHistory,
@@ -22,7 +24,6 @@ import {
   warTeams,
   warTemplates,
   wikiArticles,
-  wikiArticleVersions,
   wikiCategories,
 } from "./schema";
 import type { Bindings } from "../index";
@@ -36,7 +37,6 @@ const ALL_TABLES = [
   "gallery_comments",
   "gallery_likes",
   "gallery_items",
-  "wiki_article_versions",
   "wiki_articles",
   "wiki_categories",
   "war_pool_members",
@@ -51,6 +51,8 @@ const ALL_TABLES = [
   "member_profiles",
   "sessions",
   "discord_link_codes",
+  "role_permissions",
+  "roles",
   "user_auth_password",
   "users",
 ] as const;
@@ -73,6 +75,46 @@ const CLASSES = [
   "裂石威",
   "裂石钧",
 ] as const;
+
+const ROLE_PERMISSION_KEYS = [
+  "admin.users.view",
+  "admin.users.edit",
+  "admin.users.role",
+  "admin.users.activate",
+  "admin.users.delete",
+  "admin.users.password",
+  "admin.invite.view",
+  "admin.invite.manage",
+  "admin.audit.view",
+  "admin.audit.export",
+  "admin.bot.view",
+  "admin.bot.manage",
+  "admin.status.view",
+  "admin.roles.manage",
+  "guildwar.manage",
+  "guildwar.history.edit",
+  "events.manage",
+  "announcements.manage",
+  "gallery.upload",
+  "wiki.edit",
+] as const;
+
+const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
+  "admin.users.view",
+  "admin.users.edit",
+  "admin.invite.view",
+  "admin.audit.view",
+  "admin.bot.view",
+  "admin.status.view",
+  "guildwar.manage",
+  "guildwar.history.edit",
+  "events.manage",
+  "announcements.manage",
+  "gallery.upload",
+  "wiki.edit",
+]);
+
+const MEMBER_GRANTED_PERMISSIONS = new Set<string>(["gallery.upload"]);
 
 function toDate(base: Date | string): Date {
   return base instanceof Date ? new Date(base) : new Date(base);
@@ -143,6 +185,21 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   }
 
   const now = new Date();
+
+  const roleRows: Array<typeof roles.$inferInsert> = [
+    { id: "admin", name: "Admin", level: 3, color: "red", isBuiltin: true },
+    { id: "moderator", name: "Moderator", level: 2, color: "blue", isBuiltin: true },
+    { id: "member", name: "Member", level: 1, color: "gray", isBuiltin: true },
+  ];
+  await batchInsert(db, roles, roleRows, 3);
+
+  const rolePermissionRows: Array<typeof rolePermissions.$inferInsert> = [];
+  for (const permission of ROLE_PERMISSION_KEYS) {
+    rolePermissionRows.push({ roleId: "admin", permission, granted: true });
+    rolePermissionRows.push({ roleId: "moderator", permission, granted: MODERATOR_GRANTED_PERMISSIONS.has(permission) });
+    rolePermissionRows.push({ roleId: "member", permission, granted: MEMBER_GRANTED_PERMISSIONS.has(permission) });
+  }
+  await batchInsert(db, rolePermissions, rolePermissionRows, 15);
 
   const adminId = nanoid();
   const moderatorIds = Array.from({ length: 3 }, () => nanoid());
@@ -772,42 +829,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     },
   ]);
 
-  // ── Wiki article versions (history snapshots) ──
-  const articleVersionRows: Array<typeof wikiArticleVersions.$inferInsert> = [];
-  for (const [index, article] of articleRows.entries()) {
-    // Version 1 = initial creation
-    articleVersionRows.push({
-      id: nanoid(),
-      articleId: article.id!,
-      versionNo: 1,
-      title: article.title,
-      slug: article.slug!,
-      categoryId: article.categoryId!,
-      bodyJson: article.bodyJson!,
-      sortOrder: article.sortOrder ?? 0,
-      archivedAt: null,
-      sourceAction: "create",
-      createdBy: article.createdBy!,
-    });
-    // Add a second version for some articles
-    if (index < 3) {
-      articleVersionRows.push({
-        id: nanoid(),
-        articleId: article.id!,
-        versionNo: 2,
-        title: `${article.title} (Updated)`,
-        slug: article.slug!,
-        categoryId: article.categoryId!,
-        bodyJson: JSON.stringify({ content: `Updated content for ${article.title}` }),
-        sortOrder: article.sortOrder ?? 0,
-        archivedAt: null,
-        sourceAction: "update",
-        createdBy: adminId,
-      });
-    }
-  }
-  await batchInsert(db, wikiArticleVersions, articleVersionRows, 5);
-
   // ── Gallery likes ──
   const galleryLikeRows: Array<typeof galleryLikes.$inferInsert> = [];
   for (let itemIdx = 0; itemIdx < galleryItemRows.length; itemIdx++) {
@@ -891,10 +912,33 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       description: "Default 4-player split formation with core/flex roles",
       sourceEventId: eventRows[2].id,
       payloadJson: JSON.stringify({
-        teamCount: 2,
-        playersPerTeam: 4,
-        roles: ["core", "flex"],
-        formation: "split",
+        teams: [
+          {
+            team_name: "Vanguard",
+            sort_order: 0,
+            notes: "Frontline pressure",
+            is_locked: false,
+            members: [
+              { user_id: moderatorIds[0], role_tag: "core", sort_order: 0 },
+              { user_id: memberIds[0], role_tag: "core", sort_order: 1 },
+              { user_id: memberIds[1], role_tag: "flex", sort_order: 2 },
+              { user_id: memberIds[2], role_tag: "flex", sort_order: 3 },
+            ],
+          },
+          {
+            team_name: "Sentinel",
+            sort_order: 1,
+            notes: "Tower control",
+            is_locked: false,
+            members: [
+              { user_id: moderatorIds[1], role_tag: "core", sort_order: 0 },
+              { user_id: memberIds[3], role_tag: "core", sort_order: 1 },
+              { user_id: memberIds[4], role_tag: "flex", sort_order: 2 },
+              { user_id: memberIds[5], role_tag: "flex", sort_order: 3 },
+            ],
+          },
+        ],
+        pool_members: [{ user_id: memberIds[6] }, { user_id: memberIds[7] }],
       }),
       createdBy: adminId,
     },
@@ -904,10 +948,34 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       description: "Aggressive 5-player rush setup",
       sourceEventId: null,
       payloadJson: JSON.stringify({
-        teamCount: 2,
-        playersPerTeam: 5,
-        roles: ["core", "flex", "support"],
-        formation: "rush",
+        teams: [
+          {
+            team_name: "Blitz",
+            sort_order: 0,
+            notes: "Fast engage",
+            is_locked: true,
+            members: [
+              { user_id: moderatorIds[2], role_tag: "core", sort_order: 0 },
+              { user_id: memberIds[8], role_tag: "core", sort_order: 1 },
+              { user_id: memberIds[9], role_tag: "flex", sort_order: 2 },
+              { user_id: memberIds[10], role_tag: "support", sort_order: 3 },
+              { user_id: memberIds[11], role_tag: "support", sort_order: 4 },
+            ],
+          },
+          {
+            team_name: "Lancer",
+            sort_order: 1,
+            notes: "Follow-up burst",
+            is_locked: false,
+            members: [
+              { user_id: moderatorIds[0], role_tag: "core", sort_order: 0 },
+              { user_id: memberIds[12], role_tag: "core", sort_order: 1 },
+              { user_id: memberIds[13], role_tag: "flex", sort_order: 2 },
+              { user_id: memberIds[14], role_tag: "support", sort_order: 3 },
+            ],
+          },
+        ],
+        pool_members: [{ user_id: memberIds[5] }],
       }),
       createdBy: moderatorIds[0],
     },
@@ -917,11 +985,33 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       description: "Defensive formation prioritizing tower control",
       sourceEventId: eventRows[3].id,
       payloadJson: JSON.stringify({
-        teamCount: 2,
-        playersPerTeam: 4,
-        roles: ["core", "support"],
-        formation: "hold",
-        priority: "towers",
+        teams: [
+          {
+            team_name: "Aegis",
+            sort_order: 0,
+            notes: "North lane hold",
+            is_locked: false,
+            members: [
+              { user_id: moderatorIds[1], role_tag: "core", sort_order: 0 },
+              { user_id: memberIds[2], role_tag: "support", sort_order: 1 },
+              { user_id: memberIds[4], role_tag: "support", sort_order: 2 },
+              { user_id: memberIds[6], role_tag: "core", sort_order: 3 },
+            ],
+          },
+          {
+            team_name: "Bulwark",
+            sort_order: 1,
+            notes: "South lane hold",
+            is_locked: false,
+            members: [
+              { user_id: moderatorIds[2], role_tag: "core", sort_order: 0 },
+              { user_id: memberIds[7], role_tag: "support", sort_order: 1 },
+              { user_id: memberIds[8], role_tag: "support", sort_order: 2 },
+              { user_id: memberIds[9], role_tag: "core", sort_order: 3 },
+            ],
+          },
+        ],
+        pool_members: [{ user_id: memberIds[10] }, { user_id: memberIds[11] }],
       }),
       createdBy: adminId,
     },
@@ -1036,7 +1126,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
           announcements: 3,
           wikiCategories: categoryRows.length,
           wikiArticles: articleRows.length,
-          wikiVersions: articleVersionRows.length,
           galleryItems: galleryItemRows.length,
           galleryLikes: galleryLikeRows.length,
           galleryComments: galleryCommentRows.length,

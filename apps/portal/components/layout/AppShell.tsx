@@ -19,7 +19,7 @@ import {
 } from "../../utils/icons";
 import { listThemeIds } from "@infini-dev-kit/frontend/theme/theme-specs";
 import type { ThemeId } from "@infini-dev-kit/frontend/theme/theme-types";
-import { ScrollProgress, InfiniButton, SidebarLabel, SidebarExpandOverlay } from "@infini-dev-kit/frontend/components";
+import { ScrollProgress, InfiniButton } from "@infini-dev-kit/frontend/components";
 import { useBridge, useThemeSnapshot, loadLocaleFonts } from "@infini-dev-kit/frontend/provider";
 import type { IconProps } from "@tabler/icons-react";
 import {
@@ -38,10 +38,10 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import i18n from "i18next";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from "react";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { apiRequest } from "../../api/client";
@@ -74,6 +74,68 @@ type NavItem = {
 const SIDEBAR_WIDTH = 236;
 const SIDEBAR_COLLAPSED_WIDTH = 56;
 
+type SidebarLabelProps = {
+  children: ReactNode;
+  collapsed: boolean;
+  className?: string;
+  style?: CSSProperties;
+};
+
+type SidebarExpandOverlayProps = {
+  children: ReactNode;
+  collapsed: boolean;
+  onExpand: () => void;
+  className?: string;
+};
+
+function SidebarLabel({ children, collapsed, className, style }: SidebarLabelProps) {
+  return (
+    <span
+      className={className}
+      style={{
+        ...style,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        display: "inline-block",
+        opacity: collapsed ? 0 : 1,
+        maxWidth: collapsed ? 0 : 160,
+        transition: "opacity 160ms ease, max-width 160ms ease",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SidebarExpandOverlay({ children, collapsed, onExpand, className }: SidebarExpandOverlayProps) {
+  if (!collapsed) {
+    return null;
+  }
+
+  return (
+    <span
+      className={className}
+      onClick={onExpand}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          onExpand();
+        }
+      }}
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "grid",
+        placeItems: "center",
+        cursor: "pointer",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
 const NAV_ITEMS: NavItem[] = [
   { to: "/", labelKey: "nav.dashboard", icon: DashboardOutlined },
   { to: "/announcements", labelKey: "nav.announcements", icon: NotificationOutlined, feature: "announcements" },
@@ -82,6 +144,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/guild-war", labelKey: "nav.guild-war", icon: ThunderboltOutlined },
   { to: "/gallery", labelKey: "nav.gallery", icon: PictureOutlined },
   { to: "/wiki", labelKey: "nav.wiki", icon: BookOutlined },
+  { to: "/tools", labelKey: "nav.tools", icon: ToolOutlined },
+  { to: "/profile", labelKey: "nav.profile", icon: UserOutlined, requiresSession: true },
   {
     to: "/admin",
     labelKey: "nav.admin",
@@ -89,8 +153,6 @@ const NAV_ITEMS: NavItem[] = [
     requiresSession: true,
     requiresModerator: true,
   },
-  { to: "/tools", labelKey: "nav.tools", icon: ToolOutlined },
-  { to: "/profile", labelKey: "nav.profile", icon: UserOutlined, requiresSession: true },
   { to: "/settings", labelKey: "nav.settings", icon: ControlOutlined },
 ];
 
@@ -100,6 +162,10 @@ function isPathActive(pathname: string, target: string): boolean {
   }
 
   return pathname === target || pathname.startsWith(`${target}/`);
+}
+
+function isWikiPath(pathname: string): boolean {
+  return pathname === "/wiki" || pathname.startsWith("/wiki/");
 }
 
 /**
@@ -172,7 +238,6 @@ export function AppShell() {
   const isSidebarCollapsed = !isSidebarExpanded;
   const sidebarWidth = isSidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH;
   const hideNavigation = pathname === "/login" || pathname.startsWith("/register/");
-  const shouldAnimateRoute = !hideNavigation && motionSnapshot.effectiveMode !== "off";
   const queryClient = useQueryClient();
 
   const { user, clearSession } = useAuthStore();
@@ -189,6 +254,8 @@ export function AppShell() {
     normalizeViewingAs(user?.role ?? null, isExternalView),
   );
   const previousPathnameRef = useRef(pathname);
+  const isWikiInternalNavigation = isWikiPath(previousPathnameRef.current) && isWikiPath(pathname);
+  const shouldAnimateRoute = !hideNavigation && motionSnapshot.effectiveMode !== "off" && !isWikiInternalNavigation;
   const pageHeaderContextValue = useMemo(() => ({ setActions: setHeaderActions }), []);
 
   useEffect(() => {
@@ -292,15 +359,16 @@ export function AppShell() {
     playSound: pushNotificationSound,
   });
 
-  const logout = async () => {
-    try {
-      await apiRequest<{ ok: true }>("/api/auth/logout", { method: "POST" });
-    } catch {
-      // Keep client state deterministic even if server-side session already expired.
-    } finally {
+  const logoutMutation = useMutation({
+    mutationFn: () => apiRequest<{ ok: true }>("/api/auth/logout", { method: "POST" }),
+    onSettled: () => {
       clearSession();
       void navigate({ to: "/login" });
-    }
+    },
+  });
+
+  const logout = () => {
+    logoutMutation.mutate();
   };
 
   const visibleNavItems = useMemo(
@@ -473,17 +541,6 @@ export function AppShell() {
               ) : null}
             </div>
 
-            {canSwitchView ? (
-              <ViewingAsSelector
-                value={viewingAs}
-                compact={isSidebarCollapsed}
-                onChange={(nextRole) => {
-                  setViewingAs(nextRole);
-                  syncViewSearch(nextRole);
-                }}
-              />
-            ) : null}
-
             <ScrollArea className="app-sider-menu" type="scroll" scrollbarSize={6}>
               <Stack gap={8} p={8}>
                 {visibleNavItems.map((item) => {
@@ -512,6 +569,17 @@ export function AppShell() {
                 })}
               </Stack>
             </ScrollArea>
+
+            {canSwitchView ? (
+              <ViewingAsSelector
+                value={viewingAs}
+                compact={isSidebarCollapsed}
+                onChange={(nextRole) => {
+                  setViewingAs(nextRole);
+                  syncViewSearch(nextRole);
+                }}
+              />
+            ) : null}
           </MantineAppShell.Navbar>
         ) : null}
 
@@ -570,12 +638,12 @@ export function AppShell() {
                                 <Group gap={8} wrap="nowrap">
                                   <Text fw={600}>{item.title}</Text>
                                   {item.type === "announcement_published" ? (
-                                    <Badge variant="light" color="blue">
+                                    <Badge variant="light" color="infini-primary">
                                       {t("notification.type.announcement")}
                                     </Badge>
                                   ) : null}
                                   {item.type === "event_reminder" ? (
-                                    <Badge variant="light" color="yellow">
+                                    <Badge variant="light" color="infini-warning">
                                       {t("notification.type.eventReminder")}
                                     </Badge>
                                   ) : null}
@@ -655,18 +723,18 @@ export function AppShell() {
         <MantineAppShell.Main className={`app-content ${isMobile ? "app-content-mobile" : ""}`}>
           <main className="app-main">
             {isExternalView ? (
-              <Alert color="blue" variant="light" className="app-banner">
+              <Alert color="infini-primary" variant="light" className="app-banner">
                 External view is enabled. Editing and private fields are hidden.
               </Alert>
             ) : null}
             {!isOnline ? (
-              <Alert color="yellow" variant="light" className="app-banner" role="status" aria-live="polite">
+              <Alert color="infini-warning" variant="light" className="app-banner" role="status" aria-live="polite">
                 You are offline. Some actions may fail until connection is restored.
               </Alert>
             ) : null}
             {permissionBanner ? (
               <Alert
-                color="red"
+                color="infini-danger"
                 variant="light"
                 className="app-banner"
                 role="status"
@@ -705,3 +773,4 @@ export function AppShell() {
     </PageHeaderContext.Provider>
   );
 }
+

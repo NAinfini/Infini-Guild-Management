@@ -1,8 +1,9 @@
-import type { WikiArticle } from "@guild/shared";
+﻿import type { WikiArticle } from "@guild/shared";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { Alert, Button, Group, Skeleton, Stack, Text } from "@mantine/core";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
 
 function formatDateTime(iso: string): string {
@@ -38,8 +39,10 @@ export function WikiArticleListCard({
   emptyTitle,
   onSelectArticle,
 }: WikiArticleListCardProps) {
+  const { t } = useTranslation("wiki");
+
   return (
-    <InfiniCard className="wiki-article-list-card">
+    <InfiniCard className="wiki-article-list-card" interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={10}>
           <Group justify="space-between">
@@ -53,7 +56,7 @@ export function WikiArticleListCard({
               ))}
             </Stack>
           ) : null}
-          {isError ? <Alert color="yellow" title={warningMessage} /> : null}
+          {isError ? <Alert color="infini-warning" title={warningMessage} /> : null}
           {!isLoading && !isError ? (
             <Stack gap={6}>
               {articles.length === 0 ? <EmptyState title={emptyTitle} /> : null}
@@ -71,7 +74,7 @@ export function WikiArticleListCard({
                       <Text fw={600}>{item.title}</Text>
                       {item.archived_at ? (
                         <Text c="dimmed" size="sm">
-                          ARCHIVED
+                          {t("articleEditor.archived")}
                         </Text>
                       ) : null}
                     </Group>
@@ -88,4 +91,5 @@ export function WikiArticleListCard({
     </InfiniCard>
   );
 }
+
 

@@ -1,4 +1,4 @@
-import type { Announcement } from "@guild/shared";
+﻿import type { Announcement } from "@guild/shared";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { Badge, Button, Group, Stack, Text } from "@mantine/core";
 import { formatDistanceToNow } from "date-fns";
@@ -23,7 +23,7 @@ export function NotificationsCard({
   const { t } = useTranslation("dashboard");
 
   return (
-    <InfiniCard className="dashboard-card" overrides={{ glow: { variant: "spotlight", glowIntensity: 0.2 } }}>
+    <InfiniCard className="dashboard-card" interactive={false} overrides={{ glow: { variant: "spotlight", glowIntensity: 0.2 } }}>
         <Group justify="space-between" align="center">
           {cardHeading(t("card.notifications.title"), <NotificationOutlined size={18} />)}
           <Button
@@ -54,7 +54,7 @@ export function NotificationsCard({
                     <Text fw={700}>{item.title}</Text>
                     <Group gap={8}>
                       <Badge variant="light">{item.status}</Badge>
-                      {item.pinned ? <Badge color="yellow">PINNED</Badge> : null}
+                      {item.pinned ? <Badge color="infini-warning">PINNED</Badge> : null}
                     </Group>
                   </Stack>
                   <Text c="dimmed" className="dashboard-notification-time">
@@ -68,3 +68,4 @@ export function NotificationsCard({
     </InfiniCard>
   );
 }
+

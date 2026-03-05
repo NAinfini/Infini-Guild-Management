@@ -1,6 +1,7 @@
 {
   "title": "Dashboard",
   "welcome": "Welcome back, {{name}}",
+  "welcomeFallback": "Guild member",
   "error": "Failed to load dashboard data",
   "empty": "No data",
   "card.upcomingEvents.title": "Upcoming Events",
@@ -17,5 +18,22 @@
   "card.notifications.title": "Notifications",
   "card.lastWar.title": "Last Guild War",
   "card.lastWar.result": "Result",
-  "card.lastWar.kills": "Kills"
+  "card.lastWar.kills": "Kills",
+  "card.lastWar.credits": "Credits",
+  "card.lastWar.towers": "Towers",
+  "card.lastWar.baseHp": "Base HP",
+  "card.lastWar.mvps": "MVPs",
+  "card.lastWar.mvp.damage": "Damage",
+  "card.lastWar.mvp.healing": "Healing",
+  "card.lastWar.mvp.building": "Building",
+  "card.lastWar.us": "US",
+  "card.lastWar.enemy": "ENEMY",
+  "card.lastWar.result.victory": "VICTORY",
+  "card.lastWar.result.defeat": "DEFEAT",
+  "card.lastWar.result.draw": "DRAW",
+  "card.lastWar.result.pending": "PENDING",
+  "eventType.weekly_mission": "Weekly Mission",
+  "eventType.guild_war": "Guild War",
+  "eventType.social": "Social",
+  "eventType.other": "Other"
 }

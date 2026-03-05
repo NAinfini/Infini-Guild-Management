@@ -1,5 +1,6 @@
 import { Badge, Button, Card, Group, Stack, Text, TextInput } from "@mantine/core";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 type DayKey =
   | "monday"
@@ -31,119 +32,123 @@ type AvailabilityGridEditorProps = {
   }) => void;
 };
 
-const DAYS: Array<{ key: DayKey; label: string }> = [
-  { key: "monday", label: "Monday" },
-  { key: "tuesday", label: "Tuesday" },
-  { key: "wednesday", label: "Wednesday" },
-  { key: "thursday", label: "Thursday" },
-  { key: "friday", label: "Friday" },
-  { key: "saturday", label: "Saturday" },
-  { key: "sunday", label: "Sunday" },
+const DAYS: Array<{ key: DayKey; shortLabel: string }> = [
+  { key: "monday", shortLabel: "Mon" },
+  { key: "tuesday", shortLabel: "Tue" },
+  { key: "wednesday", shortLabel: "Wed" },
+  { key: "thursday", shortLabel: "Thu" },
+  { key: "friday", shortLabel: "Fri" },
+  { key: "saturday", shortLabel: "Sat" },
+  { key: "sunday", shortLabel: "Sun" },
 ];
+
+/** 48 half-hour slots: 0 = 00:00, 1 = 00:30, ... 47 = 23:30 */
+const SLOTS = 48;
+const SLOT_MINUTES = 30;
 
 function pad2(value: number): string {
   return String(value).padStart(2, "0");
 }
 
+function slotToTime(slot: number): string {
+  const hour = Math.floor((slot * SLOT_MINUTES) / 60);
+  const minute = (slot * SLOT_MINUTES) % 60;
+  return `${pad2(hour)}:${pad2(minute)}`;
+}
+
+function timeToSlot(time: string): number {
+  const [h, m] = time.split(":").map((v) => Number.parseInt(v, 10));
+  return Math.floor(((h || 0) * 60 + (m || 0)) / SLOT_MINUTES);
+}
+
 function localTimeToUtc(localTime: string): string {
-  const [hours, minutes] = localTime.split(":").map((value) => Number.parseInt(value, 10));
+  const [hours, minutes] = localTime.split(":").map((v) => Number.parseInt(v, 10));
   const date = new Date();
   date.setHours(hours || 0, minutes || 0, 0, 0);
   return `${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}`;
 }
 
 function utcTimeToLocal(utcTime: string): string {
-  const [hours, minutes] = utcTime.split(":").map((value) => Number.parseInt(value, 10));
+  const [hours, minutes] = utcTime.split(":").map((v) => Number.parseInt(v, 10));
   const date = new Date();
   date.setUTCHours(hours || 0, minutes || 0, 0, 0);
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
-function parseValue(value: Record<string, unknown> | null): Record<DayKey, TimeBlock[]> {
-  const fallback: Record<DayKey, TimeBlock[]> = {
-    monday: [],
-    tuesday: [],
-    wednesday: [],
-    thursday: [],
-    friday: [],
-    saturday: [],
-    sunday: [],
-  };
-  if (!value || typeof value !== "object") {
-    return fallback;
+/** Grid state: 7 arrays of 48 booleans */
+type GridState = Record<DayKey, boolean[]>;
+
+function emptyGrid(): GridState {
+  const grid = {} as GridState;
+  for (const day of DAYS) {
+    grid[day.key] = Array.from({ length: SLOTS }, () => false);
   }
+  return grid;
+}
+
+function parseValue(value: Record<string, unknown> | null): GridState {
+  const grid = emptyGrid();
+  if (!value || typeof value !== "object") return grid;
   const days = value.days;
-  if (!days || typeof days !== "object") {
-    return fallback;
-  }
+  if (!days || typeof days !== "object") return grid;
 
   for (const day of DAYS) {
     const list = (days as Record<string, unknown>)[day.key];
-    if (!Array.isArray(list)) {
-      continue;
-    }
-    fallback[day.key] = list.flatMap((item) => {
-      if (typeof item !== "object" || item === null) {
-        return [];
-      }
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (typeof item !== "object" || item === null) continue;
       const row = item as Record<string, unknown>;
       const startUtc = typeof row.start_utc === "string" ? row.start_utc : null;
       const endUtc = typeof row.end_utc === "string" ? row.end_utc : null;
-      if (!startUtc || !endUtc) {
-        return [];
+      if (!startUtc || !endUtc) continue;
+      const localStart = utcTimeToLocal(startUtc);
+      const localEnd = utcTimeToLocal(endUtc);
+      const startSlot = timeToSlot(localStart);
+      const endSlot = timeToSlot(localEnd);
+      for (let s = startSlot; s < endSlot && s < SLOTS; s++) {
+        grid[day.key][s] = true;
       }
-      return [
-        {
-          start: utcTimeToLocal(startUtc),
-          end: utcTimeToLocal(endUtc),
-        },
-      ];
-    });
-  }
-
-  return fallback;
-}
-
-function mergeOverlapping(blocks: TimeBlock[]): TimeBlock[] {
-  const normalized = blocks
-    .filter((block) => block.start < block.end)
-    .map((block) => ({
-      ...block,
-      startMinutes:
-        Number.parseInt(block.start.slice(0, 2), 10) * 60 +
-        Number.parseInt(block.start.slice(3, 5), 10),
-      endMinutes:
-        Number.parseInt(block.end.slice(0, 2), 10) * 60 + Number.parseInt(block.end.slice(3, 5), 10),
-    }))
-    .sort((a, b) => a.startMinutes - b.startMinutes);
-
-  const merged: Array<{ startMinutes: number; endMinutes: number }> = [];
-  for (const block of normalized) {
-    const last = merged[merged.length - 1];
-    if (!last || block.startMinutes > last.endMinutes) {
-      merged.push({ startMinutes: block.startMinutes, endMinutes: block.endMinutes });
-      continue;
     }
-    last.endMinutes = Math.max(last.endMinutes, block.endMinutes);
   }
-
-  return merged.map((block) => ({
-    start: `${pad2(Math.floor(block.startMinutes / 60))}:${pad2(block.startMinutes % 60)}`,
-    end: `${pad2(Math.floor(block.endMinutes / 60))}:${pad2(block.endMinutes % 60)}`,
-  }));
+  return grid;
 }
 
-function toAvailabilityPayload(blocksByDay: Record<DayKey, TimeBlock[]>): AvailabilityPayload {
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const days = DAYS.reduce((accumulator, day) => {
-    accumulator[day.key] = mergeOverlapping(blocksByDay[day.key]).map((block) => ({
-      start_utc: localTimeToUtc(block.start),
-      end_utc: localTimeToUtc(block.end),
-    }));
-    return accumulator;
-  }, {} as Record<DayKey, Array<{ start_utc: string; end_utc: string }>>);
+function gridToBlocks(grid: GridState): Record<DayKey, TimeBlock[]> {
+  const result = {} as Record<DayKey, TimeBlock[]>;
+  for (const day of DAYS) {
+    const blocks: TimeBlock[] = [];
+    let blockStart: number | null = null;
+    for (let s = 0; s <= SLOTS; s++) {
+      const active = s < SLOTS && grid[day.key][s];
+      if (active && blockStart === null) {
+        blockStart = s;
+      } else if (!active && blockStart !== null) {
+        blocks.push({ start: slotToTime(blockStart), end: slotToTime(s) });
+        blockStart = null;
+      }
+    }
+    result[day.key] = blocks;
+  }
+  return result;
+}
 
+function toPayload(grid: GridState): AvailabilityPayload {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const blocks = gridToBlocks(grid);
+  const days = {} as Record<DayKey, Array<{ start_utc: string; end_utc: string }>>;
+  for (const day of DAYS) {
+    days[day.key] = blocks[day.key].map((b) => ({
+      start_utc: localTimeToUtc(b.start),
+      end_utc: localTimeToUtc(b.end),
+    }));
+  }
   return { timezone, days };
+}
+
+/** Time labels for each hour (every 2 slots). Only show even hours for compactness. */
+const HOUR_LABELS: Array<{ slot: number; label: string }> = [];
+for (let h = 0; h < 24; h++) {
+  HOUR_LABELS.push({ slot: h * 2, label: `${pad2(h)}:00` });
 }
 
 export function AvailabilityGridEditor({
@@ -152,13 +157,24 @@ export function AvailabilityGridEditor({
   vacationEnd,
   onChange,
 }: AvailabilityGridEditorProps) {
-  const [blocksByDay, setBlocksByDay] = useState<Record<DayKey, TimeBlock[]>>(() => parseValue(value));
+  const { t } = useTranslation("common");
+  const [grid, setGrid] = useState<GridState>(() => parseValue(value));
+  const gridRef = useRef<GridState>(grid);
   const [vacationStartValue, setVacationStartValue] = useState(vacationStart);
   const [vacationEndValue, setVacationEndValue] = useState(vacationEnd);
+  const [isDragging, setIsDragging] = useState(false);
+  const paintModeRef = useRef<boolean>(true);
+  const lastCellRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setBlocksByDay(parseValue(value));
+    const parsed = parseValue(value);
+    gridRef.current = parsed;
+    setGrid(parsed);
   }, [value]);
+
+  useEffect(() => {
+    gridRef.current = grid;
+  }, [grid]);
 
   useEffect(() => {
     setVacationStartValue(vacationStart);
@@ -168,151 +184,246 @@ export function AvailabilityGridEditor({
     setVacationEndValue(vacationEnd);
   }, [vacationEnd]);
 
-  const emit = (
-    nextBlocks: Record<DayKey, TimeBlock[]>,
-    nextVacationStart = vacationStartValue,
-    nextVacationEnd = vacationEndValue,
-  ) => {
-    onChange({
-      availability: toAvailabilityPayload(nextBlocks),
-      vacationStart: nextVacationStart,
-      vacationEnd: nextVacationEnd,
-    });
-  };
+  const emit = useCallback(
+    (
+      nextGrid: GridState,
+      nextVacationStart = vacationStartValue,
+      nextVacationEnd = vacationEndValue,
+    ) => {
+      onChange({
+        availability: toPayload(nextGrid),
+        vacationStart: nextVacationStart,
+        vacationEnd: nextVacationEnd,
+      });
+    },
+    [onChange, vacationStartValue, vacationEndValue],
+  );
+
+  const toggleCell = useCallback(
+    (dayKey: DayKey, slot: number, paint: boolean) => {
+      setGrid((prev) => {
+        const next = { ...prev, [dayKey]: [...prev[dayKey]] };
+        next[dayKey][slot] = paint;
+        gridRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
+
+  const handlePointerDown = useCallback(
+    (dayKey: DayKey, slot: number) => {
+      const paint = !grid[dayKey][slot];
+      paintModeRef.current = paint;
+      lastCellRef.current = `${dayKey}-${slot}`;
+      setIsDragging(true);
+      toggleCell(dayKey, slot, paint);
+    },
+    [grid, toggleCell],
+  );
+
+  const handlePointerEnter = useCallback(
+    (dayKey: DayKey, slot: number) => {
+      if (!isDragging) return;
+      const cellKey = `${dayKey}-${slot}`;
+      if (lastCellRef.current === cellKey) return;
+      lastCellRef.current = cellKey;
+      toggleCell(dayKey, slot, paintModeRef.current);
+    },
+    [isDragging, toggleCell],
+  );
+
+  const handlePointerUp = useCallback(() => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    lastCellRef.current = null;
+    emit(gridRef.current);
+  }, [isDragging, emit]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const up = () => {
+      setIsDragging(false);
+      lastCellRef.current = null;
+      emit(gridRef.current);
+    };
+    window.addEventListener("pointerup", up);
+    return () => window.removeEventListener("pointerup", up);
+  }, [isDragging, emit]);
 
   const timezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
 
+  const clearAll = () => {
+    const next = emptyGrid();
+    setGrid(next);
+    emit(next);
+  };
+
   return (
     <Stack gap={12} w="100%">
-      <Group gap={8} wrap="wrap">
-        <Text c="dimmed" size="sm">
-          Times are stored in UTC. You are editing in local timezone:
-        </Text>
-        <Badge variant="light">{timezone}</Badge>
+      <Group gap={8} justify="space-between" wrap="wrap">
+        <Group gap={8}>
+          <Text c="dimmed" size="sm">{t("availability.timezoneNote")}</Text>
+          <Badge variant="light">{timezone}</Badge>
+        </Group>
+        <Button size="compact-xs" variant="light" color="infini-danger" onClick={clearAll}>
+          {t("availability.clearAll")}
+        </Button>
       </Group>
 
-      {DAYS.map((day) => (
-        <Card key={day.key} withBorder padding="sm">
-          <Group justify="space-between" align="center" mb={10} wrap="wrap">
-            <Text fw={600}>{day.label}</Text>
-            <Group gap={8}>
-              <Button
-                size="xs"
-                variant="light"
-                onClick={() => {
-                  const next = {
-                    ...blocksByDay,
-                    [day.key]: [...blocksByDay[day.key], { start: "09:00", end: "11:00" }],
-                  };
-                  setBlocksByDay(next);
-                  emit(next);
+      <div
+        className="availability-grid-wrapper"
+        style={{
+          overflowX: "auto",
+          userSelect: "none",
+          WebkitUserSelect: "none",
+          touchAction: "none",
+        }}
+      >
+        <table
+          className="availability-grid"
+          style={{
+            borderCollapse: "collapse",
+            width: "100%",
+            minWidth: 420,
+          }}
+        >
+          <thead>
+            <tr>
+              <th
+                style={{
+                  width: 52,
+                  position: "sticky",
+                  left: 0,
+                  zIndex: 2,
+                  background: "var(--mantine-color-body)",
                 }}
-              >
-                Add Block
-              </Button>
-              <Button
-                size="xs"
-                variant="light"
-                color="red"
-                onClick={() => {
-                  const next = { ...blocksByDay, [day.key]: [] };
-                  setBlocksByDay(next);
-                  emit(next);
-                }}
-              >
-                Clear Day
-              </Button>
-            </Group>
-          </Group>
-
-          <Stack gap={8}>
-            {blocksByDay[day.key].length === 0 ? <Text c="dimmed" size="sm">No availability blocks</Text> : null}
-            {blocksByDay[day.key].map((block, index) => (
-              <Group key={`${day.key}-${index}`} wrap="wrap" align="center">
-                <TextInput
-                  type="time"
-                  value={block.start}
-                  onChange={(event) => {
-                    const next = {
-                      ...blocksByDay,
-                      [day.key]: blocksByDay[day.key].map((item, itemIndex) =>
-                        itemIndex === index ? { ...item, start: event.currentTarget.value } : item,
-                      ),
-                    };
-                    next[day.key] = mergeOverlapping(next[day.key]);
-                    setBlocksByDay(next);
-                    emit(next);
-                  }}
-                  style={{ width: 130 }}
-                />
-                <Text size="sm">to</Text>
-                <TextInput
-                  type="time"
-                  value={block.end}
-                  onChange={(event) => {
-                    const next = {
-                      ...blocksByDay,
-                      [day.key]: blocksByDay[day.key].map((item, itemIndex) =>
-                        itemIndex === index ? { ...item, end: event.currentTarget.value } : item,
-                      ),
-                    };
-                    next[day.key] = mergeOverlapping(next[day.key]);
-                    setBlocksByDay(next);
-                    emit(next);
-                  }}
-                  style={{ width: 130 }}
-                />
-                <Button
-                  size="xs"
-                  variant="light"
-                  color="red"
-                  onClick={() => {
-                    const next = {
-                      ...blocksByDay,
-                      [day.key]: blocksByDay[day.key].filter((_, itemIndex) => itemIndex !== index),
-                    };
-                    setBlocksByDay(next);
-                    emit(next);
+              />
+              {DAYS.map((day) => (
+                <th
+                  key={day.key}
+                  style={{
+                    textAlign: "center",
+                    padding: "6px 2px",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  Delete
-                </Button>
-              </Group>
+                  {day.shortLabel}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {HOUR_LABELS.map(({ slot: hourSlot, label }, hourIndex) => (
+              <Fragment key={`hour-${hourSlot}`}>
+                {/* Full hour row */}
+                <tr key={`h-${hourSlot}`}>
+                  <td
+                    rowSpan={2}
+                    style={{
+                      fontSize: "0.7rem",
+                      color: "var(--mantine-color-dimmed)",
+                      textAlign: "right",
+                      paddingRight: 6,
+                      verticalAlign: "top",
+                      position: "sticky",
+                      left: 0,
+                      zIndex: 1,
+                      background: "var(--mantine-color-body)",
+                      lineHeight: 1,
+                      paddingTop: 2,
+                    }}
+                  >
+                    {hourIndex % 2 === 0 ? label : ""}
+                  </td>
+                  {DAYS.map((day) => (
+                    <td
+                      key={`${day.key}-${hourSlot}`}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        handlePointerDown(day.key, hourSlot);
+                      }}
+                      onPointerEnter={() => handlePointerEnter(day.key, hourSlot)}
+                      onPointerUp={handlePointerUp}
+                      style={{
+                        width: `${100 / 7}%`,
+                        height: 14,
+                        background: grid[day.key][hourSlot]
+                          ? "var(--mantine-primary-color-filled, var(--infini-color-primary, #3b82f6))"
+                          : "transparent",
+                        borderTop: "1px solid var(--mantine-color-default-border)",
+                        borderLeft: "1px solid var(--mantine-color-default-border)",
+                        borderRight: "1px solid var(--mantine-color-default-border)",
+                        cursor: "pointer",
+                        transition: "background 0.05s",
+                      }}
+                    />
+                  ))}
+                </tr>
+                {/* Half-hour row */}
+                <tr key={`hh-${hourSlot + 1}`}>
+                  {DAYS.map((day) => (
+                    <td
+                      key={`${day.key}-${hourSlot + 1}`}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        handlePointerDown(day.key, hourSlot + 1);
+                      }}
+                      onPointerEnter={() => handlePointerEnter(day.key, hourSlot + 1)}
+                      onPointerUp={handlePointerUp}
+                      style={{
+                        height: 14,
+                        background: grid[day.key][hourSlot + 1]
+                          ? "var(--mantine-primary-color-filled, var(--infini-color-primary, #3b82f6))"
+                          : "transparent",
+                        borderLeft: "1px solid var(--mantine-color-default-border)",
+                        borderRight: "1px solid var(--mantine-color-default-border)",
+                        borderBottom:
+                          hourIndex === HOUR_LABELS.length - 1
+                            ? "1px solid var(--mantine-color-default-border)"
+                            : "none",
+                        cursor: "pointer",
+                        transition: "background 0.05s",
+                      }}
+                    />
+                  ))}
+                </tr>
+              </Fragment>
             ))}
-          </Stack>
-        </Card>
-      ))}
+          </tbody>
+        </table>
+      </div>
+
+      <Text c="dimmed" size="xs" ta="center">
+        {t("availability.gridHint")}
+      </Text>
 
       <Card withBorder padding="sm">
-        <Text fw={600} mb={8}>
-          Vacation
-        </Text>
+        <Text fw={600} mb={8}>{t("availability.vacation")}</Text>
         <Group wrap="wrap" align="flex-start">
           <Stack gap={4}>
-            <Text c="dimmed" size="sm">
-              Start date
-            </Text>
+            <Text c="dimmed" size="sm">{t("availability.startDate")}</Text>
             <TextInput
               type="date"
               value={vacationStartValue}
               onChange={(event) => {
                 const nextValue = event.currentTarget.value;
                 setVacationStartValue(nextValue);
-                emit(blocksByDay, nextValue, vacationEndValue);
+                emit(grid, nextValue, vacationEndValue);
               }}
             />
           </Stack>
           <Stack gap={4}>
-            <Text c="dimmed" size="sm">
-              End date
-            </Text>
+            <Text c="dimmed" size="sm">{t("availability.endDate")}</Text>
             <TextInput
               type="date"
               value={vacationEndValue}
               onChange={(event) => {
                 const nextValue = event.currentTarget.value;
                 setVacationEndValue(nextValue);
-                emit(blocksByDay, vacationStartValue, nextValue);
+                emit(grid, vacationStartValue, nextValue);
               }}
             />
           </Stack>

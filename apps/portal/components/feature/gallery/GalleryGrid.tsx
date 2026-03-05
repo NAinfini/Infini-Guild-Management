@@ -1,4 +1,4 @@
-import { PlayCircleOutlined } from "@portal/utils/icons";
+﻿import { PlayCircleOutlined } from "@portal/utils/icons";
 import { RevealOnScroll } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { Button, Group, Stack, Text } from "@mantine/core";
@@ -49,7 +49,7 @@ export function GalleryGrid({
 }: GalleryGridProps) {
   if (rows.length === 0) {
     return (
-      <InfiniCard>
+      <InfiniCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <EmptyState
             title={emptyTitle}
@@ -74,7 +74,7 @@ export function GalleryGrid({
             role="gridcell"
             style={{ "--stagger-index": index } as CSSProperties}
           >
-            <InfiniCard className="gallery-card">
+            <InfiniCard className="gallery-card" interactive={false}>
               <div style={{ padding: "1.2rem" }}>
                 <Stack gap={8} style={{ width: "100%" }}>
                   <Text fw={600}>{item.type.toUpperCase()}</Text>
@@ -86,7 +86,7 @@ export function GalleryGrid({
                         onChange={() => onToggleSelect(item.id)}
                         aria-label={`Select gallery item ${item.id}`}
                       />
-                      <Button color="red" size="xs" onClick={() => onDelete(item.id)} loading={deletePending}>
+                      <Button color="infini-danger" size="xs" onClick={() => onDelete(item.id)} loading={deletePending}>
                         {actionDeleteLabel}
                       </Button>
                     </Group>
@@ -158,3 +158,4 @@ export function GalleryGrid({
     </div>
   );
 }
+

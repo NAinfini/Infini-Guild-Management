@@ -1,4 +1,4 @@
-import { InfiniCard, MotionButton } from "@infini-dev-kit/frontend/components";
+﻿import { InfiniCard, MotionButton } from "@infini-dev-kit/frontend/components";
 import {
   Alert,
   Group,
@@ -171,6 +171,24 @@ export function ToolsPage() {
   }, [alpha, bold, fontSize, italic, letterSpacing, rgb.b, rgb.g, rgb.r, strikethrough, titleText, underline]);
 
   const safeHtml = useMemo(() => DOMPurify.sanitize(manualHtml.trim() || generatedHtml), [generatedHtml, manualHtml]);
+  const previewMetaText = useMemo(() => {
+    const segments = [
+      hexColor.toUpperCase(),
+      `${opacity}%`,
+      `${fontSize}px`,
+      bold ? t("sandbox.preview.fontWeight.bold") : t("sandbox.preview.fontWeight.regular"),
+    ];
+    if (italic) {
+      segments.push(t("sandbox.preview.italic"));
+    }
+    if (underline) {
+      segments.push(t("sandbox.preview.underline"));
+    }
+    if (strikethrough) {
+      segments.push(t("sandbox.preview.strikethrough"));
+    }
+    return segments.join(" · ");
+  }, [bold, fontSize, hexColor, italic, opacity, strikethrough, t, underline]);
 
   useEffect(() => {
     const rawRecent = localStorage.getItem(RECENT_COLORS_STORAGE_KEY);
@@ -241,14 +259,14 @@ export function ToolsPage() {
       key: "sandbox",
       icon: <FormatPainterOutlined />,
       title: t("sandbox.title"),
-      description: "Generate styled HTML with color picker and typography controls",
+      description: t("sandbox.description"),
     },
   ];
 
   return (
-    <PageLayout title={t("title")} subtitle="Theme Sandbox">
+    <PageLayout title={t("title")} subtitle={t("subtitle")}>
       {isExternalView ? (
-        <Alert color="blue" title="External view is read-only. Interactive controls are disabled." />
+        <Alert color="infini-primary" title={t("sandbox.readOnlyHint")} />
       ) : null}
 
       <PageLayout.Grid cols={{ xs: 2, sm: 3, md: 5 }} gap={16}>
@@ -288,12 +306,12 @@ export function ToolsPage() {
             <div className="sandbox__controls">
               {/* Title input */}
               <div className="sandbox__section">
-                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">TITLE TEXT</Text>
+                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.titleText")}</Text>
                 <TextInput
                   value={titleText}
                   onChange={(event) => setTitleText(event.currentTarget.value)}
                   placeholder={t("sandbox.placeholder")}
-                  aria-label="Title text preview input"
+                  aria-label={t("sandbox.aria.titleInput")}
                   disabled={isExternalView}
                 />
               </div>
@@ -302,7 +320,7 @@ export function ToolsPage() {
               <div className="sandbox__section">
                 <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">
                   <IconPalette size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
-                  COLOR
+                  {t("sandbox.section.color")}
                 </Text>
 
                 <div className="sandbox__color-row">
@@ -315,7 +333,7 @@ export function ToolsPage() {
                       value={hue}
                       onChange={(event) => setHue(Number(event.currentTarget.value))}
                       className="sandbox__hue-slider"
-                      aria-label="Hue slider"
+                      aria-label={t("sandbox.aria.hueSlider")}
                       disabled={isExternalView}
                     />
                   </div>
@@ -324,7 +342,7 @@ export function ToolsPage() {
                   <div
                     ref={slPickerRef}
                     role="application"
-                    aria-label="Saturation lightness picker"
+                    aria-label={t("sandbox.aria.saturationLightnessPicker")}
                     className="sandbox__sl-picker"
                     onMouseDown={(event) => {
                       setSatLightFromPointer(event.clientX, event.clientY);
@@ -359,7 +377,7 @@ export function ToolsPage() {
                       onChange={(event) => applyHexColor(event.currentTarget.value)}
                       className="sandbox__hex-input"
                       placeholder="#1f6feb"
-                      aria-label="Hex color input"
+                      aria-label={t("sandbox.aria.hexInput")}
                       disabled={isExternalView}
                     />
                     <input
@@ -367,13 +385,13 @@ export function ToolsPage() {
                       value={hexColor}
                       onChange={(event) => applyHexColor(event.currentTarget.value)}
                       className="sandbox__native-picker"
-                      aria-label="Pick title color"
+                      aria-label={t("sandbox.aria.nativeColorPicker")}
                       disabled={isExternalView}
                     />
                   </div>
                   <div className="sandbox__opacity-wrap">
-                    <Text size="xs" c="dimmed">Opacity</Text>
-                    <Slider min={0} max={100} value={opacity} onChange={setOpacity} aria-label="Opacity slider" disabled={isExternalView} className="sandbox__opacity-slider" />
+                    <Text size="xs" c="dimmed">{t("sandbox.label.opacity")}</Text>
+                    <Slider min={0} max={100} value={opacity} onChange={setOpacity} aria-label={t("sandbox.aria.opacitySlider")} disabled={isExternalView} className="sandbox__opacity-slider" />
                     <Text size="xs" fw={500} className="sandbox__opacity-value">{opacity}%</Text>
                   </div>
                 </div>
@@ -387,7 +405,7 @@ export function ToolsPage() {
                       className={`sandbox__preset-btn${hexColor.toLowerCase() === color ? " sandbox__preset-btn--active" : ""}`}
                       style={{ background: color }}
                       onClick={() => applyHexColor(color)}
-                      aria-label={`Use color ${color}`}
+                      aria-label={t("sandbox.aria.useColor", { color })}
                       disabled={isExternalView}
                     />
                   ))}
@@ -396,7 +414,7 @@ export function ToolsPage() {
                 {/* Recent colors */}
                 {recentColors.length > 0 ? (
                   <div className="sandbox__recent">
-                    <Text size="xs" c="dimmed">Recent</Text>
+                    <Text size="xs" c="dimmed">{t("sandbox.label.recent")}</Text>
                     <div className="sandbox__recent-list">
                       {recentColors.map((color) => (
                         <button
@@ -404,7 +422,7 @@ export function ToolsPage() {
                           type="button"
                           className="sandbox__recent-btn"
                           onClick={() => applyHexColor(color)}
-                          aria-label={`Use recent color ${color}`}
+                          aria-label={t("sandbox.aria.useRecentColor", { color })}
                           disabled={isExternalView}
                         >
                           <span className="sandbox__recent-dot" style={{ background: color }} />
@@ -418,54 +436,54 @@ export function ToolsPage() {
 
               {/* Typography */}
               <div className="sandbox__section">
-                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">TYPOGRAPHY</Text>
+                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.typography")}</Text>
                 <div className="sandbox__typo-toggles">
                   <button
                     type="button"
                     className={`sandbox__typo-btn${bold ? " sandbox__typo-btn--active" : ""}`}
                     onClick={() => setBold(!bold)}
                     disabled={isExternalView}
-                    aria-label="Toggle bold"
+                    aria-label={t("sandbox.aria.toggleBold")}
                   >
                     <IconBold size={16} />
-                    <span>Bold</span>
+                    <span>{t("sandbox.button.bold")}</span>
                   </button>
                   <button
                     type="button"
                     className={`sandbox__typo-btn${italic ? " sandbox__typo-btn--active" : ""}`}
                     onClick={() => setItalic(!italic)}
                     disabled={isExternalView}
-                    aria-label="Toggle italic"
+                    aria-label={t("sandbox.aria.toggleItalic")}
                   >
                     <IconItalic size={16} />
-                    <span>Italic</span>
+                    <span>{t("sandbox.button.italic")}</span>
                   </button>
                   <button
                     type="button"
                     className={`sandbox__typo-btn${underline ? " sandbox__typo-btn--active" : ""}`}
                     onClick={() => setUnderline(!underline)}
                     disabled={isExternalView}
-                    aria-label="Toggle underline"
+                    aria-label={t("sandbox.aria.toggleUnderline")}
                   >
                     <IconUnderline size={16} />
-                    <span>Underline</span>
+                    <span>{t("sandbox.button.underline")}</span>
                   </button>
                   <button
                     type="button"
                     className={`sandbox__typo-btn${strikethrough ? " sandbox__typo-btn--active" : ""}`}
                     onClick={() => setStrikethrough(!strikethrough)}
                     disabled={isExternalView}
-                    aria-label="Toggle strikethrough"
+                    aria-label={t("sandbox.aria.toggleStrikethrough")}
                   >
                     <IconStrikethrough size={16} />
-                    <span>Strike</span>
+                    <span>{t("sandbox.button.strike")}</span>
                   </button>
                 </div>
 
                 {/* Font size */}
                 <div className="sandbox__slider-row">
                   <IconTextSize size={15} className="sandbox__slider-icon" />
-                  <Text size="xs" c="dimmed" className="sandbox__slider-label">Size</Text>
+                  <Text size="xs" c="dimmed" className="sandbox__slider-label">{t("sandbox.label.size")}</Text>
                   <Slider min={10} max={48} value={fontSize} onChange={setFontSize} disabled={isExternalView} className="sandbox__slider" />
                   <Text size="xs" fw={500} className="sandbox__slider-value">{fontSize}px</Text>
                 </div>
@@ -473,7 +491,7 @@ export function ToolsPage() {
                 {/* Letter spacing */}
                 <div className="sandbox__slider-row">
                   <IconLetterSpacing size={15} className="sandbox__slider-icon" />
-                  <Text size="xs" c="dimmed" className="sandbox__slider-label">Spacing</Text>
+                  <Text size="xs" c="dimmed" className="sandbox__slider-label">{t("sandbox.label.spacing")}</Text>
                   <Slider min={-5} max={20} value={letterSpacing} onChange={setLetterSpacing} disabled={isExternalView} className="sandbox__slider" />
                   <Text size="xs" fw={500} className="sandbox__slider-value">{(letterSpacing / 100).toFixed(2)}em</Text>
                 </div>
@@ -484,14 +502,14 @@ export function ToolsPage() {
             <div className="sandbox__output">
               {/* Live preview */}
               <div className="sandbox__section">
-                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">LIVE PREVIEW</Text>
+                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.livePreview")}</Text>
                 <div className="sandbox__preview-card">
                   <div className="sandbox__preview-bg">
                     <div className="sandbox__preview-rendered" dangerouslySetInnerHTML={{ __html: safeHtml }} />
                   </div>
                   <div className="sandbox__preview-meta">
                     <Text size="xs" c="dimmed">
-                      {hexColor.toUpperCase()} · {opacity}% · {fontSize}px · {bold ? "Bold" : "Regular"}{italic ? " · Italic" : ""}{underline ? " · Underline" : ""}{strikethrough ? " · Strikethrough" : ""}
+                      {previewMetaText}
                     </Text>
                   </div>
                 </div>
@@ -499,7 +517,7 @@ export function ToolsPage() {
 
               {/* HTML output */}
               <div className="sandbox__section">
-                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">GENERATED HTML</Text>
+                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.generatedHtml")}</Text>
                 <div className="sandbox__code-block">
                   <code className="sandbox__code-text">{generatedHtml}</code>
                   <button
@@ -507,9 +525,9 @@ export function ToolsPage() {
                     className="sandbox__code-copy"
                     onClick={() => {
                       void copyPlainText(generatedHtml);
-                      notifications.show({ color: "green", message: "HTML copied" });
+                      notifications.show({ color: "infini-success", message: t("message.htmlCopied") });
                     }}
-                    aria-label="Copy generated HTML"
+                    aria-label={t("sandbox.aria.copyGeneratedHtml")}
                   >
                     <IconCopy size={14} />
                   </button>
@@ -518,13 +536,13 @@ export function ToolsPage() {
 
               {/* Manual override */}
               <div className="sandbox__section">
-                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">CUSTOM HTML OVERRIDE</Text>
+                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.customHtmlOverride")}</Text>
                 <Textarea
                   value={manualHtml}
                   minRows={3}
                   onChange={(event) => setManualHtml(event.currentTarget.value)}
-                  placeholder="Paste custom HTML to override generated markup..."
-                  aria-label="Custom HTML override input"
+                  placeholder={t("sandbox.manualOverridePlaceholder")}
+                  aria-label={t("sandbox.aria.customHtmlOverride")}
                   disabled={isExternalView}
                   className="sandbox__override-textarea"
                 />
@@ -535,7 +553,7 @@ export function ToolsPage() {
                 <MotionButton
                   onClick={() => {
                     void copyPlainText(generatedHtml);
-                    notifications.show({ color: "green", message: "Generated HTML copied" });
+                    notifications.show({ color: "infini-success", message: t("message.generatedHtmlCopied") });
                   }}
                 >
                   {t("sandbox.copyHtml")}
@@ -548,3 +566,4 @@ export function ToolsPage() {
     </PageLayout>
   );
 }
+

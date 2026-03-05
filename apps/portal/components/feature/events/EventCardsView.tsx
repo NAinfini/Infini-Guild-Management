@@ -1,11 +1,10 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+﻿import type { Event, MemberProfile, User } from "@guild/shared";
 import { Avatar, Badge, Button, Group, Menu, Modal, Stack, Text, Tooltip } from "@mantine/core";
 import { MotionButton, StaggerList } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import {
   IconArchive,
   IconCalendarEvent,
-  IconChevronRight,
   IconClock,
   IconCopy,
   IconDots,
@@ -129,7 +128,7 @@ export function EventCardsView({
 
   if (events.length === 0) {
     return (
-      <InfiniCard>
+      <InfiniCard interactive={false}>
         <EmptyState
           title={cardsEmptyDescription}
           actions={
@@ -239,7 +238,7 @@ export function EventCardsView({
                       </Menu.Item>
                       <Menu.Divider />
                       <Menu.Item
-                        color="red"
+                        color="infini-danger"
                         leftSection={<IconTrash size={14} />}
                         onClick={() => onArchiveEvent(event.id)}
                         disabled={Boolean(event.archived_at)}
@@ -444,3 +443,4 @@ export function EventCardsView({
     </>
   );
 }
+

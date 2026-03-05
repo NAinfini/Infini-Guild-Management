@@ -1,13 +1,13 @@
 import type { WarHistory } from "@guild/shared";
-import { InfiniButton, InfiniCard, InfiniNumberTicker } from "@infini-dev-kit/frontend/components";
-import { Avatar, Text } from "@mantine/core";
+import { InfiniCard, NumberTicker } from "@infini-dev-kit/frontend/components";
+import { ActionIcon, Avatar, Text } from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CrownOutlined,
+  GoToOutlined,
   LeftOutlined,
   RightOutlined,
-  ShareOutlined,
   ShieldOutlined,
   SwordsOutlined,
   TargetOutlined,
@@ -31,11 +31,11 @@ function resultColor(result: string | null): string {
   return "color-mix(in srgb, var(--infini-color-text, #111827) 50%, transparent)";
 }
 
-function resultLabel(result: string | null): string {
-  if (result === "win") return "VICTORY";
-  if (result === "loss") return "DEFEAT";
-  if (result === "draw") return "DRAW";
-  return "PENDING";
+function resultLabel(result: string | null, t: (key: string) => string): string {
+  if (result === "win") return t("card.lastWar.result.victory");
+  if (result === "loss") return t("card.lastWar.result.defeat");
+  if (result === "draw") return t("card.lastWar.result.draw");
+  return t("card.lastWar.result.pending");
 }
 
 function CompareBar({
@@ -95,7 +95,7 @@ function MvpChip({ entry, icon }: { entry: DashboardLastWarMvpEntry; icon: React
         </div>
       </div>
       <Text size="sm" fw={700} className="war-mvp-chip-value">
-        <InfiniNumberTicker value={entry.value} />
+        <NumberTicker value={entry.value} />
       </Text>
     </div>
   );
@@ -112,28 +112,30 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
   const hasNext = index < total - 1;
 
   return (
-    <InfiniCard className="dashboard-card" overrides={{ glow: { variant: "spotlight", glowIntensity: 0.3 } }}>
+    <InfiniCard className="dashboard-card" interactive={false} overrides={{ glow: { variant: "spotlight", glowIntensity: 0.3 } }}>
       <div className="war-card-header">
         {cardHeading(t("card.lastWar.title"), <SwordsOutlined size={18} />)}
         {total > 1 ? (
           <div className="war-nav">
-            <InfiniButton
+            <ActionIcon
               disabled={!hasPrev}
               onClick={() => setIndex((i) => i - 1)}
               className="war-nav-btn"
+              aria-label="Previous war"
             >
-              <LeftOutlined size={14} />
-            </InfiniButton>
+              <LeftOutlined size={16} stroke={2.6} />
+            </ActionIcon>
             <Text size="xs" c="dimmed" className="war-nav-counter">
               {index + 1}/{total}
             </Text>
-            <InfiniButton
+            <ActionIcon
               disabled={!hasNext}
               onClick={() => setIndex((i) => i + 1)}
               className="war-nav-btn"
+              aria-label="Next war"
             >
-              <RightOutlined size={14} />
-            </InfiniButton>
+              <RightOutlined size={16} stroke={2.6} />
+            </ActionIcon>
           </div>
         ) : null}
       </div>
@@ -145,9 +147,13 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
             <div className="war-info-left">
               <div className="war-name-line">
                 <Text fw={700} size="lg" truncate>{war.war_name}</Text>
-                <InfiniButton onClick={() => onOpenHistory(war.war_name)} className="war-share-btn">
-                  <ShareOutlined size={14} />
-                </InfiniButton>
+                <ActionIcon
+                  onClick={() => onOpenHistory(war.war_name)}
+                  className="war-share-btn"
+                  aria-label="Open war history"
+                >
+                  <GoToOutlined size={15} stroke={2.4} />
+                </ActionIcon>
               </div>
               <Text c="dimmed" size="xs">{formatDateTime(war.created_at)}</Text>
             </div>
@@ -156,15 +162,15 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
               style={{ "--war-result-color": resultColor(war.result) } as React.CSSProperties}
             >
               <TrophyOutlined size={14} />
-              <span>{resultLabel(war.result)}</span>
+              <span>{resultLabel(war.result, t)}</span>
             </div>
           </div>
 
           {/* VS header */}
           <div className="war-vs-bar-header">
-            <span className="war-vs-bar-team war-vs-bar-team--us">US</span>
+            <span className="war-vs-bar-team war-vs-bar-team--us">{t("card.lastWar.us")}</span>
             <SwordsOutlined size={14} />
-            <span className="war-vs-bar-team war-vs-bar-team--enemy">{war.enemy_name ?? "ENEMY"}</span>
+            <span className="war-vs-bar-team war-vs-bar-team--enemy">{war.enemy_name ?? t("card.lastWar.enemy")}</span>
           </div>
 
           {/* Comparison bars */}
@@ -179,19 +185,19 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
               <>
                 <CompareBar
                   icon={<CrownOutlined size={13} />}
-                  label="Credits"
+                  label={t("card.lastWar.credits")}
                   own={war.own_credits ?? 0}
                   enemy={war.enemy_credits ?? 0}
                 />
                 <CompareBar
                   icon={<ShieldOutlined size={13} />}
-                  label="Towers"
+                  label={t("card.lastWar.towers")}
                   own={war.own_towers ?? 0}
                   enemy={war.enemy_towers ?? 0}
                 />
                 <CompareBar
                   icon={<ShieldOutlined size={13} />}
-                  label="Base HP"
+                  label={t("card.lastWar.baseHp")}
                   own={war.own_base_hp ?? 0}
                   enemy={war.enemy_base_hp ?? 0}
                 />
@@ -203,12 +209,12 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
           {!isExternalView && mvp ? (
             <div className="war-mvp-section">
               <Text size="xs" fw={700} tt="uppercase" c="dimmed" className="war-mvp-section-header">
-                MVPs
+                {t("card.lastWar.mvps")}
               </Text>
               <div className="war-mvp-chips">
-                <MvpChip entry={{ ...mvp.damage, label: "Damage" }} icon={<IconFlame size={12} />} />
-                <MvpChip entry={{ ...mvp.healing, label: "Healing" }} icon={<IconHeart size={12} />} />
-                <MvpChip entry={{ ...mvp.building, label: "Building" }} icon={<IconHammer size={12} />} />
+                <MvpChip entry={{ ...mvp.damage, label: t("card.lastWar.mvp.damage") }} icon={<IconFlame size={12} />} />
+                <MvpChip entry={{ ...mvp.healing, label: t("card.lastWar.mvp.healing") }} icon={<IconHeart size={12} />} />
+                <MvpChip entry={{ ...mvp.building, label: t("card.lastWar.mvp.building") }} icon={<IconHammer size={12} />} />
               </div>
             </div>
           ) : null}

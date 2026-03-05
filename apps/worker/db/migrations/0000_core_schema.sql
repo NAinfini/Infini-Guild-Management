@@ -1,3 +1,6 @@
+-- Infini Guild Management – Consolidated Schema (dev mode)
+-- All tables, indexes, and constraints in a single file.
+
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY NOT NULL,
   username TEXT NOT NULL UNIQUE,
@@ -6,6 +9,23 @@ CREATE TABLE IF NOT EXISTS users (
   deleted_at TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS roles (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL,
+  level INTEGER NOT NULL,
+  color TEXT,
+  is_builtin INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS role_permissions (
+  role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  permission TEXT NOT NULL,
+  granted INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (role_id, permission)
 );
 
 CREATE TABLE IF NOT EXISTS user_auth_password (
@@ -84,7 +104,9 @@ CREATE TABLE IF NOT EXISTS war_history (
   id TEXT PRIMARY KEY NOT NULL,
   event_id TEXT REFERENCES events(id),
   war_name TEXT NOT NULL,
+  enemy_name TEXT,
   result TEXT CHECK (result IS NULL OR result IN ('win', 'loss', 'draw')),
+  duration_minutes REAL CHECK (duration_minutes > 0),
   own_kills INTEGER,
   own_towers INTEGER,
   own_base_hp INTEGER,
@@ -165,24 +187,9 @@ CREATE TABLE IF NOT EXISTS wiki_articles (
   sort_order INTEGER NOT NULL DEFAULT 0,
   archived_at TEXT,
   created_by TEXT NOT NULL REFERENCES users(id),
+  updated_by TEXT REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
-
-CREATE TABLE IF NOT EXISTS wiki_article_versions (
-  id TEXT PRIMARY KEY NOT NULL,
-  article_id TEXT NOT NULL REFERENCES wiki_articles(id),
-  version_no INTEGER NOT NULL,
-  title TEXT NOT NULL,
-  slug TEXT NOT NULL,
-  category_id TEXT NOT NULL REFERENCES wiki_categories(id),
-  body_json TEXT NOT NULL,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  archived_at TEXT,
-  source_action TEXT NOT NULL DEFAULT 'update',
-  created_by TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  UNIQUE(article_id, version_no)
 );
 
 CREATE TABLE IF NOT EXISTS gallery_items (
@@ -192,6 +199,23 @@ CREATE TABLE IF NOT EXISTS gallery_items (
   caption TEXT,
   uploaded_by TEXT NOT NULL REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS gallery_likes (
+  id TEXT PRIMARY KEY NOT NULL,
+  gallery_item_id TEXT NOT NULL REFERENCES gallery_items(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE(gallery_item_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS gallery_comments (
+  id TEXT PRIMARY KEY NOT NULL,
+  gallery_item_id TEXT NOT NULL REFERENCES gallery_items(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS invite_links (
@@ -252,6 +276,15 @@ CREATE TABLE IF NOT EXISTS bot_discord_event_messages (
   UNIQUE(event_id, channel_id)
 );
 
+CREATE TABLE IF NOT EXISTS bot_wechat_event_messages (
+  id TEXT PRIMARY KEY NOT NULL,
+  event_id TEXT NOT NULL REFERENCES events(id),
+  room_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE(event_id, room_id)
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY NOT NULL,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -259,14 +292,25 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+-- ===== INDEXES =====
+
+-- users
 CREATE INDEX IF NOT EXISTS idx_users_deleted_active_created
   ON users(deleted_at, is_active, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_users_role_active
   ON users(role, is_active, deleted_at);
 
+-- roles
+CREATE INDEX IF NOT EXISTS idx_roles_level
+  ON roles(level, id);
+CREATE INDEX IF NOT EXISTS idx_role_permissions_permission
+  ON role_permissions(permission);
+
+-- sessions
 CREATE INDEX IF NOT EXISTS idx_sessions_user_expires
   ON sessions(user_id, expires_at);
 
+-- events
 CREATE INDEX IF NOT EXISTS idx_events_archived_start_id
   ON events(archived_at, start_at, id);
 CREATE INDEX IF NOT EXISTS idx_events_series_start_id
@@ -274,61 +318,75 @@ CREATE INDEX IF NOT EXISTS idx_events_series_start_id
 CREATE INDEX IF NOT EXISTS idx_events_created_by
   ON events(created_by);
 
+-- event_participants
 CREATE INDEX IF NOT EXISTS idx_event_participants_event_joined
   ON event_participants(event_id, joined_at, id);
 CREATE INDEX IF NOT EXISTS idx_event_participants_user_event
   ON event_participants(user_id, event_id);
 
+-- announcements
 CREATE INDEX IF NOT EXISTS idx_announcements_feed
   ON announcements(archived_at, pinned, pinned_at, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_announcements_schedule
   ON announcements(status, publish_at, expires_at);
 
+-- war_history
 CREATE INDEX IF NOT EXISTS idx_war_history_event_id
   ON war_history(event_id);
 CREATE INDEX IF NOT EXISTS idx_war_history_created
   ON war_history(created_at, id);
+
+-- war_teams
 CREATE INDEX IF NOT EXISTS idx_war_teams_history_id
   ON war_teams(war_history_id);
 CREATE INDEX IF NOT EXISTS idx_war_teams_history_sort
   ON war_teams(war_history_id, sort_order, id);
+
+-- war_team_members
 CREATE INDEX IF NOT EXISTS idx_war_team_members_team_id
   ON war_team_members(war_team_id);
 CREATE INDEX IF NOT EXISTS idx_war_team_members_team_sort
   ON war_team_members(war_team_id, sort_order, id);
 CREATE INDEX IF NOT EXISTS idx_war_team_members_user
   ON war_team_members(user_id);
+
+-- war_pool_members
 CREATE INDEX IF NOT EXISTS idx_war_pool_members_history_id
   ON war_pool_members(war_history_id);
 
+-- war_templates
 CREATE INDEX IF NOT EXISTS idx_war_templates_source_event
   ON war_templates(source_event_id);
 CREATE INDEX IF NOT EXISTS idx_war_templates_updated_at
   ON war_templates(updated_at);
 
+-- wiki
 CREATE INDEX IF NOT EXISTS idx_wiki_categories_parent_sort
   ON wiki_categories(parent_id, sort_order, name, id);
 CREATE INDEX IF NOT EXISTS idx_wiki_articles_category_archived_sort
   ON wiki_articles(category_id, archived_at, sort_order, updated_at, id);
 CREATE INDEX IF NOT EXISTS idx_wiki_articles_archived_updated
   ON wiki_articles(archived_at, updated_at, id);
-CREATE INDEX IF NOT EXISTS idx_wiki_article_versions_article_id
-  ON wiki_article_versions(article_id);
-CREATE INDEX IF NOT EXISTS idx_wiki_article_versions_created_at
-  ON wiki_article_versions(created_at);
-CREATE UNIQUE INDEX IF NOT EXISTS ux_wiki_article_versions_article_version
-  ON wiki_article_versions(article_id, version_no);
 
+-- gallery
 CREATE INDEX IF NOT EXISTS idx_gallery_items_created
   ON gallery_items(created_at, id);
 CREATE INDEX IF NOT EXISTS idx_gallery_items_uploaded_by
   ON gallery_items(uploaded_by, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_gallery_likes_item_id
+  ON gallery_likes(gallery_item_id);
+CREATE INDEX IF NOT EXISTS idx_gallery_comments_item_created
+  ON gallery_comments(gallery_item_id, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_gallery_comments_user_id
+  ON gallery_comments(user_id);
 
+-- invite_links
 CREATE INDEX IF NOT EXISTS idx_invite_links_created
   ON invite_links(created_at);
 CREATE INDEX IF NOT EXISTS idx_invite_links_status
   ON invite_links(revoked_at, expires_at, created_at);
 
+-- audit_log
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at
   ON audit_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_log_entity_type
@@ -336,12 +394,88 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_entity_type
 CREATE INDEX IF NOT EXISTS idx_audit_log_actor_id
   ON audit_log(actor_id);
 
+-- discord_link_codes
 CREATE INDEX IF NOT EXISTS idx_discord_link_codes_user_lookup
   ON discord_link_codes(user_id, code, used, expires_at, created_at);
 CREATE INDEX IF NOT EXISTS idx_discord_link_codes_discord_lookup
   ON discord_link_codes(discord_id, used, expires_at, created_at);
 
+-- bot_delivery_log
 CREATE INDEX IF NOT EXISTS idx_bot_delivery_status_next_attempt
   ON bot_delivery_log(status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_bot_delivery_event_platform_task
   ON bot_delivery_log(event_id, platform, task_type, status);
+
+-- ===== ROLE BASELINE DATA =====
+
+INSERT OR IGNORE INTO roles (id, name, level, color, is_builtin) VALUES
+  ('admin', 'Admin', 3, 'red', 1),
+  ('moderator', 'Moderator', 2, 'blue', 1),
+  ('member', 'Member', 1, 'gray', 1);
+
+INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
+  -- admin (full access)
+  ('admin', 'admin.users.view', 1),
+  ('admin', 'admin.users.edit', 1),
+  ('admin', 'admin.users.role', 1),
+  ('admin', 'admin.users.activate', 1),
+  ('admin', 'admin.users.delete', 1),
+  ('admin', 'admin.users.password', 1),
+  ('admin', 'admin.invite.view', 1),
+  ('admin', 'admin.invite.manage', 1),
+  ('admin', 'admin.audit.view', 1),
+  ('admin', 'admin.audit.export', 1),
+  ('admin', 'admin.bot.view', 1),
+  ('admin', 'admin.bot.manage', 1),
+  ('admin', 'admin.status.view', 1),
+  ('admin', 'admin.roles.manage', 1),
+  ('admin', 'guildwar.manage', 1),
+  ('admin', 'guildwar.history.edit', 1),
+  ('admin', 'events.manage', 1),
+  ('admin', 'announcements.manage', 1),
+  ('admin', 'gallery.upload', 1),
+  ('admin', 'wiki.edit', 1),
+
+  -- moderator (common management operations)
+  ('moderator', 'admin.users.view', 1),
+  ('moderator', 'admin.users.edit', 1),
+  ('moderator', 'admin.users.role', 0),
+  ('moderator', 'admin.users.activate', 0),
+  ('moderator', 'admin.users.delete', 0),
+  ('moderator', 'admin.users.password', 0),
+  ('moderator', 'admin.invite.view', 1),
+  ('moderator', 'admin.invite.manage', 0),
+  ('moderator', 'admin.audit.view', 1),
+  ('moderator', 'admin.audit.export', 0),
+  ('moderator', 'admin.bot.view', 1),
+  ('moderator', 'admin.bot.manage', 0),
+  ('moderator', 'admin.status.view', 1),
+  ('moderator', 'admin.roles.manage', 0),
+  ('moderator', 'guildwar.manage', 1),
+  ('moderator', 'guildwar.history.edit', 1),
+  ('moderator', 'events.manage', 1),
+  ('moderator', 'announcements.manage', 1),
+  ('moderator', 'gallery.upload', 1),
+  ('moderator', 'wiki.edit', 1),
+
+  -- member (baseline contributor)
+  ('member', 'admin.users.view', 0),
+  ('member', 'admin.users.edit', 0),
+  ('member', 'admin.users.role', 0),
+  ('member', 'admin.users.activate', 0),
+  ('member', 'admin.users.delete', 0),
+  ('member', 'admin.users.password', 0),
+  ('member', 'admin.invite.view', 0),
+  ('member', 'admin.invite.manage', 0),
+  ('member', 'admin.audit.view', 0),
+  ('member', 'admin.audit.export', 0),
+  ('member', 'admin.bot.view', 0),
+  ('member', 'admin.bot.manage', 0),
+  ('member', 'admin.status.view', 0),
+  ('member', 'admin.roles.manage', 0),
+  ('member', 'guildwar.manage', 0),
+  ('member', 'guildwar.history.edit', 0),
+  ('member', 'events.manage', 0),
+  ('member', 'announcements.manage', 0),
+  ('member', 'gallery.upload', 1),
+  ('member', 'wiki.edit', 0);

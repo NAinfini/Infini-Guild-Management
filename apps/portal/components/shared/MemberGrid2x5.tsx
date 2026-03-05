@@ -1,7 +1,8 @@
-import type { MemberProfile, User } from "@guild/shared";
+﻿import type { MemberProfile, User } from "@guild/shared";
 import { Badge, Modal, Popover, Stack, Text } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { MemberCard } from "./MemberCard";
 import styles from "./MemberGrid2x5.module.css";
 
@@ -16,6 +17,7 @@ type MemberGrid2x5Props = {
 };
 
 export function MemberGrid2x5({ members, onSelect }: MemberGrid2x5Props) {
+  const { t } = useTranslation("common");
   const isMobile = useMediaQuery("(max-width: 767px)") ?? false;
   const [overflowModalOpen, setOverflowModalOpen] = useState(false);
   const overflowItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -84,7 +86,7 @@ export function MemberGrid2x5({ members, onSelect }: MemberGrid2x5Props) {
 
   const overflowContent = (
     <Stack gap={6} className={styles.overflowList}>
-      {overflowMembers.length === 0 ? <Text c="dimmed">No overflow members</Text> : null}
+      {overflowMembers.length === 0 ? <Text c="dimmed">{t("members.noOverflow")}</Text> : null}
       {overflowMembers.map((entry, index) => (
         <button
           key={entry.user.id}
@@ -159,8 +161,8 @@ export function MemberGrid2x5({ members, onSelect }: MemberGrid2x5Props) {
           Slots: {Math.min(10, members.length)} / 10
         </Text>
         {overflowMembers.length > 0 ? (
-          <Badge color="blue" variant="light">
-            Overflow {overflowMembers.length}
+          <Badge color="infini-primary" variant="light">
+            {t("members.overflow", { count: overflowMembers.length })}
           </Badge>
         ) : null}
       </div>
@@ -175,3 +177,4 @@ export function MemberGrid2x5({ members, onSelect }: MemberGrid2x5Props) {
     </div>
   );
 }
+

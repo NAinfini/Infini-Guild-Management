@@ -1,7 +1,4 @@
-import type { Event } from "@guild/shared";
-import { Badge, Button, Popover, Stack } from "@mantine/core";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import dayjs, { type Dayjs } from "dayjs";
+﻿import { addDays, format, getDate, getDay, getMonth, isSameDay, startOfMonth, startOfWeek } from "date-fns";
 import type { CSSProperties, ReactNode } from "react";
 import "./EventMonthView.css";
 
@@ -18,21 +15,21 @@ function buildAvailabilityOverlayStyle(intensity: number, maxCount: number): CSS
   };
 }
 
-function startOfMonthGrid(base: Dayjs): Dayjs {
-  return base.startOf("month").startOf("week");
+function startOfMonthGrid(base: Date): Date {
+  return startOfWeek(startOfMonth(base));
 }
 
 type MonthCalendarProps = {
-  onSelect: (value: Dayjs) => void;
-  cellRender: (value: Dayjs) => ReactNode;
-  value?: Dayjs;
+  onSelect: (value: Date) => void;
+  cellRender: (value: Date) => ReactNode;
+  value?: Date;
 };
 
 function MonthCalendar({ onSelect, cellRender, value }: MonthCalendarProps) {
-  const active = value ?? dayjs();
-  const today = dayjs();
+  const active = value ?? new Date();
+  const today = new Date();
   const start = startOfMonthGrid(active);
-  const days = Array.from({ length: 42 }).map((_, index) => start.add(index, "day"));
+  const days = Array.from({ length: 42 }).map((_, index) => addDays(start, index));
 
   return (
     <div className="month-calendar">
@@ -45,8 +42,8 @@ function MonthCalendar({ onSelect, cellRender, value }: MonthCalendarProps) {
       </div>
       <div className="month-calendar__grid">
         {days.map((day) => {
-          const isAdjacentMonth = day.month() !== active.month();
-          const isToday = day.isSame(today, "day");
+          const isAdjacentMonth = getMonth(day) !== getMonth(active);
+          const isToday = isSameDay(day, today);
 
           let cellClass = "month-calendar__cell";
           if (isAdjacentMonth) cellClass += " month-calendar__cell--adjacent";
@@ -54,7 +51,7 @@ function MonthCalendar({ onSelect, cellRender, value }: MonthCalendarProps) {
 
           return (
             <div
-              key={day.format("YYYY-MM-DD")}
+              key={day.toISOString()}
               role="button"
               tabIndex={0}
               className={cellClass}
@@ -66,7 +63,7 @@ function MonthCalendar({ onSelect, cellRender, value }: MonthCalendarProps) {
                 }
               }}
             >
-              <div className="month-calendar__date">{day.date()}</div>
+              <div className="month-calendar__date">{getDate(day)}</div>
               <div className="month-calendar__cell-body">{cellRender(day)}</div>
             </div>
           );
@@ -77,7 +74,6 @@ function MonthCalendar({ onSelect, cellRender, value }: MonthCalendarProps) {
 }
 
 type EventMonthViewProps = {
-  showAvailabilityOverlay: boolean;
   canManage: boolean;
   eventsByDay: Map<string, Event[]>;
   availabilityDayPeakByDay: Map<number, number>;
@@ -88,7 +84,6 @@ type EventMonthViewProps = {
 };
 
 export function EventMonthView({
-  showAvailabilityOverlay,
   canManage,
   eventsByDay,
   availabilityDayPeakByDay,
@@ -98,15 +93,14 @@ export function EventMonthView({
   onEditEvent,
 }: EventMonthViewProps) {
   return (
-    <InfiniCard>
+    <InfiniCard interactive={false}>
       <MonthCalendar
-        onSelect={(value) => onSelectDate(value.format("YYYY-MM-DD"))}
-        cellRender={(value: Dayjs) => {
-          const key = value.format("YYYY-MM-DD");
+        onSelect={(value) => onSelectDate(format(value, "yyyy-MM-dd"))}
+        cellRender={(value: Date) => {
+          const key = format(value, "yyyy-MM-dd");
           const dayEvents = eventsByDay.get(key) ?? [];
-          const dayIndex = value.day();
-          const overlayIntensity =
-            showAvailabilityOverlay && dayIndex !== null ? (availabilityDayPeakByDay.get(dayIndex) ?? 0) : 0;
+          const dayIndex = getDay(value);
+          const overlayIntensity = availabilityDayPeakByDay.get(dayIndex) ?? 0;
           const overlayStyle = buildAvailabilityOverlayStyle(overlayIntensity, availabilityMaxCount);
 
           if (dayEvents.length === 0) {
@@ -151,7 +145,7 @@ export function EventMonthView({
                 {dayEvents.length > 3 ? (
                   <Popover withinPortal>
                     <Popover.Target>
-                      <Badge color="blue" variant="light" size="xs" style={{ cursor: "pointer" }}>
+                      <Badge color="infini-primary" variant="light" size="xs" style={{ cursor: "pointer" }}>
                         +{dayEvents.length - 3} more
                       </Badge>
                     </Popover.Target>
@@ -181,3 +175,4 @@ export function EventMonthView({
     </InfiniCard>
   );
 }
+

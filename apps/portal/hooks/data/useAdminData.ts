@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "../../api/query-keys";
 import { fetchUsersList } from "../../api/queries/users";
+import { fetchRoles } from "../../api/queries/roles";
 import {
-  fetchAdminAuditArchiveMonth,
   fetchAdminAuditArchiveMonths,
   fetchAdminAuditLog,
   fetchAdminBotSettings,
@@ -19,8 +19,6 @@ type UseAdminDataOptions = {
   auditSearch: string;
   auditDateFrom: string;
   auditDateTo: string;
-  selectedArchiveMonth?: string;
-  archivePage: number;
   discordGuildId: string;
 };
 
@@ -32,8 +30,6 @@ export function useAdminData(options: UseAdminDataOptions) {
     auditSearch,
     auditDateFrom,
     auditDateTo,
-    selectedArchiveMonth,
-    archivePage,
     discordGuildId,
   } = options;
 
@@ -78,15 +74,15 @@ export function useAdminData(options: UseAdminDataOptions) {
     enabled: isAdmin,
   });
 
-  const auditArchiveMonthQuery = useQuery({
-    queryKey: queryKeys.admin.auditArchive(selectedArchiveMonth, archivePage),
-    queryFn: () => fetchAdminAuditArchiveMonth(selectedArchiveMonth as string, { page: archivePage, limit: 50 }),
-    enabled: isAdmin && Boolean(selectedArchiveMonth),
-  });
-
   const botSettingsQuery = useQuery({
     queryKey: queryKeys.admin.botSettings(),
     queryFn: fetchAdminBotSettings,
+    enabled: isAdmin,
+  });
+
+  const rolesQuery = useQuery({
+    queryKey: queryKeys.admin.roles(),
+    queryFn: fetchRoles,
     enabled: isAdmin,
   });
 
@@ -108,10 +104,9 @@ export function useAdminData(options: UseAdminDataOptions) {
     inviteStatsQuery,
     auditLogQuery,
     auditMonthsQuery,
-    auditArchiveMonthQuery,
     botSettingsQuery,
+    rolesQuery,
     discordChannelsQuery,
     statusQuery,
   };
 }
-

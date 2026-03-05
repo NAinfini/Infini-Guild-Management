@@ -55,6 +55,7 @@ export const queryKeys = {
     auditMonths: () => [...queryKeys.admin.all, "audit-months"] as const,
     auditArchive: (month?: string | null, page?: number) => [...queryKeys.admin.all, "audit-archive", month ?? null, page ?? 1] as const,
     botSettings: () => [...queryKeys.admin.all, "bot-settings"] as const,
+    roles: () => [...queryKeys.admin.all, "roles"] as const,
     discordChannels: (guildId: string) => [...queryKeys.admin.all, "discord-channels", guildId] as const,
     status: () => [...queryKeys.admin.all, "status"] as const,
   },
@@ -77,8 +78,5 @@ export const queryKeys = {
     articles: (categoryId: string, search: string, archivedMode: string) =>
       [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode] as const,
     article: (slug: string | null) => [...queryKeys.wiki.all, "article", slug] as const,
-    articleVersions: (articleId: string) => [...queryKeys.wiki.all, "article-versions", articleId] as const,
-    articleVersionsCompare: (articleId: string, fromVersionId: string, toVersionId: string) =>
-      [...queryKeys.wiki.all, "article-versions-compare", articleId, fromVersionId, toVersionId] as const,
   },
 } as const;

@@ -1,7 +1,11 @@
-import { Alert, Button, Group, Loader, Select, Stack, Table, Text } from "@mantine/core";
+import { Alert, Group, Loader, Pagination, Stack, Text } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import { InfiniMotionPagination } from "@infini-dev-kit/frontend/components";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
+import { getCoreRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
+import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { fetchAdminAuditLog } from "../../../api/queries/admin";
+import { InfiniTable } from "../../shared/InfiniTable";
 
 type AuditRow = Awaited<ReturnType<typeof fetchAdminAuditLog>>["data"][number];
 
@@ -18,18 +22,6 @@ type AuditLogViewerProps = {
   maskIdentifier: (value: string, isAdmin: boolean) => string;
   formatAuditDiffHeader: (diffTitle: string | null, detailText: string | null) => string;
   formatDateTime: (iso: string | null) => string;
-  archiveTitle: string;
-  auditMonthsLoading: boolean;
-  auditMonths: string[];
-  selectedArchiveMonth: string | undefined;
-  onSelectedArchiveMonthChange: (value: string | undefined) => void;
-  archiveCountLabel: string;
-  archiveCsvTooLarge: boolean;
-  archiveTooLargeMessage: string;
-  onDownloadCsv: () => void;
-  canExportArchive: boolean;
-  exportCooldownSeconds: number;
-  downloadCsvLabel: string;
 };
 
 export function AuditLogViewer({
@@ -45,95 +37,92 @@ export function AuditLogViewer({
   maskIdentifier,
   formatAuditDiffHeader,
   formatDateTime,
-  archiveTitle,
-  auditMonthsLoading,
-  auditMonths,
-  selectedArchiveMonth,
-  onSelectedArchiveMonthChange,
-  archiveCountLabel,
-  archiveCsvTooLarge,
-  archiveTooLargeMessage,
-  onDownloadCsv,
-  canExportArchive,
-  exportCooldownSeconds,
-  downloadCsvLabel,
 }: AuditLogViewerProps) {
+  const { t } = useTranslation("admin");
   const totalPages = Math.max(1, Math.ceil(auditTotal / Math.max(1, auditPageSize)));
+  const [sorting, setSorting] = useState<SortingState>([]);
+
+  const columns = useMemo<ColumnDef<AuditRow, unknown>[]>(() => [
+    {
+      header: t("audit.table.entity"),
+      id: "entity_type",
+      accessorKey: "entity_type",
+      size: 100,
+    },
+    {
+      header: t("audit.table.action"),
+      id: "action",
+      accessorKey: "action",
+      size: 100,
+    },
+    {
+      header: t("audit.table.diff"),
+      id: "diff",
+      enableSorting: false,
+      size: 280,
+      cell: ({ row }) => (
+        <Text size="sm" lineClamp={2} style={{ wordBreak: "break-word" }}>
+          {formatAuditDiffHeader(row.original.diff_title, row.original.detail_text)}
+        </Text>
+      ),
+    },
+    {
+      header: t("audit.table.actor"),
+      id: "actor_id",
+      accessorFn: (row) => String(row.actor_id ?? ""),
+      size: 120,
+      cell: ({ row }) => {
+        const actorMasked = maskIdentifier(String(row.original.actor_id ?? ""), isAdmin);
+        return <Text size="sm" truncate aria-label={`Audit actor ${actorMasked}`}>{actorMasked}</Text>;
+      },
+    },
+    {
+      header: t("audit.table.entityId"),
+      id: "entity_id",
+      accessorFn: (row) => String(row.entity_id ?? ""),
+      size: 120,
+      cell: ({ row }) => (
+        <Text size="sm" truncate>{maskIdentifier(String(row.original.entity_id ?? ""), isAdmin)}</Text>
+      ),
+    },
+    {
+      header: t("audit.table.time"),
+      id: "created_at",
+      accessorKey: "created_at",
+      size: 150,
+      cell: ({ row }) => (
+        <Text size="sm" style={{ whiteSpace: "nowrap" }}>{formatDateTime(row.original.created_at)}</Text>
+      ),
+    },
+  ], [t, formatAuditDiffHeader, maskIdentifier, formatDateTime, isAdmin]);
+
+  const table = useReactTable({
+    data: auditRows,
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getRowId: (row) => row.id,
+  });
 
   return (
     <Stack gap={12}>
       {auditLoading ? <Loader size="sm" /> : null}
-      {auditError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
+      {auditError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
 
       {!auditLoading && !auditError ? (
-        <InfiniCard>
+        <InfiniCard interactive={false}>
           <div style={{ padding: "1.2rem" }}>
-            <Table withTableBorder withColumnBorders striped highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Entity</Table.Th>
-                  <Table.Th>Action</Table.Th>
-                  <Table.Th>Diff</Table.Th>
-                  <Table.Th>Actor</Table.Th>
-                  <Table.Th>Entity ID</Table.Th>
-                  <Table.Th>Time</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {auditRows.map((row) => {
-                  const actorMasked = maskIdentifier(String(row.actor_id ?? ""), isAdmin);
-                  return (
-                    <Table.Tr key={row.id}>
-                      <Table.Td>{row.entity_type}</Table.Td>
-                      <Table.Td>{row.action}</Table.Td>
-                      <Table.Td>
-                        <Text size="sm">{formatAuditDiffHeader(row.diff_title, row.detail_text)}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" aria-label={`Audit actor ${actorMasked}`}>{actorMasked}</Text>
-                      </Table.Td>
-                      <Table.Td>{maskIdentifier(String(row.entity_id ?? ""), isAdmin)}</Table.Td>
-                      <Table.Td>{formatDateTime(row.created_at)}</Table.Td>
-                    </Table.Tr>
-                  );
-                })}
-              </Table.Tbody>
-            </Table>
+            <div style={{ overflowX: "auto" }}>
+              <InfiniTable table={table} highlightOnHover />
+            </div>
             <Group justify="flex-end" mt="sm">
-              <InfiniMotionPagination page={auditPageCurrent} total={totalPages} onChange={onAuditPageChange} />
+              <Pagination value={auditPageCurrent} total={totalPages} onChange={onAuditPageChange} withEdges />
             </Group>
-          </div>
-        </InfiniCard>
-      ) : null}
-
-      {isAdmin ? (
-        <InfiniCard>
-          <div style={{ padding: "1.2rem" }}>
-            <Text fw={600} size="sm" mb={8}>{archiveTitle}</Text>
-            {auditMonthsLoading ? <Loader size="sm" /> : null}
-            {auditMonths.length > 0 ? (
-              <Stack gap={8}>
-                <Select
-                  style={{ width: 220 }}
-                  value={selectedArchiveMonth ?? null}
-                  aria-label="Select archive month"
-                  data={auditMonths.map((month) => ({
-                    value: month,
-                    label: month,
-                  }))}
-                  onChange={(value) => onSelectedArchiveMonthChange(value ?? undefined)}
-                />
-                <Text c="dimmed" size="sm">{archiveCountLabel}</Text>
-                {archiveCsvTooLarge ? <Text c="yellow" size="sm">{archiveTooLargeMessage}</Text> : null}
-                <Button onClick={onDownloadCsv} disabled={!canExportArchive}>
-                  {exportCooldownSeconds > 0 ? `${downloadCsvLabel} (${exportCooldownSeconds}s)` : downloadCsvLabel}
-                </Button>
-              </Stack>
-            ) : null}
           </div>
         </InfiniCard>
       ) : null}
     </Stack>
   );
 }
-

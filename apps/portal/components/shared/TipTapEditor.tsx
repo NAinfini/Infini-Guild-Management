@@ -1,4 +1,4 @@
-import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+﻿import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -10,10 +10,31 @@ import Underline from "@tiptap/extension-underline";
 import type { Content } from "@tiptap/core";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Alert, Button, Card, Group, Modal, Progress, Stack, Text } from "@mantine/core";
+import { Alert, ActionIcon, Button, Card, Group, Modal, Progress, Stack, Text, Tooltip } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import DOMPurify from "dompurify";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  IconBold,
+  IconItalic,
+  IconUnderline,
+  IconStrikethrough,
+  IconLink,
+  IconLinkOff,
+  IconH1,
+  IconH2,
+  IconH3,
+  IconList,
+  IconListNumbers,
+  IconBlockquote,
+  IconCode,
+  IconTable,
+  IconColumnInsertRight,
+  IconRowInsertBottom,
+  IconTableOff,
+  IconPhoto,
+} from "@tabler/icons-react";
 import { lowlight } from "lowlight";
 import { presentAppError } from "../../hooks/useAppError";
 import { convertImageToWebP } from "../../utils/media-conversion";
@@ -49,9 +70,13 @@ function parseContent(value: string, mode: EditorMode): Content {
 
   if (mode === "json") {
     try {
-      return JSON.parse(value) as Content;
+      const parsed = JSON.parse(value) as Record<string, unknown>;
+      if (parsed && typeof parsed === "object" && parsed.type === "doc") {
+        return parsed as Content;
+      }
+      return JSON.parse(DEFAULT_DOC_JSON) as Content;
     } catch {
-      return value;
+      return JSON.parse(DEFAULT_DOC_JSON) as Content;
     }
   }
 
@@ -116,6 +141,7 @@ export function TipTapEditor({
   editable,
   onImageUpload,
 }: TipTapEditorProps) {
+  const { t } = useTranslation("editor");
   const effectiveReadOnly = editable === undefined ? readOnly : !editable;
   const [slashOpen, setSlashOpen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -133,8 +159,8 @@ export function TipTapEditor({
       setImageUploadProgress(100);
       editor.chain().focus().setImage({ src: source, alt: converted.name }).run();
       notifications.show({
-        color: "green",
-        message: "Image inserted",
+        color: "infini-success",
+        message: t("message.imageInserted"),
       });
     } catch (error) {
       presentAppError(error, "Image upload failed");
@@ -275,41 +301,41 @@ export function TipTapEditor({
     () => [
       {
         id: "heading1",
-        label: "Heading 1",
+        label: t("toolbar.h1"),
         run: (nextEditor) => nextEditor.chain().focus().toggleHeading({ level: 1 }).run(),
       },
       {
         id: "heading2",
-        label: "Heading 2",
+        label: t("toolbar.h2"),
         run: (nextEditor) => nextEditor.chain().focus().toggleHeading({ level: 2 }).run(),
       },
       {
         id: "bullet",
-        label: "Bullet List",
+        label: t("toolbar.bullet"),
         run: (nextEditor) => nextEditor.chain().focus().toggleBulletList().run(),
       },
       {
         id: "ordered",
-        label: "Numbered List",
+        label: t("toolbar.number"),
         run: (nextEditor) => nextEditor.chain().focus().toggleOrderedList().run(),
       },
       {
         id: "codeblock",
-        label: "Code Block",
+        label: t("toolbar.code"),
         run: (nextEditor) => nextEditor.chain().focus().toggleCodeBlock().run(),
       },
       {
         id: "table",
-        label: "Table 3x3",
+        label: t("toolbar.table"),
         run: (nextEditor) => nextEditor.chain().focus().insertTable({ rows: 3, cols: 3 }).run(),
       },
       {
         id: "image",
-        label: "Image Upload",
+        label: t("toolbar.image"),
         run: () => fileInputRef.current?.click(),
       },
     ],
-    [],
+    [t],
   );
 
   if (!editor) {
@@ -333,71 +359,31 @@ export function TipTapEditor({
     <Stack gap={8} w="100%">
       {!effectiveReadOnly ? (
         <div className={styles.toolbar}>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().toggleBold().run()}>
-            Bold
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().toggleItalic().run()}>
-            Italic
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().toggleUnderline().run()}>
-            Underline
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().toggleStrike().run()}>
-            Strike
-          </Button>
-          <Button size="xs" variant="default" onClick={insertLink}>
-            Link
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().unsetLink().run()}>
-            Unlink
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
-            H1
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
-            H2
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
-            H3
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().toggleBulletList().run()}>
-            Bullet
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().toggleOrderedList().run()}>
-            Number
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().toggleBlockquote().run()}>
-            Quote
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
-            Code
-          </Button>
-          <Button
-            size="xs"
-            variant="default"
-            onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}
-          >
-            Table
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().addColumnAfter().run()}>
-            +Col
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().addRowAfter().run()}>
-            +Row
-          </Button>
-          <Button size="xs" variant="default" onClick={() => editor.chain().focus().deleteTable().run()}>
-            Del Table
-          </Button>
-          <Button size="xs" variant="default" onClick={() => fileInputRef.current?.click()}>
-            Image
-          </Button>
+          <Tooltip label={t("toolbar.bold")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleBold().run()}><IconBold size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.italic")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleItalic().run()}><IconItalic size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.underline")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleUnderline().run()}><IconUnderline size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.strike")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleStrike().run()}><IconStrikethrough size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.link")} withArrow><ActionIcon size="sm" variant="default" onClick={insertLink}><IconLink size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.unlink")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().unsetLink().run()}><IconLinkOff size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.h1")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}><IconH1 size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.h2")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><IconH2 size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.h3")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><IconH3 size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.bullet")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleBulletList().run()}><IconList size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.number")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleOrderedList().run()}><IconListNumbers size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.quote")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleBlockquote().run()}><IconBlockquote size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.code")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleCodeBlock().run()}><IconCode size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.table")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}><IconTable size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.addCol")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().addColumnAfter().run()}><IconColumnInsertRight size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.addRow")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().addRowAfter().run()}><IconRowInsertBottom size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.delTable")} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().deleteTable().run()}><IconTableOff size={16} /></ActionIcon></Tooltip>
+          <Tooltip label={t("toolbar.image")} withArrow><ActionIcon size="sm" variant="default" onClick={() => fileInputRef.current?.click()}><IconPhoto size={16} /></ActionIcon></Tooltip>
         </div>
       ) : null}
 
       {slashOpen && !effectiveReadOnly ? (
         <Card withBorder padding="sm" className={styles.slashMenu}>
           <Text c="dimmed" size="sm">
-            Slash Commands
+            {t("slashCommands")}
           </Text>
           <Group gap={8} wrap="wrap" mt={8}>
             {slashCommands.map((command) => (
@@ -422,7 +408,7 @@ export function TipTapEditor({
       ) : null}
 
       {isUploadingImage ? (
-        <Alert color="blue" title="Uploading image..." variant="light">
+        <Alert color="infini-primary" title="Uploading image..." variant="light">
           <Progress value={imageUploadProgress} size="sm" mt={8} />
         </Alert>
       ) : null}
@@ -484,3 +470,4 @@ export function TipTapEditor({
 }
 
 export const TIPTAP_DEFAULT_JSON = DEFAULT_DOC_JSON;
+

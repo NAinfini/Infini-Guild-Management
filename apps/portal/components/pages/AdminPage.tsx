@@ -1,4 +1,4 @@
-import { hasRoleAtLeast } from "@guild/shared";
+﻿import { hasRoleAtLeast } from "@guild/shared";
 import { MotionButton } from "@infini-dev-kit/frontend/components";
 import {
   Alert,
@@ -8,20 +8,21 @@ import {
   Center,
   Group,
   Loader,
-  Select,
   Tabs,
   Title,
 } from "@mantine/core";
+import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, subDays } from "date-fns";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  batchDeactivateAdminUsers,
   batchDeleteAdminUsers,
   batchReactivateAdminUsers,
   batchUpdateAdminUserRole,
+  createAdminMember,
   createAdminInviteLink,
   deactivateAdminUser,
   reactivateAdminUser,
@@ -32,19 +33,21 @@ import {
   updateAdminUserRole,
 } from "../../api/mutations/admin";
 import {
+  createRole,
+  deleteRole,
+  updateRole,
+} from "../../api/mutations/roles";
+import {
   updateMyProfile,
 } from "../../api/mutations/users";
 import {
-  downloadAdminAuditArchiveFile,
   downloadAdminAuditLogExport,
-  requestAdminAuditArchiveDownload,
 } from "../../api/queries/admin";
 import { queryKeys } from "../../api/query-keys";
 import { useAdminData } from "../../hooks/data/useAdminData";
 import { usePageHeaderActions } from "../../context/PageHeaderContext";
 import { useAppError } from "../../hooks/useAppError";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
-import { portalConfirm } from "../../overlays";
 import { useAuthStore } from "../../stores/auth";
 import { copyPlainText } from "../../utils/copy";
 import { PageLayout } from "../layout/PageLayout";
@@ -64,6 +67,9 @@ const LazyAdminInviteSection = lazy(() =>
 );
 const LazyAdminBotSection = lazy(() =>
   import("../feature/admin/AdminBotSection").then((mod) => ({ default: mod.AdminBotSection })),
+);
+const LazyAdminRolesSection = lazy(() =>
+  import("../feature/admin/AdminRolesSection").then((mod) => ({ default: mod.AdminRolesSection })),
 );
 const LazyAdminMemberDetailModal = lazy(() =>
   import("../feature/admin/AdminMemberDetailModal").then((mod) => ({ default: mod.AdminMemberDetailModal })),
@@ -97,137 +103,11 @@ function downloadFileBlob(filename: string, blob: Blob) {
   URL.revokeObjectURL(url);
 }
 
-type AuditArchiveNdjsonRow = {
-  created_at?: unknown;
-  actor_id?: unknown;
-  action?: unknown;
-  entity_type?: unknown;
-  entity_id?: unknown;
-  diff_title?: unknown;
-  detail_text?: unknown;
-};
-
-const ARCHIVE_CSV_MAX_BYTES = 50 * 1024 * 1024;
-const AUDIT_CSV_HEADERS = [
-  "timestamp_utc",
-  "timestamp_local",
-  "actor",
-  "action",
-  "entity_type",
-  "entity_id",
-  "diff_title",
-  "detail_text",
-];
-
-function archiveFileNameFromKey(key: string): string {
-  const parts = key.split("/");
-  return parts[parts.length - 1] || "audit-archive.bin";
-}
-
 function auditExportDatePart(value: string): string {
   return value && value.trim().length > 0 ? value.trim() : "auto";
 }
 
-function csvCell(value: string): string {
-  return `"${value.replace(/"/g, "\"\"")}"`;
-}
-
-function normalizeArchiveValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function toAuditCsvRow(row: AuditArchiveNdjsonRow): string[] {
-  const timestampUtc = normalizeArchiveValue(row.created_at);
-  const date = new Date(timestampUtc);
-  const timestampLocal = Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
-
-  return [
-    timestampUtc,
-    timestampLocal,
-    normalizeArchiveValue(row.actor_id),
-    normalizeArchiveValue(row.action),
-    normalizeArchiveValue(row.entity_type),
-    normalizeArchiveValue(row.entity_id),
-    normalizeArchiveValue(row.diff_title),
-    normalizeArchiveValue(row.detail_text),
-  ];
-}
-
-function parseArchiveNdjson(text: string): AuditArchiveNdjsonRow[] {
-  try {
-    const lines = text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    return lines.map((line) => JSON.parse(line) as AuditArchiveNdjsonRow);
-  } catch {
-    throw new Error("parse_failed");
-  }
-}
-
-async function readArchiveBlobText(fileKey: string, blob: Blob): Promise<string> {
-  if (!fileKey.endsWith(".gz")) {
-    return blob.text();
-  }
-
-  try {
-    const stream = blob.stream().pipeThrough(new DecompressionStream("gzip"));
-    return await new Response(stream).text();
-  } catch {
-    throw new Error("decompress_failed");
-  }
-}
-
-function createAuditCsvBlob(rows: AuditArchiveNdjsonRow[]): Blob {
-  try {
-    const header = AUDIT_CSV_HEADERS.map(csvCell).join(",");
-    const body = rows.map((row) => toAuditCsvRow(row).map(csvCell).join(","));
-    return new Blob([`\uFEFF${[header, ...body].join("\n")}`], { type: "text/csv; charset=utf-8" });
-  } catch {
-    throw new Error("encode_failed");
-  }
-}
-
-async function convertArchiveBlobsToCsvWithRetry(
-  files: Array<{ key: string; blob: Blob }>,
-  maxAttempts: number = 2,
-): Promise<Blob> {
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      const allRows: AuditArchiveNdjsonRow[] = [];
-      for (const file of files) {
-        const text = await readArchiveBlobText(file.key, file.blob);
-        allRows.push(...parseArchiveNdjson(text));
-      }
-      return createAuditCsvBlob(allRows);
-    } catch (error) {
-      lastError = error;
-      if (attempt === maxAttempts) {
-        break;
-      }
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("encode_failed");
-}
-
 const BATCH_SELECTION_LIMIT = 50;
-const EXPORT_COOLDOWN_MS = 60_000;
 
 function maskIdentifier(value: string, isAdmin: boolean): string {
   if (isAdmin) {
@@ -270,13 +150,7 @@ function sectionHeading(text: string) {
   );
 }
 
-type ColumnDef<T = unknown> = {
-  key?: string;
-  title?: ReactNode;
-  dataIndex?: keyof T | string | Array<string | number>;
-  width?: string | number;
-  render?: (value: unknown, row: T, index: number) => ReactNode;
-};
+import type { ColumnDef as TanStackColumnDef } from "@tanstack/react-table";
 
 export function AdminPage() {
   const { t } = useTranslation("admin");
@@ -288,18 +162,17 @@ export function AdminPage() {
 
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState("member");
-  const [batchRole, setBatchRole] = useState<"member" | "moderator">("member");
 
-  const [inviteVisibility, setInviteVisibility] = useState<"active" | "expired">("active");
+  const [inviteVisibility, setInviteVisibility] = useState<"active" | "expired" | "revoked">("active");
   const [inviteMaxUses, setInviteMaxUses] = useState<number>(10);
   const [inviteExpiresAt, setInviteExpiresAt] = useState("");
+  const [inviteSearch, setInviteSearch] = useState("");
 
   const [auditPage, setAuditPage] = useState(1);
   const [auditSearch, setAuditSearch] = useState("");
-  const [auditDateFrom, setAuditDateFrom] = useState(() => format(subDays(new Date(), 90), "yyyy-MM-dd"));
+  const [auditDateFrom, setAuditDateFrom] = useState(() => format(subDays(new Date(), 1), "yyyy-MM-dd"));
   const [auditDateTo, setAuditDateTo] = useState(() => format(new Date(), "yyyy-MM-dd"));
-  const [selectedArchiveMonth, setSelectedArchiveMonth] = useState<string | undefined>(undefined);
-  const [archivePage, setArchivePage] = useState(1);
+
 
   const [botSettingsJson, setBotSettingsJson] = useState("");
   const [discordGuildId, setDiscordGuildId] = useState("");
@@ -312,8 +185,6 @@ export function AdminPage() {
   const [memberDetailTitle, setMemberDetailTitle] = useState("");
   const [memberDetailBio, setMemberDetailBio] = useState("");
   const [batchProgress, setBatchProgress] = useState(0);
-  const [exportCooldownUntil, setExportCooldownUntil] = useState<number | null>(null);
-  const [exportCooldownSeconds, setExportCooldownSeconds] = useState(0);
   const [statusLatencyMs, setStatusLatencyMs] = useState<number | null>(null);
   const [statusHealthLogs, setStatusHealthLogs] = useState<
     Array<{ at: string; db: string; r2: string; ws: string; crons: string; latencyMs: number | null }>
@@ -325,8 +196,8 @@ export function AdminPage() {
     inviteStatsQuery,
     auditLogQuery,
     auditMonthsQuery,
-    auditArchiveMonthQuery,
     botSettingsQuery,
+    rolesQuery,
     discordChannelsQuery,
     statusQuery,
   } = useAdminData({
@@ -336,8 +207,6 @@ export function AdminPage() {
     auditSearch,
     auditDateFrom,
     auditDateTo,
-    selectedArchiveMonth,
-    archivePage,
     discordGuildId,
   });
 
@@ -351,14 +220,6 @@ export function AdminPage() {
     setWechatRoomIdsText(botSettingsQuery.data.wechat.room_ids.join(", "));
     setWechatDefaultToggles(botSettingsQuery.data.wechat.default_toggles);
   }, [botSettingsQuery.data]);
-
-  useEffect(() => {
-    if (selectedArchiveMonth) return;
-    const first = auditMonthsQuery.data?.months[0];
-    if (first) {
-      setSelectedArchiveMonth(first);
-    }
-  }, [auditMonthsQuery.data, selectedArchiveMonth]);
 
   useEffect(() => {
     if (!memberDetailId) {
@@ -403,30 +264,11 @@ export function AdminPage() {
     }
   }, [statusHealthLogs]);
 
-  useEffect(() => {
-    if (!exportCooldownUntil) {
-      setExportCooldownSeconds(0);
-      return;
-    }
-
-    const update = () => {
-      const remain = Math.max(0, Math.ceil((exportCooldownUntil - Date.now()) / 1000));
-      setExportCooldownSeconds(remain);
-      if (remain === 0) {
-        setExportCooldownUntil(null);
-      }
-    };
-
-    update();
-    const timer = window.setInterval(update, 300);
-    return () => window.clearInterval(timer);
-  }, [exportCooldownUntil]);
-
   const updateRoleMutation = useMutation({
     mutationFn: ({ userId, role }: { userId: string; role: "admin" | "moderator" | "member" }) =>
       updateAdminUserRole(userId, role),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.roleUpdated") });
+      notifications.show({ color: "infini-success", message: t("message.roleUpdated") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.users() });
     },
     onError: (error) => showError(error, t("message.roleUpdateFailed")),
@@ -435,7 +277,7 @@ export function AdminPage() {
   const deactivateMutation = useMutation({
     mutationFn: (userId: string) => deactivateAdminUser(userId),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.deactivated") });
+      notifications.show({ color: "infini-success", message: t("message.deactivated") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.users() });
     },
     onError: (error) => showError(error, t("message.deactivateFailed")),
@@ -444,7 +286,7 @@ export function AdminPage() {
   const reactivateMutation = useMutation({
     mutationFn: (userId: string) => reactivateAdminUser(userId),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.reactivated") });
+      notifications.show({ color: "infini-success", message: t("message.reactivated") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.users() });
     },
     onError: (error) => showError(error, t("message.reactivateFailed")),
@@ -454,38 +296,67 @@ export function AdminPage() {
     mutationFn: (userId: string) => resetAdminUserPassword(userId),
     onSuccess: (payload) => {
       void copyPlainText(payload.temporary_password);
-      notifications.show({ color: "green", message: t("message.passwordResetCopied") });
+      notifications.show({ color: "infini-success", message: t("message.passwordResetCopied") });
     },
     onError: (error) => showError(error, t("message.passwordResetFailed")),
   });
 
+  const createMemberMutation = useMutation({
+    mutationFn: ({ username }: { username: string }) => createAdminMember({ username }),
+    onSuccess: async (payload) => {
+      await copyPlainText(payload.temporary_password);
+      notifications.show({
+        color: "infini-success",
+        message: t("message.memberCreatedPasswordCopied", { username: payload.username }),
+      });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.users() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+    },
+    onError: (error) => showError(error, t("message.memberCreateFailed")),
+  });
+
   const batchRoleMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: ({
+      userIds,
+      newRole,
+    }: {
+      userIds: string[];
+      newRole: "member" | "moderator";
+    }) =>
       batchUpdateAdminUserRole({
-        user_ids: selectedUserIds,
-        new_role: batchRole,
+        user_ids: userIds,
+        new_role: newRole,
       }),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.batchRoleUpdated") });
+      notifications.show({ color: "infini-success", message: t("message.batchRoleUpdated") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.users() });
     },
     onError: (error) => showError(error, t("message.batchRoleUpdateFailed")),
   });
 
   const batchDeleteMutation = useMutation({
-    mutationFn: () => batchDeleteAdminUsers({ user_ids: selectedUserIds }),
+    mutationFn: (userIds: string[]) => batchDeleteAdminUsers({ user_ids: userIds }),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.batchDeleted") });
+      notifications.show({ color: "infini-success", message: t("message.batchDeleted") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.users() });
       setSelectedUserIds([]);
     },
     onError: (error) => showError(error, t("message.batchDeleteFailed")),
   });
 
-  const batchReactivateMutation = useMutation({
-    mutationFn: () => batchReactivateAdminUsers({ user_ids: selectedUserIds }),
+  const batchDeactivateMutation = useMutation({
+    mutationFn: (userIds: string[]) => batchDeactivateAdminUsers({ user_ids: userIds }),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.batchReactivated") });
+      notifications.show({ color: "infini-success", message: t("message.batchDeactivated") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.users() });
+    },
+    onError: (error) => showError(error, t("message.batchDeactivateFailed")),
+  });
+
+  const batchReactivateMutation = useMutation({
+    mutationFn: (userIds: string[]) => batchReactivateAdminUsers({ user_ids: userIds }),
+    onSuccess: async () => {
+      notifications.show({ color: "infini-success", message: t("message.batchReactivated") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.users() });
     },
     onError: (error) => showError(error, t("message.batchReactivateFailed")),
@@ -498,7 +369,7 @@ export function AdminPage() {
         expires_at: toIsoOrUndefined(inviteExpiresAt),
       }),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.inviteCreated") });
+      notifications.show({ color: "infini-success", message: t("message.inviteCreated") });
       setInviteExpiresAt("");
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.inviteLinks() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.inviteStats() });
@@ -519,7 +390,7 @@ export function AdminPage() {
       const endLabel = auditExportDatePart(auditDateTo);
       downloadFileBlob(`guild-audit-${startLabel}-to-${endLabel}.${format}`, blob);
       notifications.show({
-        color: "green",
+        color: "infini-success",
         message: format === "csv" ? t("message.auditExportedCsv") : t("message.auditExportedJson"),
       });
     },
@@ -529,7 +400,7 @@ export function AdminPage() {
   const revokeInviteMutation = useMutation({
     mutationFn: revokeAdminInviteLink,
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.inviteRevoked") });
+      notifications.show({ color: "infini-success", message: t("message.inviteRevoked") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.inviteLinks() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.inviteStats() });
     },
@@ -557,7 +428,7 @@ export function AdminPage() {
       return updateAdminBotSettings(payload);
     },
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.botSettingsSaved") });
+      notifications.show({ color: "infini-success", message: t("message.botSettingsSaved") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.botSettings() });
     },
     onError: (error) => showError(error, t("message.botSettingsSaveFailed")),
@@ -567,11 +438,11 @@ export function AdminPage() {
     mutationFn: ({ platform }: { platform: "discord" | "wechat" }) => testAdminBotDispatch({ platform }),
     onSuccess: (_, variables) => {
       notifications.show({
-        color: "green",
-        message: variables.platform === "discord" ? "Discord test notification sent" : "WeChat test message sent",
+        color: "infini-success",
+        message: variables.platform === "discord" ? t("message.botTestDiscordSent") : t("message.botTestWechatSent"),
       });
     },
-    onError: (error) => showError(error, "Failed to send bot test message"),
+    onError: (error) => showError(error, t("message.botTestSendFailed")),
   });
 
   const updateMemberProfileMutation = useMutation({
@@ -589,11 +460,39 @@ export function AdminPage() {
         bio: bio || null,
       }),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: "Member profile saved" });
+      notifications.show({ color: "infini-success", message: t("message.memberProfileSaved") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.users() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
     },
-    onError: (error) => showError(error, "Failed to save member profile"),
+    onError: (error) => showError(error, t("message.memberProfileSaveFailed")),
+  });
+
+  const createRoleMutation = useMutation({
+    mutationFn: createRole,
+    onSuccess: async () => {
+      notifications.show({ color: "infini-success", message: t("message.roleCreated") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.roles() });
+    },
+    onError: (error) => showError(error, t("message.roleCreateFailed")),
+  });
+
+  const updateRoleConfigMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateRole>[1] }) =>
+      updateRole(id, payload),
+    onSuccess: async () => {
+      notifications.show({ color: "infini-success", message: t("message.roleConfigSaved") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.roles() });
+    },
+    onError: (error) => showError(error, t("message.roleConfigSaveFailed")),
+  });
+
+  const deleteRoleMutation = useMutation({
+    mutationFn: (id: string) => deleteRole(id),
+    onSuccess: async () => {
+      notifications.show({ color: "infini-success", message: t("message.roleDeleted") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.roles() });
+    },
+    onError: (error) => showError(error, t("message.roleDeleteFailed")),
   });
 
   const userRows = usersQuery.data?.data ?? [];
@@ -603,11 +502,32 @@ export function AdminPage() {
     const fullyUsed = row.used_count >= row.max_uses;
     return Boolean(row.revoked_at) || expiredByDate || fullyUsed;
   };
-  const inviteRows = inviteRowsRaw.filter((row) =>
-    inviteVisibility === "expired" ? isInviteInactive(row) : !isInviteInactive(row),
-  );
+  const inviteRows = inviteRowsRaw.filter((row) => {
+    // Category filter
+    if (inviteVisibility === "revoked") {
+      if (!row.revoked_at) return false;
+    } else if (inviteVisibility === "expired") {
+      // Expired but NOT revoked (expired by date or fully used)
+      if (row.revoked_at) return false;
+      const expiredByDate = Boolean(row.expires_at && Date.parse(row.expires_at) <= Date.now());
+      const fullyUsed = row.used_count >= row.max_uses;
+      if (!expiredByDate && !fullyUsed) return false;
+    } else {
+      // Active: not inactive
+      if (isInviteInactive(row)) return false;
+    }
+    // Search filter
+    if (inviteSearch.trim()) {
+      const q = inviteSearch.toLowerCase();
+      const matches =
+        row.code.toLowerCase().includes(q) ||
+        (row.created_at && row.created_at.toLowerCase().includes(q)) ||
+        (row.expires_at && row.expires_at.toLowerCase().includes(q));
+      if (!matches) return false;
+    }
+    return true;
+  });
   const auditRows = auditLogQuery.data?.data ?? [];
-  const archivedAuditRows = auditArchiveMonthQuery.data?.data ?? [];
   const selectedMemberDetail = memberDetailId
     ? userRows.find((row) => row.user.id === memberDetailId) ?? null
     : null;
@@ -617,14 +537,11 @@ export function AdminPage() {
     await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.all });
   };
 
-  const archiveCount = auditArchiveMonthQuery.data?.total ?? archivedAuditRows.length;
-  const archiveEstimatedBytes = auditArchiveMonthQuery.data?.manifest?.total_size_bytes ?? null;
-  const archiveCsvTooLarge =
-    typeof archiveEstimatedBytes === "number" && archiveEstimatedBytes > ARCHIVE_CSV_MAX_BYTES;
   const isBatchPending =
-    batchRoleMutation.isPending || batchDeleteMutation.isPending || batchReactivateMutation.isPending;
-  const canExportArchive =
-    Boolean(selectedArchiveMonth) && exportCooldownSeconds === 0 && !archiveCsvTooLarge;
+    batchRoleMutation.isPending ||
+    batchDeleteMutation.isPending ||
+    batchDeactivateMutation.isPending ||
+    batchReactivateMutation.isPending;
 
   useEffect(() => {
     if (!isBatchPending) {
@@ -645,57 +562,89 @@ export function AdminPage() {
 
   const applyUserSelection = (keys: string[]) => {
     if (keys.length > BATCH_SELECTION_LIMIT) {
-      notifications.show({ color: "yellow", message: `Maximum batch selection is ${BATCH_SELECTION_LIMIT}.` });
+      notifications.show({ color: "infini-warning", message: t("message.batchSelectionLimit", { limit: BATCH_SELECTION_LIMIT }) });
     }
     setSelectedUserIds(keys.slice(0, BATCH_SELECTION_LIMIT));
   };
 
-  const confirmBatchAction = async (message: string): Promise<boolean> => {
-    if (selectedUserIds.length === 0) {
+  const getCappedUserIds = (userIds: string[]) => userIds.slice(0, BATCH_SELECTION_LIMIT);
+
+  const confirmBatchAction = async (userIds: string[], message: string): Promise<boolean> => {
+    if (userIds.length === 0) {
       return false;
     }
-    return portalConfirm({
-      title: t("confirm.batchActionTitle"),
-      description: message,
-      intent: "warning",
+    return new Promise<boolean>((resolve) => {
+      modals.openConfirmModal({
+        title: t("confirm.batchActionTitle"),
+        children: message,
+        confirmProps: { color: "infini-warning" },
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+        closeOnConfirm: true,
+        closeOnCancel: true,
+        centered: true,
+      });
     });
   };
 
-  const handleBatchRole = async () => {
+  const handleBatchRole = async (
+    userIds: string[],
+    role: "member" | "moderator",
+  ) => {
+    const targetIds = getCappedUserIds(userIds);
     const confirmed = await confirmBatchAction(
+      targetIds,
       t("member.batchRoleConfirm", {
-        count: selectedUserIds.length,
-        role: batchRole,
+        count: targetIds.length,
+        role: t(`role.${role}`),
       }),
     );
     if (!confirmed) {
       return;
     }
-    batchRoleMutation.mutate();
+    batchRoleMutation.mutate({ userIds: targetIds, newRole: role });
   };
 
-  const handleBatchReactivate = async () => {
+  const handleBatchActivate = async (userIds: string[]) => {
+    const targetIds = getCappedUserIds(userIds);
     const confirmed = await confirmBatchAction(
+      targetIds,
       t("member.batchReactivateConfirm", {
-        count: selectedUserIds.length,
+        count: targetIds.length,
       }),
     );
     if (!confirmed) {
       return;
     }
-    batchReactivateMutation.mutate();
+    batchReactivateMutation.mutate(targetIds);
   };
 
-  const handleBatchDelete = async () => {
+  const handleBatchDeactivate = async (userIds: string[]) => {
+    const targetIds = getCappedUserIds(userIds);
     const confirmed = await confirmBatchAction(
-      t("member.batchDeleteConfirm", {
-        count: selectedUserIds.length,
+      targetIds,
+      t("member.batchDeactivateConfirm", {
+        count: targetIds.length,
       }),
     );
     if (!confirmed) {
       return;
     }
-    batchDeleteMutation.mutate();
+    batchDeactivateMutation.mutate(targetIds);
+  };
+
+  const handleBatchDelete = async (userIds: string[]) => {
+    const targetIds = getCappedUserIds(userIds);
+    const confirmed = await confirmBatchAction(
+      targetIds,
+      t("member.batchDeleteConfirm", {
+        count: targetIds.length,
+      }),
+    );
+    if (!confirmed) {
+      return;
+    }
+    batchDeleteMutation.mutate(targetIds);
   };
 
   const refreshStatus = useCallback(async () => {
@@ -737,18 +686,18 @@ export function AdminPage() {
     const bot = botSettingsQuery.data;
     const status = statusQuery.data;
     const lines = [
-      "Admin Config Summary",
-      `DB: ${status?.db ?? "unknown"}`,
-      `R2: ${status?.r2 ?? "unknown"}`,
-      `WS: ${status?.ws ?? "unknown"}`,
-      `Crons: ${status?.crons ?? "unknown"}`,
-      `Discord guild: ${bot?.discord.guild_id ?? ""}`,
-      `Discord notify channel: ${bot?.discord.notification_channel_id ?? ""}`,
-      `Discord team channel: ${bot?.discord.team_comp_channel_id ?? ""}`,
-      `WeChat rooms: ${(bot?.wechat.room_ids ?? []).join(", ")}`,
+      t("status.summary.title"),
+      t("status.summary.db", { value: status?.db ?? t("status.summary.unknown") }),
+      t("status.summary.r2", { value: status?.r2 ?? t("status.summary.unknown") }),
+      t("status.summary.ws", { value: status?.ws ?? t("status.summary.unknown") }),
+      t("status.summary.crons", { value: status?.crons ?? t("status.summary.unknown") }),
+      t("status.summary.discordGuild", { value: bot?.discord.guild_id ?? "" }),
+      t("status.summary.discordNotifyChannel", { value: bot?.discord.notification_channel_id ?? "" }),
+      t("status.summary.discordTeamChannel", { value: bot?.discord.team_comp_channel_id ?? "" }),
+      t("status.summary.wechatRooms", { value: (bot?.wechat.room_ids ?? []).join(", ") }),
     ];
     await copyPlainText(lines.join("\n"));
-    notifications.show({ color: "green", message: "Config summary copied" });
+    notifications.show({ color: "infini-success", message: t("message.configSummaryCopied") });
   };
 
   const botToggleKeys = Array.from(
@@ -788,90 +737,56 @@ export function AdminPage() {
   ]);
   const inviteCreateLabel = t("invite.create");
 
-  const userColumns: ColumnDef<(typeof userRows)[number]>[] = [
+  const userColumns: TanStackColumnDef<(typeof userRows)[number], unknown>[] = [
     {
-      title: t("member.table.username"),
-      key: "username",
-      render: (_, row) => row.user.username,
+      header: t("member.table.username"),
+      id: "username",
+      accessorFn: (row) => row.user.username,
     },
     {
-      title: "WeChat",
-      key: "wechat",
-      render: (_, row) => row.profile.wechat_name ?? "-",
+      header: "WeChat",
+      id: "wechat",
+      accessorFn: (row) => row.profile.wechat_name ?? "",
+      cell: ({ row }) => row.original.profile.wechat_name ?? "-",
     },
     {
-      title: "Class",
-      key: "class",
-      render: (_, row) => row.profile.classes[0] ?? "-",
+      header: t("member.table.discord"),
+      id: "discord",
+      accessorFn: (row) => row.profile.discord_id ?? "",
+      cell: ({ row }) => row.original.profile.discord_id ?? "-",
     },
     {
-      title: "Power",
-      key: "power",
-      render: (_, row) => row.profile.power,
+      header: "Class",
+      id: "class",
+      accessorFn: (row) => row.profile.classes[0] ?? "",
+      cell: ({ row }) => row.original.profile.classes[0] ?? "-",
     },
     {
-      title: "Notes",
-      key: "notes",
-      render: (_, row) => (isAdmin ? row.profile.notes ?? "-" : "Restricted"),
+      header: "Power",
+      id: "power",
+      accessorFn: (row) => row.profile.power,
     },
     {
-      title: t("member.table.role"),
-      key: "role",
-      render: (_, row) => (
-        <Badge color={row.user.role === "admin" ? "red" : row.user.role === "moderator" ? "yellow" : "blue"}>
-          {row.user.role}
+      header: t("member.table.notes"),
+      id: "notes",
+      enableSorting: false,
+      cell: ({ row }) => (isAdmin ? row.original.profile.notes ?? "-" : t("member.table.restricted")),
+    },
+    {
+      header: t("member.table.role"),
+      id: "role",
+      accessorFn: (row) => row.user.role,
+      cell: ({ row }) => (
+        <Badge color={row.original.user.role === "admin" ? "red" : row.original.user.role === "moderator" ? "yellow" : "blue"}>
+          {t(`role.${row.original.user.role}`)}
         </Badge>
       ),
     },
     {
-      title: t("member.table.active"),
-      key: "active",
-      render: (_, row) => (row.user.is_active ? <Badge color="green">active</Badge> : <Badge color="gray">inactive</Badge>),
-    },
-    {
-      title: t("member.table.actions"),
-      key: "actions",
-      render: (_, row) => (
-        <Group gap={8} wrap="wrap">
-          <Button size="xs" onClick={() => setMemberDetailId(row.user.id)} aria-label={`Open detail for ${row.user.username}`}>
-            Detail
-          </Button>
-          {isAdmin ? (
-            <>
-              <Select
-                size="xs"
-                value={row.user.role}
-                style={{ width: 120 }}
-                onChange={(value) =>
-                  value
-                    ? updateRoleMutation.mutate({
-                        userId: row.user.id,
-                        role: value as "admin" | "moderator" | "member",
-                      })
-                    : undefined
-                }
-                data={[
-                  { value: "member", label: "member" },
-                  { value: "moderator", label: "moderator" },
-                  { value: "admin", label: "admin" },
-                ]}
-              />
-              {row.user.is_active ? (
-                <Button size="xs" color="red" onClick={() => deactivateMutation.mutate(row.user.id)}>
-                  {t("member.deactivate")}
-                </Button>
-              ) : (
-                <Button size="xs" onClick={() => reactivateMutation.mutate(row.user.id)}>
-                  {t("member.reactivate")}
-                </Button>
-              )}
-              <Button size="xs" onClick={() => resetPasswordMutation.mutate(row.user.id)}>
-                {t("member.resetPassword")}
-              </Button>
-            </>
-          ) : null}
-        </Group>
-      ),
+      header: t("member.table.active"),
+      id: "active",
+      accessorFn: (row) => row.user.is_active,
+      cell: ({ row }) => (row.original.user.is_active ? <Badge color="infini-success">{t("member.status.active")}</Badge> : <Badge color="gray">{t("member.status.inactive")}</Badge>),
     },
   ];
 
@@ -886,7 +801,7 @@ export function AdminPage() {
           ) : null}
           {activeTab === "status" ? (
             <Button onClick={() => void refreshStatus()} loading={statusQuery.isFetching}>
-              Refresh status
+              {t("status.refresh")}
             </Button>
           ) : null}
         </Group>
@@ -909,8 +824,8 @@ export function AdminPage() {
       inviteStatsQuery.isError ||
       auditLogQuery.isError ||
       auditMonthsQuery.isError ||
-      auditArchiveMonthQuery.isError ||
       botSettingsQuery.isError ||
+      rolesQuery.isError ||
       discordChannelsQuery.isError ||
       statusQuery.isError,
     t("common:loadErrorRetry"),
@@ -924,17 +839,18 @@ export function AdminPage() {
   );
 
   if (!isModerator) {
-    return <Alert color="red" title={t("forbidden")} />;
+    return <Alert color="infini-danger" title={t("forbidden")} />;
   }
 
   return (
-    <PageLayout title={t("title")} subtitle="Administration" className="admin-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} className="admin-page">
       <Tabs value={activeTab} onChange={(value) => value && setActiveTab(value)}>
         <Tabs.List>
           <Tabs.Tab value="member">{t("tab.member")}</Tabs.Tab>
           <Tabs.Tab value="invite">{t("tab.invite")}</Tabs.Tab>
           <Tabs.Tab value="audit">{t("tab.audit")}</Tabs.Tab>
           <Tabs.Tab value="bot">{t("tab.bot")}</Tabs.Tab>
+          <Tabs.Tab value="roles">{t("tab.roles")}</Tabs.Tab>
           <Tabs.Tab value="status">{t("tab.status")}</Tabs.Tab>
         </Tabs.List>
 
@@ -946,26 +862,48 @@ export function AdminPage() {
               usersError={false}
               loadErrorMessage={t("common:loadError")}
               isAdmin={isAdmin}
-              batchRole={batchRole}
-              onBatchRoleChange={setBatchRole}
+              onCreateMember={async (username) => {
+                try {
+                  await createMemberMutation.mutateAsync({ username });
+                  return true;
+                } catch {
+                  return false;
+                }
+              }}
+              createMemberPending={createMemberMutation.isPending}
               selectedUserIds={selectedUserIds}
               selectedLabel={t("member.selected", { count: selectedUserIds.length })}
+              selectionHintLabel={t("member.selectionHint")}
               batchSelectionLimit={BATCH_SELECTION_LIMIT}
-              batchRoleButtonLabel={t("member.batchRole")}
-              batchReactivateButtonLabel={t("member.batchReactivate")}
-              batchDeleteButtonLabel={t("member.batchDelete")}
               onBatchRole={handleBatchRole}
-              onBatchReactivate={handleBatchReactivate}
+              onBatchActivate={handleBatchActivate}
+              onBatchDeactivate={handleBatchDeactivate}
               onBatchDelete={handleBatchDelete}
               batchRolePending={batchRoleMutation.isPending}
-              batchReactivatePending={batchReactivateMutation.isPending}
+              batchActivatePending={batchReactivateMutation.isPending}
+              batchDeactivatePending={batchDeactivateMutation.isPending}
               batchDeletePending={batchDeleteMutation.isPending}
+              singleRolePending={updateRoleMutation.isPending}
+              singleActivationPending={deactivateMutation.isPending || reactivateMutation.isPending}
+              singleResetPasswordPending={resetPasswordMutation.isPending}
               isBatchPending={isBatchPending}
               batchProgress={batchProgress}
               userRows={userRows}
               userColumns={userColumns}
               onOpenMemberDetail={setMemberDetailId}
               onSelectionChange={applyUserSelection}
+              onSingleRoleChange={(userId, role) => {
+                updateRoleMutation.mutate({ userId, role });
+              }}
+              onSingleActivate={(userId) => {
+                reactivateMutation.mutate(userId);
+              }}
+              onSingleDeactivate={(userId) => {
+                deactivateMutation.mutate(userId);
+              }}
+              onSingleResetPassword={(userId) => {
+                resetPasswordMutation.mutate(userId);
+              }}
             />
           </Suspense>
         </Tabs.Panel>
@@ -973,27 +911,22 @@ export function AdminPage() {
         <Tabs.Panel value="invite" pt="sm">
           <Suspense fallback={suspenseFallback}>
             <LazyAdminInviteSection
-              heading={sectionHeading(t("tab.invite"))}
               inviteVisibility={inviteVisibility}
               onInviteVisibilityChange={setInviteVisibility}
               isAdmin={isAdmin}
               inviteMaxUses={inviteMaxUses}
               onInviteMaxUsesChange={setInviteMaxUses}
-              inviteMaxUsesLabel={t("invite.maxUses")}
               inviteExpiresAt={inviteExpiresAt}
               onInviteExpiresAtChange={setInviteExpiresAt}
               onCreateInvite={() => createInviteMutation.mutate()}
-              inviteCreateLabel={t("invite.create")}
               inviteStatsLoading={inviteStatsQuery.isLoading}
               inviteStats={inviteStatsQuery.data ?? null}
-              inviteStatsTotalLabel={t("invite.stats.total")}
-              inviteStatsActiveLabel={t("invite.stats.active")}
-              inviteStatsRevokedLabel={t("invite.stats.revoked")}
-              inviteStatsExpiredLabel={t("invite.stats.expired")}
               inviteLinksLoading={inviteLinksQuery.isLoading}
               inviteLinksError={false}
               loadErrorMessage={t("common:loadError")}
               inviteRows={inviteRows}
+              inviteSearch={inviteSearch}
+              onInviteSearchChange={setInviteSearch}
               isInviteInactive={isInviteInactive}
               formatDateTime={formatDateTime}
               onCopyInviteLink={(row) => {
@@ -1001,10 +934,17 @@ export function AdminPage() {
               }}
               onRevokeInvite={(row) => {
                 void (async () => {
-                  const confirmed = await portalConfirm({
-                    title: t("confirm.revokeInvite.title"),
-                    description: t("confirm.revokeInvite.description", { code: row.code }),
-                    intent: "danger",
+                  const confirmed = await new Promise<boolean>((resolve) => {
+                    modals.openConfirmModal({
+                      title: t("confirm.revokeInvite.title"),
+                      children: t("confirm.revokeInvite.description", { code: row.code }),
+                      confirmProps: { color: "infini-danger" },
+                      onConfirm: () => resolve(true),
+                      onCancel: () => resolve(false),
+                      closeOnConfirm: true,
+                      closeOnCancel: true,
+                      centered: true,
+                    });
                   });
                   if (!confirmed) {
                     return;
@@ -1012,8 +952,6 @@ export function AdminPage() {
                   revokeInviteMutation.mutate(row.id);
                 })();
               }}
-              inviteCopyLabel={t("invite.copy")}
-              inviteRevokeLabel={t("invite.revoke")}
             />
           </Suspense>
         </Tabs.Panel>
@@ -1028,17 +966,19 @@ export function AdminPage() {
               auditDateTo={auditDateTo}
               onAuditDateFromChange={setAuditDateFrom}
               onAuditDateToChange={setAuditDateTo}
-              onResetDateRange={() => {
-                setAuditDateFrom(format(subDays(new Date(), 90), "yyyy-MM-dd"));
-                setAuditDateTo(format(new Date(), "yyyy-MM-dd"));
+              onSetDatePreset={(preset) => {
+                const today = new Date();
+                const days = preset === "1d" ? 1 : preset === "7d" ? 7 : 30;
+                setAuditDateFrom(format(subDays(today, days), "yyyy-MM-dd"));
+                setAuditDateTo(format(today, "yyyy-MM-dd"));
                 setAuditPage(1);
               }}
-              onApplyFilters={() => setAuditPage(1)}
               onDownloadFilteredCsv={() => exportAuditLogMutation.mutate("csv")}
               onDownloadFilteredJson={() => exportAuditLogMutation.mutate("json")}
               searchPlaceholder={t("audit.search")}
-              last90DaysLabel="Last 90 days"
-              applyLabel={t("audit.apply")}
+              lastDayLabel={t("audit.lastDay")}
+              last7DaysLabel={t("audit.last7Days")}
+              lastMonthLabel={t("audit.lastMonth")}
               downloadFilteredCsvLabel={t("audit.downloadFilteredCsv")}
               downloadFilteredJsonLabel={t("audit.downloadFilteredJson")}
               exportAuditLogPending={exportAuditLogMutation.isPending}
@@ -1054,75 +994,6 @@ export function AdminPage() {
               maskIdentifier={maskIdentifier}
               formatAuditDiffHeader={formatAuditDiffHeader}
               formatDateTime={formatDateTime}
-              archiveTitle={t("audit.archive")}
-              auditMonthsLoading={auditMonthsQuery.isLoading}
-              auditMonths={auditMonthsQuery.data?.months ?? []}
-              selectedArchiveMonth={selectedArchiveMonth}
-              onSelectedArchiveMonthChange={(month) => {
-                setSelectedArchiveMonth(month);
-                setArchivePage(1);
-              }}
-              archiveCountLabel={t("audit.archiveCount", {
-                count: archiveCount,
-              })}
-              archiveCsvTooLarge={archiveCsvTooLarge}
-              archiveTooLargeMessage="CSV disabled: archive exceeds 50 MB. Download raw archive files instead."
-              onDownloadCsv={() => {
-                void (async () => {
-                  if (!selectedArchiveMonth || !canExportArchive) {
-                    return;
-                  }
-                  setExportCooldownUntil(Date.now() + EXPORT_COOLDOWN_MS);
-                  try {
-                    const downloadPayload = await requestAdminAuditArchiveDownload(selectedArchiveMonth, "csv");
-                    const totalBytes = downloadPayload.files.reduce((sum, file) => sum + Math.max(0, file.size_bytes), 0);
-
-                    if (totalBytes > ARCHIVE_CSV_MAX_BYTES) {
-                      for (const file of downloadPayload.files) {
-                        const rawBlob = await downloadAdminAuditArchiveFile(file.url);
-                        downloadFileBlob(archiveFileNameFromKey(file.key), rawBlob);
-                      }
-                      notifications.show({
-                        color: "yellow",
-                        message: "Archive input is larger than 50 MB. Downloaded raw archive files.",
-                      });
-                      return;
-                    }
-
-                    const archiveBlobs: Array<{ key: string; blob: Blob }> = [];
-                    for (const file of downloadPayload.files) {
-                      const blob = await downloadAdminAuditArchiveFile(file.url);
-                      archiveBlobs.push({
-                        key: file.key,
-                        blob,
-                      });
-                    }
-
-                    const csvBlob = await convertArchiveBlobsToCsvWithRetry(archiveBlobs, 2);
-                    downloadFileBlob(`guild-audit-${selectedArchiveMonth}.csv`, csvBlob);
-                    notifications.show({ color: "green", message: "CSV exported" });
-                  } catch (error) {
-                    setExportCooldownUntil(null);
-                    const messageText = error instanceof Error ? error.message : "Failed to export CSV";
-                    if (messageText.includes("decompress_failed")) {
-                      showError(error, "CSV export failed: decompress_failed");
-                      return;
-                    }
-                    if (messageText.includes("parse_failed")) {
-                      showError(error, "CSV export failed: parse_failed");
-                      return;
-                    }
-                    if (messageText.includes("encode_failed")) {
-                      showError(error, "CSV export failed: encode_failed");
-                      return;
-                    }
-                    showError(error, "Failed to export CSV");
-                  }
-                })();
-              }}
-              canExportArchive={canExportArchive}
-              exportCooldownSeconds={exportCooldownSeconds}
-              downloadCsvLabel={t("audit.downloadCsv")}
             />
           </Suspense>
         </Tabs.Panel>
@@ -1180,6 +1051,47 @@ export function AdminPage() {
           </Suspense>
         </Tabs.Panel>
 
+        <Tabs.Panel value="roles" pt="sm">
+          <Suspense fallback={suspenseFallback}>
+            <LazyAdminRolesSection
+              heading={sectionHeading(t("tab.roles"))}
+              isAdmin={isAdmin}
+              adminOnlyMessage={t("adminOnly")}
+              rolesLoading={rolesQuery.isLoading}
+              rolesError={rolesQuery.isError}
+              loadErrorMessage={t("common:loadError")}
+              roles={rolesQuery.data ?? []}
+              createRolePending={createRoleMutation.isPending}
+              updateRolePending={updateRoleConfigMutation.isPending}
+              deleteRolePending={deleteRoleMutation.isPending}
+              onCreateRole={async (payload) => {
+                try {
+                  await createRoleMutation.mutateAsync(payload);
+                  return true;
+                } catch {
+                  return false;
+                }
+              }}
+              onUpdateRole={async (id, payload) => {
+                try {
+                  await updateRoleConfigMutation.mutateAsync({ id, payload });
+                  return true;
+                } catch {
+                  return false;
+                }
+              }}
+              onDeleteRole={async (id) => {
+                try {
+                  await deleteRoleMutation.mutateAsync(id);
+                  return true;
+                } catch {
+                  return false;
+                }
+              }}
+            />
+          </Suspense>
+        </Tabs.Panel>
+
         <Tabs.Panel value="status" pt="sm">
           <Suspense fallback={suspenseFallback}>
             <LazyAdminStatusTab
@@ -1211,8 +1123,6 @@ export function AdminPage() {
           member={selectedMemberDetail}
           memberDetailTitle={memberDetailTitle}
           memberDetailBio={memberDetailBio}
-          isAdmin={isAdmin}
-          isModerator={isModerator}
           onClose={() => setMemberDetailId(null)}
           onMemberDetailTitleChange={setMemberDetailTitle}
           onMemberDetailBioChange={setMemberDetailBio}
@@ -1237,18 +1147,8 @@ export function AdminPage() {
               </Suspense>
             ) : null
           }
-          onUpdateRole={(member, role) =>
-            updateRoleMutation.mutate({
-              userId: member.user.id,
-              role,
-            })
-          }
-          onDeactivate={(member) => deactivateMutation.mutate(member.user.id)}
-          onReactivate={(member) => reactivateMutation.mutate(member.user.id)}
-          onResetPassword={(member) => resetPasswordMutation.mutate(member.user.id)}
         />
       </Suspense>
     </PageLayout>
   );
 }
-

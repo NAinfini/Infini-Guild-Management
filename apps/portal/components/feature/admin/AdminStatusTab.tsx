@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Stack, Text } from "@mantine/core";
+﻿import { Alert, Button, Group, Stack, Text } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import type { ReactNode } from "react";
 import { AdminSystemSection } from "./AdminSystemSection";
@@ -56,7 +56,7 @@ export function AdminStatusTab({
     return (
       <Stack gap={12}>
         {heading}
-        <Alert color="yellow" title={adminOnlyMessage} />
+        <Alert color="infini-warning" title={adminOnlyMessage} />
       </Stack>
     );
   }
@@ -64,7 +64,7 @@ export function AdminStatusTab({
   return (
     <Stack gap={12}>
       {heading}
-      <InfiniCard>
+      <InfiniCard interactive={false}>
         <Stack gap={10}>
           <Group gap={8} wrap="wrap">
             <Button onClick={onRetry} loading={retryLoading}>
@@ -90,4 +90,5 @@ export function AdminStatusTab({
     </Stack>
   );
 }
+
 

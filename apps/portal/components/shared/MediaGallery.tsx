@@ -2,6 +2,7 @@ import { Button, Group, Slider, Stack, Text } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { useMediaQuery } from "@mantine/hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Navigation, Pagination, Zoom } from "swiper/modules";
 import type { Swiper as SwiperType } from "swiper";
 import { Swiper, SwiperSlide } from "swiper/react";
@@ -52,6 +53,7 @@ export function MediaGallery({
   audioKey = null,
   resolveMediaUrl = defaultResolver,
 }: MediaGalleryProps) {
+  const { t } = useTranslation("common");
   const isMobile = useMediaQuery("(max-width: 767px)") ?? false;
   const [activeIndex, setActiveIndex] = useState(0);
   const [embedPlayingVideos, setEmbedPlayingVideos] = useState<Record<number, boolean>>({});
@@ -212,7 +214,7 @@ export function MediaGallery({
                       />
                     </div>
                   ) : (
-                    <InfiniCard>
+                    <InfiniCard interactive={false}>
                       <div style={{ padding: "1.2rem" }}>
                         <Text c="dimmed">{item.label}</Text>
                       </div>
@@ -261,13 +263,13 @@ export function MediaGallery({
                         <Group className={styles.videoControls} justify="space-between" gap={8}>
                           <Group gap={6} wrap="wrap">
                             <Button size="xs" variant="default" onClick={() => toggleDirectVideoPlayback(index)}>
-                              {directVideoPlaying[index] ? "Pause" : "Resume"}
+                              {directVideoPlaying[index] ? t("media.pause") : t("media.resume")}
                             </Button>
                             <Button size="xs" variant="default" onClick={() => restartDirectVideo(index)}>
-                              Restart
+                              {t("media.restart")}
                             </Button>
                             <Button size="xs" variant="default" onClick={() => openDirectVideoFullscreen(index)}>
-                              Fullscreen
+                              {t("media.fullscreen")}
                             </Button>
                           </Group>
                           <Text size="xs" c="dimmed">
@@ -302,9 +304,9 @@ export function MediaGallery({
                       </>
                     ) : !isEmbeddableVideoUrl(item.source) ? (
                       <Stack gap={8}>
-                        <Text>Open in Douyin</Text>
+                        <Text>{t("media.openInDouyin")}</Text>
                         <Button component="a" href={item.source} target="_blank" rel="noreferrer">
-                          Open
+                          {t("media.open")}
                         </Button>
                       </Stack>
                     ) : embedPlayingVideos[index] ? (
@@ -322,7 +324,7 @@ export function MediaGallery({
                             variant="default"
                             onClick={() => setEmbedPlayingVideos((previous) => ({ ...previous, [index]: false }))}
                           >
-                            Stop video
+                            {t("media.stopVideo")}
                           </Button>
                         </Group>
                       </>
@@ -332,10 +334,10 @@ export function MediaGallery({
                           onClick={() => setEmbedPlayingVideos((previous) => ({ ...previous, [index]: true }))}
                           aria-label={`Play video ${item.label}`}
                         >
-                          Play video
+                          {t("media.playVideo")}
                         </Button>
                         <Button component="a" href={item.source} target="_blank" rel="noreferrer" variant="default">
-                          External link
+                          {t("media.externalLink")}
                         </Button>
                       </Stack>
                     )}
@@ -350,7 +352,7 @@ export function MediaGallery({
               {Math.min(activeIndex + 1, items.length)} / {items.length}
             </Text>
             <Button size="xs" variant="default" onClick={() => setThumbnailExpanded((value) => !value)}>
-              {thumbnailExpanded ? "Hide thumbnails" : "Show thumbnails"}
+              {thumbnailExpanded ? t("media.hideThumbnails") : t("media.showThumbnails")}
             </Button>
           </div>
 
@@ -387,7 +389,7 @@ export function MediaGallery({
 
       {audioResolved ? (
         isHttpUrl(audioResolved) ? (
-          <InfiniCard className={styles.audioSection}>
+          <InfiniCard className={styles.audioSection} interactive={false}>
             <div style={{ padding: "1.2rem" }}>
               <Stack gap={8}>
               <audio
@@ -418,7 +420,7 @@ export function MediaGallery({
               />
               <Group className={styles.audioControls} justify="space-between" gap={8}>
                 <Button size="xs" variant="default" onClick={toggleAudioPlayback}>
-                  {audioPlaying ? "Pause" : "Resume"}
+                  {audioPlaying ? t("media.pause") : t("media.resume")}
                 </Button>
                 <Text size="xs" c="dimmed">
                   {formatMediaTime(audioProgress.current)} / {formatMediaTime(audioProgress.duration)}
@@ -437,7 +439,7 @@ export function MediaGallery({
             </div>
           </InfiniCard>
         ) : (
-          <InfiniCard>
+          <InfiniCard interactive={false}>
             <div style={{ padding: "1.2rem" }}>
               <Text c="dimmed" style={{ wordBreak: "break-all" }}>
                 {audioKey}

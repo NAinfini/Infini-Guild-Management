@@ -1,6 +1,8 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+﻿import type { Event, MemberProfile, User } from "@guild/shared";
 import { hasRoleAtLeast } from "@guild/shared";
 import { notifications } from "@mantine/notifications";
+import { useClipboard } from "@mantine/hooks";
+import { modals } from "@mantine/modals";
 import { MotionButton } from "@infini-dev-kit/frontend/components";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -17,14 +19,13 @@ import { archiveEvent, createEvent, joinEvent, leaveEvent, updateEvent, uploadEv
 import { queryKeys } from "../../api/query-keys";
 import { fetchEventDetail } from "../../api/queries/events";
 import { usePageHeaderActions } from "../../context/PageHeaderContext";
-import { useCopy } from "../../hooks/useCopy";
 import { useAppError } from "../../hooks/useAppError";
 import { useEventsData } from "../../hooks/data/useEventsData";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useMediaUpload } from "../../hooks/useMediaUpload";
-import { portalConfirm } from "../../overlays";
 import { useAuthStore } from "../../stores/auth";
+import { buildMentionList } from "../../utils/copy";
 import { useEventsEditorController } from "../feature/events/useEventsEditorController";
 import { PageLayout } from "../layout/PageLayout";
 import "./EventsPage.css";
@@ -239,7 +240,7 @@ export function EventsPage() {
   const { t } = useTranslation("events");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { copyMentionList } = useCopy();
+  const clipboard = useClipboard();
   const { showError } = useAppError();
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
@@ -251,7 +252,6 @@ export function EventsPage() {
   const [archivedOnly, setArchivedOnly] = useState(false);
   const [viewMode, setViewMode] = useState<EventViewMode>(() => readEventViewMode());
   const [, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [showAvailabilityOverlay, setShowAvailabilityOverlay] = useState(false);
 
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
 
@@ -309,7 +309,7 @@ export function EventsPage() {
   const eventAttachmentUploader = useMediaUpload(
     async (files) => {
       if (!editingEventId) {
-        throw new Error("Save event first before uploading images");
+        throw new Error(t("message.saveEventBeforeUpload"));
       }
       return uploadEventImages(editingEventId, files);
     },
@@ -376,7 +376,7 @@ export function EventsPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "green", message: "Joined event" });
+      notifications.show({ color: "infini-success", message: t("message.joined") });
     },
     onError: (error, eventId, context) => {
       if (context) {
@@ -385,7 +385,7 @@ export function EventsPage() {
         }
         queryClient.setQueryData(["event", eventId], context.previousDetail);
       }
-      showError(error, "Join failed");
+      showError(error, t("message.joinFailed"));
     },
     onSettled: async (_, __, eventId) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.event.detail(eventId) });
@@ -434,7 +434,7 @@ export function EventsPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "green", message: "Left event" });
+      notifications.show({ color: "infini-success", message: t("message.left") });
     },
     onError: (error, eventId, context) => {
       if (context) {
@@ -443,7 +443,7 @@ export function EventsPage() {
         }
         queryClient.setQueryData(["event", eventId], context.previousDetail);
       }
-      showError(error, "Leave failed");
+      showError(error, t("message.leaveFailed"));
     },
     onSettled: async (_, __, eventId) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.event.detail(eventId) });
@@ -455,12 +455,12 @@ export function EventsPage() {
     mutationFn: createEvent,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "green", message: "Event created" });
+      notifications.show({ color: "infini-success", message: t("message.created") });
       closeEditorAfterSave();
       eventAttachmentUploader.reset();
     },
     onError: (error) => {
-      showError(error, "Failed to create event");
+      showError(error, t("message.createFailed"));
     },
   });
 
@@ -469,12 +469,12 @@ export function EventsPage() {
       updateEvent(id, payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "green", message: "Event updated" });
+      notifications.show({ color: "infini-success", message: t("message.updated") });
       closeEditorAfterSave();
       eventAttachmentUploader.reset();
     },
     onError: (error) => {
-      showError(error, "Failed to update event");
+      showError(error, t("message.updateFailed"));
     },
   });
 
@@ -482,10 +482,10 @@ export function EventsPage() {
     mutationFn: (eventId: string) => archiveEvent(eventId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "green", message: "Event archived" });
+      notifications.show({ color: "infini-success", message: t("message.archived") });
     },
     onError: (error) => {
-      showError(error, "Failed to archive event");
+      showError(error, t("message.archiveFailed"));
     },
   });
 
@@ -591,6 +591,30 @@ export function EventsPage() {
     }
   };
 
+  const openConfirm = useCallback(
+    (options: { title: string; description?: string; intent: "neutral" | "warning" | "danger" }) =>
+      new Promise<boolean>((resolve) => {
+        modals.openConfirmModal({
+          title: options.title,
+          children: options.description,
+          confirmProps: {
+            color:
+              options.intent === "danger"
+                ? "infini-danger"
+                : options.intent === "warning"
+                  ? "infini-warning"
+                  : "infini-primary",
+          },
+          onConfirm: () => resolve(true),
+          onCancel: () => resolve(false),
+          closeOnConfirm: true,
+          closeOnCancel: true,
+          centered: true,
+        });
+      }),
+    [],
+  );
+
   const handleJoin = async (eventId: string) => {
     if (!canInteract) {
       if (!user) {
@@ -624,7 +648,7 @@ export function EventsPage() {
       (item) => item.eventId !== eventId && targetStart < item.endMs && item.startMs < targetEnd,
     );
     if (conflicts.length > 0) {
-      const shouldJoin = await portalConfirm({
+      const shouldJoin = await openConfirm({
         title: t("confirm.timeConflict.title"),
         description: t("confirm.timeConflict.description", {
           titles: conflicts.slice(0, 3).map((item) => item.title).join(", "),
@@ -649,7 +673,8 @@ export function EventsPage() {
 
   const handleUploadEventAttachments = async () => {
     if (!editingEventId) {
-      showError(new Error("Save event first before uploading images"), "Save event first before uploading images");
+      const messageText = t("message.saveEventBeforeUpload");
+      showError(new Error(messageText), messageText);
       return;
     }
     const uploaded = await eventAttachmentUploader.upload();
@@ -660,7 +685,7 @@ export function EventsPage() {
     await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
     await queryClient.invalidateQueries({ queryKey: queryKeys.event.detail(editingEventId) });
     eventAttachmentUploader.reset();
-    notifications.show({ color: "green", message: "Attachments uploaded" });
+    notifications.show({ color: "infini-success", message: t("message.attachmentsUploaded") });
   };
 
   useEffect(() => {
@@ -691,11 +716,13 @@ export function EventsPage() {
 
   const handleSaveEvent = () => {
     if (!editorStartIso) {
-      showError(new Error("Start time is required"), "Start time is required");
+      const messageText = t("message.startTimeRequired");
+      showError(new Error(messageText), messageText);
       return;
     }
     if (!editorTitle.trim()) {
-      showError(new Error("Title is required"), "Title is required");
+      const messageText = t("message.titleRequired");
+      showError(new Error(messageText), messageText);
       return;
     }
 
@@ -716,7 +743,8 @@ export function EventsPage() {
     }
 
     if (!editingEventId) {
-      showError(new Error("Missing event id"), "Missing event id");
+      const messageText = t("message.missingEventId");
+      showError(new Error(messageText), messageText);
       return;
     }
     updateEventMutation.mutate({
@@ -732,30 +760,37 @@ export function EventsPage() {
 
   const cardsEmptyDescription = archivedOnly
     ? eventType
-      ? "No archived events match your filters"
-      : "No archived events yet"
+      ? t("empty.archivedFiltered")
+      : t("empty.archived")
     : eventType
-      ? "No events match your filters"
-      : "No events yet";
+      ? t("empty.filtered")
+      : t("empty.default");
 
   const resetCardsFilters = () => {
     setEventType(undefined);
     setArchivedOnly(false);
   };
 
-  const handleCopyMentionsForEvent = (event: Event) =>
-    void copyMentionList(
+  const handleCopyMentionsForEvent = (event: Event) => {
+    const value = buildMentionList(
       (eventMembersMap.get(event.id) ?? []).map((entry) => ({
         username: entry.user.username,
         wechatName: entry.profile.wechat_name,
       })),
-      { teamName: event.title },
+      event.title,
     );
+    if (!value.trim()) {
+      notifications.show({ color: "infini-warning", message: t("message.nothingToCopy") });
+      return;
+    }
+    clipboard.copy(value);
+    notifications.show({ color: "infini-success", message: t("message.mentionsCopied") });
+  };
 
   const handleDuplicateEvent = (event: Event) =>
     createEventMutation.mutate({
       type: event.type,
-      title: `${event.title} (Copy)`,
+      title: `${event.title}${t("label.copySuffix")}`,
       description: event.description ?? undefined,
       start_at: new Date(new Date(event.start_at).getTime() + 7 * 24 * 60 * 60_000).toISOString(),
       end_at: event.end_at
@@ -793,17 +828,15 @@ export function EventsPage() {
   useLoadWarningToast(hasLoadError, t("common:loadErrorRetry"));
 
   return (
-    <PageLayout title={t("title")} subtitle="Schedule" className="events-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} className="events-page">
       <Suspense fallback={null}>
         <LazyEventsFiltersCard
           eventType={eventType}
           archivedOnly={archivedOnly}
           viewMode={viewMode}
-          showAvailabilityOverlay={showAvailabilityOverlay}
           onEventTypeChange={setEventType}
           onArchivedOnlyChange={setArchivedOnly}
           onViewModeChange={setViewMode}
-          onShowAvailabilityOverlayChange={setShowAvailabilityOverlay}
         />
       </Suspense>
 
@@ -838,7 +871,6 @@ export function EventsPage() {
           />
         ) : (
           <LazyEventCalendarView
-            showAvailabilityOverlay={showAvailabilityOverlay}
             canManage={canManage}
             eventsByDay={eventsByDay}
             availabilityDayPeakByDay={availabilityHeatData.dayPeakByDay}
@@ -890,7 +922,6 @@ export function EventsPage() {
             attachmentUploader={eventAttachmentUploader}
             onUploadAttachments={() => void handleUploadEventAttachments()}
             conflictingEvents={conflictingEvents}
-            showAvailabilityOverlay={showAvailabilityOverlay}
             availabilityDaysWithAny={availabilityHeatData.daysWithAny}
             availabilityMaxCount={availabilityHeatData.maxCount}
             availabilityMemberCount={availabilityHeatData.memberCount}
@@ -905,4 +936,5 @@ export function EventsPage() {
     </PageLayout>
   );
 }
+
 

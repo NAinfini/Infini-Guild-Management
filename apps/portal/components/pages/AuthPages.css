@@ -115,6 +115,53 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 12%, transparent);
 }
 
+/* ── Floating label inputs ── */
+
+.login-floating-field {
+  position: relative;
+}
+
+.login-floating-root {
+  position: relative;
+}
+
+.login-floating-label {
+  position: absolute;
+  z-index: 2;
+  left: 12px;
+  top: 21px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--infini-color-text, #e2e8f0) 50%, transparent);
+  transition: top 180ms ease, transform 180ms ease, font-size 180ms ease, color 180ms ease;
+  line-height: 1;
+  padding: 0 4px;
+  background: transparent;
+}
+
+/* Float up when focused or has value */
+.login-floating-field:focus-within .login-floating-label,
+.login-floating-field--filled .login-floating-label {
+  top: 0;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--infini-color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--infini-color-surface, #1a1a2e) 90%, transparent);
+  border-radius: 4px;
+}
+
+.login-floating-input {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+/* Adjust password actions position for floating field */
+.login-floating-field .login-page__password-actions {
+  top: 50%;
+}
+
 /* ── Password field actions (eye + caps lock) ── */
 
 .login-page__password-actions {

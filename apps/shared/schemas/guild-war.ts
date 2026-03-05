@@ -16,6 +16,7 @@ export const warHistorySchema = z.object({
   enemy_base_hp: z.number().int().nullable(),
   enemy_credits: z.number().int().nullable(),
   enemy_distance: z.number().int().nullable(),
+  duration_minutes: z.number().nullable(),
   notes: z.string().nullable(),
   created_by: z.string(),
   created_at: z.string(),
@@ -37,6 +38,7 @@ export const createWarHistorySchema = z.object({
   enemy_base_hp: z.number().int().optional(),
   enemy_credits: z.number().int().optional(),
   enemy_distance: z.number().int().optional(),
+  duration_minutes: z.number().positive().optional(),
   notes: z.string().optional(),
 });
 

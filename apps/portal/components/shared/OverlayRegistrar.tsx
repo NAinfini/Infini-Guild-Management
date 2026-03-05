@@ -5,15 +5,15 @@ import { setPortalOverlayService } from "../../overlays";
 
 function mapToastColor(status: "info" | "success" | "warning" | "error"): string {
   if (status === "success") {
-    return "green";
+    return "infini-success";
   }
   if (status === "warning") {
-    return "yellow";
+    return "infini-warning";
   }
   if (status === "error") {
-    return "red";
+    return "infini-danger";
   }
-  return "blue";
+  return "infini-primary";
 }
 
 export function OverlayRegistrar() {
@@ -31,10 +31,6 @@ export function OverlayRegistrar() {
           withBorder: true,
           autoClose: payload.status === "error" ? false : 4000,
         });
-      },
-      confirm: async (payload) => {
-        const detail = payload.description ? `\n\n${payload.description}` : "";
-        return window.confirm(`${payload.title}${detail}`);
       },
     });
 

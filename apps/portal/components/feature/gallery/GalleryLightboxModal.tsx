@@ -1,4 +1,4 @@
-import { LeftOutlined, RightOutlined } from "@portal/utils/icons";
+﻿import { LeftOutlined, RightOutlined } from "@portal/utils/icons";
 import { Alert, Button, Group, Modal, Text } from "@mantine/core";
 import type { GalleryItem } from "./shared";
 
@@ -78,7 +78,7 @@ export function GalleryLightboxModal({
                 />
               </div>
             ) : (
-              <Alert color="blue" title={fieldR2ObjectLabel}>
+              <Alert color="infini-primary" title={fieldR2ObjectLabel}>
                 {item.url}
               </Alert>
             )

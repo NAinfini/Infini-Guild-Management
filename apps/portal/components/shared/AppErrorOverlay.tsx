@@ -1,4 +1,4 @@
-import { notifications } from "@mantine/notifications";
+﻿import { notifications } from "@mantine/notifications";
 import i18n from "i18next";
 import { useEffect } from "react";
 
@@ -29,7 +29,7 @@ export function AppErrorOverlay() {
       notifications.show({
         title: "Conflict Detected",
         message: extra ? `${messageText}\n${extra}` : messageText,
-        color: "yellow",
+        color: "infini-warning",
         autoClose: false,
         withCloseButton: true,
       });
@@ -43,7 +43,7 @@ export function AppErrorOverlay() {
         message: detail?.message ?? i18n.t("common:errors.connectionIssue", {
           defaultValue: "Unable to reach server. Check your network and retry.",
         }),
-        color: "red",
+        color: "infini-danger",
         autoClose: false,
         withCloseButton: true,
       });
@@ -59,3 +59,4 @@ export function AppErrorOverlay() {
 
   return null;
 }
+

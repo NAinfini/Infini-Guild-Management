@@ -54,6 +54,18 @@ export function resetAdminUserPassword(
   );
 }
 
+export function createAdminMember(payload: {
+  username: string;
+}): Promise<{ ok: true; user_id: string; username: string; temporary_password: string }> {
+  return apiRequest<{ ok: true; user_id: string; username: string; temporary_password: string }>(
+    "/api/admin/users",
+    {
+      method: "POST",
+      bodyJson: payload,
+    },
+  );
+}
+
 export function batchUpdateAdminUserRole(payload: {
   user_ids: string[];
   new_role: "member" | "moderator";
@@ -101,6 +113,24 @@ export function updateAdminBotSettings(payload: BotSettings): Promise<{ ok: true
 export function testAdminBotDispatch(payload: { platform: "discord" | "wechat" }): Promise<{ ok: true; task_id: string }> {
   return apiRequest<{ ok: true; task_id: string }>("/api/admin/bot-settings/test", {
     method: "POST",
+    bodyJson: payload,
+  });
+}
+
+export type AnalyticsSettingsPayload = {
+  reference_duration_minutes?: number;
+  modifier_weight_kda?: number;
+  modifier_weight_towers?: number;
+  modifier_weight_credits?: number;
+  modifier_weight_distance?: number;
+  modifier_weight_basehp?: number;
+};
+
+export function updateAnalyticsSettings(
+  payload: AnalyticsSettingsPayload,
+): Promise<AnalyticsSettingsPayload> {
+  return apiRequest<AnalyticsSettingsPayload>("/api/admin/analytics-settings", {
+    method: "PATCH",
     bodyJson: payload,
   });
 }

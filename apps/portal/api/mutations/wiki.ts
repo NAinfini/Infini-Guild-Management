@@ -52,12 +52,6 @@ export function archiveWikiArticle(id: string): Promise<{ ok: true }> {
   });
 }
 
-export function rollbackWikiArticleVersion(articleId: string, versionId: string): Promise<WikiArticle> {
-  return apiRequest<WikiArticle>(`/api/wiki/articles/${articleId}/versions/${versionId}/rollback`, {
-    method: "POST",
-  });
-}
-
 export function uploadWikiArticleImages(
   articleId: string,
   files: File[],

@@ -1,9 +1,11 @@
-import type { Announcement } from "@guild/shared";
-import { MoreOutlined, PushpinOutlined } from "@portal/utils/icons";
+﻿import type { Announcement } from "@guild/shared";
+import { PushpinOutlined } from "@portal/utils/icons";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import { Alert, Badge, Button, Group, Indicator, Loader, Menu, Stack, Text } from "@mantine/core";
+import { Alert, Badge, Group, Indicator, Loader, Stack, Text, Tooltip } from "@mantine/core";
+import { IconArchive, IconCalendarTime, IconCircleCheck, IconFileText } from "@tabler/icons-react";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "-";
@@ -12,8 +14,19 @@ function formatDateTime(iso: string | null): string {
   return format(date, "yyyy-MM-dd HH:mm");
 }
 
-function statusLabel(value: Announcement["status"]): string {
-  return value.toUpperCase();
+function statusIcon(value: Announcement["status"]): ReactNode {
+  switch (value) {
+    case "draft":
+      return <IconFileText size={14} style={{ color: "var(--mantine-color-dimmed)" }} />;
+    case "scheduled":
+      return <IconCalendarTime size={14} style={{ color: "var(--mantine-color-infini-primary-filled)" }} />;
+    case "published":
+      return <IconCircleCheck size={14} style={{ color: "var(--mantine-color-infini-success-filled)" }} />;
+    case "archived":
+      return <IconArchive size={14} style={{ color: "var(--mantine-color-infini-danger-filled)" }} />;
+    default:
+      return null;
+  }
 }
 
 type AnnouncementListCardProps = {
@@ -27,8 +40,6 @@ type AnnouncementListCardProps = {
   warningMessage: ReactNode;
   emptyText: ReactNode;
   onSelect: (id: string) => void;
-  onTogglePin: (item: Announcement) => void;
-  onArchive: (id: string) => void;
 };
 
 export function AnnouncementListCard({
@@ -42,16 +53,15 @@ export function AnnouncementListCard({
   warningMessage,
   emptyText,
   onSelect,
-  onTogglePin,
-  onArchive,
 }: AnnouncementListCardProps) {
+  const { t } = useTranslation("announcements");
   return (
-    <InfiniCard className="announcements-list-card">
+    <InfiniCard className="announcements-list-card" interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={8}>
           <Text fw={600}>{title}</Text>
           {isLoading ? <Loader size="sm" /> : null}
-          {isError ? <Alert color="yellow" title={warningMessage} /> : null}
+          {isError ? <Alert color="infini-warning" title={warningMessage} /> : null}
           {!isLoading && !isError ? (
             rows.length > 0 ? (
               <Stack gap={8}>
@@ -77,11 +87,15 @@ export function AnnouncementListCard({
                             <Text fw={600}>{item.title}</Text>
                           </Indicator>
                           {item.pinned ? <PushpinOutlined className="announcement-item-pin" /> : null}
+                          {canEdit ? (
+                            <Tooltip label={t(`status.${item.status}`)} withArrow>
+                              <span style={{ display: "inline-flex", lineHeight: 0 }}>{statusIcon(item.status)}</span>
+                            </Tooltip>
+                          ) : null}
                         </div>
                         <Group gap={8}>
-                          {canEdit ? <Badge>{statusLabel(item.status)}</Badge> : null}
                           {canEdit && item.status === "scheduled" && item.publish_at ? (
-                            <Badge color="blue">Scheduled: {formatDateTime(item.publish_at)}</Badge>
+                            <Badge color="infini-primary">{t("meta.scheduled", { datetime: formatDateTime(item.publish_at) })}</Badge>
                           ) : null}
                         </Group>
                         <Text c="dimmed" size="sm" className="announcement-item-time">
@@ -89,22 +103,6 @@ export function AnnouncementListCard({
                         </Text>
                       </Stack>
                     </button>
-                    {canEdit ? (
-                      <Menu withinPortal>
-                        <Menu.Target>
-                          <Button aria-label={`Announcement actions for ${item.title}`}>
-                            <MoreOutlined />
-                          </Button>
-                        </Menu.Target>
-                        <Menu.Dropdown>
-                          <Menu.Item onClick={() => onSelect(item.id)}>Open</Menu.Item>
-                          <Menu.Item onClick={() => onTogglePin(item)}>{item.pinned ? "Unpin" : "Pin"}</Menu.Item>
-                          <Menu.Item color="red" onClick={() => onArchive(item.id)}>
-                            Archive
-                          </Menu.Item>
-                        </Menu.Dropdown>
-                      </Menu>
-                    ) : null}
                   </div>
                 ))}
               </Stack>
@@ -117,3 +115,4 @@ export function AnnouncementListCard({
     </InfiniCard>
   );
 }
+

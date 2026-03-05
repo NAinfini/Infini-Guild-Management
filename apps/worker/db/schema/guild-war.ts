@@ -1,7 +1,7 @@
 // Domain: Guild War
 // Tables: warHistory, warTeams, warTeamMembers, warPoolMembers, warTemplates
 // Dependencies: auth.users, events.events
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
 import { events } from "./events";
 import { nowUtc } from "./shared";
@@ -24,6 +24,7 @@ export const warHistory = sqliteTable(
     enemyBaseHp: integer("enemy_base_hp"),
     enemyCredits: integer("enemy_credits"),
     enemyDistance: integer("enemy_distance"),
+    durationMinutes: real("duration_minutes"),
     notes: text("notes"),
     createdBy: text("created_by").notNull().references(() => users.id),
     createdAt: text("created_at").notNull().default(nowUtc),

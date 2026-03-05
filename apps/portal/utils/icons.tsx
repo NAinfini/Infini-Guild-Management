@@ -13,6 +13,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconEye,
+  IconExternalLink,
   IconFileSearch,
   IconFlame,
   IconHammer,
@@ -73,6 +74,7 @@ export const EllipsisOutlined = withDefaults(IconDots);
 export const DownOutlined = withDefaults(IconChevronDown);
 export const LogoutOutlined = withDefaults(IconLogout);
 export const EyeOutlined = withDefaults(IconEye);
+export const GoToOutlined = withDefaults(IconExternalLink);
 export const SearchOutlined = withDefaults(IconSearch);
 export const FileSearchOutlined = withDefaults(IconFileSearch);
 export const CopyOutlined = withDefaults(IconCopy);

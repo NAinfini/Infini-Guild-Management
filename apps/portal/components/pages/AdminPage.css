@@ -1,3 +1,79 @@
 .admin-page .mantine-Tabs-root {
   width: 100%;
 }
+
+/* Prevent audit log table from overflowing the page container */
+.admin-page .mantine-Tabs-panel {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Ensure table cells don't clip — let the scroll wrapper handle overflow */
+.admin-page .mantine-Table-td,
+.admin-page .mantine-Table-th {
+  vertical-align: top;
+}
+
+.admin-page .admin-member-row-selected > td {
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 14%, transparent);
+}
+
+.admin-page .admin-member-table-wrap .mantine-Table-tbody,
+.admin-page .admin-member-table-wrap .mantine-Table-tbody td,
+.admin-page .admin-member-table-wrap tbody,
+.admin-page .admin-member-table-wrap tbody td {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Context menu renders via withinPortal (outside .admin-page), so no ancestor scope.
+   Mantine 7 Menu.Item uses [data-hovered] (JS-driven) and --menu-item-hover CSS var.
+   We override both + native :hover for full coverage. */
+.admin-users-context-menu-dropdown {
+  border: 1px solid color-mix(in srgb, var(--infini-color-primary, #3b82f6) 24%, transparent);
+  box-shadow: 0 10px 28px color-mix(in srgb, black 40%, transparent);
+  --menu-item-hover: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 22%, transparent);
+}
+
+.admin-users-context-menu-label {
+  color: color-mix(in srgb, var(--infini-color-text, #e2e8f0) 72%, transparent);
+  font-weight: 600;
+}
+
+.admin-users-context-menu-divider {
+  border-top-color: color-mix(in srgb, var(--infini-color-text, #e2e8f0) 18%, transparent);
+}
+
+.admin-users-context-menu-item {
+  transition:
+    background-color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease),
+    color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease),
+    transform var(--infini-motion-press, 120ms) var(--infini-motion-easing, ease);
+  border-radius: 4px;
+}
+
+.admin-users-context-menu-item[data-hovered],
+.admin-users-context-menu-item:hover:not(:disabled, [data-disabled]) {
+  background-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 22%, transparent) !important;
+  color: var(--infini-color-primary, #3b82f6);
+}
+
+.admin-users-context-menu-item:active {
+  transform: translateY(1px);
+}
+
+.admin-users-context-menu-item[data-hovered][data-color="red"],
+.admin-users-context-menu-item:hover:not(:disabled, [data-disabled])[data-color="red"],
+.admin-users-context-menu-item[data-hovered][style*="color"],
+.admin-users-context-menu-item:hover:not(:disabled, [data-disabled])[style*="color"] {
+  background-color: color-mix(in srgb, var(--infini-color-danger, #ef4444) 18%, transparent) !important;
+  color: var(--infini-color-danger, #ef4444) !important;
+}
+
+.admin-page .admin-roles-create-card,
+.admin-page .admin-roles-role-card {
+  border: 1px solid color-mix(in srgb, var(--infini-color-primary, #3b82f6) 18%, transparent);
+  border-radius: 12px;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--infini-color-surface, #0f172a) 88%, transparent);
+}

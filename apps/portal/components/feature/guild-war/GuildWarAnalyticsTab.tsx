@@ -1,20 +1,24 @@
-import {
+﻿import {
   Alert,
   Avatar,
   Checkbox,
+  Divider,
   Group,
   Loader,
   MultiSelect,
   NumberInput,
   SegmentedControl,
   Select,
+  Slider,
   Stack,
+  Switch,
   Text,
 } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import { useState, useRef, useCallback, useEffect } from "react";
-import type { CSSProperties, MouseEvent } from "react";
+import type { MouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 
 type AnalyticsMode = "player" | "compare" | "rankings" | "teams";
 type AnalyticsMetricKey =
@@ -76,18 +80,23 @@ type GuildWarAnalyticsTabProps = {
   echarts: unknown;
   chartThemeName: string;
   chartOption: unknown;
+  normEnabled: boolean;
+  onNormEnabledChange: (value: boolean) => void;
+  modifierWeights: { kda: number; towers: number; credits: number; distance: number; basehp: number };
+  onModifierWeightsChange: (weights: { kda: number; towers: number; credits: number; distance: number; basehp: number }) => void;
+  referenceDuration: number;
 };
 
-const ANALYTICS_METRIC_OPTIONS: Array<{ value: AnalyticsMetricKey; label: string; icon: string }> = [
-  { value: "damage", label: "Damage", icon: "⚔️" },
-  { value: "healing", label: "Healing", icon: "💚" },
-  { value: "building_damage", label: "Building Damage", icon: "🏰" },
-  { value: "credits", label: "Credits", icon: "💰" },
-  { value: "kills", label: "Kills", icon: "💀" },
-  { value: "deaths", label: "Deaths", icon: "☠️" },
-  { value: "assists", label: "Assists", icon: "🤝" },
-  { value: "damage_taken", label: "Damage Taken", icon: "🛡️" },
-  { value: "kda", label: "KDA", icon: "📊" },
+const ANALYTICS_METRIC_OPTIONS: Array<{ value: AnalyticsMetricKey; labelKey: string; icon: string }> = [
+  { value: "damage", labelKey: "analytics.metric.damage", icon: "⚔️" },
+  { value: "healing", labelKey: "analytics.metric.healing", icon: "💚" },
+  { value: "building_damage", labelKey: "analytics.metric.buildingDamage", icon: "🏰" },
+  { value: "credits", labelKey: "analytics.metric.credits", icon: "💰" },
+  { value: "kills", labelKey: "analytics.metric.kills", icon: "💀" },
+  { value: "deaths", labelKey: "analytics.metric.deaths", icon: "☠️" },
+  { value: "assists", labelKey: "analytics.metric.assists", icon: "🤝" },
+  { value: "damage_taken", labelKey: "analytics.metric.damageTaken", icon: "🛡️" },
+  { value: "kda", labelKey: "analytics.metric.kda", icon: "📊" },
 ];
 
 export function GuildWarAnalyticsTab({
@@ -100,17 +109,17 @@ export function GuildWarAnalyticsTab({
   warOptions,
   datePreset,
   onDatePresetChange,
-  focusedUser,
-  onFocusedUserChange,
+  focusedUser: _focusedUser,
+  onFocusedUserChange: _onFocusedUserChange,
   selectableUserIds,
   onlyParticipated,
   onOnlyParticipatedChange,
   selectedUsers,
   onSelectedUsersChange,
-  compareUserIds,
-  onLegendInteraction,
-  hashToPaletteColor,
-  chartPalette,
+  compareUserIds: _compareUserIds,
+  onLegendInteraction: _onLegendInteraction,
+  hashToPaletteColor: _hashToPaletteColor,
+  chartPalette: _chartPalette,
   aggregation,
   onAggregationChange,
   topN,
@@ -128,11 +137,18 @@ export function GuildWarAnalyticsTab({
   analyticsDetailsLoading,
   analyticsDetailsError,
   loadErrorMessage,
-  metricLabel,
+  metricLabel: _metricLabel,
   echarts,
   chartThemeName,
   chartOption,
+  normEnabled,
+  onNormEnabledChange,
+  modifierWeights,
+  onModifierWeightsChange,
+  referenceDuration,
 }: GuildWarAnalyticsTabProps) {
+  const { t } = useTranslation("guild-war");
+  const metricOptions = ANALYTICS_METRIC_OPTIONS.map((opt) => ({ ...opt, label: t(opt.labelKey) }));
   const [leftWidth, setLeftWidth] = useState(20);
   const [rightWidth, setRightWidth] = useState(20);
   const isDraggingRef = useRef<"left" | "right" | null>(null);
@@ -171,43 +187,43 @@ export function GuildWarAnalyticsTab({
 
   return (
     <Stack gap={12} className="guild-war-analytics-layout">
-      <InfiniCard className="guild-war-analytics-control-panel guild-war-analytics-control-panel--top">
+      <InfiniCard interactive={false} className="guild-war-analytics-control-panel guild-war-analytics-control-panel--top">
         <div style={{ padding: "1.2rem" }}>
         <div className="guild-war-analytics-toolbar">
           <div className="guild-war-analytics-toolbar__row">
             <div className="guild-war-analytics-toolbar__item">
-              <div className="guild-war-analytics-toolbar__label">Mode</div>
+              <div className="guild-war-analytics-toolbar__label">{t("analytics.toolbar.mode")}</div>
               <SegmentedControl
                 value={mode}
                 onChange={(value) => onModeChange(value as AnalyticsMode)}
                 data={[
-                  { label: "Player", value: "player" },
-                  { label: "Rankings", value: "rankings" },
-                  { label: "Teams", value: "teams" },
+                  { label: t("analytics.toolbar.mode.player"), value: "player" },
+                  { label: t("analytics.toolbar.mode.rankings"), value: "rankings" },
+                  { label: t("analytics.toolbar.mode.teams"), value: "teams" },
                 ]}
               />
             </div>
 
             <div className="guild-war-analytics-toolbar__item">
-              <div className="guild-war-analytics-toolbar__label">Date Preset</div>
+              <div className="guild-war-analytics-toolbar__label">{t("analytics.toolbar.datePreset")}</div>
               <SegmentedControl
                 value={datePreset}
                 onChange={(value) => onDatePresetChange(value as AnalyticsDatePreset)}
                 data={[
-                  { label: "Last 5", value: "5" },
-                  { label: "Last 10", value: "10" },
-                  { label: "Last 20", value: "20" },
-                  { label: "All", value: "all" },
+                  { label: t("analytics.toolbar.datePreset.last5"), value: "5" },
+                  { label: t("analytics.toolbar.datePreset.last10"), value: "10" },
+                  { label: t("analytics.toolbar.datePreset.last20"), value: "20" },
+                  { label: t("analytics.toolbar.datePreset.all"), value: "all" },
                 ]}
               />
             </div>
 
             <div className="guild-war-analytics-toolbar__item guild-war-analytics-toolbar__item--grow">
-              <div className="guild-war-analytics-toolbar__label">War Set</div>
+              <div className="guild-war-analytics-toolbar__label">{t("analytics.toolbar.warSet")}</div>
               <MultiSelect
                 clearable
                 style={{ minWidth: 280 }}
-                placeholder="Select wars"
+                placeholder={t("analytics.toolbar.selectWars")}
                 aria-label="Select wars for analytics"
                 value={selectedWarIds}
                 onChange={onSelectedWarIdsChange}
@@ -220,33 +236,33 @@ export function GuildWarAnalyticsTab({
       </InfiniCard>
 
       {mode === "compare" && selectedUsers.length > selectionSoftCap ? (
-        <Alert color="yellow">{`Compare mode soft cap is ${selectionSoftCap}; currently ${selectedUsers.length}.`}</Alert>
+        <Alert color="infini-warning">{t("analytics.compareSoftCap", { cap: selectionSoftCap, count: selectedUsers.length })}</Alert>
       ) : null}
 
       {analyticsQueryLoading || analyticsDetailsLoading ? <Loader size="sm" /> : null}
-      {analyticsQueryError ? <Alert color="yellow">{loadErrorMessage}</Alert> : null}
-      {analyticsDetailsError ? <Alert color="yellow">{loadErrorMessage}</Alert> : null}
+      {analyticsQueryError ? <Alert color="infini-warning">{loadErrorMessage}</Alert> : null}
+      {analyticsDetailsError ? <Alert color="infini-warning">{loadErrorMessage}</Alert> : null}
 
       {!analyticsQueryLoading && !analyticsQueryError && !analyticsDetailsLoading && !analyticsDetailsError ? (
         <div className="guild-war-analytics-main-grid" style={{ gridTemplateColumns: `${leftWidth}% 12px calc(100% - ${leftWidth}% - ${rightWidth}% - 24px) 12px ${rightWidth}%` }}>
-          <InfiniCard className="guild-war-analytics-control-panel guild-war-analytics-control-panel--left">
+          <InfiniCard interactive={false} className="guild-war-analytics-control-panel guild-war-analytics-control-panel--left">
             <div style={{ padding: "1.2rem" }}>
             <Stack gap={10}>
-              <Text fw={600}>Metrics (up to 5)</Text>
+              <Text fw={600}>{t("analytics.metrics.title")}</Text>
               <MultiSelect
                 clearable
                 searchable
-                placeholder="Select metrics (up to 5)"
+                placeholder={t("analytics.metrics.placeholder")}
                 aria-label="Select analytics metrics"
                 value={selectedMetrics}
                 onChange={(values) => onSelectedMetricsChange(values.slice(0, 5) as AnalyticsMetricKey[])}
-                data={ANALYTICS_METRIC_OPTIONS}
+                data={metricOptions}
                 maxValues={5}
                 styles={{ pill: { display: "none" } }}
                 renderOption={({ option, checked }) => (
                   <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
                     <Group gap={8}>
-                      <span style={{ fontSize: 16 }}>{(option as typeof ANALYTICS_METRIC_OPTIONS[0]).icon}</span>
+                      <span style={{ fontSize: 16 }}>{(option as typeof metricOptions[0]).icon}</span>
                       <span style={{ color: checked ? "var(--infini-color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
                     </Group>
                     {checked ? <span style={{ color: "var(--infini-color-primary, #3b82f6)" }}>✓</span> : null}
@@ -261,10 +277,10 @@ export function GuildWarAnalyticsTab({
                     aria-label="Select rankings aggregation"
                     onChange={(value) => value && onAggregationChange(value as AnalyticsAggregation)}
                     data={[
-                      { value: "total", label: "Total" },
-                      { value: "average", label: "Average" },
-                      { value: "best", label: "Best" },
-                      { value: "median", label: "Median" },
+                      { value: "total", label: t("analytics.aggregation.total") },
+                      { value: "average", label: t("analytics.aggregation.average") },
+                      { value: "best", label: t("analytics.aggregation.best") },
+                      { value: "median", label: t("analytics.aggregation.median") },
                     ]}
                   />
                   <NumberInput
@@ -273,7 +289,7 @@ export function GuildWarAnalyticsTab({
                     value={topN}
                     onChange={(value) => onTopNChange(typeof value === "number" ? value : 10)}
                     aria-label="Select rankings top N"
-                    label="Top N"
+                    label={t("analytics.topN")}
                   />
                   <NumberInput
                     min={1}
@@ -281,7 +297,7 @@ export function GuildWarAnalyticsTab({
                     value={minParticipation}
                     onChange={(value) => onMinParticipationChange(typeof value === "number" ? value : 1)}
                     aria-label="Select minimum wars participation"
-                    label="Min Participation"
+                    label={t("analytics.minParticipation")}
                   />
                 </>
               ) : null}
@@ -291,8 +307,8 @@ export function GuildWarAnalyticsTab({
                   value={teamAggregation}
                   onChange={(value) => onTeamAggregationChange(value as "total" | "average")}
                   data={[
-                    { value: "total", label: "Total" },
-                    { value: "average", label: "Average" },
+                    { value: "total", label: t("analytics.aggregation.total") },
+                    { value: "average", label: t("analytics.aggregation.average") },
                   ]}
                 />
               ) : null}
@@ -331,10 +347,10 @@ export function GuildWarAnalyticsTab({
             </div>
           </div>
 
-          <InfiniCard className="guild-war-analytics-chart-card guild-war-analytics-chart-card--center">
+          <InfiniCard interactive={false} className="guild-war-analytics-chart-card guild-war-analytics-chart-card--center">
             <div style={{ padding: "1.2rem" }}>
             <Stack gap={8}>
-              <Text fw={600}>Chart</Text>
+              <Text fw={600}>{t("analytics.chart")}</Text>
               <ReactEChartsCore
                 key={`${selectedUsers.join(',')}-${selectedMetrics.join(',')}`}
                 echarts={echarts}
@@ -377,17 +393,17 @@ export function GuildWarAnalyticsTab({
             </div>
           </div>
 
-          <InfiniCard className="guild-war-analytics-control-panel guild-war-analytics-control-panel--right">
+          <InfiniCard interactive={false} className="guild-war-analytics-control-panel guild-war-analytics-control-panel--right">
             <div style={{ padding: "1.2rem" }}>
             <Stack gap={10}>
-              <Text fw={600}>Selection & Actions</Text>
+              <Text fw={600}>{t("analytics.selection")}</Text>
 
               {mode === "player" ? (
                 <>
                   <MultiSelect
                     clearable
                     searchable
-                    placeholder="Select members (up to 5)"
+                    placeholder={t("analytics.selectMembers")}
                     aria-label="Select player analytics members"
                     value={selectedUsers}
                     onChange={(values) => onSelectedUsersChange(values.slice(0, 5))}
@@ -397,7 +413,7 @@ export function GuildWarAnalyticsTab({
                     renderOption={({ option, checked }) => (
                       <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
                         <Group gap={8}>
-                          <Avatar size={20} radius="xl" color="blue">{option.label.slice(0, 2).toUpperCase()}</Avatar>
+                          <Avatar size={20} radius="xl" color="infini-primary">{option.label.slice(0, 2).toUpperCase()}</Avatar>
                           <span style={{ color: checked ? "var(--infini-color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
                         </Group>
                         {checked ? <span style={{ color: "var(--infini-color-primary, #3b82f6)" }}>✓</span> : null}
@@ -407,7 +423,7 @@ export function GuildWarAnalyticsTab({
                   <Checkbox
                     checked={onlyParticipated}
                     onChange={(event) => onOnlyParticipatedChange(event.currentTarget.checked)}
-                    label="Only wars where player participated"
+                    label={t("analytics.onlyParticipated")}
                   />
                 </>
               ) : null}
@@ -416,7 +432,7 @@ export function GuildWarAnalyticsTab({
                 <MultiSelect
                   clearable
                   value={selectedTeams}
-                  placeholder="Select teams"
+                  placeholder={t("analytics.selectTeams")}
                   aria-label="Select teams for analytics"
                   onChange={onSelectedTeamsChange}
                   data={teamOptions.map((name) => ({ value: name, label: name }))}
@@ -425,8 +441,56 @@ export function GuildWarAnalyticsTab({
 
               {mode === "rankings" ? (
                 <Text c="dimmed" size="sm">
-                  Rankings use current filter scope and participation thresholds.
+                  {t("analytics.rankingsHint")}
                 </Text>
+              ) : null}
+
+              <Divider my={4} />
+
+              <Text fw={600}>{t("analytics.normalization")}</Text>
+              <Switch
+                checked={normEnabled}
+                onChange={(event) => onNormEnabledChange(event.currentTarget.checked)}
+                label={t("analytics.normalization.enable")}
+                size="sm"
+              />
+              {normEnabled ? (
+                <Stack gap={8}>
+                  <Text c="dimmed" size="xs">
+                    {t("analytics.normalization.refDuration", { minutes: referenceDuration })}
+                  </Text>
+                  <Text fw={500} size="sm" mt={4}>{t("analytics.normalization.equation")}</Text>
+                  <Text c="dimmed" size="xs" ff="monospace">
+                    {t("analytics.normalization.equationDesc")}
+                  </Text>
+                  {(["kda", "towers", "credits", "distance", "basehp"] as const).map((key) => (
+                    <Group key={key} gap={8} wrap="nowrap" align="center">
+                      <Text size="xs" fw={500} style={{ width: 64, flexShrink: 0 }}>
+                        {t(`analytics.normalization.weight.${key}`)}
+                      </Text>
+                      <Slider
+                        style={{ flex: 1, minWidth: 60 }}
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={Math.round(modifierWeights[key] * 100)}
+                        onChange={(val) =>
+                          onModifierWeightsChange({ ...modifierWeights, [key]: val / 100 })
+                        }
+                        size="sm"
+                        label={(val) => `${val}%`}
+                      />
+                      <Text size="xs" fw={600} c="dimmed" style={{ width: 38, textAlign: "right", flexShrink: 0 }}>
+                        {(modifierWeights[key] * 100).toFixed(0)}%
+                      </Text>
+                    </Group>
+                  ))}
+                  <Text size="xs" c="dimmed">
+                    {t("analytics.normalization.weightsTotal", {
+                      total: ((modifierWeights.kda + modifierWeights.towers + modifierWeights.credits + modifierWeights.distance + modifierWeights.basehp) * 100).toFixed(0) + "%",
+                    })}
+                  </Text>
+                </Stack>
               ) : null}
             </Stack>
             </div>
@@ -436,3 +500,4 @@ export function GuildWarAnalyticsTab({
     </Stack>
   );
 }
+

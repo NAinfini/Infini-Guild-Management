@@ -1,10 +1,12 @@
 import type {
   Announcement,
+  HeartbeatMessage,
   MemberProfile,
   PaginatedResponse,
   PushMessage,
   User,
 } from "@guild/shared";
+import { nanoid } from "nanoid";
 import { useCallback, useEffect, useRef } from "react";
 import { apiRequest } from "../api/client";
 import { useNotificationStore } from "../stores/notifications";
@@ -17,6 +19,7 @@ type UseNotificationSyncOptions = {
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const FALLBACK_POLL_INTERVAL_MS = 30_000;
+const HEARTBEAT_INTERVAL_MS = 25_000;
 const reconnectDelays = [1000, 10_000, 30_000, 60_000];
 
 type UsersListResponse = PaginatedResponse<{ user: User; profile: MemberProfile }>;
@@ -114,7 +117,10 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
     let socket: WebSocket | null = null;
     let reconnectTimeoutId: number | null = null;
     let fallbackPollId: number | null = null;
+    let heartbeatTimerId: number | null = null;
     let retryCount = 0;
+    let heartbeatSeq = 0;
+    const tabId = nanoid(12);
 
     const emitFallbackSignal = () => {
       onMessageRef.current?.({
@@ -141,6 +147,32 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
       fallbackPollId = null;
     };
 
+    const stopHeartbeat = () => {
+      if (heartbeatTimerId == null) {
+        return;
+      }
+      window.clearInterval(heartbeatTimerId);
+      heartbeatTimerId = null;
+    };
+
+    const startHeartbeat = (ws: WebSocket) => {
+      stopHeartbeat();
+      heartbeatTimerId = window.setInterval(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          stopHeartbeat();
+          return;
+        }
+        heartbeatSeq += 1;
+        const beat: HeartbeatMessage = {
+          type: "heartbeat",
+          tab_id: tabId,
+          seq: heartbeatSeq,
+          sent_at: new Date().toISOString(),
+        };
+        ws.send(JSON.stringify(beat));
+      }, HEARTBEAT_INTERVAL_MS);
+    };
+
     const connect = () => {
       if (isCleaningUp) {
         return;
@@ -152,11 +184,20 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
         retryCount = 0;
         stopFallbackPolling();
         setWsConnected(true);
+        if (socket) {
+          startHeartbeat(socket);
+        }
       };
 
       socket.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data) as PushMessage;
+
+          // heartbeat_ack is handled silently — no need to propagate
+          if (message.type === "heartbeat_ack") {
+            return;
+          }
+
           appendPushMessage(message);
 
           if (message.type === "announcement_published") {
@@ -173,6 +214,7 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
 
       socket.onclose = () => {
         setWsConnected(false);
+        stopHeartbeat();
         if (isCleaningUp) {
           return;
         }
@@ -193,6 +235,7 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
       isCleaningUp = true;
       setWsConnected(false);
       stopFallbackPolling();
+      stopHeartbeat();
       if (reconnectTimeoutId != null) {
         window.clearTimeout(reconnectTimeoutId);
       }
@@ -205,4 +248,3 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
     sync: syncFeatureNotifications,
   };
 }
-

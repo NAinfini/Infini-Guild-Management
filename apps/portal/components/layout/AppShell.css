@@ -15,6 +15,8 @@
   box-shadow: var(--infini-depth-dropdown, none);
   overflow: hidden;
   transition: width var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+  display: flex;
+  flex-direction: column;
 }
 
 .app-brand {
@@ -106,22 +108,21 @@
 .app-viewing-as {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 0 14px 10px;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+  flex-shrink: 0;
 }
 
 .app-viewing-as--compact {
-  padding: 0 8px 8px;
+  padding: 8px;
+  align-items: center;
 }
 
 .app-viewing-as-label {
   font-size: var(--infini-text-xs, 11px);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-}
-
-.app-viewing-as-select {
-  width: 100%;
 }
 
 .app-sider-menu {

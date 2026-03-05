@@ -2,26 +2,28 @@ import {
   ActionIcon,
   Alert,
   Badge,
-  Button,
   Group,
   Loader,
   Modal,
   NumberInput,
-  SegmentedControl,
-  Select,
   Stack,
-  Table,
   Text,
   TextInput,
   Tooltip,
 } from "@mantine/core";
+import { modals } from "@mantine/modals";
 import { IconCalendarOff } from "@tabler/icons-react";
+import { CrownOutlined, ShieldOutlined, SwordsOutlined, TargetOutlined } from "@portal/utils/icons";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
+import { getCoreRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { MotionButton } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { EmptyState } from "../../shared/EmptyState";
+import { InfiniTable } from "../../shared/InfiniTable";
 
 type HistoryViewMode = "table" | "chart";
 type AnalyticsMetricKey =
@@ -35,6 +37,23 @@ type AnalyticsMetricKey =
   | "damage_taken"
   | "kda";
 type EditableMetricKey = Exclude<AnalyticsMetricKey, "kda">;
+type MemberStatDraft = Record<EditableMetricKey, number>;
+
+const EDITABLE_METRIC_KEYS: EditableMetricKey[] = [
+  "kills",
+  "deaths",
+  "assists",
+  "damage",
+  "healing",
+  "building_damage",
+  "credits",
+  "damage_taken",
+];
+
+export type HistoryMemberStatsUpdate = {
+  userId: string;
+  payload: Partial<Record<EditableMetricKey, number>>;
+};
 
 export type HistorySummaryRow = {
   id: string;
@@ -96,12 +115,85 @@ type HistoryMvpSummary = {
   building: string;
 };
 
-export type HistoryColumn<T> = {
-  title: ReactNode;
-  key: string;
-  dataIndex?: keyof T | string;
-  render?: (value: unknown, row: T) => ReactNode;
-};
+function resolveResultTagColor(result: string | null | undefined): string {
+  const normalized = (result ?? "").toLowerCase();
+  if (normalized.includes("win") || normalized.includes("胜")) return "infini-success";
+  if (normalized.includes("loss") || normalized.includes("lose") || normalized.includes("负")) return "infini-danger";
+  if (normalized.includes("draw") || normalized.includes("平")) return "infini-primary";
+  return "gray";
+}
+
+function toDraftMetricValue(value: string | number | null | undefined): number {
+  const numericValue = Number(value ?? 0);
+  if (!Number.isFinite(numericValue)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(numericValue));
+}
+
+function createMemberDraft(row: HistoryMemberStat): MemberStatDraft {
+  return {
+    kills: toDraftMetricValue(row.kills),
+    deaths: toDraftMetricValue(row.deaths),
+    assists: toDraftMetricValue(row.assists),
+    damage: toDraftMetricValue(row.damage),
+    healing: toDraftMetricValue(row.healing),
+    building_damage: toDraftMetricValue(row.building_damage),
+    credits: toDraftMetricValue(row.credits),
+    damage_taken: toDraftMetricValue(row.damage_taken),
+  };
+}
+
+function createDraftMap(rows: HistoryMemberStat[]): Record<string, MemberStatDraft> {
+  const draftMap: Record<string, MemberStatDraft> = {};
+  for (const row of rows) {
+    draftMap[row.user_id] = createMemberDraft(row);
+  }
+  return draftMap;
+}
+
+function CompareBar({
+  icon,
+  label,
+  own,
+  enemy,
+}: {
+  icon: ReactNode;
+  label: string;
+  own: number;
+  enemy: number;
+}) {
+  const total = own + enemy || 1;
+  const ownPercent = Math.round((own / total) * 100);
+  const enemyPercent = 100 - ownPercent;
+
+  return (
+    <div className="war-history-compare-row">
+      <div className="war-history-compare-label">
+        <span className="war-history-compare-label-icon">{icon}</span>
+        <span>{label}</span>
+      </div>
+      <div className="war-history-compare-bar-wrap">
+        <span className="war-history-compare-val war-history-compare-val--left">{own.toLocaleString()}</span>
+        <div className="war-history-compare-bar">
+          <div
+            className={`war-history-compare-bar-fill war-history-compare-bar-fill--own${
+              ownPercent >= enemyPercent ? " war-history-compare-bar-fill--winning" : ""
+            }`}
+            style={{ width: `${ownPercent}%` }}
+          />
+          <div
+            className={`war-history-compare-bar-fill war-history-compare-bar-fill--enemy${
+              enemyPercent > ownPercent ? " war-history-compare-bar-fill--winning" : ""
+            }`}
+            style={{ width: `${enemyPercent}%` }}
+          />
+        </div>
+        <span className="war-history-compare-val war-history-compare-val--right">{enemy.toLocaleString()}</span>
+      </div>
+    </div>
+  );
+}
 
 type WarHistoryTabProps = {
   heading: ReactNode;
@@ -122,7 +214,7 @@ type WarHistoryTabProps = {
   historyLoading: boolean;
   historyError: boolean;
   historyRows: HistorySummaryRow[];
-  historyColumns: HistoryColumn<HistorySummaryRow>[];
+  historyColumns: ColumnDef<HistorySummaryRow, unknown>[];
   onSelectHistoryId: (historyId: string) => void;
   historyDetailLoading: boolean;
   historyDetailError: boolean;
@@ -131,7 +223,8 @@ type WarHistoryTabProps = {
   historyMissingSlotsByUserId: Map<string, number>;
   onPostResults: (platform: "discord" | "wechat") => void;
   postResultsPending: boolean;
-  onCommitMemberMetric: (userId: string, key: EditableMetricKey, value: number) => void;
+  onSaveMemberStats: (updates: HistoryMemberStatsUpdate[]) => Promise<void>;
+  saveMemberStatsPending: boolean;
   renderCounter: (value: number | null | undefined) => ReactNode;
   historyDetailTitle: string;
   historyResultLabel: string;
@@ -145,44 +238,12 @@ type WarHistoryTabProps = {
   initialSearch?: string;
 };
 
-const HISTORY_METRIC_OPTIONS: Array<{ value: AnalyticsMetricKey; label: string }> = [
-  { value: "damage", label: "Damage" },
-  { value: "healing", label: "Healing" },
-  { value: "building_damage", label: "Building Damage" },
-  { value: "credits", label: "Credits" },
-  { value: "kills", label: "Kills" },
-  { value: "deaths", label: "Deaths" },
-  { value: "assists", label: "Assists" },
-  { value: "damage_taken", label: "Damage Taken" },
-  { value: "kda", label: "KDA" },
-];
-
-function resolveResultTagColor(result: string | null | undefined): string {
-  const normalized = (result ?? "").toLowerCase();
-  if (normalized.includes("win") || normalized.includes("胜")) return "green";
-  if (normalized.includes("loss") || normalized.includes("lose") || normalized.includes("负")) return "red";
-  if (normalized.includes("draw") || normalized.includes("平")) return "blue";
-  return "gray";
-}
-
-function renderCellValue<T extends Record<string, unknown>>(row: T, column: HistoryColumn<T>): ReactNode {
-  const key = (column.dataIndex ?? column.key) as string;
-  const raw = row[key];
-  if (column.render) {
-    return column.render(raw, row);
-  }
-  if (raw === null || raw === undefined || raw === "") {
-    return "-";
-  }
-  return String(raw);
-}
-
 export function WarHistoryTab({
   heading,
   historyViewMode,
-  onHistoryViewModeChange,
+  onHistoryViewModeChange: _onHistoryViewModeChange,
   historyChartMetric,
-  onHistoryChartMetricChange,
+  onHistoryChartMetricChange: _onHistoryChartMetricChange,
   historyDateFrom,
   historyDateTo,
   onHistoryDateFromChange,
@@ -202,11 +263,12 @@ export function WarHistoryTab({
   historyDetailError,
   historyDetail,
   historyMvp,
-  historyMissingSlotsByUserId,
+  historyMissingSlotsByUserId: _historyMissingSlotsByUserId,
   onPostResults,
   postResultsPending,
-  onCommitMemberMetric,
-  renderCounter,
+  onSaveMemberStats,
+  saveMemberStatsPending,
+  renderCounter: _renderCounter,
   historyDetailTitle,
   historyResultLabel,
   loadErrorMessage,
@@ -218,15 +280,19 @@ export function WarHistoryTab({
   echarts,
   initialSearch,
 }: WarHistoryTabProps) {
+  const { t } = useTranslation("guild-war");
   const [historySearch, setHistorySearch] = useState(initialSearch ?? "");
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [highlightRowId, setHighlightRowId] = useState<string | null>(null);
+  const [summarySorting, setSummarySorting] = useState<SortingState>([]);
+  const [detailSorting, setDetailSorting] = useState<SortingState>([]);
+  const [memberStatsBaseline, setMemberStatsBaseline] = useState<Record<string, MemberStatDraft>>({});
+  const [memberStatsDraft, setMemberStatsDraft] = useState<Record<string, MemberStatDraft>>({});
 
   // Clear localStorage and highlight after initial render
   useEffect(() => {
     if (initialSearch) {
       localStorage.removeItem("guildWar.searchWarName");
-      // Find matching row and set highlight
       const matchingRow = historyRows.find((row) => row.war_name === initialSearch);
       if (matchingRow) {
         setHighlightRowId(matchingRow.id);
@@ -234,6 +300,20 @@ export function WarHistoryTab({
       }
     }
   }, [initialSearch, historyRows]);
+
+  useEffect(() => {
+    if (!detailModalOpen || !historyDetail) {
+      return;
+    }
+
+    const nextBaseline = createDraftMap(historyDetail.member_stats);
+    setMemberStatsBaseline(nextBaseline);
+    const nextDraft: Record<string, MemberStatDraft> = {};
+    for (const [userId, draft] of Object.entries(nextBaseline)) {
+      nextDraft[userId] = { ...draft };
+    }
+    setMemberStatsDraft(nextDraft);
+  }, [detailModalOpen, historyDetail?.id]);
 
   const filteredHistoryRows = useMemo(() => {
     const keyword = historySearch.trim().toLowerCase();
@@ -248,10 +328,292 @@ export function WarHistoryTab({
     ));
   }, [historyRows, historySearch]);
 
-  const handleSelectHistoryId = (historyId: string) => {
+  const pendingMemberStatUpdates = useMemo<HistoryMemberStatsUpdate[]>(() => {
+    if (!canManage || !historyDetail) {
+      return [];
+    }
+
+    const updates: HistoryMemberStatsUpdate[] = [];
+    for (const row of historyDetail.member_stats) {
+      const draft = memberStatsDraft[row.user_id];
+      const baseline = memberStatsBaseline[row.user_id];
+      if (!draft || !baseline) {
+        continue;
+      }
+
+      const payload: Partial<Record<EditableMetricKey, number>> = {};
+      for (const key of EDITABLE_METRIC_KEYS) {
+        if (draft[key] !== baseline[key]) {
+          payload[key] = draft[key];
+        }
+      }
+
+      if (Object.keys(payload).length > 0) {
+        updates.push({
+          userId: row.user_id,
+          payload,
+        });
+      }
+    }
+
+    return updates;
+  }, [canManage, historyDetail, memberStatsBaseline, memberStatsDraft]);
+
+  const hasUnsavedMemberChanges = pendingMemberStatUpdates.length > 0;
+
+  const confirmDiscardUnsavedChanges = async (): Promise<boolean> => {
+    if (!hasUnsavedMemberChanges) {
+      return true;
+    }
+    return await new Promise<boolean>((resolve) => {
+      modals.openConfirmModal({
+        title: t("history.unsavedChanges"),
+        children: t("history.unsavedExitConfirm"),
+        labels: {
+          cancel: t("common:action.cancel"),
+          confirm: t("history.discardChanges"),
+        },
+        confirmProps: { color: "infini-warning" },
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+        closeOnConfirm: true,
+        closeOnCancel: true,
+        centered: true,
+      });
+    });
+  };
+
+  const requestCloseDetailModal = async () => {
+    if (saveMemberStatsPending) {
+      return;
+    }
+    const confirmed = await confirmDiscardUnsavedChanges();
+    if (!confirmed) {
+      return;
+    }
+    setDetailModalOpen(false);
+    setMemberStatsBaseline({});
+    setMemberStatsDraft({});
+  };
+
+  const handleSaveMemberStats = async () => {
+    if (!canManage || pendingMemberStatUpdates.length === 0) {
+      return;
+    }
+    await onSaveMemberStats(pendingMemberStatUpdates);
+    const nextBaseline: Record<string, MemberStatDraft> = {};
+    for (const [userId, draft] of Object.entries(memberStatsDraft)) {
+      nextBaseline[userId] = { ...draft };
+    }
+    setMemberStatsBaseline(nextBaseline);
+  };
+
+  const updateDraftMetric = (userId: string, key: EditableMetricKey, value: string | number) => {
+    const nextValue = toDraftMetricValue(value);
+    setMemberStatsDraft((current) => {
+      const existing = current[userId];
+      if (!existing) {
+        return current;
+      }
+      if (existing[key] === nextValue) {
+        return current;
+      }
+      return {
+        ...current,
+        [userId]: {
+          ...existing,
+          [key]: nextValue,
+        },
+      };
+    });
+  };
+
+  const detailRows = useMemo<HistoryMemberStat[]>(() => {
+    if (!historyDetail) {
+      return [];
+    }
+    return historyDetail.member_stats.map((row) => {
+      const draft = memberStatsDraft[row.user_id];
+      if (!draft) {
+        return row;
+      }
+      return {
+        ...row,
+        kills: draft.kills,
+        deaths: draft.deaths,
+        assists: draft.assists,
+        damage: draft.damage,
+        healing: draft.healing,
+        building_damage: draft.building_damage,
+        credits: draft.credits,
+        damage_taken: draft.damage_taken,
+      };
+    });
+  }, [historyDetail, memberStatsDraft]);
+
+  const handleSelectHistoryId = async (historyId: string) => {
+    const confirmed = await confirmDiscardUnsavedChanges();
+    if (!confirmed) {
+      return;
+    }
     onSelectHistoryId(historyId);
     setDetailModalOpen(true);
   };
+
+  // Summary table
+  const summaryTable = useReactTable({
+    data: filteredHistoryRows,
+    columns: historyColumns,
+    state: { sorting: summarySorting },
+    onSortingChange: setSummarySorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getRowId: (row) => row.id,
+  });
+
+  // Detail member stats table columns
+  const detailColumns = useMemo<ColumnDef<HistoryMemberStat, unknown>[]>(() => [
+    {
+      header: t("history.table.user"),
+      id: "user_id",
+      accessorKey: "user_id",
+    },
+    {
+      header: t("history.table.role"),
+      id: "role_tag",
+      accessorFn: (row) => row.role_tag ?? "",
+      cell: ({ row }) => row.original.role_tag ?? "-",
+    },
+    {
+      header: t("history.table.kills"),
+      id: "kills",
+      accessorFn: (row) => row.kills ?? 0,
+      cell: ({ row }) =>
+        canManage ? (
+          <NumberInput
+            min={0}
+            size="xs"
+            value={row.original.kills ?? 0}
+            onChange={(value) => updateDraftMetric(row.original.user_id, "kills", value)}
+          />
+        ) : (row.original.kills ?? "-"),
+    },
+    {
+      header: t("history.table.deaths"),
+      id: "deaths",
+      accessorFn: (row) => row.deaths ?? 0,
+      cell: ({ row }) =>
+        canManage ? (
+          <NumberInput
+            min={0}
+            size="xs"
+            value={row.original.deaths ?? 0}
+            onChange={(value) => updateDraftMetric(row.original.user_id, "deaths", value)}
+          />
+        ) : (row.original.deaths ?? "-"),
+    },
+    {
+      header: t("history.table.assists"),
+      id: "assists",
+      accessorFn: (row) => row.assists ?? 0,
+      cell: ({ row }) =>
+        canManage ? (
+          <NumberInput
+            min={0}
+            size="xs"
+            value={row.original.assists ?? 0}
+            onChange={(value) => updateDraftMetric(row.original.user_id, "assists", value)}
+          />
+        ) : (row.original.assists ?? "-"),
+    },
+    {
+      header: t("history.table.damage"),
+      id: "damage",
+      accessorFn: (row) => row.damage ?? 0,
+      cell: ({ row }) =>
+        canManage ? (
+          <NumberInput
+            min={0}
+            size="xs"
+            value={row.original.damage ?? 0}
+            onChange={(value) => updateDraftMetric(row.original.user_id, "damage", value)}
+          />
+        ) : (row.original.damage ?? "-"),
+    },
+    {
+      header: t("history.table.healing"),
+      id: "healing",
+      accessorFn: (row) => row.healing ?? 0,
+      cell: ({ row }) =>
+        canManage ? (
+          <NumberInput
+            min={0}
+            size="xs"
+            value={row.original.healing ?? 0}
+            onChange={(value) => updateDraftMetric(row.original.user_id, "healing", value)}
+          />
+        ) : (row.original.healing ?? "-"),
+    },
+    {
+      header: t("history.table.building"),
+      id: "building_damage",
+      accessorFn: (row) => row.building_damage ?? 0,
+      cell: ({ row }) =>
+        canManage ? (
+          <NumberInput
+            min={0}
+            size="xs"
+            value={row.original.building_damage ?? 0}
+            onChange={(value) => updateDraftMetric(row.original.user_id, "building_damage", value)}
+          />
+        ) : (row.original.building_damage ?? "-"),
+    },
+    {
+      header: t("history.table.credits"),
+      id: "credits",
+      accessorFn: (row) => row.credits ?? 0,
+      cell: ({ row }) =>
+        canManage ? (
+          <NumberInput
+            min={0}
+            size="xs"
+            value={row.original.credits ?? 0}
+            onChange={(value) => updateDraftMetric(row.original.user_id, "credits", value)}
+          />
+        ) : (row.original.credits ?? "-"),
+    },
+    {
+      header: t("history.table.missing"),
+      id: "missing",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const stat = row.original;
+        const hasAnyData =
+          (stat.kills !== null && stat.kills !== 0) ||
+          (stat.deaths !== null && stat.deaths !== 0) ||
+          (stat.assists !== null && stat.assists !== 0) ||
+          (stat.damage !== null && stat.damage !== 0) ||
+          (stat.healing !== null && stat.healing !== 0) ||
+          (stat.building_damage !== null && stat.building_damage !== 0) ||
+          (stat.credits !== null && stat.credits !== 0);
+        return hasAnyData ? (
+          <Badge color="infini-success">{t("history.table.complete")}</Badge>
+        ) : (
+          <Badge color="infini-warning">{t("history.table.missing")}</Badge>
+        );
+      },
+    },
+  ], [t, canManage]);
+
+  const detailTable = useReactTable({
+    data: detailRows,
+    columns: detailColumns,
+    state: { sorting: detailSorting },
+    onSortingChange: setDetailSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getRowId: (row) => row.id,
+  });
 
   return (
     <Stack gap={12} style={{ width: "100%", alignItems: "stretch" }}>
@@ -262,7 +624,7 @@ export function WarHistoryTab({
           <TextInput
             value={historySearch}
             onChange={(event) => setHistorySearch(String(event.currentTarget.value ?? ""))}
-            placeholder="Search war name / result / date"
+            placeholder={t("history.search.placeholder")}
             aria-label="Search guild war histories"
             style={{ width: 240 }}
           />
@@ -280,7 +642,7 @@ export function WarHistoryTab({
             aria-label="Guild war history date to"
             style={{ width: 170 }}
           />
-          <Tooltip label="Clear Dates">
+          <Tooltip label={t("history.clearDates")}>
             <ActionIcon variant="subtle" onClick={onClearDates} disabled={!historyDateFrom && !historyDateTo} aria-label="Clear dates">
               <IconCalendarOff size={18} />
             </ActionIcon>
@@ -292,10 +654,10 @@ export function WarHistoryTab({
             <div className="war-history-filters__divider" />
             <div className="war-history-filters__group">
               <MotionButton onClick={() => onPostResults("discord")} loading={postResultsPending}>
-                Post to Discord
+                {t("active.postDiscord")}
               </MotionButton>
               <MotionButton onClick={() => onPostResults("wechat")} loading={postResultsPending}>
-                Post to WeChat
+                {t("active.postWechat")}
               </MotionButton>
             </div>
           </>
@@ -303,44 +665,26 @@ export function WarHistoryTab({
       </div>
 
       {historyLoading ? <Loader size="sm" /> : null}
-      {historyError ? <Alert color="yellow">{loadErrorMessage}</Alert> : null}
+      {historyError ? <Alert color="infini-warning">{loadErrorMessage}</Alert> : null}
 
       {!historyLoading && !historyError ? (
-        <InfiniCard className="war-history-list-card">
+        <InfiniCard interactive={false} className="war-history-list-card">
           <div style={{ padding: "1.2rem" }}>
           <Stack gap={8}>
             <Group justify="space-between">
-              <Text fw={600}>War List</Text>
-              <Badge color="blue">{filteredHistoryRows.length} / {historyRows.length}</Badge>
+              <Text fw={600}>{t("history.warList")}</Text>
+              <Badge color="infini-primary">{filteredHistoryRows.length} / {historyRows.length}</Badge>
             </Group>
             <div className="war-history-list-table-wrap">
               {filteredHistoryRows.length > 0 ? (
-                <Table withTableBorder withColumnBorders striped>
-                  <Table.Thead>
-                    <Table.Tr>
-                      {historyColumns.map((column) => (
-                        <Table.Th key={column.key}>{column.title}</Table.Th>
-                      ))}
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {filteredHistoryRows.map((record) => (
-                      <Table.Tr
-                        key={record.id}
-                        onClick={() => handleSelectHistoryId(record.id)}
-                        style={{ cursor: "pointer" }}
-                        className={highlightRowId === record.id ? "war-history-row-highlight" : undefined}
-                      >
-                        {historyColumns.map((column) => (
-                          <Table.Td key={`${record.id}:${column.key}`}>{renderCellValue(record, column)}</Table.Td>
-                        ))}
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
+                <InfiniTable
+                  table={summaryTable}
+                  onRowClick={(row) => handleSelectHistoryId(row.original.id)}
+                  rowClassName={(row) => highlightRowId === row.original.id ? "war-history-row-highlight" : undefined}
+                />
               ) : (
                 <div className="war-history-list-empty">
-                  <EmptyState title="No war histories found." />
+                  <EmptyState title={t("history.noWarHistories")} />
                 </div>
               )}
             </div>
@@ -351,13 +695,15 @@ export function WarHistoryTab({
 
       <Modal
         opened={detailModalOpen}
-        onClose={() => setDetailModalOpen(false)}
+        onClose={() => {
+          void requestCloseDetailModal();
+        }}
         title={historyDetail ? `${historyDetail.war_name}${historyDetail.enemy_name ? ` vs ${historyDetail.enemy_name}` : ""}` : historyDetailTitle}
-        size="xl"
+        size="min(1800px, calc(100vw - 2rem))"
       >
           <Stack gap={16}>
             {historyDetailLoading ? <Loader size="sm" /> : null}
-            {historyDetailError ? <Alert color="yellow">{loadErrorMessage}</Alert> : null}
+            {historyDetailError ? <Alert color="infini-warning">{loadErrorMessage}</Alert> : null}
             {!historyDetailLoading && !historyDetailError && historyDetail ? (
               <Stack gap={16}>
               <div className="war-history-detail-header">
@@ -369,79 +715,76 @@ export function WarHistoryTab({
                   <Text style={{ display: "block", marginTop: 4 }}>
                     {historyResultLabel}: <strong>{historyDetail.result ?? "-"}</strong>
                   </Text>
+                  <div className="war-history-detail-meta">
+                    <Text c="dimmed" size="sm">{t("history.membersCount", { count: historyDetail.member_stats.length })}</Text>
+                    <Text c="dimmed" size="sm">{t("history.teamsCount", { count: historyDetail.teams.length })}</Text>
+                    <Text c="dimmed" size="sm">{t("history.notesLine", { notes: historyDetail.notes ?? "-" })}</Text>
+                  </div>
                 </div>
                 <Badge color={resolveResultTagColor(historyDetail.result)}>{historyDetail.result ?? "Unknown"}</Badge>
               </div>
 
-              <div className="war-history-result-row">
-                <Text c="dimmed">Members: {historyDetail.member_stats.length}</Text>
-                <Text c="dimmed">Teams: {historyDetail.teams.length}</Text>
-                <Text c="dimmed">Notes: {historyDetail.notes ?? "-"}</Text>
+              <div className="war-history-compare-header">
+                <span className="war-history-compare-team war-history-compare-team--us">{t("history.compare.us")}</span>
+                <SwordsOutlined size={14} />
+                <span className="war-history-compare-team war-history-compare-team--enemy">
+                  {historyDetail.enemy_name ?? t("history.compare.enemy")}
+                </span>
               </div>
 
-              <div className="war-history-detail-grid">
-                <div className="war-history-stat-card">
-                  <div className="war-history-stat-label">Kills</div>
-                  <div className="war-history-stat-value war-history-stat-value--vs">
-                    <span className="war-history-stat-value--own">{renderCounter(historyDetail.own_kills)}</span>
-                    <span className="war-history-stat-separator">/</span>
-                    <span className="war-history-stat-value--enemy">{renderCounter(historyDetail.enemy_kills)}</span>
-                  </div>
-                </div>
-                <div className="war-history-stat-card">
-                  <div className="war-history-stat-label">Towers</div>
-                  <div className="war-history-stat-value war-history-stat-value--vs">
-                    <span className="war-history-stat-value--own">{renderCounter(historyDetail.own_towers)}</span>
-                    <span className="war-history-stat-separator">/</span>
-                    <span className="war-history-stat-value--enemy">{renderCounter(historyDetail.enemy_towers)}</span>
-                  </div>
-                </div>
-                <div className="war-history-stat-card">
-                  <div className="war-history-stat-label">Base HP</div>
-                  <div className="war-history-stat-value war-history-stat-value--vs">
-                    <span className="war-history-stat-value--own">{renderCounter(historyDetail.own_base_hp)}</span>
-                    <span className="war-history-stat-separator">/</span>
-                    <span className="war-history-stat-value--enemy">{renderCounter(historyDetail.enemy_base_hp)}</span>
-                  </div>
-                </div>
-                <div className="war-history-stat-card">
-                  <div className="war-history-stat-label">Distance</div>
-                  <div className="war-history-stat-value war-history-stat-value--vs">
-                    <span className="war-history-stat-value--own">{renderCounter(historyDetail.own_distance)}</span>
-                    <span className="war-history-stat-separator">/</span>
-                    <span className="war-history-stat-value--enemy">{renderCounter(historyDetail.enemy_distance)}</span>
-                  </div>
-                </div>
-                <div className="war-history-stat-card">
-                  <div className="war-history-stat-label">Credits</div>
-                  <div className="war-history-stat-value war-history-stat-value--vs">
-                    <span className="war-history-stat-value--own">{renderCounter(historyDetail.own_credits)}</span>
-                    <span className="war-history-stat-separator">/</span>
-                    <span className="war-history-stat-value--enemy">{renderCounter(historyDetail.enemy_credits)}</span>
-                  </div>
-                </div>
+              <div className="war-history-compare-section">
+                <CompareBar
+                  icon={<TargetOutlined size={13} />}
+                  label={t("history.kills")}
+                  own={historyDetail.own_kills ?? 0}
+                  enemy={historyDetail.enemy_kills ?? 0}
+                />
+                <CompareBar
+                  icon={<ShieldOutlined size={13} />}
+                  label={t("history.towers")}
+                  own={historyDetail.own_towers ?? 0}
+                  enemy={historyDetail.enemy_towers ?? 0}
+                />
+                <CompareBar
+                  icon={<ShieldOutlined size={13} />}
+                  label={t("history.baseHp")}
+                  own={historyDetail.own_base_hp ?? 0}
+                  enemy={historyDetail.enemy_base_hp ?? 0}
+                />
+                <CompareBar
+                  icon={<TargetOutlined size={13} />}
+                  label={t("history.distance")}
+                  own={historyDetail.own_distance ?? 0}
+                  enemy={historyDetail.enemy_distance ?? 0}
+                />
+                <CompareBar
+                  icon={<CrownOutlined size={13} />}
+                  label={t("history.credits")}
+                  own={historyDetail.own_credits ?? 0}
+                  enemy={historyDetail.enemy_credits ?? 0}
+                />
               </div>
 
               {historyMvp ? (
-                <InfiniCard className="war-history-mvp-card">
+                <InfiniCard interactive={false} className="war-history-mvp-card">
                   <div style={{ padding: "1.2rem" }}>
                   <Stack gap={4}>
-                    <Text fw={600}>MVP Highlights</Text>
-                    <Text>Damage: {historyMvp.damage}</Text>
-                    <Text>Healing: {historyMvp.healing}</Text>
-                    <Text>Building: {historyMvp.building}</Text>
+                    <Text fw={600}>{t("history.mvpHighlights")}</Text>
+                    <Text>{t("analytics.metric.damage")}: {historyMvp.damage}</Text>
+                    <Text>{t("analytics.metric.healing")}: {historyMvp.healing}</Text>
+                    <Text>{t("analytics.metric.buildingDamage")}: {historyMvp.building}</Text>
                   </Stack>
                   </div>
                 </InfiniCard>
               ) : null}
 
               {historyDetail.teams.length > 0 ? (
-                <InfiniCard className="war-history-teams-card">
+                <InfiniCard interactive={false} className="war-history-teams-card">
                   <div style={{ padding: "1.2rem" }}>
                   <Stack gap={8} className="war-history-team-stack">
-                    <Text fw={600}>Team Snapshot</Text>
+                    <Text fw={600}>{t("history.teamSnapshot")}</Text>
                     {historyDetail.teams.map((team) => (
-                      <InfiniCard key={team.id} className="war-history-team-card">
+                      <InfiniCard key={team.id} interactive={false} className="war-history-team-card">
                         <div style={{ padding: "1.2rem" }}>
                         <Stack gap={4}>
                           <Text fw={600}>{team.team_name}</Text>
@@ -461,77 +804,11 @@ export function WarHistoryTab({
               ) : null}
 
               {historyViewMode === "table" ? (
-                <Table withTableBorder withColumnBorders striped>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>User</Table.Th>
-                      <Table.Th>Role</Table.Th>
-                      <Table.Th>Kills</Table.Th>
-                      <Table.Th>Deaths</Table.Th>
-                      <Table.Th>Assists</Table.Th>
-                      <Table.Th>Damage</Table.Th>
-                      <Table.Th>Healing</Table.Th>
-                      <Table.Th>Building</Table.Th>
-                      <Table.Th>Credits</Table.Th>
-                      <Table.Th>Missing</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {historyDetail.member_stats.map((row) => (
-                      <Table.Tr key={row.id}>
-                        <Table.Td>{row.user_id}</Table.Td>
-                        <Table.Td>{row.role_tag ?? "-"}</Table.Td>
-                        <Table.Td>
-                          {canManage ? (
-                            <NumberInput min={0} size="xs" value={row.kills ?? 0} onChange={(value) => onCommitMemberMetric(row.user_id, "kills", Number(value ?? 0))} />
-                          ) : row.kills ?? "-"}
-                        </Table.Td>
-                        <Table.Td>
-                          {canManage ? (
-                            <NumberInput min={0} size="xs" value={row.deaths ?? 0} onChange={(value) => onCommitMemberMetric(row.user_id, "deaths", Number(value ?? 0))} />
-                          ) : row.deaths ?? "-"}
-                        </Table.Td>
-                        <Table.Td>
-                          {canManage ? (
-                            <NumberInput min={0} size="xs" value={row.assists ?? 0} onChange={(value) => onCommitMemberMetric(row.user_id, "assists", Number(value ?? 0))} />
-                          ) : row.assists ?? "-"}
-                        </Table.Td>
-                        <Table.Td>
-                          {canManage ? (
-                            <NumberInput min={0} size="xs" value={row.damage ?? 0} onChange={(value) => onCommitMemberMetric(row.user_id, "damage", Number(value ?? 0))} />
-                          ) : row.damage ?? "-"}
-                        </Table.Td>
-                        <Table.Td>
-                          {canManage ? (
-                            <NumberInput min={0} size="xs" value={row.healing ?? 0} onChange={(value) => onCommitMemberMetric(row.user_id, "healing", Number(value ?? 0))} />
-                          ) : row.healing ?? "-"}
-                        </Table.Td>
-                        <Table.Td>
-                          {canManage ? (
-                            <NumberInput min={0} size="xs" value={row.building_damage ?? 0} onChange={(value) => onCommitMemberMetric(row.user_id, "building_damage", Number(value ?? 0))} />
-                          ) : row.building_damage ?? "-"}
-                        </Table.Td>
-                        <Table.Td>
-                          {canManage ? (
-                            <NumberInput min={0} size="xs" value={row.credits ?? 0} onChange={(value) => onCommitMemberMetric(row.user_id, "credits", Number(value ?? 0))} />
-                          ) : row.credits ?? "-"}
-                        </Table.Td>
-                        <Table.Td>
-                          {(() => {
-                            const missingCount = historyMissingSlotsByUserId.get(row.user_id) ?? 0;
-                            return missingCount > 0 ? (
-                              <Badge color="yellow">Missing: {missingCount}</Badge>
-                            ) : (
-                              <Badge color="green">Complete</Badge>
-                            );
-                          })()}
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
+                <div className="war-history-detail-table-wrap">
+                  <InfiniTable table={detailTable} />
+                </div>
               ) : (
-                <InfiniCard className="war-history-chart-card">
+                <InfiniCard interactive={false} className="war-history-chart-card">
                   <div style={{ padding: "1.2rem" }}>
                   <Stack gap={8}>
                     <Text fw={600}>{`${getMetricLabel(historyChartMetric)} Chart`}</Text>
@@ -564,12 +841,23 @@ export function WarHistoryTab({
               )}
 
               <Group justify="flex-end" gap={8}>
-                <MotionButton onClick={() => onExport("csv")} loading={exportPending}>
+                {canManage ? (
+                  <MotionButton
+                    type="primary"
+                    onClick={handleSaveMemberStats}
+                    loading={saveMemberStatsPending}
+                    disabled={!hasUnsavedMemberChanges || historyDetailLoading}
+                    className={hasUnsavedMemberChanges ? "war-history-save-button--ready" : undefined}
+                  >
+                    {t("history.saveChanges")}
+                  </MotionButton>
+                ) : null}
+                <MotionButton type="primary" onClick={() => onExport("csv")} loading={exportPending}>
                   {exportCsvLabel}
                 </MotionButton>
-                <Button onClick={() => onExport("json")} loading={exportPending}>
+                <MotionButton type="primary" onClick={() => onExport("json")} loading={exportPending}>
                   {exportJsonLabel}
-                </Button>
+                </MotionButton>
               </Group>
               </Stack>
             ) : null}

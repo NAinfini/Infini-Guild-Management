@@ -1,4 +1,4 @@
-import { notifications } from "@mantine/notifications";
+﻿import { notifications } from "@mantine/notifications";
 import { useEffect, useRef } from "react";
 import { portalToast } from "../overlays";
 
@@ -6,7 +6,7 @@ function showWarningToast(text: string) {
   const delivered = portalToast({ title: text, status: "warning" });
   if (!delivered) {
     notifications.show({
-      color: "yellow",
+      color: "infini-warning",
       message: text,
       autoClose: 4500,
       withCloseButton: true,
@@ -29,3 +29,4 @@ export function useLoadWarningToast(shouldShow: boolean, text: string) {
     alreadyShownRef.current = false;
   }, [shouldShow, text]);
 }
+

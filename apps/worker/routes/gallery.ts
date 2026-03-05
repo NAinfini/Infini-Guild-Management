@@ -34,7 +34,7 @@ type GalleryRow = {
   createdAt: string;
   likeCount?: number;
   commentCount?: number;
-  isLiked?: boolean;
+  isLiked?: boolean | number | null;
 };
 
 export const galleryRoutes = new Hono();
@@ -86,6 +86,7 @@ function escapeLikePattern(value: string): string {
 }
 
 function toGalleryPayload(row: GalleryRow) {
+  const isLiked = row.isLiked === null || row.isLiked === undefined ? false : Boolean(row.isLiked);
   return galleryItemSchema.parse({
     id: row.id,
     type: row.type,
@@ -95,7 +96,7 @@ function toGalleryPayload(row: GalleryRow) {
     uploaded_by_name: row.uploadedByName,
     like_count: row.likeCount ?? 0,
     comment_count: row.commentCount ?? 0,
-    is_liked: row.isLiked ?? false,
+    is_liked: isLiked,
     created_at: row.createdAt,
   });
 }

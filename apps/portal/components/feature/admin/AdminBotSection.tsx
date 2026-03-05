@@ -1,6 +1,7 @@
-import { Alert, Badge, Button, Checkbox, Group, Loader, Select, Stack, Text, TextInput, Textarea } from "@mantine/core";
+import { Alert, Badge, Button, Divider, Group, Loader, Select, SimpleGrid, Stack, Switch, Text, TextInput, Textarea } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 type Option = {
   value: string;
@@ -44,6 +45,19 @@ type AdminBotSectionProps = {
   saveLabel: string;
 };
 
+const TOGGLE_LABEL_MAP: Record<string, string> = {
+  event_notify: "bot.toggle.eventNotify",
+  team_comp: "bot.toggle.teamComp",
+  reminder: "bot.toggle.reminder",
+  war_result: "bot.toggle.warResult",
+};
+
+function ToggleLabel({ toggleKey }: { toggleKey: string }) {
+  const { t } = useTranslation("admin");
+  const i18nKey = TOGGLE_LABEL_MAP[toggleKey];
+  return <>{i18nKey ? t(i18nKey) : toggleKey}</>;
+}
+
 export function AdminBotSection({
   heading,
   isAdmin,
@@ -80,145 +94,181 @@ export function AdminBotSection({
   savePending,
   saveLabel,
 }: AdminBotSectionProps) {
+  const { t } = useTranslation("admin");
   if (!isAdmin) {
     return (
       <Stack gap={12}>
         {heading}
-        <Alert color="yellow" title={adminOnlyMessage} />
+        <Alert color="infini-warning" title={adminOnlyMessage} />
       </Stack>
     );
   }
 
   return (
-    <Stack gap={12}>
+    <Stack gap={16}>
       {heading}
       {botSettingsLoading ? <Loader size="sm" /> : null}
-      {botSettingsError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
+      {botSettingsError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
       {!botSettingsLoading && !botSettingsError ? (
-        <Stack gap={12}>
-          <InfiniCard>
-            <div style={{ padding: "1.2rem" }}>
-              <Text fw={600} size="sm" mb={10}>Discord</Text>
-              <Stack gap={10}>
-                <Group wrap="wrap" gap={8}>
-                  <Badge color={runtimeStatus === "ok" ? "green" : "yellow"} variant="light">
-                    Runtime: {runtimeStatus ?? "unknown"}
-                  </Badge>
-                  <Button size="xs" onClick={() => onTestDispatch("discord")} loading={testDispatchPending}>
-                    Test notification
-                  </Button>
-                </Group>
-
-                <TextInput
-                  value={discordGuildId}
-                  onChange={(event) => onDiscordGuildIdChange(event.currentTarget.value)}
-                  placeholder="Guild ID"
-                  aria-label="Discord guild ID"
-                />
-
-                <Group wrap="wrap" gap={8}>
-                  <Button
-                    size="xs"
-                    onClick={onRefreshChannels}
-                    loading={discordChannelsFetching}
-                    disabled={!canRefreshChannels}
+        <SimpleGrid cols={{ base: 1, md: 2 }} spacing={16}>
+          {/* ── Discord ── */}
+          <InfiniCard interactive={false}>
+            <Stack gap={16} style={{ padding: "1.2rem" }}>
+              <Group justify="space-between" align="center">
+                <Group gap={8}>
+                  <Text fw={700} size="md">{t("bot.discord")}</Text>
+                  <Badge
+                    size="sm"
+                    color={runtimeStatus === "ok" ? "green" : "yellow"}
+                    variant="light"
                   >
-                    Refresh channels
-                  </Button>
-                  {discordChannelCount > 0 ? (
-                    <Text c="dimmed" size="sm">Loaded {discordChannelCount} channel(s)</Text>
-                  ) : null}
+                    {runtimeStatus ?? t("status.summary.unknown")}
+                  </Badge>
                 </Group>
+                <Button
+                  size="compact-xs"
+                  variant="light"
+                  onClick={() => onTestDispatch("discord")}
+                  loading={testDispatchPending}
+                >
+                  {t("bot.testNotification")}
+                </Button>
+              </Group>
 
-                {discordChannelsError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
+              <Divider label={t("bot.section.connection")} labelPosition="left" />
 
-                <Select
-                  searchable
-                  value={discordNotificationChannelId || null}
-                  onChange={(value) => onDiscordNotificationChannelIdChange(value ?? "")}
-                  placeholder={discordGuildId.trim() ? "Notification channel" : "Enter guild ID first"}
-                  aria-label="Discord notification channel"
-                  data={discordChannelOptions}
-                  disabled={!discordGuildId.trim()}
-                  rightSection={discordChannelsLoading || discordChannelsFetching ? <Loader size={14} /> : undefined}
-                />
+              <TextInput
+                label={t("bot.guildIdLabel")}
+                value={discordGuildId}
+                onChange={(event) => onDiscordGuildIdChange(event.currentTarget.value)}
+                placeholder={t("bot.guildIdPlaceholder")}
+                aria-label="Discord guild ID"
+              />
 
-                <Select
-                  searchable
-                  value={discordTeamCompChannelId || null}
-                  onChange={(value) => onDiscordTeamCompChannelIdChange(value ?? "")}
-                  placeholder={discordGuildId.trim() ? "Team composition channel" : "Enter guild ID first"}
-                  aria-label="Discord team composition channel"
-                  data={discordChannelOptions}
-                  disabled={!discordGuildId.trim()}
-                  rightSection={discordChannelsLoading || discordChannelsFetching ? <Loader size={14} /> : undefined}
-                />
+              <Group gap={8} align="center">
+                <Button
+                  size="compact-xs"
+                  variant="default"
+                  onClick={onRefreshChannels}
+                  loading={discordChannelsFetching}
+                  disabled={!canRefreshChannels}
+                >
+                  {t("bot.refreshChannels")}
+                </Button>
+                {discordChannelCount > 0 ? (
+                  <Text c="dimmed" size="xs">{t("bot.channelsLoaded", { count: discordChannelCount })}</Text>
+                ) : null}
+              </Group>
 
-                <Group wrap="wrap" gap={8}>
-                  {botToggleKeys.map((key) => (
-                    <Checkbox
-                      key={`discord-${key}`}
-                      checked={Boolean(discordDefaultToggles[key])}
-                      onChange={(event) => onDiscordDefaultToggleChange(key, event.currentTarget.checked)}
-                      label={key}
-                      aria-label={`Discord toggle ${key}`}
-                    />
-                  ))}
-                </Group>
-              </Stack>
-            </div>
-          </InfiniCard>
+              {discordChannelsError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
 
-          <InfiniCard>
-            <div style={{ padding: "1.2rem" }}>
-              <Text fw={600} size="sm" mb={10}>WeChat</Text>
+              <Divider label={t("bot.section.channels")} labelPosition="left" />
+
+              <Select
+                searchable
+                label={t("bot.notificationChannel")}
+                value={discordNotificationChannelId || null}
+                onChange={(value) => onDiscordNotificationChannelIdChange(value ?? "")}
+                placeholder={discordGuildId.trim() ? t("bot.selectChannel") : t("bot.enterGuildIdFirst")}
+                aria-label="Discord notification channel"
+                data={discordChannelOptions}
+                disabled={!discordGuildId.trim()}
+                rightSection={discordChannelsLoading || discordChannelsFetching ? <Loader size={14} /> : undefined}
+              />
+
+              <Select
+                searchable
+                label={t("bot.teamCompChannel")}
+                value={discordTeamCompChannelId || null}
+                onChange={(value) => onDiscordTeamCompChannelIdChange(value ?? "")}
+                placeholder={discordGuildId.trim() ? t("bot.selectChannel") : t("bot.enterGuildIdFirst")}
+                aria-label="Discord team composition channel"
+                data={discordChannelOptions}
+                disabled={!discordGuildId.trim()}
+                rightSection={discordChannelsLoading || discordChannelsFetching ? <Loader size={14} /> : undefined}
+              />
+
+              <Divider label={t("bot.section.features")} labelPosition="left" />
+
               <Stack gap={10}>
-                <Group wrap="wrap" gap={8}>
-                  <Button size="xs" onClick={() => onTestDispatch("wechat")} loading={testDispatchPending}>
-                    Test message
-                  </Button>
-                </Group>
-
-                <TextInput
-                  value={wechatRoomIdsText}
-                  onChange={(event) => onWechatRoomIdsTextChange(event.currentTarget.value)}
-                  placeholder="Room IDs (comma separated)"
-                  aria-label="WeChat room IDs"
-                />
-
-                <Group wrap="wrap" gap={8}>
-                  {botToggleKeys.map((key) => (
-                    <Checkbox
-                      key={`wechat-${key}`}
-                      checked={Boolean(wechatDefaultToggles[key])}
-                      onChange={(event) => onWechatDefaultToggleChange(key, event.currentTarget.checked)}
-                      label={key}
-                      aria-label={`WeChat toggle ${key}`}
-                    />
-                  ))}
-                </Group>
+                {botToggleKeys.map((key) => (
+                  <Switch
+                    key={`discord-${key}`}
+                    checked={Boolean(discordDefaultToggles[key])}
+                    onChange={(event) => onDiscordDefaultToggleChange(key, event.currentTarget.checked)}
+                    label={<ToggleLabel toggleKey={key} />}
+                    aria-label={`Discord toggle ${key}`}
+                    size="sm"
+                  />
+                ))}
               </Stack>
-            </div>
+            </Stack>
           </InfiniCard>
 
-          <InfiniCard>
-            <div style={{ padding: "1.2rem" }}>
-              <Text fw={600} size="sm" mb={10}>JSON Preview</Text>
+          {/* ── WeChat ── */}
+          <InfiniCard interactive={false}>
+            <Stack gap={16} style={{ padding: "1.2rem" }}>
+              <Group justify="space-between" align="center">
+                <Text fw={700} size="md">{t("bot.wechat")}</Text>
+                <Button
+                  size="compact-xs"
+                  variant="light"
+                  onClick={() => onTestDispatch("wechat")}
+                  loading={testDispatchPending}
+                >
+                  {t("bot.testMessage")}
+                </Button>
+              </Group>
+
+              <Divider label={t("bot.section.connection")} labelPosition="left" />
+
+              <TextInput
+                label={t("bot.roomIdsLabel")}
+                value={wechatRoomIdsText}
+                onChange={(event) => onWechatRoomIdsTextChange(event.currentTarget.value)}
+                placeholder={t("bot.roomIdsPlaceholder")}
+                aria-label="WeChat room IDs"
+              />
+
+              <Divider label={t("bot.section.features")} labelPosition="left" />
+
+              <Stack gap={10}>
+                {botToggleKeys.map((key) => (
+                  <Switch
+                    key={`wechat-${key}`}
+                    checked={Boolean(wechatDefaultToggles[key])}
+                    onChange={(event) => onWechatDefaultToggleChange(key, event.currentTarget.checked)}
+                    label={<ToggleLabel toggleKey={key} />}
+                    aria-label={`WeChat toggle ${key}`}
+                    size="sm"
+                  />
+                ))}
+              </Stack>
+            </Stack>
+          </InfiniCard>
+
+          {/* ── JSON Preview (full width) ── */}
+          <InfiniCard interactive={false} style={{ gridColumn: "1 / -1" }}>
+            <Stack gap={12} style={{ padding: "1.2rem" }}>
+              <Text fw={700} size="md">{t("bot.jsonPreview")}</Text>
               <Textarea
                 minRows={8}
+                autosize
+                maxRows={20}
                 value={botSettingsJson}
                 aria-label="Bot settings JSON preview"
                 onChange={(event) => onBotSettingsJsonChange(event.currentTarget.value)}
+                styles={{ input: { fontFamily: "monospace", fontSize: "0.82rem" } }}
               />
-            </div>
+              <Group justify="flex-end">
+                <Button onClick={onSaveBotSettings} loading={savePending}>
+                  {saveLabel}
+                </Button>
+              </Group>
+            </Stack>
           </InfiniCard>
-
-          <Button onClick={onSaveBotSettings} loading={savePending}>
-            {saveLabel}
-          </Button>
-        </Stack>
+        </SimpleGrid>
       ) : null}
     </Stack>
   );
 }
-

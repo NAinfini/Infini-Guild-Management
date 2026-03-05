@@ -2,13 +2,12 @@ import { DndContext, DragOverlay, closestCenter, useDroppable, type DragEndEvent
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ActionIcon, Badge, Card, Group, Stack, Text, Tooltip } from "@mantine/core";
-import { IconSortAscending, IconSortDescending, IconUser, IconShield, IconBolt } from "@tabler/icons-react";
+import { IconUser, IconShield, IconBolt } from "@tabler/icons-react";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import type { ComponentProps, CSSProperties, MouseEvent, ReactNode } from "react";
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
-
-type PinnedRoleKey = "dps" | "heal" | "tank" | "lead";
 
 type DragMemberItem = {
   itemId: string;
@@ -24,7 +23,6 @@ type DragMemberColumn = {
   title: ReactNode;
   locked: boolean;
   members: DragMemberItem[];
-  pinnedRoles?: Partial<Record<PinnedRoleKey, string>>;
 };
 
 type ActiveDragItem = {
@@ -42,17 +40,15 @@ type GuildWarDragBoardProps = {
   activePoolStatus?: ReactNode;
   selectedUserIds: Set<string>;
   activeSearch: string;
-  selectedCount: number;
-  selectionHint: string;
   activeDragItem: ActiveDragItem | null;
   toMemberDomId: (itemId: string) => string;
   sensors: NonNullable<ComponentProps<typeof DndContext>["sensors"]>;
   onSelectMember: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
   onOpenMember?: (userId: string) => void;
-  onAssignPinnedRole?: (containerId: string, role: PinnedRoleKey, userId: string | null) => void;
   onDragStart: (event: DragStartEvent) => void;
   onDragCancel: () => void;
   onDragEnd: (event: DragEndEvent) => void;
+  teamStatusContentByContainerId?: Record<string, ReactNode>;
 };
 
 
@@ -126,6 +122,7 @@ function DroppableMemberColumn(props: {
   const { isOver, setNodeRef } = useDroppable({
     id: `container:${props.column.containerId}`,
   });
+  const { t } = useTranslation("guild-war");
 
   const [sortBy, setSortBy] = useState<"username" | "class" | "power" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -154,37 +151,40 @@ function DroppableMemberColumn(props: {
 
   return (
     <InfiniCard
+      interactive={false}
       className={`guild-war-column-card ${isOver ? "guild-war-column-card--over" : ""}`}
       style={{ overflow: "visible" }}
     >
-      <Group gap={8} mb="sm" justify="space-between">
-        <Group gap={8}>
-          <span>{props.column.title}</span>
-          <Badge size="sm" variant="light">{props.column.members.length}</Badge>
-          {props.column.locked ? <Badge color="red">LOCKED</Badge> : null}
+      <Stack gap={8} mb="sm" className="guild-war-column-header">
+        <Group gap={8} justify="space-between" wrap="nowrap">
+          <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+            <Text size="sm" fw={600} truncate>{props.column.title}</Text>
+            <Badge size="sm" variant="light">{props.column.members.length}</Badge>
+            {props.column.locked ? <Badge color="infini-danger" size="sm">{t("active.locked")}</Badge> : null}
+          </Group>
+          <Group gap={4} wrap="nowrap">
+            <Tooltip label={t("active.sort.username")}>
+              <ActionIcon size="sm" variant={sortBy === "username" ? "filled" : "subtle"} onClick={() => toggleSort("username")}>
+                <IconUser size={14} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label={t("active.sort.class")}>
+              <ActionIcon size="sm" variant={sortBy === "class" ? "filled" : "subtle"} onClick={() => toggleSort("class")}>
+                <IconShield size={14} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label={t("active.sort.power")}>
+              <ActionIcon size="sm" variant={sortBy === "power" ? "filled" : "subtle"} onClick={() => toggleSort("power")}>
+                <IconBolt size={14} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
         </Group>
-        <Group gap={4}>
-          <Tooltip label="Sort by username">
-            <ActionIcon size="sm" variant={sortBy === "username" ? "filled" : "subtle"} onClick={() => toggleSort("username")}>
-              <IconUser size={14} />
-            </ActionIcon>
-          </Tooltip>
-          <Tooltip label="Sort by class">
-            <ActionIcon size="sm" variant={sortBy === "class" ? "filled" : "subtle"} onClick={() => toggleSort("class")}>
-              <IconShield size={14} />
-            </ActionIcon>
-          </Tooltip>
-          <Tooltip label="Sort by power">
-            <ActionIcon size="sm" variant={sortBy === "power" ? "filled" : "subtle"} onClick={() => toggleSort("power")}>
-              <IconBolt size={14} />
-            </ActionIcon>
-          </Tooltip>
-        </Group>
-      </Group>
+        {props.statusContent ? <div className="guild-war-column-header-status">{props.statusContent}</div> : null}
+      </Stack>
       <div ref={setNodeRef}>
         <SortableContext items={sortedMembers.map((member) => member.itemId)} strategy={verticalListSortingStrategy}>
           <Stack className="guild-war-column-stack" gap={8}>
-            {props.statusContent ? <div className="guild-war-column-status">{props.statusContent}</div> : null}
             {sortedMembers.length === 0 ? (
               <EmptyState title={props.emptyText} />
             ) : (
@@ -221,8 +221,6 @@ export function GuildWarDragBoard({
   activePoolStatus,
   selectedUserIds,
   activeSearch,
-  selectedCount,
-  selectionHint,
   activeDragItem,
   toMemberDomId,
   sensors,
@@ -231,14 +229,13 @@ export function GuildWarDragBoard({
   onDragStart,
   onDragCancel,
   onDragEnd,
+  teamStatusContentByContainerId,
 }: GuildWarDragBoardProps) {
   const poolColumn = dragColumns.find((col) => col.containerId === "pool");
   const teamColumns = dragColumns.filter((col) => col.containerId !== "pool");
 
   return (
     <>
-      {selectedCount > 0 ? <Alert color="blue">{selectionHint}</Alert> : null}
-
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -264,7 +261,7 @@ export function GuildWarDragBoard({
             ) : null}
           </div>
 
-          {/* Teams — horizontal scrolling right area */}
+          {/* Teams — vertical list area */}
           <div className="guild-war-dnd-teams-wrap">
             <div className="guild-war-dnd-teams">
               {teamColumns.map((column) => (
@@ -273,7 +270,7 @@ export function GuildWarDragBoard({
                   column={column}
                   canDrag={canDrag}
                   emptyText={emptyText}
-                  statusContent={null}
+                  statusContent={teamStatusContentByContainerId?.[column.containerId] ?? null}
                   selectedUserIds={selectedUserIds}
                   activeSearch={activeSearch}
                   toMemberDomId={toMemberDomId}
@@ -302,4 +299,3 @@ export function GuildWarDragBoard({
     </>
   );
 }
-

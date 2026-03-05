@@ -15,7 +15,7 @@ function joinClassNames(...parts: Array<string | undefined>): string | undefined
 
 export function FilterToolbar({ children, className, contentClassName }: FilterToolbarProps) {
   return (
-    <InfiniCard className={className}>
+    <InfiniCard className={className} interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Group wrap="wrap" gap={8} align="center" className={joinClassNames(contentClassName)}>
           {children}

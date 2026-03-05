@@ -1,0 +1,22 @@
+{
+  "toolbar.bold": "粗体",
+  "toolbar.italic": "斜体",
+  "toolbar.underline": "下划线",
+  "toolbar.strike": "删除线",
+  "toolbar.link": "链接",
+  "toolbar.unlink": "取消链接",
+  "toolbar.h1": "标题 1",
+  "toolbar.h2": "标题 2",
+  "toolbar.h3": "标题 3",
+  "toolbar.bullet": "无序列表",
+  "toolbar.number": "有序列表",
+  "toolbar.quote": "引用",
+  "toolbar.code": "代码块",
+  "toolbar.table": "表格",
+  "toolbar.addCol": "添加列",
+  "toolbar.addRow": "添加行",
+  "toolbar.delTable": "删除表格",
+  "toolbar.image": "图片",
+  "slashCommands": "快捷命令",
+  "message.imageInserted": "图片已插入"
+}

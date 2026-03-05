@@ -1,4 +1,4 @@
-.event-card {
+﻿.event-card {
   overflow: hidden;
   transition: transform 180ms ease, box-shadow 180ms ease;
 }
@@ -36,8 +36,8 @@
 
 .event-card__header--guild_war {
   background: linear-gradient(135deg,
-    color-mix(in srgb, var(--infini-color-error, #ef4444) 22%, var(--infini-color-surface, #ffffff)),
-    color-mix(in srgb, var(--infini-color-error, #ef4444) 8%, var(--infini-color-surface, #ffffff))
+    color-mix(in srgb, var(--infini-color-danger, #ef4444) 22%, var(--infini-color-surface, #ffffff)),
+    color-mix(in srgb, var(--infini-color-danger, #ef4444) 8%, var(--infini-color-surface, #ffffff))
   );
 }
 
@@ -267,3 +267,4 @@
   text-align: right;
   min-width: 0;
 }
+

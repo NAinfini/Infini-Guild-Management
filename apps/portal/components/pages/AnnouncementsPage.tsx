@@ -4,10 +4,10 @@ import { Button, Group, Loader } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 
 const message = {
-  success: (text: string) => notifications.show({ color: "green", message: text, autoClose: 3000 }),
-  error: (text: string) => notifications.show({ color: "red", message: text, autoClose: 3000 }),
+  success: (text: string) => notifications.show({ color: "infini-success", message: text, autoClose: 3000 }),
+  error: (text: string) => notifications.show({ color: "infini-danger", message: text, autoClose: 3000 }),
 };
-import dayjs from "dayjs";
+import { format, isValid, parseISO } from "date-fns";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -27,7 +27,6 @@ import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useAuthStore } from "../../stores/auth";
-import { PlusOutlined } from "../../utils/icons";
 import { PageLayout } from "../layout/PageLayout";
 import { EmptyState } from "../shared/EmptyState";
 import { TIPTAP_DEFAULT_JSON } from "../shared/TipTapEditor";
@@ -46,9 +45,9 @@ function toIsoOrUndefined(value: string): string | undefined {
 
 function toDateTimePickerValue(iso: string | null): string {
   if (!iso) return "";
-  const value = dayjs(iso);
-  if (!value.isValid()) return "";
-  return value.format("YYYY-MM-DD HH:mm");
+  const date = parseISO(iso);
+  if (!isValid(date)) return "";
+  return format(date, "yyyy-MM-dd HH:mm");
 }
 
 
@@ -84,9 +83,10 @@ export function AnnouncementsPage() {
   const [title, setTitle] = useState("");
   const [bodyJson, setBodyJson] = useState(TIPTAP_DEFAULT_JSON);
   const [pinned, setPinned] = useState(false);
+  const [archived, setArchived] = useState(false);
   const [publishAt, setPublishAt] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
-  const [draftStatus, setDraftStatus] = useState<Announcement["status"]>("draft");
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [notifyDiscord, setNotifyDiscord] = useState(true);
   const [notifyWechat, setNotifyWechat] = useState(false);
   const [announcementsLastSeenAt, setAnnouncementsLastSeenAt] = useState<string | null>(null);
@@ -139,17 +139,21 @@ export function AnnouncementsPage() {
           if (!current) {
             return current;
           }
+          // If un-pinning while viewing "pinned" scope, remove the item from the list
+          const shouldRemove = payload.pinned === false && listScope === "pinned";
           return {
             ...current,
-            data: current.data.map((item) =>
-              item.id === id
-                ? {
-                    ...item,
-                    ...(payload as Partial<Announcement>),
-                    updated_at: nowIso,
-                  }
-                : item,
-            ),
+            data: shouldRemove
+              ? current.data.filter((item) => item.id !== id)
+              : current.data.map((item) =>
+                  item.id === id
+                    ? {
+                        ...item,
+                        ...(payload as Partial<Announcement>),
+                        updated_at: nowIso,
+                      }
+                    : item,
+                ),
           };
         });
       }
@@ -189,19 +193,42 @@ export function AnnouncementsPage() {
 
   const archiveMutation = useMutation({
     mutationFn: archiveAnnouncement,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
+      const previousLists = queryClient
+        .getQueriesData<PaginatedResponse<Announcement>>({ queryKey: queryKeys.announcements.all })
+        .filter(([key]) => !(Array.isArray(key) && key[1] === "detail"));
+
+      for (const [key] of previousLists) {
+        queryClient.setQueryData<PaginatedResponse<Announcement>>(key, (current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            data: current.data.filter((item) => item.id !== id),
+          };
+        });
+      }
+
+      return { previousLists };
+    },
     onSuccess: async () => {
       message.success(t("message.archived"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
       setSelectedId(null);
     },
-    onError: (error) => {
+    onError: (error, _variables, context) => {
+      if (context) {
+        for (const [key, previous] of context.previousLists) {
+          queryClient.setQueryData(key, previous);
+        }
+      }
       showError(error, t("message.archiveFailed"));
     },
   });
 
   const rows = useMemo(() => {
     let raw = listQuery.data?.data ?? [];
-    // Non-editors should only see published (and archived in that tab)
+    // Non-editors should only see published in normal tabs.
     if (!canEdit && listScope !== "archived") {
       raw = raw.filter((item) => item.status === "published");
     }
@@ -232,9 +259,10 @@ export function AnnouncementsPage() {
     setTitle(selected.title);
     setBodyJson(selected.body_json);
     setPinned(selected.pinned);
+    setArchived(selected.status === "archived");
     setPublishAt(toDateTimePickerValue(selected.publish_at));
     setExpiresAt(toDateTimePickerValue(selected.expires_at));
-    setDraftStatus(selected.status);
+    setScheduleEnabled(selected.status === "scheduled");
     setNotifyDiscord(selected.status === "published");
     setNotifyWechat(false);
   }, [selected]);
@@ -243,7 +271,7 @@ export function AnnouncementsPage() {
   const emptyText = useMemo(
     () => (
       <EmptyState
-        title={search.trim() || status || listScope !== "all" ? "No announcements match your filters" : t("empty")}
+        title={search.trim() || status || listScope !== "all" ? t("empty.filtered") : t("empty")}
         actions={
           <Group gap={8} wrap="wrap">
             <Button
@@ -255,11 +283,11 @@ export function AnnouncementsPage() {
               }}
               disabled={!search.trim() && !status && listScope === "all"}
             >
-              Reset filters
+              {t("action.resetFilters")}
             </Button>
             {canEdit ? (
               <Button onClick={() => setCreateModalOpen(true)}>
-                Create announcement
+                {t("action.createAnnouncement")}
               </Button>
             ) : null}
           </Group>
@@ -277,24 +305,25 @@ export function AnnouncementsPage() {
         pinned !== selected.pinned ||
         publishAt !== toDateTimePickerValue(selected.publish_at) ||
         expiresAt !== toDateTimePickerValue(selected.expires_at) ||
-        draftStatus !== selected.status
+        scheduleEnabled !== (selected.status === "scheduled")
       );
     }
     return false;
-  }, [bodyJson, canEdit, draftStatus, expiresAt, pinned, publishAt, selected, title]);
+  }, [bodyJson, canEdit, scheduleEnabled, expiresAt, pinned, publishAt, selected, title]);
   useBeforeUnloadPrompt(isDirty);
 
   const saveSelectedByStatus = (nextStatus?: Announcement["status"]) => {
     if (!selectedId) return;
+    const status = archived ? "archived" : (nextStatus ?? "draft");
     updateMutation.mutate({
       id: selectedId,
       payload: {
         title,
         body_json: bodyJson,
         pinned,
-        status: nextStatus ?? draftStatus,
+        status,
         publish_at:
-          (nextStatus ?? draftStatus) === "published"
+          status === "published"
             ? new Date().toISOString()
             : toIsoOrUndefined(publishAt),
         expires_at: toIsoOrUndefined(expiresAt),
@@ -302,6 +331,14 @@ export function AnnouncementsPage() {
         notify_wechat: notifyWechat,
       },
     });
+  };
+
+  const handlePublish = () => {
+    if (scheduleEnabled && publishAt.trim()) {
+      saveSelectedByStatus("scheduled");
+    } else {
+      saveSelectedByStatus("published");
+    }
   };
 
   const handleUploadAnnouncementImages = async (file: File) => {
@@ -329,24 +366,11 @@ export function AnnouncementsPage() {
     createMutation.mutate(payload);
   }, [createMutation.mutate]);
 
-  // Page header: single "New Announcement" button for moderators
-  const headerActions = useMemo(
-    () =>
-      canEdit ? (
-        <Button
-          leftSection={<PlusOutlined size={16} />}
-          onClick={() => setCreateModalOpen(true)}
-        >
-          New Announcement
-        </Button>
-      ) : null,
-    [canEdit],
-  );
-  usePageHeaderActions(headerActions);
+  usePageHeaderActions(null);
   useLoadWarningToast(listQuery.isError || detailQuery.isError, t("common:loadErrorRetry"));
 
   return (
-    <PageLayout title={t("title")} subtitle="Publishing" className="announcements-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} className="announcements-page">
       <AnnouncementFiltersCard
         listScope={listScope}
         status={status}
@@ -355,6 +379,7 @@ export function AnnouncementsPage() {
         onListScopeChange={setListScope}
         onStatusChange={setStatus}
         onSearchChange={setSearch}
+        onCreate={() => setCreateModalOpen(true)}
       />
 
       <div className="announcements-grid">
@@ -369,13 +394,6 @@ export function AnnouncementsPage() {
           warningMessage={t("common:loadError")}
           emptyText={emptyText}
           onSelect={setSelectedId}
-          onTogglePin={(item) =>
-            updateMutation.mutate({
-              id: item.id,
-              payload: { pinned: !item.pinned },
-            })
-          }
-          onArchive={(id) => archiveMutation.mutate(id)}
         />
 
         <AnnouncementDetailCard
@@ -387,15 +405,14 @@ export function AnnouncementsPage() {
           isError={false}
           warningMessage={t("common:loadError")}
           savePending={updateMutation.isPending}
-          archivePending={archiveMutation.isPending}
-          draftStatus={draftStatus}
-          onDraftStatusChange={setDraftStatus}
           titleValue={title}
           onTitleChange={setTitle}
           bodyJson={bodyJson}
           onBodyJsonChange={setBodyJson}
           pinned={pinned}
           onPinnedChange={setPinned}
+          scheduleEnabled={scheduleEnabled}
+          onScheduleEnabledChange={setScheduleEnabled}
           notifyDiscord={notifyDiscord}
           onNotifyDiscordChange={setNotifyDiscord}
           notifyWechat={notifyWechat}
@@ -405,13 +422,9 @@ export function AnnouncementsPage() {
           expiresAt={expiresAt}
           onExpiresAtChange={setExpiresAt}
           onSaveDraft={() => saveSelectedByStatus("draft")}
-          onPublishNow={() => saveSelectedByStatus("published")}
-          onSchedule={() => saveSelectedByStatus("scheduled")}
-          onArchive={() => {
-            if (selectedId) {
-              archiveMutation.mutate(selectedId);
-            }
-          }}
+          onPublish={handlePublish}
+          archived={archived}
+          onArchivedChange={setArchived}
           onImageUpload={handleUploadAnnouncementImages}
           isDirty={isDirty}
           emptyTitle={t("common:message.noData")}

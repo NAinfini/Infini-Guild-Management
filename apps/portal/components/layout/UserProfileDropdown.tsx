@@ -1,4 +1,4 @@
-import type { User } from "@guild/shared";
+﻿import type { User } from "@guild/shared";
 import { Avatar, Button, Group, Menu, Text, UnstyledButton } from "@mantine/core";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -31,7 +31,7 @@ export function UserProfileDropdown({ user, onLogout, compact = false }: UserPro
           aria-label="Open profile menu"
         >
           <Group gap={8} wrap="nowrap" align="center">
-            <Avatar size={32} className="app-profile-avatar">
+            <Avatar size={32} radius="xl" className="app-profile-avatar">
               {user.username.slice(0, 1).toUpperCase()}
             </Avatar>
             <div className="app-profile-meta">
@@ -57,10 +57,11 @@ export function UserProfileDropdown({ user, onLogout, compact = false }: UserPro
           {t("profile.menu.settings")}
         </Menu.Item>
         <Menu.Divider />
-        <Menu.Item color="red" leftSection={<LogoutOutlined />} onClick={() => void onLogout()}>
+        <Menu.Item color="infini-danger" leftSection={<LogoutOutlined />} onClick={() => void onLogout()}>
           {t("action.logout")}
         </Menu.Item>
       </Menu.Dropdown>
     </Menu>
   );
 }
+

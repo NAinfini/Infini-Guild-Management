@@ -5,7 +5,6 @@
   hasRoleAtLeast,
   updateWikiArticleSchema,
   wikiArticleSchema,
-  wikiArticleVersionSchema,
   wikiCategorySchema,
   type ErrorCode,
   type Role,
@@ -27,7 +26,7 @@ import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { nanoid } from "nanoid";
-import { wikiArticles, wikiArticleVersions, wikiCategories } from "../db/schema";
+import { wikiArticles, wikiCategories } from "../db/schema";
 import type { Bindings } from "../index";
 import { resolveSession } from "../services/auth";
 import { writeAuditLog } from "../services/audit";
@@ -41,6 +40,8 @@ type CategoryRow = {
   slug: string;
   sortOrder: number;
   parentId: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type ArticleRow = {
@@ -52,23 +53,9 @@ type ArticleRow = {
   sortOrder: number;
   archivedAt: string | null;
   createdBy: string;
+  updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
-};
-
-type ArticleVersionRow = {
-  id: string;
-  articleId: string;
-  versionNo: number;
-  title: string;
-  slug: string;
-  categoryId: string;
-  bodyJson: string;
-  sortOrder: number;
-  archivedAt: string | null;
-  sourceAction: string;
-  createdBy: string;
-  createdAt: string;
 };
 
 export const wikiRoutes = new Hono();
@@ -114,6 +101,8 @@ function toCategoryPayload(row: CategoryRow) {
     slug: row.slug,
     sort_order: row.sortOrder,
     parent_id: row.parentId,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
   });
 }
 
@@ -127,61 +116,9 @@ function toArticlePayload(row: ArticleRow) {
     sort_order: row.sortOrder,
     archived_at: row.archivedAt,
     created_by: row.createdBy,
+    updated_by: row.updatedBy,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
-  });
-}
-
-function toArticleVersionPayload(row: ArticleVersionRow) {
-  return wikiArticleVersionSchema.parse({
-    id: row.id,
-    article_id: row.articleId,
-    version_no: row.versionNo,
-    title: row.title,
-    slug: row.slug,
-    category_id: row.categoryId,
-    body_json: row.bodyJson,
-    sort_order: row.sortOrder,
-    archived_at: row.archivedAt,
-    source_action: row.sourceAction,
-    created_by: row.createdBy,
-    created_at: row.createdAt,
-  });
-}
-
-async function getNextArticleVersionNo(c: Context, articleId: string): Promise<number> {
-  const db = getDb(c);
-  const row = (
-    await db
-      .select({ maxVersion: sql<number>`coalesce(max(${wikiArticleVersions.versionNo}), 0)` })
-      .from(wikiArticleVersions)
-      .where(eq(wikiArticleVersions.articleId, articleId))
-  )[0];
-
-  return Number(row?.maxVersion ?? 0) + 1;
-}
-
-async function createArticleVersion(
-  c: Context,
-  article: ArticleRow,
-  actorId: string,
-  sourceAction: string,
-): Promise<void> {
-  const db = getDb(c);
-  const nextVersion = await getNextArticleVersionNo(c, article.id);
-
-  await db.insert(wikiArticleVersions).values({
-    id: nanoid(),
-    articleId: article.id,
-    versionNo: nextVersion,
-    title: article.title,
-    slug: article.slug,
-    categoryId: article.categoryId,
-    bodyJson: article.bodyJson,
-    sortOrder: article.sortOrder,
-    archivedAt: article.archivedAt,
-    sourceAction,
-    createdBy: actorId,
   });
 }
 
@@ -207,6 +144,8 @@ async function getCategoryById(c: Context, categoryId: string): Promise<Category
         slug: wikiCategories.slug,
         sortOrder: wikiCategories.sortOrder,
         parentId: wikiCategories.parentId,
+        createdAt: wikiCategories.createdAt,
+        updatedAt: wikiCategories.updatedAt,
       })
       .from(wikiCategories)
       .where(eq(wikiCategories.id, categoryId))
@@ -241,37 +180,12 @@ async function getArticleById(c: Context, articleId: string): Promise<ArticleRow
         sortOrder: wikiArticles.sortOrder,
         archivedAt: wikiArticles.archivedAt,
         createdBy: wikiArticles.createdBy,
+        updatedBy: wikiArticles.updatedBy,
         createdAt: wikiArticles.createdAt,
         updatedAt: wikiArticles.updatedAt,
       })
       .from(wikiArticles)
       .where(eq(wikiArticles.id, articleId))
-      .limit(1)
-  )[0];
-
-  return row ?? null;
-}
-
-async function getArticleVersionById(c: Context, versionId: string): Promise<ArticleVersionRow | null> {
-  const db = getDb(c);
-  const row = (
-    await db
-      .select({
-        id: wikiArticleVersions.id,
-        articleId: wikiArticleVersions.articleId,
-        versionNo: wikiArticleVersions.versionNo,
-        title: wikiArticleVersions.title,
-        slug: wikiArticleVersions.slug,
-        categoryId: wikiArticleVersions.categoryId,
-        bodyJson: wikiArticleVersions.bodyJson,
-        sortOrder: wikiArticleVersions.sortOrder,
-        archivedAt: wikiArticleVersions.archivedAt,
-        sourceAction: wikiArticleVersions.sourceAction,
-        createdBy: wikiArticleVersions.createdBy,
-        createdAt: wikiArticleVersions.createdAt,
-      })
-      .from(wikiArticleVersions)
-      .where(eq(wikiArticleVersions.id, versionId))
       .limit(1)
   )[0];
 
@@ -299,6 +213,8 @@ wikiRoutes.get("/categories", async (c) => {
       slug: wikiCategories.slug,
       sortOrder: wikiCategories.sortOrder,
       parentId: wikiCategories.parentId,
+      createdAt: wikiCategories.createdAt,
+      updatedAt: wikiCategories.updatedAt,
     })
     .from(wikiCategories)
     .orderBy(asc(wikiCategories.sortOrder), asc(wikiCategories.name), asc(wikiCategories.id));
@@ -519,6 +435,7 @@ wikiRoutes.get("/articles", async (c) => {
       sortOrder: wikiArticles.sortOrder,
       archivedAt: wikiArticles.archivedAt,
       createdBy: wikiArticles.createdBy,
+      updatedBy: wikiArticles.updatedBy,
       createdAt: wikiArticles.createdAt,
       updatedAt: wikiArticles.updatedAt,
     })
@@ -551,6 +468,7 @@ wikiRoutes.get("/articles/:slug", async (c) => {
         sortOrder: wikiArticles.sortOrder,
         archivedAt: wikiArticles.archivedAt,
         createdBy: wikiArticles.createdBy,
+        updatedBy: wikiArticles.updatedBy,
         createdAt: wikiArticles.createdAt,
         updatedAt: wikiArticles.updatedAt,
       })
@@ -604,8 +522,6 @@ wikiRoutes.post("/articles", async (c) => {
     return buildError(c, "SERVER_ERROR", "Failed to create wiki article");
   }
 
-  await createArticleVersion(c, created, sessionUser.id, "create");
-
   await writeAuditLog(c, {
     entityType: "wiki_article",
     action: "create",
@@ -643,6 +559,7 @@ wikiRoutes.patch("/articles/:id", async (c) => {
 
   const patch: Partial<typeof wikiArticles.$inferInsert> = {
     updatedAt: new Date().toISOString(),
+    updatedBy: sessionUser.id,
   };
   if (parsed.data.title !== undefined) patch.title = parsed.data.title;
   if (parsed.data.slug !== undefined) patch.slug = slugify(parsed.data.slug);
@@ -658,14 +575,6 @@ wikiRoutes.patch("/articles/:id", async (c) => {
   if (!updated) {
     return buildError(c, "SERVER_ERROR", "Failed to load updated wiki article");
   }
-
-  const sourceAction =
-    parsed.data.archived_at !== undefined
-      ? parsed.data.archived_at === null
-        ? "unarchive"
-        : "archive"
-      : "update";
-  await createArticleVersion(c, updated, sessionUser.id, sourceAction);
 
   await writeAuditLog(c, {
     entityType: "wiki_article",
@@ -697,13 +606,9 @@ wikiRoutes.delete("/articles/:id", async (c) => {
     .set({
       archivedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      updatedBy: sessionUser.id,
     })
     .where(eq(wikiArticles.id, articleId));
-
-  const archived = await getArticleById(c, articleId);
-  if (archived) {
-    await createArticleVersion(c, archived, sessionUser.id, "archive");
-  }
 
   await writeAuditLog(c, {
     entityType: "wiki_article",
@@ -714,145 +619,6 @@ wikiRoutes.delete("/articles/:id", async (c) => {
   });
 
   return c.json({ ok: true });
-});
-
-wikiRoutes.get("/articles/:id/versions", async (c) => {
-  const articleId = c.req.param("id");
-  const article = await getArticleById(c, articleId);
-  if (!article) {
-    return buildError(c, "NOT_FOUND", "Wiki article not found");
-  }
-
-  const query = c.req.query();
-  const page = parsePage(query.page, 1);
-  const limit = Math.min(100, parsePage(query.limit, 20));
-  const offset = (page - 1) * limit;
-  const db = getDb(c);
-
-  const totalRow = (
-    await db
-      .select({ count: sql<number>`count(*)` })
-      .from(wikiArticleVersions)
-      .where(eq(wikiArticleVersions.articleId, articleId))
-  )[0];
-  const total = Number(totalRow?.count ?? 0);
-
-  const rows = await db
-    .select({
-      id: wikiArticleVersions.id,
-      articleId: wikiArticleVersions.articleId,
-      versionNo: wikiArticleVersions.versionNo,
-      title: wikiArticleVersions.title,
-      slug: wikiArticleVersions.slug,
-      categoryId: wikiArticleVersions.categoryId,
-      bodyJson: wikiArticleVersions.bodyJson,
-      sortOrder: wikiArticleVersions.sortOrder,
-      archivedAt: wikiArticleVersions.archivedAt,
-      sourceAction: wikiArticleVersions.sourceAction,
-      createdBy: wikiArticleVersions.createdBy,
-      createdAt: wikiArticleVersions.createdAt,
-    })
-    .from(wikiArticleVersions)
-    .where(eq(wikiArticleVersions.articleId, articleId))
-    .orderBy(desc(wikiArticleVersions.versionNo), desc(wikiArticleVersions.createdAt))
-    .limit(limit)
-    .offset(offset);
-
-  return c.json({
-    data: rows.map(toArticleVersionPayload),
-    total,
-    page,
-    limit,
-    total_pages: Math.max(1, Math.ceil(total / limit)),
-  });
-});
-
-wikiRoutes.get("/articles/:id/versions/compare", async (c) => {
-  const articleId = c.req.param("id");
-  const fromVersionId = c.req.query("from_version_id");
-  const toVersionId = c.req.query("to_version_id");
-
-  if (!fromVersionId || !toVersionId) {
-    return buildError(c, "VALIDATION_ERROR", "from_version_id and to_version_id are required");
-  }
-
-  const fromVersion = await getArticleVersionById(c, fromVersionId);
-  const toVersion = await getArticleVersionById(c, toVersionId);
-  if (!fromVersion || !toVersion) {
-    return buildError(c, "NOT_FOUND", "Wiki article version not found");
-  }
-  if (fromVersion.articleId !== articleId || toVersion.articleId !== articleId) {
-    return buildError(c, "VALIDATION_ERROR", "Version does not belong to the selected article");
-  }
-
-  const changedFields: string[] = [];
-  if (fromVersion.title !== toVersion.title) changedFields.push("title");
-  if (fromVersion.slug !== toVersion.slug) changedFields.push("slug");
-  if (fromVersion.categoryId !== toVersion.categoryId) changedFields.push("category_id");
-  if (fromVersion.sortOrder !== toVersion.sortOrder) changedFields.push("sort_order");
-  if (fromVersion.archivedAt !== toVersion.archivedAt) changedFields.push("archived_at");
-  if (fromVersion.bodyJson !== toVersion.bodyJson) changedFields.push("body_json");
-
-  return c.json({
-    from_version: toArticleVersionPayload(fromVersion),
-    to_version: toArticleVersionPayload(toVersion),
-    changed_fields: changedFields,
-  });
-});
-
-wikiRoutes.post("/articles/:id/versions/:versionId/rollback", async (c) => {
-  const sessionUser = await requireRole(c, "moderator");
-  if (sessionUser instanceof Response) {
-    return sessionUser;
-  }
-
-  const articleId = c.req.param("id");
-  const versionId = c.req.param("versionId");
-
-  const existing = await getArticleById(c, articleId);
-  if (!existing) {
-    return buildError(c, "NOT_FOUND", "Wiki article not found");
-  }
-
-  const version = await getArticleVersionById(c, versionId);
-  if (!version) {
-    return buildError(c, "NOT_FOUND", "Wiki article version not found");
-  }
-  if (version.articleId !== articleId) {
-    return buildError(c, "VALIDATION_ERROR", "Version does not belong to the selected article");
-  }
-
-  const db = getDb(c);
-  await db
-    .update(wikiArticles)
-    .set({
-      title: version.title,
-      slug: version.slug,
-      categoryId: version.categoryId,
-      bodyJson: version.bodyJson,
-      sortOrder: version.sortOrder,
-      archivedAt: version.archivedAt,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(wikiArticles.id, articleId));
-
-  const updated = await getArticleById(c, articleId);
-  if (!updated) {
-    return buildError(c, "SERVER_ERROR", "Failed to load rolled back wiki article");
-  }
-
-  await createArticleVersion(c, updated, sessionUser.id, "rollback");
-
-  await writeAuditLog(c, {
-    entityType: "wiki_article",
-    action: "rollback",
-    actorId: sessionUser.id,
-    entityId: articleId,
-    diffTitle: updated.title,
-    detailText: JSON.stringify({ from_version_id: version.id, from_version_no: version.versionNo }),
-  });
-
-  return c.json(toArticlePayload(updated));
 });
 
 wikiRoutes.post("/articles/:id/images", async (c) => {

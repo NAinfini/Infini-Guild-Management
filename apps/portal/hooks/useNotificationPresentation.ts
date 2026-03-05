@@ -1,4 +1,4 @@
-import { notifications } from "@mantine/notifications";
+﻿import { notifications } from "@mantine/notifications";
 import type { PushMessage } from "@guild/shared";
 import { useEffect, useRef, type MutableRefObject } from "react";
 import { useNotificationStore } from "../stores/notifications";
@@ -13,7 +13,7 @@ type PushSignalPayload = {
   key: string;
   title: string;
   message: string;
-  color: "blue" | "yellow" | "teal";
+  color: "infini-primary" | "infini-warning" | "teal";
   frequencyHz: number;
 };
 
@@ -30,7 +30,7 @@ function resolveSignalPayload(message: PushMessage): PushSignalPayload | null {
       key: `announcement:${message.announcement_id}`,
       title: "Announcement Published",
       message: message.title,
-      color: "blue",
+      color: "infini-primary",
       frequencyHz: 880,
     };
   }
@@ -40,7 +40,7 @@ function resolveSignalPayload(message: PushMessage): PushSignalPayload | null {
       key: `event-reminder:${message.event_id}`,
       title: "Event Reminder",
       message: `${message.title} (${message.starts_at.slice(0, 16).replace("T", " ")})`,
-      color: "yellow",
+      color: "infini-warning",
       frequencyHz: 740,
     };
   }
@@ -164,4 +164,5 @@ export function useNotificationPresentation(options: UseNotificationPresentation
     [],
   );
 }
+
 

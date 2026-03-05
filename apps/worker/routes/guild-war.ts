@@ -64,6 +64,7 @@ type WarHistoryRow = {
   enemyBaseHp: number | null;
   enemyCredits: number | null;
   enemyDistance: number | null;
+  durationMinutes: number | null;
   notes: string | null;
   createdBy: string;
   createdAt: string;
@@ -409,6 +410,7 @@ function buildWarHistoryCsv(rows: WarHistoryRow[]): string {
       toCsvCell(row.enemyCredits),
       toCsvCell(row.ownDistance),
       toCsvCell(row.enemyDistance),
+      toCsvCell(row.durationMinutes),
       toCsvCell(row.notes),
       toCsvCell(row.createdBy),
       toCsvCell(row.createdAt),
@@ -428,6 +430,14 @@ function parseRecurrenceRule(value: string | null): unknown {
   }
 }
 
+/** D1 sometimes returns REAL/INTEGER columns as strings — coerce to number. */
+function toNum(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return v;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 function toWarHistoryPayload(row: WarHistoryRow) {
   return warHistorySchema.parse({
     id: row.id,
@@ -435,16 +445,17 @@ function toWarHistoryPayload(row: WarHistoryRow) {
     war_name: row.warName,
     enemy_name: row.enemyName,
     result: row.result,
-    own_kills: row.ownKills,
-    own_towers: row.ownTowers,
-    own_base_hp: row.ownBaseHp,
-    own_credits: row.ownCredits,
-    own_distance: row.ownDistance,
-    enemy_kills: row.enemyKills,
-    enemy_towers: row.enemyTowers,
-    enemy_base_hp: row.enemyBaseHp,
-    enemy_credits: row.enemyCredits,
-    enemy_distance: row.enemyDistance,
+    own_kills: toNum(row.ownKills),
+    own_towers: toNum(row.ownTowers),
+    own_base_hp: toNum(row.ownBaseHp),
+    own_credits: toNum(row.ownCredits),
+    own_distance: toNum(row.ownDistance),
+    enemy_kills: toNum(row.enemyKills),
+    enemy_towers: toNum(row.enemyTowers),
+    enemy_base_hp: toNum(row.enemyBaseHp),
+    enemy_credits: toNum(row.enemyCredits),
+    enemy_distance: toNum(row.enemyDistance),
+    duration_minutes: toNum(row.durationMinutes),
     notes: row.notes,
     created_by: row.createdBy,
     created_at: row.createdAt,
@@ -457,7 +468,7 @@ function toTeamPayload(row: WarTeamRow) {
     id: row.id,
     war_history_id: row.warHistoryId,
     team_name: row.teamName,
-    sort_order: row.sortOrder,
+    sort_order: toNum(row.sortOrder),
     notes: row.notes,
     is_locked: row.isLocked,
   });
@@ -469,15 +480,15 @@ function toMemberPayload(row: WarTeamMemberRow) {
     war_team_id: row.warTeamId,
     user_id: row.userId,
     role_tag: row.roleTag,
-    sort_order: row.sortOrder,
-    kills: row.kills,
-    deaths: row.deaths,
-    assists: row.assists,
-    damage: row.damage,
-    healing: row.healing,
-    building_damage: row.buildingDamage,
-    credits: row.credits,
-    damage_taken: row.damageTaken,
+    sort_order: toNum(row.sortOrder),
+    kills: toNum(row.kills),
+    deaths: toNum(row.deaths),
+    assists: toNum(row.assists),
+    damage: toNum(row.damage),
+    healing: toNum(row.healing),
+    building_damage: toNum(row.buildingDamage),
+    credits: toNum(row.credits),
+    damage_taken: toNum(row.damageTaken),
     note: row.note,
   });
 }
@@ -571,6 +582,7 @@ async function getWarHistoryById(c: Context, warId: string): Promise<WarHistoryR
         enemyBaseHp: warHistory.enemyBaseHp,
         enemyCredits: warHistory.enemyCredits,
         enemyDistance: warHistory.enemyDistance,
+        durationMinutes: warHistory.durationMinutes,
         notes: warHistory.notes,
         createdBy: warHistory.createdBy,
         createdAt: warHistory.createdAt,
@@ -603,6 +615,7 @@ async function getLatestWarHistory(c: Context, eventId?: string): Promise<WarHis
       enemyBaseHp: warHistory.enemyBaseHp,
       enemyCredits: warHistory.enemyCredits,
       enemyDistance: warHistory.enemyDistance,
+      durationMinutes: warHistory.durationMinutes,
       notes: warHistory.notes,
       createdBy: warHistory.createdBy,
       createdAt: warHistory.createdAt,
@@ -1244,13 +1257,14 @@ guildWarRoutes.get("/export", async (c) => {
       enemyBaseHp: warHistory.enemyBaseHp,
       enemyCredits: warHistory.enemyCredits,
       enemyDistance: warHistory.enemyDistance,
+      durationMinutes: warHistory.durationMinutes,
       notes: warHistory.notes,
       createdBy: warHistory.createdBy,
       createdAt: warHistory.createdAt,
       updatedAt: warHistory.updatedAt,
     })
     .from(warHistory)
-    .where(and(...filters))
+    .where(filters.length > 0 ? and(...filters) : undefined)
     .orderBy(desc(warHistory.createdAt), desc(warHistory.id))
     .limit(5000);
 
@@ -1311,7 +1325,7 @@ guildWarRoutes.get("/templates", async (c) => {
       updatedAt: warTemplates.updatedAt,
     })
     .from(warTemplates)
-    .where(and(...filters))
+    .where(filters.length > 0 ? and(...filters) : undefined)
     .orderBy(desc(warTemplates.updatedAt), desc(warTemplates.id))
     .limit(200);
 
@@ -1485,7 +1499,7 @@ guildWarRoutes.get("/history", async (c) => {
     filters.push(lte(warHistory.createdAt, dateTo));
   }
 
-  const whereClause = and(...filters);
+  const whereClause = filters.length > 0 ? and(...filters) : undefined;
   const db = getDb(c);
 
   const totalRow = (
@@ -1513,6 +1527,7 @@ guildWarRoutes.get("/history", async (c) => {
       enemyBaseHp: warHistory.enemyBaseHp,
       enemyCredits: warHistory.enemyCredits,
       enemyDistance: warHistory.enemyDistance,
+      durationMinutes: warHistory.durationMinutes,
       notes: warHistory.notes,
       createdBy: warHistory.createdBy,
       createdAt: warHistory.createdAt,
@@ -1670,6 +1685,7 @@ guildWarRoutes.patch("/history/:id", async (c) => {
   if (parsed.data.enemy_base_hp !== undefined) patch.enemyBaseHp = parsed.data.enemy_base_hp;
   if (parsed.data.enemy_credits !== undefined) patch.enemyCredits = parsed.data.enemy_credits;
   if (parsed.data.enemy_distance !== undefined) patch.enemyDistance = parsed.data.enemy_distance;
+  if (parsed.data.duration_minutes !== undefined) patch.durationMinutes = parsed.data.duration_minutes;
   if (parsed.data.notes !== undefined) patch.notes = parsed.data.notes;
 
   const db = getDb(c);
@@ -1805,6 +1821,131 @@ guildWarRoutes.patch("/history/:id/member-stats/:userId", async (c) => {
   return c.json(toMemberPayload(refreshed));
 });
 
+// --- Analytics normalization helpers ---
+
+const ANALYTICS_SETTINGS_KEY = "config/analytics-settings.json";
+
+type AnalyticsSettings = {
+  reference_duration_minutes: number;
+  modifier_weight_kda: number;
+  modifier_weight_towers: number;
+  modifier_weight_credits: number;
+  modifier_weight_distance: number;
+  modifier_weight_basehp: number;
+};
+
+function defaultAnalyticsSettings(): AnalyticsSettings {
+  return {
+    reference_duration_minutes: 30,
+    modifier_weight_kda: 0.30,
+    modifier_weight_towers: 0.10,
+    modifier_weight_credits: 0.30,
+    modifier_weight_distance: 0.15,
+    modifier_weight_basehp: 0.15,
+  };
+}
+
+async function readAnalyticsSettings(c: Context): Promise<AnalyticsSettings> {
+  const env = c.env as Bindings;
+  const object = await env.MEDIA.get(ANALYTICS_SETTINGS_KEY);
+  if (!object) {
+    return defaultAnalyticsSettings();
+  }
+  try {
+    const parsed = JSON.parse(await object.text()) as unknown;
+    const defaults = defaultAnalyticsSettings();
+    if (typeof parsed !== "object" || parsed === null) return defaults;
+    const record = parsed as Record<string, unknown>;
+    return {
+      reference_duration_minutes:
+        typeof record.reference_duration_minutes === "number" && record.reference_duration_minutes > 0
+          ? record.reference_duration_minutes
+          : defaults.reference_duration_minutes,
+      modifier_weight_kda: typeof record.modifier_weight_kda === "number" ? record.modifier_weight_kda : defaults.modifier_weight_kda,
+      modifier_weight_towers: typeof record.modifier_weight_towers === "number" ? record.modifier_weight_towers : defaults.modifier_weight_towers,
+      modifier_weight_credits: typeof record.modifier_weight_credits === "number" ? record.modifier_weight_credits : defaults.modifier_weight_credits,
+      modifier_weight_distance: typeof record.modifier_weight_distance === "number" ? record.modifier_weight_distance : defaults.modifier_weight_distance,
+      modifier_weight_basehp: typeof record.modifier_weight_basehp === "number" ? record.modifier_weight_basehp : defaults.modifier_weight_basehp,
+    };
+  } catch {
+    return defaultAnalyticsSettings();
+  }
+}
+
+type ModifierBreakdown = {
+  factor: string;
+  ratio: number;
+  weight: number;
+  contribution: number;
+};
+
+function computeWarModifier(
+  war: {
+    ownKills: number | null;
+    ownTowers: number | null;
+    ownBaseHp: number | null;
+    ownCredits: number | null;
+    ownDistance: number | null;
+    enemyKills: number | null;
+    enemyTowers: number | null;
+    enemyBaseHp: number | null;
+    enemyCredits: number | null;
+    enemyDistance: number | null;
+  },
+  ownTeamSize: number,
+  settings: AnalyticsSettings,
+): { value: number; breakdown: ModifierBreakdown[] } {
+  const factors: Array<{ key: string; weight: number; ownVal: number | null; enemyVal: number | null; perCapita: boolean }> = [
+    { key: "kda", weight: settings.modifier_weight_kda, ownVal: war.ownKills, enemyVal: war.enemyKills, perCapita: true },
+    { key: "towers", weight: settings.modifier_weight_towers, ownVal: war.ownTowers, enemyVal: war.enemyTowers, perCapita: false },
+    { key: "credits", weight: settings.modifier_weight_credits, ownVal: war.ownCredits, enemyVal: war.enemyCredits, perCapita: true },
+    { key: "distance", weight: settings.modifier_weight_distance, ownVal: war.ownDistance, enemyVal: war.enemyDistance, perCapita: true },
+    { key: "basehp", weight: settings.modifier_weight_basehp, ownVal: war.ownBaseHp, enemyVal: war.enemyBaseHp, perCapita: false },
+  ];
+
+  const validFactors: Array<{ key: string; weight: number; ratio: number }> = [];
+
+  for (const factor of factors) {
+    if (factor.weight <= 0) continue;
+    if (factor.ownVal === null || factor.enemyVal === null) continue;
+
+    let ownVal = factor.ownVal;
+    let enemyVal = factor.enemyVal;
+
+    // Per-capita normalization (enemy team size assumed equal when unknown)
+    if (factor.perCapita && ownTeamSize > 0) {
+      ownVal = ownVal / ownTeamSize;
+      enemyVal = enemyVal / ownTeamSize;
+    }
+
+    const ratio = enemyVal / Math.max(ownVal, 1);
+    validFactors.push({ key: factor.key, weight: factor.weight, ratio });
+  }
+
+  if (validFactors.length === 0) {
+    return { value: 1.0, breakdown: [] };
+  }
+
+  // Re-normalize weights to sum to 1.0
+  const totalWeight = validFactors.reduce((sum, f) => sum + f.weight, 0);
+  const breakdown: ModifierBreakdown[] = [];
+  let modifier = 0;
+
+  for (const factor of validFactors) {
+    const normalizedWeight = factor.weight / totalWeight;
+    const contribution = normalizedWeight * factor.ratio;
+    modifier += contribution;
+    breakdown.push({
+      factor: factor.key,
+      ratio: Number(factor.ratio.toFixed(4)),
+      weight: Number(normalizedWeight.toFixed(4)),
+      contribution: Number(contribution.toFixed(4)),
+    });
+  }
+
+  return { value: Number(modifier.toFixed(4)), breakdown };
+}
+
 guildWarRoutes.get("/analytics", async (c) => {
   const warIdsRaw = c.req.queries("war_ids") ?? [];
   const userIdsRaw = c.req.queries("user_ids") ?? [];
@@ -1834,20 +1975,52 @@ guildWarRoutes.get("/analytics", async (c) => {
       enemyBaseHp: warHistory.enemyBaseHp,
       enemyCredits: warHistory.enemyCredits,
       enemyDistance: warHistory.enemyDistance,
+      durationMinutes: warHistory.durationMinutes,
       notes: warHistory.notes,
       createdBy: warHistory.createdBy,
       createdAt: warHistory.createdAt,
       updatedAt: warHistory.updatedAt,
     })
     .from(warHistory)
-    .where(and(...warFilters))
+    .where(warFilters.length > 0 ? and(...warFilters) : undefined)
     .orderBy(desc(warHistory.createdAt), desc(warHistory.id))
     .limit(200);
 
   const historyIds = wars.map((item) => item.id);
   if (historyIds.length === 0) {
-    return c.json({ wars: [], member_stats: [] });
+    return c.json({ wars: [], member_stats: [], analytics_settings: defaultAnalyticsSettings() });
   }
+
+  // Count team members per war for per-capita normalization
+  const teamSizeCounts = await db
+    .select({
+      warHistoryId: warTeams.warHistoryId,
+      memberCount: sql<number>`count(${warTeamMembers.id})`.as("member_count"),
+    })
+    .from(warTeamMembers)
+    .innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId))
+    .where(inArray(warTeams.warHistoryId, historyIds))
+    .groupBy(warTeams.warHistoryId);
+
+  const teamSizeMap = new Map<string, number>();
+  for (const row of teamSizeCounts) {
+    teamSizeMap.set(row.warHistoryId, row.memberCount);
+  }
+
+  // Read analytics settings from R2
+  const analyticsSettings = await readAnalyticsSettings(c);
+
+  // Compute modifier for each war
+  const warsWithModifier = wars.map((war) => {
+    const teamSize = teamSizeMap.get(war.id) ?? 0;
+    const modifier = computeWarModifier(war, teamSize, analyticsSettings);
+    return {
+      ...toWarHistoryPayload(war),
+      team_size: teamSize,
+      modifier: modifier.value,
+      modifier_breakdown: modifier.breakdown,
+    };
+  });
 
   const memberFilters: SQL<unknown>[] = [inArray(warTeams.warHistoryId, historyIds)];
   if (userIds.length > 0) {
@@ -1911,7 +2084,8 @@ guildWarRoutes.get("/analytics", async (c) => {
   }
 
   return c.json({
-    wars: wars.map(toWarHistoryPayload),
+    wars: warsWithModifier,
     member_stats: Array.from(aggregate.values()),
+    analytics_settings: analyticsSettings,
   });
 });

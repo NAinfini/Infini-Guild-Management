@@ -13,6 +13,7 @@ import enGallery from "./en/gallery.json";
 import enGuildWar from "./en/guild-war.json";
 import enAdmin from "./en/admin.json";
 import enTools from "./en/tools.json";
+import enEditor from "./en/editor.json";
 import zhCommon from "./zh/common.json";
 import zhAuth from "./zh/auth.json";
 import zhDashboard from "./zh/dashboard.json";
@@ -26,6 +27,7 @@ import zhGallery from "./zh/gallery.json";
 import zhGuildWar from "./zh/guild-war.json";
 import zhAdmin from "./zh/admin.json";
 import zhTools from "./zh/tools.json";
+import zhEditor from "./zh/editor.json";
 
 const locale = localStorage.getItem("locale") ?? (navigator.language.startsWith("zh") ? "zh" : "en");
 
@@ -47,6 +49,7 @@ void i18n.use(initReactI18next).init({
     "guild-war",
     "admin",
     "tools",
+    "editor",
   ],
   resources: {
     en: {
@@ -63,6 +66,7 @@ void i18n.use(initReactI18next).init({
       "guild-war": enGuildWar,
       admin: enAdmin,
       tools: enTools,
+      editor: enEditor,
     },
     zh: {
       common: zhCommon,
@@ -78,6 +82,7 @@ void i18n.use(initReactI18next).init({
       "guild-war": zhGuildWar,
       admin: zhAdmin,
       tools: zhTools,
+      editor: zhEditor,
     },
   },
   interpolation: { escapeValue: false },

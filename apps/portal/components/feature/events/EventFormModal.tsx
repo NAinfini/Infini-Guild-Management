@@ -1,4 +1,4 @@
-import type { Event } from "@guild/shared";
+﻿import type { Event } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
 import {
   Alert,
@@ -14,6 +14,7 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 
 type RecurrenceFreq = "daily" | "weekly" | "monthly";
 type RecurrenceApplyScope = "this" | "future" | "all";
@@ -61,7 +62,6 @@ type EventFormModalProps = {
   attachmentUploader: AttachmentUploaderState;
   onUploadAttachments: () => void;
   conflictingEvents: Event[];
-  showAvailabilityOverlay: boolean;
   availabilityDaysWithAny: Set<number>;
   availabilityMaxCount: number;
   availabilityMemberCount: number;
@@ -70,7 +70,7 @@ type EventFormModalProps = {
   onSave: () => void;
 };
 
-const WEEKDAY_SHORT_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
@@ -112,7 +112,6 @@ export function EventFormModal({
   attachmentUploader,
   onUploadAttachments,
   conflictingEvents,
-  showAvailabilityOverlay,
   availabilityDaysWithAny,
   availabilityMaxCount,
   availabilityMemberCount,
@@ -120,9 +119,11 @@ export function EventFormModal({
   onCancel,
   onSave,
 }: EventFormModalProps) {
+  const { t } = useTranslation("events");
+
   return (
     <Modal
-      title={mode === "create" ? "Create Event" : "Edit Event"}
+      title={mode === "create" ? t("modal.createTitle") : t("modal.editTitle")}
       opened={open}
       onClose={onCancel}
       closeOnClickOutside={false}
@@ -134,7 +135,7 @@ export function EventFormModal({
         <TextInput
           value={title}
           onChange={(event) => onTitleChange(event.currentTarget.value)}
-          placeholder="Event title"
+          placeholder={t("field.title")}
           aria-label="Event title"
         />
 
@@ -142,12 +143,12 @@ export function EventFormModal({
           value={eventType}
           aria-label="Event type"
           onChange={(value) => value && onEventTypeChange(value as (typeof EVENT_TYPES)[number])}
-          data={EVENT_TYPES.map((value) => ({ value, label: value }))}
+          data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
         />
 
         <Group align="flex-end" wrap="wrap">
           <div>
-            <Text size="sm">Start</Text>
+            <Text size="sm">{t("field.start")}</Text>
             <TextInput
               type="datetime-local"
               value={startAt}
@@ -156,7 +157,7 @@ export function EventFormModal({
             />
           </div>
           <div>
-            <Text size="sm">End</Text>
+            <Text size="sm">{t("field.end")}</Text>
             <TextInput
               type="datetime-local"
               value={endAt}
@@ -165,12 +166,12 @@ export function EventFormModal({
             />
           </div>
           <div>
-            <Text size="sm">Capacity</Text>
+            <Text size="sm">{t("field.capacity")}</Text>
             <TextInput
               type="number"
               value={capacity}
               onChange={(event) => onCapacityChange(event.currentTarget.value)}
-              placeholder="Unlimited"
+              placeholder={t("field.unlimited")}
               aria-label="Event capacity"
             />
           </div>
@@ -180,22 +181,22 @@ export function EventFormModal({
           value={description}
           onChange={(event) => onDescriptionChange(event.currentTarget.value)}
           minRows={3}
-          placeholder="Description"
+          placeholder={t("field.description")}
           aria-label="Event description"
         />
 
         <Group wrap="wrap" gap={10}>
           <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <Switch checked={pinned} onChange={(event) => onPinnedChange(event.currentTarget.checked)} />
-            <span>Pinned</span>
+            <span>{t("field.pinned")}</span>
           </label>
           <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <Switch checked={signupLocked} onChange={(event) => onSignupLockedChange(event.currentTarget.checked)} />
-            <span>Signup locked</span>
+            <span>{t("field.signupLocked")}</span>
           </label>
           <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <Switch checked={recurrenceEnabled} onChange={(event) => onRecurrenceEnabledChange(event.currentTarget.checked)} />
-            <span>Recurring</span>
+            <span>{t("field.recurring")}</span>
           </label>
         </Group>
 
@@ -207,9 +208,9 @@ export function EventFormModal({
               aria-label="Event recurrence frequency"
               onChange={(value) => value && onRecurrenceFreqChange(value as RecurrenceFreq)}
               data={[
-                { value: "daily", label: "Daily" },
-                { value: "weekly", label: "Weekly" },
-                { value: "monthly", label: "Monthly" },
+                { value: "daily", label: t("recurrence.daily") },
+                { value: "weekly", label: t("recurrence.weekly") },
+                { value: "monthly", label: t("recurrence.monthly") },
               ]}
             />
             <TextInput
@@ -217,7 +218,7 @@ export function EventFormModal({
               type="number"
               value={recurrenceInterval}
               onChange={(event) => onRecurrenceIntervalChange(event.currentTarget.value)}
-              placeholder="Interval"
+              placeholder={t("field.interval")}
               aria-label="Event recurrence interval"
             />
             {recurrenceFreq === "weekly" ? (
@@ -227,13 +228,13 @@ export function EventFormModal({
                 aria-label="Event recurrence weekdays"
                 onChange={(value) => onRecurrenceDaysChange(value.map((item) => Number(item)).filter(Number.isFinite))}
                 data={[
-                  { value: "0", label: "Sun" },
-                  { value: "1", label: "Mon" },
-                  { value: "2", label: "Tue" },
-                  { value: "3", label: "Wed" },
-                  { value: "4", label: "Thu" },
-                  { value: "5", label: "Fri" },
-                  { value: "6", label: "Sat" },
+                  { value: "0", label: t("weekday.sun") },
+                  { value: "1", label: t("weekday.mon") },
+                  { value: "2", label: t("weekday.tue") },
+                  { value: "3", label: t("weekday.wed") },
+                  { value: "4", label: t("weekday.thu") },
+                  { value: "5", label: t("weekday.fri") },
+                  { value: "6", label: t("weekday.sat") },
                 ]}
               />
             ) : null}
@@ -242,26 +243,26 @@ export function EventFormModal({
 
         {mode === "edit" && recurrenceEnabled ? (
           <Stack style={{ width: "100%" }} gap={4}>
-            <Text size="sm">Apply recurrence edits to</Text>
+            <Text size="sm">{t("field.applyRecurrenceTo")}</Text>
             <SegmentedControl
               value={recurrenceApplyTo}
               onChange={(value) => onRecurrenceApplyToChange(value as RecurrenceApplyScope)}
               data={[
-                { label: "This event", value: "this" },
-                { label: "This + future", value: "future" },
-                { label: "All in series", value: "all" },
+                { label: t("recurrence.thisEvent"), value: "this" },
+                { label: t("recurrence.thisFuture"), value: "future" },
+                { label: t("recurrence.allInSeries"), value: "all" },
               ]}
             />
             <Text c="dimmed" size="xs">
-              Recurrence scope is supported. Time changes apply to this instance; shared fields can propagate by scope.
+              {t("field.recurrenceHint")}
             </Text>
           </Stack>
         ) : null}
 
         <Stack style={{ width: "100%" }} gap={6}>
-          <Text size="sm">Attachments ({attachments.length}/5)</Text>
+          <Text size="sm">{t("attachments")} ({attachments.length}/5)</Text>
           {attachments.length === 0 ? (
-            <Text c="dimmed" size="sm">No attachments</Text>
+            <Text c="dimmed" size="sm">{t("noAttachments")}</Text>
           ) : (
             attachments.map((attachment, index) => (
               <Group key={`${attachment}-${index}`} align="flex-start" wrap="nowrap">
@@ -279,8 +280,8 @@ export function EventFormModal({
                   </Text>
                 )}
                 {canManage ? (
-                  <Button size="xs" color="red" onClick={() => onRemoveAttachment(index)}>
-                    Remove
+                  <Button size="xs" color="infini-danger" onClick={() => onRemoveAttachment(index)}>
+                    {t("removeAttachment")}
                   </Button>
                 ) : null}
               </Group>
@@ -296,44 +297,44 @@ export function EventFormModal({
                 aria-label="Upload event attachments"
                 onChange={(event) => attachmentUploader.selectFiles(event.target.files)}
               />
-              {attachmentUploader.error ? <Text c="red" size="sm">{attachmentUploader.error}</Text> : null}
+              {attachmentUploader.error ? <Text c="infini-danger" size="sm">{attachmentUploader.error}</Text> : null}
               <Button
                 onClick={onUploadAttachments}
                 loading={attachmentUploader.isUploading}
                 disabled={attachmentUploader.files.length === 0 || attachments.length >= 5}
               >
-                Upload attachments
+                {t("uploadAttachments")}
               </Button>
             </Stack>
           ) : null}
         </Stack>
 
         {conflictingEvents.length > 0 ? (
-          <Alert color="yellow" title="Time conflict detected">
-            {`Conflicts with ${conflictingEvents.length} event(s): ${conflictingEvents
+          <Alert color="infini-warning" title={t("conflict.detected")}>
+            {t("conflict.description", { count: conflictingEvents.length, titles: conflictingEvents
               .slice(0, 3)
               .map((item) => item.title)
-              .join(", ")}`}
+              .join(", ") })}
           </Alert>
         ) : null}
 
-        {showAvailabilityOverlay ? (
+        {availabilityMaxCount > 0 ? (
           <Text c="dimmed" size="xs">
-            Team availability:{" "}
+            {t("availability.label")}{" "}
             {Array.from(availabilityDaysWithAny)
               .sort((left, right) => left - right)
-              .map((day) => WEEKDAY_SHORT_LABELS[day] ?? String(day))
-              .join(", ") || "none"}{" "}
-            · Peak {availabilityMaxCount}/{availabilityMemberCount} members
+              .map((day) => t(WEEKDAY_KEYS[day] ?? "weekday.sun"))
+              .join(", ") || t("availability.none")}{" "}
+            · {t("availability.peak")} {availabilityMaxCount}/{availabilityMemberCount} {t("availability.members")}
           </Text>
         ) : null}
 
         <Group justify="flex-end" mt={4}>
           <Button variant="default" onClick={onCancel}>
-            Cancel
+            {t("button.cancel")}
           </Button>
           <Button onClick={onSave} loading={confirmLoading}>
-            {mode === "create" ? "Create" : "Save"}
+            {mode === "create" ? t("button.create") : t("button.save")}
           </Button>
         </Group>
       </Stack>

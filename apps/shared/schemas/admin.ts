@@ -1,4 +1,8 @@
-﻿import { z } from "zod";
+import { z } from "zod";
+import { PERMISSIONS } from "../constants/roles";
+
+const usernameSchema = z.string().min(3).max(50).regex(/^[a-zA-Z0-9_]+$/);
+const permissionKeySchema = z.enum(PERMISSIONS);
 
 export const inviteLinkSchema = z.object({
   id: z.string(),
@@ -56,4 +60,50 @@ export const batchRoleChangeSchema = z.object({
 
 export const batchDeactivateSchema = z.object({
   user_ids: z.array(z.string()).min(1).max(50),
+});
+
+export const createAdminMemberSchema = z.object({
+  username: usernameSchema,
+});
+
+export const rolePermissionsSchema = z.record(permissionKeySchema, z.boolean());
+
+export const adminRoleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  level: z.number().int().min(1).max(3),
+  color: z.string().nullable(),
+  is_builtin: z.boolean(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  permissions: rolePermissionsSchema,
+  assigned_user_count: z.number().int().min(0),
+});
+
+export const createRoleSchema = z.object({
+  id: z
+    .string()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9_-]+$/)
+    .optional(),
+  name: z.string().min(1).max(80),
+  level: z.number().int().min(1).max(2),
+  color: z.string().min(1).max(32).nullable().optional(),
+  permissions: rolePermissionsSchema.optional(),
+});
+
+export const updateRoleSchema = z
+  .object({
+    name: z.string().min(1).max(80).optional(),
+    level: z.number().int().min(1).max(3).optional(),
+    color: z.string().min(1).max(32).nullable().optional(),
+    permissions: rolePermissionsSchema.optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one role field is required",
+  });
+
+export const deleteRoleSchema = z.object({
+  id: z.string().min(1),
 });

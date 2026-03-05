@@ -2,6 +2,7 @@ import { Button, Indicator, Menu } from "@mantine/core";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { IconProps } from "@tabler/icons-react";
 import type { ComponentType } from "react";
+import { useTranslation } from "react-i18next";
 import { EllipsisOutlined } from "../../utils/icons";
 
 type BottomNavItem = {
@@ -27,6 +28,7 @@ function isPathActive(pathname: string, target: string): boolean {
 }
 
 export function BottomNav({ pathname, mainItems, moreItems, onNavigate }: BottomNavProps) {
+  const { t } = useTranslation("common");
   const navigate = useNavigate();
   const isMoreActive = moreItems.some((item) => isPathActive(pathname, item.to));
 
@@ -60,7 +62,7 @@ export function BottomNav({ pathname, mainItems, moreItems, onNavigate }: Bottom
               aria-label="Open more navigation links"
             >
               <EllipsisOutlined className="bottom-nav-more-icon" />
-              <span className="bottom-nav-label">More</span>
+              <span className="bottom-nav-label">{t("nav.more")}</span>
             </Button>
           </Menu.Target>
 

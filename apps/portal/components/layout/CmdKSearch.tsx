@@ -10,6 +10,7 @@ import type {
   WikiArticle,
 } from "@guild/shared";
 import { Badge, Button, Group, Modal, Stack, Text } from "@mantine/core";
+import { useQuery } from "@tanstack/react-query";
 import { Command } from "cmdk";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -73,9 +74,7 @@ export function CmdKSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [items, setItems] = useState<SearchItem[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>(() => readRecentSearches());
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
@@ -100,105 +99,85 @@ export function CmdKSearch() {
     };
   }, [query]);
 
-  useEffect(() => {
-    if (!open || items.length > 0 || loading) {
-      return;
-    }
+  const searchDataQuery = useQuery({
+    queryKey: ["cmdk", "search-data"],
+    enabled: open,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const [usersResponse, eventsResponse, announcementsResponse, wikiResponse, warHistoryResponse, galleryResponse] = await Promise.all([
+        apiRequest<UsersListResponse>("/api/users?page=1&limit=40"),
+        apiRequest<PaginatedResponse<Event>>("/api/events?page=1&limit=40"),
+        apiRequest<PaginatedResponse<Announcement>>("/api/announcements?page=1&limit=25"),
+        apiRequest<PaginatedResponse<WikiArticle>>("/api/wiki/articles?page=1&limit=25"),
+        apiRequest<PaginatedResponse<WarHistory>>("/api/guild-war/history?page=1&limit=25"),
+        apiRequest<CursorResponse<GalleryItem>>("/api/gallery?cursor=0&limit=25"),
+      ]);
 
-    let cancelled = false;
-    const load = async () => {
-      setLoading(true);
-      try {
-        const [usersResponse, eventsResponse, announcementsResponse, wikiResponse, warHistoryResponse, galleryResponse] = await Promise.all([
-          apiRequest<UsersListResponse>("/api/users?page=1&limit=40"),
-          apiRequest<PaginatedResponse<Event>>("/api/events?page=1&limit=40"),
-          apiRequest<PaginatedResponse<Announcement>>("/api/announcements?page=1&limit=25"),
-          apiRequest<PaginatedResponse<WikiArticle>>("/api/wiki/articles?page=1&limit=25"),
-          apiRequest<PaginatedResponse<WarHistory>>("/api/guild-war/history?page=1&limit=25"),
-          apiRequest<CursorResponse<GalleryItem>>("/api/gallery?cursor=0&limit=25"),
-        ]);
+      const userItems: SearchItem[] = usersResponse.data.map((entry) => ({
+        id: `user-${entry.user.id}`,
+        title: entry.user.username,
+        subtitle: `${entry.user.role} · ${entry.profile.classes.join(", ") || "no class"} · ${
+          entry.profile.wechat_name ?? "-"
+        }`,
+        category: "user",
+        to: "/roster",
+      }));
 
-        if (cancelled) {
-          return;
-        }
+      const eventItems: SearchItem[] = eventsResponse.data.map((entry) => ({
+        id: `event-${entry.id}`,
+        title: entry.title,
+        subtitle: entry.type,
+        category: "event",
+        to: `/events/${entry.id}`,
+      }));
 
-        const userItems: SearchItem[] = usersResponse.data.map((entry) => ({
-          id: `user-${entry.user.id}`,
-          title: entry.user.username,
-          subtitle: `${entry.user.role} · ${entry.profile.classes.join(", ") || "no class"} · ${
-            entry.profile.wechat_name ?? "-"
-          }`,
-          category: "user",
-          to: "/roster",
-        }));
+      const announcementItems: SearchItem[] = announcementsResponse.data.map((entry) => ({
+        id: `announcement-${entry.id}`,
+        title: entry.title,
+        subtitle: entry.status,
+        body: entry.body_json,
+        category: "announcement",
+        to: "/announcements",
+      }));
 
-        const eventItems: SearchItem[] = eventsResponse.data.map((entry) => ({
-          id: `event-${entry.id}`,
-          title: entry.title,
-          subtitle: entry.type,
-          category: "event",
-          to: `/events/${entry.id}`,
-        }));
+      const wikiItems: SearchItem[] = wikiResponse.data.map((entry) => ({
+        id: `wiki-${entry.id}`,
+        title: entry.title,
+        subtitle: entry.slug,
+        body: entry.body_json,
+        category: "wiki",
+        to: "/wiki",
+      }));
 
-        const announcementItems: SearchItem[] = announcementsResponse.data.map((entry) => ({
-          id: `announcement-${entry.id}`,
-          title: entry.title,
-          subtitle: entry.status,
-          body: entry.body_json,
-          category: "announcement",
-          to: "/announcements",
-        }));
+      const warItems: SearchItem[] = warHistoryResponse.data.map((entry) => ({
+        id: `war-${entry.id}`,
+        title: entry.war_name,
+        subtitle: `${entry.result ?? "unknown"} · ${entry.created_at.slice(0, 10)}`,
+        category: "war",
+        to: "/guild-war",
+      }));
 
-        const wikiItems: SearchItem[] = wikiResponse.data.map((entry) => ({
-          id: `wiki-${entry.id}`,
-          title: entry.title,
-          subtitle: entry.slug,
-          body: entry.body_json,
-          category: "wiki",
-          to: "/wiki",
-        }));
+      const galleryItems: SearchItem[] = galleryResponse.data.map((entry) => ({
+        id: `gallery-${entry.id}`,
+        title: entry.caption ?? entry.url.split("/").pop() ?? entry.id,
+        subtitle: entry.type,
+        category: "gallery",
+        to: "/gallery",
+      }));
 
-        const warItems: SearchItem[] = warHistoryResponse.data.map((entry) => ({
-          id: `war-${entry.id}`,
-          title: entry.war_name,
-          subtitle: `${entry.result ?? "unknown"} · ${entry.created_at.slice(0, 10)}`,
-          category: "war",
-          to: "/guild-war",
-        }));
+      return [
+        ...userItems,
+        ...eventItems,
+        ...announcementItems,
+        ...wikiItems,
+        ...warItems,
+        ...galleryItems,
+      ];
+    },
+  });
 
-        const galleryItems: SearchItem[] = galleryResponse.data.map((entry) => ({
-          id: `gallery-${entry.id}`,
-          title: entry.caption ?? entry.url.split("/").pop() ?? entry.id,
-          subtitle: entry.type,
-          category: "gallery",
-          to: "/gallery",
-        }));
-
-        setItems([
-          ...userItems,
-          ...eventItems,
-          ...announcementItems,
-          ...wikiItems,
-          ...warItems,
-          ...galleryItems,
-        ]);
-      } catch {
-        if (!cancelled) {
-          setItems([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [items.length, loading, open]);
+  const items = searchDataQuery.data ?? [];
+  const loading = searchDataQuery.isLoading;
 
   const visibleItems = useMemo(() => {
     const normalized = normalizeSearchText(debouncedQuery);
@@ -282,11 +261,11 @@ export function CmdKSearch() {
   return (
     <>
       <Button onClick={() => setOpen(true)} size="xs" aria-label="Open global search">
-        Search (Ctrl+K)
+        {t("cmdk.searchButton")}
       </Button>
 
       <Modal
-        title="Search"
+        title={t("cmdk.searchTitle")}
         opened={open}
         onClose={() => setOpen(false)}
         size="640px"
@@ -296,7 +275,7 @@ export function CmdKSearch() {
           <Command.Input
             value={query}
             onValueChange={setQuery}
-            placeholder="Search users, events, announcements, wiki, gallery..."
+            placeholder={t("cmdk.searchPlaceholder")}
             aria-label="Search guild content"
             style={{
               width: "100%",
@@ -309,11 +288,11 @@ export function CmdKSearch() {
           />
 
           <Command.List style={{ maxHeight: 360, overflow: "auto" }}>
-            {loading || queryIsDebouncing ? <Text c="dimmed">Loading...</Text> : null}
-            {!loading && visibleItems.length === 0 ? <Command.Empty>No results</Command.Empty> : null}
+            {loading || queryIsDebouncing ? <Text c="dimmed">{t("message.loading")}</Text> : null}
+            {!loading && visibleItems.length === 0 ? <Command.Empty>{t("cmdk.noResults")}</Command.Empty> : null}
 
             {query.length === 0 && recentSearches.length > 0 ? (
-              <Command.Group heading="Recent">
+              <Command.Group heading={t("cmdk.recent")}>
                 {recentSearches.map((recent) => (
                   <Command.Item
                     key={recent}

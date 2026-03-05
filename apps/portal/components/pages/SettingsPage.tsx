@@ -2,8 +2,8 @@ import { listThemeIds, resolveThemeSpec } from "@infini-dev-kit/frontend/theme/t
 import type { ThemeId } from "@infini-dev-kit/frontend/theme/theme-types";
 import { useBridge, useThemeSnapshot } from "@infini-dev-kit/frontend/provider";
 import {
-  InfiniAnimatedTabs,
-  InfiniShinyText,
+  AnimatedTabs,
+  ShinyText,
 } from "@infini-dev-kit/frontend/components";
 import { SimpleGrid, Stack, Switch, Text, UnstyledButton } from "@mantine/core";
 import { useMemo } from "react";
@@ -13,12 +13,7 @@ import { PageLayout } from "../layout/PageLayout";
 
 type MotionMode = "off" | "minimum" | "reduced" | "full";
 
-const MOTION_OPTIONS: { value: MotionMode; label: string; desc: string }[] = [
-  { value: "off", label: "Off", desc: "No animations" },
-  { value: "minimum", label: "Minimum", desc: "Essential transitions only" },
-  { value: "reduced", label: "Reduced", desc: "Subtle animations" },
-  { value: "full", label: "Full", desc: "All effects enabled" },
-];
+const MOTION_KEYS: MotionMode[] = ["off", "minimum", "reduced", "full"];
 
 const sectionStyle: React.CSSProperties = {
   borderRadius: 12,
@@ -38,6 +33,7 @@ function ThemeSwatch({
   isActive: boolean;
   onSelect: () => void;
 }) {
+  const { t } = useTranslation("settings");
   const spec = resolveThemeSpec(themeId);
   const swatch = {
     accent: spec.palette.accent,
@@ -50,7 +46,7 @@ function ThemeSwatch({
       type="button"
       onClick={onSelect}
       className="theme-swatch-button"
-      aria-label={`Use theme ${themeId}`}
+      aria-label={t("theme.aria.useTheme", { themeId })}
       aria-pressed={isActive}
       style={{ width: "100%" }}
     >
@@ -97,7 +93,7 @@ function ThemeSwatch({
             "color var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease), opacity var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease)",
         }}
       >
-        {themeId}
+        {t(`theme.${themeId}`, { defaultValue: themeId })}
       </Text>
     </UnstyledButton>
   );
@@ -112,26 +108,27 @@ function MotionModeSelector({
   value: MotionMode;
   onChange: (mode: MotionMode) => void;
 }) {
+  const { t } = useTranslation("settings");
   return (
     <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
-      {MOTION_OPTIONS.map((opt) => (
+      {MOTION_KEYS.map((key) => (
         <UnstyledButton
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
+          key={key}
+          onClick={() => onChange(key)}
           style={{
             padding: "12px 16px",
             borderRadius: 10,
-            border: value === opt.value ? "2px solid var(--infini-color-primary, #3b82f6)" : "1px solid var(--infini-color-border, #333)",
-            background: value === opt.value ? "var(--infini-color-primary-alpha, rgba(59,130,246,0.08))" : "transparent",
+            border: value === key ? "2px solid var(--infini-color-primary, #3b82f6)" : "1px solid var(--infini-color-border, #333)",
+            background: value === key ? "var(--infini-color-primary-alpha, rgba(59,130,246,0.08))" : "transparent",
             transition:
               "all var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease)",
           }}
         >
-          <Text size="sm" fw={value === opt.value ? 600 : 400}>
-            {opt.label}
+          <Text size="sm" fw={value === key ? 600 : 400}>
+            {t(`motion.${key}`)}
           </Text>
           <Text size="xs" c="dimmed" mt={2}>
-            {opt.desc}
+            {t(`motion.${key}.desc`)}
           </Text>
         </UnstyledButton>
       ))}
@@ -274,12 +271,12 @@ export function SettingsPage() {
     <PageLayout
       title={t("title")}
       subtitle={
-        <InfiniShinyText duration={4} style={{ fontSize: 14, opacity: 0.8 }}>
-          Preferences
-        </InfiniShinyText>
+        <ShinyText duration={4} style={{ fontSize: 14, opacity: 0.8 }}>
+          {t("subtitle")}
+        </ShinyText>
       }
     >
-      <InfiniAnimatedTabs
+      <AnimatedTabs
         items={tabItems}
         defaultActiveKey="appearance"
         contentTransition="slide"

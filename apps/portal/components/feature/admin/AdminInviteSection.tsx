@@ -1,194 +1,248 @@
-import { Alert, Badge, Button, Group, Loader, NumberInput, SegmentedControl, Stack, Table, Text, TextInput } from "@mantine/core";
+import { Alert, Badge, Button, Group, Loader, Modal, NumberInput, SegmentedControl, Stack, Text, TextInput } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import type { ReactNode } from "react";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
+import { getCoreRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
+import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { fetchAdminInviteLinks, fetchAdminInviteStats } from "../../../api/queries/admin";
+import { InfiniTable } from "../../shared/InfiniTable";
 
 type InviteRow = Awaited<ReturnType<typeof fetchAdminInviteLinks>>[number];
 type InviteStats = Awaited<ReturnType<typeof fetchAdminInviteStats>>;
 
 type AdminInviteSectionProps = {
-  heading: ReactNode;
-  inviteVisibility: "active" | "expired";
-  onInviteVisibilityChange: (value: "active" | "expired") => void;
+  inviteVisibility: "active" | "expired" | "revoked";
+  onInviteVisibilityChange: (value: "active" | "expired" | "revoked") => void;
   isAdmin: boolean;
   inviteMaxUses: number;
   onInviteMaxUsesChange: (value: number) => void;
-  inviteMaxUsesLabel: string;
   inviteExpiresAt: string;
   onInviteExpiresAtChange: (value: string) => void;
   onCreateInvite: () => void;
-  inviteCreateLabel: string;
   inviteStatsLoading: boolean;
   inviteStats: InviteStats | null;
-  inviteStatsTotalLabel: string;
-  inviteStatsActiveLabel: string;
-  inviteStatsRevokedLabel: string;
-  inviteStatsExpiredLabel: string;
   inviteLinksLoading: boolean;
   inviteLinksError: boolean;
   loadErrorMessage: string;
   inviteRows: InviteRow[];
+  inviteSearch: string;
+  onInviteSearchChange: (value: string) => void;
   isInviteInactive: (row: InviteRow) => boolean;
   formatDateTime: (iso: string | null) => string;
   onCopyInviteLink: (row: InviteRow) => void;
   onRevokeInvite: (row: InviteRow) => void;
-  inviteCopyLabel: string;
-  inviteRevokeLabel: string;
 };
 
 export function AdminInviteSection({
-  heading,
   inviteVisibility,
   onInviteVisibilityChange,
   isAdmin,
   inviteMaxUses,
   onInviteMaxUsesChange,
-  inviteMaxUsesLabel,
   inviteExpiresAt,
   onInviteExpiresAtChange,
   onCreateInvite,
-  inviteCreateLabel,
   inviteStatsLoading,
   inviteStats,
-  inviteStatsTotalLabel,
-  inviteStatsActiveLabel,
-  inviteStatsRevokedLabel,
-  inviteStatsExpiredLabel,
   inviteLinksLoading,
   inviteLinksError,
   loadErrorMessage,
   inviteRows,
+  inviteSearch,
+  onInviteSearchChange,
   isInviteInactive,
   formatDateTime,
   onCopyInviteLink,
   onRevokeInvite,
-  inviteCopyLabel,
-  inviteRevokeLabel,
 }: AdminInviteSectionProps) {
+  const { t } = useTranslation("admin");
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [sorting, setSorting] = useState<SortingState>([]);
+
+  const columns = useMemo<ColumnDef<InviteRow, unknown>[]>(() => {
+    const cols: ColumnDef<InviteRow, unknown>[] = [];
+
+    if (isAdmin) {
+      cols.push({
+        header: t("invite.table.code"),
+        id: "code",
+        accessorKey: "code",
+      });
+    }
+
+    cols.push({
+      header: t("invite.table.usage"),
+      id: "usage",
+      accessorFn: (row) => row.used_count / Math.max(row.max_uses, 1),
+      cell: ({ row }) => `${row.original.used_count}/${row.original.max_uses}`,
+    });
+
+    if (!isAdmin) {
+      cols.push({
+        header: t("invite.table.status"),
+        id: "status",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const r = row.original;
+          const expired = Boolean(r.expires_at && Date.parse(r.expires_at) <= Date.now());
+          const fullyUsed = r.used_count >= r.max_uses;
+          if (r.revoked_at) return <Badge color="infini-danger" variant="light">{t("invite.status.revoked")}</Badge>;
+          if (fullyUsed) return <Badge color="infini-warning" variant="light">{t("invite.status.fullyUsed")}</Badge>;
+          if (expired) return <Badge color="infini-warning" variant="light">{t("invite.status.expired")}</Badge>;
+          return <Badge color="infini-success" variant="light">{t("invite.status.active")}</Badge>;
+        },
+      });
+    }
+
+    cols.push(
+      {
+        header: t("invite.table.expires"),
+        id: "expires",
+        accessorFn: (row) => row.expires_at ?? "",
+        cell: ({ row }) => formatDateTime(row.original.expires_at),
+      },
+      {
+        header: t("invite.table.created"),
+        id: "created",
+        accessorFn: (row) => row.created_at ?? "",
+        cell: ({ row }) => formatDateTime(row.original.created_at),
+      },
+    );
+
+    if (isAdmin) {
+      cols.push({
+        header: t("invite.table.actions"),
+        id: "actions",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const inactive = isInviteInactive(row.original);
+          return (
+            <Group gap={8}>
+              <Button size="xs" onClick={() => onCopyInviteLink(row.original)} disabled={inactive}>
+                {t("invite.copy")}
+              </Button>
+              <Button size="xs" color="infini-danger" disabled={inactive} onClick={() => onRevokeInvite(row.original)}>
+                {t("invite.revoke")}
+              </Button>
+            </Group>
+          );
+        },
+      });
+    }
+
+    return cols;
+  }, [isAdmin, t, formatDateTime, isInviteInactive, onCopyInviteLink, onRevokeInvite]);
+
+  const table = useReactTable({
+    data: inviteRows,
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getRowId: (row) => row.id,
+  });
+
   return (
     <Stack gap={12}>
-      {heading}
-      <InfiniCard>
+      {/* Toolbar card: segment + stats + search + create button */}
+      <InfiniCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
-          <Group wrap="wrap" gap={8}>
-            <SegmentedControl
-              value={inviteVisibility}
-              onChange={(value) => onInviteVisibilityChange(value as "active" | "expired")}
-              data={[
-                { value: "active", label: "Active" },
-                { value: "expired", label: "Expired" },
-              ]}
-            />
-            {isAdmin ? (
-              <>
-                <Group align="center" gap={6}>
-                  <Text size="sm" c="dimmed">{inviteMaxUsesLabel}</Text>
-                  <NumberInput
-                    min={1}
-                    value={inviteMaxUses}
-                    onChange={(value) => onInviteMaxUsesChange(typeof value === "number" ? value : 1)}
-                    aria-label="Invite max uses"
-                    style={{ width: 120 }}
-                  />
+          <Group wrap="wrap" gap={8} justify="space-between">
+            <Group wrap="wrap" gap={8}>
+              <SegmentedControl
+                value={inviteVisibility}
+                onChange={(value) => onInviteVisibilityChange(value as "active" | "expired" | "revoked")}
+                data={[
+                  { value: "active", label: t("invite.segActive") },
+                  { value: "expired", label: t("invite.segExpired") },
+                  { value: "revoked", label: t("invite.segRevoked") },
+                ]}
+              />
+              {inviteStatsLoading ? <Loader size="xs" /> : null}
+              {inviteStats ? (
+                <Group wrap="wrap" gap={6}>
+                  <Badge color="infini-primary" variant="light">
+                    {t("invite.stats.total")}: {inviteStats.total}
+                  </Badge>
+                  <Badge color="infini-success" variant="light">
+                    {t("invite.stats.active")}: {inviteStats.active}
+                  </Badge>
+                  <Badge color="infini-danger" variant="light">
+                    {t("invite.stats.revoked")}: {inviteStats.revoked}
+                  </Badge>
+                  <Badge color="infini-warning" variant="light">
+                    {t("invite.stats.expired")}: {inviteStats.expired}
+                  </Badge>
                 </Group>
-                <TextInput
-                  type="datetime-local"
-                  value={inviteExpiresAt}
-                  onChange={(event) => onInviteExpiresAtChange(event.currentTarget.value)}
-                  aria-label="Invite expiration time"
-                />
-                <Button onClick={onCreateInvite}>
-                  {inviteCreateLabel}
+              ) : null}
+            </Group>
+            <Group wrap="wrap" gap={8}>
+              <TextInput
+                placeholder={t("invite.search")}
+                value={inviteSearch}
+                onChange={(event) => onInviteSearchChange(event.currentTarget.value)}
+                style={{ width: 220 }}
+              />
+              {isAdmin ? (
+                <Button size="sm" onClick={() => setCreateModalOpen(true)}>
+                  {t("invite.create")}
                 </Button>
-              </>
-            ) : null}
+              ) : null}
+            </Group>
           </Group>
         </div>
       </InfiniCard>
 
-      {inviteStatsLoading ? <Loader size="sm" /> : null}
-      {inviteStats ? (
-        <InfiniCard>
-          <div style={{ padding: "1.2rem" }}>
-            <Group wrap="wrap" gap={8}>
-              <Badge color="blue" variant="light">
-                {inviteStatsTotalLabel}: {inviteStats.total}
-              </Badge>
-              <Badge color="green" variant="light">
-                {inviteStatsActiveLabel}: {inviteStats.active}
-              </Badge>
-              <Badge color="red" variant="light">
-                {inviteStatsRevokedLabel}: {inviteStats.revoked}
-              </Badge>
-              <Badge color="yellow" variant="light">
-                {inviteStatsExpiredLabel}: {inviteStats.expired}
-              </Badge>
-            </Group>
+      {/* Table */}
+      {inviteLinksLoading ? <Loader size="sm" /> : null}
+      {inviteLinksError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
+      {!inviteLinksLoading && !inviteLinksError ? (
+        <InfiniCard interactive={false}>
+          <div style={{ padding: "1.2rem", overflowX: "auto" }}>
+            <InfiniTable table={table} />
           </div>
         </InfiniCard>
       ) : null}
 
-      {inviteLinksLoading ? <Loader size="sm" /> : null}
-      {inviteLinksError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
-      {!inviteLinksLoading && !inviteLinksError ? (
-        <InfiniCard>
-          <div style={{ padding: "1.2rem" }}>
-            <Table withTableBorder withColumnBorders striped>
-              <Table.Thead>
-                <Table.Tr>
-                  {isAdmin ? <Table.Th>Code</Table.Th> : null}
-                  <Table.Th>Usage</Table.Th>
-                  {!isAdmin ? <Table.Th>Status</Table.Th> : null}
-                  <Table.Th>Expires</Table.Th>
-                  <Table.Th>Created</Table.Th>
-                  {isAdmin ? <Table.Th>Actions</Table.Th> : null}
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {inviteRows.map((row) => {
-                  const expired = Boolean(row.expires_at && Date.parse(row.expires_at) <= Date.now());
-                  const fullyUsed = row.used_count >= row.max_uses;
-                  const inactive = isInviteInactive(row);
-                  return (
-                    <Table.Tr key={row.id}>
-                      {isAdmin ? <Table.Td>{row.code}</Table.Td> : null}
-                      <Table.Td>{row.used_count}/{row.max_uses}</Table.Td>
-                      {!isAdmin ? (
-                        <Table.Td>
-                          {row.revoked_at ? (
-                            <Badge color="red" variant="light">revoked</Badge>
-                          ) : fullyUsed ? (
-                            <Badge color="yellow" variant="light">fully used</Badge>
-                          ) : expired ? (
-                            <Badge color="yellow" variant="light">expired</Badge>
-                          ) : (
-                            <Badge color="green" variant="light">active</Badge>
-                          )}
-                        </Table.Td>
-                      ) : null}
-                      <Table.Td>{formatDateTime(row.expires_at)}</Table.Td>
-                      <Table.Td>{formatDateTime(row.created_at)}</Table.Td>
-                      {isAdmin ? (
-                        <Table.Td>
-                          <Group gap={8}>
-                            <Button size="xs" onClick={() => onCopyInviteLink(row)} disabled={inactive}>
-                              {inviteCopyLabel}
-                            </Button>
-                            <Button size="xs" color="red" disabled={inactive} onClick={() => onRevokeInvite(row)}>
-                              {inviteRevokeLabel}
-                            </Button>
-                          </Group>
-                        </Table.Td>
-                      ) : null}
-                    </Table.Tr>
-                  );
-                })}
-              </Table.Tbody>
-            </Table>
-          </div>
-        </InfiniCard>
-      ) : null}
+      {/* Create Invite Modal */}
+      <Modal
+        opened={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        title={t("invite.createTitle")}
+        centered
+      >
+        <Stack gap={12}>
+          <Group align="center" gap={6}>
+            <Text size="sm" c="dimmed">{t("invite.maxUses")}</Text>
+            <NumberInput
+              min={1}
+              value={inviteMaxUses}
+              onChange={(value) => onInviteMaxUsesChange(typeof value === "number" ? value : 1)}
+              aria-label="Invite max uses"
+              style={{ flex: 1 }}
+            />
+          </Group>
+          <Stack gap={4}>
+            <Text size="sm" c="dimmed">{t("invite.expiresAt")}</Text>
+            <TextInput
+              type="datetime-local"
+              value={inviteExpiresAt}
+              onChange={(event) => onInviteExpiresAtChange(event.currentTarget.value)}
+              aria-label="Invite expiration time"
+            />
+          </Stack>
+          <Button
+            fullWidth
+            onClick={() => {
+              onCreateInvite();
+              setCreateModalOpen(false);
+            }}
+          >
+            {t("invite.create")}
+          </Button>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }
-

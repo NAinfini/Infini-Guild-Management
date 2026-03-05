@@ -1,4 +1,4 @@
-﻿import {
+import {
   ERROR_STATUS,
   announcementSchema,
   createAnnouncementSchema,
@@ -171,6 +171,8 @@ async function requireModerator(c: Context): Promise<SessionUser | Response> {
 }
 
 announcementsRoutes.get("/", async (c) => {
+  const resolved = await resolveSession(c);
+  const canReadAll = Boolean(resolved && hasRoleAtLeast(resolved.user.role, "moderator"));
   const query = c.req.query();
   const page = parsePage(query.page, 1);
   const limit = Math.min(100, parsePage(query.limit, 20));
@@ -179,17 +181,23 @@ announcementsRoutes.get("/", async (c) => {
   const pinnedFilter = parseBoolean(query.pinned);
   const archivedFilter = parseBoolean(query.archived);
   const search = (query.search ?? "").trim();
+  const archivedOnly = archivedFilter === true;
 
   const filters: SQL<unknown>[] = [];
   if (statusFilter) {
+    if (!canReadAll && statusFilter !== "published" && statusFilter !== "archived") {
+      return buildError(c, "FORBIDDEN", "Moderator role required to read non-public announcements");
+    }
     filters.push(eq(announcements.status, statusFilter as typeof announcements.status.enumValues[number]));
+  } else if (!canReadAll) {
+    filters.push(eq(announcements.status, archivedOnly ? "archived" : "published"));
   }
 
   if (pinnedFilter !== undefined) {
     filters.push(eq(announcements.pinned, pinnedFilter));
   }
 
-  if (archivedFilter === true) {
+  if (archivedOnly) {
     filters.push(isNotNull(announcements.archivedAt));
   } else {
     filters.push(isNull(announcements.archivedAt));
@@ -242,9 +250,14 @@ announcementsRoutes.get("/", async (c) => {
 });
 
 announcementsRoutes.get("/:id", async (c) => {
+  const resolved = await resolveSession(c);
+  const canReadAll = Boolean(resolved && hasRoleAtLeast(resolved.user.role, "moderator"));
   const announcementId = c.req.param("id");
   const row = await getAnnouncementById(c, announcementId);
   if (!row) {
+    return buildError(c, "NOT_FOUND", "Announcement not found");
+  }
+  if (!canReadAll && row.status !== "published" && row.status !== "archived") {
     return buildError(c, "NOT_FOUND", "Announcement not found");
   }
   return c.json(toAnnouncementPayload(row));

@@ -1,4 +1,4 @@
-import { Alert, Badge, Loader, Group, Stack, Text } from "@mantine/core";
+﻿import { Alert, Badge, Loader, Group, Stack, Text } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 
 type StatusData = {
@@ -37,7 +37,7 @@ export function AdminSystemSection({
   return (
     <Stack gap={10}>
       {statusLoading ? <Loader size="sm" /> : null}
-      {statusError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
+      {statusError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
       {statusData ? (
         <Group gap={8} wrap="wrap">
           <Badge color={statusData.db === "ok" ? "green" : "red"} variant="light">DB: {statusData.db}</Badge>
@@ -46,7 +46,7 @@ export function AdminSystemSection({
           <Badge color={statusData.crons === "ok" ? "green" : "red"} variant="light">Crons: {statusData.crons}</Badge>
         </Group>
       ) : null}
-      <InfiniCard>
+      <InfiniCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Text fw={600} size="sm" mb={8}>Health Logs (latest 10)</Text>
           <div style={{ maxHeight: 180, overflowY: "auto" }}>
@@ -67,4 +67,5 @@ export function AdminSystemSection({
     </Stack>
   );
 }
+
 

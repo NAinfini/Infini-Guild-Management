@@ -3,11 +3,6 @@ import { Group, Text } from "@mantine/core";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 
-export const dashboardEventVariants = {
-  hidden: { opacity: 0, y: 8 },
-  visible: { opacity: 1, y: 0 },
-} as const;
-
 export function formatDateTime(iso: string | null): string {
   if (!iso) return "-";
   const date = new Date(iso);
@@ -18,12 +13,12 @@ export function formatDateTime(iso: string | null): string {
 }
 
 export function eventTypeTagColor(value: string): string {
-  if (value === "raid" || value === "weekly_mission") return "blue";
+  if (value === "raid" || value === "weekly_mission") return "infini-primary";
   if (value === "guild_war") return "orange";
-  if (value === "meeting" || value === "social") return "red";
+  if (value === "meeting" || value === "social") return "infini-danger";
   if (value === "training") return "grape";
-  if (value === "other") return "yellow";
-  return "blue";
+  if (value === "other") return "infini-warning";
+  return "infini-primary";
 }
 
 export function cardHeading(text: string, icon?: ReactNode) {

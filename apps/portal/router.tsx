@@ -2,6 +2,7 @@ import type {
   MemberProfile,
   User,
 } from "@guild/shared";
+import { hasRoleAtLeast } from "@guild/shared";
 import {
   QueryClient,
   QueryClientProvider,
@@ -24,6 +25,7 @@ import {
   Title,
 } from "@mantine/core";
 import { Suspense, lazy } from "react";
+import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { apiRequest } from "./api/client";
 import { queryKeys } from "./api/query-keys";
@@ -203,6 +205,7 @@ async function ensureSession(): Promise<AuthSessionResponse | null> {
 }
 
 function EventDetailPanel() {
+  const { t } = useTranslation("events");
   const params = useParams({ strict: false });
   const id = (params as { id: string }).id;
 
@@ -216,12 +219,12 @@ function EventDetailPanel() {
   }
 
   if (detailQuery.isError) {
-    return <Alert color="yellow" variant="light">Unable to load data. Please try again later.</Alert>;
+    return <Alert color="infini-warning" variant="light">{t("eventDetail.loadFailed")}</Alert>;
   }
 
   const detail = detailQuery.data;
   if (!detail) {
-    return <Alert color="yellow" variant="light">Missing event</Alert>;
+    return <Alert color="infini-warning" variant="light">{t("eventDetail.missing")}</Alert>;
   }
 
   return (
@@ -229,17 +232,17 @@ function EventDetailPanel() {
       <Stack gap={8}>
         <Title order={3}>{detail.title}</Title>
         <Text>{detail.description ?? "-"}</Text>
-        <Text>Participants: {detail.participants.length}</Text>
+        <Text>{t("eventDetail.participants", { count: detail.participants.length })}</Text>
         {detail.attachments.length > 0 ? (
           <>
-            <Text>Attachments: {detail.attachments.length}</Text>
+            <Text>{t("eventDetail.attachments", { count: detail.attachments.length })}</Text>
             <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
               {detail.attachments.map((attachment) =>
                 isHttpUrl(attachment) ? (
                   <img
                     key={attachment}
                     src={attachment}
-                    alt="Event attachment"
+                    alt={t("eventDetail.attachmentAlt")}
                     loading="lazy"
                     decoding="async"
                     style={{ width: "100%", maxHeight: 320, objectFit: "cover", borderRadius: 8 }}
@@ -377,6 +380,11 @@ const adminRoute = createRoute({
     if (isExternalViewSearch((location as { searchStr?: string }).searchStr)) {
       throw redirect({ to: "/" });
     }
+
+    const user = useAuthStore.getState().user;
+    if (!user || !hasRoleAtLeast(user.role, "moderator")) {
+      throw redirect({ to: "/" });
+    }
   },
   component: AdminRoutePage,
 });
@@ -416,6 +424,4 @@ declare module "@tanstack/react-router" {
     router: typeof router;
   }
 }
-
-
 

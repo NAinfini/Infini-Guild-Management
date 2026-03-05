@@ -1,0 +1,22 @@
+{
+  "toolbar.bold": "Bold",
+  "toolbar.italic": "Italic",
+  "toolbar.underline": "Underline",
+  "toolbar.strike": "Strikethrough",
+  "toolbar.link": "Link",
+  "toolbar.unlink": "Unlink",
+  "toolbar.h1": "Heading 1",
+  "toolbar.h2": "Heading 2",
+  "toolbar.h3": "Heading 3",
+  "toolbar.bullet": "Bullet List",
+  "toolbar.number": "Numbered List",
+  "toolbar.quote": "Quote",
+  "toolbar.code": "Code Block",
+  "toolbar.table": "Table",
+  "toolbar.addCol": "Add Column",
+  "toolbar.addRow": "Add Row",
+  "toolbar.delTable": "Delete Table",
+  "toolbar.image": "Image",
+  "slashCommands": "Slash Commands",
+  "message.imageInserted": "Image inserted"
+}

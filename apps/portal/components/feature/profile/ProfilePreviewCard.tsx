@@ -1,5 +1,6 @@
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import { Spoiler, Stack, Text } from "@mantine/core";
+import { Badge, Divider, Group, Spoiler, Stack, Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 
 type ProfilePreviewCardProps = {
   username: string;
@@ -14,6 +15,17 @@ type ProfilePreviewCardProps = {
   bio: string;
 };
 
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <Group justify="space-between" gap={4}>
+      <Text c="dimmed" size="sm">{label}</Text>
+      <Text size="sm" fw={500} ta="right" style={{ maxWidth: "60%", wordBreak: "break-word" }}>
+        {value || "-"}
+      </Text>
+    </Group>
+  );
+}
+
 export function ProfilePreviewCard({
   username,
   wechatName,
@@ -26,25 +38,61 @@ export function ProfilePreviewCard({
   activeNowEstimate,
   bio,
 }: ProfilePreviewCardProps) {
+  const { t } = useTranslation("profile");
+  const isActive = activeNowEstimate === t("availability.activeNow");
+
   return (
-    <InfiniCard>
-      <div style={{ padding: "1.2rem" }}>
-        <Stack gap={8}>
-          <Text fw={600}>Profile Preview</Text>
-          <Text fw={600}>{username || "-"}</Text>
-          <Text c="dimmed" size="sm">Wechat: {wechatName || "-"}</Text>
-          <Text c="dimmed" size="sm">Power: {power}</Text>
-          <Text c="dimmed" size="sm">Primary class: {primaryClass || "-"}</Text>
-          <Text c="dimmed" size="sm">Images: {imageCount}</Text>
-          <Text c="dimmed" size="sm">Videos: {videoCount}</Text>
-          <Text c="dimmed" size="sm">Audio: {hasAudio ? "yes" : "no"}</Text>
-          <Text c="dimmed" size="sm">Discord: {discordId ?? "-"}</Text>
-          <Text c="dimmed" size="sm">Active estimate: {activeNowEstimate}</Text>
-          <Spoiler maxHeight={84} showLabel="Show more" hideLabel="Show less">
-            <Text size="sm">{bio || "No bio"}</Text>
-          </Spoiler>
+    <InfiniCard interactive={false}>
+      <Stack gap={12} style={{ padding: "1.2rem" }}>
+        <Text fw={700} size="lg">{username || "-"}</Text>
+
+        <Group gap={6}>
+          <Badge
+            size="sm"
+            color={isActive ? "green" : "gray"}
+            variant="light"
+          >
+            {activeNowEstimate}
+          </Badge>
+          {primaryClass && primaryClass !== "-" ? (
+            <Badge size="sm" variant="light" color="yellow">{primaryClass}</Badge>
+          ) : null}
+        </Group>
+
+        <Divider />
+
+        <Stack gap={6}>
+          <InfoRow label={t("preview.wechat")} value={wechatName} />
+          <InfoRow label={t("preview.power")} value={String(power)} />
+          <InfoRow label={t("preview.discord")} value={discordId ?? "-"} />
         </Stack>
-      </div>
+
+        <Divider />
+
+        <Group gap={12} justify="center">
+          <Stack gap={2} align="center">
+            <Text fw={700} size="lg">{imageCount}</Text>
+            <Text c="dimmed" size="xs">{t("preview.images")}</Text>
+          </Stack>
+          <Stack gap={2} align="center">
+            <Text fw={700} size="lg">{videoCount}</Text>
+            <Text c="dimmed" size="xs">{t("preview.videos")}</Text>
+          </Stack>
+          <Stack gap={2} align="center">
+            <Text fw={700} size="lg">{hasAudio ? "1" : "0"}</Text>
+            <Text c="dimmed" size="xs">{t("preview.audio")}</Text>
+          </Stack>
+        </Group>
+
+        {bio ? (
+          <>
+            <Divider />
+            <Spoiler maxHeight={84} showLabel={t("preview.showMore")} hideLabel={t("preview.showLess")}>
+              <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{bio}</Text>
+            </Spoiler>
+          </>
+        ) : null}
+      </Stack>
     </InfiniCard>
   );
 }

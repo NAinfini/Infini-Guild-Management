@@ -16,9 +16,6 @@ type UseGuildWarActiveControllerParams = {
 };
 
 export function useGuildWarActiveController({ selectedEventId }: UseGuildWarActiveControllerParams) {
-  const [selectedMoveUserId, setSelectedMoveUserId] = useState<string>("");
-  const [selectedMoveTarget, setSelectedMoveTarget] = useState<string>("");
-  const [selectedRoleUserId, setSelectedRoleUserId] = useState<string>("");
   const [selectedDragUserIds, setSelectedDragUserIds] = useState<string[]>([]);
   const [selectionAnchorUserId, setSelectionAnchorUserId] = useState<string | null>(null);
   const [activeDragItemId, setActiveDragItemId] = useState<string | null>(null);
@@ -73,12 +70,6 @@ export function useGuildWarActiveController({ selectedEventId }: UseGuildWarActi
   }, []);
 
   return {
-    selectedMoveUserId,
-    setSelectedMoveUserId,
-    selectedMoveTarget,
-    setSelectedMoveTarget,
-    selectedRoleUserId,
-    setSelectedRoleUserId,
     selectedDragUserIds,
     setSelectedDragUserIds,
     selectionAnchorUserId,
