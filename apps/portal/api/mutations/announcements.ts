@@ -1,26 +1,27 @@
-import type { Announcement } from "@guild/shared";
+import {
+  type Announcement,
+  createAnnouncementSchema,
+  updateAnnouncementSchema,
+} from "@guild/shared";
+import type { z } from "zod";
 import { apiRequest } from "../client";
 
-export function createAnnouncement(payload: {
-  title: string;
-  body_json: string;
-  pinned: boolean;
-  status: "draft" | "scheduled" | "published" | "archived";
-  publish_at?: string;
-  expires_at?: string;
-  notify_discord?: boolean;
-  notify_wechat?: boolean;
-}): Promise<Announcement> {
+export type CreateAnnouncementPayload = z.input<typeof createAnnouncementSchema>;
+export type UpdateAnnouncementPayload = z.input<typeof updateAnnouncementSchema>;
+
+export function createAnnouncement(payload: CreateAnnouncementPayload): Promise<Announcement> {
+  const bodyJson = createAnnouncementSchema.parse(payload);
   return apiRequest<Announcement>("/api/announcements", {
     method: "POST",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
-export function updateAnnouncement(id: string, payload: Record<string, unknown>): Promise<Announcement> {
+export function updateAnnouncement(id: string, payload: UpdateAnnouncementPayload): Promise<Announcement> {
+  const bodyJson = updateAnnouncementSchema.parse(payload);
   return apiRequest<Announcement>(`/api/announcements/${id}`, {
     method: "PATCH",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 

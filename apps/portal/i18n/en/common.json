@@ -51,6 +51,7 @@
   "loadErrorRetry": "Failed to refresh. Showing cached data.",
   "errors.connectionTitle": "Connection Issue",
   "errors.connectionIssue": "Unable to reach server. Check your network and retry.",
+  "errors.serviceUnavailable": "Service temporarily unavailable. Please try again later.",
   "errors.sessionExpired": "Session expired. Please log in again.",
   "errors.forbidden": "Access denied.",
   "errors.conflict": "Conflict detected. Please refresh and try again.",
@@ -98,6 +99,8 @@
   "media.externalLink": "External link",
   "media.hideThumbnails": "Hide thumbnails",
   "media.showThumbnails": "Show thumbnails",
+  "media.noMedia": "No media",
+  "media.noAudio": "No audio",
   "members.noOverflow": "No overflow members",
   "members.overflow": "Overflow {{count}}"
 }

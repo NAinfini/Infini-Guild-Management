@@ -1,9 +1,11 @@
-﻿import { InfiniCard, MotionButton } from "@infini-dev-kit/frontend/components";
+﻿import { DepthButton, InfiniCard } from "@infini-dev-kit/frontend/components";
 import {
   Alert,
   Group,
   Modal,
+  SimpleGrid,
   Slider,
+  Stack,
   Text,
   TextInput,
   Textarea,
@@ -18,6 +20,7 @@ import {
   IconPalette,
   IconStrikethrough,
   IconTextSize,
+  IconTool,
   IconUnderline,
 } from "@tabler/icons-react";
 import DOMPurify from "dompurify";
@@ -264,7 +267,7 @@ export function ToolsPage() {
   ];
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")}>
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconTool size={22} />}>
       {isExternalView ? (
         <Alert color="infini-primary" title={t("sandbox.readOnlyHint")} />
       ) : null}
@@ -520,17 +523,6 @@ export function ToolsPage() {
                 <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.generatedHtml")}</Text>
                 <div className="sandbox__code-block">
                   <code className="sandbox__code-text">{generatedHtml}</code>
-                  <button
-                    type="button"
-                    className="sandbox__code-copy"
-                    onClick={() => {
-                      void copyPlainText(generatedHtml);
-                      notifications.show({ color: "infini-success", message: t("message.htmlCopied") });
-                    }}
-                    aria-label={t("sandbox.aria.copyGeneratedHtml")}
-                  >
-                    <IconCopy size={14} />
-                  </button>
                 </div>
               </div>
 
@@ -550,14 +542,17 @@ export function ToolsPage() {
 
               {/* Action buttons */}
               <Group gap={8}>
-                <MotionButton
+                <DepthButton
                   onClick={() => {
                     void copyPlainText(generatedHtml);
                     notifications.show({ color: "infini-success", message: t("message.generatedHtmlCopied") });
                   }}
+                  type="secondary"
+                  size="sm"
+                  before={<IconCopy size={14} />}
                 >
                   {t("sandbox.copyHtml")}
-                </MotionButton>
+                </DepthButton>
               </Group>
             </div>
           </div>

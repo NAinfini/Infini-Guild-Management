@@ -76,7 +76,7 @@ type AuditArchiveManifest = {
 
 type AuditArchiveReadResult = {
   rows: AuditArchiveRow[];
-  source: "r2_manifest" | "r2_legacy_json";
+  source: "r2_manifest";
   manifest: AuditArchiveManifest | null;
 };
 
@@ -90,6 +90,8 @@ const AUDIT_ARCHIVE_DOWNLOAD_TTL_SECONDS = 15 * 60;
 const AUDIT_ARCHIVE_EXPORT_MIN_INTERVAL_SECONDS = 60;
 const AUDIT_ARCHIVE_DOWNLOAD_FILE_PATH = "/api/admin/audit-archive/download/file";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const D1_SAFE_VARIABLE_LIMIT = 90;
+const ROLE_PERMISSION_INSERT_BATCH_SIZE = Math.max(1, Math.floor(D1_SAFE_VARIABLE_LIMIT / 3));
 
 export const adminRoutes = new Hono();
 
@@ -142,6 +144,16 @@ function fullAdminPermissionRecord(): Record<Permission, boolean> {
   return Object.fromEntries(PERMISSIONS.map((permission) => [permission, true])) as Record<Permission, boolean>;
 }
 
+async function insertRolePermissionRows(
+  db: ReturnType<typeof getDb>,
+  rows: Array<typeof rolePermissions.$inferInsert>,
+): Promise<void> {
+  for (let index = 0; index < rows.length; index += ROLE_PERMISSION_INSERT_BATCH_SIZE) {
+    const chunk = rows.slice(index, index + ROLE_PERMISSION_INSERT_BATCH_SIZE);
+    await db.insert(rolePermissions).values(chunk);
+  }
+}
+
 function parsePermissionRecord(
   roleId: string,
   permissionRows: Array<{ permission: string; granted: boolean }>,
@@ -163,7 +175,8 @@ async function replaceRolePermissions(
   permissionRecord: Record<Permission, boolean>,
 ): Promise<void> {
   await db.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
-  await db.insert(rolePermissions).values(
+  await insertRolePermissionRows(
+    db,
     PERMISSIONS.map((permission) => ({
       roleId,
       permission,
@@ -216,7 +229,7 @@ async function ensureBuiltinRolesAndPermissions(db: ReturnType<typeof getDb>): P
     }
   }
   if (missingRows.length > 0) {
-    await db.insert(rolePermissions).values(missingRows);
+    await insertRolePermissionRows(db, missingRows);
   }
 }
 
@@ -329,11 +342,10 @@ function normalizeAuditArchiveRow(value: unknown): AuditArchiveRow | null {
   };
 }
 
-function archiveMonthPaths(month: string): { manifestKey: string; legacyJsonKey: string } {
+function archiveMonthPaths(month: string): { manifestKey: string } {
   const [year, monthNumber] = month.split("-");
   return {
     manifestKey: `${AUDIT_ARCHIVE_PREFIX}/${year}/${monthNumber}/manifest.json`,
-    legacyJsonKey: `${AUDIT_ARCHIVE_PREFIX}/${month}.json`,
   };
 }
 
@@ -448,12 +460,6 @@ async function listArchiveMonthsFromR2(env: Bindings): Promise<string[]> {
       const manifestMatch = /^audit-archive\/(\d{4})\/(\d{2})\/manifest\.json$/.exec(object.key);
       if (manifestMatch?.[1] && manifestMatch?.[2]) {
         months.add(`${manifestMatch[1]}-${manifestMatch[2]}`);
-        continue;
-      }
-
-      const legacyMatch = /^audit-archive\/(\d{4}-\d{2})\.json$/.exec(object.key);
-      if (legacyMatch?.[1]) {
-        months.add(legacyMatch[1]);
       }
     }
     cursor = page.truncated ? page.cursor : undefined;
@@ -462,7 +468,7 @@ async function listArchiveMonthsFromR2(env: Bindings): Promise<string[]> {
 }
 
 async function readArchiveMonthFromR2(env: Bindings, month: string): Promise<AuditArchiveReadResult | null> {
-  const { manifestKey, legacyJsonKey } = archiveMonthPaths(month);
+  const { manifestKey } = archiveMonthPaths(month);
   const manifestObject = await env.MEDIA.get(manifestKey);
   if (manifestObject) {
     const parsedManifest = normalizeAuditArchiveManifest(JSON.parse(await manifestObject.text()) as unknown, month);
@@ -476,30 +482,7 @@ async function readArchiveMonthFromR2(env: Bindings, month: string): Promise<Aud
       manifest: parsedManifest,
     };
   }
-
-  const legacyObject = await env.MEDIA.get(legacyJsonKey);
-  if (!legacyObject) {
-    return null;
-  }
-
-  const payload = JSON.parse(await legacyObject.text()) as unknown;
-  if (!payload || typeof payload !== "object") {
-    throw new Error("Invalid archive payload");
-  }
-
-  const rows = (payload as { rows?: unknown }).rows;
-  if (!Array.isArray(rows)) {
-    throw new Error("Invalid archive rows");
-  }
-  const normalized = rows.map(normalizeAuditArchiveRow);
-  if (normalized.some((row) => row === null)) {
-    throw new Error("Invalid archive row shape");
-  }
-  return {
-    rows: normalized as AuditArchiveRow[],
-    source: "r2_legacy_json",
-    manifest: null,
-  };
+  return null;
 }
 
 function defaultBotSettings(): BotSettings {
@@ -687,42 +670,6 @@ async function enforceArchiveExportRateLimit(c: Context, actorId: string): Promi
   return null;
 }
 
-async function readArchiveMonthFromD1(c: Context, month: string): Promise<AuditArchiveRow[]> {
-  const db = getDb(c);
-  return await db
-    .select({
-      id: auditLog.id,
-      entityType: auditLog.entityType,
-      action: auditLog.action,
-      actorId: auditLog.actorId,
-      entityId: auditLog.entityId,
-      diffTitle: auditLog.diffTitle,
-      detailText: auditLog.detailText,
-      createdAt: auditLog.createdAt,
-    })
-    .from(auditLog)
-    .where(like(auditLog.createdAt, `${month}-%`))
-    .orderBy(desc(auditLog.createdAt));
-}
-
-async function resolveArchiveMonth(c: Context, month: string): Promise<{
-  rows: AuditArchiveRow[];
-  source: "r2_manifest" | "r2_legacy_json" | "d1_legacy";
-  manifest: AuditArchiveManifest | null;
-}> {
-  const env = c.env as Bindings;
-  const archived = await readArchiveMonthFromR2(env, month);
-  if (archived) {
-    return archived;
-  }
-  const rows = await readArchiveMonthFromD1(c, month);
-  return {
-    rows,
-    source: "d1_legacy",
-    manifest: null,
-  };
-}
-
 async function readArchiveManifestFromR2(env: Bindings, month: string): Promise<AuditArchiveManifest | null> {
   const { manifestKey } = archiveMonthPaths(month);
   const manifestObject = await env.MEDIA.get(manifestKey);
@@ -738,25 +685,7 @@ async function readArchiveManifestFromR2(env: Bindings, month: string): Promise<
 
 async function readArchiveFilesForDownload(env: Bindings, month: string): Promise<AuditArchiveManifestFile[] | null> {
   const manifest = await readArchiveManifestFromR2(env, month);
-  if (manifest) {
-    return manifest.files;
-  }
-
-  const { legacyJsonKey } = archiveMonthPaths(month);
-  const legacyHead = await env.MEDIA.head(legacyJsonKey);
-  if (!legacyHead) {
-    return null;
-  }
-
-  return [
-    {
-      key: legacyJsonKey,
-      row_count: 0,
-      size_bytes: legacyHead.size,
-      content_type: "application/json",
-      content_encoding: undefined,
-    },
-  ];
+  return manifest ? manifest.files : null;
 }
 
 adminRoutes.get("/invite-links", async (c) => {
@@ -1255,20 +1184,10 @@ adminRoutes.get("/audit-archive/months", async (c) => {
 
   const env = c.env as Bindings;
   const archivedMonths = await listArchiveMonthsFromR2(env);
-  if (archivedMonths.length > 0) {
-    return c.json({
-      months: archivedMonths,
-      source: "r2_archive",
-    });
-  }
-
-  const result = await env.DB.prepare(
-    "SELECT DISTINCT substr(created_at, 1, 7) AS month FROM audit_log ORDER BY month DESC",
-  ).all<{ month: string }>();
 
   return c.json({
-    months: (result.results ?? []).map((item) => item.month).filter((month): month is string => !!month),
-    source: "d1_legacy",
+    months: archivedMonths,
+    source: "r2_manifest",
   });
 });
 
@@ -1299,6 +1218,7 @@ adminRoutes.get("/audit-archive/download", async (c) => {
   } catch {
     return buildError(c, "SERVER_ERROR", "Failed to read archive manifest");
   }
+
   if (!files || files.length === 0) {
     return buildError(c, "NOT_FOUND", "Archive month not found");
   }
@@ -1401,10 +1321,14 @@ adminRoutes.get("/audit-archive/:month", async (c) => {
   const limit = Math.min(200, Math.max(1, Number(c.req.query("limit")) || 50));
 
   let rows: AuditArchiveRow[] = [];
-  let source: "r2_manifest" | "r2_legacy_json" | "d1_legacy" = "d1_legacy";
+  let source: "r2_manifest" = "r2_manifest";
   let manifest: AuditArchiveManifest | null = null;
   try {
-    const resolved = await resolveArchiveMonth(c, month);
+    const env = c.env as Bindings;
+    const resolved = await readArchiveMonthFromR2(env, month);
+    if (!resolved) {
+      return buildError(c, "NOT_FOUND", "Archive month not found");
+    }
     rows = resolved.rows;
     source = resolved.source;
     manifest = resolved.manifest;
@@ -2493,11 +2417,25 @@ adminRoutes.get("/status", async (c) => {
   const env = c.env as Bindings;
   let dbStatus = "ok";
   let r2Status = "ok";
+  const dbChecks: Record<string, string> = {};
+  const requiredTables = ["users", "member_profiles", "roles", "role_permissions"] as const;
 
   try {
-    await env.DB.prepare("SELECT 1 AS ok").first();
+    for (const table of requiredTables) {
+      const row = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1").bind(table).first<{
+        name: string;
+      }>();
+      dbChecks[table] = row?.name ? "ok" : "missing";
+    }
+    const hasMissingTable = requiredTables.some((table) => dbChecks[table] !== "ok");
+    if (hasMissingTable) {
+      dbStatus = "error";
+    }
   } catch {
     dbStatus = "error";
+    for (const table of requiredTables) {
+      dbChecks[table] = "error";
+    }
   }
 
   try {
@@ -2511,6 +2449,7 @@ adminRoutes.get("/status", async (c) => {
     r2: r2Status,
     ws: env.WS ? "ok" : "missing",
     crons: "ok",
+    db_checks: dbChecks,
   });
 });
 

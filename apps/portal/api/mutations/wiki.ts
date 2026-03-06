@@ -1,22 +1,32 @@
-import type { WikiArticle, WikiCategory } from "@guild/shared";
+import {
+  createWikiArticleSchema,
+  createWikiCategorySchema,
+  updateWikiArticleSchema,
+  updateWikiCategorySchema,
+  type WikiArticle,
+  type WikiCategory,
+} from "@guild/shared";
+import type { z } from "zod";
 import { apiRequest } from "../client";
 
-export function createWikiCategory(payload: {
-  name: string;
-  slug?: string;
-  sort_order?: number;
-  parent_id?: string;
-}): Promise<WikiCategory> {
+export type CreateWikiCategoryPayload = z.input<typeof createWikiCategorySchema>;
+export type UpdateWikiCategoryPayload = z.input<typeof updateWikiCategorySchema>;
+export type CreateWikiArticlePayload = z.input<typeof createWikiArticleSchema>;
+export type UpdateWikiArticlePayload = z.input<typeof updateWikiArticleSchema>;
+
+export function createWikiCategory(payload: CreateWikiCategoryPayload): Promise<WikiCategory> {
+  const bodyJson = createWikiCategorySchema.parse(payload);
   return apiRequest<WikiCategory>("/api/wiki/categories", {
     method: "POST",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
-export function updateWikiCategory(id: string, payload: Record<string, unknown>): Promise<WikiCategory> {
+export function updateWikiCategory(id: string, payload: UpdateWikiCategoryPayload): Promise<WikiCategory> {
+  const bodyJson = updateWikiCategorySchema.parse(payload);
   return apiRequest<WikiCategory>(`/api/wiki/categories/${id}`, {
     method: "PATCH",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
@@ -26,23 +36,19 @@ export function deleteWikiCategory(id: string): Promise<{ ok: true }> {
   });
 }
 
-export function createWikiArticle(payload: {
-  title: string;
-  slug?: string;
-  category_id: string;
-  body_json: string;
-  sort_order?: number;
-}): Promise<WikiArticle> {
+export function createWikiArticle(payload: CreateWikiArticlePayload): Promise<WikiArticle> {
+  const bodyJson = createWikiArticleSchema.parse(payload);
   return apiRequest<WikiArticle>("/api/wiki/articles", {
     method: "POST",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
-export function updateWikiArticle(id: string, payload: Record<string, unknown>): Promise<WikiArticle> {
+export function updateWikiArticle(id: string, payload: UpdateWikiArticlePayload): Promise<WikiArticle> {
+  const bodyJson = updateWikiArticleSchema.parse(payload);
   return apiRequest<WikiArticle>(`/api/wiki/articles/${id}`, {
     method: "PATCH",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 

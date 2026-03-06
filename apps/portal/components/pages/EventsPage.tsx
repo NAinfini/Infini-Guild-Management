@@ -1,9 +1,9 @@
 ﻿import type { Event, MemberProfile, User } from "@guild/shared";
+import { IconCalendarEvent } from "@tabler/icons-react";
 import { hasRoleAtLeast } from "@guild/shared";
 import { notifications } from "@mantine/notifications";
 import { useClipboard } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
-import { MotionButton } from "@infini-dev-kit/frontend/components";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -15,10 +15,9 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { archiveEvent, createEvent, joinEvent, leaveEvent, updateEvent, uploadEventImages } from "../../api/mutations/events";
+import { archiveEvent, createEvent, deleteEvent, joinEvent, leaveEvent, updateEvent, uploadEventImages, addEventParticipant, removeEventParticipant } from "../../api/mutations/events";
 import { queryKeys } from "../../api/query-keys";
 import { fetchEventDetail } from "../../api/queries/events";
-import { usePageHeaderActions } from "../../context/PageHeaderContext";
 import { useAppError } from "../../hooks/useAppError";
 import { useEventsData } from "../../hooks/data/useEventsData";
 import { useExternalView } from "../../hooks/useExternalView";
@@ -28,6 +27,7 @@ import { useAuthStore } from "../../stores/auth";
 import { buildMentionList } from "../../utils/copy";
 import { useEventsEditorController } from "../feature/events/useEventsEditorController";
 import { PageLayout } from "../layout/PageLayout";
+import { EventDetailModal } from "../feature/events/EventDetailModal";
 import "./EventsPage.css";
 
 const LazyEventsFiltersCard = lazy(() =>
@@ -41,6 +41,9 @@ const LazyEventCalendarView = lazy(() =>
 );
 const LazyEventFormModal = lazy(() =>
   import("../feature/events/EventFormModal").then((mod) => ({ default: mod.EventFormModal })),
+);
+const LazyRecurringTemplatesTab = lazy(() =>
+  import("../feature/events/RecurringTemplatesTab").then((mod) => ({ default: mod.RecurringTemplatesTab })),
 );
 
 type EventDetailPayload = Awaited<ReturnType<typeof fetchEventDetail>>;
@@ -69,7 +72,7 @@ const MODERN_AVAILABILITY_DAY_KEYS = [
 ] as const;
 
 const LEGACY_AVAILABILITY_DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
-const EVENT_VIEW_MODES = ["cards", "month"] as const;
+const EVENT_VIEW_MODES = ["cards", "month", "recurring"] as const;
 const EVENTS_VIEW_MODE_KEY = "events.viewMode";
 const EVENTS_LAST_SEEN_KEY = "events.last_seen_at";
 
@@ -249,9 +252,14 @@ export function EventsPage() {
   const canInteract = Boolean(user) && !isExternalView;
 
   const [eventType, setEventType] = useState<string | undefined>(undefined);
+  const [searchQuery, setSearchQuery] = useState("");
   const [archivedOnly, setArchivedOnly] = useState(false);
+  const [pinnedOnly, setPinnedOnly] = useState(false);
+  const [lockedOnly, setLockedOnly] = useState(false);
   const [viewMode, setViewMode] = useState<EventViewMode>(() => readEventViewMode());
   const [, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [createTemplateRequested, setCreateTemplateRequested] = useState(0);
+  const [monthDetailEvent, setMonthDetailEvent] = useState<Event | null>(null);
 
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
 
@@ -260,10 +268,22 @@ export function EventsPage() {
     archivedOnly,
   });
   const events = eventsQuery.data?.data ?? [];
-  const sortedEvents = useMemo(
-    () => [...events].sort((left, right) => left.start_at.localeCompare(right.start_at)),
-    [events],
-  );
+  const sortedEvents = useMemo(() => {
+    let filtered = events;
+    if (pinnedOnly) filtered = filtered.filter((e) => e.pinned);
+    if (lockedOnly) filtered = filtered.filter((e) => e.signup_locked);
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(
+        (e) => e.title.toLowerCase().includes(q) || e.description?.toLowerCase().includes(q),
+      );
+    }
+    return [...filtered].sort((left, right) => {
+      // Pinned events always come first
+      if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
+      return left.start_at.localeCompare(right.start_at);
+    });
+  }, [events, pinnedOnly, lockedOnly, searchQuery]);
   const {
     editorOpen,
     editorMode,
@@ -276,15 +296,9 @@ export function EventsPage() {
     editorCapacity,
     editorPinned,
     editorSignupLocked,
-    editorRecurrenceEnabled,
-    editorRecurrenceFreq,
-    editorRecurrenceInterval,
-    editorRecurrenceDays,
     editorAttachments,
-    editorRecurrenceApplyTo,
     editorStartIso,
     editorEndIso,
-    recurrencePayload,
     conflictingEvents,
     setEditorType,
     setEditorTitle,
@@ -294,12 +308,7 @@ export function EventsPage() {
     setEditorCapacity,
     setEditorPinned,
     setEditorSignupLocked,
-    setEditorRecurrenceEnabled,
-    setEditorRecurrenceFreq,
-    setEditorRecurrenceInterval,
-    setEditorRecurrenceDays,
     setEditorAttachments,
-    setEditorRecurrenceApplyTo,
     openCreateEditor: openCreateEditorBase,
     openEditEditor: openEditEditorBase,
     closeEditor: closeEditorBase,
@@ -486,6 +495,52 @@ export function EventsPage() {
     },
     onError: (error) => {
       showError(error, t("message.archiveFailed"));
+    },
+  });
+
+  const unarchiveEventMutation = useMutation({
+    mutationFn: (eventId: string) => updateEvent(eventId, { archived_at: null }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+      notifications.show({ color: "infini-success", message: t("message.unarchived") });
+    },
+    onError: (error) => {
+      showError(error, t("message.unarchiveFailed"));
+    },
+  });
+
+  const deleteEventMutation = useMutation({
+    mutationFn: (eventId: string) => deleteEvent(eventId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+      notifications.show({ color: "infini-success", message: t("message.deleted") });
+    },
+    onError: (error) => {
+      showError(error, t("message.deleteFailed"));
+    },
+  });
+
+  const addParticipantMutation = useMutation({
+    mutationFn: ({ eventId, userId }: { eventId: string; userId: string }) =>
+      addEventParticipant(eventId, userId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+      notifications.show({ color: "infini-success", message: t("message.memberAdded") });
+    },
+    onError: (error) => {
+      showError(error, t("message.memberAddFailed"));
+    },
+  });
+
+  const removeParticipantMutation = useMutation({
+    mutationFn: ({ eventId, userId }: { eventId: string; userId: string }) =>
+      removeEventParticipant(eventId, userId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+      notifications.show({ color: "infini-success", message: t("message.memberRemoved") });
+    },
+    onError: (error) => {
+      showError(error, t("message.memberRemoveFailed"));
     },
   });
 
@@ -733,7 +788,6 @@ export function EventsPage() {
       start_at: editorStartIso,
       end_at: editorEndIso ?? undefined,
       capacity: editorCapacity.trim() ? Number.parseInt(editorCapacity, 10) : undefined,
-      recurrence_rule: recurrencePayload,
       attachments: editorAttachments,
     };
 
@@ -753,22 +807,25 @@ export function EventsPage() {
         ...basePayload,
         pinned: editorPinned,
         signup_locked: editorSignupLocked,
-        recurrence_scope: editorRecurrenceEnabled ? editorRecurrenceApplyTo : "this",
       },
     });
   };
 
+  const hasAnyFilter = Boolean(eventType) || archivedOnly || pinnedOnly || lockedOnly || Boolean(searchQuery.trim());
   const cardsEmptyDescription = archivedOnly
     ? eventType
       ? t("empty.archivedFiltered")
       : t("empty.archived")
-    : eventType
+    : hasAnyFilter
       ? t("empty.filtered")
       : t("empty.default");
 
   const resetCardsFilters = () => {
+    setSearchQuery("");
     setEventType(undefined);
     setArchivedOnly(false);
+    setPinnedOnly(false);
+    setLockedOnly(false);
   };
 
   const handleCopyMentionsForEvent = (event: Event) => {
@@ -797,7 +854,6 @@ export function EventsPage() {
         ? new Date(new Date(event.end_at).getTime() + 7 * 24 * 60 * 60_000).toISOString()
         : undefined,
       capacity: event.capacity ?? undefined,
-      recurrence_rule: event.recurrence_rule ?? undefined,
       attachments: event.attachments ?? [],
     });
 
@@ -813,46 +869,59 @@ export function EventsPage() {
       payload: { signup_locked: !event.signup_locked },
     });
 
-  const createActionLabel = t("button.create");
-  const createAction = useMemo(
-    () =>
-      canManage ? (
-        <MotionButton type="primary" onClick={() => openCreateEditor()}>
-          {createActionLabel}
-        </MotionButton>
-      ) : null,
-    [canManage, createActionLabel, openCreateEditor],
-  );
-  usePageHeaderActions(createAction);
+  const handleDeleteEvent = async (event: Event) => {
+    const confirmed = await openConfirm({
+      title: t("confirm.delete.title"),
+      description: t("confirm.delete.description", { title: event.title }),
+      intent: "danger",
+    });
+    if (confirmed) {
+      deleteEventMutation.mutate(event.id);
+    }
+  };
+
   const hasLoadError = eventsQuery.isError || usersQuery.isError;
   useLoadWarningToast(hasLoadError, t("common:loadErrorRetry"));
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} className="events-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconCalendarEvent size={22} />} className="events-page">
       <Suspense fallback={null}>
         <LazyEventsFiltersCard
+          searchQuery={searchQuery}
           eventType={eventType}
           archivedOnly={archivedOnly}
+          pinnedOnly={pinnedOnly}
+          lockedOnly={lockedOnly}
           viewMode={viewMode}
+          canManage={canManage}
+          onSearchChange={setSearchQuery}
           onEventTypeChange={setEventType}
           onArchivedOnlyChange={setArchivedOnly}
+          onPinnedOnlyChange={setPinnedOnly}
+          onLockedOnlyChange={setLockedOnly}
           onViewModeChange={setViewMode}
+          onCreateEvent={() => openCreateEditor()}
+          onCreateTemplate={() => setCreateTemplateRequested((n) => n + 1)}
         />
       </Suspense>
 
       <Suspense fallback={null}>
-        {viewMode === "cards" ? (
+        {viewMode === "recurring" && canManage ? (
+          <LazyRecurringTemplatesTab canManage={canManage} createRequested={createTemplateRequested} />
+        ) : viewMode === "cards" ? (
           <LazyEventCardsView
             events={sortedEvents}
             cardsEmptyDescription={cardsEmptyDescription}
             canManage={canManage}
             canInteract={canInteract}
+            currentUserId={user?.id ?? null}
             eventType={eventType}
             archivedOnly={archivedOnly}
+            pinnedOnly={pinnedOnly}
+            lockedOnly={lockedOnly}
             eventFlags={eventFlags}
             eventMembersMap={eventMembersMap}
-            joinPending={joinMutation.isPending}
-            leavePending={leaveMutation.isPending}
+            allUsers={usersQuery.data?.data ?? []}
             createPending={createEventMutation.isPending}
             updatePending={updateEventMutation.isPending}
             archivePending={archiveEventMutation.isPending}
@@ -868,6 +937,10 @@ export function EventsPage() {
             onTogglePinEvent={handleTogglePinnedEvent}
             onToggleLockEvent={handleToggleLockedEvent}
             onArchiveEvent={(eventId) => archiveEventMutation.mutate(eventId)}
+            onUnarchiveEvent={(eventId) => unarchiveEventMutation.mutate(eventId)}
+            onDeleteEvent={(event) => { void handleDeleteEvent(event); }}
+            onAddParticipant={(eventId, userId) => addParticipantMutation.mutate({ eventId, userId })}
+            onRemoveParticipant={(eventId, userId) => removeParticipantMutation.mutate({ eventId, userId })}
           />
         ) : (
           <LazyEventCalendarView
@@ -878,6 +951,7 @@ export function EventsPage() {
             onSelectDate={setSelectedDate}
             onCreateEvent={openCreateEditor}
             onEditEvent={openEditEditor}
+            onViewEvent={setMonthDetailEvent}
           />
         )}
       </Suspense>
@@ -905,16 +979,6 @@ export function EventsPage() {
             onPinnedChange={setEditorPinned}
             signupLocked={editorSignupLocked}
             onSignupLockedChange={setEditorSignupLocked}
-            recurrenceEnabled={editorRecurrenceEnabled}
-            onRecurrenceEnabledChange={setEditorRecurrenceEnabled}
-            recurrenceFreq={editorRecurrenceFreq}
-            onRecurrenceFreqChange={setEditorRecurrenceFreq}
-            recurrenceInterval={editorRecurrenceInterval}
-            onRecurrenceIntervalChange={setEditorRecurrenceInterval}
-            recurrenceDays={editorRecurrenceDays}
-            onRecurrenceDaysChange={setEditorRecurrenceDays}
-            recurrenceApplyTo={editorRecurrenceApplyTo}
-            onRecurrenceApplyToChange={setEditorRecurrenceApplyTo}
             attachments={editorAttachments}
             onRemoveAttachment={(attachmentIndex) =>
               setEditorAttachments((current) => current.filter((_, currentIndex) => currentIndex !== attachmentIndex))
@@ -933,6 +997,17 @@ export function EventsPage() {
           />
         </Suspense>
       ) : null}
+
+      {/* Month view detail modal */}
+      <EventDetailModal
+        event={monthDetailEvent}
+        members={monthDetailEvent ? (eventMembersMap.get(monthDetailEvent.id) ?? []) : []}
+        allUsers={usersQuery.data?.data ?? []}
+        canManage={canManage}
+        onClose={() => setMonthDetailEvent(null)}
+        onAddParticipant={(eventId, userId) => addParticipantMutation.mutate({ eventId, userId })}
+        onRemoveParticipant={(eventId, userId) => removeParticipantMutation.mutate({ eventId, userId })}
+      />
     </PageLayout>
   );
 }

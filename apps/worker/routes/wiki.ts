@@ -1,8 +1,9 @@
-﻿import {
+import {
   ERROR_STATUS,
   createWikiArticleSchema,
   createWikiCategorySchema,
   hasRoleAtLeast,
+  updateWikiCategorySchema,
   updateWikiArticleSchema,
   wikiArticleSchema,
   wikiCategorySchema,
@@ -51,6 +52,7 @@ type ArticleRow = {
   categoryId: string;
   bodyJson: string;
   sortOrder: number;
+  pinned: boolean;
   archivedAt: string | null;
   createdBy: string;
   updatedBy: string | null;
@@ -114,6 +116,7 @@ function toArticlePayload(row: ArticleRow) {
     category_id: row.categoryId,
     body_json: row.bodyJson,
     sort_order: row.sortOrder,
+    pinned: row.pinned,
     archived_at: row.archivedAt,
     created_by: row.createdBy,
     updated_by: row.updatedBy,
@@ -178,6 +181,7 @@ async function getArticleById(c: Context, articleId: string): Promise<ArticleRow
         categoryId: wikiArticles.categoryId,
         bodyJson: wikiArticles.bodyJson,
         sortOrder: wikiArticles.sortOrder,
+        pinned: wikiArticles.pinned,
         archivedAt: wikiArticles.archivedAt,
         createdBy: wikiArticles.createdBy,
         updatedBy: wikiArticles.updatedBy,
@@ -297,7 +301,7 @@ wikiRoutes.patch("/categories/:id", async (c) => {
     return buildError(c, "VALIDATION_ERROR", "Invalid JSON body");
   }
 
-  const parsed = createWikiCategorySchema.partial().safeParse(body);
+  const parsed = updateWikiCategorySchema.safeParse(body);
   if (!parsed.success) {
     return buildError(c, "VALIDATION_ERROR", "Invalid wiki category payload", parsed.error.flatten());
   }
@@ -433,6 +437,7 @@ wikiRoutes.get("/articles", async (c) => {
       categoryId: wikiArticles.categoryId,
       bodyJson: wikiArticles.bodyJson,
       sortOrder: wikiArticles.sortOrder,
+      pinned: wikiArticles.pinned,
       archivedAt: wikiArticles.archivedAt,
       createdBy: wikiArticles.createdBy,
       updatedBy: wikiArticles.updatedBy,
@@ -441,7 +446,7 @@ wikiRoutes.get("/articles", async (c) => {
     })
     .from(wikiArticles)
     .where(whereClause)
-    .orderBy(asc(wikiArticles.sortOrder), desc(wikiArticles.updatedAt), asc(wikiArticles.id))
+    .orderBy(desc(wikiArticles.pinned), asc(wikiArticles.sortOrder), desc(wikiArticles.updatedAt), asc(wikiArticles.id))
     .limit(limit)
     .offset(offset);
 
@@ -466,6 +471,7 @@ wikiRoutes.get("/articles/:slug", async (c) => {
         categoryId: wikiArticles.categoryId,
         bodyJson: wikiArticles.bodyJson,
         sortOrder: wikiArticles.sortOrder,
+        pinned: wikiArticles.pinned,
         archivedAt: wikiArticles.archivedAt,
         createdBy: wikiArticles.createdBy,
         updatedBy: wikiArticles.updatedBy,
@@ -513,6 +519,7 @@ wikiRoutes.post("/articles", async (c) => {
     categoryId: parsed.data.category_id,
     bodyJson: parsed.data.body_json,
     sortOrder: parsed.data.sort_order,
+    pinned: parsed.data.pinned,
     archivedAt: null,
     createdBy: sessionUser.id,
   });
@@ -566,6 +573,7 @@ wikiRoutes.patch("/articles/:id", async (c) => {
   if (parsed.data.category_id !== undefined) patch.categoryId = parsed.data.category_id;
   if (parsed.data.body_json !== undefined) patch.bodyJson = parsed.data.body_json;
   if (parsed.data.sort_order !== undefined) patch.sortOrder = parsed.data.sort_order;
+  if (parsed.data.pinned !== undefined) patch.pinned = parsed.data.pinned;
   if (parsed.data.archived_at !== undefined) patch.archivedAt = parsed.data.archived_at;
 
   const db = getDb(c);
@@ -670,3 +678,4 @@ wikiRoutes.post("/articles/:id/images", async (c) => {
 
   return c.json({ keys });
 });
+

@@ -1,34 +1,32 @@
 import { DepthToggle, InfiniCard } from "@infini-dev-kit/frontend/components";
-import { Button, Group, TextInput, Tooltip } from "@mantine/core";
-import { IconArchive, IconCalendarTime, IconFileText, IconPin, IconPlus } from "@tabler/icons-react";
+import { Group, TextInput, Tooltip } from "@mantine/core";
+import { IconArchive, IconCalendarTime, IconFileText, IconPin } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 
-type AnnouncementListScope = "all" | "pinned" | "archived";
-
 type AnnouncementFiltersCardProps = {
-  listScope: AnnouncementListScope;
-  status: string | undefined;
+  pinnedFilter: boolean;
+  statusFilter: string | undefined;
   search: string;
   canEdit: boolean;
-  onListScopeChange: (value: AnnouncementListScope) => void;
-  onStatusChange: (value: string | undefined) => void;
+  onPinnedFilterChange: (value: boolean) => void;
+  onStatusFilterChange: (value: string | undefined) => void;
   onSearchChange: (value: string) => void;
-  onCreate?: () => void;
 };
 
 export function AnnouncementFiltersCard({
-  listScope,
-  status,
+  pinnedFilter,
+  statusFilter,
   search,
   canEdit,
-  onListScopeChange,
-  onStatusChange,
+  onPinnedFilterChange,
+  onStatusFilterChange,
   onSearchChange,
-  onCreate,
 }: AnnouncementFiltersCardProps) {
   const { t } = useTranslation("announcements");
-  const isPinned = listScope === "pinned";
-  const isArchived = listScope === "archived";
+
+  const toggleStatus = (value: string) => {
+    onStatusFilterChange(statusFilter === value ? undefined : value);
+  };
 
   return (
     <InfiniCard interactive={false}>
@@ -43,8 +41,8 @@ export function AnnouncementFiltersCard({
           />
           <Tooltip label={t("filter.pinned")} withArrow>
             <DepthToggle
-              pressed={isPinned}
-              onToggle={() => onListScopeChange(isPinned ? "all" : "pinned")}
+              pressed={pinnedFilter}
+              onToggle={onPinnedFilterChange}
               type="secondary"
               size="sm"
               iconOnly
@@ -55,8 +53,8 @@ export function AnnouncementFiltersCard({
           </Tooltip>
           <Tooltip label={t("filter.archived")} withArrow>
             <DepthToggle
-              pressed={isArchived}
-              onToggle={() => onListScopeChange(isArchived ? "all" : "archived")}
+              pressed={statusFilter === "archived"}
+              onToggle={() => toggleStatus("archived")}
               type="secondary"
               size="sm"
               iconOnly
@@ -69,8 +67,8 @@ export function AnnouncementFiltersCard({
             <>
               <Tooltip label={t("filter.draft")} withArrow>
                 <DepthToggle
-                  pressed={status === "draft"}
-                  onToggle={() => onStatusChange(status === "draft" ? undefined : "draft")}
+                  pressed={statusFilter === "draft"}
+                  onToggle={() => toggleStatus("draft")}
                   type="secondary"
                   size="sm"
                   iconOnly
@@ -81,8 +79,8 @@ export function AnnouncementFiltersCard({
               </Tooltip>
               <Tooltip label={t("filter.scheduled")} withArrow>
                 <DepthToggle
-                  pressed={status === "scheduled"}
-                  onToggle={() => onStatusChange(status === "scheduled" ? undefined : "scheduled")}
+                  pressed={statusFilter === "scheduled"}
+                  onToggle={() => toggleStatus("scheduled")}
                   type="secondary"
                   size="sm"
                   iconOnly
@@ -92,16 +90,6 @@ export function AnnouncementFiltersCard({
                 </DepthToggle>
               </Tooltip>
             </>
-          ) : null}
-          {canEdit && onCreate ? (
-            <Button
-              size="compact-sm"
-              leftSection={<IconPlus size={14} />}
-              onClick={onCreate}
-              style={{ marginInlineStart: "auto" }}
-            >
-              {t("action.create")}
-            </Button>
           ) : null}
         </Group>
       </div>

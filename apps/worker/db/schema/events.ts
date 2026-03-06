@@ -24,6 +24,8 @@ export const events = sqliteTable(
     seriesId: text("series_id"),
     isSeriesParent: integer("is_series_parent", { mode: "boolean" }).notNull().default(false),
     instanceDate: text("instance_date"),
+    lastGeneratedDate: text("last_generated_date"),
+    generationCount: integer("generation_count").notNull().default(0),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },

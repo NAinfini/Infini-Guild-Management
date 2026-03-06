@@ -30,6 +30,7 @@ export const wikiArticles = sqliteTable(
     categoryId: text("category_id").notNull().references(() => wikiCategories.id),
     bodyJson: text("body_json").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
+    pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
     archivedAt: text("archived_at"),
     createdBy: text("created_by").notNull().references(() => users.id),
     updatedBy: text("updated_by").references(() => users.id),
@@ -40,10 +41,16 @@ export const wikiArticles = sqliteTable(
     idxCategoryArchivedSort: index("idx_wiki_articles_category_archived_sort").on(
       table.categoryId,
       table.archivedAt,
+      table.pinned,
       table.sortOrder,
       table.updatedAt,
       table.id,
     ),
-    idxArchivedUpdated: index("idx_wiki_articles_archived_updated").on(table.archivedAt, table.updatedAt, table.id),
+    idxArchivedUpdated: index("idx_wiki_articles_archived_updated").on(
+      table.archivedAt,
+      table.pinned,
+      table.updatedAt,
+      table.id,
+    ),
   }),
 );

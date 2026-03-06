@@ -1,5 +1,6 @@
 import { Alert, Badge, Button, Divider, Group, Loader, Select, SimpleGrid, Stack, Switch, Text, TextInput, Textarea } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { IconDeviceFloppy, IconRefresh, IconSend } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -128,6 +129,7 @@ export function AdminBotSection({
                 <Button
                   size="compact-xs"
                   variant="light"
+                  leftSection={<IconSend size={16} />}
                   onClick={() => onTestDispatch("discord")}
                   loading={testDispatchPending}
                 >
@@ -149,6 +151,7 @@ export function AdminBotSection({
                 <Button
                   size="compact-xs"
                   variant="default"
+                  leftSection={<IconRefresh size={16} />}
                   onClick={onRefreshChannels}
                   loading={discordChannelsFetching}
                   disabled={!canRefreshChannels}
@@ -213,6 +216,7 @@ export function AdminBotSection({
                 <Button
                   size="compact-xs"
                   variant="light"
+                  leftSection={<IconSend size={16} />}
                   onClick={() => onTestDispatch("wechat")}
                   loading={testDispatchPending}
                 >
@@ -261,7 +265,7 @@ export function AdminBotSection({
                 styles={{ input: { fontFamily: "monospace", fontSize: "0.82rem" } }}
               />
               <Group justify="flex-end">
-                <Button onClick={onSaveBotSettings} loading={savePending}>
+                <Button leftSection={<IconDeviceFloppy size={16} />} onClick={onSaveBotSettings} loading={savePending}>
                   {saveLabel}
                 </Button>
               </Group>

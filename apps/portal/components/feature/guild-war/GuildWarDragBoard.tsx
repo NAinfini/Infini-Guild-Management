@@ -244,7 +244,6 @@ export function GuildWarDragBoard({
         onDragEnd={onDragEnd}
       >
         <div className="guild-war-dnd-split">
-          {/* Pool — fixed left column */}
           <div className="guild-war-dnd-pool">
             {poolColumn ? (
               <DroppableMemberColumn
@@ -261,9 +260,8 @@ export function GuildWarDragBoard({
             ) : null}
           </div>
 
-          {/* Teams — vertical list area */}
           <div className="guild-war-dnd-teams-wrap">
-            <div className="guild-war-dnd-teams">
+            <Stack gap={12} className="guild-war-dnd-teams">
               {teamColumns.map((column) => (
                 <DroppableMemberColumn
                   key={column.containerId}
@@ -278,7 +276,7 @@ export function GuildWarDragBoard({
                   onOpenMember={onOpenMember}
                 />
               ))}
-            </div>
+            </Stack>
           </div>
         </div>
 

@@ -1,20 +1,33 @@
-import { DepthToggle } from "@infini-dev-kit/frontend/components";
-import { Group, Text } from "@mantine/core";
+import type { AdminRole } from "@guild/shared";
+import { Select, Text } from "@mantine/core";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { EyeOutlined } from "../../utils/icons";
 
-export type ViewingAsRole = "admin" | "moderator" | "member" | "external";
+export type ViewingAsRole = string;
 
 type ViewingAsSelectorProps = {
   value: ViewingAsRole;
   compact?: boolean;
+  roles: AdminRole[];
   onChange: (nextRole: ViewingAsRole) => void;
 };
 
-const ROLES: ViewingAsRole[] = ["admin", "moderator", "member", "external"];
-
-export function ViewingAsSelector({ value, compact = false, onChange }: ViewingAsSelectorProps) {
+export function ViewingAsSelector({ value, compact = false, roles, onChange }: ViewingAsSelectorProps) {
   const { t } = useTranslation("common");
+
+  const options = useMemo(() => {
+    const items = roles
+      .slice()
+      .sort((a, b) => b.level - a.level)
+      .map((role) => ({
+        value: role.id,
+        label: role.name,
+      }));
+
+    items.push({ value: "external", label: t("viewingAs.external") });
+    return items;
+  }, [roles, t]);
 
   if (compact) {
     return (
@@ -29,20 +42,20 @@ export function ViewingAsSelector({ value, compact = false, onChange }: ViewingA
       <Text c="dimmed" className="app-viewing-as-label">
         {t("viewingAs.label")}
       </Text>
-      <Group gap={4} wrap="nowrap">
-        {ROLES.map((role) => (
-          <DepthToggle
-            key={role}
-            pressed={value === role}
-            onToggle={() => onChange(role)}
-            size="sm"
-            type={value === role ? "primary" : "secondary"}
-            style={{ fontSize: 11 }}
-          >
-            {t(`viewingAs.${role}`)}
-          </DepthToggle>
-        ))}
-      </Group>
+      <Select
+        data={options}
+        value={value}
+        onChange={(val) => {
+          if (val) {
+            onChange(val);
+          }
+        }}
+        size="xs"
+        allowDeselect={false}
+        styles={{
+          input: { fontSize: 12 },
+        }}
+      />
     </div>
   );
 }

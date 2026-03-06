@@ -1,7 +1,8 @@
-﻿import { Button, Divider, Group, Select, Stack, Text, TextInput } from "@mantine/core";
+﻿import { Button, Divider, Group, Select, Stack, TextInput } from "@mantine/core";
 import { MotionButton } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { useTranslation } from "react-i18next";
+import { IconTrash } from "@tabler/icons-react";
 
 type GuildWarActiveTopCardProps = {
   selectedEventId: string | undefined;
@@ -16,10 +17,6 @@ type GuildWarActiveTopCardProps = {
   postTeamsPending: boolean;
   activeSearch: string;
   onActiveSearchChange: (value: string) => void;
-  matchLabel: string;
-  onPrevMatch: () => void;
-  onNextMatch: () => void;
-  hasMatches: boolean;
   searchPlaceholder: string;
   initTeamsLabel: string;
   selectedTemplateId: string;
@@ -57,10 +54,6 @@ export function GuildWarActiveTopCard({
   postTeamsPending,
   activeSearch,
   onActiveSearchChange,
-  matchLabel,
-  onPrevMatch,
-  onNextMatch,
-  hasMatches,
   searchPlaceholder,
   initTeamsLabel,
   selectedTemplateId,
@@ -89,15 +82,14 @@ export function GuildWarActiveTopCard({
     <InfiniCard interactive={false} className="guild-war-active-top-card">
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={12}>
-          {/* Row 1: Event selector + actions */}
+          {/* Event selector + search + actions */}
           <Group gap={10} wrap="wrap" align="center">
-            <Select
-              style={{ flex: "1 1 240px", maxWidth: 320 }}
-              value={selectedEventId ?? null}
-              placeholder={eventPlaceholder}
-              aria-label="Select guild war event"
-              onChange={(value) => onSelectedEventIdChange(value ?? "")}
-              data={eventOptions}
+            <TextInput
+              style={{ flex: "1 1 200px", maxWidth: 320 }}
+              value={activeSearch}
+              onChange={(event) => onActiveSearchChange(event.currentTarget.value)}
+              placeholder={searchPlaceholder}
+              aria-label="Search active guild war members"
             />
             {canManage ? (
               <>
@@ -112,26 +104,14 @@ export function GuildWarActiveTopCard({
                 </MotionButton>
               </>
             ) : null}
-          </Group>
-
-          {/* Row 2: Search + navigation */}
-          <Group gap={10} wrap="wrap" align="center">
-            <TextInput
-              style={{ flex: "1 1 200px", maxWidth: 320 }}
-              value={activeSearch}
-              onChange={(event) => onActiveSearchChange(event.currentTarget.value)}
-              placeholder={searchPlaceholder}
-              aria-label="Search active guild war members"
+            <Select
+              style={{ flex: "0 1 320px", marginInlineStart: "auto" }}
+              value={selectedEventId ?? null}
+              placeholder={eventPlaceholder}
+              aria-label="Select guild war event"
+              onChange={(value) => onSelectedEventIdChange(value ?? "")}
+              data={eventOptions}
             />
-            <Group gap={6} wrap="nowrap" align="center">
-              <Button size="xs" variant="light" onClick={onPrevMatch} disabled={!hasMatches}>
-                {t("active.prev")}
-              </Button>
-              <Button size="xs" variant="light" onClick={onNextMatch} disabled={!hasMatches}>
-                {t("active.next")}
-              </Button>
-              <Text c="dimmed" size="sm" style={{ whiteSpace: "nowrap" }}>{matchLabel}</Text>
-            </Group>
           </Group>
 
           {/* Row 3: Template management (admin only) */}
@@ -182,6 +162,7 @@ export function GuildWarActiveTopCard({
                 <Button
                   variant="light"
                   color="infini-danger"
+                  leftSection={<IconTrash size={16} />}
                   onClick={onDeleteTemplate}
                   loading={templateDeletePending}
                   disabled={templateActionDisabled || !selectedTemplateId}

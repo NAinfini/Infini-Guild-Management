@@ -1,4 +1,5 @@
 import { listThemeIds, resolveThemeSpec } from "@infini-dev-kit/frontend/theme/theme-specs";
+import { IconSettings } from "@tabler/icons-react";
 import type { ThemeId } from "@infini-dev-kit/frontend/theme/theme-types";
 import { useBridge, useThemeSnapshot } from "@infini-dev-kit/frontend/provider";
 import {
@@ -275,6 +276,7 @@ export function SettingsPage() {
           {t("subtitle")}
         </ShinyText>
       }
+      icon={<IconSettings size={22} />}
     >
       <AnimatedTabs
         items={tabItems}

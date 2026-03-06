@@ -1,5 +1,8 @@
-import type { GalleryItem } from "@guild/shared";
+import { type GalleryItem, createGalleryItemSchema } from "@guild/shared";
+import type { z } from "zod";
 import { apiRequest } from "../client";
+
+export type CreateGalleryVideoPayload = z.input<typeof createGalleryItemSchema>;
 
 export function uploadGalleryImages(
   files: File[],
@@ -21,14 +24,11 @@ export function uploadGalleryImages(
   });
 }
 
-export function createGalleryVideo(payload: {
-  type: "video";
-  url: string;
-  caption?: string;
-}): Promise<GalleryItem> {
+export function createGalleryVideo(payload: CreateGalleryVideoPayload): Promise<GalleryItem> {
+  const bodyJson = createGalleryItemSchema.parse(payload);
   return apiRequest<GalleryItem>("/api/gallery/videos", {
     method: "POST",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 

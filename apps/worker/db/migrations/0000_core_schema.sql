@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS events (
   series_id TEXT,
   is_series_parent INTEGER NOT NULL DEFAULT 0,
   instance_date TEXT,
+  last_generated_date TEXT,
+  generation_count INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -185,6 +187,7 @@ CREATE TABLE IF NOT EXISTS wiki_articles (
   category_id TEXT NOT NULL REFERENCES wiki_categories(id),
   body_json TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
+  pinned INTEGER NOT NULL DEFAULT 0,
   archived_at TEXT,
   created_by TEXT NOT NULL REFERENCES users(id),
   updated_by TEXT REFERENCES users(id),
@@ -364,9 +367,9 @@ CREATE INDEX IF NOT EXISTS idx_war_templates_updated_at
 CREATE INDEX IF NOT EXISTS idx_wiki_categories_parent_sort
   ON wiki_categories(parent_id, sort_order, name, id);
 CREATE INDEX IF NOT EXISTS idx_wiki_articles_category_archived_sort
-  ON wiki_articles(category_id, archived_at, sort_order, updated_at, id);
+  ON wiki_articles(category_id, archived_at, pinned, sort_order, updated_at, id);
 CREATE INDEX IF NOT EXISTS idx_wiki_articles_archived_updated
-  ON wiki_articles(archived_at, updated_at, id);
+  ON wiki_articles(archived_at, pinned, updated_at, id);
 
 -- gallery
 CREATE INDEX IF NOT EXISTS idx_gallery_items_created

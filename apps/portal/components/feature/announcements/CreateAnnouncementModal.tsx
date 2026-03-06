@@ -12,7 +12,7 @@ import {
 } from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { IconPin, IconCalendarTime, IconBrandDiscord, IconBrandWechat } from "@tabler/icons-react";
+import { IconPin, IconCalendarTime, IconBrandDiscord, IconBrandWechat, IconDeviceFloppy, IconX } from "@tabler/icons-react";
 import { TipTapEditor, TIPTAP_DEFAULT_JSON } from "../../shared/TipTapEditor";
 
 function toDateTimeLocalValue(value: string): string {
@@ -240,6 +240,7 @@ export function CreateAnnouncementModal({
                 variant="default"
                 onClick={() => onCreateByStatus(buildPayload("draft"))}
                 loading={creating}
+                leftSection={<IconDeviceFloppy size={16} />}
               >
                 {t("action.saveAsDraft")}
               </Button>
@@ -273,7 +274,7 @@ export function CreateAnnouncementModal({
                 : t("confirm.publish")}
           </Text>
           <Group justify="flex-end" gap={8}>
-            <Button variant="default" onClick={() => setConfirmAction(null)}>
+            <Button variant="default" onClick={() => setConfirmAction(null)} leftSection={<IconX size={16} />}>
               {t("action.cancel")}
             </Button>
             {confirmAction === "publishNow" ? (

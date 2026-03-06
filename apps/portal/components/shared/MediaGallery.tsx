@@ -186,7 +186,7 @@ export function MediaGallery({
   };
 
   if (items.length === 0 && !audioResolved) {
-    return <EmptyState title="No media" />;
+    return <EmptyState title={t("media.noMedia")} />;
   }
 
   return (
@@ -448,7 +448,7 @@ export function MediaGallery({
           </InfiniCard>
         )
       ) : (
-        <EmptyState title="No audio" />
+        <EmptyState title={t("media.noAudio")} />
       )}
     </Stack>
   );

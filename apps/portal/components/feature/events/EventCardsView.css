@@ -75,14 +75,14 @@
   height: 28px;
   border-radius: 6px;
   cursor: pointer;
-  opacity: 0.5;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 60%, transparent);
   flex-shrink: 0;
-  transition: opacity 150ms ease, background 150ms ease;
+  transition: color 150ms ease, background 150ms ease;
 }
 
 .event-card__menu-btn:hover {
-  opacity: 1;
-  background: color-mix(in srgb, var(--infini-color-text, #111827) 8%, transparent);
+  color: var(--infini-color-text, #111827);
+  background: color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
 }
 
 /* ── Body ── */
@@ -224,11 +224,6 @@
   border-top: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 8%, transparent);
 }
 
-.event-card__join-btn {
-  flex: 1;
-  min-width: 0;
-}
-
 /* ── Members detail modal ── */
 .event-members-modal__header {
   display: grid;
@@ -266,5 +261,29 @@
 .event-members-modal__col--power {
   text-align: right;
   min-width: 0;
+}
+
+/* ── Event card context menu ── */
+.event-card__menu-dropdown {
+  border: 1px solid color-mix(in srgb, var(--infini-color-primary, #3b82f6) 24%, transparent);
+  box-shadow: 0 10px 28px color-mix(in srgb, black 40%, transparent);
+}
+
+.event-card__menu-item {
+  transition:
+    background-color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease),
+    color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+  border-radius: 4px;
+  color: var(--menu-item-color, inherit);
+}
+
+.event-card__menu-item[data-hovered],
+.event-card__menu-item:hover:not(:disabled, [data-disabled]) {
+  background-color: color-mix(in srgb, var(--menu-item-color, var(--infini-color-primary, #3b82f6)) 18%, transparent) !important;
+  color: var(--menu-item-color, var(--infini-color-primary, #3b82f6));
+}
+
+.event-card__menu-divider {
+  border-top-color: color-mix(in srgb, var(--infini-color-text, #e2e8f0) 18%, transparent);
 }
 

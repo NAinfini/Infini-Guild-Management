@@ -1,8 +1,8 @@
 ﻿import type { Announcement } from "@guild/shared";
 import { PushpinOutlined } from "@portal/utils/icons";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { DepthButton, InfiniCard } from "@infini-dev-kit/frontend/components";
 import { Alert, Badge, Group, Indicator, Loader, Stack, Text, Tooltip } from "@mantine/core";
-import { IconArchive, IconCalendarTime, IconCircleCheck, IconFileText } from "@tabler/icons-react";
+import { IconArchive, IconCalendarTime, IconCircleCheck, IconFileText, IconPlus } from "@tabler/icons-react";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -40,6 +40,7 @@ type AnnouncementListCardProps = {
   warningMessage: ReactNode;
   emptyText: ReactNode;
   onSelect: (id: string) => void;
+  onCreate?: () => void;
 };
 
 export function AnnouncementListCard({
@@ -53,13 +54,26 @@ export function AnnouncementListCard({
   warningMessage,
   emptyText,
   onSelect,
+  onCreate,
 }: AnnouncementListCardProps) {
   const { t } = useTranslation("announcements");
   return (
     <InfiniCard className="announcements-list-card" interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={8}>
-          <Text fw={600}>{title}</Text>
+          <Group justify="space-between" align="center">
+            <Text fw={600}>{title}</Text>
+            {canEdit && onCreate ? (
+              <DepthButton
+                onClick={() => onCreate()}
+                type="secondary"
+                size="sm"
+                before={<IconPlus size={16} />}
+              >
+                {t("action.newAnnouncement")}
+              </DepthButton>
+            ) : null}
+          </Group>
           {isLoading ? <Loader size="sm" /> : null}
           {isError ? <Alert color="infini-warning" title={warningMessage} /> : null}
           {!isLoading && !isError ? (
@@ -67,6 +81,16 @@ export function AnnouncementListCard({
               <Stack gap={8}>
                 {rows.map((item) => (
                   <div key={item.id} className="announcements-list-row">
+                    <Indicator
+                      disabled={
+                        !(Boolean(announcementsLastSeenAt) && Date.parse(item.updated_at) > Date.parse(announcementsLastSeenAt as string))
+                      }
+                      processing
+                      size={8}
+                      position="top-start"
+                      offset={4}
+                      style={{ flex: 1 }}
+                    >
                     <button
                       type="button"
                       onClick={() => onSelect(item.id)}
@@ -76,18 +100,9 @@ export function AnnouncementListCard({
                     >
                       <Stack gap={2}>
                         <div className="announcement-item-title">
-                          <Indicator
-                            disabled={
-                              !(Boolean(announcementsLastSeenAt) && Date.parse(item.updated_at) > Date.parse(announcementsLastSeenAt as string))
-                            }
-                            processing
-                            size={8}
-                            offset={4}
-                          >
                             <Text fw={600}>{item.title}</Text>
-                          </Indicator>
                           {item.pinned ? <PushpinOutlined className="announcement-item-pin" /> : null}
-                          {canEdit ? (
+                          {canEdit || item.status === "archived" ? (
                             <Tooltip label={t(`status.${item.status}`)} withArrow>
                               <span style={{ display: "inline-flex", lineHeight: 0 }}>{statusIcon(item.status)}</span>
                             </Tooltip>
@@ -103,6 +118,7 @@ export function AnnouncementListCard({
                         </Text>
                       </Stack>
                     </button>
+                    </Indicator>
                   </div>
                 ))}
               </Stack>

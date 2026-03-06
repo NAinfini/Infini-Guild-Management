@@ -1,5 +1,7 @@
 import type { MemberProfile, User } from "@guild/shared";
-import { Button, Modal, Stack, Text } from "@mantine/core";
+import { DepthButton } from "@infini-dev-kit/frontend/components";
+import { Group, Modal, Stack, Text } from "@mantine/core";
+import { IconPencil } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import DOMPurify from "dompurify";
@@ -103,9 +105,23 @@ export function ProfileModal({
   return (
     <Modal
       opened={open}
-      title={user ? `${user.username} Profile` : "Profile"}
+      title={
+        <Group gap={12} wrap="nowrap" justify="space-between" style={{ flex: 1 }}>
+          <span>{user ? `${user.username} Profile` : "Profile"}</span>
+          {canEdit && onEdit ? (
+            <DepthButton
+              onClick={onEdit}
+              type="secondary"
+              size="sm"
+              before={<IconPencil size={14} />}
+            >
+              {t("profile.editProfile")}
+            </DepthButton>
+          ) : null}
+        </Group>
+      }
       onClose={onClose}
-      classNames={{ content: styles.modalContent }}
+      classNames={{ content: styles.modalContent, title: styles.modalTitle }}
       size="min(1180px, 96vw)"
       centered
       returnFocus
@@ -166,14 +182,6 @@ export function ProfileModal({
               audioKey={profile.audio_key}
               resolveMediaUrl={resolveMediaUrl}
             />
-
-            {canEdit && onEdit ? (
-              <div className={styles.editAction}>
-                <Button onClick={onEdit} aria-label={`Edit profile for ${user.username}`}>
-                  {t("profile.editProfile")}
-                </Button>
-              </div>
-            ) : null}
           </Stack>
         </div>
       )}

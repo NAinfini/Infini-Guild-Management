@@ -1,8 +1,8 @@
 ﻿import type { WikiArticle, WikiCategory } from "@guild/shared";
-import { MotionButton, DepthToggle } from "@infini-dev-kit/frontend/components";
+import { DepthButton, DepthToggle } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import { Alert, Group, Select, Skeleton, Stack, Text, TextInput } from "@mantine/core";
-import { IconArchive } from "@tabler/icons-react";
+import { Alert, Group, Select, Skeleton, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { IconArchive, IconDeviceFloppy, IconPinned, IconPlus, IconX } from "@tabler/icons-react";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -32,17 +32,19 @@ type WikiArticleEditorCardProps = {
   articleBody: string;
   articleCategoryId: string;
   categoryOptions: CategoryOption[];
+  pinnedIntent: "none" | "pin" | "unpin";
+  archiveIntent: "none" | "archive" | "unarchive";
   isSaving: boolean;
-  isArchiving: boolean;
   isCreating: boolean;
   canCreateArticle: boolean;
   onArticleTitleChange: (value: string) => void;
   onArticleBodyChange: (value: string) => void;
   onArticleCategoryChange: (value: string) => void;
   onSaveArticle: () => void;
-  onArchiveArticle: () => void;
-  onUnarchiveArticle: () => void;
+  onTogglePinnedIntent: () => void;
+  onToggleArchiveIntent: () => void;
   onCreateArticle: () => void;
+  onExitEditor: () => void;
   onImageUpload: (file: File) => Promise<string>;
   emptyTitle: ReactNode;
 };
@@ -59,22 +61,32 @@ export function WikiArticleEditorCard({
   articleBody,
   articleCategoryId,
   categoryOptions,
+  pinnedIntent,
+  archiveIntent,
   isSaving,
-  isArchiving,
   isCreating,
   canCreateArticle,
   onArticleTitleChange,
   onArticleBodyChange,
   onArticleCategoryChange,
   onSaveArticle,
-  onArchiveArticle,
-  onUnarchiveArticle,
+  onTogglePinnedIntent,
+  onToggleArchiveIntent,
   onCreateArticle,
+  onExitEditor,
   onImageUpload,
   emptyTitle,
 }: WikiArticleEditorCardProps) {
   const { t } = useTranslation("wiki");
-
+  const pinLabel = selectedArticle?.pinned
+    ? (pinnedIntent === "unpin" ? t("articleEditor.unpinQueued") : t("articleEditor.unpin"))
+    : (pinnedIntent === "pin" ? t("articleEditor.pinQueued") : t("articleEditor.pin"));
+  const archiveLabel = selectedArticle?.archived_at
+    ? (archiveIntent === "unarchive" ? t("articleEditor.unarchiveQueued") : t("articleEditor.unarchive"))
+    : (archiveIntent === "archive" ? t("articleEditor.archiveQueued") : t("articleEditor.archive"));
+  const pinnedPressed = selectedArticle
+    ? (selectedArticle.pinned ? pinnedIntent !== "unpin" : pinnedIntent === "pin")
+    : false;
   if (!selectedArticle && !(canEdit && isCreatingArticle)) {
     return (
       <InfiniCard className="wiki-article-editor-card" interactive={false}>
@@ -94,35 +106,51 @@ export function WikiArticleEditorCard({
         <Stack gap={12}>
           <Group justify="space-between" align="start">
             <Text fw={600}>{t("articleEditor.title")}</Text>
-            {canEdit && selectedArticle ? (
+            {canEdit ? (
               <Group gap={8} wrap="wrap">
-                <MotionButton type="primary" onClick={onSaveArticle} loading={isSaving}>
-                  {t("articleEditor.save")}
-                </MotionButton>
-                <DepthToggle
-                  pressed={false}
-                  onToggle={onArchiveArticle}
-                  type="danger"
-                  size="sm"
-                  iconOnly
-                  disabled={isArchiving || Boolean(selectedArticle.archived_at)}
-                  aria-label={t("articleEditor.archive")}
-                >
-                  <IconArchive size={16} />
-                </DepthToggle>
-                {selectedArticle.archived_at ? (
-                  <DepthToggle
-                    pressed={true}
-                    onToggle={onUnarchiveArticle}
-                    type="secondary"
-                    size="sm"
-                    iconOnly
-                    disabled={isSaving}
-                    aria-label={t("articleEditor.unarchive")}
-                  >
-                    <IconArchive size={16} />
-                  </DepthToggle>
+                {selectedArticle ? (
+                  <>
+                    <Tooltip label={pinLabel} withArrow>
+                      <DepthToggle
+                        pressed={pinnedPressed}
+                        onToggle={() => onTogglePinnedIntent()}
+                        type="primary"
+                        size="sm"
+                        iconOnly
+                        before={<IconPinned size={16} />}
+                        disabled={isSaving}
+                        aria-label={pinLabel}
+                      />
+                    </Tooltip>
+                    <DepthButton
+                      type={archiveIntent === "none" ? "danger" : "secondary"}
+                      size="sm"
+                      before={<IconArchive size={16} />}
+                      onClick={onToggleArchiveIntent}
+                      disabled={isSaving}
+                    >
+                      {archiveLabel}
+                    </DepthButton>
+                    <DepthButton
+                      type="primary"
+                      size="sm"
+                      before={<IconDeviceFloppy size={16} />}
+                      onClick={onSaveArticle}
+                      disabled={isSaving}
+                    >
+                      {t("articleEditor.save")}
+                    </DepthButton>
+                  </>
                 ) : null}
+                <DepthButton
+                  type="secondary"
+                  size="sm"
+                  before={<IconX size={16} />}
+                  onClick={onExitEditor}
+                  disabled={isSaving}
+                >
+                  {t("editor.exit")}
+                </DepthButton>
               </Group>
             ) : null}
           </Group>
@@ -188,9 +216,15 @@ export function WikiArticleEditorCard({
                 </Stack>
               ) : null}
               {canEdit && isCreatingArticle ? (
-                <MotionButton type="primary" onClick={onCreateArticle} loading={isCreating} disabled={!canCreateArticle}>
+                <DepthButton
+                  type="primary"
+                  size="sm"
+                  before={<IconPlus size={16} />}
+                  onClick={onCreateArticle}
+                  disabled={!canCreateArticle || isCreating}
+                >
                   {t("articleEditor.create")}
-                </MotionButton>
+                </DepthButton>
               ) : null}
             </Stack>
           ) : null}

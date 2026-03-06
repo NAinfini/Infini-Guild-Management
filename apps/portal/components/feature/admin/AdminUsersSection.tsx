@@ -1,5 +1,5 @@
-import { MotionButton } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import type { AdminRole } from "@guild/shared";
 import {
   Alert,
   Group,
@@ -17,6 +17,7 @@ import {
   IconKey,
   IconPlayerPause,
   IconPlayerPlay,
+  IconSearch,
   IconTrash,
   IconUserPlus,
 } from "@tabler/icons-react";
@@ -37,8 +38,7 @@ type AdminUsersSectionProps = {
   usersError: boolean;
   loadErrorMessage: string;
   isAdmin: boolean;
-  onCreateMember: (username: string) => Promise<boolean>;
-  createMemberPending: boolean;
+  onOpenCreateMember: () => void;
   selectedUserIds: string[];
   selectedLabel: string;
   selectionHintLabel: string;
@@ -64,6 +64,9 @@ type AdminUsersSectionProps = {
   userColumns: ColumnDef<AdminUserRow, unknown>[];
   onOpenMemberDetail: (userId: string) => void;
   onSelectionChange: (keys: string[]) => void;
+  roles: AdminRole[];
+  memberSearch: string;
+  onMemberSearchChange: (value: string) => void;
 };
 
 export function AdminUsersSection({
@@ -72,8 +75,7 @@ export function AdminUsersSection({
   usersError,
   loadErrorMessage,
   isAdmin,
-  onCreateMember,
-  createMemberPending,
+  onOpenCreateMember,
   selectedUserIds,
   selectedLabel,
   selectionHintLabel,
@@ -99,11 +101,13 @@ export function AdminUsersSection({
   userColumns,
   onOpenMemberDetail,
   onSelectionChange,
+  roles,
+  memberSearch,
+  onMemberSearchChange,
 }: AdminUsersSectionProps) {
   const { t } = useTranslation("admin");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
-  const [createMemberUsername, setCreateMemberUsername] = useState("");
   const [contextMenu, setContextMenu] = useState<{
     opened: boolean;
     x: number;
@@ -165,17 +169,6 @@ export function AdminUsersSection({
   const anyActiveInContext = contextRows.some((row) => row.user.is_active);
   const anyInactiveInContext = contextRows.some((row) => !row.user.is_active);
   const contextSingleUserId = contextUserIds.length === 1 ? contextUserIds[0] ?? null : null;
-
-  const handleCreateMember = async () => {
-    const username = createMemberUsername.trim();
-    if (!username) {
-      return;
-    }
-    const created = await onCreateMember(username);
-    if (created) {
-      setCreateMemberUsername("");
-    }
-  };
 
   const handleRowClick = (
     userId: string,
@@ -249,19 +242,19 @@ export function AdminUsersSection({
     });
   };
 
-  const handleRoleAction = (role: "admin" | "moderator" | "member") => {
+  const handleRoleAction = (roleId: string) => {
     if (isBatchContext) {
-      if (role === "admin") {
+      if (roleId === "admin") {
         return;
       }
-      onBatchRole(contextUserIds, role);
+      onBatchRole(contextUserIds, roleId as "member" | "moderator");
       closeContextMenu();
       return;
     }
     if (!contextSingleUserId) {
       return;
     }
-    onSingleRoleChange(contextSingleUserId, role);
+    onSingleRoleChange(contextSingleUserId, roleId as "admin" | "moderator" | "member");
     closeContextMenu();
   };
 
@@ -296,45 +289,25 @@ export function AdminUsersSection({
       {!usersLoading && !usersError ? (
         <>
           {isAdmin ? (
-            <InfiniCard interactive={false}>
-              <div style={{ padding: "1.2rem" }}>
-                <Stack gap={10}>
-                  <Group wrap="wrap" gap={8}>
-                    <TextInput
-                      value={createMemberUsername}
-                      onChange={(event) => setCreateMemberUsername(event.currentTarget.value)}
-                      placeholder={t("member.create.usernamePlaceholder")}
-                      aria-label={t("member.create.usernameAria")}
-                      style={{ width: 280 }}
-                    />
-                    <MotionButton
-                      type="primary"
-                      onClick={() => {
-                        void handleCreateMember();
-                      }}
-                      loading={createMemberPending}
-                      disabled={!createMemberUsername.trim()}
-                    >
-                      <Group gap={6}>
-                        <IconUserPlus size={14} />
-                        <span>{t("member.create.button")}</span>
-                      </Group>
-                    </MotionButton>
-                  </Group>
-                  <Group wrap="wrap" gap={8}>
-                    <Text c="dimmed" size="sm">
-                      {selectionHintLabel}
-                    </Text>
-                    <Text c="dimmed" size="sm">
-                      {selectedLabel} / {batchSelectionLimit}
-                    </Text>
-                  </Group>
-                  {isBatchPending || batchProgress > 0 ? (
-                    <Progress value={batchProgress} animated={isBatchPending} color={isBatchPending ? "blue" : "green"} />
-                  ) : null}
-                </Stack>
-              </div>
-            </InfiniCard>
+            <Group gap={8} wrap="wrap" align="center">
+              <TextInput
+                value={memberSearch}
+                onChange={(event) => onMemberSearchChange(event.currentTarget.value)}
+                placeholder={t("member.search.placeholder")}
+                leftSection={<IconSearch size={14} />}
+                style={{ flex: 1, minWidth: 200, maxWidth: 360 }}
+                size="sm"
+              />
+              <Text c="dimmed" size="sm">
+                {selectionHintLabel}
+              </Text>
+              <Text c="dimmed" size="sm">
+                {selectedLabel} / {batchSelectionLimit}
+              </Text>
+              {isBatchPending || batchProgress > 0 ? (
+                <Progress value={batchProgress} animated={isBatchPending} color={isBatchPending ? "blue" : "green"} style={{ width: "100%" }} />
+              ) : null}
+            </Group>
           ) : null}
 
           <InfiniCard interactive={false}>
@@ -448,24 +421,22 @@ export function AdminUsersSection({
                         </Menu.Item>
                       </Menu.Target>
                       <Menu.Dropdown>
-                        <Menu.Item
-                          onClick={() => handleRoleAction("member")}
-                          disabled={singleRolePending || batchRolePending}
-                        >
-                          {t("role.member")}
-                        </Menu.Item>
-                        <Menu.Item
-                          onClick={() => handleRoleAction("moderator")}
-                          disabled={singleRolePending || batchRolePending}
-                        >
-                          {t("role.moderator")}
-                        </Menu.Item>
-                        <Menu.Item
-                          onClick={() => handleRoleAction("admin")}
-                          disabled={isBatchContext || singleRolePending}
-                        >
-                          {t("role.admin")}
-                        </Menu.Item>
+                        {roles
+                          .slice()
+                          .sort((a, b) => a.level - b.level)
+                          .map((role) => (
+                            <Menu.Item
+                              key={role.id}
+                              onClick={() => handleRoleAction(role.id)}
+                              disabled={
+                                (isBatchContext && role.id === "admin") ||
+                                singleRolePending ||
+                                batchRolePending
+                              }
+                            >
+                              {role.name}
+                            </Menu.Item>
+                          ))}
                       </Menu.Dropdown>
                     </Menu>
 
@@ -502,6 +473,15 @@ export function AdminUsersSection({
                     ) : null}
 
                     <Menu.Divider />
+                    <Menu.Item
+                      leftSection={<IconUserPlus size={14} />}
+                      onClick={() => {
+                        onOpenCreateMember();
+                        closeContextMenu();
+                      }}
+                    >
+                      {t("member.context.createMember")}
+                    </Menu.Item>
                     <Menu.Item
                       color="red"
                       leftSection={<IconTrash size={14} />}

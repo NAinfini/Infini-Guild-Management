@@ -1,5 +1,5 @@
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import { ActionIcon, Button, Group, SegmentedControl, Select, TextInput, Tooltip } from "@mantine/core";
+import { DepthButton, InfiniCard } from "@infini-dev-kit/frontend/components";
+import { ActionIcon, Group, SegmentedControl, Select, TextInput, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { IconCalendarOff } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
@@ -121,18 +121,20 @@ export function GalleryFiltersCard({
           />
           <Group gap={8} wrap="wrap" className="gallery-filters-card__actions">
             {canModerate ? (
-              <Button
-                color="infini-danger"
-                loading={bulkDeletePending}
-                disabled={selectedCount === 0}
-                onClick={() => {
-                  void handleBulkDeleteConfirm();
-                }}
+              <DepthButton
+                onClick={() => { void handleBulkDeleteConfirm(); }}
+                type="danger"
+                size="sm"
+                disabled={selectedCount === 0 || bulkDeletePending}
               >
                 {bulkDeleteLabel}
-              </Button>
+              </DepthButton>
             ) : null}
-            {canUpload ? <Button onClick={onAddMedia}>{addMediaLabel}</Button> : null}
+            {canUpload ? (
+              <DepthButton onClick={onAddMedia} type="success" size="sm">
+                {addMediaLabel}
+              </DepthButton>
+            ) : null}
           </Group>
         </Group>
       </div>

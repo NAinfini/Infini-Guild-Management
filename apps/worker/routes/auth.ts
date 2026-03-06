@@ -15,7 +15,6 @@ import { nanoid } from "nanoid";
 import { inviteLinks, memberProfiles, userAuthPassword, users } from "../db/schema";
 import type { Bindings } from "../index";
 import { createPasswordHash, createSession, destroySession, resolveSession, verifyPassword } from "../services/auth";
-import { publishMemberOnline } from "../services/push";
 
 type UserRow = {
   id: string;
@@ -237,10 +236,6 @@ authRoutes.post("/login", async (c) => {
 
   await createSession(c, account.id, { stayLoggedIn });
   const profile = await ensureProfile(c, account.id);
-  await publishMemberOnline(c.env as Bindings, {
-    userId: account.id,
-    source: "portal",
-  });
 
   return c.json({
     user: toUserPayload(account),
@@ -393,10 +388,6 @@ authRoutes.post("/register/:inviteCode", async (c) => {
   }
 
   await createSession(c, userId);
-  await publishMemberOnline(c.env as Bindings, {
-    userId,
-    source: "portal",
-  });
   return c.json({ user: toUserPayload(createdUser) }, 201);
 });
 

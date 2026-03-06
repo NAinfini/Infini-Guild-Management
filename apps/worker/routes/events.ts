@@ -1,20 +1,32 @@
 ﻿import {
   ERROR_STATUS,
   createEventSchema,
+  createTemplateSchema,
   eventParticipantSchema,
   eventSchema,
   hasRoleAtLeast,
+  recurringTemplateSchema,
   updateEventSchema,
+  updateTemplateSchema,
   type ErrorCode,
   type Role,
   type StandardErrorResponse,
 } from "@guild/shared";
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { nanoid } from "nanoid";
-import { eventParticipants, events, users } from "../db/schema";
+import {
+  botDeliveryLog,
+  botDiscordEventMessages,
+  botWechatEventMessages,
+  eventParticipants,
+  events,
+  users,
+  warHistory,
+  warTemplates,
+} from "../db/schema";
 import type { Bindings } from "../index";
 import { resolveSession } from "../services/auth";
 import { writeAuditLog } from "../services/audit";
@@ -40,6 +52,8 @@ type EventRow = {
   seriesId: string | null;
   isSeriesParent: boolean;
   instanceDate: string | null;
+  lastGeneratedDate: string | null;
+  generationCount: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -51,29 +65,10 @@ type EventParticipantRow = {
   joinedAt: string;
 };
 
-type RecurrenceRuleInput = {
-  frequency: "daily" | "weekly" | "monthly";
-  interval: number;
-  daysOfWeek?: number[];
-  endAfter?: number;
-  endDate?: string;
-};
-
-type RecurrenceScope = "this" | "future" | "all";
-
-type RecurrenceOccurrence = {
-  startAt: string;
-  endAt: string | null;
-  instanceDate: string;
-};
-
 export const eventsRoutes = new Hono();
 
-const RECURRENCE_GENERATION_DAYS = 56;
-const SERIES_EXCEPTION_LIMIT = 50;
 const MAX_EVENT_ATTACHMENTS = 5;
 const MAX_EVENT_IMAGE_BYTES = 5 * 1024 * 1024;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 function getDb(c: Context) {
   const env = c.env as Bindings;
@@ -110,6 +105,9 @@ function buildEventsWhereFilters(params: {
   startBefore: string | undefined;
 }): SQL<unknown>[] {
   const filters: SQL<unknown>[] = [];
+
+  // Exclude recurring templates from the regular events list
+  filters.push(eq(events.isSeriesParent, false));
 
   if (params.typeFilter) {
     filters.push(eq(events.type, params.typeFilter as typeof events.type.enumValues[number]));
@@ -160,168 +158,6 @@ function parseAttachments(value: string | null | undefined): string[] {
   }
 }
 
-function parseIsoDate(value: string): Date | null {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-  return parsed;
-}
-
-function addDaysUtc(base: Date, days: number): Date {
-  return new Date(base.getTime() + days * DAY_MS);
-}
-
-function addMonthsUtc(base: Date, months: number): Date {
-  const next = new Date(base);
-  next.setUTCMonth(next.getUTCMonth() + months);
-  return next;
-}
-
-function withUtcTime(sourceDate: Date, timeSource: Date): Date {
-  const next = new Date(
-    Date.UTC(
-      sourceDate.getUTCFullYear(),
-      sourceDate.getUTCMonth(),
-      sourceDate.getUTCDate(),
-      timeSource.getUTCHours(),
-      timeSource.getUTCMinutes(),
-      timeSource.getUTCSeconds(),
-      timeSource.getUTCMilliseconds(),
-    ),
-  );
-  return next;
-}
-
-function toInstanceDate(iso: string): string {
-  return iso.slice(0, 10);
-}
-
-function resolveDurationMs(startAt: Date, endAt: Date | null): number | null {
-  if (!endAt) {
-    return null;
-  }
-  const duration = endAt.getTime() - startAt.getTime();
-  if (!Number.isFinite(duration) || duration <= 0) {
-    return null;
-  }
-  return duration;
-}
-
-function shiftIsoByMs(iso: string, deltaMs: number): string | null {
-  const parsed = parseIsoDate(iso);
-  if (!parsed || !Number.isFinite(deltaMs)) {
-    return null;
-  }
-  return new Date(parsed.getTime() + deltaMs).toISOString();
-}
-
-function normalizeWeeklyDays(rule: RecurrenceRuleInput, startAt: Date): number[] {
-  const source = Array.isArray(rule.daysOfWeek) && rule.daysOfWeek.length > 0
-    ? rule.daysOfWeek
-    : [startAt.getUTCDay()];
-  const normalized = Array.from(
-    new Set(
-      source
-        .map((value) => Math.trunc(value))
-        .filter((value) => Number.isFinite(value) && value >= 0 && value <= 6),
-    ),
-  ).sort((left, right) => left - right);
-  return normalized.length > 0 ? normalized : [startAt.getUTCDay()];
-}
-
-function buildRecurrenceOccurrences(
-  startAtIso: string,
-  endAtIso: string | null,
-  rule: RecurrenceRuleInput,
-): RecurrenceOccurrence[] {
-  const startAt = parseIsoDate(startAtIso);
-  if (!startAt) {
-    return [];
-  }
-  const endAt = endAtIso ? parseIsoDate(endAtIso) : null;
-  const durationMs = resolveDurationMs(startAt, endAt);
-  const maxOccurrences = Math.max(1, Math.trunc(rule.endAfter ?? Number.MAX_SAFE_INTEGER));
-  const explicitEnd = typeof rule.endDate === "string" ? parseIsoDate(rule.endDate) : null;
-  const horizonEndMs = Math.min(
-    startAt.getTime() + RECURRENCE_GENERATION_DAYS * DAY_MS,
-    explicitEnd ? explicitEnd.getTime() : Number.MAX_SAFE_INTEGER,
-  );
-
-  const buildOccurrence = (candidateStart: Date): RecurrenceOccurrence | null => {
-    const startMs = candidateStart.getTime();
-    if (!Number.isFinite(startMs) || startMs > horizonEndMs) {
-      return null;
-    }
-    const nextStart = candidateStart.toISOString();
-    const nextEnd = durationMs !== null ? new Date(startMs + durationMs).toISOString() : null;
-    return {
-      startAt: nextStart,
-      endAt: nextEnd,
-      instanceDate: toInstanceDate(nextStart),
-    };
-  };
-
-  const occurrences: RecurrenceOccurrence[] = [];
-  const first = buildOccurrence(startAt);
-  if (!first) {
-    return [];
-  }
-  occurrences.push(first);
-
-  const interval = Math.max(1, Math.trunc(rule.interval));
-
-  if (rule.frequency === "daily") {
-    let step = 1;
-    while (occurrences.length < maxOccurrences) {
-      const candidate = addDaysUtc(startAt, step * interval);
-      const occurrence = buildOccurrence(candidate);
-      if (!occurrence) {
-        break;
-      }
-      occurrences.push(occurrence);
-      step += 1;
-    }
-  } else if (rule.frequency === "weekly") {
-    const weeklyDays = normalizeWeeklyDays(rule, startAt);
-    const startDay = new Date(Date.UTC(startAt.getUTCFullYear(), startAt.getUTCMonth(), startAt.getUTCDate()));
-    for (let offset = 1; occurrences.length < maxOccurrences; offset += 1) {
-      const candidateDay = addDaysUtc(startDay, offset);
-      const weeksFromStart = Math.floor((candidateDay.getTime() - startDay.getTime()) / (7 * DAY_MS));
-      if (weeksFromStart % interval !== 0) {
-        continue;
-      }
-      if (!weeklyDays.includes(candidateDay.getUTCDay())) {
-        continue;
-      }
-      const candidate = withUtcTime(candidateDay, startAt);
-      if (candidate.getTime() <= startAt.getTime()) {
-        continue;
-      }
-      const occurrence = buildOccurrence(candidate);
-      if (!occurrence) {
-        break;
-      }
-      occurrences.push(occurrence);
-    }
-  } else {
-    let step = 1;
-    while (occurrences.length < maxOccurrences) {
-      const candidate = addMonthsUtc(startAt, step * interval);
-      const occurrence = buildOccurrence(candidate);
-      if (!occurrence) {
-        break;
-      }
-      occurrences.push(occurrence);
-      step += 1;
-    }
-  }
-
-  const deduped = Array.from(new Map(occurrences.map((item) => [item.startAt, item])).values());
-  deduped.sort((left, right) => left.startAt.localeCompare(right.startAt));
-  return deduped.slice(0, maxOccurrences);
-}
-
 function toEventPayload(row: EventRow) {
   return eventSchema.parse({
     id: row.id,
@@ -351,6 +187,25 @@ function toParticipantPayload(row: EventParticipantRow) {
     event_id: row.eventId,
     user_id: row.userId,
     joined_at: row.joinedAt,
+  });
+}
+
+function toTemplatePayload(row: EventRow) {
+  return recurringTemplateSchema.parse({
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    description: row.description,
+    start_at: row.startAt,
+    end_at: row.endAt,
+    capacity: row.capacity,
+    recurrence_rule: parseRecurrenceRule(row.recurrenceRule),
+    archived_at: row.archivedAt,
+    created_by: row.createdBy,
+    last_generated_date: row.lastGeneratedDate,
+    generation_count: row.generationCount,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
   });
 }
 
@@ -395,6 +250,8 @@ async function getEventById(c: Context, eventId: string): Promise<EventRow | nul
         seriesId: events.seriesId,
         isSeriesParent: events.isSeriesParent,
         instanceDate: events.instanceDate,
+        lastGeneratedDate: events.lastGeneratedDate,
+        generationCount: events.generationCount,
         createdAt: events.createdAt,
         updatedAt: events.updatedAt,
       })
@@ -449,6 +306,8 @@ eventsRoutes.get("/", async (c) => {
       seriesId: events.seriesId,
       isSeriesParent: events.isSeriesParent,
       instanceDate: events.instanceDate,
+      lastGeneratedDate: events.lastGeneratedDate,
+      generationCount: events.generationCount,
       createdAt: events.createdAt,
       updatedAt: events.updatedAt,
     })
@@ -518,47 +377,26 @@ eventsRoutes.post("/", async (c) => {
 
   const db = getDb(c);
   const eventId = nanoid();
-  const recurrenceRule = parsed.data.recurrence_rule as RecurrenceRuleInput | undefined;
-  const recurrenceRuleJson = recurrenceRule ? JSON.stringify(recurrenceRule) : null;
-  const recurrenceSeriesId = recurrenceRule ? eventId : null;
   const attachmentsJson = JSON.stringify(parsed.data.attachments ?? []);
-  const occurrences = recurrenceRule
-    ? buildRecurrenceOccurrences(parsed.data.start_at, parsed.data.end_at ?? null, recurrenceRule)
-    : [];
-  const normalizedOccurrences =
-    occurrences.length > 0
-      ? occurrences
-      : [
-          {
-            startAt: parsed.data.start_at,
-            endAt: parsed.data.end_at ?? null,
-            instanceDate: toInstanceDate(parsed.data.start_at),
-          },
-        ];
 
-  const rowsToInsert = normalizedOccurrences.map((occurrence, index) => ({
-    id: index === 0 ? eventId : nanoid(),
+  await db.insert(events).values({
+    id: eventId,
     type: parsed.data.type,
     title: parsed.data.title,
     description: parsed.data.description ?? null,
-    startAt: occurrence.startAt,
-    endAt: occurrence.endAt,
+    startAt: parsed.data.start_at,
+    endAt: parsed.data.end_at ?? null,
     capacity: parsed.data.capacity ?? null,
     pinned: false,
     signupLocked: false,
     archivedAt: null,
     createdBy: sessionUser.id,
-    recurrenceRule: recurrenceRuleJson,
+    recurrenceRule: null,
     attachments: attachmentsJson,
-    seriesId: recurrenceSeriesId,
-    isSeriesParent: recurrenceRule ? index === 0 : false,
-    instanceDate: recurrenceRule ? occurrence.instanceDate : null,
-  }));
-
-  // D1 has a 100-variable limit; chunk large recurring inserts
-  for (let i = 0; i < rowsToInsert.length; i += 5) {
-    await db.insert(events).values(rowsToInsert.slice(i, i + 5));
-  }
+    seriesId: null,
+    isSeriesParent: false,
+    instanceDate: null,
+  });
 
   const created = await getEventById(c, eventId);
   if (!created) {
@@ -575,7 +413,6 @@ eventsRoutes.post("/", async (c) => {
       type: created.type,
       start_at: created.startAt,
       end_at: created.endAt,
-      generated_instances: rowsToInsert.length,
     }),
   });
 
@@ -612,7 +449,6 @@ eventsRoutes.patch("/:id", async (c) => {
   }
 
   const data = parsed.data;
-  const recurrenceScope = (data.recurrence_scope ?? "this") as RecurrenceScope;
   const patch: Partial<typeof events.$inferInsert> = {
     updatedAt: new Date().toISOString(),
   };
@@ -625,287 +461,12 @@ eventsRoutes.patch("/:id", async (c) => {
   if (data.pinned !== undefined) patch.pinned = data.pinned;
   if (data.signup_locked !== undefined) patch.signupLocked = data.signup_locked;
   if (data.archived_at !== undefined) patch.archivedAt = data.archived_at;
-  if (data.recurrence_rule !== undefined) {
-    patch.recurrenceRule = data.recurrence_rule ? JSON.stringify(data.recurrence_rule) : null;
-  }
   if (data.attachments !== undefined) {
     patch.attachments = JSON.stringify(data.attachments);
   }
 
   const db = getDb(c);
-  const hasSeries = typeof existing.seriesId === "string" && existing.seriesId.length > 0;
-  if (hasSeries && recurrenceScope === "this") {
-    // Instance-only edits should not rewrite shared series recurrence metadata.
-    delete patch.recurrenceRule;
-    const shouldDetachInstance =
-      data.type !== undefined ||
-      data.title !== undefined ||
-      data.description !== undefined ||
-      data.capacity !== undefined ||
-      data.start_at !== undefined ||
-      data.end_at !== undefined;
-    if (shouldDetachInstance) {
-      const detachedCountRow = (
-        await db
-          .select({ count: sql<number>`count(*)` })
-          .from(events)
-          .where(
-            and(
-              eq(events.seriesId, existing.seriesId as string),
-              eq(events.isSeriesParent, false),
-              isNull(events.instanceDate),
-            ),
-          )
-      )[0];
-      const detachedCount = Number(detachedCountRow?.count ?? 0);
-      if (detachedCount >= SERIES_EXCEPTION_LIMIT) {
-        return buildError(c, "VALIDATION_ERROR", "Series exception limit reached");
-      }
-      patch.seriesId = existing.seriesId as string;
-      patch.recurrenceRule = null;
-      patch.isSeriesParent = false;
-      patch.instanceDate = null;
-    }
-  }
-  if (hasSeries && patch.startAt !== undefined) {
-    patch.instanceDate = toInstanceDate(patch.startAt);
-  }
-  const shouldPropagate = hasSeries && recurrenceScope !== "this";
-
-  if (shouldPropagate) {
-    const seriesWhereClause =
-      recurrenceScope === "future"
-        ? and(
-            eq(events.seriesId, existing.seriesId as string),
-            gte(events.startAt, existing.startAt),
-            isNotNull(events.instanceDate),
-          )
-        : and(eq(events.seriesId, existing.seriesId as string), isNotNull(events.instanceDate));
-    const scopeRows = await db
-      .select({
-        id: events.id,
-        startAt: events.startAt,
-        endAt: events.endAt,
-      })
-      .from(events)
-      .where(seriesWhereClause)
-      .orderBy(asc(events.startAt), asc(events.id));
-
-    const sharedPatch: Partial<typeof events.$inferInsert> = { ...patch };
-    delete sharedPatch.startAt;
-    delete sharedPatch.endAt;
-    delete sharedPatch.instanceDate;
-    if (Object.keys(sharedPatch).length > 0 && scopeRows.length > 0) {
-      await db.update(events).set(sharedPatch).where(seriesWhereClause);
-    }
-
-    if (data.recurrence_rule !== undefined && scopeRows.length > 0) {
-      const scopeAnchorRow = scopeRows[0] ?? null;
-      const existingStart = parseIsoDate(existing.startAt);
-      const requestedStart = data.start_at ? parseIsoDate(data.start_at) : null;
-      let anchorStartAt = data.start_at ?? existing.startAt;
-
-      if (recurrenceScope === "all" && scopeAnchorRow) {
-        if (requestedStart && existingStart) {
-          const startDeltaMs = requestedStart.getTime() - existingStart.getTime();
-          anchorStartAt = shiftIsoByMs(scopeAnchorRow.startAt, startDeltaMs) ?? scopeAnchorRow.startAt;
-        } else {
-          anchorStartAt = scopeAnchorRow.startAt;
-        }
-      }
-
-      const anchorStartDate = parseIsoDate(anchorStartAt);
-      let anchorEndAt: string | null = null;
-      if (data.end_at !== undefined) {
-        if (data.end_at === null) {
-          anchorEndAt = null;
-        } else if (anchorStartDate) {
-          const requestedEnd = parseIsoDate(data.end_at);
-          const durationSourceStart = requestedStart ?? existingStart;
-          const durationMs =
-            durationSourceStart && requestedEnd ? resolveDurationMs(durationSourceStart, requestedEnd) : null;
-          anchorEndAt =
-            durationMs !== null ? new Date(anchorStartDate.getTime() + durationMs).toISOString() : null;
-        }
-      } else if (anchorStartDate) {
-        const existingEnd = parseIsoDate(existing.endAt ?? "");
-        const durationMs = existingStart && existingEnd ? resolveDurationMs(existingStart, existingEnd) : null;
-        anchorEndAt =
-          durationMs !== null ? new Date(anchorStartDate.getTime() + durationMs).toISOString() : null;
-      }
-
-      const generatedOccurrences = buildRecurrenceOccurrences(anchorStartAt, anchorEndAt, data.recurrence_rule);
-      const normalizedOccurrences =
-        generatedOccurrences.length > 0
-          ? generatedOccurrences
-          : [
-              {
-                startAt: anchorStartAt,
-                endAt: anchorEndAt,
-                instanceDate: toInstanceDate(anchorStartAt),
-              },
-            ];
-
-      const rowsToUpdate = scopeRows.slice(0, normalizedOccurrences.length);
-      for (let index = 0; index < rowsToUpdate.length; index += 1) {
-        const row = rowsToUpdate[index];
-        const occurrence = normalizedOccurrences[index];
-        if (!occurrence) {
-          continue;
-        }
-        await db
-          .update(events)
-          .set({
-            startAt: occurrence.startAt,
-            endAt: occurrence.endAt,
-            instanceDate: occurrence.instanceDate,
-            updatedAt: patch.updatedAt,
-          })
-          .where(eq(events.id, row.id));
-      }
-
-      if (normalizedOccurrences.length > scopeRows.length) {
-        const rowsToInsert = normalizedOccurrences.slice(scopeRows.length).map((occurrence) => ({
-          id: nanoid(),
-          type: (patch.type ?? existing.type) as typeof events.type.enumValues[number],
-          title: patch.title ?? existing.title,
-          description: patch.description ?? existing.description,
-          startAt: occurrence.startAt,
-          endAt: occurrence.endAt,
-          capacity: patch.capacity ?? existing.capacity,
-          pinned: patch.pinned ?? existing.pinned,
-          signupLocked: patch.signupLocked ?? existing.signupLocked,
-          archivedAt: patch.archivedAt ?? null,
-          createdBy: existing.createdBy,
-          recurrenceRule: patch.recurrenceRule ?? existing.recurrenceRule,
-          attachments: patch.attachments ?? existing.attachments,
-          seriesId: existing.seriesId,
-          isSeriesParent: false,
-          instanceDate: occurrence.instanceDate,
-          updatedAt: patch.updatedAt,
-        }));
-        // D1 has a 100-variable limit; chunk large recurring inserts
-        for (let i = 0; i < rowsToInsert.length; i += 5) {
-          await db.insert(events).values(rowsToInsert.slice(i, i + 5));
-        }
-      }
-
-      if (recurrenceScope === "all" && scopeRows.length > 0) {
-        await db
-          .update(events)
-          .set({
-            isSeriesParent: false,
-            updatedAt: patch.updatedAt,
-          })
-          .where(and(eq(events.seriesId, existing.seriesId as string), isNotNull(events.instanceDate)));
-        const parentRow = rowsToUpdate[0];
-        if (parentRow) {
-          await db
-            .update(events)
-            .set({
-              isSeriesParent: true,
-              updatedAt: patch.updatedAt,
-            })
-            .where(eq(events.id, parentRow.id));
-        }
-      }
-
-      if (normalizedOccurrences.length < scopeRows.length) {
-        const obsoleteRows = scopeRows.slice(normalizedOccurrences.length);
-        const obsoleteEventIds = obsoleteRows.map((row) => row.id);
-        if (obsoleteEventIds.length > 0) {
-          const participantCounts = await db
-            .select({
-              eventId: eventParticipants.eventId,
-              count: sql<number>`count(*)`,
-            })
-            .from(eventParticipants)
-            .where(inArray(eventParticipants.eventId, obsoleteEventIds))
-            .groupBy(eventParticipants.eventId);
-          const countByEventId = new Map(
-            participantCounts.map((row) => [row.eventId, Number(row.count ?? 0)]),
-          );
-
-          const detachIds = obsoleteRows
-            .filter((row) => (countByEventId.get(row.id) ?? 0) > 0)
-            .map((row) => row.id);
-          if (detachIds.length > 0) {
-            await db
-              .update(events)
-              .set({
-                seriesId: existing.seriesId as string,
-                recurrenceRule: null,
-                isSeriesParent: false,
-                instanceDate: null,
-                updatedAt: patch.updatedAt,
-              })
-              .where(inArray(events.id, detachIds));
-          }
-
-          const archiveIds = obsoleteRows
-            .filter((row) => (countByEventId.get(row.id) ?? 0) === 0)
-            .map((row) => row.id);
-          if (archiveIds.length > 0) {
-            await db
-              .update(events)
-              .set({
-                archivedAt: patch.updatedAt,
-                updatedAt: patch.updatedAt,
-              })
-              .where(inArray(events.id, archiveIds));
-          }
-        }
-      }
-    } else if ((patch.startAt !== undefined || patch.endAt !== undefined) && scopeRows.length > 0) {
-      const existingStart = parseIsoDate(existing.startAt);
-      const nextBaseStart = parseIsoDate(data.start_at ?? existing.startAt);
-      const startDeltaMs =
-        patch.startAt !== undefined && existingStart && nextBaseStart
-          ? nextBaseStart.getTime() - existingStart.getTime()
-          : 0;
-      const explicitDurationMs =
-        patch.endAt !== undefined && nextBaseStart
-          ? resolveDurationMs(nextBaseStart, parseIsoDate(data.end_at ?? "") ?? null)
-          : null;
-
-      for (const row of scopeRows) {
-        let nextStartAt = row.startAt;
-        if (patch.startAt !== undefined) {
-          const shiftedStart = shiftIsoByMs(row.startAt, startDeltaMs);
-          if (shiftedStart) {
-            nextStartAt = shiftedStart;
-          }
-        }
-
-        let nextEndAt = row.endAt;
-        if (patch.endAt !== undefined) {
-          if (explicitDurationMs === null) {
-            nextEndAt = null;
-          } else {
-            const shiftedStart = parseIsoDate(nextStartAt);
-            nextEndAt = shiftedStart ? new Date(shiftedStart.getTime() + explicitDurationMs).toISOString() : row.endAt;
-          }
-        } else if (patch.startAt !== undefined && row.endAt) {
-          const shiftedEnd = shiftIsoByMs(row.endAt, startDeltaMs);
-          if (shiftedEnd) {
-            nextEndAt = shiftedEnd;
-          }
-        }
-
-        await db
-          .update(events)
-          .set({
-            startAt: nextStartAt,
-            endAt: nextEndAt,
-            instanceDate: toInstanceDate(nextStartAt),
-            updatedAt: patch.updatedAt,
-          })
-          .where(eq(events.id, row.id));
-      }
-    }
-  } else {
-    await db.update(events).set(patch).where(eq(events.id, eventId));
-  }
+  await db.update(events).set(patch).where(eq(events.id, eventId));
 
   const updated = await getEventById(c, eventId);
   if (!updated) {
@@ -918,10 +479,7 @@ eventsRoutes.patch("/:id", async (c) => {
     actorId: sessionUser.id,
     entityId: eventId,
     diffTitle: updated.title,
-    detailText: JSON.stringify({
-      ...data,
-      recurrence_scope: recurrenceScope,
-    }),
+    detailText: JSON.stringify(data),
   });
 
   return c.json(toEventPayload(updated));
@@ -956,6 +514,55 @@ eventsRoutes.delete("/:id", async (c) => {
   await writeAuditLog(c, {
     entityType: "event",
     action: "archive",
+    actorId: sessionUser.id,
+    entityId: eventId,
+    diffTitle: existing.title,
+  });
+
+  return c.json({ ok: true });
+});
+
+eventsRoutes.delete("/:id/destroy", async (c) => {
+  const sessionUser = await requireSession(c);
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const roleError = requireModerator(c, sessionUser);
+  if (roleError) {
+    return roleError;
+  }
+
+  const eventId = c.req.param("id");
+  const existing = await getEventById(c, eventId);
+  if (!existing) {
+    return buildError(c, "NOT_FOUND", "Event not found");
+  }
+
+  const db = getDb(c);
+
+  // Clear or detach dependent rows that reference this event.
+  await db.delete(botDiscordEventMessages).where(eq(botDiscordEventMessages.eventId, eventId));
+  await db.delete(botWechatEventMessages).where(eq(botWechatEventMessages.eventId, eventId));
+  await db.delete(botDeliveryLog).where(eq(botDeliveryLog.eventId, eventId));
+  await db.update(warTemplates).set({ sourceEventId: null }).where(eq(warTemplates.sourceEventId, eventId));
+  await db
+    .update(warHistory)
+    .set({
+      eventId: null,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(warHistory.eventId, eventId));
+
+  // Remove all participants first
+  await db.delete(eventParticipants).where(eq(eventParticipants.eventId, eventId));
+
+  // Hard delete the event
+  await db.delete(events).where(eq(events.id, eventId));
+
+  await writeAuditLog(c, {
+    entityType: "event",
+    action: "delete",
     actorId: sessionUser.id,
     entityId: eventId,
     diffTitle: existing.title,
@@ -1319,5 +926,280 @@ eventsRoutes.delete("/:id/participants/:userId", async (c) => {
       hint: "participant_removed_by_moderator",
     });
   }
+  return c.json({ ok: true });
+});
+
+// ── Recurring Templates ──
+
+const templateSelectFields = {
+  id: events.id,
+  type: events.type,
+  title: events.title,
+  description: events.description,
+  startAt: events.startAt,
+  endAt: events.endAt,
+  capacity: events.capacity,
+  pinned: events.pinned,
+  signupLocked: events.signupLocked,
+  archivedAt: events.archivedAt,
+  createdBy: events.createdBy,
+  recurrenceRule: events.recurrenceRule,
+  attachments: events.attachments,
+  seriesId: events.seriesId,
+  isSeriesParent: events.isSeriesParent,
+  instanceDate: events.instanceDate,
+  lastGeneratedDate: events.lastGeneratedDate,
+  generationCount: events.generationCount,
+  createdAt: events.createdAt,
+  updatedAt: events.updatedAt,
+} as const;
+
+eventsRoutes.get("/templates/list", async (c) => {
+  const sessionUser = await requireSession(c);
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const roleError = requireModerator(c, sessionUser);
+  if (roleError) {
+    return roleError;
+  }
+
+  const db = getDb(c);
+  const rows = await db
+    .select(templateSelectFields)
+    .from(events)
+    .where(eq(events.isSeriesParent, true))
+    .orderBy(asc(events.createdAt), asc(events.id));
+
+  return c.json({ data: rows.map(toTemplatePayload) });
+});
+
+eventsRoutes.post("/templates", async (c) => {
+  const sessionUser = await requireSession(c);
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const roleError = requireModerator(c, sessionUser);
+  if (roleError) {
+    return roleError;
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return buildError(c, "VALIDATION_ERROR", "Invalid JSON body");
+  }
+
+  const parsed = createTemplateSchema.safeParse(body);
+  if (!parsed.success) {
+    return buildError(c, "VALIDATION_ERROR", "Invalid template payload", parsed.error.flatten());
+  }
+
+  const db = getDb(c);
+  const templateId = nanoid();
+  const recurrenceRuleJson = JSON.stringify(parsed.data.recurrence_rule);
+
+  await db.insert(events).values({
+    id: templateId,
+    type: parsed.data.type,
+    title: parsed.data.title,
+    description: parsed.data.description ?? null,
+    startAt: parsed.data.start_at,
+    endAt: parsed.data.end_at ?? null,
+    capacity: parsed.data.capacity ?? null,
+    pinned: false,
+    signupLocked: false,
+    archivedAt: null,
+    createdBy: sessionUser.id,
+    recurrenceRule: recurrenceRuleJson,
+    attachments: "[]",
+    seriesId: null,
+    isSeriesParent: true,
+    instanceDate: null,
+    lastGeneratedDate: null,
+    generationCount: 0,
+  });
+
+  const created = await getEventById(c, templateId);
+  if (!created) {
+    return buildError(c, "SERVER_ERROR", "Failed to load created template");
+  }
+
+  await writeAuditLog(c, {
+    entityType: "recurring_template",
+    action: "create",
+    actorId: sessionUser.id,
+    entityId: templateId,
+    diffTitle: created.title,
+    detailText: JSON.stringify({ recurrence_rule: parsed.data.recurrence_rule }),
+  });
+
+  return c.json(toTemplatePayload(created), 201);
+});
+
+eventsRoutes.patch("/templates/:id", async (c) => {
+  const sessionUser = await requireSession(c);
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const roleError = requireModerator(c, sessionUser);
+  if (roleError) {
+    return roleError;
+  }
+
+  const templateId = c.req.param("id");
+  const existing = await getEventById(c, templateId);
+  if (!existing || !existing.isSeriesParent) {
+    return buildError(c, "NOT_FOUND", "Template not found");
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return buildError(c, "VALIDATION_ERROR", "Invalid JSON body");
+  }
+
+  const parsed = updateTemplateSchema.safeParse(body);
+  if (!parsed.success) {
+    return buildError(c, "VALIDATION_ERROR", "Invalid template update payload", parsed.error.flatten());
+  }
+
+  const data = parsed.data;
+  const patch: Partial<typeof events.$inferInsert> = {
+    updatedAt: new Date().toISOString(),
+  };
+  if (data.type !== undefined) patch.type = data.type;
+  if (data.title !== undefined) patch.title = data.title;
+  if (data.description !== undefined) patch.description = data.description;
+  if (data.start_at !== undefined) patch.startAt = data.start_at;
+  if (data.end_at !== undefined) patch.endAt = data.end_at;
+  if (data.capacity !== undefined) patch.capacity = data.capacity;
+  if (data.recurrence_rule !== undefined) {
+    patch.recurrenceRule = JSON.stringify(data.recurrence_rule);
+  }
+
+  const db = getDb(c);
+  await db.update(events).set(patch).where(eq(events.id, templateId));
+
+  const updated = await getEventById(c, templateId);
+  if (!updated) {
+    return buildError(c, "SERVER_ERROR", "Failed to load updated template");
+  }
+
+  await writeAuditLog(c, {
+    entityType: "recurring_template",
+    action: "update",
+    actorId: sessionUser.id,
+    entityId: templateId,
+    diffTitle: updated.title,
+    detailText: JSON.stringify(data),
+  });
+
+  return c.json(toTemplatePayload(updated));
+});
+
+eventsRoutes.post("/templates/:id/pause", async (c) => {
+  const sessionUser = await requireSession(c);
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const roleError = requireModerator(c, sessionUser);
+  if (roleError) {
+    return roleError;
+  }
+
+  const templateId = c.req.param("id");
+  const existing = await getEventById(c, templateId);
+  if (!existing || !existing.isSeriesParent) {
+    return buildError(c, "NOT_FOUND", "Template not found");
+  }
+
+  const db = getDb(c);
+  const now = new Date().toISOString();
+  await db
+    .update(events)
+    .set({ archivedAt: now, updatedAt: now })
+    .where(eq(events.id, templateId));
+
+  await writeAuditLog(c, {
+    entityType: "recurring_template",
+    action: "pause",
+    actorId: sessionUser.id,
+    entityId: templateId,
+    diffTitle: existing.title,
+  });
+
+  return c.json({ ok: true });
+});
+
+eventsRoutes.post("/templates/:id/resume", async (c) => {
+  const sessionUser = await requireSession(c);
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const roleError = requireModerator(c, sessionUser);
+  if (roleError) {
+    return roleError;
+  }
+
+  const templateId = c.req.param("id");
+  const existing = await getEventById(c, templateId);
+  if (!existing || !existing.isSeriesParent) {
+    return buildError(c, "NOT_FOUND", "Template not found");
+  }
+
+  const db = getDb(c);
+  const now = new Date().toISOString();
+  await db
+    .update(events)
+    .set({ archivedAt: null, updatedAt: now })
+    .where(eq(events.id, templateId));
+
+  await writeAuditLog(c, {
+    entityType: "recurring_template",
+    action: "resume",
+    actorId: sessionUser.id,
+    entityId: templateId,
+    diffTitle: existing.title,
+  });
+
+  return c.json({ ok: true });
+});
+
+eventsRoutes.delete("/templates/:id", async (c) => {
+  const sessionUser = await requireSession(c);
+  if (sessionUser instanceof Response) {
+    return sessionUser;
+  }
+
+  const roleError = requireModerator(c, sessionUser);
+  if (roleError) {
+    return roleError;
+  }
+
+  const templateId = c.req.param("id");
+  const existing = await getEventById(c, templateId);
+  if (!existing || !existing.isSeriesParent) {
+    return buildError(c, "NOT_FOUND", "Template not found");
+  }
+
+  const db = getDb(c);
+  await db.delete(events).where(eq(events.id, templateId));
+
+  await writeAuditLog(c, {
+    entityType: "recurring_template",
+    action: "delete",
+    actorId: sessionUser.id,
+    entityId: templateId,
+    diffTitle: existing.title,
+  });
+
   return c.json({ ok: true });
 });

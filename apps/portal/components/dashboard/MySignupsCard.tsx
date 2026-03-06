@@ -20,7 +20,7 @@ export function MySignupsCard({ mySignupEvents, now, onOpenEvent }: MySignupsCar
 
   const days = useMemo(() => {
     const result: { date: Date; label: string; dayLabel: string; events: DashboardMySignupEvent[] }[] = [];
-    for (let offset = -1; offset <= 7; offset++) {
+    for (let offset = -1; offset <= 6; offset++) {
       const date = new Date(now);
       date.setDate(date.getDate() + offset);
       date.setHours(0, 0, 0, 0);

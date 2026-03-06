@@ -1,9 +1,8 @@
 import type { StandardErrorResponse } from "@guild/shared";
+import i18n from "i18next";
 import { nanoid } from "nanoid";
 
 type JsonValue = Record<string, unknown>;
-
-const etagCache = new Map<string, { etag: string; data: unknown }>();
 
 type ApiRequestErrorOptions = {
   status: number;
@@ -32,11 +31,33 @@ export function isApiRequestError(error: unknown): error is ApiRequestError {
   return error instanceof ApiRequestError;
 }
 
-function sanitizeErrorMessage(message: string): string {
-  if (/D1_ERROR|SQLITE_ERROR|no such table|no such column/i.test(message)) {
-    return "Service temporarily unavailable. Please try again later.";
+const INTERNAL_SERVER_MESSAGE_PATTERN = /D1_ERROR|SQLITE_ERROR|no such table|no such column/i;
+
+function tCommon(key: string, fallback: string): string {
+  return i18n.t(`common:${key}`, { defaultValue: fallback });
+}
+
+function fallbackMessageForStatus(status: number): string {
+  if (status === 401) {
+    return tCommon("errors.sessionExpired", "Session expired. Please log in again.");
   }
-  return message;
+  if (status === 403) {
+    return tCommon("errors.forbidden", "Access denied.");
+  }
+  if (status === 409) {
+    return tCommon("errors.conflict", "Conflict detected. Please refresh and retry.");
+  }
+  if (status === 503) {
+    return tCommon("errors.serviceUnavailable", "Service temporarily unavailable. Please try again later.");
+  }
+  return tCommon("loadError", "Unable to load data. Please try again later.");
+}
+
+function resolveErrorMessage(message: string | null | undefined, status: number): string {
+  if (message && !INTERNAL_SERVER_MESSAGE_PATTERN.test(message)) {
+    return message;
+  }
+  return fallbackMessageForStatus(status);
 }
 
 export async function apiRequest<TResponse>(
@@ -46,11 +67,6 @@ export async function apiRequest<TResponse>(
   const headers = new Headers(init.headers);
   headers.set("X-Request-Id", nanoid());
 
-  const cached = etagCache.get(input);
-  const method = (init.method ?? "GET").toUpperCase();
-  if (cached && method === "GET") {
-    headers.set("If-None-Match", cached.etag);
-  }
   if (init.ifMatch) {
     headers.set("If-Match", init.ifMatch);
   }
@@ -72,7 +88,7 @@ export async function apiRequest<TResponse>(
       window.dispatchEvent(
         new CustomEvent("guild-api-network", {
           detail: {
-            message: "Unable to reach server. Check your network and retry.",
+            message: tCommon("errors.connectionIssue", "Unable to reach server. Check your network and retry."),
           },
         }),
       );
@@ -82,12 +98,6 @@ export async function apiRequest<TResponse>(
     });
   }
 
-  const responseEtag = response.headers.get("ETag");
-
-  // 304 Not Modified — return cached response body
-  if (response.status === 304 && cached) {
-    return cached.data as TResponse;
-  }
 
   if (!response.ok) {
     let errorPayload: StandardErrorResponse | null = null;
@@ -105,7 +115,7 @@ export async function apiRequest<TResponse>(
       window.dispatchEvent(
         new CustomEvent("guild-api-unauthorized", {
           detail: {
-            message: errorPayload?.message ?? "Session expired. Please log in again.",
+            message: resolveErrorMessage(errorPayload?.message, 401),
             requestId: errorPayload?.request_id,
             errorCode: errorPayload?.error_code,
             returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
@@ -118,7 +128,7 @@ export async function apiRequest<TResponse>(
       window.dispatchEvent(
         new CustomEvent("guild-api-forbidden", {
           detail: {
-            message: errorPayload?.message ?? "You do not have permission for this action.",
+            message: resolveErrorMessage(errorPayload?.message, 403),
             requestId: errorPayload?.request_id,
             errorCode: errorPayload?.error_code,
           },
@@ -130,7 +140,7 @@ export async function apiRequest<TResponse>(
       window.dispatchEvent(
         new CustomEvent("guild-api-conflict", {
           detail: {
-            message: errorPayload?.message ?? "Conflict detected. Please refresh and retry.",
+            message: resolveErrorMessage(errorPayload?.message, 409),
             requestId: errorPayload?.request_id,
             errorCode: errorPayload?.error_code,
           },
@@ -138,15 +148,12 @@ export async function apiRequest<TResponse>(
       );
     }
 
-    throw new ApiRequestError(
-      sanitizeErrorMessage(errorPayload?.message ?? `Request failed: ${response.status}`),
-      {
+    throw new ApiRequestError(resolveErrorMessage(errorPayload?.message, response.status), {
       status: response.status,
       errorCode: errorPayload?.error_code,
       requestId: errorPayload?.request_id,
       details: errorPayload?.details,
-      },
-    );
+    });
   }
 
   if (response.status === 204) {
@@ -154,10 +161,6 @@ export async function apiRequest<TResponse>(
   }
 
   const data = (await response.json()) as TResponse;
-
-  if (responseEtag) {
-    etagCache.set(input, { etag: responseEtag, data });
-  }
 
   return data;
 }
@@ -182,7 +185,7 @@ export async function apiDownload(
       window.dispatchEvent(
         new CustomEvent("guild-api-network", {
           detail: {
-            message: "Unable to reach server. Check your network and retry.",
+            message: tCommon("errors.connectionIssue", "Unable to reach server. Check your network and retry."),
           },
         }),
       );
@@ -204,7 +207,7 @@ export async function apiDownload(
       window.dispatchEvent(
         new CustomEvent("guild-api-unauthorized", {
           detail: {
-            message: errorPayload?.message ?? "Session expired. Please log in again.",
+            message: resolveErrorMessage(errorPayload?.message, 401),
             requestId: errorPayload?.request_id,
             errorCode: errorPayload?.error_code,
             returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
@@ -217,7 +220,7 @@ export async function apiDownload(
       window.dispatchEvent(
         new CustomEvent("guild-api-forbidden", {
           detail: {
-            message: errorPayload?.message ?? "You do not have permission for this action.",
+            message: resolveErrorMessage(errorPayload?.message, 403),
             requestId: errorPayload?.request_id,
             errorCode: errorPayload?.error_code,
           },
@@ -229,7 +232,7 @@ export async function apiDownload(
       window.dispatchEvent(
         new CustomEvent("guild-api-conflict", {
           detail: {
-            message: errorPayload?.message ?? "Conflict detected. Please refresh and retry.",
+            message: resolveErrorMessage(errorPayload?.message, 409),
             requestId: errorPayload?.request_id,
             errorCode: errorPayload?.error_code,
           },
@@ -237,15 +240,12 @@ export async function apiDownload(
       );
     }
 
-    throw new ApiRequestError(
-      sanitizeErrorMessage(errorPayload?.message ?? `Request failed: ${response.status}`),
-      {
-        status: response.status,
-        errorCode: errorPayload?.error_code,
-        requestId: errorPayload?.request_id,
-        details: errorPayload?.details,
-      },
-    );
+    throw new ApiRequestError(resolveErrorMessage(errorPayload?.message, response.status), {
+      status: response.status,
+      errorCode: errorPayload?.error_code,
+      requestId: errorPayload?.request_id,
+      details: errorPayload?.details,
+    });
   }
 
   const blob = await response.blob();

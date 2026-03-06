@@ -1,6 +1,7 @@
 import { hasRoleAtLeast, type Announcement, type PaginatedResponse } from "@guild/shared";
+import { IconPlus, IconSpeakerphone } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Group, Loader } from "@mantine/core";
+import { Button, Grid, Group, Loader } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 
 const message = {
@@ -14,6 +15,7 @@ import {
   archiveAnnouncement,
   createAnnouncement,
   uploadAnnouncementImages,
+  type UpdateAnnouncementPayload,
   updateAnnouncement,
 } from "../../api/mutations/announcements";
 import {
@@ -74,8 +76,8 @@ export function AnnouncementsPage() {
   const canEdit = isModerator && !isExternalView;
   const { showError } = useAppError();
 
-  const [listScope, setListScope] = useState<"all" | "pinned" | "archived">("all");
-  const [status, setStatus] = useState<string | undefined>(undefined);
+  const [pinnedFilter, setPinnedFilter] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -84,6 +86,7 @@ export function AnnouncementsPage() {
   const [bodyJson, setBodyJson] = useState(TIPTAP_DEFAULT_JSON);
   const [pinned, setPinned] = useState(false);
   const [archived, setArchived] = useState(false);
+  const [draftEnabled, setDraftEnabled] = useState(false);
   const [publishAt, setPublishAt] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
@@ -92,15 +95,15 @@ export function AnnouncementsPage() {
   const [announcementsLastSeenAt, setAnnouncementsLastSeenAt] = useState<string | null>(null);
 
   const listQuery = useQuery({
-    queryKey: queryKeys.announcements.list(listScope, status ?? "all", search),
+    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", search),
     queryFn: () =>
       fetchAnnouncements({
         page: 1,
         limit: 100,
-        status,
-        pinned: listScope === "pinned" ? true : undefined,
+        status: statusFilter,
+        pinned: pinnedFilter ? true : undefined,
         search: search.trim() || undefined,
-        archived: listScope === "archived",
+        archived: statusFilter === "archived",
       }),
   });
 
@@ -123,7 +126,7 @@ export function AnnouncementsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) =>
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateAnnouncementPayload }) =>
       updateAnnouncement(id, payload),
     onMutate: async ({ id, payload }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
@@ -140,7 +143,7 @@ export function AnnouncementsPage() {
             return current;
           }
           // If un-pinning while viewing "pinned" scope, remove the item from the list
-          const shouldRemove = payload.pinned === false && listScope === "pinned";
+          const shouldRemove = payload.pinned === false && pinnedFilter;
           return {
             ...current,
             data: shouldRemove
@@ -228,20 +231,29 @@ export function AnnouncementsPage() {
 
   const rows = useMemo(() => {
     let raw = listQuery.data?.data ?? [];
-    // Non-editors should only see published in normal tabs.
-    if (!canEdit && listScope !== "archived") {
+    // Non-editors: hide draft/scheduled, show published + archived
+    if (!canEdit) {
+      raw = raw.filter((item) => item.status === "published" || item.status === "archived");
+    }
+    // Status filter: archive/draft/scheduled are mutually exclusive
+    if (statusFilter) {
+      raw = raw.filter((item) => item.status === statusFilter);
+    } else {
+      // No status filter active → show only published
       raw = raw.filter((item) => item.status === "published");
     }
-    if (listScope === "archived") {
-      return raw;
+    // Pinned filter is independent — can combine with any status filter
+    if (pinnedFilter) {
+      raw = raw.filter((item) => item.pinned);
     }
+    // Sort: pinned first, then by updated_at descending
     return [...raw].sort((left, right) => {
       if (left.pinned === right.pinned) {
         return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
       }
       return left.pinned ? -1 : 1;
     });
-  }, [listQuery.data?.data, listScope, canEdit]);
+  }, [listQuery.data?.data, statusFilter, pinnedFilter, canEdit]);
   const selected = detailQuery.data ?? null;
 
   useEffect(() => {
@@ -260,6 +272,7 @@ export function AnnouncementsPage() {
     setBodyJson(selected.body_json);
     setPinned(selected.pinned);
     setArchived(selected.status === "archived");
+    setDraftEnabled(selected.status === "draft");
     setPublishAt(toDateTimePickerValue(selected.publish_at));
     setExpiresAt(toDateTimePickerValue(selected.expires_at));
     setScheduleEnabled(selected.status === "scheduled");
@@ -271,22 +284,22 @@ export function AnnouncementsPage() {
   const emptyText = useMemo(
     () => (
       <EmptyState
-        title={search.trim() || status || listScope !== "all" ? t("empty.filtered") : t("empty")}
+        title={search.trim() || statusFilter || pinnedFilter ? t("empty.filtered") : t("empty")}
         actions={
           <Group gap={8} wrap="wrap">
             <Button
               variant="default"
               onClick={() => {
                 setSearch("");
-                setStatus(undefined);
-                setListScope("all");
+                setStatusFilter(undefined);
+                setPinnedFilter(false);
               }}
-              disabled={!search.trim() && !status && listScope === "all"}
+              disabled={!search.trim() && !statusFilter && !pinnedFilter}
             >
               {t("action.resetFilters")}
             </Button>
             {canEdit ? (
-              <Button onClick={() => setCreateModalOpen(true)}>
+              <Button onClick={() => setCreateModalOpen(true)} leftSection={<IconPlus size={16} />}>
                 {t("action.createAnnouncement")}
               </Button>
             ) : null}
@@ -294,7 +307,7 @@ export function AnnouncementsPage() {
         }
       />
     ),
-    [canEdit, listScope, search, status, t],
+    [canEdit, pinnedFilter, search, statusFilter, t],
   );
   const isDirty = useMemo(() => {
     if (!canEdit) return false;
@@ -305,16 +318,33 @@ export function AnnouncementsPage() {
         pinned !== selected.pinned ||
         publishAt !== toDateTimePickerValue(selected.publish_at) ||
         expiresAt !== toDateTimePickerValue(selected.expires_at) ||
-        scheduleEnabled !== (selected.status === "scheduled")
+        scheduleEnabled !== (selected.status === "scheduled") ||
+        draftEnabled !== (selected.status === "draft") ||
+        archived !== (selected.status === "archived")
       );
     }
     return false;
-  }, [bodyJson, canEdit, scheduleEnabled, expiresAt, pinned, publishAt, selected, title]);
+  }, [bodyJson, canEdit, scheduleEnabled, draftEnabled, archived, expiresAt, pinned, publishAt, selected, title]);
   useBeforeUnloadPrompt(isDirty);
 
-  const saveSelectedByStatus = (nextStatus?: Announcement["status"]) => {
-    if (!selectedId) return;
-    const status = archived ? "archived" : (nextStatus ?? "draft");
+  /** Unified save — maps StatusMode to the appropriate announcement status and saves content. */
+  const handleFinish = (mode: "none" | "draft" | "archived" | "scheduled") => {
+    if (!selectedId || !selected) return;
+
+    if (mode === "archived") {
+      archiveMutation.mutate(selectedId);
+      return;
+    }
+
+    // "none" means no status toggle pressed — keep current status (save in place),
+    // except for drafts which get promoted to "published"
+    const statusMap: Record<string, Announcement["status"]> = {
+      none: selected.status === "draft" ? "published" : selected.status,
+      draft: "draft",
+      scheduled: "scheduled",
+    };
+    const status = statusMap[mode] ?? "published";
+
     updateMutation.mutate({
       id: selectedId,
       payload: {
@@ -333,12 +363,25 @@ export function AnnouncementsPage() {
     });
   };
 
-  const handlePublish = () => {
-    if (scheduleEnabled && publishAt.trim()) {
-      saveSelectedByStatus("scheduled");
-    } else {
-      saveSelectedByStatus("published");
-    }
+  /** Close editor without saving — revert local state to the selected announcement's values. */
+  const handleCloseEditor = () => {
+    if (!selected) return;
+    setTitle(selected.title);
+    setBodyJson(selected.body_json);
+    setPinned(selected.pinned);
+    setArchived(selected.status === "archived");
+    setDraftEnabled(selected.status === "draft");
+    setPublishAt(toDateTimePickerValue(selected.publish_at));
+    setExpiresAt(toDateTimePickerValue(selected.expires_at));
+    setScheduleEnabled(selected.status === "scheduled");
+    setNotifyDiscord(selected.status === "published");
+    setNotifyWechat(false);
+  };
+
+  /** Delete (soft-delete via archive endpoint). */
+  const handleDelete = () => {
+    if (!selectedId) return;
+    archiveMutation.mutate(selectedId);
   };
 
   const handleUploadAnnouncementImages = async (file: File) => {
@@ -370,19 +413,19 @@ export function AnnouncementsPage() {
   useLoadWarningToast(listQuery.isError || detailQuery.isError, t("common:loadErrorRetry"));
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} className="announcements-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconSpeakerphone size={22} />} className="announcements-page">
       <AnnouncementFiltersCard
-        listScope={listScope}
-        status={status}
+        pinnedFilter={pinnedFilter}
+        statusFilter={statusFilter}
         search={search}
         canEdit={canEdit}
-        onListScopeChange={setListScope}
-        onStatusChange={setStatus}
+        onPinnedFilterChange={setPinnedFilter}
+        onStatusFilterChange={setStatusFilter}
         onSearchChange={setSearch}
-        onCreate={() => setCreateModalOpen(true)}
       />
 
-      <div className="announcements-grid">
+      <Grid gutter={12}>
+        <Grid.Col span={{ base: 12, lg: 3 }}>
         <AnnouncementListCard
           title={t("list.title")}
           rows={rows}
@@ -394,8 +437,11 @@ export function AnnouncementsPage() {
           warningMessage={t("common:loadError")}
           emptyText={emptyText}
           onSelect={setSelectedId}
+          onCreate={() => setCreateModalOpen(true)}
         />
+        </Grid.Col>
 
+        <Grid.Col span={{ base: 12, lg: "auto" }}>
         <AnnouncementDetailCard
           title={t("detail.title")}
           canEdit={canEdit}
@@ -421,15 +467,20 @@ export function AnnouncementsPage() {
           onPublishAtChange={setPublishAt}
           expiresAt={expiresAt}
           onExpiresAtChange={setExpiresAt}
-          onSaveDraft={() => saveSelectedByStatus("draft")}
-          onPublish={handlePublish}
+          onFinish={handleFinish}
+          onDelete={handleDelete}
+          onCloseEditor={handleCloseEditor}
+          deletePending={archiveMutation.isPending}
+          draftEnabled={draftEnabled}
+          onDraftEnabledChange={setDraftEnabled}
           archived={archived}
           onArchivedChange={setArchived}
           onImageUpload={handleUploadAnnouncementImages}
           isDirty={isDirty}
           emptyTitle={t("common:message.noData")}
         />
-      </div>
+        </Grid.Col>
+      </Grid>
 
       {/* Create Modal */}
       <CreateAnnouncementModal

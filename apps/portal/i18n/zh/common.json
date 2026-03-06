@@ -51,6 +51,7 @@
   "loadErrorRetry": "刷新失败，显示缓存数据。",
   "errors.connectionTitle": "连接异常",
   "errors.connectionIssue": "无法连接到服务器，请检查网络后重试。",
+  "errors.serviceUnavailable": "服务暂时不可用，请稍后重试。",
   "errors.sessionExpired": "会话已过期，请重新登录。",
   "errors.forbidden": "无权限访问。",
   "errors.conflict": "检测到冲突，请刷新后重试。",
@@ -98,6 +99,8 @@
   "media.externalLink": "外部链接",
   "media.hideThumbnails": "隐藏缩略图",
   "media.showThumbnails": "显示缩略图",
+  "media.noMedia": "暂无媒体",
+  "media.noAudio": "暂无音频",
   "members.noOverflow": "无溢出成员",
   "members.overflow": "溢出 {{count}}"
 }

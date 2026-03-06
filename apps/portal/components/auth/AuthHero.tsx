@@ -1,6 +1,7 @@
 import { NotificationOutlined, TeamOutlined, ThunderboltOutlined } from "../../utils/icons";
 import { GradientText, GrainyBackground, LampHeading } from "@infini-dev-kit/frontend/components";
 import { Stack, Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 
 type AuthHeroProps = {
   eyebrow: string;
@@ -8,30 +9,31 @@ type AuthHeroProps = {
   subtitle: string;
 };
 
-const HIGHLIGHTS = [
-  {
-    key: "internal",
-    icon: <NotificationOutlined />,
-    title: "Internal Workspace",
-    description: "For guild coordination and operations only.",
-  },
-  {
-    key: "access",
-    icon: <TeamOutlined />,
-    title: "Authorized Access",
-    description: "Use your assigned guild account to continue.",
-  },
-  {
-    key: "data",
-    icon: <ThunderboltOutlined />,
-    title: "Operational Data",
-    description: "Events, roster, and war records are managed here.",
-  },
-] as const;
-
 export function AuthHero({ eyebrow, title, subtitle }: AuthHeroProps) {
+  const { t } = useTranslation("auth");
+  const highlights = [
+    {
+      key: "internal",
+      icon: <NotificationOutlined />,
+      title: t("hero.highlight.internal.title"),
+      description: t("hero.highlight.internal.description"),
+    },
+    {
+      key: "access",
+      icon: <TeamOutlined />,
+      title: t("hero.highlight.access.title"),
+      description: t("hero.highlight.access.description"),
+    },
+    {
+      key: "data",
+      icon: <ThunderboltOutlined />,
+      title: t("hero.highlight.data.title"),
+      description: t("hero.highlight.data.description"),
+    },
+  ] as const;
+
   return (
-    <aside className="auth-hero" aria-label="Portal introduction">
+    <aside className="auth-hero" aria-label={t("hero.ariaLabel")}>
       <GrainyBackground className="auth-hero__mesh" />
       <div className="auth-hero__content">
         <div className="auth-hero__logo" aria-hidden>
@@ -44,7 +46,7 @@ export function AuthHero({ eyebrow, title, subtitle }: AuthHeroProps) {
         <Text className="auth-hero__subtitle">{subtitle}</Text>
 
         <Stack gap={12} className="auth-hero__highlights">
-          {HIGHLIGHTS.map((item) => (
+          {highlights.map((item) => (
             <div key={item.key} className="auth-hero__highlight">
               <span className="auth-hero__highlight-icon" aria-hidden>
                 {item.icon}

@@ -1,26 +1,11 @@
-import type { Event } from "@guild/shared";
+import { type Event, type RecurringTemplate, createEventSchema, createTemplateSchema, updateEventSchema, updateTemplateSchema } from "@guild/shared";
+import type { z } from "zod";
 import { apiRequest } from "../client";
 
-export type EventMutationPayload = {
-  type?: string;
-  title?: string;
-  description?: string | null;
-  start_at?: string;
-  end_at?: string | null;
-  capacity?: number | null;
-  pinned?: boolean;
-  signup_locked?: boolean;
-  archived_at?: string | null;
-  recurrence_rule?: {
-    frequency: "daily" | "weekly" | "monthly";
-    interval: number;
-    daysOfWeek?: number[];
-    endAfter?: number;
-    endDate?: string;
-  } | null;
-  attachments?: string[];
-  recurrence_scope?: "this" | "future" | "all";
-};
+export type CreateEventPayload = z.input<typeof createEventSchema>;
+export type UpdateEventPayload = z.input<typeof updateEventSchema>;
+export type CreateTemplatePayload = z.input<typeof createTemplateSchema>;
+export type UpdateTemplatePayload = z.input<typeof updateTemplateSchema>;
 
 export function joinEvent(eventId: string): Promise<{ id: string }> {
   return apiRequest<{ id: string }>(`/api/events/${eventId}/join`, {
@@ -34,22 +19,30 @@ export function leaveEvent(eventId: string): Promise<{ ok: true }> {
   });
 }
 
-export function createEvent(payload: EventMutationPayload): Promise<Event> {
+export function createEvent(payload: CreateEventPayload): Promise<Event> {
+  const bodyJson = createEventSchema.parse(payload);
   return apiRequest<Event>("/api/events", {
     method: "POST",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
-export function updateEvent(eventId: string, payload: EventMutationPayload): Promise<Event> {
+export function updateEvent(eventId: string, payload: UpdateEventPayload): Promise<Event> {
+  const bodyJson = updateEventSchema.parse(payload);
   return apiRequest<Event>(`/api/events/${eventId}`, {
     method: "PATCH",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
 export function archiveEvent(eventId: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/events/${eventId}`, {
+    method: "DELETE",
+  });
+}
+
+export function deleteEvent(eventId: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/events/${eventId}/destroy`, {
     method: "DELETE",
   });
 }
@@ -74,5 +67,47 @@ export function addEventParticipant(
     bodyJson: {
       user_id: userId,
     },
+  });
+}
+
+export function removeEventParticipant(eventId: string, userId: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/events/${eventId}/participants/${userId}`, {
+    method: "DELETE",
+  });
+}
+
+// ── Recurring Templates ──
+
+export function createTemplate(payload: CreateTemplatePayload): Promise<RecurringTemplate> {
+  const bodyJson = createTemplateSchema.parse(payload);
+  return apiRequest<RecurringTemplate>("/api/events/templates", {
+    method: "POST",
+    bodyJson,
+  });
+}
+
+export function updateTemplate(templateId: string, payload: UpdateTemplatePayload): Promise<RecurringTemplate> {
+  const bodyJson = updateTemplateSchema.parse(payload);
+  return apiRequest<RecurringTemplate>(`/api/events/templates/${templateId}`, {
+    method: "PATCH",
+    bodyJson,
+  });
+}
+
+export function pauseTemplate(templateId: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/events/templates/${templateId}/pause`, {
+    method: "POST",
+  });
+}
+
+export function resumeTemplate(templateId: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/events/templates/${templateId}/resume`, {
+    method: "POST",
+  });
+}
+
+export function deleteTemplate(templateId: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/events/templates/${templateId}`, {
+    method: "DELETE",
   });
 }

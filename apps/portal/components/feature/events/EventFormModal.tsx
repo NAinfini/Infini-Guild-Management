@@ -1,23 +1,18 @@
-﻿import type { Event } from "@guild/shared";
+import type { Event } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
 import {
   Alert,
   Button,
   Group,
   Modal,
-  MultiSelect,
   Select,
-  SegmentedControl,
   Stack,
-  Switch,
   Text,
   TextInput,
   Textarea,
 } from "@mantine/core";
+import { IconTrash, IconUpload, IconX, IconPlus, IconDeviceFloppy } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
-
-type RecurrenceFreq = "daily" | "weekly" | "monthly";
-type RecurrenceApplyScope = "this" | "future" | "all";
 
 type AttachmentUploaderState = {
   files: File[];
@@ -25,6 +20,8 @@ type AttachmentUploaderState = {
   error: string | null;
   selectFiles: (source: FileList | File[] | null) => void;
 };
+
+const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 
 type EventFormModalProps = {
   open: boolean;
@@ -47,16 +44,6 @@ type EventFormModalProps = {
   onPinnedChange: (checked: boolean) => void;
   signupLocked: boolean;
   onSignupLockedChange: (checked: boolean) => void;
-  recurrenceEnabled: boolean;
-  onRecurrenceEnabledChange: (checked: boolean) => void;
-  recurrenceFreq: RecurrenceFreq;
-  onRecurrenceFreqChange: (value: RecurrenceFreq) => void;
-  recurrenceInterval: string;
-  onRecurrenceIntervalChange: (value: string) => void;
-  recurrenceDays: number[];
-  onRecurrenceDaysChange: (value: number[]) => void;
-  recurrenceApplyTo: RecurrenceApplyScope;
-  onRecurrenceApplyToChange: (value: RecurrenceApplyScope) => void;
   attachments: string[];
   onRemoveAttachment: (index: number) => void;
   attachmentUploader: AttachmentUploaderState;
@@ -69,8 +56,6 @@ type EventFormModalProps = {
   onCancel: () => void;
   onSave: () => void;
 };
-
-const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
@@ -93,20 +78,6 @@ export function EventFormModal({
   onCapacityChange,
   description,
   onDescriptionChange,
-  pinned,
-  onPinnedChange,
-  signupLocked,
-  onSignupLockedChange,
-  recurrenceEnabled,
-  onRecurrenceEnabledChange,
-  recurrenceFreq,
-  onRecurrenceFreqChange,
-  recurrenceInterval,
-  onRecurrenceIntervalChange,
-  recurrenceDays,
-  onRecurrenceDaysChange,
-  recurrenceApplyTo,
-  onRecurrenceApplyToChange,
   attachments,
   onRemoveAttachment,
   attachmentUploader,
@@ -131,136 +102,61 @@ export function EventFormModal({
       centered
       size="lg"
     >
-      <Stack gap={10}>
+      <Stack gap={16}>
+        {/* ── Title ── */}
         <TextInput
+          label={t("field.title")}
           value={title}
           onChange={(event) => onTitleChange(event.currentTarget.value)}
           placeholder={t("field.title")}
-          aria-label="Event title"
         />
 
+        {/* ── Type ── */}
         <Select
+          label={t("filter.type")}
           value={eventType}
-          aria-label="Event type"
           onChange={(value) => value && onEventTypeChange(value as (typeof EVENT_TYPES)[number])}
           data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
         />
 
-        <Group align="flex-end" wrap="wrap">
-          <div>
-            <Text size="sm">{t("field.start")}</Text>
-            <TextInput
-              type="datetime-local"
-              value={startAt}
-              onChange={(event) => onStartAtChange(event.currentTarget.value)}
-              aria-label="Event start time"
-            />
-          </div>
-          <div>
-            <Text size="sm">{t("field.end")}</Text>
-            <TextInput
-              type="datetime-local"
-              value={endAt}
-              onChange={(event) => onEndAtChange(event.currentTarget.value)}
-              aria-label="Event end time"
-            />
-          </div>
-          <div>
-            <Text size="sm">{t("field.capacity")}</Text>
-            <TextInput
-              type="number"
-              value={capacity}
-              onChange={(event) => onCapacityChange(event.currentTarget.value)}
-              placeholder={t("field.unlimited")}
-              aria-label="Event capacity"
-            />
-          </div>
+        {/* ── Date & Time ── */}
+        <Group grow wrap="wrap">
+          <TextInput
+            label={t("field.start")}
+            type="datetime-local"
+            value={startAt}
+            onChange={(event) => onStartAtChange(event.currentTarget.value)}
+          />
+          <TextInput
+            label={t("field.end")}
+            type="datetime-local"
+            value={endAt}
+            onChange={(event) => onEndAtChange(event.currentTarget.value)}
+          />
         </Group>
 
+        {/* ── Capacity ── */}
+        <TextInput
+          label={t("field.capacity")}
+          type="number"
+          value={capacity}
+          onChange={(event) => onCapacityChange(event.currentTarget.value)}
+          placeholder={t("field.unlimited")}
+          style={{ maxWidth: 200 }}
+        />
+
+        {/* ── Description ── */}
         <Textarea
+          label={t("field.description")}
           value={description}
           onChange={(event) => onDescriptionChange(event.currentTarget.value)}
           minRows={3}
           placeholder={t("field.description")}
-          aria-label="Event description"
         />
 
-        <Group wrap="wrap" gap={10}>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <Switch checked={pinned} onChange={(event) => onPinnedChange(event.currentTarget.checked)} />
-            <span>{t("field.pinned")}</span>
-          </label>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <Switch checked={signupLocked} onChange={(event) => onSignupLockedChange(event.currentTarget.checked)} />
-            <span>{t("field.signupLocked")}</span>
-          </label>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <Switch checked={recurrenceEnabled} onChange={(event) => onRecurrenceEnabledChange(event.currentTarget.checked)} />
-            <span>{t("field.recurring")}</span>
-          </label>
-        </Group>
-
-        {recurrenceEnabled ? (
-          <Group align="flex-end" wrap="wrap">
-            <Select
-              style={{ width: 160 }}
-              value={recurrenceFreq}
-              aria-label="Event recurrence frequency"
-              onChange={(value) => value && onRecurrenceFreqChange(value as RecurrenceFreq)}
-              data={[
-                { value: "daily", label: t("recurrence.daily") },
-                { value: "weekly", label: t("recurrence.weekly") },
-                { value: "monthly", label: t("recurrence.monthly") },
-              ]}
-            />
-            <TextInput
-              style={{ width: 120 }}
-              type="number"
-              value={recurrenceInterval}
-              onChange={(event) => onRecurrenceIntervalChange(event.currentTarget.value)}
-              placeholder={t("field.interval")}
-              aria-label="Event recurrence interval"
-            />
-            {recurrenceFreq === "weekly" ? (
-              <MultiSelect
-                style={{ width: 320 }}
-                value={recurrenceDays.map((item) => String(item))}
-                aria-label="Event recurrence weekdays"
-                onChange={(value) => onRecurrenceDaysChange(value.map((item) => Number(item)).filter(Number.isFinite))}
-                data={[
-                  { value: "0", label: t("weekday.sun") },
-                  { value: "1", label: t("weekday.mon") },
-                  { value: "2", label: t("weekday.tue") },
-                  { value: "3", label: t("weekday.wed") },
-                  { value: "4", label: t("weekday.thu") },
-                  { value: "5", label: t("weekday.fri") },
-                  { value: "6", label: t("weekday.sat") },
-                ]}
-              />
-            ) : null}
-          </Group>
-        ) : null}
-
-        {mode === "edit" && recurrenceEnabled ? (
-          <Stack style={{ width: "100%" }} gap={4}>
-            <Text size="sm">{t("field.applyRecurrenceTo")}</Text>
-            <SegmentedControl
-              value={recurrenceApplyTo}
-              onChange={(value) => onRecurrenceApplyToChange(value as RecurrenceApplyScope)}
-              data={[
-                { label: t("recurrence.thisEvent"), value: "this" },
-                { label: t("recurrence.thisFuture"), value: "future" },
-                { label: t("recurrence.allInSeries"), value: "all" },
-              ]}
-            />
-            <Text c="dimmed" size="xs">
-              {t("field.recurrenceHint")}
-            </Text>
-          </Stack>
-        ) : null}
-
-        <Stack style={{ width: "100%" }} gap={6}>
-          <Text size="sm">{t("attachments")} ({attachments.length}/5)</Text>
+        {/* ── Attachments ── */}
+        <Stack gap={6}>
+          <Text size="sm" fw={500}>{t("attachments")} ({attachments.length}/5)</Text>
           {attachments.length === 0 ? (
             <Text c="dimmed" size="sm">{t("noAttachments")}</Text>
           ) : (
@@ -280,7 +176,7 @@ export function EventFormModal({
                   </Text>
                 )}
                 {canManage ? (
-                  <Button size="xs" color="infini-danger" onClick={() => onRemoveAttachment(index)}>
+                  <Button size="xs" color="infini-danger" leftSection={<IconTrash size={16} />} onClick={() => onRemoveAttachment(index)}>
                     {t("removeAttachment")}
                   </Button>
                 ) : null}
@@ -289,7 +185,7 @@ export function EventFormModal({
           )}
 
           {canManage && mode === "edit" && editingEventId ? (
-            <Stack style={{ width: "100%" }} gap={4}>
+            <Stack gap={4}>
               <input
                 type="file"
                 multiple
@@ -302,6 +198,7 @@ export function EventFormModal({
                 onClick={onUploadAttachments}
                 loading={attachmentUploader.isUploading}
                 disabled={attachmentUploader.files.length === 0 || attachments.length >= 5}
+                leftSection={<IconUpload size={16} />}
               >
                 {t("uploadAttachments")}
               </Button>
@@ -309,6 +206,7 @@ export function EventFormModal({
           ) : null}
         </Stack>
 
+        {/* ── Conflict warning ── */}
         {conflictingEvents.length > 0 ? (
           <Alert color="infini-warning" title={t("conflict.detected")}>
             {t("conflict.description", { count: conflictingEvents.length, titles: conflictingEvents
@@ -318,6 +216,7 @@ export function EventFormModal({
           </Alert>
         ) : null}
 
+        {/* ── Availability hint ── */}
         {availabilityMaxCount > 0 ? (
           <Text c="dimmed" size="xs">
             {t("availability.label")}{" "}
@@ -329,11 +228,12 @@ export function EventFormModal({
           </Text>
         ) : null}
 
+        {/* ── Actions ── */}
         <Group justify="flex-end" mt={4}>
-          <Button variant="default" onClick={onCancel}>
+          <Button variant="default" onClick={onCancel} leftSection={<IconX size={16} />}>
             {t("button.cancel")}
           </Button>
-          <Button onClick={onSave} loading={confirmLoading}>
+          <Button onClick={onSave} loading={confirmLoading} leftSection={mode === "create" ? <IconPlus size={16} /> : <IconDeviceFloppy size={16} />}>
             {mode === "create" ? t("button.create") : t("button.save")}
           </Button>
         </Group>
@@ -341,4 +241,3 @@ export function EventFormModal({
     </Modal>
   );
 }
-

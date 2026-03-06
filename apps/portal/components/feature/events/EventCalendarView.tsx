@@ -9,6 +9,7 @@ type EventCalendarViewProps = {
   onSelectDate: (dateKey: string) => void;
   onCreateEvent: (dateKey: string) => void;
   onEditEvent: (event: Event) => void;
+  onViewEvent?: (event: Event) => void;
 };
 
 export function EventCalendarView({
@@ -19,6 +20,7 @@ export function EventCalendarView({
   onSelectDate,
   onCreateEvent,
   onEditEvent,
+  onViewEvent,
 }: EventCalendarViewProps) {
   return (
     <EventMonthView
@@ -29,6 +31,7 @@ export function EventCalendarView({
       availabilityMaxCount={availabilityMaxCount}
       onCreateEvent={onCreateEvent}
       onEditEvent={onEditEvent}
+      onViewEvent={onViewEvent}
     />
   );
 }

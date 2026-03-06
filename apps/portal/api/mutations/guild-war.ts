@@ -1,26 +1,29 @@
-import type { WarHistory, WarTeamMember, WarTemplate } from "@guild/shared";
+import {
+  applyWarTemplateSchema,
+  createWarHistorySchema,
+  createWarTemplateSchema,
+  saveTeamsPayloadSchema,
+  updateMemberStatsSchema,
+  updateWarHistorySchema,
+  type WarHistory,
+  type WarTeamMember,
+  type WarTemplate,
+} from "@guild/shared";
+import type { z } from "zod";
 import { apiRequest } from "../client";
 
-type SaveTeamsPayload = {
-  event_id: string;
-  teams: Array<{
-    team_name: string;
-    sort_order: number;
-    notes?: string;
-    is_locked?: boolean;
-    members: Array<{
-      user_id: string;
-      role_tag?: string;
-      sort_order: number;
-    }>;
-  }>;
-  pool_members: Array<{ user_id: string }>;
-};
+export type SaveTeamsPayload = z.input<typeof saveTeamsPayloadSchema>;
+export type CreateGuildWarHistoryPayload = z.input<typeof createWarHistorySchema>;
+export type UpdateGuildWarHistoryPayload = z.input<typeof updateWarHistorySchema>;
+export type UpdateGuildWarMemberStatsPayload = z.input<typeof updateMemberStatsSchema>;
+export type CreateGuildWarTemplatePayload = z.input<typeof createWarTemplateSchema>;
+export type ApplyGuildWarTemplatePayload = z.input<typeof applyWarTemplateSchema>;
 
 export function saveGuildWarTeams(payload: SaveTeamsPayload): Promise<WarHistory> {
+  const bodyJson = saveTeamsPayloadSchema.parse(payload);
   return apiRequest<WarHistory>("/api/guild-war/save-teams", {
     method: "POST",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
@@ -69,65 +72,52 @@ export function postGuildWarResults(payload: {
   });
 }
 
-export function createGuildWarHistory(payload: {
-  event_id?: string;
-  war_name: string;
-  enemy_name?: string;
-  result?: "win" | "loss" | "draw";
-  own_kills?: number;
-  own_towers?: number;
-  own_base_hp?: number;
-  own_credits?: number;
-  own_distance?: number;
-  enemy_kills?: number;
-  enemy_towers?: number;
-  enemy_base_hp?: number;
-  enemy_credits?: number;
-  enemy_distance?: number;
-  notes?: string;
-}): Promise<WarHistory> {
+export function createGuildWarHistory(payload: CreateGuildWarHistoryPayload): Promise<WarHistory> {
+  const bodyJson = createWarHistorySchema.parse(payload);
   return apiRequest<WarHistory>("/api/guild-war/history", {
     method: "POST",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
-export function updateGuildWarHistory(id: string, payload: Record<string, unknown>): Promise<WarHistory> {
+export function updateGuildWarHistory(
+  id: string,
+  payload: UpdateGuildWarHistoryPayload,
+): Promise<WarHistory> {
+  const bodyJson = updateWarHistorySchema.parse(payload);
   return apiRequest<WarHistory>(`/api/guild-war/history/${id}`, {
     method: "PATCH",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
 export function updateGuildWarMemberStats(
   id: string,
   userId: string,
-  payload: Record<string, unknown>,
+  payload: UpdateGuildWarMemberStatsPayload,
 ): Promise<WarTeamMember> {
+  const bodyJson = updateMemberStatsSchema.parse(payload);
   return apiRequest<WarTeamMember>(`/api/guild-war/history/${id}/member-stats/${userId}`, {
     method: "PATCH",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
-export function createGuildWarTemplate(payload: {
-  event_id: string;
-  template_name: string;
-  description?: string;
-}): Promise<WarTemplate> {
+export function createGuildWarTemplate(payload: CreateGuildWarTemplatePayload): Promise<WarTemplate> {
+  const bodyJson = createWarTemplateSchema.parse(payload);
   return apiRequest<WarTemplate>("/api/guild-war/templates", {
     method: "POST",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
-export function applyGuildWarTemplate(payload: {
-  event_id: string;
-  template_id: string;
-}): Promise<{ ok: true; war_history_id: string }> {
+export function applyGuildWarTemplate(
+  payload: ApplyGuildWarTemplatePayload,
+): Promise<{ ok: true; war_history_id: string }> {
+  const bodyJson = applyWarTemplateSchema.parse(payload);
   return apiRequest<{ ok: true; war_history_id: string }>("/api/guild-war/templates/apply", {
     method: "POST",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 

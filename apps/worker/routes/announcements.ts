@@ -8,7 +8,7 @@ import {
   type Role,
   type StandardErrorResponse,
 } from "@guild/shared";
-import { and, desc, eq, isNotNull, isNull, like, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, like, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -190,17 +190,16 @@ announcementsRoutes.get("/", async (c) => {
     }
     filters.push(eq(announcements.status, statusFilter as typeof announcements.status.enumValues[number]));
   } else if (!canReadAll) {
-    filters.push(eq(announcements.status, archivedOnly ? "archived" : "published"));
+    // Members/external: show published + archived, hide draft/scheduled
+    if (archivedOnly) {
+      filters.push(eq(announcements.status, "archived"));
+    } else {
+      filters.push(inArray(announcements.status, ["published", "archived"]));
+    }
   }
 
   if (pinnedFilter !== undefined) {
     filters.push(eq(announcements.pinned, pinnedFilter));
-  }
-
-  if (archivedOnly) {
-    filters.push(isNotNull(announcements.archivedAt));
-  } else {
-    filters.push(isNull(announcements.archivedAt));
   }
 
   if (search) {

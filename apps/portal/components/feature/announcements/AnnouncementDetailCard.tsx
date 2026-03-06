@@ -1,5 +1,5 @@
 import type { Announcement } from "@guild/shared";
-import { DepthToggle } from "@infini-dev-kit/frontend/components";
+import { DepthButton, DepthToggle } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import {
   Alert,
@@ -17,7 +17,7 @@ import {
 import { format } from "date-fns";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { IconArchive, IconPin, IconCalendarTime, IconBrandDiscord, IconBrandWechat } from "@tabler/icons-react";
+import { IconArchive, IconPin, IconCalendarTime, IconBrandDiscord, IconBrandWechat, IconTrash, IconX, IconNote } from "@tabler/icons-react";
 import { PencilOutlined } from "@portal/utils/icons";
 import { EmptyState } from "../../shared/EmptyState";
 import { TipTapEditor } from "../../shared/TipTapEditor";
@@ -36,6 +36,8 @@ function toDateTimeLocalValue(value: string): string {
 function fromDateTimeLocalValue(value: string): string {
   return value ? value.replace("T", " ") : "";
 }
+
+type StatusMode = "none" | "draft" | "archived" | "scheduled";
 
 type AnnouncementDetailCardProps = {
   title: ReactNode;
@@ -62,14 +64,25 @@ type AnnouncementDetailCardProps = {
   onPublishAtChange: (value: string) => void;
   expiresAt: string;
   onExpiresAtChange: (value: string) => void;
-  onSaveDraft: () => void;
-  onPublish: () => void;
+  onFinish: (mode: StatusMode) => void;
+  onDelete: () => void;
+  onCloseEditor: () => void;
+  deletePending: boolean;
+  draftEnabled: boolean;
+  onDraftEnabledChange: (value: boolean) => void;
   archived: boolean;
   onArchivedChange: (value: boolean) => void;
   onImageUpload: (file: File) => Promise<string>;
   isDirty: boolean;
   emptyTitle: ReactNode;
 };
+
+function deriveStatusMode(archived: boolean, scheduleEnabled: boolean, draftEnabled: boolean): StatusMode {
+  if (archived) return "archived";
+  if (scheduleEnabled) return "scheduled";
+  if (draftEnabled) return "draft";
+  return "none";
+}
 
 export function AnnouncementDetailCard({
   title,
@@ -96,8 +109,12 @@ export function AnnouncementDetailCard({
   onPublishAtChange,
   expiresAt,
   onExpiresAtChange,
-  onSaveDraft,
-  onPublish,
+  onFinish,
+  onDelete,
+  onCloseEditor,
+  deletePending,
+  draftEnabled,
+  onDraftEnabledChange,
   archived,
   onArchivedChange,
   onImageUpload,
@@ -106,41 +123,50 @@ export function AnnouncementDetailCard({
 }: AnnouncementDetailCardProps) {
   const { t } = useTranslation("announcements");
   const [editing, setEditing] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<"publish" | "publishNow" | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
-  const handleConfirm = () => {
-    if (confirmAction === "publish" || confirmAction === "publishNow") {
-      onPublish();
-    }
-    setConfirmAction(null);
+  const statusMode = deriveStatusMode(archived, scheduleEnabled, draftEnabled);
+
+  const setStatusMode = (mode: StatusMode) => {
+    onArchivedChange(mode === "archived");
+    onScheduleEnabledChange(mode === "scheduled");
+    onDraftEnabledChange(mode === "draft");
   };
 
-  const handlePublishClick = () => {
-    const hasTime = publishAt.trim().length > 0;
-    if (scheduleEnabled && hasTime) {
-      // Publish on time — schedule it
-      setConfirmAction("publish");
-    } else if (scheduleEnabled && !hasTime) {
-      // Toggle checked but no time set — ask user
-      setConfirmAction("publishNow");
-    } else if (!scheduleEnabled && hasTime) {
-      // Time set but toggle unchecked — ask user
-      setConfirmAction("publishNow");
+  const toggleStatusMode = (mode: StatusMode) => {
+    if (statusMode === mode) {
+      setStatusMode("none");
     } else {
-      // No schedule, no time — publish now
-      setConfirmAction("publish");
+      setStatusMode(mode);
     }
   };
 
-  const confirmTitle = confirmAction === "publishNow"
-    ? t("modal.publishDecision")
-    : t("modal.publishAnnouncement");
+  const finishLabel = (() => {
+    switch (statusMode) {
+      case "draft": return t("action.saveAsDraft");
+      case "archived": return t("action.archive");
+      case "scheduled": return t("action.postScheduled");
+      default:
+        // No status toggle pressed — if currently draft, offer "Post Now"; otherwise "Save"
+        return selected?.status === "draft" ? t("action.postNow") : t("action.save");
+    }
+  })();
 
-  const confirmText = confirmAction === "publishNow"
-    ? t("confirm.publishDecision")
-    : scheduleEnabled && publishAt.trim()
-      ? t("confirm.schedule")
-      : t("confirm.publish");
+  const handleFinishClick = () => {
+    onFinish(statusMode);
+    setEditing(false);
+  };
+
+  const handleDeleteConfirm = () => {
+    onDelete();
+    setDeleteConfirmOpen(false);
+    setEditing(false);
+  };
+
+  const handleCloseEditor = () => {
+    setEditing(false);
+    onCloseEditor();
+  };
 
   return (
     <InfiniCard className="announcements-detail-card" interactive={false}>
@@ -153,23 +179,32 @@ export function AnnouncementDetailCard({
               editing ? (
                 <Group gap={8}>
                   {isDirty ? <Badge color="infini-warning">{t("status.unsaved")}</Badge> : <Badge color="infini-success">{t("status.saved")}</Badge>}
-                  <Button
-                    variant="default"
-                    size="compact-sm"
-                    onClick={() => setEditing(false)}
+                  <DepthButton
+                    onClick={handleFinishClick}
+                    type="primary"
+                    size="sm"
+                    disabled={!isDirty || savePending}
                   >
-                    {t("action.done")}
-                  </Button>
+                    {finishLabel}
+                  </DepthButton>
+                  <DepthButton
+                    onClick={handleCloseEditor}
+                    type="secondary"
+                    size="sm"
+                    before={<IconX size={14} />}
+                  >
+                    {t("action.cancel")}
+                  </DepthButton>
                 </Group>
               ) : (
-                <Button
-                  variant="light"
-                  size="compact-sm"
-                  leftSection={<PencilOutlined size={14} />}
+                <DepthButton
                   onClick={() => setEditing(true)}
+                  type="secondary"
+                  size="sm"
+                  before={<PencilOutlined size={14} />}
                 >
                   {t("action.edit")}
-                </Button>
+                </DepthButton>
               )
             ) : null}
           </Group>
@@ -236,7 +271,7 @@ export function AnnouncementDetailCard({
               {/* Right: Settings Sidebar */}
               <div className="announcement-editor-sidebar">
                 <Stack gap={16}>
-                  {/* Top row: Pin, Archive, Publish On Time — icon-only DepthToggles */}
+                  {/* Top row: Pin, Draft, Archive, Schedule, Delete — icon-only DepthToggles */}
                   <Group gap={8} wrap="nowrap">
                     <Tooltip label={pinned ? t("action.unpin") : t("action.pin")} withArrow>
                       <DepthToggle
@@ -249,10 +284,21 @@ export function AnnouncementDetailCard({
                         aria-label={pinned ? t("action.unpin") : t("action.pin")}
                       />
                     </Tooltip>
+                    <Tooltip label={t("action.draft")} withArrow>
+                      <DepthToggle
+                        pressed={statusMode === "draft"}
+                        onToggle={() => toggleStatusMode("draft")}
+                        type="secondary"
+                        iconOnly
+                        size="sm"
+                        before={<IconNote size={16} />}
+                        aria-label={t("action.draft")}
+                      />
+                    </Tooltip>
                     <Tooltip label={t("action.archive")} withArrow>
                       <DepthToggle
-                        pressed={archived}
-                        onToggle={onArchivedChange}
+                        pressed={statusMode === "archived"}
+                        onToggle={() => toggleStatusMode("archived")}
                         type="secondary"
                         iconOnly
                         size="sm"
@@ -262,14 +308,23 @@ export function AnnouncementDetailCard({
                     </Tooltip>
                     <Tooltip label={t("action.publishOnTime")} withArrow>
                       <DepthToggle
-                        pressed={scheduleEnabled}
-                        onToggle={onScheduleEnabledChange}
+                        pressed={statusMode === "scheduled"}
+                        onToggle={() => toggleStatusMode("scheduled")}
                         type="secondary"
                         iconOnly
                         size="sm"
                         before={<IconCalendarTime size={16} />}
                         aria-label={t("action.publishOnTime")}
                       />
+                    </Tooltip>
+                    <Tooltip label={t("action.delete")} withArrow>
+                      <DepthButton
+                        onClick={() => setDeleteConfirmOpen(true)}
+                        type="danger"
+                        size="sm"
+                      >
+                        <IconTrash size={16} />
+                      </DepthButton>
                     </Tooltip>
                   </Group>
 
@@ -333,16 +388,6 @@ export function AnnouncementDetailCard({
 
                   <Divider />
 
-                  {/* Actions */}
-                  <Stack gap={8}>
-                    <Button fullWidth onClick={onSaveDraft} loading={savePending}>
-                      {t("action.saveDraft")}
-                    </Button>
-                    <Button fullWidth color="infini-primary" onClick={handlePublishClick} loading={savePending}>
-                      {t("action.publish")}
-                    </Button>
-                  </Stack>
-
                   {/* Meta */}
                   <Text c="dimmed" size="xs">
                     {t("meta.updated", { datetime: formatDateTime(selected.updated_at) })}
@@ -356,52 +401,28 @@ export function AnnouncementDetailCard({
         </Stack>
       </div>
 
-      {/* ── Confirmation Modal ── */}
+      {/* ── Delete Confirmation Modal ── */}
       <Modal
-        opened={confirmAction !== null}
-        onClose={() => setConfirmAction(null)}
-        title={confirmTitle}
+        opened={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        title={t("modal.deleteAnnouncement")}
         centered
         size="sm"
       >
         <Stack gap={16}>
-          <Text>{confirmText}</Text>
+          <Text>{t("confirm.delete")}</Text>
           <Group justify="flex-end" gap={8}>
-            <Button variant="default" onClick={() => setConfirmAction(null)}>
+            <Button variant="default" onClick={() => setDeleteConfirmOpen(false)} leftSection={<IconX size={16} />}>
               {t("action.cancel")}
             </Button>
-            {confirmAction === "publishNow" ? (
-              <>
-                <Button
-                  variant="light"
-                  onClick={() => {
-                    onScheduleEnabledChange(true);
-                    setConfirmAction(null);
-                  }}
-                  disabled={!publishAt.trim()}
-                >
-                  {t("action.scheduleLater")}
-                </Button>
-                <Button
-                  onClick={() => {
-                    onScheduleEnabledChange(false);
-                    handleConfirm();
-                  }}
-                  loading={savePending}
-                >
-                  {t("action.publishImmediately")}
-                </Button>
-              </>
-            ) : (
-              <Button
-                onClick={handleConfirm}
-                loading={savePending}
-              >
-                {scheduleEnabled && publishAt.trim()
-                  ? t("action.schedule")
-                  : t("action.publish")}
-              </Button>
-            )}
+            <Button
+              color="red"
+              onClick={handleDeleteConfirm}
+              loading={deletePending}
+              leftSection={<IconTrash size={16} />}
+            >
+              {t("action.delete")}
+            </Button>
           </Group>
         </Stack>
       </Modal>

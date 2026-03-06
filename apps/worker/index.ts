@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { runAnnouncementPublishCron } from "./crons/announcement-publish";
 import { runAuditArchiveCron } from "./crons/audit-archive";
 import { runBotReminderCron } from "./crons/bot-reminder";
+import { runEventAutoArchiveCron } from "./crons/event-auto-archive";
 import { runEventInstanceGenerationCron } from "./crons/event-instance-gen";
 import { runMediaOrphanCleanupCron } from "./crons/media-orphan-cleanup";
 import { clearAllData, seedDatabase } from "./db/seed";
@@ -155,6 +156,7 @@ export default {
     if (event.cron === "*/15 * * * *") {
       tasks.push(runAnnouncementPublishCron(env));
       tasks.push(runBotReminderCron(env));
+      tasks.push(runEventAutoArchiveCron(env));
     }
 
     if (event.cron === "0 2 * * *") {

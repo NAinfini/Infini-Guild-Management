@@ -1,19 +1,23 @@
 ﻿import { PlayCircleOutlined } from "@portal/utils/icons";
 import { RevealOnScroll } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import { Button, Group, Stack, Text } from "@mantine/core";
+import { Button, Group, Skeleton, Stack, Text } from "@mantine/core";
+import { IconTrash } from "@tabler/icons-react";
 import type { CSSProperties } from "react";
 import { EmptyState } from "../../shared/EmptyState";
 import type { GalleryItem } from "./shared";
 
 type GalleryGridProps = {
   rows: GalleryItem[];
+  isLoading: boolean;
+  isError: boolean;
   isExternalView: boolean;
   canModerate: boolean;
   selectedIds: string[];
   deletePending: boolean;
   emptyTitle: string;
   emptyDescription?: string;
+  errorTitle: string;
   disableResetFilters: boolean;
   resetFiltersLabel: string;
   onResetFilters: () => void;
@@ -29,12 +33,15 @@ type GalleryGridProps = {
 
 export function GalleryGrid({
   rows,
+  isLoading,
+  isError,
   isExternalView,
   canModerate,
   selectedIds,
   deletePending,
   emptyTitle,
   emptyDescription,
+  errorTitle,
   disableResetFilters,
   resetFiltersLabel,
   onResetFilters,
@@ -47,6 +54,37 @@ export function GalleryGrid({
   actionDeleteLabel,
   fieldR2ObjectLabel,
 }: GalleryGridProps) {
+  if (isLoading && rows.length === 0) {
+    return (
+      <div className="gallery-masonry" role="grid" aria-label="Gallery loading">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="gallery-masonry__item">
+            <InfiniCard interactive={false}>
+              <div style={{ padding: "1.2rem" }}>
+                <Stack gap={8}>
+                  <Skeleton height={12} width="40%" />
+                  <Skeleton height={200} radius={8} />
+                  <Skeleton height={12} width="70%" />
+                  <Skeleton height={10} width="50%" />
+                </Stack>
+              </div>
+            </InfiniCard>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (isError && rows.length === 0) {
+    return (
+      <InfiniCard interactive={false}>
+        <div style={{ padding: "1.2rem" }}>
+          <EmptyState title={errorTitle} />
+        </div>
+      </InfiniCard>
+    );
+  }
+
   if (rows.length === 0) {
     return (
       <InfiniCard interactive={false}>
@@ -86,7 +124,7 @@ export function GalleryGrid({
                         onChange={() => onToggleSelect(item.id)}
                         aria-label={`Select gallery item ${item.id}`}
                       />
-                      <Button color="infini-danger" size="xs" onClick={() => onDelete(item.id)} loading={deletePending}>
+                      <Button color="infini-danger" size="xs" leftSection={<IconTrash size={16} />} onClick={() => onDelete(item.id)} loading={deletePending}>
                         {actionDeleteLabel}
                       </Button>
                     </Group>

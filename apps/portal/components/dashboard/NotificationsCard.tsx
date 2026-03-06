@@ -33,7 +33,7 @@ export function NotificationsCard({
             onClick={onMarkAllAsRead}
             disabled={unreadCount === 0}
           >
-            Mark All as Read
+            {t("card.notifications.markAllRead")}
           </Button>
         </Group>
 
@@ -54,7 +54,7 @@ export function NotificationsCard({
                     <Text fw={700}>{item.title}</Text>
                     <Group gap={8}>
                       <Badge variant="light">{item.status}</Badge>
-                      {item.pinned ? <Badge color="infini-warning">PINNED</Badge> : null}
+                      {item.pinned ? <Badge color="infini-warning">{t("card.notifications.pinned")}</Badge> : null}
                     </Group>
                   </Stack>
                   <Text c="dimmed" className="dashboard-notification-time">
@@ -68,4 +68,3 @@ export function NotificationsCard({
     </InfiniCard>
   );
 }
-

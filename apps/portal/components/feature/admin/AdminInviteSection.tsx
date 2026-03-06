@@ -1,5 +1,6 @@
 import { Alert, Badge, Button, Group, Loader, Modal, NumberInput, SegmentedControl, Stack, Text, TextInput } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { IconBan, IconCopy, IconPlus } from "@tabler/icons-react";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { getCoreRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
@@ -118,10 +119,10 @@ export function AdminInviteSection({
           const inactive = isInviteInactive(row.original);
           return (
             <Group gap={8}>
-              <Button size="xs" onClick={() => onCopyInviteLink(row.original)} disabled={inactive}>
+              <Button size="xs" leftSection={<IconCopy size={16} />} onClick={() => onCopyInviteLink(row.original)} disabled={inactive}>
                 {t("invite.copy")}
               </Button>
-              <Button size="xs" color="infini-danger" disabled={inactive} onClick={() => onRevokeInvite(row.original)}>
+              <Button size="xs" color="infini-danger" leftSection={<IconBan size={16} />} disabled={inactive} onClick={() => onRevokeInvite(row.original)}>
                 {t("invite.revoke")}
               </Button>
             </Group>
@@ -185,7 +186,7 @@ export function AdminInviteSection({
                 style={{ width: 220 }}
               />
               {isAdmin ? (
-                <Button size="sm" onClick={() => setCreateModalOpen(true)}>
+                <Button size="sm" leftSection={<IconPlus size={16} />} onClick={() => setCreateModalOpen(true)}>
                   {t("invite.create")}
                 </Button>
               ) : null}
@@ -234,6 +235,7 @@ export function AdminInviteSection({
           </Stack>
           <Button
             fullWidth
+            leftSection={<IconPlus size={16} />}
             onClick={() => {
               onCreateInvite();
               setCreateModalOpen(false);

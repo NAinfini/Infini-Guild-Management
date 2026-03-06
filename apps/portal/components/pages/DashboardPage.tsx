@@ -1,4 +1,6 @@
 import type { Event } from "@guild/shared";
+import { Grid, Stack } from "@mantine/core";
+import { IconLayoutDashboard } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { addDays, differenceInHours } from "date-fns";
@@ -301,47 +303,43 @@ export function DashboardPage() {
     mySignupsQuery.isError ||
     recentWarDetailsQuery.isError;
   useLoadWarningToast(hasError, t("common:loadErrorRetry"));
-  const dashboardGridClassName = isExternalView ? "dashboard-grid dashboard-grid--external" : "dashboard-grid";
 
   return (
     <PageLayout
       title={t("title")}
       subtitle={t("welcome", { name: user?.username ?? t("welcomeFallback") })}
+      icon={<IconLayoutDashboard size={22} />}
       className="dashboard-page"
     >
-      <div className={dashboardGridClassName}>
-        <div className="dashboard-grid-column dashboard-grid-column--left">
-          {!isExternalView ? (
-            <div className="dashboard-slot dashboard-slot-signups">
+      <Grid gutter={16} align="flex-start">
+        <Grid.Col span={{ base: 12, xl: "auto" }}>
+          <Stack gap={16}>
+            {!isExternalView && (
               <MySignupsCard
                 mySignupEvents={mySignupEvents}
                 now={now}
                 onOpenEvent={openEventDetail}
               />
-            </div>
-          ) : null}
+            )}
 
-          <div className="dashboard-slot dashboard-slot-upcoming-primary">
             <UpcomingEventsCard
               upcomingEventsCount={upcomingEvents.length}
               featuredRows={featuredEventRows}
               rows={upcomingEventRows}
               onOpenEvent={openEventDetail}
             />
-          </div>
-        </div>
+          </Stack>
+        </Grid.Col>
 
-        <div className="dashboard-grid-column dashboard-grid-column--right">
-          <div className="dashboard-slot dashboard-slot-stats">
+        <Grid.Col span={{ base: 12, xl: isExternalView ? 6 : 4 }}>
+          <Stack gap={16}>
             <ActiveMembersCard
               activeMemberCount={activeMemberCount}
               totalMembersCount={totalMembersCount}
               allWarWinRate={allWarWinRate}
               activeEventsCount={activeEventsCount}
             />
-          </div>
 
-          <div className="dashboard-slot dashboard-slot-last-war">
             <LastWarCard
               recentWars={recentWars}
               warMvps={recentWarMvps}
@@ -351,10 +349,9 @@ export function DashboardPage() {
                 void navigate({ to: "/guild-war" });
               }}
             />
-          </div>
-
-        </div>
-      </div>
+          </Stack>
+        </Grid.Col>
+      </Grid>
     </PageLayout>
   );
 }

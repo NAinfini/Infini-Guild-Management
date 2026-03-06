@@ -1,4 +1,5 @@
 import { hasRoleAtLeast } from "@guild/shared";
+import { IconCopy, IconDeviceFloppy, IconSwords, IconTrash, IconX } from "@tabler/icons-react";
 import {
   KeyboardSensor,
   PointerSensor,
@@ -1321,6 +1322,7 @@ export function GuildWarPage() {
             <Button
               size="xs"
               variant="light"
+              leftSection={<IconCopy size={16} />}
               onClick={() => {
                 void copyPlainText(`${draftName.trim() || team.team_name}: ${team.members.map((member) => `@${member.user_id}`).join(", ")}`);
                 message.success(t("active.teamCopied"));
@@ -1385,6 +1387,7 @@ export function GuildWarPage() {
               size="xs"
               variant="light"
               color="infini-danger"
+              leftSection={<IconTrash size={16} />}
               disabled={draftLocked || !selectedEventId || !roleEditor?.userId}
               loading={roleTagMutation.isPending}
               onClick={() => {
@@ -1440,6 +1443,7 @@ export function GuildWarPage() {
             <Button
               size="xs"
               variant="light"
+              leftSection={<IconDeviceFloppy size={16} />}
               disabled={draftLocked || !selectedEventId || !roleEditor?.userId}
               loading={roleTagMutation.isPending}
               onClick={() => {
@@ -2004,7 +2008,7 @@ export function GuildWarPage() {
   );
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} className="guild-war-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconSwords size={22} />} className="guild-war-page">
       <PageTabs
         destroyInactiveTabPane
         initialActiveKey={initialTabKey}
@@ -2088,6 +2092,7 @@ export function GuildWarPage() {
                       <Button
                         size="xs"
                         variant="light"
+                        leftSection={<IconX size={16} />}
                         onClick={() => {
                           setUndoMove(null);
                         }}

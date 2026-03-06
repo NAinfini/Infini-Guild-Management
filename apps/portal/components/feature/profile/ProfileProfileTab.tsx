@@ -2,7 +2,7 @@ import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { Badge, Button, Group, NumberInput, Select, Stack, Text, TextInput, Textarea } from "@mantine/core";
-import { IconExternalLink } from "@tabler/icons-react";
+import { IconExternalLink, IconPlus, IconDeviceFloppy } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
@@ -95,7 +95,7 @@ export function ProfileProfileTab({
               onChange={(value) => onClassDraftChange(value ?? "")}
               onSearchChange={(value) => onClassDraftChange(value)}
             />
-            <Button onClick={onAddClass}>{t("action.add")}</Button>
+            <Button onClick={onAddClass} leftSection={<IconPlus size={16} />}>{t("action.add")}</Button>
           </Group>
           <DndContext sensors={classSensors} collisionDetection={closestCenter} onDragEnd={onClassDragEnd}>
             <SortableContext items={classList} strategy={verticalListSortingStrategy}>
@@ -141,7 +141,7 @@ export function ProfileProfileTab({
         <Badge color={isDirty ? "infini-warning" : "infini-success"}>
           {isDirty ? t("status.unsavedChanges") : t("status.saved")}
         </Badge>
-        <Button onClick={onSaveProfile} loading={savePending}>{t("action.saveProfile")}</Button>
+        <Button onClick={onSaveProfile} loading={savePending} leftSection={<IconDeviceFloppy size={16} />}>{t("action.saveProfile")}</Button>
       </Group>
     </Stack>
   );

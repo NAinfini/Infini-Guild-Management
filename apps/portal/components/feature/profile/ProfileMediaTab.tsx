@@ -1,5 +1,6 @@
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { Button, Divider, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
+import { IconUpload, IconTrash, IconPlus } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 
 type UploaderState = {
@@ -82,6 +83,7 @@ export function ProfileMediaTab({
               onClick={onUploadImages}
               disabled={imageUploader.files.length === 0}
               loading={imageUploader.isUploading}
+              leftSection={<IconUpload size={16} />}
             >
               {t("action.upload")}
             </Button>
@@ -109,7 +111,7 @@ export function ProfileMediaTab({
                       <Button size="compact-xs" variant="default" onClick={() => onMoveImage(index, 1)} disabled={index === imageList.length - 1}>
                         {t("action.down")}
                       </Button>
-                      <Button size="compact-xs" color="infini-danger" variant="light" onClick={() => onRemoveImage(imageKey)}>
+                      <Button size="compact-xs" color="infini-danger" variant="light" leftSection={<IconTrash size={16} />} onClick={() => onRemoveImage(imageKey)}>
                         {t("action.delete")}
                       </Button>
                     </Group>
@@ -139,7 +141,7 @@ export function ProfileMediaTab({
                 if (event.key === "Enter") onAddVideoUrl();
               }}
             />
-            <Button size="compact-sm" onClick={onAddVideoUrl}>{t("action.add")}</Button>
+            <Button size="compact-sm" onClick={onAddVideoUrl} leftSection={<IconPlus size={16} />}>{t("action.add")}</Button>
           </Group>
 
           <Text c="dimmed" size="xs">{t("media.videoHostHint")}</Text>
@@ -158,7 +160,7 @@ export function ProfileMediaTab({
                       <Button size="compact-xs" variant="default" onClick={() => onMoveVideo(index, 1)} disabled={index === videoList.length - 1}>
                         {t("action.down")}
                       </Button>
-                      <Button size="compact-xs" color="infini-danger" variant="light" onClick={() => onRemoveVideo(index)}>
+                      <Button size="compact-xs" color="infini-danger" variant="light" leftSection={<IconTrash size={16} />} onClick={() => onRemoveVideo(index)}>
                         {t("action.delete")}
                       </Button>
                     </Group>
@@ -208,6 +210,7 @@ export function ProfileMediaTab({
               onClick={onUploadAudio}
               disabled={Boolean(audioUploader.supportError) || audioUploader.files.length === 0}
               loading={audioUploader.isUploading}
+              leftSection={<IconUpload size={16} />}
             >
               {t("action.upload")}
             </Button>
@@ -226,7 +229,7 @@ export function ProfileMediaTab({
               <Divider />
               <Group gap={8} align="center">
                 <Text size="sm" style={{ flex: 1 }} truncate="end">{profileAudioKey}</Text>
-                <Button size="compact-xs" color="infini-danger" variant="light" onClick={onRemoveAudio}>
+                <Button size="compact-xs" color="infini-danger" variant="light" leftSection={<IconTrash size={16} />} onClick={onRemoveAudio}>
                   {t("action.delete")}
                 </Button>
               </Group>

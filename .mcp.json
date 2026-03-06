@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "aivectormemory": {
+      "command": "C:\\Program Files\\Python310\\python.exe",
+      "args": [
+        "-m",
+        "aivectormemory",
+        "--project-dir",
+        "C:/Users/nainf/OneDrive/Documents/GitHub/Infini-Guild-Management"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "remember",
+        "recall",
+        "forget",
+        "status",
+        "track",
+        "task",
+        "readme",
+        "auto_save"
+      ]
+    }
+  }
+}

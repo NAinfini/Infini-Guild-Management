@@ -4,6 +4,7 @@ import { listThemeIds } from "@infini-dev-kit/frontend/theme/theme-specs";
 import type { ThemeId } from "@infini-dev-kit/frontend/theme/theme-types";
 import { StrictMode } from "react";
 import type { Root } from "react-dom/client";
+import "@gfazioli/mantine-split-pane/styles.css";
 import "./i18n";
 import { AppRouter } from "./router";
 

@@ -21,6 +21,7 @@ export const queryKeys = {
     memberPreviewUsers: () => [...queryKeys.events.all, "member-preview-users"] as const,
     previewDetails: () => [...queryKeys.events.all, "preview-details"] as const,
     previewDetailsByIds: (idsKey: string) => [...queryKeys.events.previewDetails(), idsKey] as const,
+    templates: () => [...queryKeys.events.all, "templates"] as const,
   },
   announcements: {
     all: ["announcements"] as const,

@@ -26,6 +26,7 @@
   "confirm.bulkDelete.description": "Delete {{count}} item(s). This action cannot be undone.",
   "empty.filtered": "No media match your filters",
   "empty.default": "No media uploaded yet",
+  "empty.error": "Failed to load gallery",
   "empty.hintUpload": "Use Add Media to add the first image.",
   "dropzone": "Drag images here or browse",
   "clearDone": "Clear Done",

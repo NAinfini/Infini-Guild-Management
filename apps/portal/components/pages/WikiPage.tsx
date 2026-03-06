@@ -1,9 +1,9 @@
 import { hasRoleAtLeast } from "@guild/shared";
 import { arrayMove } from "@dnd-kit/sortable";
-import { Button, Drawer, Group, MultiSelect, Stack, Tabs, Text, TextInput } from "@mantine/core";
-import { DepthToggle, InfiniCard } from "@infini-dev-kit/frontend/components";
+import { Button, Drawer, Group, Stack, Text, TextInput, Tooltip, VisuallyHidden } from "@mantine/core";
+import { DepthButton, DepthToggle, InfiniCard } from "@infini-dev-kit/frontend/components";
 import { modals } from "@mantine/modals";
-import { IconArchive } from "@tabler/icons-react";
+import { IconArchive, IconEdit, IconPinned } from "@tabler/icons-react";
 import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,7 +12,6 @@ import { format } from "date-fns";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  archiveWikiArticle,
   createWikiArticle,
   createWikiCategory,
   deleteWikiCategory,
@@ -62,6 +61,7 @@ export function WikiPage() {
   const { showError } = useAppError();
 
   const [search, setSearch] = useState("");
+  const [pinnedOnly, setPinnedOnly] = useState(false);
   const [archivedOnly, setArchivedOnly] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
@@ -75,6 +75,8 @@ export function WikiPage() {
   const [articleBody, setArticleBody] = useState(TIPTAP_DEFAULT_JSON);
   const [articleSortOrder, setArticleSortOrder] = useState(0);
   const [articleCategoryId, setArticleCategoryId] = useState<string>("");
+  const [pinnedIntent, setPinnedIntent] = useState<"none" | "pin" | "unpin">("none");
+  const [archiveIntent, setArchiveIntent] = useState<"none" | "archive" | "unarchive">("none");
   const [isCreatingArticle, setIsCreatingArticle] = useState(false);
   const [editorTab, setEditorTab] = useState<"article" | "categories">("article");
   const [mobilePane, setMobilePane] = useState<"list" | "article">("list");
@@ -196,7 +198,9 @@ export function WikiPage() {
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) =>
       updateWikiArticle(id, payload),
     onSuccess: async () => {
+      setPinnedIntent("none");
       notifications.show({ color: "infini-success", message: t("message.articleSaved") });
+      setArchiveIntent("none");
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
       if (selectedSlug) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.article(selectedSlug) });
@@ -207,29 +211,21 @@ export function WikiPage() {
     },
   });
 
-  const archiveArticleMutation = useMutation({
-    mutationFn: archiveWikiArticle,
-    onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.articleArchived") });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
-      setSelectedSlug(null);
-      void navigate({ to: "/wiki", viewTransition: false });
-    },
-    onError: (error) => {
-      showError(error, t("message.articleArchiveFailed"));
-    },
-  });
-
   const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
   const categoriesById = useMemo(() => new Map(categories.map((item) => [item.id, item])), [categories]);
   const articles = useMemo(() => {
     const rows = articlesQuery.data?.data ?? [];
-    if (selectedCategoryIds.length === 0) {
-      return rows;
-    }
     const selectedSet = new Set(selectedCategoryIds);
-    return rows.filter((item) => selectedSet.has(item.category_id));
-  }, [articlesQuery.data?.data, selectedCategoryIds]);
+    return rows.filter((item) => {
+      if (selectedCategoryIds.length > 0 && !selectedSet.has(item.category_id)) {
+        return false;
+      }
+      if (pinnedOnly && !item.pinned) {
+        return false;
+      }
+      return true;
+    });
+  }, [articlesQuery.data?.data, pinnedOnly, selectedCategoryIds]);
   const selectedArticle = detailQuery.data ?? null;
 
   useEffect(() => {
@@ -276,6 +272,8 @@ export function WikiPage() {
   useEffect(() => {
     if (!selectedArticle) return;
     setIsCreatingArticle(false);
+    setPinnedIntent("none");
+    setArchiveIntent("none");
     setArticleTitle(selectedArticle.title);
     setArticleBody(selectedArticle.body_json);
     setArticleSortOrder(selectedArticle.sort_order);
@@ -331,7 +329,9 @@ export function WikiPage() {
       ? articleTitle !== selectedArticle.title ||
         articleBody !== selectedArticle.body_json ||
         articleSortOrder !== selectedArticle.sort_order ||
-        articleCategoryId !== selectedArticle.category_id
+        articleCategoryId !== selectedArticle.category_id ||
+        pinnedIntent !== "none" ||
+        archiveIntent !== "none"
       : articleTitle.trim().length > 0 ||
         articleBody !== TIPTAP_DEFAULT_JSON ||
         articleSortOrder !== 0 ||
@@ -343,6 +343,8 @@ export function WikiPage() {
     articleCategoryId,
     articleSortOrder,
     articleTitle,
+    pinnedIntent,
+    archiveIntent,
     categoryName,
     hasCategoryDraftChanges,
     canEdit,
@@ -367,6 +369,8 @@ export function WikiPage() {
     setEditorTab("article");
     setShowEditorPane(true);
     setIsCreatingArticle(true);
+    setPinnedIntent("none");
+    setArchiveIntent("none");
     setSelectedSlug(null);
     setArticleTitle("");
     setArticleBody(TIPTAP_DEFAULT_JSON);
@@ -380,19 +384,39 @@ export function WikiPage() {
     }
   };
 
-  const handleToggleEditorPane = () => {
-    setShowEditorPane((current) => {
-      const next = !current;
-      if (!next) {
-        setIsCreatingArticle(false);
-      } else {
-        setEditorTab("article");
-      }
-      if (next && isMobile) {
-        setMobilePane("article");
-      }
-      return next;
-    });
+  const handleOpenArticleEditor = () => {
+    setEditorTab("article");
+    setShowEditorPane(true);
+    if (isMobile) {
+      setMobilePane("article");
+    }
+  };
+
+  const handleOpenCategoryEditor = () => {
+    setEditorTab("categories");
+    setShowEditorPane(true);
+    setIsCreatingArticle(false);
+    if (isMobile) {
+      setMobilePane("article");
+    }
+  };
+
+  const handleExitArticleEditor = () => {
+    if (selectedArticle) {
+      setArticleTitle(selectedArticle.title);
+      setArticleBody(selectedArticle.body_json);
+      setArticleSortOrder(selectedArticle.sort_order);
+      setArticleCategoryId(selectedArticle.category_id);
+    } else {
+      setArticleTitle("");
+      setArticleBody(TIPTAP_DEFAULT_JSON);
+      setArticleSortOrder(0);
+      setArticleCategoryId("");
+    }
+    setShowEditorPane(false);
+    setIsCreatingArticle(false);
+    setPinnedIntent("none");
+    setArchiveIntent("none");
   };
 
   const handleCategoryFilterChange = (values: string[]) => {
@@ -472,27 +496,47 @@ export function WikiPage() {
 
   const handleSaveSelectedArticle = () => {
     if (!selectedArticle) return;
+    const payload: Record<string, unknown> = {
+      title: articleTitle,
+      body_json: articleBody,
+      sort_order: articleSortOrder,
+      category_id: articleCategoryId || selectedArticle.category_id,
+    };
+    if (pinnedIntent === "pin") {
+      payload.pinned = true;
+    }
+    if (pinnedIntent === "unpin") {
+      payload.pinned = false;
+    }
+    if (archiveIntent === "archive") {
+      payload.archived_at = new Date().toISOString();
+    }
+    if (archiveIntent === "unarchive") {
+      payload.archived_at = null;
+    }
     updateArticleMutation.mutate({
       id: selectedArticle.id,
-      payload: {
-        title: articleTitle,
-        body_json: articleBody,
-        sort_order: articleSortOrder,
-        category_id: articleCategoryId || selectedArticle.category_id,
-      },
+      payload,
     });
   };
 
-  const handleArchiveSelectedArticle = () => {
+  const handleTogglePinnedIntent = () => {
     if (!selectedArticle) return;
-    archiveArticleMutation.mutate(selectedArticle.id);
+    setPinnedIntent((current) => {
+      if (selectedArticle.pinned) {
+        return current === "unpin" ? "none" : "unpin";
+      }
+      return current === "pin" ? "none" : "pin";
+    });
   };
 
-  const handleUnarchiveSelectedArticle = () => {
+  const handleToggleArchiveIntent = () => {
     if (!selectedArticle) return;
-    updateArticleMutation.mutate({
-      id: selectedArticle.id,
-      payload: { archived_at: null },
+    setArchiveIntent((current) => {
+      if (selectedArticle.archived_at) {
+        return current === "unarchive" ? "none" : "unarchive";
+      }
+      return current === "archive" ? "none" : "archive";
     });
   };
 
@@ -529,78 +573,54 @@ export function WikiPage() {
           {t("backToList")}
         </Button>
       ) : null}
-      {canEdit ? (
-        <Group justify="flex-end">
-          {editorTab === "categories" && isEditorPaneVisible ? (
-            <>
-              <Button
-                size="xs"
-                onClick={handleSaveCategoryDrafts}
-                loading={saveCategoryDraftsMutation.isPending}
-                disabled={!canSaveCategoryDrafts}
-              >
-                {t("articleEditor.save")}
-              </Button>
-              <Button size="xs" variant="default" onClick={handleCloseCategoryEditorWithoutSave}>
-                {t("editor.closeNoSave")}
-              </Button>
-            </>
-          ) : (
-            <Button size="xs" onClick={handleToggleEditorPane}>
-              {isEditorPaneVisible ? "done" : "edit"}
-            </Button>
-          )}
-        </Group>
-      ) : null}
-      <Tabs value={editorTab} onChange={(value) => setEditorTab((value as "article" | "categories") ?? "article")}>
-        <Tabs.List>
-          <Tabs.Tab value="article">{t("articleEditor.title")}</Tabs.Tab>
-          <Tabs.Tab value="categories">{t("categoryEditor.title")}</Tabs.Tab>
-        </Tabs.List>
-        <Tabs.Panel value="article" pt="sm">
-          <WikiArticleEditorCard
-            canEdit={canEdit}
-            isCreatingArticle={isCreatingArticle}
-            selectedArticle={selectedArticle}
-            selectedCategory={selectedCategory}
-            isLoading={false}
-            isError={false}
-            warningMessage={t("common:loadError")}
-            articleTitle={articleTitle}
-            articleBody={articleBody}
-            articleCategoryId={articleCategoryId}
-            categoryOptions={categoryOptions}
-            isSaving={updateArticleMutation.isPending}
-            isArchiving={archiveArticleMutation.isPending}
-            isCreating={createArticleMutation.isPending}
-            canCreateArticle={canCreateArticle}
-            onArticleTitleChange={setArticleTitle}
-            onArticleBodyChange={setArticleBody}
-            onArticleCategoryChange={setArticleCategoryId}
-            onSaveArticle={handleSaveSelectedArticle}
-            onArchiveArticle={handleArchiveSelectedArticle}
-            onUnarchiveArticle={handleUnarchiveSelectedArticle}
-            onCreateArticle={handleCreateArticle}
-            onImageUpload={handleUploadWikiArticleImage}
-            emptyTitle={t("empty")}
-          />
-        </Tabs.Panel>
-        <Tabs.Panel value="categories" pt="sm">
-          <WikiCategoryEditorCard
-            canEdit={canEdit}
-            categoryName={categoryName}
-            categoryDrafts={categoryDrafts}
-            isCreating={createCategoryMutation.isPending}
-            deletingCategoryId={deletingCategoryId}
-            onCategoryNameChange={setCategoryName}
-            onCreateCategory={handleCreateCategory}
-            onCategoryDraftNameChange={handleCategoryDraftNameChange}
-            onCategoryDraftParentIdChange={handleCategoryDraftParentIdChange}
-            onCategoryReorder={handleCategoryReorder}
-            onDeleteCategory={handleDeleteCategory}
-          />
-        </Tabs.Panel>
-      </Tabs>
+      {editorTab === "categories" ? (
+        <WikiCategoryEditorCard
+          canEdit={canEdit}
+          categoryName={categoryName}
+          categoryDrafts={categoryDrafts}
+          isCreating={createCategoryMutation.isPending}
+          isSavingDrafts={saveCategoryDraftsMutation.isPending}
+          canSaveDrafts={canSaveCategoryDrafts}
+          deletingCategoryId={deletingCategoryId}
+          onCategoryNameChange={setCategoryName}
+          onCreateCategory={handleCreateCategory}
+          onSaveDrafts={handleSaveCategoryDrafts}
+          onCloseEditor={handleCloseCategoryEditorWithoutSave}
+          onCategoryDraftNameChange={handleCategoryDraftNameChange}
+          onCategoryDraftParentIdChange={handleCategoryDraftParentIdChange}
+          onCategoryReorder={handleCategoryReorder}
+          onDeleteCategory={handleDeleteCategory}
+        />
+      ) : (
+        <WikiArticleEditorCard
+          canEdit={canEdit}
+          isCreatingArticle={isCreatingArticle}
+          selectedArticle={selectedArticle}
+          selectedCategory={selectedCategory}
+          isLoading={false}
+          isError={false}
+          warningMessage={t("common:loadError")}
+          articleTitle={articleTitle}
+          articleBody={articleBody}
+          articleCategoryId={articleCategoryId}
+          categoryOptions={categoryOptions}
+          pinnedIntent={pinnedIntent}
+          archiveIntent={archiveIntent}
+          isSaving={updateArticleMutation.isPending}
+          isCreating={createArticleMutation.isPending}
+          canCreateArticle={canCreateArticle}
+          onArticleTitleChange={setArticleTitle}
+          onArticleBodyChange={setArticleBody}
+          onArticleCategoryChange={setArticleCategoryId}
+          onSaveArticle={handleSaveSelectedArticle}
+          onTogglePinnedIntent={handleTogglePinnedIntent}
+          onToggleArchiveIntent={handleToggleArchiveIntent}
+          onCreateArticle={handleCreateArticle}
+          onExitEditor={handleExitArticleEditor}
+          onImageUpload={handleUploadWikiArticleImage}
+          emptyTitle={t("empty")}
+        />
+      )}
     </Stack>
   );
 
@@ -627,9 +647,14 @@ export function WikiPage() {
                     {selectedArticle.title}
                   </Text>
                   {canEdit ? (
-                    <Button size="xs" onClick={handleToggleEditorPane}>
-                      edit
-                    </Button>
+                    <Tooltip label={t("editor.editWiki")} withArrow>
+                      <DepthButton type="secondary" size="sm" onClick={handleOpenArticleEditor}>
+                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                          <IconEdit size={16} />
+                        </span>
+                        <VisuallyHidden>{t("editor.editWiki")}</VisuallyHidden>
+                      </DepthButton>
+                    </Tooltip>
                   ) : null}
                 </Group>
                 <Group gap={6}>
@@ -675,33 +700,35 @@ export function WikiPage() {
             <Group gap={8} wrap="wrap">
               <TextInput
                 style={{ width: 300 }}
-                label={t("filter.search")}
                 placeholder={t("filter.search")}
                 aria-label={t("filter.searchAria")}
                 value={search}
                 onChange={(event) => setSearch(event.currentTarget.value)}
               />
-              <DepthToggle
-                pressed={archivedOnly}
-                onToggle={() => setArchivedOnly((value) => !value)}
-                type="secondary"
-                size="sm"
-                iconOnly
-                aria-label={archivedOnly ? t("filter.showActive") : t("filter.showArchived")}
-              >
-                <IconArchive size={16} />
-              </DepthToggle>
-              <MultiSelect
-                clearable
-                searchable
-                style={{ width: 320 }}
-                label={t("filter.categories")}
-                placeholder={t("filter.allCategories")}
-                aria-label={t("filter.categories")}
-                value={selectedCategoryIds}
-                onChange={handleCategoryFilterChange}
-                data={categoryOptions}
-              />
+              <Tooltip label={pinnedOnly ? t("filter.showAll") : t("filter.showPinned")} withArrow>
+                <DepthToggle
+                  pressed={pinnedOnly}
+                  onToggle={() => setPinnedOnly((value) => !value)}
+                  type="secondary"
+                  size="sm"
+                  iconOnly
+                  aria-label={pinnedOnly ? t("filter.showAll") : t("filter.showPinned")}
+                >
+                  <IconPinned size={16} />
+                </DepthToggle>
+              </Tooltip>
+              <Tooltip label={archivedOnly ? t("filter.showActive") : t("filter.showArchived")} withArrow>
+                <DepthToggle
+                  pressed={archivedOnly}
+                  onToggle={() => setArchivedOnly((value) => !value)}
+                  type="secondary"
+                  size="sm"
+                  iconOnly
+                  aria-label={archivedOnly ? t("filter.showActive") : t("filter.showArchived")}
+                >
+                  <IconArchive size={16} />
+                </DepthToggle>
+              </Tooltip>
             </Group>
           </div>
         </InfiniCard>
@@ -719,6 +746,10 @@ export function WikiPage() {
               canEdit={canEdit}
               createLabel={t("articleEditor.create")}
               onCreateArticle={handleStartCreateArticle}
+              onOpenCategoryEditor={handleOpenCategoryEditor}
+              categoryOptions={categoryOptions}
+              selectedCategoryIds={selectedCategoryIds}
+              onCategoryFilterChange={handleCategoryFilterChange}
               isLoading={false}
               isError={false}
               warningMessage={t("common:loadError")}

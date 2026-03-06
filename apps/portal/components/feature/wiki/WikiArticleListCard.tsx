@@ -1,6 +1,7 @@
 ﻿import type { WikiArticle } from "@guild/shared";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import { Alert, Button, Group, Skeleton, Stack, Text } from "@mantine/core";
+import { DepthButton, InfiniCard } from "@infini-dev-kit/frontend/components";
+import { Alert, Group, MultiSelect, Skeleton, Stack, Text, Tooltip, VisuallyHidden } from "@mantine/core";
+import { IconArchive, IconEdit, IconPinned, IconPlus } from "@tabler/icons-react";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,6 +18,10 @@ type WikiArticleListCardProps = {
   canEdit: boolean;
   createLabel: ReactNode;
   onCreateArticle: () => void;
+  onOpenCategoryEditor: () => void;
+  categoryOptions: Array<{ value: string; label: string }>;
+  selectedCategoryIds: string[];
+  onCategoryFilterChange: (values: string[]) => void;
   isLoading: boolean;
   isError: boolean;
   warningMessage: ReactNode;
@@ -31,6 +36,10 @@ export function WikiArticleListCard({
   canEdit,
   createLabel,
   onCreateArticle,
+  onOpenCategoryEditor,
+  categoryOptions,
+  selectedCategoryIds,
+  onCategoryFilterChange,
   isLoading,
   isError,
   warningMessage,
@@ -47,8 +56,36 @@ export function WikiArticleListCard({
         <Stack gap={10}>
           <Group justify="space-between">
             <Text fw={600}>{title}</Text>
-            {canEdit ? <Button onClick={onCreateArticle}>{createLabel}</Button> : null}
+            {canEdit ? (
+              <Group gap={6}>
+                <Tooltip label={createLabel} withArrow>
+                  <DepthButton type="secondary" size="sm" onClick={onCreateArticle}>
+                    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                      <IconPlus size={16} />
+                    </span>
+                    <VisuallyHidden>{createLabel}</VisuallyHidden>
+                  </DepthButton>
+                </Tooltip>
+                <Tooltip label={t("editor.editCategories")} withArrow>
+                  <DepthButton type="secondary" size="sm" onClick={onOpenCategoryEditor}>
+                    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                      <IconEdit size={16} />
+                    </span>
+                    <VisuallyHidden>{t("editor.editCategories")}</VisuallyHidden>
+                  </DepthButton>
+                </Tooltip>
+              </Group>
+            ) : null}
           </Group>
+          <MultiSelect
+            clearable
+            searchable
+            placeholder={t("filter.allCategories")}
+            aria-label={t("filter.categories")}
+            value={selectedCategoryIds}
+            onChange={onCategoryFilterChange}
+            data={categoryOptions}
+          />
           {isLoading ? (
             <Stack gap={8}>
               {Array.from({ length: 6 }).map((_, index) => (
@@ -72,10 +109,19 @@ export function WikiArticleListCard({
                   <Stack gap={0}>
                     <Group gap={6}>
                       <Text fw={600}>{item.title}</Text>
+                      {item.pinned ? (
+                        <Tooltip label={t("articleEditor.pinned")} withArrow>
+                          <Text c="infini-primary" style={{ display: "inline-flex", alignItems: "center" }}>
+                            <IconPinned size={14} aria-hidden />
+                          </Text>
+                        </Tooltip>
+                      ) : null}
                       {item.archived_at ? (
-                        <Text c="dimmed" size="sm">
-                          {t("articleEditor.archived")}
-                        </Text>
+                        <Tooltip label={t("articleEditor.archived")} withArrow>
+                          <Text c="infini-warning" style={{ display: "inline-flex", alignItems: "center" }}>
+                            <IconArchive size={14} aria-hidden />
+                          </Text>
+                        </Tooltip>
                       ) : null}
                     </Group>
                     <Text c="dimmed" size="xs">
@@ -91,5 +137,3 @@ export function WikiArticleListCard({
     </InfiniCard>
   );
 }
-
-

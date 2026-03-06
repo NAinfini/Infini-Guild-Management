@@ -1,4 +1,5 @@
 import { hasRoleAtLeast } from "@guild/shared";
+import { IconPhoto } from "@tabler/icons-react";
 import { MotionButton } from "@infini-dev-kit/frontend/components";
 import { Button, Group, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
@@ -310,7 +311,7 @@ export function GalleryPage() {
   const emptyDescription = canUpload ? t("empty.hintUpload") : undefined;
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} className="gallery-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconPhoto size={22} />} className="gallery-page">
       <Modal
         opened={addMediaModalOpen}
         onClose={() => setAddMediaModalOpen(false)}
@@ -445,12 +446,15 @@ export function GalleryPage() {
       />
       <GalleryGrid
         rows={rows}
+        isLoading={galleryQuery.isLoading}
+        isError={galleryQuery.isError}
         isExternalView={isExternalView}
         canModerate={canModerate}
         selectedIds={selectedIds}
         deletePending={deleteMutation.isPending}
         emptyTitle={emptyTitle}
         emptyDescription={emptyDescription}
+        errorTitle={t("empty.error")}
         disableResetFilters={!typeFilter && !dateFrom && !dateTo}
         resetFiltersLabel={t("action.resetFilters")}
         onResetFilters={() => {

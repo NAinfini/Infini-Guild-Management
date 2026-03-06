@@ -16,6 +16,8 @@
   "card.activeMembers.activeEvents": "Active Events",
   "card.activeMembers.summaryHint": "Realtime guild activity snapshot",
   "card.notifications.title": "Notifications",
+  "card.notifications.markAllRead": "Mark all as read",
+  "card.notifications.pinned": "Pinned",
   "card.lastWar.title": "Last Guild War",
   "card.lastWar.result": "Result",
   "card.lastWar.kills": "Kills",

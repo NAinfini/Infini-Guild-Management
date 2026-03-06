@@ -48,6 +48,8 @@
   background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 12%, var(--infini-color-surface, #ffffff));
   color: var(--infini-color-primary, #3b82f6);
   border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  transform: rotate(0deg) scale(1);
+  will-change: transform;
   transition:
     transform var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease),
     background var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease),

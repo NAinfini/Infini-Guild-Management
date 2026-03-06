@@ -1,14 +1,24 @@
-import type { BotSettings, InviteLink } from "@guild/shared";
+import {
+  type BotSettings,
+  type InviteLink,
+  batchDeactivateSchema,
+  batchRoleChangeSchema,
+  botSettingsSchema,
+  createAdminMemberSchema,
+  createInviteLinkSchema,
+} from "@guild/shared";
+import type { z } from "zod";
 import { apiRequest } from "../client";
 
-export function createAdminInviteLink(payload: {
-  max_uses: number;
-  expires_at?: string;
-}): Promise<InviteLink> {
-  return apiRequest<InviteLink>("/api/admin/invite-links", {
-    method: "POST",
-    bodyJson: payload,
-  });
+export type CreateInviteLinkPayload = z.input<typeof createInviteLinkSchema>;
+export type CreateAdminMemberPayload = z.input<typeof createAdminMemberSchema>;
+export type BatchRoleChangePayload = z.input<typeof batchRoleChangeSchema>;
+export type BatchDeactivatePayload = z.input<typeof batchDeactivateSchema>;
+export type UpdateBotSettingsPayload = z.input<typeof botSettingsSchema>;
+
+export function createAdminInviteLink(payload: CreateInviteLinkPayload): Promise<InviteLink> {
+  const bodyJson = createInviteLinkSchema.parse(payload);
+  return apiRequest<InviteLink>("/api/admin/invite-links", { method: "POST", bodyJson });
 }
 
 export function revokeAdminInviteLink(id: string): Promise<{ ok: true }> {
@@ -54,63 +64,70 @@ export function resetAdminUserPassword(
   );
 }
 
-export function createAdminMember(payload: {
-  username: string;
-}): Promise<{ ok: true; user_id: string; username: string; temporary_password: string }> {
+export function createAdminMember(
+  payload: CreateAdminMemberPayload,
+): Promise<{ ok: true; user_id: string; username: string; temporary_password: string }> {
+  const bodyJson = createAdminMemberSchema.parse(payload);
   return apiRequest<{ ok: true; user_id: string; username: string; temporary_password: string }>(
     "/api/admin/users",
     {
       method: "POST",
-      bodyJson: payload,
+      bodyJson,
     },
   );
 }
 
-export function batchUpdateAdminUserRole(payload: {
-  user_ids: string[];
-  new_role: "member" | "moderator";
-}): Promise<{ ok: true; updated: number }> {
+export function batchUpdateAdminUserRole(
+  payload: BatchRoleChangePayload,
+): Promise<{ ok: true; updated: number }> {
+  const bodyJson = batchRoleChangeSchema.parse(payload);
   return apiRequest<{ ok: true; updated: number }>("/api/admin/users/batch/role", {
     method: "PATCH",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
-export function batchDeactivateAdminUsers(payload: {
-  user_ids: string[];
-}): Promise<{ ok: true; updated: number }> {
+export function batchDeactivateAdminUsers(
+  payload: BatchDeactivatePayload,
+): Promise<{ ok: true; updated: number }> {
+  const bodyJson = batchDeactivateSchema.parse(payload);
   return apiRequest<{ ok: true; updated: number }>("/api/admin/users/batch/deactivate", {
     method: "PATCH",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
-export function batchReactivateAdminUsers(payload: {
-  user_ids: string[];
-}): Promise<{ ok: true; updated: number }> {
+export function batchReactivateAdminUsers(
+  payload: BatchDeactivatePayload,
+): Promise<{ ok: true; updated: number }> {
+  const bodyJson = batchDeactivateSchema.parse(payload);
   return apiRequest<{ ok: true; updated: number }>("/api/admin/users/batch/reactivate", {
     method: "PATCH",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
-export function batchDeleteAdminUsers(payload: {
-  user_ids: string[];
-}): Promise<{ ok: true; updated: number }> {
+export function batchDeleteAdminUsers(
+  payload: BatchDeactivatePayload,
+): Promise<{ ok: true; updated: number }> {
+  const bodyJson = batchDeactivateSchema.parse(payload);
   return apiRequest<{ ok: true; updated: number }>("/api/admin/users/batch/delete", {
     method: "PATCH",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
-export function updateAdminBotSettings(payload: BotSettings): Promise<{ ok: true }> {
+export function updateAdminBotSettings(payload: UpdateBotSettingsPayload): Promise<{ ok: true }> {
+  const bodyJson = botSettingsSchema.parse(payload);
   return apiRequest<{ ok: true }>("/api/admin/bot-settings", {
     method: "PATCH",
-    bodyJson: payload,
+    bodyJson,
   });
 }
 
-export function testAdminBotDispatch(payload: { platform: "discord" | "wechat" }): Promise<{ ok: true; task_id: string }> {
+export function testAdminBotDispatch(payload: {
+  platform: "discord" | "wechat";
+}): Promise<{ ok: true; task_id: string }> {
   return apiRequest<{ ok: true; task_id: string }>("/api/admin/bot-settings/test", {
     method: "POST",
     bodyJson: payload,

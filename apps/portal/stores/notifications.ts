@@ -198,17 +198,6 @@ function createEntryFromPush(message: PushMessage): PushNotificationEntry | null
     };
   }
 
-  if (message.type === "member_online") {
-    return {
-      id: `member-online:${message.user_id}:${message.online_at}`,
-      type: "member_online",
-      title: "Member Online",
-      message: `${message.user_id} is online`,
-      occurredAt: toIsoOrNow(message.online_at),
-      readAt: null,
-    };
-  }
-
   return null;
 }
 

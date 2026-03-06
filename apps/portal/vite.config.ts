@@ -100,6 +100,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     resolve: {
+      dedupe: ["@mantine/core", "@mantine/hooks", "react", "react-dom"],
       alias: [
         {
           find: "@infini-dev-kit/frontend",

@@ -6,49 +6,12 @@
   overflow: visible !important;
 }
 
-.events-filter-controls {
-  width: 100%;
-}
-
 .events-filter-type {
   width: 200px;
 }
 
-.events-filter-date {
-  width: 180px;
-}
-
-.events-inline-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.events-card-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-
-@media (max-width: 1399px) {
-  .events-card-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-@media (max-width: 1023px) {
-  .events-card-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
 @media (max-width: 767px) {
-  .events-filter-type,
-  .events-filter-date {
+  .events-filter-type {
     width: 100%;
-  }
-
-  .events-card-grid {
-    grid-template-columns: 1fr;
   }
 }

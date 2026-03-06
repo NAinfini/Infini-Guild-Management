@@ -4,7 +4,7 @@ import { arrayMove, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Badge, Button, Grid, Group, Tabs, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconGripVertical } from "@tabler/icons-react";
+import { IconGripVertical, IconTrash, IconUserCircle } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
@@ -62,7 +62,7 @@ function SortableClassRow(props: SortableClassRowProps) {
         <IconGripVertical size={18} />
       </div>
       <Badge color={isPrimary ? "yellow" : "gray"}>{value}</Badge>
-      <Button size="xs" color="infini-danger" onClick={onRemove}>
+      <Button size="xs" color="infini-danger" leftSection={<IconTrash size={16} />} onClick={onRemove}>
         {t("classRow.remove")}
       </Button>
       <Text c="dimmed" size="sm" style={{ fontSize: 12 }}>
@@ -90,7 +90,7 @@ export function MyProfilePage() {
   const [wechatName, setWechatName] = useState("");
   const [power, setPower] = useState(0);
   const [classDraft, setClassDraft] = useState("");
-  const [classList, setClassList] = useState<string[]>([]);
+  const [classList, setClassList] = useState<Array<(typeof CLASS_NAMES)[number]>>([]);
   const [videoDraft, setVideoDraft] = useState("");
   const [videoList, setVideoList] = useState<string[]>([]);
   const [imageList, setImageList] = useState<string[]>([]);
@@ -341,8 +341,10 @@ export function MyProfilePage() {
       return;
     }
     setClassList((current) => {
-      const oldIndex = current.indexOf(String(active.id));
-      const newIndex = current.indexOf(String(over.id));
+      const activeId = String(active.id) as (typeof CLASS_NAMES)[number];
+      const overId = String(over.id) as (typeof CLASS_NAMES)[number];
+      const oldIndex = current.indexOf(activeId);
+      const newIndex = current.indexOf(overId);
       if (oldIndex < 0 || newIndex < 0) {
         return current;
       }
@@ -534,6 +536,7 @@ export function MyProfilePage() {
     <PageLayout
       title={t("title")}
       subtitle={t("subtitle")}
+      icon={<IconUserCircle size={22} />}
       className="my-profile-page"
     >
       <Grid gutter="md">

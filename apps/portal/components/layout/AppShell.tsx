@@ -38,7 +38,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import i18n from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from "react";
@@ -46,6 +46,7 @@ import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { apiRequest } from "../../api/client";
 import { queryKeys } from "../../api/query-keys";
+import { fetchRoles } from "../../api/queries/roles";
 import { PageHeaderContext } from "../../context/PageHeaderContext";
 import { useNotificationPresentation } from "../../hooks/useNotificationPresentation";
 import { useNotificationSync } from "../../hooks/useNotificationSync";
@@ -59,7 +60,7 @@ import { OverlayRegistrar } from "../shared/OverlayRegistrar";
 import { BottomNav } from "./BottomNav";
 import { CmdKSearch } from "./CmdKSearch";
 import { UserProfileDropdown } from "./UserProfileDropdown";
-import { ViewingAsSelector, type ViewingAsRole } from "./ViewingAsSelector";
+import { ViewingAsSelector } from "./ViewingAsSelector";
 import "./AppShell.css";
 
 type NavItem = {
@@ -201,20 +202,14 @@ function AnimatedOutlet({ pathname, enabled }: { pathname: string; enabled: bool
   );
 }
 
-function normalizeViewingAs(role: string | null, isExternalView: boolean): ViewingAsRole {
+function normalizeViewingAs(role: string | null, isExternalView: boolean): string {
   if (isExternalView) {
     return "external";
   }
-  if (role === "admin") {
-    return "admin";
-  }
-  if (role === "moderator") {
-    return "moderator";
-  }
-  return "member";
+  return role ?? "member";
 }
 
-function syncViewSearch(nextRole: ViewingAsRole) {
+function syncViewSearch(nextRole: string) {
   const url = new URL(window.location.href);
   if (nextRole === "external") {
     url.searchParams.set("view", "external");
@@ -246,14 +241,16 @@ export function AppShell() {
   const pushEntries = useNotificationStore((state) => state.pushHistory);
   const markFeatureAsRead = useNotificationStore((state) => state.markFeatureAsRead);
   const markPushAsRead = useNotificationStore((state) => state.markPushAsRead);
+  const markAllPushAsRead = useNotificationStore((state) => state.markAllPushAsRead);
   const themeIds = useMemo(() => listThemeIds(), []);
   const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [permissionBanner, setPermissionBanner] = useState<string | null>(null);
   const [headerActions, setHeaderActions] = useState<ReactNode>(null);
-  const [viewingAs, setViewingAs] = useState<ViewingAsRole>(() =>
+  const [viewingAs, setViewingAs] = useState<string>(() =>
     normalizeViewingAs(user?.role ?? null, isExternalView),
   );
   const previousPathnameRef = useRef(pathname);
+  const scrollContainerRef = useRef<HTMLElement>(null);
   const isWikiInternalNavigation = isWikiPath(previousPathnameRef.current) && isWikiPath(pathname);
   const shouldAnimateRoute = !hideNavigation && motionSnapshot.effectiveMode !== "off" && !isWikiInternalNavigation;
   const pageHeaderContextValue = useMemo(() => ({ setActions: setHeaderActions }), []);
@@ -277,11 +274,9 @@ export function AppShell() {
       return;
     }
     const frameId = window.requestAnimationFrame(() => {
-      const main = document.querySelector<HTMLElement>(".app-content");
-      if (main) {
-        main.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTo({ top: 0, left: 0, behavior: "auto" });
       }
-      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     });
     return () => {
       window.cancelAnimationFrame(frameId);
@@ -341,9 +336,6 @@ export function AppShell() {
       }
       if (message.type === "announcement_published") {
         void queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
-      }
-      if (message.type === "member_online") {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
       }
     },
     [queryClient],
@@ -425,9 +417,14 @@ export function AppShell() {
     [markFeatureAsRead],
   );
 
-  const pushHasUnread = useMemo(
-    () => pushEntries.some((entry) => entry.readAt === null),
+  const displayPushEntries = useMemo(
+    () => pushEntries.filter((entry) => entry.type !== "member_online"),
     [pushEntries],
+  );
+
+  const pushHasUnread = useMemo(
+    () => displayPushEntries.some((entry) => entry.readAt === null),
+    [displayPushEntries],
   );
 
   const handlePushNotificationClick = useCallback(
@@ -435,18 +432,8 @@ export function AppShell() {
       markPushAsRead(entryId);
 
       if (type === "announcement_published") {
-        if (user) {
-          markFeatureAsRead("announcements");
-        }
+        markFeatureAsRead("announcements");
         void navigate({ to: "/announcements" });
-        return;
-      }
-
-      if (type === "member_online") {
-        if (user) {
-          markFeatureAsRead("members");
-        }
-        void navigate({ to: "/roster" });
         return;
       }
 
@@ -454,7 +441,7 @@ export function AppShell() {
         void navigate({ to: "/events" });
       }
     },
-    [markFeatureAsRead, markPushAsRead, navigate, user],
+    [markFeatureAsRead, markPushAsRead, navigate],
   );
 
   const selectedNavKey = useMemo(() => {
@@ -472,6 +459,12 @@ export function AppShell() {
   }, [pathname, t, visibleNavItems]);
 
   const canSwitchView = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
+
+  const rolesQuery = useQuery({
+    queryKey: queryKeys.admin.roles(),
+    queryFn: fetchRoles,
+    enabled: canSwitchView,
+  });
 
   if (hideNavigation) {
     return (
@@ -496,7 +489,7 @@ export function AppShell() {
         navbar={!isMobile ? { width: sidebarWidth, breakpoint: "md" } : undefined}
         padding={0}
       >
-        <ScrollProgress thicknessPx={3} zIndex={1000} />
+        <ScrollProgress thicknessPx={3} zIndex={1000} container={scrollContainerRef} />
         <OverlayRegistrar />
         <AppErrorOverlay />
 
@@ -574,6 +567,7 @@ export function AppShell() {
               <ViewingAsSelector
                 value={viewingAs}
                 compact={isSidebarCollapsed}
+                roles={rolesQuery.data ?? []}
                 onChange={(nextRole) => {
                   setViewingAs(nextRole);
                   syncViewSearch(nextRole);
@@ -595,7 +589,7 @@ export function AppShell() {
           <div className="app-header__right">
             <div className="app-header-tools">
               {!isMobile ? <CmdKSearch /> : null}
-              <Popover width={420} position="bottom-end" shadow="md" withArrow>
+              <Popover width={420} position="bottom-end" shadow="md" withArrow onOpen={() => { markAllPushAsRead(); markFeatureAsRead("announcements"); }}>
                 <Popover.Target>
                   <ActionIcon variant="subtle" className="app-header-icon-btn" aria-label={t("label.notifications")}>
                     <Indicator
@@ -603,8 +597,7 @@ export function AppShell() {
                         !Boolean(
                           user &&
                             (pushHasUnread ||
-                              notificationFeatures.announcements.hasNew ||
-                              notificationFeatures.members.hasNew),
+                              notificationFeatures.announcements.hasNew),
                         )
                       }
                       offset={1}
@@ -621,11 +614,11 @@ export function AppShell() {
                       <Text fw={600}>{t("label.notifications")}</Text>
                     </div>
 
-                    {pushEntries.length === 0 ? (
+                    {displayPushEntries.length === 0 ? (
                       <EmptyState title={t("notification.empty")} />
                     ) : (
                       <Stack gap={6} className="app-header-notifications-list">
-                        {pushEntries.map((item) => (
+                        {displayPushEntries.map((item) => (
                           <UnstyledButton
                             key={item.id}
                             className={`app-header-notification-item ${
@@ -645,11 +638,6 @@ export function AppShell() {
                                   {item.type === "event_reminder" ? (
                                     <Badge variant="light" color="infini-warning">
                                       {t("notification.type.eventReminder")}
-                                    </Badge>
-                                  ) : null}
-                                  {item.type === "member_online" ? (
-                                    <Badge variant="light" color="teal">
-                                      {t("notification.type.memberOnline")}
                                     </Badge>
                                   ) : null}
                                 </Group>
@@ -720,7 +708,7 @@ export function AppShell() {
           </div>
         </MantineAppShell.Header>
 
-        <MantineAppShell.Main className={`app-content ${isMobile ? "app-content-mobile" : ""}`}>
+        <MantineAppShell.Main ref={scrollContainerRef} className={`app-content ${isMobile ? "app-content-mobile" : ""}`}>
           <main className="app-main">
             {isExternalView ? (
               <Alert color="infini-primary" variant="light" className="app-banner">

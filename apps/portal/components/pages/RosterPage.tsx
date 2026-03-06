@@ -13,8 +13,6 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { useClipboard } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
 import { IconSearch } from "@tabler/icons-react";
 import { motion } from "motion/react";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FocusEvent } from "react";
@@ -102,7 +100,6 @@ export function RosterPage() {
   const navigate = useNavigate();
   const isExternalView = useExternalView();
   const sessionUser = useAuthStore((state) => state.user);
-  const clipboard = useClipboard();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [classFilter, setClassFilter] = useState<string[]>(() => readStoredClassFilter());
@@ -445,24 +442,11 @@ export function RosterPage() {
           profile={selected?.profile ?? null}
           onClose={() => setSelected(null)}
           canEdit={Boolean(
-            selected && sessionUser && (sessionUser.id === selected.user.id || hasRoleAtLeast(sessionUser.role, "moderator")),
+            selected && sessionUser && hasRoleAtLeast(sessionUser.role, "moderator"),
           )}
           onEdit={() => {
             if (!selected || !sessionUser) return;
-            const value = (selected.profile.title_html ?? "").trim();
-            if (value) {
-              clipboard.copy(value);
-              notifications.show({ color: "infini-success", message: t("message.titleCopied") });
-            } else {
-              notifications.show({ color: "infini-warning", message: t("message.nothingToCopy") });
-            }
-            if (sessionUser.id === selected.user.id) {
-              void navigate({ to: "/profile" });
-              return;
-            }
-            if (hasRoleAtLeast(sessionUser.role, "moderator")) {
-              void navigate({ to: "/admin" });
-            }
+            void navigate({ to: "/admin", search: { member: selected.user.username } });
           }}
         />
       </Suspense>

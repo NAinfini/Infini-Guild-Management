@@ -6,6 +6,7 @@ type PageLayoutProps = {
   title?: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
+  icon?: ReactNode;
   children: ReactNode;
   className?: string;
 };

@@ -15,9 +15,8 @@
   Text,
 } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { Split } from "@gfazioli/mantine-split-pane";
 import ReactEChartsCore from "echarts-for-react/lib/core";
-import { useState, useRef, useCallback, useEffect } from "react";
-import type { MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 type AnalyticsMode = "player" | "compare" | "rankings" | "teams";
@@ -56,7 +55,7 @@ type GuildWarAnalyticsTabProps = {
   selectedUsers: string[];
   onSelectedUsersChange: (value: string[]) => void;
   compareUserIds: string[];
-  onLegendInteraction: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
+  onLegendInteraction: (userId: string, event: React.MouseEvent<HTMLButtonElement>) => void;
   hashToPaletteColor: (value: string, palette: string[]) => string;
   chartPalette: string[];
   aggregation: AnalyticsAggregation;
@@ -149,41 +148,6 @@ export function GuildWarAnalyticsTab({
 }: GuildWarAnalyticsTabProps) {
   const { t } = useTranslation("guild-war");
   const metricOptions = ANALYTICS_METRIC_OPTIONS.map((opt) => ({ ...opt, label: t(opt.labelKey) }));
-  const [leftWidth, setLeftWidth] = useState(20);
-  const [rightWidth, setRightWidth] = useState(20);
-  const isDraggingRef = useRef<"left" | "right" | null>(null);
-
-  const handleMouseDown = useCallback((side: "left" | "right") => (e: React.MouseEvent) => {
-    e.preventDefault();
-    isDraggingRef.current = side;
-  }, []);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDraggingRef.current) return;
-    const container = document.querySelector(".guild-war-analytics-main-grid") as HTMLElement;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const percent = ((e.clientX - rect.left) / rect.width) * 100;
-
-    if (isDraggingRef.current === "left") {
-      setLeftWidth(Math.max(15, Math.min(40, percent)));
-    } else {
-      setRightWidth(Math.max(15, Math.min(40, 100 - percent)));
-    }
-  }, []);
-
-  const handleMouseUp = useCallback(() => {
-    isDraggingRef.current = null;
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener("mousemove", handleMouseMove as any);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove as any);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [handleMouseMove, handleMouseUp]);
 
   return (
     <Stack gap={12} className="guild-war-analytics-layout">
@@ -244,109 +208,83 @@ export function GuildWarAnalyticsTab({
       {analyticsDetailsError ? <Alert color="infini-warning">{loadErrorMessage}</Alert> : null}
 
       {!analyticsQueryLoading && !analyticsQueryError && !analyticsDetailsLoading && !analyticsDetailsError ? (
-        <div className="guild-war-analytics-main-grid" style={{ gridTemplateColumns: `${leftWidth}% 12px calc(100% - ${leftWidth}% - ${rightWidth}% - 24px) 12px ${rightWidth}%` }}>
+        <Split style={{ minHeight: 486 }}>
+          <Split.Pane initialWidth="20%" minWidth={200} maxWidth="40%">
           <InfiniCard interactive={false} className="guild-war-analytics-control-panel guild-war-analytics-control-panel--left">
             <div style={{ padding: "1.2rem" }}>
             <Stack gap={10}>
               <Text fw={600}>{t("analytics.metrics.title")}</Text>
-              <MultiSelect
-                clearable
-                searchable
-                placeholder={t("analytics.metrics.placeholder")}
-                aria-label="Select analytics metrics"
-                value={selectedMetrics}
-                onChange={(values) => onSelectedMetricsChange(values.slice(0, 5) as AnalyticsMetricKey[])}
-                data={metricOptions}
-                maxValues={5}
-                styles={{ pill: { display: "none" } }}
-                renderOption={({ option, checked }) => (
-                  <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
-                    <Group gap={8}>
-                      <span style={{ fontSize: 16 }}>{(option as typeof metricOptions[0]).icon}</span>
-                      <span style={{ color: checked ? "var(--infini-color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
+                <MultiSelect
+                  clearable
+                  searchable
+                  placeholder={t("analytics.metrics.placeholder")}
+                  aria-label="Select analytics metrics"
+                  value={selectedMetrics}
+                  onChange={(values) => onSelectedMetricsChange(values.slice(0, 5) as AnalyticsMetricKey[])}
+                  data={metricOptions}
+                  maxValues={5}
+                  styles={{ pill: { display: "none" } }}
+                  renderOption={({ option, checked }) => (
+                    <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
+                      <Group gap={8}>
+                        <span style={{ fontSize: 16 }}>{(option as typeof metricOptions[0]).icon}</span>
+                        <span style={{ color: checked ? "var(--infini-color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
+                      </Group>
+                      {checked ? <span style={{ color: "var(--infini-color-primary, #3b82f6)" }}>✓</span> : null}
                     </Group>
-                    {checked ? <span style={{ color: "var(--infini-color-primary, #3b82f6)" }}>✓</span> : null}
-                  </Group>
-                )}
-              />
+                  )}
+                />
 
-              {mode === "rankings" ? (
-                <>
-                  <Select
-                    value={aggregation}
-                    aria-label="Select rankings aggregation"
-                    onChange={(value) => value && onAggregationChange(value as AnalyticsAggregation)}
+                {mode === "rankings" ? (
+                  <>
+                    <Select
+                      value={aggregation}
+                      aria-label="Select rankings aggregation"
+                      onChange={(value) => value && onAggregationChange(value as AnalyticsAggregation)}
+                      data={[
+                        { value: "total", label: t("analytics.aggregation.total") },
+                        { value: "average", label: t("analytics.aggregation.average") },
+                        { value: "best", label: t("analytics.aggregation.best") },
+                        { value: "median", label: t("analytics.aggregation.median") },
+                      ]}
+                    />
+                    <NumberInput
+                      min={1}
+                      max={20}
+                      value={topN}
+                      onChange={(value) => onTopNChange(typeof value === "number" ? value : 10)}
+                      aria-label="Select rankings top N"
+                      label={t("analytics.topN")}
+                    />
+                    <NumberInput
+                      min={1}
+                      max={200}
+                      value={minParticipation}
+                      onChange={(value) => onMinParticipationChange(typeof value === "number" ? value : 1)}
+                      aria-label="Select minimum wars participation"
+                      label={t("analytics.minParticipation")}
+                    />
+                  </>
+                ) : null}
+
+                {mode === "teams" ? (
+                  <SegmentedControl
+                    value={teamAggregation}
+                    onChange={(value) => onTeamAggregationChange(value as "total" | "average")}
                     data={[
                       { value: "total", label: t("analytics.aggregation.total") },
                       { value: "average", label: t("analytics.aggregation.average") },
-                      { value: "best", label: t("analytics.aggregation.best") },
-                      { value: "median", label: t("analytics.aggregation.median") },
                     ]}
                   />
-                  <NumberInput
-                    min={1}
-                    max={20}
-                    value={topN}
-                    onChange={(value) => onTopNChange(typeof value === "number" ? value : 10)}
-                    aria-label="Select rankings top N"
-                    label={t("analytics.topN")}
-                  />
-                  <NumberInput
-                    min={1}
-                    max={200}
-                    value={minParticipation}
-                    onChange={(value) => onMinParticipationChange(typeof value === "number" ? value : 1)}
-                    aria-label="Select minimum wars participation"
-                    label={t("analytics.minParticipation")}
-                  />
-                </>
-              ) : null}
+                ) : null}
+              </Stack>
+              </div>
+            </InfiniCard>
+          </Split.Pane>
 
-              {mode === "teams" ? (
-                <SegmentedControl
-                  value={teamAggregation}
-                  onChange={(value) => onTeamAggregationChange(value as "total" | "average")}
-                  data={[
-                    { value: "total", label: t("analytics.aggregation.total") },
-                    { value: "average", label: t("analytics.aggregation.average") },
-                  ]}
-                />
-              ) : null}
-            </Stack>
-            </div>
-          </InfiniCard>
+          <Split.Resizer />
 
-          <div
-            onMouseDown={handleMouseDown("left")}
-            style={{
-              cursor: "col-resize",
-              background: "color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent)",
-              transition: "all 0.2s",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              position: "relative",
-              borderRadius: "6px",
-              border: "1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "color-mix(in srgb, var(--infini-color-primary, #3b82f6) 40%, transparent)";
-              e.currentTarget.style.borderColor = "var(--infini-color-primary, #3b82f6)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent)";
-              e.currentTarget.style.borderColor = "color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent)";
-            }}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: "3px", alignItems: "center" }}>
-              <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "currentColor", opacity: 0.6 }} />
-              <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "currentColor", opacity: 0.6 }} />
-              <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "currentColor", opacity: 0.6 }} />
-              <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "currentColor", opacity: 0.6 }} />
-              <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "currentColor", opacity: 0.6 }} />
-            </div>
-          </div>
-
+          <Split.Pane grow>
           <InfiniCard interactive={false} className="guild-war-analytics-chart-card guild-war-analytics-chart-card--center">
             <div style={{ padding: "1.2rem" }}>
             <Stack gap={8}>
@@ -361,38 +299,11 @@ export function GuildWarAnalyticsTab({
             </Stack>
             </div>
           </InfiniCard>
+          </Split.Pane>
 
-          <div
-            onMouseDown={handleMouseDown("right")}
-            style={{
-              cursor: "col-resize",
-              background: "color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent)",
-              transition: "all 0.2s",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              position: "relative",
-              borderRadius: "6px",
-              border: "1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "color-mix(in srgb, var(--infini-color-primary, #3b82f6) 40%, transparent)";
-              e.currentTarget.style.borderColor = "var(--infini-color-primary, #3b82f6)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent)";
-              e.currentTarget.style.borderColor = "color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent)";
-            }}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: "3px", alignItems: "center" }}>
-              <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "currentColor", opacity: 0.6 }} />
-              <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "currentColor", opacity: 0.6 }} />
-              <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "currentColor", opacity: 0.6 }} />
-              <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "currentColor", opacity: 0.6 }} />
-              <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "currentColor", opacity: 0.6 }} />
-            </div>
-          </div>
+          <Split.Resizer />
 
+          <Split.Pane initialWidth="20%" minWidth={200} maxWidth="40%">
           <InfiniCard interactive={false} className="guild-war-analytics-control-panel guild-war-analytics-control-panel--right">
             <div style={{ padding: "1.2rem" }}>
             <Stack gap={10}>
@@ -413,13 +324,16 @@ export function GuildWarAnalyticsTab({
                     renderOption={({ option, checked }) => (
                       <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
                         <Group gap={8}>
-                          <Avatar size={20} radius="xl" color="infini-primary">{option.label.slice(0, 2).toUpperCase()}</Avatar>
+                          <Avatar size={20} radius="xl">{option.label.slice(0, 2).toUpperCase()}</Avatar>
                           <span style={{ color: checked ? "var(--infini-color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
                         </Group>
                         {checked ? <span style={{ color: "var(--infini-color-primary, #3b82f6)" }}>✓</span> : null}
                       </Group>
                     )}
                   />
+                  {selectedUsers.length >= selectionSoftCap ? (
+                    <Text size="xs" c="dimmed">{t("analytics.selectionSoftCap", { count: selectionSoftCap })}</Text>
+                  ) : null}
                   <Checkbox
                     checked={onlyParticipated}
                     onChange={(event) => onOnlyParticipatedChange(event.currentTarget.checked)}
@@ -428,14 +342,50 @@ export function GuildWarAnalyticsTab({
                 </>
               ) : null}
 
+              {mode === "compare" ? (
+                <>
+                  <MultiSelect
+                    clearable
+                    searchable
+                    placeholder={t("analytics.selectMembers")}
+                    aria-label="Select compare analytics members"
+                    value={selectedUsers}
+                    onChange={(values) => onSelectedUsersChange(values.slice(0, 5))}
+                    data={selectableUserIds.map((userId) => ({ value: userId, label: userId }))}
+                    maxValues={5}
+                    styles={{ pill: { display: "none" } }}
+                    renderOption={({ option, checked }) => (
+                      <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
+                        <Group gap={8}>
+                          <Avatar size={20} radius="xl">{option.label.slice(0, 2).toUpperCase()}</Avatar>
+                          <span style={{ color: checked ? "var(--infini-color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
+                        </Group>
+                        {checked ? <span style={{ color: "var(--infini-color-primary, #3b82f6)" }}>✓</span> : null}
+                      </Group>
+                    )}
+                  />
+                  {selectedUsers.length >= selectionSoftCap ? (
+                    <Text size="xs" c="dimmed">{t("analytics.selectionSoftCap", { count: selectionSoftCap })}</Text>
+                  ) : null}
+                </>
+              ) : null}
+
               {mode === "teams" ? (
                 <MultiSelect
                   clearable
-                  value={selectedTeams}
+                  searchable
                   placeholder={t("analytics.selectTeams")}
-                  aria-label="Select teams for analytics"
-                  onChange={onSelectedTeamsChange}
-                  data={teamOptions.map((name) => ({ value: name, label: name }))}
+                  aria-label="Select team analytics teams"
+                  value={selectedTeams}
+                  onChange={(values) => onSelectedTeamsChange(values)}
+                  data={teamOptions.map((team) => ({ value: team, label: team }))}
+                  styles={{ pill: { display: "none" } }}
+                  renderOption={({ option, checked }) => (
+                    <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
+                      <span style={{ color: checked ? "var(--infini-color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
+                      {checked ? <span style={{ color: "var(--infini-color-primary, #3b82f6)" }}>✓</span> : null}
+                    </Group>
+                  )}
                 />
               ) : null}
 
@@ -445,12 +395,10 @@ export function GuildWarAnalyticsTab({
                 </Text>
               ) : null}
 
-              <Divider my={4} />
-
-              <Text fw={600}>{t("analytics.normalization")}</Text>
+              <Divider />
               <Switch
                 checked={normEnabled}
-                onChange={(event) => onNormEnabledChange(event.currentTarget.checked)}
+                onChange={(e) => onNormEnabledChange(e.currentTarget.checked)}
                 label={t("analytics.normalization.enable")}
                 size="sm"
               />
@@ -495,7 +443,8 @@ export function GuildWarAnalyticsTab({
             </Stack>
             </div>
           </InfiniCard>
-        </div>
+          </Split.Pane>
+        </Split>
       ) : null}
     </Stack>
   );

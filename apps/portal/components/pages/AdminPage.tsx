@@ -1,9 +1,10 @@
-﻿import { hasRoleAtLeast } from "@guild/shared";
+﻿import { hasRoleAtLeast, type AdminRole } from "@guild/shared";
 import { MotionButton } from "@infini-dev-kit/frontend/components";
+import { IconSettings } from "@tabler/icons-react";
+import { useSearch } from "@tanstack/react-router";
 import {
   Alert,
   Badge,
-  Button,
   Card,
   Center,
   Group,
@@ -15,7 +16,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, subDays } from "date-fns";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   batchDeactivateAdminUsers,
@@ -74,8 +75,12 @@ const LazyAdminRolesSection = lazy(() =>
 const LazyAdminMemberDetailModal = lazy(() =>
   import("../feature/admin/AdminMemberDetailModal").then((mod) => ({ default: mod.AdminMemberDetailModal })),
 );
+type MemberDetailFormState = import("../feature/admin/AdminMemberDetailModal").MemberDetailFormState;
 const LazyAdminMemberMediaTab = lazy(() =>
   import("../feature/admin/AdminMemberMediaTab").then((mod) => ({ default: mod.AdminMemberMediaTab })),
+);
+const LazyCreateMemberModal = lazy(() =>
+  import("../feature/admin/CreateMemberModal").then((mod) => ({ default: mod.CreateMemberModal })),
 );
 
 function formatDateTime(iso: string | null): string {
@@ -159,6 +164,7 @@ export function AdminPage() {
   const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
   const isAdmin = user?.role === "admin";
   const { showError } = useAppError();
+  const { member: memberSearchParam } = useSearch({ strict: false }) as { member?: string };
 
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState("member");
@@ -167,6 +173,7 @@ export function AdminPage() {
   const [inviteMaxUses, setInviteMaxUses] = useState<number>(10);
   const [inviteExpiresAt, setInviteExpiresAt] = useState("");
   const [inviteSearch, setInviteSearch] = useState("");
+  const [memberSearch, setMemberSearch] = useState("");
 
   const [auditPage, setAuditPage] = useState(1);
   const [auditSearch, setAuditSearch] = useState("");
@@ -182,8 +189,22 @@ export function AdminPage() {
   const [wechatRoomIdsText, setWechatRoomIdsText] = useState("");
   const [wechatDefaultToggles, setWechatDefaultToggles] = useState<Record<string, boolean>>({});
   const [memberDetailId, setMemberDetailId] = useState<string | null>(null);
-  const [memberDetailTitle, setMemberDetailTitle] = useState("");
-  const [memberDetailBio, setMemberDetailBio] = useState("");
+  const [createMemberModalOpen, setCreateMemberModalOpen] = useState(false);
+  const memberSearchParamConsumedRef = useRef(false);
+  const [memberDetailForm, setMemberDetailForm] = useState<MemberDetailFormState>({
+    wechatName: "",
+    power: 0,
+    classes: [],
+    titleHtml: "",
+    bio: "",
+    notes: "",
+    discordId: "",
+    vacationStart: "",
+    vacationEnd: "",
+    discordReminderOptOut: false,
+    role: "member",
+    isActive: true,
+  });
   const [batchProgress, setBatchProgress] = useState(0);
   const [statusLatencyMs, setStatusLatencyMs] = useState<number | null>(null);
   const [statusHealthLogs, setStatusHealthLogs] = useState<
@@ -221,21 +242,60 @@ export function AdminPage() {
     setWechatDefaultToggles(botSettingsQuery.data.wechat.default_toggles);
   }, [botSettingsQuery.data]);
 
+  const defaultFormState: MemberDetailFormState = {
+    wechatName: "",
+    power: 0,
+    classes: [],
+    titleHtml: "",
+    bio: "",
+    notes: "",
+    discordId: "",
+    vacationStart: "",
+    vacationEnd: "",
+    discordReminderOptOut: false,
+    role: "member",
+    isActive: true,
+  };
+
   useEffect(() => {
     if (!memberDetailId) {
-      setMemberDetailTitle("");
-      setMemberDetailBio("");
+      setMemberDetailForm(defaultFormState);
       return;
     }
     const target = usersQuery.data?.data.find((row) => row.user.id === memberDetailId);
     if (!target) {
-      setMemberDetailTitle("");
-      setMemberDetailBio("");
+      setMemberDetailForm(defaultFormState);
       return;
     }
-    setMemberDetailTitle(target.profile.title_html ?? "");
-    setMemberDetailBio(target.profile.bio ?? "");
+    setMemberDetailForm({
+      wechatName: target.profile.wechat_name ?? "",
+      power: target.profile.power,
+      classes: [...target.profile.classes],
+      titleHtml: target.profile.title_html ?? "",
+      bio: target.profile.bio ?? "",
+      notes: target.profile.notes ?? "",
+      discordId: target.profile.discord_id ?? "",
+      vacationStart: target.profile.vacation_start ? target.profile.vacation_start.slice(0, 10) : "",
+      vacationEnd: target.profile.vacation_end ? target.profile.vacation_end.slice(0, 10) : "",
+      discordReminderOptOut: target.profile.discord_reminder_opt_out,
+      role: target.user.role,
+      isActive: target.user.is_active,
+    });
   }, [memberDetailId, usersQuery.data?.data]);
+
+  // Auto-open member detail when navigated with ?member=username
+  useEffect(() => {
+    if (!memberSearchParam || memberSearchParamConsumedRef.current) return;
+    const users = usersQuery.data?.data;
+    if (!users) return;
+    const target = users.find(
+      (row) => row.user.username.toLowerCase() === memberSearchParam.toLowerCase(),
+    );
+    if (target) {
+      memberSearchParamConsumedRef.current = true;
+      setMemberDetailId(target.user.id);
+    }
+  }, [memberSearchParam, usersQuery.data?.data]);
 
   useEffect(() => {
     try {
@@ -302,9 +362,23 @@ export function AdminPage() {
   });
 
   const createMemberMutation = useMutation({
-    mutationFn: ({ username }: { username: string }) => createAdminMember({ username }),
+    mutationFn: async (data: {
+      username: string;
+      discordName: string;
+      wechatName: string;
+      notes: string;
+    }) => {
+      const result = await createAdminMember({ username: data.username });
+      // Optionally patch profile fields if provided
+      const hasProfile = data.discordName || data.wechatName || data.notes;
+      if (hasProfile) {
+        await updateMyProfile(result.user_id, {
+          ...(data.wechatName ? { wechat_name: data.wechatName } : {}),
+        });
+      }
+      return result;
+    },
     onSuccess: async (payload) => {
-      await copyPlainText(payload.temporary_password);
       notifications.show({
         color: "infini-success",
         message: t("message.memberCreatedPasswordCopied", { username: payload.username }),
@@ -448,16 +522,20 @@ export function AdminPage() {
   const updateMemberProfileMutation = useMutation({
     mutationFn: ({
       userId,
-      titleHtml,
-      bio,
+      form,
     }: {
       userId: string;
-      titleHtml: string;
-      bio: string;
+      form: MemberDetailFormState;
     }) =>
       updateMyProfile(userId, {
-        title_html: titleHtml || null,
-        bio: bio || null,
+        wechat_name: form.wechatName || null,
+        power: form.power,
+        classes: form.classes as any,
+        title_html: form.titleHtml || null,
+        bio: form.bio || null,
+        vacation_start: form.vacationStart ? new Date(form.vacationStart).toISOString() : null,
+        vacation_end: form.vacationEnd ? new Date(form.vacationEnd).toISOString() : null,
+        discord_reminder_opt_out: form.discordReminderOptOut,
       }),
     onSuccess: async () => {
       notifications.show({ color: "infini-success", message: t("message.memberProfileSaved") });
@@ -495,7 +573,43 @@ export function AdminPage() {
     onError: (error) => showError(error, t("message.roleDeleteFailed")),
   });
 
-  const userRows = usersQuery.data?.data ?? [];
+  const userRowsRaw = usersQuery.data?.data ?? [];
+  const userRows = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase();
+    if (!q) return userRowsRaw;
+    return userRowsRaw.filter((row) => {
+      return (
+        row.user.username.toLowerCase().includes(q) ||
+        (row.profile.wechat_name ?? "").toLowerCase().includes(q) ||
+        (row.profile.discord_id ?? "").toLowerCase().includes(q) ||
+        (row.profile.notes ?? "").toLowerCase().includes(q) ||
+        row.user.role.toLowerCase().includes(q) ||
+        row.profile.classes.some((cls) => cls.toLowerCase().includes(q))
+      );
+    });
+  }, [userRowsRaw, memberSearch]);
+
+  const rolesWithExternal = useMemo((): AdminRole[] => {
+    const apiRoles = rolesQuery.data ?? [];
+    const now = new Date().toISOString();
+    const externalRole: AdminRole = {
+      id: "external",
+      name: t("role.external"),
+      level: 0,
+      color: null,
+      is_builtin: true,
+      created_at: now,
+      updated_at: now,
+      permissions: Object.fromEntries(
+        apiRoles[0]
+          ? Object.keys(apiRoles[0].permissions).map((k) => [k, false])
+          : [],
+      ) as AdminRole["permissions"],
+      assigned_user_count: 0,
+    };
+    return [...apiRoles, externalRole];
+  }, [rolesQuery.data, t]);
+
   const inviteRowsRaw = inviteLinksQuery.data ?? [];
   const isInviteInactive = (row: (typeof inviteRowsRaw)[number]) => {
     const expiredByDate = Boolean(row.expires_at && Date.parse(row.expires_at) <= Date.now());
@@ -799,11 +913,6 @@ export function AdminPage() {
               {inviteCreateLabel}
             </MotionButton>
           ) : null}
-          {activeTab === "status" ? (
-            <Button onClick={() => void refreshStatus()} loading={statusQuery.isFetching}>
-              {t("status.refresh")}
-            </Button>
-          ) : null}
         </Group>
       ) : null,
     [
@@ -813,8 +922,6 @@ export function AdminPage() {
       inviteCreateLabel,
       isAdmin,
       isModerator,
-      refreshStatus,
-      statusQuery.isFetching,
     ],
   );
   usePageHeaderActions(adminHeaderActions);
@@ -843,7 +950,7 @@ export function AdminPage() {
   }
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} className="admin-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconSettings size={22} />} className="admin-page">
       <Tabs value={activeTab} onChange={(value) => value && setActiveTab(value)}>
         <Tabs.List>
           <Tabs.Tab value="member">{t("tab.member")}</Tabs.Tab>
@@ -862,15 +969,7 @@ export function AdminPage() {
               usersError={false}
               loadErrorMessage={t("common:loadError")}
               isAdmin={isAdmin}
-              onCreateMember={async (username) => {
-                try {
-                  await createMemberMutation.mutateAsync({ username });
-                  return true;
-                } catch {
-                  return false;
-                }
-              }}
-              createMemberPending={createMemberMutation.isPending}
+              onOpenCreateMember={() => setCreateMemberModalOpen(true)}
               selectedUserIds={selectedUserIds}
               selectedLabel={t("member.selected", { count: selectedUserIds.length })}
               selectionHintLabel={t("member.selectionHint")}
@@ -892,6 +991,9 @@ export function AdminPage() {
               userColumns={userColumns}
               onOpenMemberDetail={setMemberDetailId}
               onSelectionChange={applyUserSelection}
+              roles={rolesQuery.data ?? []}
+              memberSearch={memberSearch}
+              onMemberSearchChange={setMemberSearch}
               onSingleRoleChange={(userId, role) => {
                 updateRoleMutation.mutate({ userId, role });
               }}
@@ -1060,7 +1162,7 @@ export function AdminPage() {
               rolesLoading={rolesQuery.isLoading}
               rolesError={rolesQuery.isError}
               loadErrorMessage={t("common:loadError")}
-              roles={rolesQuery.data ?? []}
+              roles={rolesWithExternal}
               createRolePending={createRoleMutation.isPending}
               updateRolePending={updateRoleConfigMutation.isPending}
               deleteRolePending={deleteRoleMutation.isPending}
@@ -1121,16 +1223,13 @@ export function AdminPage() {
         <LazyAdminMemberDetailModal
           open={Boolean(selectedMemberDetail)}
           member={selectedMemberDetail}
-          memberDetailTitle={memberDetailTitle}
-          memberDetailBio={memberDetailBio}
+          form={memberDetailForm}
           onClose={() => setMemberDetailId(null)}
-          onMemberDetailTitleChange={setMemberDetailTitle}
-          onMemberDetailBioChange={setMemberDetailBio}
+          onFormChange={(patch) => setMemberDetailForm((prev) => ({ ...prev, ...patch }))}
           onSaveProfile={(member) =>
             updateMemberProfileMutation.mutate({
               userId: member.user.id,
-              titleHtml: memberDetailTitle,
-              bio: memberDetailBio,
+              form: memberDetailForm,
             })
           }
           saveProfilePending={updateMemberProfileMutation.isPending}
@@ -1147,6 +1246,17 @@ export function AdminPage() {
               </Suspense>
             ) : null
           }
+        />
+      </Suspense>
+      <Suspense fallback={null}>
+        <LazyCreateMemberModal
+          opened={createMemberModalOpen}
+          onClose={() => setCreateMemberModalOpen(false)}
+          onCreateMember={async (data) => {
+            const result = await createMemberMutation.mutateAsync(data);
+            return result;
+          }}
+          creating={createMemberMutation.isPending}
         />
       </Suspense>
     </PageLayout>

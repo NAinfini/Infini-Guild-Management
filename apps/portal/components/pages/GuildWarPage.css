@@ -1,4 +1,4 @@
-/* Split layout: Pool left, Teams right (vertical stack) */
+/* Pool pane: sticky scroll */
 .guild-war-dnd-split {
   display: flex;
   gap: 16px;
@@ -518,11 +518,13 @@
 .guild-war-analytics-chart-card--center {
   width: 100%;
   min-height: 486px;
+  height: 100%;
 }
 
 .guild-war-analytics-control-panel--left,
 .guild-war-analytics-control-panel--right {
   min-height: 486px;
+  height: 100%;
 }
 
 @media (max-width: 991px) {
@@ -561,6 +563,7 @@
     flex: none;
     width: 100%;
     position: static;
+    max-height: none;
   }
 
   .guild-war-dnd-teams > * {

@@ -16,6 +16,8 @@
   "card.activeMembers.activeEvents": "活跃活动数",
   "card.activeMembers.summaryHint": "公会实时活跃概览",
   "card.notifications.title": "通知",
+  "card.notifications.markAllRead": "全部标记为已读",
+  "card.notifications.pinned": "置顶",
   "card.lastWar.title": "最近公会战",
   "card.lastWar.result": "结果",
   "card.lastWar.kills": "击杀",

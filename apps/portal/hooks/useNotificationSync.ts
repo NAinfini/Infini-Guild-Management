@@ -202,8 +202,6 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
 
           if (message.type === "announcement_published") {
             setFeatureLatest("announcements", toIsoOrNow(message.published_at));
-          } else if (message.type === "member_online") {
-            setFeatureLatest("members", toIsoOrNow(message.online_at));
           }
 
           onMessageRef.current?.(message);

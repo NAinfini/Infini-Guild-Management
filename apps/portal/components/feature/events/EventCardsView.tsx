@@ -1,9 +1,10 @@
 ﻿import type { Event, MemberProfile, User } from "@guild/shared";
-import { Avatar, Badge, Button, Group, Menu, Modal, Stack, Text, Tooltip } from "@mantine/core";
-import { MotionButton, StaggerList } from "@infini-dev-kit/frontend/components";
+import { Avatar, Badge, Button, Group, Menu, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
+import { DepthButton, DepthToggle, MotionButton } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import {
   IconArchive,
+  IconArchiveOff,
   IconCalendarEvent,
   IconClock,
   IconCopy,
@@ -16,15 +17,18 @@ import {
   IconPinnedOff,
   IconRefresh,
   IconSparkles,
+  IconSparkles2,
   IconSwords,
   IconTargetArrow,
   IconTrash,
+  IconUserMinus,
+  IconUserPlus,
   IconUsers,
 } from "@tabler/icons-react";
-import { format } from "date-fns";
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
+import { EventDetailModal } from "./EventDetailModal";
 import "./EventCardsView.css";
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
@@ -45,23 +49,21 @@ function getTypeGradientClass(type: string): string {
   return `event-card__header--${type in EVENT_TYPE_COLORS ? type : "other"}`;
 }
 
-function formatLocalDate(startAt: string): string {
+function formatLocalDate(startAt: string, locale: string): string {
   const d = new Date(startAt);
-  return format(d, "EEE, MMM d, yyyy");
+  return d.toLocaleDateString(locale, { weekday: "short", year: "numeric", month: "short", day: "numeric" });
 }
 
-function formatLocalTime(startAt: string, endAt: string | null): string {
+function formatLocalTime(startAt: string, endAt: string | null, locale: string): string {
   const start = new Date(startAt);
-  const startTime = format(start, "h:mm a");
+  const timeOpts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+  const startTime = start.toLocaleTimeString(locale, timeOpts);
   if (!endAt) return startTime;
   const end = new Date(endAt);
-  const endTime = format(end, "h:mm a");
+  const endTime = end.toLocaleTimeString(locale, timeOpts);
   return `${startTime} - ${endTime}`;
 }
 
-function formatTypeLabel(type: string): string {
-  return type.replace(/_/g, " ");
-}
 
 /** Returns HSL hue: 210 (blue) → 120 (green) → 60 (yellow) → 30 (orange) → 0 (red) based on fill ratio. */
 function capacityHue(joined: number, capacity: number): number {
@@ -79,12 +81,14 @@ type EventCardsViewProps = {
   cardsEmptyDescription: string;
   canManage: boolean;
   canInteract: boolean;
+  currentUserId: string | null;
   eventType: string | undefined;
   archivedOnly: boolean;
+  pinnedOnly: boolean;
+  lockedOnly: boolean;
   eventFlags: Map<string, "NEW" | "UPDATED">;
   eventMembersMap: Map<string, MemberEntry[]>;
-  joinPending: boolean;
-  leavePending: boolean;
+  allUsers: MemberEntry[];
   createPending: boolean;
   updatePending: boolean;
   archivePending: boolean;
@@ -98,6 +102,10 @@ type EventCardsViewProps = {
   onTogglePinEvent: (event: Event) => void;
   onToggleLockEvent: (event: Event) => void;
   onArchiveEvent: (eventId: string) => void;
+  onUnarchiveEvent: (eventId: string) => void;
+  onDeleteEvent: (event: Event) => void;
+  onAddParticipant: (eventId: string, userId: string) => void;
+  onRemoveParticipant: (eventId: string, userId: string) => void;
 };
 
 export function EventCardsView({
@@ -105,12 +113,14 @@ export function EventCardsView({
   cardsEmptyDescription,
   canManage,
   canInteract,
+  currentUserId,
   eventType,
   archivedOnly,
+  pinnedOnly,
+  lockedOnly,
   eventFlags,
   eventMembersMap,
-  joinPending,
-  leavePending,
+  allUsers,
   onResetFilters,
   onCreateEvent,
   onJoinEvent,
@@ -121,8 +131,12 @@ export function EventCardsView({
   onTogglePinEvent,
   onToggleLockEvent,
   onArchiveEvent,
+  onUnarchiveEvent,
+  onDeleteEvent,
+  onAddParticipant,
+  onRemoveParticipant,
 }: EventCardsViewProps) {
-  const { t } = useTranslation("events");
+  const { t, i18n } = useTranslation("events");
   const [detailModalEvent, setDetailModalEvent] = useState<Event | null>(null);
   const detailModalMembers = detailModalEvent ? (eventMembersMap.get(detailModalEvent.id) ?? []) : [];
 
@@ -133,8 +147,8 @@ export function EventCardsView({
           title={cardsEmptyDescription}
           actions={
             <Group gap={8}>
-              <Button onClick={onResetFilters} disabled={!eventType && !archivedOnly}>
-                Reset filters
+              <Button onClick={onResetFilters} disabled={!eventType && !archivedOnly && !pinnedOnly && !lockedOnly}>
+                {t("card.resetFilters")}
               </Button>
               {canManage ? (
                 <MotionButton type="primary" onClick={onCreateEvent}>
@@ -150,13 +164,14 @@ export function EventCardsView({
 
   return (
     <>
-      <StaggerList className="events-card-grid" staggerMs={22}>
+      <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={12}>
         {events.map((event) => {
           const members = eventMembersMap.get(event.id) ?? [];
           const joinedCount = members.length;
           const flag = eventFlags.get(event.id);
           const typeColor = EVENT_TYPE_COLORS[event.type] ?? "gray";
           const isFull = event.capacity !== null && joinedCount >= event.capacity;
+          const isJoined = currentUserId ? members.some((m) => m.user.id === currentUserId) : false;
 
           return (
               <InfiniCard key={event.id} className="event-card" onClick={() => setDetailModalEvent(event)} style={{ cursor: "pointer" }}>
@@ -170,80 +185,86 @@ export function EventCardsView({
                     className="event-card__type-badge"
                     leftSection={EVENT_TYPE_ICONS[event.type] ?? EVENT_TYPE_ICONS.other}
                   >
-                    {formatTypeLabel(event.type)}
+                    {t(`common:eventType.${event.type}`)}
                   </Badge>
                   {event.recurrence_rule && event.series_id ? (
-                    <Tooltip label="Recurring event">
+                    <Tooltip label={t("card.recurring")}>
                       <IconRefresh size={14} className="event-card__recurring-icon" />
                     </Tooltip>
                   ) : null}
                   {event.pinned ? (
-                    <Tooltip label="Pinned">
+                    <Tooltip label={t("card.pinned")}>
                       <IconPin size={16} style={{ color: "var(--mantine-color-yellow-6)" }} />
                     </Tooltip>
                   ) : null}
                   {event.signup_locked ? (
-                    <Tooltip label="Locked">
+                    <Tooltip label={t("card.locked")}>
                       <IconLock size={16} style={{ color: "var(--mantine-color-red-6)" }} />
                     </Tooltip>
                   ) : null}
                   {event.archived_at ? (
-                    <Tooltip label="Archived">
+                    <Tooltip label={t("card.archived")}>
                       <IconArchive size={16} style={{ opacity: 0.5 }} />
                     </Tooltip>
                   ) : null}
                   {flag === "NEW" ? (
-                    <Tooltip label="New">
+                    <Tooltip label={t("card.new")}>
                       <IconSparkles size={16} style={{ color: "var(--mantine-color-green-6)" }} />
                     </Tooltip>
                   ) : null}
                   {flag === "UPDATED" ? (
-                    <Tooltip label="Updated">
-                      <IconRefresh size={16} style={{ color: "var(--mantine-color-blue-6)" }} />
+                    <Tooltip label={t("card.updated")}>
+                      <IconSparkles2 size={16} style={{ color: "var(--mantine-color-blue-6)" }} />
                     </Tooltip>
                   ) : null}
                 </div>
                 {canManage ? (
-                  <Menu withinPortal position="bottom-end">
+                  <Menu
+                    withinPortal
+                    position="bottom-end"
+                    classNames={{
+                      dropdown: "event-card__menu-dropdown",
+                      item: "event-card__menu-item",
+                      divider: "event-card__menu-divider",
+                    }}
+                  >
                     <Menu.Target>
-                      <button type="button" className="event-card__menu-btn" aria-label="Event actions" onClick={(e) => e.stopPropagation()}>
+                      <button type="button" className="event-card__menu-btn" aria-label={t("menu.actions")} onClick={(e) => e.stopPropagation()}>
                         <IconDots size={16} />
                       </button>
                     </Menu.Target>
-                    <Menu.Dropdown>
+                    <Menu.Dropdown onClick={(e) => e.stopPropagation()}>
                       <Menu.Item leftSection={<IconPencil size={14} />} onClick={() => onEditEvent(event)}>
-                        Edit
+                        {t("menu.edit")}
                       </Menu.Item>
-                      <Menu.Item leftSection={<IconRefresh size={14} />} onClick={() => onDuplicateEvent(event)}>
-                        Duplicate
+                      <Menu.Item leftSection={<IconCopy size={14} />} onClick={() => onDuplicateEvent(event)}>
+                        {t("menu.duplicate")}
                       </Menu.Item>
                       <Menu.Item
                         leftSection={event.pinned ? <IconPinnedOff size={14} /> : <IconPin size={14} />}
                         onClick={() => onTogglePinEvent(event)}
                       >
-                        {event.pinned ? "Unpin" : "Pin"}
+                        {event.pinned ? t("menu.unpin") : t("menu.pin")}
                       </Menu.Item>
                       <Menu.Item
                         leftSection={event.signup_locked ? <IconLockOpen size={14} /> : <IconLock size={14} />}
                         onClick={() => onToggleLockEvent(event)}
                       >
-                        {event.signup_locked ? "Unlock Signup" : "Lock Signup"}
-                      </Menu.Item>
-                      <Menu.Item
-                        leftSection={<IconCopy size={14} />}
-                        onClick={() => onCopyMentions(event)}
-                        disabled={members.length === 0}
-                      >
-                        Copy Mentions
+                        {event.signup_locked ? t("menu.unlockSignup") : t("menu.lockSignup")}
                       </Menu.Item>
                       <Menu.Divider />
                       <Menu.Item
+                        leftSection={event.archived_at ? <IconArchiveOff size={14} /> : <IconArchive size={14} />}
+                        onClick={() => event.archived_at ? onUnarchiveEvent(event.id) : onArchiveEvent(event.id)}
+                      >
+                        {event.archived_at ? t("menu.unarchive") : t("menu.archive")}
+                      </Menu.Item>
+                      <Menu.Item
                         color="infini-danger"
                         leftSection={<IconTrash size={14} />}
-                        onClick={() => onArchiveEvent(event.id)}
-                        disabled={Boolean(event.archived_at)}
+                        onClick={() => onDeleteEvent(event)}
                       >
-                        Archive
+                        {t("menu.delete")}
                       </Menu.Item>
                     </Menu.Dropdown>
                   </Menu>
@@ -267,12 +288,12 @@ export function EventCardsView({
                   <Group gap={6} align="center" wrap="nowrap">
                     <IconCalendarEvent size={15} className="event-card__icon-muted" />
                     <Text size="sm" className="event-card__date-text">
-                      {formatLocalDate(event.start_at)}
+                      {formatLocalDate(event.start_at, i18n.language)}
                     </Text>
                     <Text size="sm" c="dimmed">·</Text>
                     <IconClock size={15} className="event-card__icon-muted" />
                     <Text size="sm" className="event-card__time-text">
-                      {formatLocalTime(event.start_at, event.end_at)}
+                      {formatLocalTime(event.start_at, event.end_at, i18n.language)}
                     </Text>
                   </Group>
 
@@ -334,34 +355,34 @@ export function EventCardsView({
                   {/* ── Actions ── */}
                   {canInteract ? (
                   <div className="event-card__actions" onClick={(e) => e.stopPropagation()}>
-                    <MotionButton
-                      type="primary"
-                      size="small"
-                      onClick={() => onJoinEvent(event.id)}
-                      loading={joinPending}
-                      disabled={event.signup_locked || Boolean(event.archived_at) || isFull}
-                      className="event-card__join-btn"
-                    >
-                      {t("button.join")}
-                    </MotionButton>
-                    <Button
-                      variant="default"
-                      size="compact-sm"
-                      onClick={() => onLeaveEvent(event.id)}
-                      loading={leavePending}
-                    >
-                      {t("button.leave")}
-                    </Button>
-                    {!canManage ? (
-                      <Button
-                        variant="subtle"
-                        size="compact-sm"
+                    <Tooltip label={isJoined ? t("button.leave") : t("button.join")} withArrow>
+                      <DepthToggle
+                        pressed={isJoined}
+                        onToggle={(joined) => {
+                          if (joined) {
+                            onJoinEvent(event.id);
+                          } else {
+                            onLeaveEvent(event.id);
+                          }
+                        }}
+                        type="primary"
+                        size="xs"
+                        disabled={!isJoined && (event.signup_locked || Boolean(event.archived_at) || isFull)}
+                      >
+                        {isJoined ? <IconUserMinus size={14} /> : <IconUserPlus size={14} />}
+                        {isJoined ? t("button.leave") : t("button.join")}
+                      </DepthToggle>
+                    </Tooltip>
+                    <Tooltip label={t("card.copyMentions")} withArrow>
+                      <DepthButton
                         onClick={() => onCopyMentions(event)}
+                        type="secondary"
+                        size="sm"
                         disabled={members.length === 0}
                       >
-                        Copy
-                      </Button>
-                    ) : null}
+                        <IconCopy size={14} />
+                      </DepthButton>
+                    </Tooltip>
                   </div>
                   ) : null}
                 </Stack>
@@ -369,77 +390,18 @@ export function EventCardsView({
             </InfiniCard>
           );
         })}
-      </StaggerList>
+      </SimpleGrid>
 
       {/* ── Event Detail Modal ── */}
-      <Modal
-        opened={detailModalEvent !== null}
+      <EventDetailModal
+        event={detailModalEvent}
+        members={detailModalMembers}
+        allUsers={allUsers}
+        canManage={canManage}
         onClose={() => setDetailModalEvent(null)}
-        title={detailModalEvent?.title ?? "Event Details"}
-        size="lg"
-        centered
-      >
-        {detailModalEvent ? (
-          <Stack gap={20}>
-            <div style={{ padding: "12px", borderRadius: "8px", background: "rgba(59, 130, 246, 0.08)", border: "1px solid rgba(59, 130, 246, 0.2)" }}>
-              <Group gap={8} mb={8}>
-                <IconCalendarEvent size={20} style={{ color: "#3b82f6" }} />
-                <Text size="md" fw={600}>Event Type</Text>
-              </Group>
-              <Text size="md" tt="capitalize">{formatTypeLabel(detailModalEvent.type)}</Text>
-            </div>
-
-            <div style={{ padding: "12px", borderRadius: "8px", background: "rgba(17, 24, 39, 0.03)", border: "1px solid rgba(17, 24, 39, 0.1)" }}>
-              <Group gap={8} mb={8}>
-                <IconClock size={20} style={{ color: "#8b5cf6" }} />
-                <Text size="md" fw={600}>Time</Text>
-              </Group>
-              <Group gap={8}>
-                <Text size="md">{formatLocalDate(detailModalEvent.start_at)}</Text>
-                <Text size="md" c="dimmed">·</Text>
-                <Text size="md">{formatLocalTime(detailModalEvent.start_at, detailModalEvent.end_at)}</Text>
-              </Group>
-            </div>
-
-            {detailModalEvent.description ? (
-              <div style={{ padding: "12px", borderRadius: "8px", background: "rgba(17, 24, 39, 0.03)", border: "1px solid rgba(17, 24, 39, 0.1)" }}>
-                <Text size="md" fw={600} mb={8}>Description</Text>
-                <Text size="md" c="dimmed">{detailModalEvent.description}</Text>
-              </div>
-            ) : null}
-
-            <div style={{ padding: "12px", borderRadius: "8px", background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.2)" }}>
-              <Group gap={8} mb={12}>
-                <IconUsers size={20} style={{ color: "#10b981" }} />
-                <Text size="md" fw={600}>Members ({detailModalMembers.length}{detailModalEvent.capacity ? ` / ${detailModalEvent.capacity}` : ""})</Text>
-              </Group>
-              {detailModalMembers.length === 0 ? (
-                <Text c="dimmed" size="md">No members have joined yet.</Text>
-              ) : (
-                <div style={{ maxHeight: "300px", overflowY: "auto" }}>
-                  <Stack gap={10}>
-                    {detailModalMembers.map((entry) => (
-                      <Group key={entry.user.id} gap={10} style={{ padding: "8px", borderRadius: "6px", background: "rgba(255, 255, 255, 0.5)" }}>
-                        <Avatar size="md" color={EVENT_TYPE_COLORS[detailModalEvent.type] ?? "gray"} radius="xl">
-                          {entry.user.username.slice(0, 1).toUpperCase()}
-                        </Avatar>
-                        <div style={{ flex: 1 }}>
-                          <Text size="md" fw={600}>{entry.user.username}</Text>
-                          <Group gap={6}>
-                            <Text size="sm" c="dimmed">{entry.profile.classes[0] ?? "—"}</Text>
-                            <Text size="sm" c="dimmed">·</Text>
-                            <Text size="sm" c="dimmed">Power: {entry.profile.power ?? "—"}</Text>
-                          </Group>
-                        </div>
-                      </Group>
-                    ))}
-                  </Stack>
-                </div>
-              )}
-            </div>
-          </Stack>
-        ) : null}
-      </Modal>
+        onAddParticipant={onAddParticipant}
+        onRemoveParticipant={onRemoveParticipant}
+      />
     </>
   );
 }

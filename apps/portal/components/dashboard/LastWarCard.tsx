@@ -1,6 +1,6 @@
 import type { WarHistory } from "@guild/shared";
 import { InfiniCard, NumberTicker } from "@infini-dev-kit/frontend/components";
-import { ActionIcon, Avatar, Text } from "@mantine/core";
+import { ActionIcon, Avatar, Stack, Text } from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -174,7 +174,7 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
           </div>
 
           {/* Comparison bars */}
-          <div className="war-compare-section">
+          <Stack gap={8}>
             <CompareBar
               icon={<TargetOutlined size={13} />}
               label={t("card.lastWar.kills")}
@@ -203,20 +203,20 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
                 />
               </>
             ) : null}
-          </div>
+          </Stack>
 
           {/* MVPs */}
           {!isExternalView && mvp ? (
-            <div className="war-mvp-section">
-              <Text size="xs" fw={700} tt="uppercase" c="dimmed" className="war-mvp-section-header">
+            <Stack gap={6} pt={8} style={{ borderTop: "1px solid color-mix(in srgb, var(--infini-color-text, #111827) 8%, transparent)" }}>
+              <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: "0.08em", marginBottom: 2 }}>
                 {t("card.lastWar.mvps")}
               </Text>
-              <div className="war-mvp-chips">
+              <Stack gap={6}>
                 <MvpChip entry={{ ...mvp.damage, label: t("card.lastWar.mvp.damage") }} icon={<IconFlame size={12} />} />
                 <MvpChip entry={{ ...mvp.healing, label: t("card.lastWar.mvp.healing") }} icon={<IconHeart size={12} />} />
                 <MvpChip entry={{ ...mvp.building, label: t("card.lastWar.mvp.building") }} icon={<IconHammer size={12} />} />
-              </div>
-            </div>
+              </Stack>
+            </Stack>
           ) : null}
         </div>
       ) : (

@@ -104,19 +104,9 @@ async function requireSession(c: Context): Promise<SessionUser | Response> {
   return resolved.user;
 }
 
-async function canEditTarget(c: Context, sessionUser: SessionUser, targetUserId: string): Promise<boolean> {
-  if (sessionUser.id === targetUserId) {
-    return true;
-  }
+type EditTargetAccess = "allowed" | "forbidden" | "not_found";
 
-  if (sessionUser.role === "admin") {
-    return true;
-  }
-
-  if (!hasRoleAtLeast(sessionUser.role, "moderator")) {
-    return false;
-  }
-
+async function canEditTarget(c: Context, sessionUser: SessionUser, targetUserId: string): Promise<EditTargetAccess> {
   const db = getDb(c);
   const target = (
     await db
@@ -130,10 +120,22 @@ async function canEditTarget(c: Context, sessionUser: SessionUser, targetUserId:
   )[0];
 
   if (!target || target.deletedAt !== null) {
-    return false;
+    return "not_found";
   }
 
-  return target.role !== "admin";
+  if (sessionUser.id === targetUserId) {
+    return "allowed";
+  }
+
+  if (sessionUser.role === "admin") {
+    return "allowed";
+  }
+
+  if (!hasRoleAtLeast(sessionUser.role, "moderator")) {
+    return "forbidden";
+  }
+
+  return target.role !== "admin" ? "allowed" : "forbidden";
 }
 
 function parseStringArray(value: string): string[] {
@@ -535,7 +537,11 @@ usersRoutes.patch("/:id/profile", async (c) => {
   }
 
   const targetUserId = c.req.param("id");
-  if (!(await canEditTarget(c, sessionUser, targetUserId))) {
+  const access = await canEditTarget(c, sessionUser, targetUserId);
+  if (access === "not_found") {
+    return buildError(c, "NOT_FOUND", "User not found");
+  }
+  if (access === "forbidden") {
     return buildError(c, "FORBIDDEN", "You cannot edit this profile");
   }
 
@@ -584,12 +590,21 @@ usersRoutes.post("/:id/media/images", async (c) => {
   }
 
   const targetUserId = c.req.param("id");
-  if (!(await canEditTarget(c, sessionUser, targetUserId))) {
+  const access = await canEditTarget(c, sessionUser, targetUserId);
+  if (access === "not_found") {
+    return buildError(c, "NOT_FOUND", "User not found");
+  }
+  if (access === "forbidden") {
     return buildError(c, "FORBIDDEN", "You cannot upload media for this profile");
   }
 
   const profile = await ensureProfile(c, targetUserId);
-  const form = await c.req.formData();
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return buildError(c, "VALIDATION_ERROR", "Request must be multipart/form-data");
+  }
   const files: File[] = [];
   const single = form.get("file");
   if (single instanceof File) {
@@ -642,7 +657,11 @@ usersRoutes.delete("/:id/media/images/:key", async (c) => {
   }
 
   const targetUserId = c.req.param("id");
-  if (!(await canEditTarget(c, sessionUser, targetUserId))) {
+  const access = await canEditTarget(c, sessionUser, targetUserId);
+  if (access === "not_found") {
+    return buildError(c, "NOT_FOUND", "User not found");
+  }
+  if (access === "forbidden") {
     return buildError(c, "FORBIDDEN", "You cannot delete media for this profile");
   }
 
@@ -675,11 +694,20 @@ usersRoutes.post("/:id/media/audio", async (c) => {
   }
 
   const targetUserId = c.req.param("id");
-  if (!(await canEditTarget(c, sessionUser, targetUserId))) {
+  const access = await canEditTarget(c, sessionUser, targetUserId);
+  if (access === "not_found") {
+    return buildError(c, "NOT_FOUND", "User not found");
+  }
+  if (access === "forbidden") {
     return buildError(c, "FORBIDDEN", "You cannot upload media for this profile");
   }
 
-  const form = await c.req.formData();
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return buildError(c, "VALIDATION_ERROR", "Request must be multipart/form-data");
+  }
   const audio = form.get("file");
   if (!(audio instanceof File)) {
     return buildError(c, "VALIDATION_ERROR", "Audio file is required");
@@ -714,7 +742,11 @@ usersRoutes.delete("/:id/media/audio", async (c) => {
   }
 
   const targetUserId = c.req.param("id");
-  if (!(await canEditTarget(c, sessionUser, targetUserId))) {
+  const access = await canEditTarget(c, sessionUser, targetUserId);
+  if (access === "not_found") {
+    return buildError(c, "NOT_FOUND", "User not found");
+  }
+  if (access === "forbidden") {
     return buildError(c, "FORBIDDEN", "You cannot delete media for this profile");
   }
 

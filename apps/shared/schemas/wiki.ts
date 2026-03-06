@@ -17,6 +17,10 @@ export const createWikiCategorySchema = z.object({
   parent_id: z.string().optional(),
 });
 
+export const updateWikiCategorySchema = createWikiCategorySchema.partial().extend({
+  parent_id: z.string().nullable().optional(),
+});
+
 export const wikiArticleSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -24,6 +28,7 @@ export const wikiArticleSchema = z.object({
   category_id: z.string(),
   body_json: z.string(),
   sort_order: z.number().int(),
+  pinned: z.boolean(),
   archived_at: z.string().nullable(),
   created_by: z.string(),
   updated_by: z.string().nullable(),
@@ -37,6 +42,7 @@ export const createWikiArticleSchema = z.object({
   category_id: z.string(),
   body_json: z.string().min(1),
   sort_order: z.number().int().default(0),
+  pinned: z.boolean().default(false),
 });
 
 export const updateWikiArticleSchema = createWikiArticleSchema.partial().extend({

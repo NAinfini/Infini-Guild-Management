@@ -1,19 +1,20 @@
 import { PERMISSIONS, type AdminRole, type Permission } from "@guild/shared";
+import { DepthToggle } from "@infini-dev-kit/frontend/components";
 import {
+  ActionIcon,
   Alert,
   Badge,
-  Button,
+  ColorInput,
   Group,
   Loader,
-  NumberInput,
-  SimpleGrid,
+  ScrollArea,
   Stack,
-  Switch,
   Text,
   TextInput,
+  UnstyledButton,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconCheck, IconDeviceFloppy, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -55,6 +56,52 @@ type AdminRolesSectionProps = {
   onUpdateRole: (roleId: string, payload: RoleUpdatePayload) => Promise<boolean>;
   onDeleteRole: (roleId: string) => Promise<boolean>;
 };
+
+type PermissionCategory = {
+  labelKey: string;
+  permissions: Permission[];
+};
+
+const PERMISSION_CATEGORIES: PermissionCategory[] = [
+  {
+    labelKey: "roles.category.adminUsers",
+    permissions: [
+      "admin.users.view",
+      "admin.users.edit",
+      "admin.users.role",
+      "admin.users.activate",
+      "admin.users.delete",
+      "admin.users.password",
+    ],
+  },
+  {
+    labelKey: "roles.category.adminInvites",
+    permissions: ["admin.invite.view", "admin.invite.manage"],
+  },
+  {
+    labelKey: "roles.category.adminAudit",
+    permissions: ["admin.audit.view", "admin.audit.export"],
+  },
+  {
+    labelKey: "roles.category.adminBot",
+    permissions: ["admin.bot.view", "admin.bot.manage"],
+  },
+  {
+    labelKey: "roles.category.adminSystem",
+    permissions: ["admin.status.view", "admin.roles.manage"],
+  },
+  {
+    labelKey: "roles.category.content",
+    permissions: [
+      "guildwar.manage",
+      "guildwar.history.edit",
+      "events.manage",
+      "announcements.manage",
+      "gallery.upload",
+      "wiki.edit",
+    ],
+  },
+];
 
 function buildEmptyPermissions(): Record<Permission, boolean> {
   return Object.fromEntries(PERMISSIONS.map((permission) => [permission, false])) as Record<Permission, boolean>;
@@ -111,10 +158,8 @@ export function AdminRolesSection({
   onDeleteRole,
 }: AdminRolesSectionProps) {
   const { t } = useTranslation("admin");
-  const [newRoleId, setNewRoleId] = useState("");
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [newRoleName, setNewRoleName] = useState("");
-  const [newRoleLevel, setNewRoleLevel] = useState<number>(2);
-  const [newRoleColor, setNewRoleColor] = useState("");
   const [drafts, setDrafts] = useState<Record<string, RoleDraft>>({});
 
   const emptyPermissions = useMemo(() => buildEmptyPermissions(), []);
@@ -125,7 +170,10 @@ export function AdminRolesSection({
       next[role.id] = roleToDraft(role);
     }
     setDrafts(next);
-  }, [roles]);
+    if (selectedRoleId === null && roles.length > 0 && roles[0]) {
+      setSelectedRoleId(roles[0].id);
+    }
+  }, [roles, selectedRoleId]);
 
   if (!isAdmin) {
     return (
@@ -136,6 +184,10 @@ export function AdminRolesSection({
     );
   }
 
+  const selectedRole = roles.find((role) => role.id === selectedRoleId) ?? null;
+  const selectedDraft = selectedRoleId ? drafts[selectedRoleId] : undefined;
+  const isDirty = selectedRole && selectedDraft ? isRoleDraftDirty(selectedRole, selectedDraft) : false;
+
   const handleCreateRole = async () => {
     const name = newRoleName.trim();
     if (!name) {
@@ -143,10 +195,9 @@ export function AdminRolesSection({
     }
 
     const created = await onCreateRole({
-      id: newRoleId.trim() || undefined,
       name,
-      level: Math.max(1, Math.min(2, Math.round(newRoleLevel || 2))),
-      color: newRoleColor.trim() || null,
+      level: 2,
+      color: null,
       permissions: emptyPermissions,
     });
 
@@ -154,10 +205,7 @@ export function AdminRolesSection({
       return;
     }
 
-    setNewRoleId("");
     setNewRoleName("");
-    setNewRoleLevel(2);
-    setNewRoleColor("");
   };
 
   const handleDeleteRole = async (role: AdminRole) => {
@@ -182,7 +230,38 @@ export function AdminRolesSection({
       return;
     }
 
-    await onDeleteRole(role.id);
+    const deleted = await onDeleteRole(role.id);
+    if (deleted && selectedRoleId === role.id) {
+      setSelectedRoleId(roles[0]?.id ?? null);
+    }
+  };
+
+  const updateDraftField = (roleId: string, field: keyof RoleDraft, value: unknown) => {
+    setDrafts((current) => {
+      const existing = current[roleId];
+      if (!existing) return current;
+      return {
+        ...current,
+        [roleId]: { ...existing, [field]: value },
+      };
+    });
+  };
+
+  const togglePermission = (roleId: string, permission: Permission) => {
+    setDrafts((current) => {
+      const existing = current[roleId];
+      if (!existing) return current;
+      return {
+        ...current,
+        [roleId]: {
+          ...existing,
+          permissions: {
+            ...existing.permissions,
+            [permission]: !existing.permissions[permission],
+          },
+        },
+      };
+    });
   };
 
   return (
@@ -192,181 +271,203 @@ export function AdminRolesSection({
       {rolesError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
 
       {!rolesLoading && !rolesError ? (
-        <>
-          <div className="admin-roles-create-card">
-            <Stack gap={10}>
-              <Text fw={700}>{t("roles.createTitle")}</Text>
-              <SimpleGrid cols={{ base: 1, md: 2, xl: 4 }} spacing={10}>
+        <div className="admin-roles-layout">
+          {/* ── Left panel: role list ── */}
+          <div className="admin-roles-sidebar">
+            <div className="admin-roles-sidebar-header">
+              <Text fw={700} size="sm">{t("roles.listTitle")}</Text>
+            </div>
+
+            <ScrollArea className="admin-roles-sidebar-scroll" type="auto" scrollbarSize={6}>
+              <Stack gap={4} p={8}>
+                {roles.map((role) => {
+                  const isSelected = role.id === selectedRoleId;
+                  const roleDraft = drafts[role.id];
+                  const dirty = roleDraft ? isRoleDraftDirty(role, roleDraft) : false;
+
+                  return (
+                    <UnstyledButton
+                      key={role.id}
+                      className={`admin-roles-sidebar-item ${isSelected ? "admin-roles-sidebar-item--active" : ""}`}
+                      onClick={() => setSelectedRoleId(role.id)}
+                    >
+                      <Group gap={8} wrap="nowrap" justify="space-between">
+                        <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
+                          {role.color ? (
+                            <span
+                              className="admin-roles-color-dot"
+                              style={{ background: role.color }}
+                            />
+                          ) : (
+                            <span
+                              className="admin-roles-color-dot admin-roles-color-dot--empty"
+                            />
+                          )}
+                          <Text size="sm" fw={isSelected ? 700 : 500} truncate>
+                            {role.name}
+                          </Text>
+                        </Group>
+                        <Group gap={4} wrap="nowrap">
+                          {dirty ? (
+                            <Badge size="xs" variant="light" color="infini-warning">*</Badge>
+                          ) : null}
+                          {role.is_builtin ? (
+                            <Badge size="xs" variant="light" color="blue">{t("roles.builtin")}</Badge>
+                          ) : null}
+                        </Group>
+                      </Group>
+                    </UnstyledButton>
+                  );
+                })}
+              </Stack>
+            </ScrollArea>
+
+            {/* Add new role */}
+            <div className="admin-roles-sidebar-footer">
+              <Group gap={6} wrap="nowrap">
                 <TextInput
-                  label={t("roles.field.id")}
-                  placeholder={t("roles.placeholder.id")}
-                  value={newRoleId}
-                  onChange={(event) => setNewRoleId(event.currentTarget.value)}
-                />
-                <TextInput
-                  label={t("roles.field.name")}
+                  size="xs"
                   placeholder={t("roles.placeholder.name")}
                   value={newRoleName}
                   onChange={(event) => setNewRoleName(event.currentTarget.value)}
-                />
-                <NumberInput
-                  label={t("roles.field.level")}
-                  min={1}
-                  max={2}
-                  value={newRoleLevel}
-                  onChange={(value) => setNewRoleLevel(typeof value === "number" ? value : 2)}
-                />
-                <TextInput
-                  label={t("roles.field.color")}
-                  placeholder={t("roles.placeholder.color")}
-                  value={newRoleColor}
-                  onChange={(event) => setNewRoleColor(event.currentTarget.value)}
-                />
-              </SimpleGrid>
-              <Group justify="flex-end">
-                <Button
-                  leftSection={<IconPlus size={14} />}
-                  onClick={() => {
-                    void handleCreateRole();
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      void handleCreateRole();
+                    }
                   }}
+                  style={{ flex: 1 }}
+                />
+                <ActionIcon
+                  size="sm"
+                  variant="filled"
+                  color="infini-primary"
+                  onClick={() => { void handleCreateRole(); }}
                   loading={createRolePending}
                   disabled={!newRoleName.trim()}
                 >
-                  {t("roles.create")}
-                </Button>
+                  <IconPlus size={14} />
+                </ActionIcon>
               </Group>
-            </Stack>
+            </div>
           </div>
 
-          <Stack gap={10}>
-            {roles.map((role) => {
-              const draft = drafts[role.id] ?? roleToDraft(role);
-              const isAdminRole = role.id === "admin";
-              const canDelete = !role.is_builtin;
-              const isDirty = isRoleDraftDirty(role, draft);
-
-              return (
-                <div key={role.id} className="admin-roles-role-card">
-                  <Stack gap={10}>
-                    <Group justify="space-between" align="center">
-                      <Group gap={8}>
-                        <Text fw={700}>{role.id}</Text>
-                        <Badge variant="light" color={role.is_builtin ? "blue" : "gray"}>
-                          {role.is_builtin ? t("roles.builtin") : t("roles.custom")}
-                        </Badge>
-                        <Badge variant="light" color="teal">
-                          {t("roles.assignedCount", { count: role.assigned_user_count })}
+          {/* ── Right panel: permissions ── */}
+          <div className="admin-roles-detail">
+            {selectedRole && selectedDraft ? (
+              <Stack gap={16}>
+                {/* Role header */}
+                <div className="admin-roles-detail-header">
+                  <Group justify="space-between" align="center" wrap="nowrap">
+                    <Group gap={10} align="center" wrap="nowrap" style={{ minWidth: 0 }}>
+                      <TextInput
+                        size="sm"
+                        label={t("roles.field.name")}
+                        value={selectedDraft.name}
+                        onChange={(event) => updateDraftField(selectedRole.id, "name", event.currentTarget.value)}
+                        style={{ flex: 1, minWidth: 120, maxWidth: 200 }}
+                      />
+                      <ColorInput
+                        size="sm"
+                        label={t("roles.field.color")}
+                        value={selectedDraft.color}
+                        onChange={(value) => updateDraftField(selectedRole.id, "color", value)}
+                        style={{ width: 160 }}
+                        swatches={[
+                          "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
+                          "#3b82f6", "#6366f1", "#a855f7", "#ec4899", "#64748b",
+                        ]}
+                      />
+                      <Group gap={6} mt={22}>
+                        <Badge variant="light" color="teal" size="sm">
+                          {t("roles.assignedCount", { count: selectedRole.assigned_user_count })}
                         </Badge>
                       </Group>
-                      {canDelete ? (
-                        <Button
+                    </Group>
+                    <Group gap={8} mt={22}>
+                      {!selectedRole.is_builtin ? (
+                        <ActionIcon
                           color="infini-danger"
                           variant="light"
-                          leftSection={<IconTrash size={14} />}
-                          onClick={() => {
-                            void handleDeleteRole(role);
-                          }}
+                          size="lg"
+                          onClick={() => { void handleDeleteRole(selectedRole); }}
                           loading={deleteRolePending}
+                          aria-label={t("roles.delete")}
                         >
-                          {t("roles.delete")}
-                        </Button>
+                          <IconTrash size={16} />
+                        </ActionIcon>
                       ) : null}
-                    </Group>
-
-                    <SimpleGrid cols={{ base: 1, md: 3 }} spacing={10}>
-                      <TextInput
-                        label={t("roles.field.name")}
-                        value={draft.name}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [role.id]: {
-                              ...draft,
-                              name: event.currentTarget.value,
-                            },
-                          }))
-                        }
-                      />
-                      <NumberInput
-                        label={t("roles.field.level")}
-                        min={1}
-                        max={role.is_builtin ? role.level : 2}
-                        value={draft.level}
-                        disabled={role.is_builtin}
-                        onChange={(value) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [role.id]: {
-                              ...draft,
-                              level: typeof value === "number" ? value : role.level,
-                            },
-                          }))
-                        }
-                      />
-                      <TextInput
-                        label={t("roles.field.color")}
-                        placeholder={t("roles.placeholder.color")}
-                        value={draft.color}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [role.id]: {
-                              ...draft,
-                              color: event.currentTarget.value,
-                            },
-                          }))
-                        }
-                      />
-                    </SimpleGrid>
-
-                    <Stack gap={8}>
-                      <Text fw={600} size="sm">{t("roles.permissions")}</Text>
-                      <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing={6}>
-                        {PERMISSIONS.map((permission) => (
-                          <Switch
-                            key={`${role.id}-${permission}`}
-                            label={t(`roles.permission.${permission}`, { defaultValue: permission })}
-                            checked={isAdminRole ? true : Boolean(draft.permissions[permission])}
-                            disabled={isAdminRole}
-                            onChange={(event) =>
-                              setDrafts((current) => ({
-                                ...current,
-                                [role.id]: {
-                                  ...draft,
-                                  permissions: {
-                                    ...draft.permissions,
-                                    [permission]: event.currentTarget.checked,
-                                  },
-                                },
-                              }))
-                            }
-                          />
-                        ))}
-                      </SimpleGrid>
-                    </Stack>
-
-                    <Group justify="flex-end">
-                      <Button
+                      <ActionIcon
+                        color="infini-primary"
+                        variant="filled"
+                        size="lg"
                         onClick={() => {
-                          void onUpdateRole(role.id, {
-                            name: draft.name.trim(),
-                            level: draft.level,
-                            color: draft.color.trim() || null,
-                            permissions: draft.permissions,
+                          void onUpdateRole(selectedRole.id, {
+                            name: selectedDraft.name.trim(),
+                            level: selectedDraft.level,
+                            color: selectedDraft.color.trim() || null,
+                            permissions: selectedDraft.permissions,
                           });
                         }}
                         loading={updateRolePending}
                         disabled={!isDirty}
+                        aria-label={t("roles.save")}
                       >
-                        {t("roles.save")}
-                      </Button>
+                        <IconDeviceFloppy size={16} />
+                      </ActionIcon>
                     </Group>
-                  </Stack>
+                  </Group>
                 </div>
-              );
-            })}
-          </Stack>
-        </>
+
+                {/* Permission categories */}
+                <ScrollArea type="auto" scrollbarSize={6} style={{ flex: 1 }}>
+                  <Stack gap={20}>
+                    {PERMISSION_CATEGORIES.map((category) => (
+                      <div key={category.labelKey} className="admin-roles-perm-category">
+                        <Text fw={700} size="sm" mb={8} c="dimmed" tt="uppercase" lts={0.5}>
+                          {t(category.labelKey)}
+                        </Text>
+                        <div className="admin-roles-perm-grid">
+                          {category.permissions.map((permission) => {
+                            const isReadOnly = selectedRole.id === "admin" || selectedRole.id === "external";
+                            const isGranted = selectedRole.id === "admin" ? true : Boolean(selectedDraft.permissions[permission]);
+
+                            return (
+                              <DepthToggle
+                                key={`${selectedRole.id}-${permission}`}
+                                pressed={isGranted}
+                                onToggle={() => {
+                                  if (!isReadOnly) {
+                                    togglePermission(selectedRole.id, permission);
+                                  }
+                                }}
+                                type="secondary"
+                                size="sm"
+                                disabled={isReadOnly}
+                                before={
+                                  isGranted ? (
+                                    <IconCheck size={14} color="#22c55e" />
+                                  ) : (
+                                    <IconX size={14} color="#ef4444" />
+                                  )
+                                }
+                              >
+                                {t(`roles.permission.${permission}`, { defaultValue: permission })}
+                              </DepthToggle>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </Stack>
+                </ScrollArea>
+              </Stack>
+            ) : (
+              <div className="admin-roles-detail-empty">
+                <Text c="dimmed">{t("roles.selectHint")}</Text>
+              </div>
+            )}
+          </div>
+        </div>
       ) : null}
     </Stack>
   );

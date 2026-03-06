@@ -1,10 +1,9 @@
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { MotionButton } from "@infini-dev-kit/frontend/components";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { DepthButton, InfiniCard } from "@infini-dev-kit/frontend/components";
 import { ActionIcon, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
-import { IconGripVertical } from "@tabler/icons-react";
+import { IconDeviceFloppy, IconGripVertical, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -75,9 +74,13 @@ type WikiCategoryEditorCardProps = {
   categoryName: string;
   categoryDrafts: WikiCategoryDraft[];
   isCreating: boolean;
+  isSavingDrafts: boolean;
+  canSaveDrafts: boolean;
   deletingCategoryId: string | null;
   onCategoryNameChange: (value: string) => void;
   onCreateCategory: () => void;
+  onSaveDrafts: () => void;
+  onCloseEditor: () => void;
   onCategoryDraftNameChange: (categoryId: string, value: string) => void;
   onCategoryDraftParentIdChange: (categoryId: string, value: string) => void;
   onCategoryReorder: (activeId: string, overId: string) => void;
@@ -166,6 +169,7 @@ function SortableCategoryRow({
             size="sm"
             variant="light"
             color="infini-danger"
+            leftSection={<IconTrash size={16} />}
             onClick={() => onDeleteCategory(draft.id)}
             loading={deletingCategoryId === draft.id}
             disabled={Boolean(deletingCategoryId && deletingCategoryId !== draft.id)}
@@ -183,9 +187,13 @@ export function WikiCategoryEditorCard({
   categoryName,
   categoryDrafts,
   isCreating,
+  isSavingDrafts,
+  canSaveDrafts,
   deletingCategoryId,
   onCategoryNameChange,
   onCreateCategory,
+  onSaveDrafts,
+  onCloseEditor,
   onCategoryDraftNameChange,
   onCategoryDraftParentIdChange,
   onCategoryReorder,
@@ -238,7 +246,29 @@ export function WikiCategoryEditorCard({
     <InfiniCard interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={12}>
-          <Text fw={700}>{t("categoryEditor.title")}</Text>
+          <Group justify="space-between" align="center" wrap="wrap">
+            <Text fw={700}>{t("categoryEditor.title")}</Text>
+            <Group gap={8}>
+              <DepthButton
+                type="primary"
+                size="sm"
+                before={<IconDeviceFloppy size={14} />}
+                onClick={onSaveDrafts}
+                disabled={!canSaveDrafts || isSavingDrafts}
+              >
+                {t("articleEditor.save")}
+              </DepthButton>
+              <DepthButton
+                type="secondary"
+                size="sm"
+                before={<IconX size={14} />}
+                onClick={onCloseEditor}
+                disabled={isSavingDrafts}
+              >
+                {t("editor.closeNoSave")}
+              </DepthButton>
+            </Group>
+          </Group>
 
           <Group gap={8} align="end" wrap="wrap">
             <div
@@ -257,14 +287,15 @@ export function WikiCategoryEditorCard({
                 aria-label="Wiki category name"
               />
             </div>
-            <MotionButton
+            <DepthButton
               type="primary"
+              size="sm"
+              before={<IconPlus size={14} />}
               onClick={onCreateCategory}
-              loading={isCreating}
-              disabled={categoryName.trim().length === 0}
+              disabled={categoryName.trim().length === 0 || isCreating}
             >
               {t("categoryEditor.create")}
-            </MotionButton>
+            </DepthButton>
           </Group>
 
           <Stack gap={8}>

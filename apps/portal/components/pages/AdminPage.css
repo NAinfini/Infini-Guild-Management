@@ -5,7 +5,8 @@
 /* Prevent audit log table from overflowing the page container */
 .admin-page .mantine-Tabs-panel {
   min-width: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 /* Ensure table cells don't clip — let the scroll wrapper handle overflow */
@@ -70,10 +71,128 @@
   color: var(--infini-color-danger, #ef4444) !important;
 }
 
-.admin-page .admin-roles-create-card,
-.admin-page .admin-roles-role-card {
-  border: 1px solid color-mix(in srgb, var(--infini-color-primary, #3b82f6) 18%, transparent);
+/* ── Roles: wiki-like split layout ── */
+
+.admin-roles-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 0;
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
   border-radius: 12px;
-  padding: 1rem;
-  background: color-mix(in srgb, var(--infini-color-surface, #0f172a) 88%, transparent);
+  overflow: hidden;
+  min-height: 520px;
+}
+
+.admin-roles-sidebar {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 94%, transparent);
+}
+
+.admin-roles-sidebar-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+}
+
+.admin-roles-sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.admin-roles-sidebar-footer {
+  padding: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+}
+
+.admin-roles-sidebar-item {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  position: relative;
+  transition:
+    background var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease),
+    color var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease);
+}
+
+.admin-roles-sidebar-item:hover {
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, transparent);
+}
+
+.admin-roles-sidebar-item--active {
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 16%, transparent);
+  color: var(--infini-color-primary, #3b82f6);
+}
+
+.admin-roles-sidebar-item--active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--infini-color-primary, #3b82f6);
+}
+
+.admin-roles-color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.admin-roles-color-dot--empty {
+  border: 2px solid color-mix(in srgb, var(--infini-color-text, #111827) 24%, transparent);
+}
+
+.admin-roles-detail {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.admin-roles-detail-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+  margin-bottom: 4px;
+}
+
+.admin-roles-detail-empty {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  min-height: 200px;
+}
+
+.admin-roles-perm-category {
+  padding: 0;
+}
+
+.admin-roles-perm-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 767px) {
+  .admin-roles-layout {
+    grid-template-columns: 1fr;
+    min-height: unset;
+  }
+
+  .admin-roles-sidebar {
+    border-right: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+    max-height: 200px;
+  }
+
+  .admin-roles-detail {
+    padding: 12px;
+  }
+
+  .admin-roles-perm-grid {
+    gap: 6px;
+  }
 }

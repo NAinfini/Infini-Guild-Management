@@ -1,5 +1,5 @@
 import { InfiniCard, NumberTicker } from "@infini-dev-kit/frontend/components";
-import { Group, RingProgress, Text } from "@mantine/core";
+import { Group, RingProgress, Stack, Text } from "@mantine/core";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { TeamOutlined } from "../../utils/icons";
@@ -48,8 +48,8 @@ export function ActiveMembersCard({
   return (
     <InfiniCard className="dashboard-card" interactive={false} overrides={{ glow: { variant: "spotlight", glowIntensity: 0.25 } }}>
       {cardHeading(t("card.activeMembers.title"), <TeamOutlined size={18} />)}
-      <Group className="dashboard-stats-circles" gap={10} mt={12} align="flex-start">
-        <div className="dashboard-stats-circle-item">
+      <Group gap={10} mt={12} align="flex-start" justify="space-between" w="100%">
+        <Stack gap={8} align="center" style={{ flex: "1 1 0", minWidth: 0 }}>
           {renderRing(
             activeMemberPercent,
             <span className="dashboard-stats-circle-center">
@@ -61,9 +61,9 @@ export function ActiveMembersCard({
             "infini-primary",
           )}
           <Text className="dashboard-stats-circle-label">{t("card.activeMembers.activeRatio")}</Text>
-        </div>
+        </Stack>
 
-        <div className="dashboard-stats-circle-item">
+        <Stack gap={8} align="center" style={{ flex: "1 1 0", minWidth: 0 }}>
           {renderRing(
             weeklyEventsPercent,
             <span className="dashboard-stats-circle-center">
@@ -74,9 +74,9 @@ export function ActiveMembersCard({
             "infini-success",
           )}
           <Text className="dashboard-stats-circle-label">{t("card.activeMembers.eventsWeek")}</Text>
-        </div>
+        </Stack>
 
-        <div className="dashboard-stats-circle-item">
+        <Stack gap={8} align="center" style={{ flex: "1 1 0", minWidth: 0 }}>
           {renderRing(
             safeWinRate,
             <span className="dashboard-stats-circle-center">
@@ -87,7 +87,7 @@ export function ActiveMembersCard({
             "infini-warning",
           )}
           <Text className="dashboard-stats-circle-label">{t("card.activeMembers.winRate")}</Text>
-        </div>
+        </Stack>
       </Group>
     </InfiniCard>
   );

@@ -30,6 +30,7 @@ import { updateProfileSchema } from "../schemas/user";
 import {
   createWikiArticleSchema,
   createWikiCategorySchema,
+  updateWikiCategorySchema,
   updateWikiArticleSchema,
 } from "../schemas/wiki";
 
@@ -513,7 +514,7 @@ export const API_REGISTRY = {
     path: "/api/wiki/categories/:id",
     auth: "session",
     role: "moderator",
-    request: createWikiCategorySchema.partial(),
+    request: updateWikiCategorySchema,
   },
   wikiCategoryDelete: {
     method: "DELETE",

@@ -15,10 +15,6 @@ type EditorSnapshot = {
   capacity: string;
   pinned: boolean;
   signupLocked: boolean;
-  recurrenceEnabled: boolean;
-  recurrenceFreq: "daily" | "weekly" | "monthly";
-  recurrenceInterval: string;
-  recurrenceDays: number[];
   attachments: string[];
 };
 
@@ -28,8 +24,6 @@ function buildEditorSnapshot(input: EditorSnapshot): string {
     title: input.title.trim(),
     description: input.description.trim(),
     capacity: input.capacity.trim(),
-    recurrenceInterval: input.recurrenceInterval.trim(),
-    recurrenceDays: [...input.recurrenceDays].sort((left, right) => left - right),
     attachments: [...input.attachments].sort(),
   });
 }
@@ -66,23 +60,11 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
   const [editorCapacity, setEditorCapacity] = useState("");
   const [editorPinned, setEditorPinned] = useState(false);
   const [editorSignupLocked, setEditorSignupLocked] = useState(false);
-  const [editorRecurrenceEnabled, setEditorRecurrenceEnabled] = useState(false);
-  const [editorRecurrenceFreq, setEditorRecurrenceFreq] = useState<"daily" | "weekly" | "monthly">("weekly");
-  const [editorRecurrenceInterval, setEditorRecurrenceInterval] = useState("1");
-  const [editorRecurrenceDays, setEditorRecurrenceDays] = useState<number[]>([1, 3, 5]);
   const [editorAttachments, setEditorAttachments] = useState<string[]>([]);
-  const [editorRecurrenceApplyTo, setEditorRecurrenceApplyTo] = useState<"this" | "future" | "all">("this");
   const [editorBaseline, setEditorBaseline] = useState<string | null>(null);
 
   const editorStartIso = toIso(editorStartAt);
   const editorEndIso = toIso(editorEndAt) ?? editorStartIso;
-  const recurrencePayload = editorRecurrenceEnabled
-    ? {
-        frequency: editorRecurrenceFreq,
-        interval: Math.max(1, Number.parseInt(editorRecurrenceInterval || "1", 10)),
-        daysOfWeek: editorRecurrenceFreq === "weekly" ? editorRecurrenceDays : undefined,
-      }
-    : undefined;
 
   const conflictingEvents = useMemo(() => {
     if (!editorStartIso || !editorEndIso) {
@@ -112,10 +94,6 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
     capacity: editorCapacity,
     pinned: editorPinned,
     signupLocked: editorSignupLocked,
-    recurrenceEnabled: editorRecurrenceEnabled,
-    recurrenceFreq: editorRecurrenceFreq,
-    recurrenceInterval: editorRecurrenceInterval,
-    recurrenceDays: editorRecurrenceDays,
     attachments: editorAttachments,
   });
   const isEditorDirty = editorOpen && editorBaseline !== null && editorCurrentSnapshot !== editorBaseline;
@@ -128,7 +106,6 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
     const initialStartAt = toLocalInput(
       Number.isNaN(dateStart.getTime()) ? fallbackStart.toISOString() : dateStart.toISOString(),
     );
-    const initialRecurrenceDays = [1, 3, 5];
     setEditorMode("create");
     setEditingEventId(null);
     setEditorType("guild_war");
@@ -139,12 +116,7 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
     setEditorCapacity("");
     setEditorPinned(false);
     setEditorSignupLocked(false);
-    setEditorRecurrenceEnabled(false);
-    setEditorRecurrenceFreq("weekly");
-    setEditorRecurrenceInterval("1");
-    setEditorRecurrenceDays(initialRecurrenceDays);
     setEditorAttachments([]);
-    setEditorRecurrenceApplyTo("this");
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "create",
@@ -157,10 +129,6 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
         capacity: "",
         pinned: false,
         signupLocked: false,
-        recurrenceEnabled: false,
-        recurrenceFreq: "weekly",
-        recurrenceInterval: "1",
-        recurrenceDays: initialRecurrenceDays,
         attachments: [],
       }),
     );
@@ -168,10 +136,6 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
   }, []);
 
   const openEditEditor = useCallback((event: Event) => {
-    const recurrenceEnabled = Boolean(event.recurrence_rule);
-    const recurrenceFreq = event.recurrence_rule?.frequency ?? "weekly";
-    const recurrenceInterval = String(event.recurrence_rule?.interval ?? 1);
-    const recurrenceDays = event.recurrence_rule?.daysOfWeek ?? [1, 3, 5];
     const startAt = toLocalInput(event.start_at);
     const endAt = toLocalInput(event.end_at);
     const capacity = event.capacity === null ? "" : String(event.capacity);
@@ -186,12 +150,7 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
     setEditorCapacity(capacity);
     setEditorPinned(event.pinned);
     setEditorSignupLocked(event.signup_locked);
-    setEditorRecurrenceEnabled(recurrenceEnabled);
-    setEditorRecurrenceFreq(recurrenceFreq);
-    setEditorRecurrenceInterval(recurrenceInterval);
-    setEditorRecurrenceDays(recurrenceDays);
     setEditorAttachments(event.attachments ?? []);
-    setEditorRecurrenceApplyTo("this");
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "edit",
@@ -204,10 +163,6 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
         capacity,
         pinned: event.pinned,
         signupLocked: event.signup_locked,
-        recurrenceEnabled,
-        recurrenceFreq,
-        recurrenceInterval,
-        recurrenceDays,
         attachments: event.attachments ?? [],
       }),
     );
@@ -253,15 +208,9 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
     editorCapacity,
     editorPinned,
     editorSignupLocked,
-    editorRecurrenceEnabled,
-    editorRecurrenceFreq,
-    editorRecurrenceInterval,
-    editorRecurrenceDays,
     editorAttachments,
-    editorRecurrenceApplyTo,
     editorStartIso,
     editorEndIso,
-    recurrencePayload,
     conflictingEvents,
     isEditorDirty,
     setEditorType,
@@ -272,12 +221,7 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
     setEditorCapacity,
     setEditorPinned,
     setEditorSignupLocked,
-    setEditorRecurrenceEnabled,
-    setEditorRecurrenceFreq,
-    setEditorRecurrenceInterval,
-    setEditorRecurrenceDays,
     setEditorAttachments,
-    setEditorRecurrenceApplyTo,
     openCreateEditor,
     openEditEditor,
     closeEditor,

@@ -1,14 +1,14 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { EVENT_TYPES } from "../constants/event-types";
 
 export const recurrenceRuleSchema = z.object({
   frequency: z.enum(["daily", "weekly", "monthly"]),
   interval: z.number().int().positive(),
   daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
+  dayOfMonth: z.number().int().min(1).max(31).optional(),
   endAfter: z.number().int().positive().optional(),
   endDate: z.string().datetime().optional(),
 });
-export const recurrenceScopeSchema = z.enum(["this", "future", "all"]);
 export const eventAttachmentsSchema = z.array(z.string().min(1)).max(5);
 
 export const eventSchema = z.object({
@@ -39,7 +39,6 @@ export const createEventSchema = z.object({
   start_at: z.string().datetime(),
   end_at: z.string().datetime().optional(),
   capacity: z.number().int().positive().optional(),
-  recurrence_rule: recurrenceRuleSchema.optional(),
   attachments: eventAttachmentsSchema.optional(),
 });
 
@@ -47,7 +46,6 @@ export const updateEventSchema = createEventSchema.partial().extend({
   pinned: z.boolean().optional(),
   signup_locked: z.boolean().optional(),
   archived_at: z.string().datetime().nullable().optional(),
-  recurrence_scope: recurrenceScopeSchema.optional(),
 });
 
 export const eventParticipantSchema = z.object({
@@ -56,3 +54,34 @@ export const eventParticipantSchema = z.object({
   user_id: z.string(),
   joined_at: z.string(),
 });
+
+// ── Recurring Templates ──
+
+export const recurringTemplateSchema = z.object({
+  id: z.string(),
+  type: z.enum(EVENT_TYPES),
+  title: z.string(),
+  description: z.string().nullable(),
+  start_at: z.string(),
+  end_at: z.string().nullable(),
+  capacity: z.number().int().nullable(),
+  recurrence_rule: recurrenceRuleSchema,
+  archived_at: z.string().nullable(),
+  created_by: z.string(),
+  last_generated_date: z.string().nullable(),
+  generation_count: z.number().int(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const createTemplateSchema = z.object({
+  type: z.enum(EVENT_TYPES),
+  title: z.string().min(1).max(200),
+  description: z.string().optional(),
+  start_at: z.string().datetime(),
+  end_at: z.string().datetime().optional(),
+  capacity: z.number().int().positive().optional(),
+  recurrence_rule: recurrenceRuleSchema,
+});
+
+export const updateTemplateSchema = createTemplateSchema.partial();

@@ -50,7 +50,7 @@ export type AdminAuditArchiveMonthResponse = {
   limit: number;
   total_pages: number;
   data: AuditLogEntry[];
-  source?: "r2_manifest" | "r2_legacy_json" | "d1_legacy";
+  source?: "r2_manifest";
   manifest?: {
     generated_at: string;
     total_rows: number;

@@ -13,7 +13,7 @@ type PushSignalPayload = {
   key: string;
   title: string;
   message: string;
-  color: "infini-primary" | "infini-warning" | "teal";
+  color: "infini-primary" | "infini-warning";
   frequencyHz: number;
 };
 
@@ -42,16 +42,6 @@ function resolveSignalPayload(message: PushMessage): PushSignalPayload | null {
       message: `${message.title} (${message.starts_at.slice(0, 16).replace("T", " ")})`,
       color: "infini-warning",
       frequencyHz: 740,
-    };
-  }
-
-  if (message.type === "member_online") {
-    return {
-      key: `member-online:${message.user_id}`,
-      title: "Member Online",
-      message: `${message.user_id} is online`,
-      color: "teal",
-      frequencyHz: 660,
     };
   }
 

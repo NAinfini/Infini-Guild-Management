@@ -1,6 +1,7 @@
 ﻿import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { MotionButton } from "@infini-dev-kit/frontend/components";
 import { Button, Group, PasswordInput, Stack, Switch, Text, TextInput } from "@mantine/core";
+import { IconDeviceFloppy, IconUserMinus } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 
 type ProfileAccountTabProps = {
@@ -81,7 +82,7 @@ export function ProfileAccountTab({
               placeholder={t("account.field.confirmNewPassword")}
               aria-label="Confirm new password"
             />
-            <Button onClick={onChangePassword}>{changePasswordLabel}</Button>
+            <Button onClick={onChangePassword} leftSection={<IconDeviceFloppy size={16} />}>{changePasswordLabel}</Button>
           </Stack>
         </div>
       </InfiniCard>
@@ -102,7 +103,7 @@ export function ProfileAccountTab({
               placeholder={t("account.field.newUsername")}
               aria-label="New username"
             />
-            <Button onClick={onChangeUsername}>{changeUsernameLabel}</Button>
+            <Button onClick={onChangeUsername} leftSection={<IconDeviceFloppy size={16} />}>{changeUsernameLabel}</Button>
           </Stack>
         </div>
       </InfiniCard>
@@ -130,7 +131,7 @@ export function ProfileAccountTab({
               >
                 {t("account.discord.link")}
               </MotionButton>
-              <Button color="infini-danger" onClick={onUnlinkDiscord} disabled={!discordId}>
+              <Button color="infini-danger" onClick={onUnlinkDiscord} disabled={!discordId} leftSection={<IconUserMinus size={16} />}>
                 {t("account.discord.unlink")}
               </Button>
             </Group>
@@ -145,7 +146,7 @@ export function ProfileAccountTab({
                   onChange={(event) => onToggleDiscordReminder(event.currentTarget.checked)}
                   aria-label="Discord reminders toggle"
                 />
-                <Button size="xs" onClick={onSaveDiscordPreference}>
+                <Button size="xs" onClick={onSaveDiscordPreference} leftSection={<IconDeviceFloppy size={16} />}>
                   {t("account.discord.savePreference")}
                 </Button>
               </Group>

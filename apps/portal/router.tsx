@@ -373,9 +373,14 @@ const wikiSlugRoute = createRoute({
   component: WikiRoutePage,
 });
 
+const ADMIN_SEARCH_SCHEMA = z.object({
+  member: z.string().optional(),
+});
+
 const adminRoute = createRoute({
   getParentRoute: () => authenticatedOnlyRoute,
   path: "/admin",
+  validateSearch: (search) => ADMIN_SEARCH_SCHEMA.parse(search),
   beforeLoad: ({ location }) => {
     if (isExternalViewSearch((location as { searchStr?: string }).searchStr)) {
       throw redirect({ to: "/" });

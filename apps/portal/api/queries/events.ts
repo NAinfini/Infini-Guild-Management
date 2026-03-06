@@ -1,4 +1,4 @@
-import type { Event, PaginatedResponse } from "@guild/shared";
+import type { Event, PaginatedResponse, RecurringTemplate } from "@guild/shared";
 import { apiRequest } from "../client";
 
 export type EventDetailResponse = Event & {
@@ -36,4 +36,8 @@ export function fetchEventsList(params: {
 
 export function fetchEventDetail(eventId: string): Promise<EventDetailResponse> {
   return apiRequest<EventDetailResponse>(`/api/events/${eventId}`);
+}
+
+export function fetchTemplatesList(): Promise<{ data: RecurringTemplate[] }> {
+  return apiRequest<{ data: RecurringTemplate[] }>("/api/events/templates/list");
 }

@@ -1,12 +1,28 @@
 # Database Entity-Relationship Diagram
 
-23 tables across 8 domains. All primary keys are `TEXT` (nanoid). All timestamps are UTC ISO-8601.
+25 tables across 9 domains. Primary keys are `TEXT` in all tables; most are nanoid IDs, and `role_permissions` uses a composite key (`role_id`, `permission`). All timestamps are UTC ISO-8601.
 
 ```mermaid
 erDiagram
     %% ═══════════════════════════════════════
     %% Domain: Auth & Identity
     %% ═══════════════════════════════════════
+
+    roles {
+        text id PK
+        text name
+        int level
+        text color "nullable"
+        int is_builtin "boolean, default false"
+        text created_at
+        text updated_at
+    }
+
+    role_permissions {
+        text role_id PK,FK "CASCADE on delete"
+        text permission PK
+        int granted "boolean, default true"
+    }
 
     users {
         text id PK
@@ -99,6 +115,8 @@ erDiagram
         text series_id "nullable"
         int is_series_parent "boolean"
         text instance_date "nullable"
+        text last_generated_date "nullable"
+        int generation_count "default 0"
         text created_at
         text updated_at
     }
@@ -222,6 +240,7 @@ erDiagram
         int sort_order "default 0"
         text archived_at "nullable"
         text created_by FK
+        text updated_by FK "nullable"
         text created_at
         text updated_at
     }
@@ -312,6 +331,7 @@ erDiagram
     %% ═══════════════════════════════════════
 
     %% Auth domain
+    roles ||--o{ role_permissions : "grants (CASCADE)"
     users ||--o| user_auth_password : "credentials"
     users ||--o{ sessions : "active sessions (CASCADE)"
     users ||--o{ invite_links : "created by"
@@ -367,6 +387,9 @@ users
 ├── event_participants     (via events CASCADE)
 └── (no cascade on member_profiles, audit_log, etc.)
 
+roles
+└── role_permissions       (CASCADE)
+
 events
 └── event_participants     (CASCADE)
 
@@ -384,7 +407,7 @@ gallery_items
 
 | Domain | Tables | Root FK |
 |--------|--------|---------|
-| Auth & Identity | users, user_auth_password, sessions, invite_links, discord_link_codes | — (root) |
+| Auth & Identity | roles, role_permissions, users, user_auth_password, sessions, invite_links, discord_link_codes | — (root) |
 | Member Profiles | member_profiles | users |
 | Events & Signups | events, event_participants | users |
 | Announcements | announcements | users |

@@ -1,5 +1,9 @@
-﻿import { addDays, format, getDate, getDay, getMonth, isSameDay, startOfMonth, startOfWeek } from "date-fns";
+import type { Event as GuildEvent } from "@guild/shared";
+import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { Badge, Button, Group, Popover, Stack, Text, Tooltip } from "@mantine/core";
+import { addDays, format, getDate, getDay, getMonth, isSameDay, startOfMonth, startOfWeek } from "date-fns";
 import type { CSSProperties, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import "./EventMonthView.css";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -75,12 +79,13 @@ function MonthCalendar({ onSelect, cellRender, value }: MonthCalendarProps) {
 
 type EventMonthViewProps = {
   canManage: boolean;
-  eventsByDay: Map<string, Event[]>;
+  eventsByDay: Map<string, GuildEvent[]>;
   availabilityDayPeakByDay: Map<number, number>;
   availabilityMaxCount: number;
   onSelectDate: (dateKey: string) => void;
   onCreateEvent: (dateKey: string) => void;
-  onEditEvent: (event: Event) => void;
+  onEditEvent: (event: GuildEvent) => void;
+  onViewEvent?: (event: GuildEvent) => void;
 };
 
 export function EventMonthView({
@@ -91,7 +96,10 @@ export function EventMonthView({
   onSelectDate,
   onCreateEvent,
   onEditEvent,
+  onViewEvent,
 }: EventMonthViewProps) {
+  const { t } = useTranslation("events");
+
   return (
     <InfiniCard interactive={false}>
       <MonthCalendar
@@ -124,9 +132,9 @@ export function EventMonthView({
                   event.stopPropagation();
                   onCreateEvent(key);
                 }}
-                aria-label={`Create event on ${key}`}
+                aria-label={t("month.createAria", { date: key })}
               >
-                + Create
+                + {t("month.create")}
                 {emptyCell}
               </button>
             );
@@ -138,15 +146,42 @@ export function EventMonthView({
             >
               <Stack gap={2} style={{ width: "100%" }}>
                 {dayEvents.slice(0, 3).map((event) => (
-                  <Badge key={event.id} variant="light" size="xs">
-                    {event.title}
-                  </Badge>
+                  <Tooltip
+                    key={event.id}
+                    withArrow
+                    multiline
+                    w={220}
+                    label={
+                      <Stack gap={2}>
+                        <Text size="xs" fw={600}>{event.title}</Text>
+                        <Group gap={4}>
+                          <Text size="xs">{t(`common:eventType.${event.type}`)}</Text>
+                          <Text size="xs" c="dimmed">{format(new Date(event.start_at), "HH:mm")}</Text>
+                        </Group>
+                        {event.description ? (
+                          <Text size="xs" c="dimmed" lineClamp={2}>{event.description}</Text>
+                        ) : null}
+                      </Stack>
+                    }
+                  >
+                    <Badge
+                      variant="light"
+                      size="xs"
+                      style={{ cursor: "pointer" }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        (onViewEvent ?? onEditEvent)(event);
+                      }}
+                    >
+                      {event.title}
+                    </Badge>
+                  </Tooltip>
                 ))}
                 {dayEvents.length > 3 ? (
                   <Popover withinPortal>
                     <Popover.Target>
                       <Badge color="infini-primary" variant="light" size="xs" style={{ cursor: "pointer" }}>
-                        +{dayEvents.length - 3} more
+                        +{dayEvents.length - 3} {t("month.more")}
                       </Badge>
                     </Popover.Target>
                     <Popover.Dropdown>
@@ -157,8 +192,7 @@ export function EventMonthView({
                             size="xs"
                             variant="subtle"
                             style={{ justifyContent: "flex-start" }}
-                            onClick={() => onEditEvent(event)}
-                            disabled={!canManage}
+                            onClick={() => (onViewEvent ?? onEditEvent)(event)}
                           >
                             {event.title}
                           </Button>
@@ -175,4 +209,3 @@ export function EventMonthView({
     </InfiniCard>
   );
 }
-
