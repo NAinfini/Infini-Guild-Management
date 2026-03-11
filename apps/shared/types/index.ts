@@ -3,6 +3,7 @@ import type { userSchema, memberProfileSchema } from "../schemas/user";
 import type { eventSchema, eventParticipantSchema, recurringTemplateSchema } from "../schemas/event";
 import type { announcementSchema } from "../schemas/announcement";
 import type {
+  guildWarActiveResponseSchema,
   warHistorySchema,
   warTemplateSchema,
   warTeamSchema,
@@ -29,6 +30,7 @@ export type WarHistory = z.infer<typeof warHistorySchema>;
 export type WarTemplate = z.infer<typeof warTemplateSchema>;
 export type WarTeam = z.infer<typeof warTeamSchema>;
 export type WarTeamMember = z.infer<typeof warTeamMemberSchema>;
+export type GuildWarActiveResponse = z.infer<typeof guildWarActiveResponseSchema>;
 export type WikiCategory = z.infer<typeof wikiCategorySchema>;
 export type WikiArticle = z.infer<typeof wikiArticleSchema>;
 export type GalleryItem = z.infer<typeof galleryItemSchema>;

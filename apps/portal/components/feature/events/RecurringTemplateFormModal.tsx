@@ -10,12 +10,46 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { IconDeviceFloppy, IconPlus, IconX } from "@tabler/icons-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 type RecurrenceFreq = "daily" | "weekly" | "monthly";
 type RecurrenceEndMode = "never" | "date" | "count";
+
+export type RecurringTemplateFormPayload = {
+  type: (typeof EVENT_TYPES)[number];
+  title: string;
+  description?: string;
+  start_at: string;
+  end_at?: string;
+  capacity?: number;
+  recurrence_rule: {
+    frequency: RecurrenceFreq;
+    interval: number;
+    daysOfWeek?: number[];
+    dayOfMonth?: number;
+    endAfter?: number;
+    endDate?: string;
+  };
+};
+
+type RecurringTemplateFormState = {
+  title: string;
+  eventType: (typeof EVENT_TYPES)[number];
+  description: string;
+  startAt: string;
+  endAt: string;
+  capacity: string;
+  recurrenceFreq: RecurrenceFreq;
+  recurrenceInterval: string;
+  recurrenceDays: number[];
+  recurrenceMonthDay: string;
+  recurrenceEndMode: RecurrenceEndMode;
+  recurrenceEndDate: string;
+  recurrenceEndCount: string;
+};
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 
@@ -40,23 +74,34 @@ type RecurringTemplateFormModalProps = {
   template: RecurringTemplate | null;
   confirmLoading: boolean;
   onCancel: () => void;
-  onSave: (payload: {
-    type: (typeof EVENT_TYPES)[number];
-    title: string;
-    description?: string;
-    start_at: string;
-    end_at?: string;
-    capacity?: number;
-    recurrence_rule: {
-      frequency: RecurrenceFreq;
-      interval: number;
-      daysOfWeek?: number[];
-      dayOfMonth?: number;
-      endAfter?: number;
-      endDate?: string;
-    };
-  }) => void;
+  onSave: (payload: RecurringTemplateFormPayload) => void;
 };
+
+function buildFormState(template: RecurringTemplate | null): RecurringTemplateFormState {
+  return {
+    title: template?.title ?? "",
+    eventType: (template?.type as (typeof EVENT_TYPES)[number]) ?? "guild_war",
+    description: template?.description ?? "",
+    startAt: template ? toLocalInput(template.start_at) : "",
+    endAt: template ? toLocalInput(template.end_at) : "",
+    capacity: template?.capacity === null ? "" : String(template?.capacity ?? ""),
+    recurrenceFreq: template?.recurrence_rule?.frequency ?? "weekly",
+    recurrenceInterval: String(template?.recurrence_rule?.interval ?? 1),
+    recurrenceDays: template?.recurrence_rule?.daysOfWeek ?? [1, 3, 5],
+    recurrenceMonthDay: template?.recurrence_rule?.dayOfMonth ? String(template.recurrence_rule.dayOfMonth) : "1",
+    recurrenceEndMode: template?.recurrence_rule?.endDate
+      ? "date"
+      : template?.recurrence_rule?.endAfter
+        ? "count"
+        : "never",
+    recurrenceEndDate: template?.recurrence_rule?.endDate
+      ? toLocalInput(template.recurrence_rule.endDate).slice(0, 10)
+      : "",
+    recurrenceEndCount: template?.recurrence_rule?.endAfter
+      ? String(template.recurrence_rule.endAfter)
+      : "13",
+  };
+}
 
 export function RecurringTemplateFormModal({
   open,
@@ -67,44 +112,34 @@ export function RecurringTemplateFormModal({
   onSave,
 }: RecurringTemplateFormModalProps) {
   const { t } = useTranslation("events");
+  const [formState, setFormState] = useState<RecurringTemplateFormState>(() => buildFormState(template));
 
-  const [title, setTitle] = useState(template?.title ?? "");
-  const [eventType, setEventType] = useState<(typeof EVENT_TYPES)[number]>(
-    (template?.type as (typeof EVENT_TYPES)[number]) ?? "guild_war",
-  );
-  const [description, setDescription] = useState(template?.description ?? "");
-  const [startAt, setStartAt] = useState(template ? toLocalInput(template.start_at) : "");
-  const [endAt, setEndAt] = useState(template ? toLocalInput(template.end_at) : "");
-  const [capacity, setCapacity] = useState(template?.capacity === null ? "" : String(template?.capacity ?? ""));
-  const [recurrenceFreq, setRecurrenceFreq] = useState<RecurrenceFreq>(
-    template?.recurrence_rule?.frequency ?? "weekly",
-  );
-  const [recurrenceInterval, setRecurrenceInterval] = useState(
-    String(template?.recurrence_rule?.interval ?? 1),
-  );
-  const [recurrenceDays, setRecurrenceDays] = useState<number[]>(
-    template?.recurrence_rule?.daysOfWeek ?? [1, 3, 5],
-  );
-  const [recurrenceMonthDay, setRecurrenceMonthDay] = useState(
-    template?.recurrence_rule?.dayOfMonth ? String(template.recurrence_rule.dayOfMonth) : "1",
-  );
-  const [recurrenceEndMode, setRecurrenceEndMode] = useState<RecurrenceEndMode>(
-    template?.recurrence_rule?.endDate
-      ? "date"
-      : template?.recurrence_rule?.endAfter
-        ? "count"
-        : "never",
-  );
-  const [recurrenceEndDate, setRecurrenceEndDate] = useState(
-    template?.recurrence_rule?.endDate ? toLocalInput(template.recurrence_rule.endDate).slice(0, 10) : "",
-  );
-  const [recurrenceEndCount, setRecurrenceEndCount] = useState(
-    template?.recurrence_rule?.endAfter ? String(template.recurrence_rule.endAfter) : "13",
-  );
+  useEffect(() => {
+    setFormState(buildFormState(template));
+  }, [mode, open, template]);
+
+  const {
+    title,
+    eventType,
+    description,
+    startAt,
+    endAt,
+    capacity,
+    recurrenceFreq,
+    recurrenceInterval,
+    recurrenceDays,
+    recurrenceMonthDay,
+    recurrenceEndMode,
+    recurrenceEndDate,
+    recurrenceEndCount,
+  } = formState;
 
   const handleSave = useCallback(() => {
     const startIso = toIso(startAt);
-    if (!startIso || !title.trim()) return;
+    if (!startIso || !title.trim()) {
+      notifications.show({ color: "infini-danger", message: t("recurring.message.validationFailed") });
+      return;
+    }
 
     const endIso = toIso(endAt);
 
@@ -127,7 +162,7 @@ export function RecurringTemplateFormModal({
   }, [
     startAt, endAt, title, description, eventType, capacity,
     recurrenceFreq, recurrenceInterval, recurrenceDays, recurrenceMonthDay,
-    recurrenceEndMode, recurrenceEndDate, recurrenceEndCount, onSave,
+    recurrenceEndMode, recurrenceEndDate, recurrenceEndCount, onSave, t,
   ]);
 
   return (
@@ -145,7 +180,9 @@ export function RecurringTemplateFormModal({
         <TextInput
           label={t("field.title")}
           value={title}
-          onChange={(event) => setTitle(event.currentTarget.value)}
+          onChange={(event) =>
+            setFormState((current) => ({ ...current, title: event.currentTarget.value }))
+          }
           placeholder={t("field.title")}
         />
 
@@ -153,7 +190,13 @@ export function RecurringTemplateFormModal({
         <Select
           label={t("filter.type")}
           value={eventType}
-          onChange={(value) => value && setEventType(value as (typeof EVENT_TYPES)[number])}
+          onChange={(value) =>
+            value &&
+            setFormState((current) => ({
+              ...current,
+              eventType: value as (typeof EVENT_TYPES)[number],
+            }))
+          }
           data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
         />
 
@@ -163,13 +206,17 @@ export function RecurringTemplateFormModal({
             label={t("recurring.field.startTime")}
             type="datetime-local"
             value={startAt}
-            onChange={(event) => setStartAt(event.currentTarget.value)}
+            onChange={(event) =>
+              setFormState((current) => ({ ...current, startAt: event.currentTarget.value }))
+            }
           />
           <TextInput
             label={t("recurring.field.duration")}
             type="datetime-local"
             value={endAt}
-            onChange={(event) => setEndAt(event.currentTarget.value)}
+            onChange={(event) =>
+              setFormState((current) => ({ ...current, endAt: event.currentTarget.value }))
+            }
           />
         </Group>
 
@@ -178,7 +225,9 @@ export function RecurringTemplateFormModal({
           label={t("field.capacity")}
           type="number"
           value={capacity}
-          onChange={(event) => setCapacity(event.currentTarget.value)}
+          onChange={(event) =>
+            setFormState((current) => ({ ...current, capacity: event.currentTarget.value }))
+          }
           placeholder={t("field.unlimited")}
           style={{ maxWidth: 200 }}
         />
@@ -187,7 +236,9 @@ export function RecurringTemplateFormModal({
         <Textarea
           label={t("field.description")}
           value={description}
-          onChange={(event) => setDescription(event.currentTarget.value)}
+          onChange={(event) =>
+            setFormState((current) => ({ ...current, description: event.currentTarget.value }))
+          }
           minRows={3}
           placeholder={t("field.description")}
         />
@@ -200,13 +251,24 @@ export function RecurringTemplateFormModal({
             <TextInput
               type="number"
               value={recurrenceInterval}
-              onChange={(event) => setRecurrenceInterval(event.currentTarget.value)}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  recurrenceInterval: event.currentTarget.value,
+                }))
+              }
               style={{ width: 72 }}
               min={1}
             />
             <Select
               value={recurrenceFreq}
-              onChange={(value) => value && setRecurrenceFreq(value as RecurrenceFreq)}
+              onChange={(value) =>
+                value &&
+                setFormState((current) => ({
+                  ...current,
+                  recurrenceFreq: value as RecurrenceFreq,
+                }))
+              }
               data={[
                 { value: "daily", label: t("recurrence.freqDay") },
                 { value: "weekly", label: t("recurrence.freqWeek") },
@@ -229,9 +291,15 @@ export function RecurringTemplateFormModal({
                       type="button"
                       onClick={() => {
                         if (isSelected) {
-                          setRecurrenceDays(recurrenceDays.filter((d) => d !== index));
+                          setFormState((current) => ({
+                            ...current,
+                            recurrenceDays: current.recurrenceDays.filter((d) => d !== index),
+                          }));
                         } else {
-                          setRecurrenceDays([...recurrenceDays, index]);
+                          setFormState((current) => ({
+                            ...current,
+                            recurrenceDays: [...current.recurrenceDays, index],
+                          }));
                         }
                       }}
                       style={{
@@ -265,7 +333,13 @@ export function RecurringTemplateFormModal({
               <Select
                 label={t("field.monthDay")}
                 value={recurrenceMonthDay}
-                onChange={(value) => value && setRecurrenceMonthDay(value)}
+                onChange={(value) =>
+                  value &&
+                  setFormState((current) => ({
+                    ...current,
+                    recurrenceMonthDay: value,
+                  }))
+                }
                 data={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
                 style={{ width: 100 }}
               />
@@ -277,7 +351,12 @@ export function RecurringTemplateFormModal({
             <Text size="sm" fw={500}>{t("recurrence.endLabel")}</Text>
             <Radio.Group
               value={recurrenceEndMode}
-              onChange={(value) => setRecurrenceEndMode(value as RecurrenceEndMode)}
+              onChange={(value) =>
+                setFormState((current) => ({
+                  ...current,
+                  recurrenceEndMode: value as RecurrenceEndMode,
+                }))
+              }
             >
               <Stack gap={10}>
                 <Radio value="never" label={t("recurrence.endNever")} />
@@ -286,7 +365,12 @@ export function RecurringTemplateFormModal({
                   <TextInput
                     type="date"
                     value={recurrenceEndDate}
-                    onChange={(event) => setRecurrenceEndDate(event.currentTarget.value)}
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        recurrenceEndDate: event.currentTarget.value,
+                      }))
+                    }
                     disabled={recurrenceEndMode !== "date"}
                     style={{ width: 170 }}
                   />
@@ -296,7 +380,12 @@ export function RecurringTemplateFormModal({
                   <TextInput
                     type="number"
                     value={recurrenceEndCount}
-                    onChange={(event) => setRecurrenceEndCount(event.currentTarget.value)}
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        recurrenceEndCount: event.currentTarget.value,
+                      }))
+                    }
                     disabled={recurrenceEndMode !== "count"}
                     style={{ width: 72 }}
                     min={1}

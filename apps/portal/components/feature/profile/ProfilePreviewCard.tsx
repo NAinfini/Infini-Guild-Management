@@ -43,7 +43,7 @@ export function ProfilePreviewCard({
 
   return (
     <InfiniCard interactive={false}>
-      <Stack gap={12} style={{ padding: "1.2rem" }}>
+      <Stack gap={12} p="1.2rem">
         <Text fw={700} size="lg">{username || "-"}</Text>
 
         <Group gap={6}>

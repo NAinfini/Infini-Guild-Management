@@ -14,7 +14,7 @@ type ViewingAsSelectorProps = {
 };
 
 export function ViewingAsSelector({ value, compact = false, roles, onChange }: ViewingAsSelectorProps) {
-  const { t } = useTranslation("common");
+  const { t } = useTranslation(["common", "admin"]);
 
   const options = useMemo(() => {
     const items = roles
@@ -22,10 +22,10 @@ export function ViewingAsSelector({ value, compact = false, roles, onChange }: V
       .sort((a, b) => b.level - a.level)
       .map((role) => ({
         value: role.id,
-        label: role.name,
+        label: t(`admin:role.${role.id}`, { defaultValue: role.name }),
       }));
 
-    items.push({ value: "external", label: t("viewingAs.external") });
+    items.push({ value: "external", label: t("common:viewingAs.external") });
     return items;
   }, [roles, t]);
 

@@ -39,13 +39,13 @@ function buildErrorBody(c: Context, status: number, message: string, details?: u
 export function handleAppError(error: unknown, c: Context): Response {
   if (error instanceof HTTPException) {
     const status = toStatusCode(error.status);
-    const message = error.message || "Request failed";
+    const message = status >= 500 ? "Internal server error" : error.message || "Request failed";
     return c.json(buildErrorBody(c, status, message), status);
   }
 
   if (error instanceof Error) {
     console.error(`[handleAppError] ${c.req.method} ${c.req.path}:`, error.message, error.stack);
-    return c.json(buildErrorBody(c, 500, error.message || "Internal server error"), 500);
+    return c.json(buildErrorBody(c, 500, "Internal server error"), 500);
   }
 
   console.error(`[handleAppError] ${c.req.method} ${c.req.path}: non-Error thrown:`, error);

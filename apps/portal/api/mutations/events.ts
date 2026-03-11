@@ -19,11 +19,22 @@ export function leaveEvent(eventId: string): Promise<{ ok: true }> {
   });
 }
 
-export function createEvent(payload: CreateEventPayload): Promise<Event> {
+export function createEvent(payload: CreateEventPayload, files?: File[]): Promise<Event> {
   const bodyJson = createEventSchema.parse(payload);
+  if (!files || files.length === 0) {
+    return apiRequest<Event>("/api/events", {
+      method: "POST",
+      bodyJson,
+    });
+  }
+  const formData = new FormData();
+  formData.append("data", JSON.stringify(bodyJson));
+  for (const file of files) {
+    formData.append("files", file);
+  }
   return apiRequest<Event>("/api/events", {
     method: "POST",
-    bodyJson,
+    body: formData,
   });
 }
 

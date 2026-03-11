@@ -1,7 +1,9 @@
 node_modules/
 dist/
 .wrangler/
-
+.agents/
+.trellis/
+.claude/
 .env
 .env.local
 *.local

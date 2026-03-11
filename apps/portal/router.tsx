@@ -2,11 +2,9 @@ import type {
   MemberProfile,
   User,
 } from "@guild/shared";
-import { hasRoleAtLeast } from "@guild/shared";
 import {
   QueryClient,
   QueryClientProvider,
-  useQuery,
 } from "@tanstack/react-query";
 import {
   Outlet,
@@ -15,23 +13,17 @@ import {
   createRoute,
   createRouter,
   redirect,
-  useParams,
 } from "@tanstack/react-router";
-import {
-  Alert,
-  Card,
-  Stack,
-  Text,
-  Title,
-} from "@mantine/core";
-import { Suspense, lazy } from "react";
-import { useTranslation } from "react-i18next";
+import { fetchRoles } from "./api/queries/roles";
+import { canAccessAdmin } from "./utils/permissions";
+import { NavigationProgress, nprogress } from "@mantine/nprogress";
+import { Suspense, lazy, type ReactNode } from "react";
 import { z } from "zod";
 import { apiRequest } from "./api/client";
-import { queryKeys } from "./api/query-keys";
 import { fetchEventDetail } from "./api/queries/events";
 import { AppShell } from "./components/layout/AppShell";
 import { useAuthStore } from "./stores/auth";
+import { buildEventWorkbenchSearch, EVENTS_ROUTE_SEARCH_SCHEMA, sanitizeEventsRouteSearch } from "./utils/event-navigation";
 import { isExternalViewSearch } from "./utils/external-view";
 
 type AuthSessionResponse = { user: User; profile: MemberProfile };
@@ -39,6 +31,11 @@ type AuthSessionResponse = { user: User; profile: MemberProfile };
 const LOGIN_SEARCH_SCHEMA = z.object({
   returnTo: z.string().optional(),
   reason: z.enum(["required", "expired"]).optional(),
+});
+
+const GUILD_WAR_SEARCH_SCHEMA = z.object({
+  tab: z.enum(["active", "history", "analytics"]).optional(),
+  warName: z.string().optional(),
 });
 
 const LazyAdminPage = lazy(() => import("./components/pages/AdminPage").then((mod) => ({ default: mod.AdminPage })));
@@ -69,13 +66,13 @@ const LazyRosterPage = lazy(() =>
   import("./components/pages/RosterPage").then((mod) => ({ default: mod.RosterPage })),
 );
 
-function isHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
+function RouteLoadingFallback(): ReactNode {
+  return <div style={{ minHeight: "60vh" }} />;
 }
 
 function DashboardRoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <LazyDashboardPage />
     </Suspense>
   );
@@ -83,7 +80,7 @@ function DashboardRoutePage() {
 
 function AnnouncementsRoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <LazyAnnouncementsPage />
     </Suspense>
   );
@@ -91,7 +88,7 @@ function AnnouncementsRoutePage() {
 
 function EventsRoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <LazyEventsPage />
     </Suspense>
   );
@@ -99,7 +96,7 @@ function EventsRoutePage() {
 
 function GuildWarRoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <LazyGuildWarPage />
     </Suspense>
   );
@@ -107,7 +104,7 @@ function GuildWarRoutePage() {
 
 function GalleryRoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <LazyGalleryPage />
     </Suspense>
   );
@@ -115,7 +112,7 @@ function GalleryRoutePage() {
 
 function WikiRoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <LazyWikiPage />
     </Suspense>
   );
@@ -123,7 +120,7 @@ function WikiRoutePage() {
 
 function MyProfileRoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <LazyMyProfilePage />
     </Suspense>
   );
@@ -131,7 +128,7 @@ function MyProfileRoutePage() {
 
 function ToolsRoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <LazyToolsPage />
     </Suspense>
   );
@@ -139,7 +136,7 @@ function ToolsRoutePage() {
 
 function RosterRoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <LazyRosterPage />
     </Suspense>
   );
@@ -147,7 +144,7 @@ function RosterRoutePage() {
 
 function AdminRoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <LazyAdminPage />
     </Suspense>
   );
@@ -155,7 +152,7 @@ function AdminRoutePage() {
 
 function LoginRoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <LazyLoginPage />
     </Suspense>
   );
@@ -163,7 +160,7 @@ function LoginRoutePage() {
 
 function RegisterRoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <LazyRegisterPage />
     </Suspense>
   );
@@ -171,7 +168,7 @@ function RegisterRoutePage() {
 
 function SettingsRoutePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <LazySettingsPage />
     </Suspense>
   );
@@ -202,63 +199,6 @@ async function ensureSession(): Promise<AuthSessionResponse | null> {
     useAuthStore.getState().clearSession();
     return null;
   }
-}
-
-function EventDetailPanel() {
-  const { t } = useTranslation("events");
-  const params = useParams({ strict: false });
-  const id = (params as { id: string }).id;
-
-  const detailQuery = useQuery({
-    queryKey: queryKeys.event.detail(id),
-    queryFn: () => fetchEventDetail(id),
-  });
-
-  if (detailQuery.isLoading) {
-    return null;
-  }
-
-  if (detailQuery.isError) {
-    return <Alert color="infini-warning" variant="light">{t("eventDetail.loadFailed")}</Alert>;
-  }
-
-  const detail = detailQuery.data;
-  if (!detail) {
-    return <Alert color="infini-warning" variant="light">{t("eventDetail.missing")}</Alert>;
-  }
-
-  return (
-    <Card withBorder>
-      <Stack gap={8}>
-        <Title order={3}>{detail.title}</Title>
-        <Text>{detail.description ?? "-"}</Text>
-        <Text>{t("eventDetail.participants", { count: detail.participants.length })}</Text>
-        {detail.attachments.length > 0 ? (
-          <>
-            <Text>{t("eventDetail.attachments", { count: detail.attachments.length })}</Text>
-            <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-              {detail.attachments.map((attachment) =>
-                isHttpUrl(attachment) ? (
-                  <img
-                    key={attachment}
-                    src={attachment}
-                    alt={t("eventDetail.attachmentAlt")}
-                    loading="lazy"
-                    decoding="async"
-                    style={{ width: "100%", maxHeight: 320, objectFit: "cover", borderRadius: 8 }}
-                  />
-                ) : (
-                  <Text key={attachment} c="dimmed" style={{ wordBreak: "break-all" }}>
-                    {attachment}
-                  </Text>
-                ),
-              )}
-            </div>
-          </>
-        ) : null}
-      </Stack>
-    </Card>
-  );
 }
 
 const rootRoute = createRootRoute({ component: AppShell });
@@ -317,13 +257,32 @@ const dashboardRoute = createRoute({
 const eventsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/events",
+  validateSearch: (search) => EVENTS_ROUTE_SEARCH_SCHEMA.parse(search),
   component: EventsRoutePage,
 });
 
 const eventDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/events/$id",
-  component: EventDetailPanel,
+  beforeLoad: async ({ params }) => {
+    let detailTitle: string | undefined;
+    try {
+      const detail = await fetchEventDetail(params.id);
+      detailTitle = detail.title;
+    } catch {
+      detailTitle = undefined;
+    }
+
+    throw redirect({
+      to: "/events",
+      search: sanitizeEventsRouteSearch(
+        detailTitle
+          ? buildEventWorkbenchSearch({ id: params.id, title: detailTitle })
+          : { eventId: params.id, view: "cards" },
+      ),
+    });
+  },
+  component: Outlet,
 });
 
 const rosterRoute = createRoute({
@@ -352,6 +311,7 @@ const announcementsRoute = createRoute({
 const guildWarRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/guild-war",
+  validateSearch: (search) => GUILD_WAR_SEARCH_SCHEMA.parse(search),
   component: GuildWarRoutePage,
 });
 
@@ -381,13 +341,22 @@ const adminRoute = createRoute({
   getParentRoute: () => authenticatedOnlyRoute,
   path: "/admin",
   validateSearch: (search) => ADMIN_SEARCH_SCHEMA.parse(search),
-  beforeLoad: ({ location }) => {
+  beforeLoad: async ({ location }) => {
     if (isExternalViewSearch((location as { searchStr?: string }).searchStr)) {
       throw redirect({ to: "/" });
     }
 
     const user = useAuthStore.getState().user;
-    if (!user || !hasRoleAtLeast(user.role, "moderator")) {
+    if (!user) {
+      throw redirect({ to: "/" });
+    }
+
+    const roles = await queryClient.fetchQuery({
+      queryKey: ["admin", "roles"],
+      queryFn: fetchRoles,
+    });
+
+    if (!canAccessAdmin(roles, user.role)) {
       throw redirect({ to: "/" });
     }
   },
@@ -416,9 +385,13 @@ const routeTree = rootRoute.addChildren([
 
 const router = createRouter({ routeTree, defaultViewTransition: true });
 
+router.subscribe("onBeforeLoad", () => nprogress.start());
+router.subscribe("onResolved", () => nprogress.complete());
+
 export function AppRouter() {
   return (
     <QueryClientProvider client={queryClient}>
+      <NavigationProgress />
       <RouterProvider router={router} />
     </QueryClientProvider>
   );

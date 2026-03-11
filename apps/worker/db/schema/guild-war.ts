@@ -33,6 +33,7 @@ export const warHistory = sqliteTable(
   (table) => ({
     idxEventId: index("idx_war_history_event_id").on(table.eventId),
     idxCreated: index("idx_war_history_created").on(table.createdAt, table.id),
+    idxCreatedBy: index("idx_war_history_created_by").on(table.createdBy),
   }),
 );
 
@@ -97,6 +98,7 @@ export const warTemplates = sqliteTable(
     id: text("id").primaryKey(),
     templateName: text("template_name").notNull(),
     description: text("description"),
+    templateType: text("template_type").notNull().default("structure"),
     sourceEventId: text("source_event_id").references(() => events.id),
     payloadJson: text("payload_json").notNull(),
     createdBy: text("created_by").notNull().references(() => users.id),

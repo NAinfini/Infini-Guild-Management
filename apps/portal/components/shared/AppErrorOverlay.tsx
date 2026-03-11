@@ -18,16 +18,16 @@ export function AppErrorOverlay() {
   useEffect(() => {
     const onConflict = (event: Event) => {
       const detail = (event as CustomEvent<ConflictDetail>).detail;
-      const messageText = detail?.message ?? "Conflict detected. Please refresh and retry.";
+      const messageText = detail?.message ?? i18n.t("common:errors.conflict");
       const extra = [
-        detail?.errorCode ? `Code: ${detail.errorCode}` : null,
-        detail?.requestId ? `Request: ${detail.requestId}` : null,
+        detail?.errorCode ? `${i18n.t("common:errors.codeLabel")}: ${detail.errorCode}` : null,
+        detail?.requestId ? `${i18n.t("common:errors.requestLabel")}: ${detail.requestId}` : null,
       ]
         .filter(Boolean)
         .join("\n");
 
       notifications.show({
-        title: "Conflict Detected",
+        title: i18n.t("common:errors.conflictTitle"),
         message: extra ? `${messageText}\n${extra}` : messageText,
         color: "infini-warning",
         autoClose: false,

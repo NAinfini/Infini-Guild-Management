@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { GuildWarActiveResponse } from "@guild/shared";
+import { useBeforeUnloadPrompt } from "../../../hooks/useBeforeUnloadPrompt";
+import type { GuildWarService } from "../../../services/GuildWarService";
 
 export type UndoMove = {
   eventId: string;
@@ -13,9 +16,12 @@ export type UndoMove = {
 
 type UseGuildWarActiveControllerParams = {
   selectedEventId: string | undefined;
+  activeData: GuildWarActiveResponse | undefined;
+  guildWarService: GuildWarService;
+  showError: (error: unknown, fallbackMessage: string) => void;
 };
 
-export function useGuildWarActiveController({ selectedEventId }: UseGuildWarActiveControllerParams) {
+export function useGuildWarActiveController({ selectedEventId, activeData, guildWarService, showError }: UseGuildWarActiveControllerParams) {
   const [selectedDragUserIds, setSelectedDragUserIds] = useState<string[]>([]);
   const [selectionAnchorUserId, setSelectionAnchorUserId] = useState<string | null>(null);
   const [activeDragItemId, setActiveDragItemId] = useState<string | null>(null);
@@ -69,6 +75,63 @@ export function useGuildWarActiveController({ selectedEventId }: UseGuildWarActi
     });
   }, []);
 
+  const serverTeams = activeData?.teams ?? [];
+  const serverPool = activeData?.pool ?? [];
+
+  const isTeamsDirty = useMemo(() => {
+    if (serverTeams.length === 0) return false;
+
+    // Check team order
+    const serverOrder = serverTeams.map((t) => t.id);
+    if (teamOrder.length > 0 && teamOrder.join(",") !== serverOrder.join(",")) return true;
+
+    // Check names, notes, locks
+    for (const team of serverTeams) {
+      const draftName = teamDraftNames[team.id];
+      if (draftName !== undefined && draftName !== team.team_name) return true;
+
+      const draftNote = teamDraftNotes[team.id];
+      const serverNote = team.notes ?? "";
+      if (draftNote !== undefined && draftNote !== serverNote) return true;
+
+      const draftLock = teamDraftLocks[team.id];
+      if (draftLock !== undefined && draftLock !== team.is_locked) return true;
+    }
+
+    return false;
+  }, [serverTeams, teamDraftLocks, teamDraftNames, teamDraftNotes, teamOrder]);
+
+  useBeforeUnloadPrompt(isTeamsDirty);
+
+  const [saveTeamsPending, setSaveTeamsPending] = useState(false);
+
+  const handleSaveTeams = useCallback(async () => {
+    if (!selectedEventId || !isTeamsDirty) return;
+
+    // Build ordered teams from current draft state
+    const orderedTeamIds = teamOrder.length > 0 ? teamOrder : serverTeams.map((t) => t.id);
+    const teamById = new Map(serverTeams.map((t) => [t.id, t]));
+    const teams = orderedTeamIds
+      .map((id) => teamById.get(id))
+      .filter((t): t is GuildWarActiveResponse["teams"][number] => Boolean(t));
+
+    setSaveTeamsPending(true);
+    try {
+      await guildWarService.persistTeamSnapshot({
+        eventId: selectedEventId,
+        teams,
+        pool: serverPool,
+        teamDraftNames,
+        teamDraftNotes,
+        teamDraftLocks,
+      });
+    } catch (error) {
+      showError(error, "Failed to save team setup");
+    } finally {
+      setSaveTeamsPending(false);
+    }
+  }, [guildWarService, isTeamsDirty, selectedEventId, serverPool, serverTeams, showError, teamDraftLocks, teamDraftNames, teamDraftNotes, teamOrder]);
+
   return {
     selectedDragUserIds,
     setSelectedDragUserIds,
@@ -94,5 +157,8 @@ export function useGuildWarActiveController({ selectedEventId }: UseGuildWarActi
     activeDetailUserId,
     setActiveDetailUserId,
     moveTeamOrder,
+    isTeamsDirty,
+    saveTeamsPending,
+    handleSaveTeams,
   };
 }

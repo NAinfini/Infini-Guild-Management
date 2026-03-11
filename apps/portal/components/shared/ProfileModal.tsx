@@ -5,7 +5,7 @@ import { IconPencil } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import DOMPurify from "dompurify";
-import { MediaGallery } from "./MediaGallery";
+import { MediaGallery } from "@infini-dev-kit/frontend/components";
 import styles from "./ProfileModal.module.css";
 
 type ProfileModalProps = {
@@ -15,6 +15,7 @@ type ProfileModalProps = {
   onClose: () => void;
   onEdit?: () => void;
   canEdit?: boolean;
+  editLabel?: string;
   resolveMediaUrl?: (key: string) => string;
 };
 
@@ -29,21 +30,22 @@ export function ProfileModal({
   onClose,
   onEdit,
   canEdit = false,
+  editLabel,
   resolveMediaUrl = defaultMediaResolver,
 }: ProfileModalProps) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const [avatarLoaded, setAvatarLoaded] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const safeTitleHtml = useMemo(
     () =>
       DOMPurify.sanitize(profile?.title_html ?? "", {
         ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
-        ALLOWED_ATTR: ["style"],
+        ALLOWED_ATTR: [],
       }),
     [profile?.title_html],
   );
   const avatarUrl = profile?.images[0] ? resolveMediaUrl(profile.images[0]) : null;
-  const activeTime = user?.updated_at ? new Date(user.updated_at).toLocaleString() : "-";
+  const activeTime = user?.updated_at ? new Date(user.updated_at).toLocaleString(i18n.language) : "-";
 
   useEffect(() => {
     setAvatarLoaded(false);
@@ -107,7 +109,7 @@ export function ProfileModal({
       opened={open}
       title={
         <Group gap={12} wrap="nowrap" justify="space-between" style={{ flex: 1 }}>
-          <span>{user ? `${user.username} Profile` : "Profile"}</span>
+          <span>{user ? t("profile.modalTitle", { name: user.username }) : t("profile.modalTitleFallback")}</span>
           {canEdit && onEdit ? (
             <DepthButton
               onClick={onEdit}
@@ -115,7 +117,7 @@ export function ProfileModal({
               size="sm"
               before={<IconPencil size={14} />}
             >
-              {t("profile.editProfile")}
+              {editLabel || t("profile.editProfile")}
             </DepthButton>
           ) : null}
         </Group>
@@ -136,7 +138,7 @@ export function ProfileModal({
               {avatarUrl ? (
                 <img
                   src={avatarUrl}
-                  alt={`${user.username} avatar`}
+                  alt={t("a11y.avatar", { name: user.username })}
                   loading="lazy"
                   decoding="async"
                   className={`${styles.avatar}${avatarLoaded ? ` ${styles.avatarLoaded}` : ""}`}

@@ -52,7 +52,7 @@ External design system: [`Infini-Dev-Kit`](../Infini-Dev-Kit) (theme, motion, co
 - **Wiki** — Hierarchical categories, TipTap articles
 - **Gallery** — R2-backed media uploads with captions
 - **Admin Console** — User/role management, invite link system, audit log (90-day D1 hot + 1-year R2 archive), bot settings
-- **Global Search** — `Cmd+K` / `Ctrl+K` across members, events, announcements, wiki, war history
+- **Quick Search** — Client-side `Cmd+K` / `Ctrl+K` across cached members, events, announcements, wiki, war history
 - **Bot Integration** — Discord slash commands, event notifications, reaction-to-join; WeChat room messaging (extensible)
 - **Realtime** — WebSocket push via Durable Objects for events and guild war pages
 
@@ -70,13 +70,13 @@ apps/shared/
 apps/worker/
 ├── db/
 │   ├── schema.ts          # Compatibility barrel export for schema modules
-│   ├── schema/            # Modular Drizzle schema by bounded context
+│   ├── schema/            # Modular Drizzle schema by bounded context (10 files, 25 tables)
 │   ├── seed.ts
 │   └── migrations/        # Wrangler D1 migrations + semantic version registry
-├── routes/                # API route handlers
-├── services/              # Business logic (auth, bot-dispatch, audit)
-├── middleware/            # CORS, HMAC, rate-limit, session, RBAC, etag
-├── crons/                 # Scheduled job handlers
+├── routes/                # API route handlers (9 route modules)
+├── services/              # Business logic (16 services — auth, bot-dispatch, audit, EventService, etc.)
+├── middleware/            # CORS, HMAC, rate-limit, session, RBAC, etag, request-id, security-headers
+├── crons/                 # Scheduled job handlers (6 jobs)
 ├── durable-objects/       # WebSocketDO
 └── wrangler.jsonc
 
@@ -86,11 +86,16 @@ apps/portal/
 │   ├── queries/           # TanStack Query fetchers
 │   └── mutations/         # TanStack Query mutations
 ├── components/
-│   ├── layout/            # AppShell, BottomNav, CmdKSearch
-│   ├── pages/             # 8 main page components
-│   └── shared/            # MemberCard, TipTapEditor, AvailabilityGridEditor, etc.
-├── stores/                # Zustand auth + preferences stores
-├── i18n/                  # en/ and zh/ translation files
+│   ├── layout/            # AppShell, BottomNav, CmdKSearch, PageLayout, UserProfileDropdown, ViewingAsSelector
+│   ├── pages/             # 13 page components
+│   ├── shared/            # AppErrorOverlay, EmptyState, FilterToolbar, MemberCard, MemberGrid2x5, ProfileModal
+│   ├── feature/           # Feature components across 7 domains (admin, announcements, events, gallery, guild-war, profile, wiki)
+│   └── dashboard/         # Dashboard card components
+├── services/              # Portal service layer (11 services)
+├── stores/                # Zustand stores (auth, preferences, notifications, guildWar)
+├── hooks/                 # Custom hooks (data, guild-war, feature-specific)
+├── utils/                 # Utility functions (date, copy, permissions, availability, admin)
+├── i18n/                  # en/ and zh/ translation files (14 namespaces each)
 └── router.tsx             # All route definitions
 
 apps/bot-runtime/
@@ -106,7 +111,7 @@ apps/bot-runtime/
 
 ### Prerequisites
 
-- Node.js 20 (see `.nvmrc`)
+- Node.js 20+
 - pnpm 10.6.2
 - Cloudflare account with D1 + R2 + Workers enabled
 - (Optional) Discord bot token for bot integration
@@ -152,6 +157,12 @@ pnpm build:worker
 
 # TypeCheck everything
 pnpm typecheck
+
+# Run all tests
+pnpm test
+
+# Lint
+pnpm lint
 ```
 
 ### Database
@@ -170,6 +181,10 @@ pnpm db:studio
 # Rebuild local D1 database (drop local file + apply migrations)
 pnpm db:mock:rebuild
 
+# Start worker first, then reseed a comprehensive local mock dataset
+pnpm dev:worker
+pnpm db:mock:seed
+
 # Apply migrations only (keep existing local data)
 pnpm db:mock:init
 
@@ -181,6 +196,22 @@ pnpm db:mock:migrations
 ```
 
 Local persistence path is `apps/worker/.wrangler/state/v3/d1`.
+
+Seeded local QA accounts:
+
+| Username | Password | Role |
+|---|---|---|
+| `admin` | `admin123` | admin |
+| `mod_1` | `moderator123` | moderator |
+| `member_01` | `member1234` | member |
+
+The seeded mock dataset covers roster, profile media, announcements (draft/scheduled/published/archived), guild war history, wiki, gallery, invite links (active/expired/revoked), audit log, and bot delivery/admin screens.
+
+To verify seeded coverage across the main portal flows:
+
+```bash
+pnpm smoke:pages
+```
 
 ---
 
@@ -251,6 +282,7 @@ All endpoints are under `/api/`. Internal bot endpoints are under `/internal/bot
 | Job | Schedule | Description |
 |---|---|---|
 | Event instance generation | Daily 00:00 UTC | Generate recurring event instances for next 8 weeks |
+| Event auto-archive | Every 15 min | Auto-archive past events |
 | Announcement publish/expiry | Every 15 min | Flip scheduled → published; auto-archive expired |
 | Bot reminder dispatch | Every 15 min | Compute upcoming reminders, dispatch to bot runtime |
 | Audit archive + cleanup | Daily 02:00 UTC | Export 90+ day rows to R2, delete from D1 |
@@ -273,10 +305,14 @@ The Worker is the source of truth. The Bot Runtime is the execution layer for pl
 
 - HttpOnly cookie sessions — no tokens stored client-side
 - RBAC enforced on both client and server
+- CSRF protection via custom `X-Requested-With` header on all mutations
+- Password max length enforced (128 chars) to prevent PBKDF2 DoS
+- Cache API rate limiting across Worker isolates within the same colo
 - DOMPurify with strict allowlist for all user rich text/HTML
 - HMAC-SHA256 with timing-safe comparison for bot endpoints
 - Generic login errors ("Invalid credentials") — username existence never revealed
 - Media validated for type and size client-side and server-side
+- Security headers: HSTS, X-Frame-Options DENY, CSP, nosniff, Referrer-Policy, Permissions-Policy
 - Bot platform secrets never leave the bot runtime environment
 
 ---

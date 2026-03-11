@@ -1,8 +1,9 @@
-import { Alert, Badge, Button, Divider, Group, Loader, Select, SimpleGrid, Stack, Switch, Text, TextInput, Textarea } from "@mantine/core";
+import { Alert, Badge, Button, Divider, Group, Loader, Select, SimpleGrid, Stack, Switch, Text, TextInput, Textarea, Title } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { IconDeviceFloppy, IconRefresh, IconSend } from "@tabler/icons-react";
-import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { hasRoleAtLeast } from "@guild/shared";
+import { useAuthStore } from "../../../stores/auth";
 
 type Option = {
   value: string;
@@ -10,12 +11,8 @@ type Option = {
 };
 
 type AdminBotSectionProps = {
-  heading: ReactNode;
-  isAdmin: boolean;
-  adminOnlyMessage: string;
   botSettingsLoading: boolean;
   botSettingsError: boolean;
-  loadErrorMessage: string;
   runtimeStatus: string | null;
   onTestDispatch: (platform: "discord" | "wechat") => void;
   testDispatchPending: boolean;
@@ -43,7 +40,6 @@ type AdminBotSectionProps = {
   onBotSettingsJsonChange: (value: string) => void;
   onSaveBotSettings: () => void;
   savePending: boolean;
-  saveLabel: string;
 };
 
 const TOGGLE_LABEL_MAP: Record<string, string> = {
@@ -60,12 +56,8 @@ function ToggleLabel({ toggleKey }: { toggleKey: string }) {
 }
 
 export function AdminBotSection({
-  heading,
-  isAdmin,
-  adminOnlyMessage,
   botSettingsLoading,
   botSettingsError,
-  loadErrorMessage,
   runtimeStatus,
   onTestDispatch,
   testDispatchPending,
@@ -93,14 +85,19 @@ export function AdminBotSection({
   onBotSettingsJsonChange,
   onSaveBotSettings,
   savePending,
-  saveLabel,
 }: AdminBotSectionProps) {
   const { t } = useTranslation("admin");
+  const { t: tc } = useTranslation("common");
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = Boolean(user && hasRoleAtLeast(user.role, "admin"));
+  const loadErrorMessage = tc("loadError");
+  const heading = <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.bot")}</Title>;
+  const saveLabel = t("bot.save");
   if (!isAdmin) {
     return (
       <Stack gap={12}>
         {heading}
-        <Alert color="infini-warning" title={adminOnlyMessage} />
+        <Alert color="infini-warning" title={t("adminOnly")} />
       </Stack>
     );
   }
@@ -114,7 +111,7 @@ export function AdminBotSection({
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing={16}>
           {/* ── Discord ── */}
           <InfiniCard interactive={false}>
-            <Stack gap={16} style={{ padding: "1.2rem" }}>
+            <Stack gap={16} p="1.2rem">
               <Group justify="space-between" align="center">
                 <Group gap={8}>
                   <Text fw={700} size="md">{t("bot.discord")}</Text>
@@ -126,15 +123,18 @@ export function AdminBotSection({
                     {runtimeStatus ?? t("status.summary.unknown")}
                   </Badge>
                 </Group>
-                <Button
-                  size="compact-xs"
-                  variant="light"
-                  leftSection={<IconSend size={16} />}
-                  onClick={() => onTestDispatch("discord")}
-                  loading={testDispatchPending}
-                >
-                  {t("bot.testNotification")}
-                </Button>
+                <Group gap={6} wrap="nowrap">
+                  <Button
+                    size="compact-xs"
+                    variant="light"
+                    leftSection={<IconSend size={16} />}
+                    onClick={() => onTestDispatch("discord")}
+                    loading={testDispatchPending}
+                  >
+                    {t("bot.testNotification")}
+                  </Button>
+                  <Badge size="xs" color="yellow" variant="light">{t("bot.dryRun")}</Badge>
+                </Group>
               </Group>
 
               <Divider label={t("bot.section.connection")} labelPosition="left" />
@@ -144,7 +144,7 @@ export function AdminBotSection({
                 value={discordGuildId}
                 onChange={(event) => onDiscordGuildIdChange(event.currentTarget.value)}
                 placeholder={t("bot.guildIdPlaceholder")}
-                aria-label="Discord guild ID"
+                aria-label={t("bot.aria.guildId")}
               />
 
               <Group gap={8} align="center">
@@ -173,7 +173,7 @@ export function AdminBotSection({
                 value={discordNotificationChannelId || null}
                 onChange={(value) => onDiscordNotificationChannelIdChange(value ?? "")}
                 placeholder={discordGuildId.trim() ? t("bot.selectChannel") : t("bot.enterGuildIdFirst")}
-                aria-label="Discord notification channel"
+                aria-label={t("bot.aria.notificationChannel")}
                 data={discordChannelOptions}
                 disabled={!discordGuildId.trim()}
                 rightSection={discordChannelsLoading || discordChannelsFetching ? <Loader size={14} /> : undefined}
@@ -185,7 +185,7 @@ export function AdminBotSection({
                 value={discordTeamCompChannelId || null}
                 onChange={(value) => onDiscordTeamCompChannelIdChange(value ?? "")}
                 placeholder={discordGuildId.trim() ? t("bot.selectChannel") : t("bot.enterGuildIdFirst")}
-                aria-label="Discord team composition channel"
+                aria-label={t("bot.aria.teamCompChannel")}
                 data={discordChannelOptions}
                 disabled={!discordGuildId.trim()}
                 rightSection={discordChannelsLoading || discordChannelsFetching ? <Loader size={14} /> : undefined}
@@ -200,7 +200,7 @@ export function AdminBotSection({
                     checked={Boolean(discordDefaultToggles[key])}
                     onChange={(event) => onDiscordDefaultToggleChange(key, event.currentTarget.checked)}
                     label={<ToggleLabel toggleKey={key} />}
-                    aria-label={`Discord toggle ${key}`}
+                    aria-label={t("bot.aria.discordToggle", { key })}
                     size="sm"
                   />
                 ))}
@@ -210,18 +210,21 @@ export function AdminBotSection({
 
           {/* ── WeChat ── */}
           <InfiniCard interactive={false}>
-            <Stack gap={16} style={{ padding: "1.2rem" }}>
+            <Stack gap={16} p="1.2rem">
               <Group justify="space-between" align="center">
                 <Text fw={700} size="md">{t("bot.wechat")}</Text>
-                <Button
-                  size="compact-xs"
-                  variant="light"
-                  leftSection={<IconSend size={16} />}
-                  onClick={() => onTestDispatch("wechat")}
-                  loading={testDispatchPending}
-                >
-                  {t("bot.testMessage")}
-                </Button>
+                <Group gap={6} wrap="nowrap">
+                  <Button
+                    size="compact-xs"
+                    variant="light"
+                    leftSection={<IconSend size={16} />}
+                    onClick={() => onTestDispatch("wechat")}
+                    loading={testDispatchPending}
+                  >
+                    {t("bot.testMessage")}
+                  </Button>
+                  <Badge size="xs" color="yellow" variant="light">{t("bot.dryRun")}</Badge>
+                </Group>
               </Group>
 
               <Divider label={t("bot.section.connection")} labelPosition="left" />
@@ -231,7 +234,7 @@ export function AdminBotSection({
                 value={wechatRoomIdsText}
                 onChange={(event) => onWechatRoomIdsTextChange(event.currentTarget.value)}
                 placeholder={t("bot.roomIdsPlaceholder")}
-                aria-label="WeChat room IDs"
+                aria-label={t("bot.aria.wechatRoomIds")}
               />
 
               <Divider label={t("bot.section.features")} labelPosition="left" />
@@ -243,7 +246,7 @@ export function AdminBotSection({
                     checked={Boolean(wechatDefaultToggles[key])}
                     onChange={(event) => onWechatDefaultToggleChange(key, event.currentTarget.checked)}
                     label={<ToggleLabel toggleKey={key} />}
-                    aria-label={`WeChat toggle ${key}`}
+                    aria-label={t("bot.aria.wechatToggle", { key })}
                     size="sm"
                   />
                 ))}
@@ -253,14 +256,14 @@ export function AdminBotSection({
 
           {/* ── JSON Preview (full width) ── */}
           <InfiniCard interactive={false} style={{ gridColumn: "1 / -1" }}>
-            <Stack gap={12} style={{ padding: "1.2rem" }}>
+            <Stack gap={12} p="1.2rem">
               <Text fw={700} size="md">{t("bot.jsonPreview")}</Text>
               <Textarea
                 minRows={8}
                 autosize
                 maxRows={20}
                 value={botSettingsJson}
-                aria-label="Bot settings JSON preview"
+                aria-label={t("bot.aria.jsonPreview")}
                 onChange={(event) => onBotSettingsJsonChange(event.currentTarget.value)}
                 styles={{ input: { fontFamily: "monospace", fontSize: "0.82rem" } }}
               />

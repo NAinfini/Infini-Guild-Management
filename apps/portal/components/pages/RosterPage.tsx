@@ -13,14 +13,15 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
+import { useDebouncedValue, useLocalStorage } from "@mantine/hooks";
 import { IconSearch } from "@tabler/icons-react";
 import { motion } from "motion/react";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FocusEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { queryKeys } from "../../api/query-keys";
-import { fetchUsersListWithOptions } from "../../api/queries/users";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
+import { queryKeys } from "../../services/PortalQueryKeys";
+import { fetchUsersListWithOptions } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
 import { VolumeOutlined, VolumeMutedOutlined } from "../../utils/icons";
 import { PageLayout } from "../layout/PageLayout";
@@ -101,12 +102,13 @@ export function RosterPage() {
   const isExternalView = useExternalView();
   const sessionUser = useAuthStore((state) => state.user);
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [debouncedSearchRaw] = useDebouncedValue(search, 300);
+  const debouncedSearch = debouncedSearchRaw.trim().toLowerCase();
   const [classFilter, setClassFilter] = useState<string[]>(() => readStoredClassFilter());
   const [sortMode, setSortMode] = useState<RosterSortMode>(() => readStoredSortMode());
   const [visibleCount, setVisibleCount] = useState(20);
-  const [audioMuted, setAudioMuted] = useState(false);
-  const [audioVolume, setAudioVolume] = useState(70);
+  const [audioMuted, setAudioMuted] = useLocalStorage<boolean>({ key: "roster.audio.muted", defaultValue: false });
+  const [audioVolume, setAudioVolume] = useLocalStorage<number>({ key: "roster.audio.volume", defaultValue: 70 });
   const hoverAudioRef = useRef<HTMLAudioElement | null>(null);
   const hoverAudioDebounceRef = useRef<number | null>(null);
   const hoverAudioStopDebounceRef = useRef<number | null>(null);
@@ -128,21 +130,6 @@ export function RosterPage() {
   useLoadWarningToast(usersQuery.isError, t("common:loadErrorRetry"));
 
   useEffect(() => {
-    const mutedRaw = localStorage.getItem("roster.audio.muted");
-    const volumeRaw = localStorage.getItem("roster.audio.volume");
-    if (mutedRaw === "true") setAudioMuted(true);
-    const parsedVolume = Number.parseInt(volumeRaw ?? "", 10);
-    if (Number.isFinite(parsedVolume)) {
-      setAudioVolume(Math.min(100, Math.max(0, parsedVolume)));
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem("roster.audio.muted", String(audioMuted));
-  }, [audioMuted]);
-
-  useEffect(() => {
-    localStorage.setItem("roster.audio.volume", String(audioVolume));
     if (hoverAudioRef.current) {
       hoverAudioRef.current.volume = audioVolume / 100;
       hoverAudioRef.current.muted = audioMuted;
@@ -168,15 +155,15 @@ export function RosterPage() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedSearch(search.trim().toLowerCase());
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [search]);
+    setVisibleCount(20);
+    if (selected) {
+      setSelected(null);
+    }
+  }, [debouncedSearch, classFilter]);
 
   useEffect(() => {
     setVisibleCount(20);
-  }, [debouncedSearch, classFilter, sortMode]);
+  }, [sortMode]);
 
   useEffect(() => {
     try {
@@ -442,11 +429,23 @@ export function RosterPage() {
           profile={selected?.profile ?? null}
           onClose={() => setSelected(null)}
           canEdit={Boolean(
-            selected && sessionUser && hasRoleAtLeast(sessionUser.role, "moderator"),
+            selected && sessionUser && (
+              hasRoleAtLeast(sessionUser.role, "moderator") ||
+              selected.user.id === sessionUser.id
+            ),
           )}
+          editLabel={
+            selected && sessionUser && selected.user.id === sessionUser.id
+              ? t("common:profile.editMyProfile")
+              : t("common:profile.editInAdmin")
+          }
           onEdit={() => {
             if (!selected || !sessionUser) return;
-            void navigate({ to: "/admin", search: { member: selected.user.username } });
+            if (selected.user.id === sessionUser.id) {
+              void navigate({ to: "/profile" });
+            } else {
+              void navigate({ to: "/admin", search: { member: selected.user.username } });
+            }
           }}
         />
       </Suspense>

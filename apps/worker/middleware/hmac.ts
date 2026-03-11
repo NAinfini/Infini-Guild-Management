@@ -4,16 +4,18 @@ import type { Bindings } from "../index";
 
 const MAX_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
 
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
+const textEncoder = new TextEncoder();
 
-  let mismatch = 0;
-  for (let index = 0; index < a.length; index += 1) {
-    mismatch |= a.charCodeAt(index) ^ b.charCodeAt(index);
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const aBytes = textEncoder.encode(a);
+  const bBytes = textEncoder.encode(b);
+  const hashA = new Uint8Array(await crypto.subtle.digest("SHA-256", aBytes));
+  const hashB = new Uint8Array(await crypto.subtle.digest("SHA-256", bBytes));
+  let diff = 0;
+  for (let index = 0; index < hashA.length; index += 1) {
+    diff |= hashA[index] ^ hashB[index];
   }
-  return mismatch === 0;
+  return diff === 0;
 }
 
 function toHex(buffer: ArrayBuffer): string {
@@ -85,7 +87,7 @@ export async function hmacMiddleware(c: Context, next: Next): Promise<void> {
   const expectedSignature = await hmacSha256Hex(`${timestampHeader}.${body}`, secret);
   const normalizedProvided = signatureHeader.trim().toLowerCase();
 
-  if (!timingSafeEqual(normalizedProvided, expectedSignature)) {
+  if (!(await timingSafeEqual(normalizedProvided, expectedSignature))) {
     c.res = buildError(c, "UNAUTHORIZED", "Invalid HMAC signature");
     return;
   }

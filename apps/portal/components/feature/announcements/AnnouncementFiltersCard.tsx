@@ -1,5 +1,5 @@
 import { DepthToggle, InfiniCard } from "@infini-dev-kit/frontend/components";
-import { Group, TextInput, Tooltip } from "@mantine/core";
+import { Group, TextInput } from "@mantine/core";
 import { IconArchive, IconCalendarTime, IconFileText, IconPin } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 
@@ -24,8 +24,8 @@ export function AnnouncementFiltersCard({
 }: AnnouncementFiltersCardProps) {
   const { t } = useTranslation("announcements");
 
-  const toggleStatus = (value: string) => {
-    onStatusFilterChange(statusFilter === value ? undefined : value);
+  const handleStatusToggle = (value: string, nextPressed: boolean) => {
+    onStatusFilterChange(nextPressed ? value : undefined);
   };
 
   return (
@@ -39,56 +39,52 @@ export function AnnouncementFiltersCard({
             value={search}
             onChange={(event) => onSearchChange(event.currentTarget.value)}
           />
-          <Tooltip label={t("filter.pinned")} withArrow>
-            <DepthToggle
-              pressed={pinnedFilter}
-              onToggle={onPinnedFilterChange}
-              type="secondary"
-              size="sm"
-              iconOnly
-              aria-label={t("filter.pinned")}
-            >
-              <IconPin size={16} />
-            </DepthToggle>
-          </Tooltip>
-          <Tooltip label={t("filter.archived")} withArrow>
-            <DepthToggle
-              pressed={statusFilter === "archived"}
-              onToggle={() => toggleStatus("archived")}
-              type="secondary"
-              size="sm"
-              iconOnly
-              aria-label={t("filter.archived")}
-            >
-              <IconArchive size={16} />
-            </DepthToggle>
-          </Tooltip>
+          <DepthToggle
+            pressed={pinnedFilter}
+            onToggle={onPinnedFilterChange}
+            type="secondary"
+            size="sm"
+            iconOnly
+            aria-label={t("filter.pinned")}
+            title={t("filter.pinned")}
+          >
+            <IconPin size={16} />
+          </DepthToggle>
+          <DepthToggle
+            pressed={statusFilter === "archived"}
+            onToggle={(nextPressed) => handleStatusToggle("archived", nextPressed)}
+            type="secondary"
+            size="sm"
+            iconOnly
+            aria-label={t("filter.archived")}
+            title={t("filter.archived")}
+          >
+            <IconArchive size={16} />
+          </DepthToggle>
           {canEdit ? (
             <>
-              <Tooltip label={t("filter.draft")} withArrow>
-                <DepthToggle
-                  pressed={statusFilter === "draft"}
-                  onToggle={() => toggleStatus("draft")}
-                  type="secondary"
-                  size="sm"
-                  iconOnly
-                  aria-label={t("filter.draft")}
-                >
-                  <IconFileText size={16} />
-                </DepthToggle>
-              </Tooltip>
-              <Tooltip label={t("filter.scheduled")} withArrow>
-                <DepthToggle
-                  pressed={statusFilter === "scheduled"}
-                  onToggle={() => toggleStatus("scheduled")}
-                  type="secondary"
-                  size="sm"
-                  iconOnly
-                  aria-label={t("filter.scheduled")}
-                >
-                  <IconCalendarTime size={16} />
-                </DepthToggle>
-              </Tooltip>
+              <DepthToggle
+                pressed={statusFilter === "draft"}
+                onToggle={(nextPressed) => handleStatusToggle("draft", nextPressed)}
+                type="secondary"
+                size="sm"
+                iconOnly
+                aria-label={t("filter.draft")}
+                title={t("filter.draft")}
+              >
+                <IconFileText size={16} />
+              </DepthToggle>
+              <DepthToggle
+                pressed={statusFilter === "scheduled"}
+                onToggle={(nextPressed) => handleStatusToggle("scheduled", nextPressed)}
+                type="secondary"
+                size="sm"
+                iconOnly
+                aria-label={t("filter.scheduled")}
+                title={t("filter.scheduled")}
+              >
+                <IconCalendarTime size={16} />
+              </DepthToggle>
             </>
           ) : null}
         </Group>

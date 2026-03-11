@@ -1,4 +1,4 @@
-import type { PaginatedResponse, WarHistory, WarTemplate } from "@guild/shared";
+import type { GuildWarActiveResponse, PaginatedResponse, WarHistory, WarTemplate } from "@guild/shared";
 import { apiDownload, apiRequest } from "../client";
 
 type WarTeamMember = {
@@ -68,13 +68,6 @@ export type GuildWarAnalyticsResponse = {
   analytics_settings: AnalyticsSettings;
 };
 
-export type GuildWarActiveResponse = {
-  event: unknown;
-  teams: WarTeam[];
-  pool: Array<{ id: string; warHistoryId: string; userId: string }>;
-  etag?: string | null;
-};
-
 export type GuildWarHistoryDetailResponse = WarHistory & {
   teams: WarTeam[];
   pool: Array<{ id: string; warHistoryId: string; userId: string }>;
@@ -104,6 +97,13 @@ export function fetchGuildWarHistory(params: {
 
 export function fetchGuildWarHistoryDetail(id: string): Promise<GuildWarHistoryDetailResponse> {
   return apiRequest<GuildWarHistoryDetailResponse>(`/api/guild-war/history/${id}`);
+}
+
+export function fetchGuildWarHistoryBatch(ids: string[]): Promise<{ data: GuildWarHistoryDetailResponse[] }> {
+  return apiRequest<{ data: GuildWarHistoryDetailResponse[] }>("/api/guild-war/history/batch", {
+    method: "POST",
+    bodyJson: { ids },
+  });
 }
 
 export function fetchGuildWarAnalytics(params: {

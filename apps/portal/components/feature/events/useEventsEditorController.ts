@@ -1,6 +1,7 @@
 import { EVENT_TYPES, type Event } from "@guild/shared";
 import { modals } from "@mantine/modals";
 import { useCallback, useMemo, useState } from "react";
+import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { useBeforeUnloadPrompt } from "../../../hooks/useBeforeUnloadPrompt";
 
@@ -15,7 +16,7 @@ type EditorSnapshot = {
   capacity: string;
   pinned: boolean;
   signupLocked: boolean;
-  attachments: string[];
+  attachmentSnapshot: string;
 };
 
 function buildEditorSnapshot(input: EditorSnapshot): string {
@@ -24,7 +25,6 @@ function buildEditorSnapshot(input: EditorSnapshot): string {
     title: input.title.trim(),
     description: input.description.trim(),
     capacity: input.capacity.trim(),
-    attachments: [...input.attachments].sort(),
   });
 }
 
@@ -45,11 +45,13 @@ function toIso(input: string): string | undefined {
 
 type UseEventsEditorControllerParams = {
   sortedEvents: Event[];
+  attachmentSnapshot: string;
 };
 
-export function useEventsEditorController({ sortedEvents }: UseEventsEditorControllerParams) {
+export function useEventsEditorController({ sortedEvents, attachmentSnapshot }: UseEventsEditorControllerParams) {
   const { t } = useTranslation("events");
-  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorOpen, editorHandlers] = useDisclosure(false);
+  const [editorTouched, setEditorTouched] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editorType, setEditorType] = useState<(typeof EVENT_TYPES)[number]>(EVENT_TYPES[0] ?? "raid");
@@ -60,7 +62,6 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
   const [editorCapacity, setEditorCapacity] = useState("");
   const [editorPinned, setEditorPinned] = useState(false);
   const [editorSignupLocked, setEditorSignupLocked] = useState(false);
-  const [editorAttachments, setEditorAttachments] = useState<string[]>([]);
   const [editorBaseline, setEditorBaseline] = useState<string | null>(null);
 
   const editorStartIso = toIso(editorStartAt);
@@ -94,10 +95,44 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
     capacity: editorCapacity,
     pinned: editorPinned,
     signupLocked: editorSignupLocked,
-    attachments: editorAttachments,
+    attachmentSnapshot,
   });
-  const isEditorDirty = editorOpen && editorBaseline !== null && editorCurrentSnapshot !== editorBaseline;
+  const isEditorDirty = editorOpen && editorBaseline !== null && editorTouched && editorCurrentSnapshot !== editorBaseline;
   useBeforeUnloadPrompt(isEditorDirty);
+
+  const markEditorTouched = useCallback(() => {
+    setEditorTouched(true);
+  }, []);
+
+  const handleEditorTypeChange = useCallback((value: (typeof EVENT_TYPES)[number]) => {
+    setEditorTouched(true);
+    setEditorType(value);
+  }, []);
+
+  const handleEditorTitleChange = useCallback((value: string) => {
+    setEditorTouched(true);
+    setEditorTitle(value);
+  }, []);
+
+  const handleEditorDescriptionChange = useCallback((value: string) => {
+    setEditorTouched(true);
+    setEditorDescription(value);
+  }, []);
+
+  const handleEditorStartAtChange = useCallback((value: string) => {
+    setEditorTouched(true);
+    setEditorStartAt(value);
+  }, []);
+
+  const handleEditorEndAtChange = useCallback((value: string) => {
+    setEditorTouched(true);
+    setEditorEndAt(value);
+  }, []);
+
+  const handleEditorCapacityChange = useCallback((value: string) => {
+    setEditorTouched(true);
+    setEditorCapacity(value);
+  }, []);
 
   const openCreateEditor = useCallback((initialDateKey?: string) => {
     const now = new Date();
@@ -106,17 +141,22 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
     const initialStartAt = toLocalInput(
       Number.isNaN(dateStart.getTime()) ? fallbackStart.toISOString() : dateStart.toISOString(),
     );
+    setEditorTouched(false);
     setEditorMode("create");
     setEditingEventId(null);
     setEditorType("guild_war");
     setEditorTitle("");
     setEditorDescription("");
+    const initialEndAt = toLocalInput(
+      new Date(
+        (Number.isNaN(dateStart.getTime()) ? fallbackStart : dateStart).getTime() + 2 * 60 * 60_000,
+      ).toISOString(),
+    );
     setEditorStartAt(initialStartAt);
-    setEditorEndAt("");
+    setEditorEndAt(initialEndAt);
     setEditorCapacity("");
     setEditorPinned(false);
     setEditorSignupLocked(false);
-    setEditorAttachments([]);
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "create",
@@ -125,21 +165,22 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
         title: "",
         description: "",
         startAt: initialStartAt,
-        endAt: "",
+        endAt: initialEndAt,
         capacity: "",
         pinned: false,
         signupLocked: false,
-        attachments: [],
+        attachmentSnapshot: "[]",
       }),
     );
-    setEditorOpen(true);
+    editorHandlers.open();
   }, []);
 
-  const openEditEditor = useCallback((event: Event) => {
+  const openEditEditor = useCallback((event: Event, initialAttachmentSnapshot?: string) => {
     const startAt = toLocalInput(event.start_at);
     const endAt = toLocalInput(event.end_at);
     const capacity = event.capacity === null ? "" : String(event.capacity);
 
+    setEditorTouched(false);
     setEditorMode("edit");
     setEditingEventId(event.id);
     setEditorType(event.type);
@@ -150,7 +191,6 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
     setEditorCapacity(capacity);
     setEditorPinned(event.pinned);
     setEditorSignupLocked(event.signup_locked);
-    setEditorAttachments(event.attachments ?? []);
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "edit",
@@ -163,10 +203,10 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
         capacity,
         pinned: event.pinned,
         signupLocked: event.signup_locked,
-        attachments: event.attachments ?? [],
+        attachmentSnapshot: initialAttachmentSnapshot ?? "[]",
       }),
     );
-    setEditorOpen(true);
+    editorHandlers.open();
   }, []);
 
   const closeEditor = useCallback(async () => {
@@ -175,6 +215,7 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
         modals.openConfirmModal({
           title: t("confirm.discardUnsaved.title"),
           children: t("confirm.discardUnsaved.description"),
+          labels: { confirm: t("common:action.delete"), cancel: t("common:action.cancel") },
           confirmProps: { color: "infini-warning" },
           onConfirm: () => resolve(true),
           onCancel: () => resolve(false),
@@ -187,12 +228,14 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
         return false;
       }
     }
-    setEditorOpen(false);
+    editorHandlers.close();
+    setEditorTouched(false);
     setEditorBaseline(null);
     return true;
   }, [isEditorDirty, t]);
   const closeEditorAfterSave = useCallback(() => {
-    setEditorOpen(false);
+    editorHandlers.close();
+    setEditorTouched(false);
     setEditorBaseline(null);
   }, []);
 
@@ -208,20 +251,19 @@ export function useEventsEditorController({ sortedEvents }: UseEventsEditorContr
     editorCapacity,
     editorPinned,
     editorSignupLocked,
-    editorAttachments,
     editorStartIso,
     editorEndIso,
     conflictingEvents,
     isEditorDirty,
-    setEditorType,
-    setEditorTitle,
-    setEditorDescription,
-    setEditorStartAt,
-    setEditorEndAt,
-    setEditorCapacity,
+    setEditorType: handleEditorTypeChange,
+    setEditorTitle: handleEditorTitleChange,
+    setEditorDescription: handleEditorDescriptionChange,
+    setEditorStartAt: handleEditorStartAtChange,
+    setEditorEndAt: handleEditorEndAtChange,
+    setEditorCapacity: handleEditorCapacityChange,
+    markEditorTouched,
     setEditorPinned,
     setEditorSignupLocked,
-    setEditorAttachments,
     openCreateEditor,
     openEditEditor,
     closeEditor,

@@ -9,6 +9,7 @@
   "filter.scheduled": "已排期",
   "list.title": "公告列表",
   "detail.title": "公告详情",
+  "detail.titleCreate": "新建公告",
   "field.title": "标题",
   "field.body": "正文",
   "field.pinned": "置顶",
@@ -75,5 +76,6 @@
   "message.deleteFailed": "删除公告失败",
   "draftTitle": "未命名公告",
   "empty": "暂无公告",
-  "empty.filtered": "没有公告符合当前筛选"
+  "empty.filtered": "没有公告符合当前筛选",
+  "validation.schedulePast": "定时发布时间必须晚于当前时间。"
 }

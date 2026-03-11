@@ -1,7 +1,6 @@
 ﻿import type { Event, MemberProfile, User } from "@guild/shared";
-import { Avatar, Badge, Button, Group, Menu, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
-import { DepthButton, DepthToggle, MotionButton } from "@infini-dev-kit/frontend/components";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { Avatar, Badge, Button, Group, Modal, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
+import { DepthButton, DepthToggle, MotionButton, InfiniCard, InfiniMenu } from "@infini-dev-kit/frontend/components";
 import {
   IconArchive,
   IconArchiveOff,
@@ -27,6 +26,7 @@ import {
 } from "@tabler/icons-react";
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { type EventTypeFilter } from "../../../utils/event-navigation";
 import { EmptyState } from "../../shared/EmptyState";
 import { EventDetailModal } from "./EventDetailModal";
 import "./EventCardsView.css";
@@ -82,10 +82,11 @@ type EventCardsViewProps = {
   canManage: boolean;
   canInteract: boolean;
   currentUserId: string | null;
-  eventType: string | undefined;
+  eventType: EventTypeFilter | undefined;
   archivedOnly: boolean;
   pinnedOnly: boolean;
   lockedOnly: boolean;
+  focusedEventId: string | null;
   eventFlags: Map<string, "NEW" | "UPDATED">;
   eventMembersMap: Map<string, MemberEntry[]>;
   allUsers: MemberEntry[];
@@ -118,6 +119,7 @@ export function EventCardsView({
   archivedOnly,
   pinnedOnly,
   lockedOnly,
+  focusedEventId,
   eventFlags,
   eventMembersMap,
   allUsers,
@@ -138,6 +140,7 @@ export function EventCardsView({
 }: EventCardsViewProps) {
   const { t, i18n } = useTranslation("events");
   const [detailModalEvent, setDetailModalEvent] = useState<Event | null>(null);
+  const [archiveConfirmEvent, setArchiveConfirmEvent] = useState<Event | null>(null);
   const detailModalMembers = detailModalEvent ? (eventMembersMap.get(detailModalEvent.id) ?? []) : [];
 
   if (events.length === 0) {
@@ -172,9 +175,10 @@ export function EventCardsView({
           const typeColor = EVENT_TYPE_COLORS[event.type] ?? "gray";
           const isFull = event.capacity !== null && joinedCount >= event.capacity;
           const isJoined = currentUserId ? members.some((m) => m.user.id === currentUserId) : false;
+          const isFocused = focusedEventId === event.id;
 
           return (
-              <InfiniCard key={event.id} className="event-card" onClick={() => setDetailModalEvent(event)} style={{ cursor: "pointer" }}>
+              <InfiniCard key={event.id} className={`event-card${isFocused ? " event-card--focused" : ""}`} onClick={() => setDetailModalEvent(event)} style={{ cursor: "pointer" }} role="button" tabIndex={0} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetailModalEvent(event); } }} aria-label={event.title}>
               {/* ── Header ── */}
               <div className={`event-card__header ${getTypeGradientClass(event.type)}`}>
                 <div className="event-card__header-left">
@@ -219,55 +223,48 @@ export function EventCardsView({
                   ) : null}
                 </div>
                 {canManage ? (
-                  <Menu
-                    withinPortal
-                    position="bottom-end"
-                    classNames={{
-                      dropdown: "event-card__menu-dropdown",
-                      item: "event-card__menu-item",
-                      divider: "event-card__menu-divider",
-                    }}
-                  >
-                    <Menu.Target>
+                  <InfiniMenu position="bottom-end">
+                    <InfiniMenu.Target>
                       <button type="button" className="event-card__menu-btn" aria-label={t("menu.actions")} onClick={(e) => e.stopPropagation()}>
                         <IconDots size={16} />
                       </button>
-                    </Menu.Target>
-                    <Menu.Dropdown onClick={(e) => e.stopPropagation()}>
-                      <Menu.Item leftSection={<IconPencil size={14} />} onClick={() => onEditEvent(event)}>
+                    </InfiniMenu.Target>
+                    <InfiniMenu.Dropdown onClick={(e) => e.stopPropagation()}>
+                      <InfiniMenu.Item leftSection={<IconPencil size={14} />} onClick={() => onEditEvent(event)}>
                         {t("menu.edit")}
-                      </Menu.Item>
-                      <Menu.Item leftSection={<IconCopy size={14} />} onClick={() => onDuplicateEvent(event)}>
+                      </InfiniMenu.Item>
+                      <InfiniMenu.Item leftSection={<IconCopy size={14} />} onClick={() => onDuplicateEvent(event)}>
                         {t("menu.duplicate")}
-                      </Menu.Item>
-                      <Menu.Item
+                      </InfiniMenu.Item>
+                      <InfiniMenu.Item
                         leftSection={event.pinned ? <IconPinnedOff size={14} /> : <IconPin size={14} />}
                         onClick={() => onTogglePinEvent(event)}
                       >
                         {event.pinned ? t("menu.unpin") : t("menu.pin")}
-                      </Menu.Item>
-                      <Menu.Item
+                      </InfiniMenu.Item>
+                      <InfiniMenu.Item
                         leftSection={event.signup_locked ? <IconLockOpen size={14} /> : <IconLock size={14} />}
                         onClick={() => onToggleLockEvent(event)}
                       >
                         {event.signup_locked ? t("menu.unlockSignup") : t("menu.lockSignup")}
-                      </Menu.Item>
-                      <Menu.Divider />
-                      <Menu.Item
+                      </InfiniMenu.Item>
+                      <InfiniMenu.Divider />
+                      <InfiniMenu.Item
                         leftSection={event.archived_at ? <IconArchiveOff size={14} /> : <IconArchive size={14} />}
-                        onClick={() => event.archived_at ? onUnarchiveEvent(event.id) : onArchiveEvent(event.id)}
+                        onClick={() => event.archived_at ? onUnarchiveEvent(event.id) : setArchiveConfirmEvent(event)}
                       >
                         {event.archived_at ? t("menu.unarchive") : t("menu.archive")}
-                      </Menu.Item>
-                      <Menu.Item
+                      </InfiniMenu.Item>
+                      <InfiniMenu.Item
+                        className="infini-menu-item--danger"
                         color="infini-danger"
                         leftSection={<IconTrash size={14} />}
                         onClick={() => onDeleteEvent(event)}
                       >
                         {t("menu.delete")}
-                      </Menu.Item>
-                    </Menu.Dropdown>
-                  </Menu>
+                      </InfiniMenu.Item>
+                    </InfiniMenu.Dropdown>
+                  </InfiniMenu>
                 ) : null}
               </div>
 
@@ -324,7 +321,7 @@ export function EventCardsView({
                           className="event-card__capacity-text"
                           style={{ color: event.capacity ? `hsl(${capacityHue(joinedCount, event.capacity)}, 70%, 50%)` : undefined }}
                         >
-                          {joinedCount}{event.capacity ? ` / ${event.capacity}` : ""}
+                          {joinedCount} / {event.capacity ?? "∞"}
                         </Text>
                       </div>
                     </div>
@@ -345,44 +342,40 @@ export function EventCardsView({
                         <div className="event-card__progress-fill event-card__progress-fill--uncapped" />
                       )}
                     </div>
-                    {event.capacity ? (
-                      <Text size="xs" c="dimmed" className="event-card__progress-label">
-                        {Math.round((joinedCount / event.capacity) * 100)}%
-                      </Text>
-                    ) : null}
+                    <Text size="xs" c="dimmed" className="event-card__progress-label">
+                      {event.capacity ? `${Math.round((joinedCount / event.capacity) * 100)}%` : "∞"}
+                    </Text>
                   </div>
 
                   {/* ── Actions ── */}
                   {canInteract ? (
                   <div className="event-card__actions" onClick={(e) => e.stopPropagation()}>
-                    <Tooltip label={isJoined ? t("button.leave") : t("button.join")} withArrow>
-                      <DepthToggle
-                        pressed={isJoined}
-                        onToggle={(joined) => {
-                          if (joined) {
-                            onJoinEvent(event.id);
-                          } else {
-                            onLeaveEvent(event.id);
-                          }
-                        }}
-                        type="primary"
-                        size="xs"
-                        disabled={!isJoined && (event.signup_locked || Boolean(event.archived_at) || isFull)}
-                      >
-                        {isJoined ? <IconUserMinus size={14} /> : <IconUserPlus size={14} />}
-                        {isJoined ? t("button.leave") : t("button.join")}
-                      </DepthToggle>
-                    </Tooltip>
-                    <Tooltip label={t("card.copyMentions")} withArrow>
-                      <DepthButton
-                        onClick={() => onCopyMentions(event)}
-                        type="secondary"
-                        size="sm"
-                        disabled={members.length === 0}
-                      >
-                        <IconCopy size={14} />
-                      </DepthButton>
-                    </Tooltip>
+                    <DepthToggle
+                      pressed={isJoined}
+                      onToggle={(joined) => {
+                        if (joined) {
+                          onJoinEvent(event.id);
+                        } else {
+                          onLeaveEvent(event.id);
+                        }
+                      }}
+                      type="primary"
+                      size="xs"
+                      disabled={!isJoined && (event.signup_locked || Boolean(event.archived_at) || isFull || (event.end_at != null && new Date(event.end_at) < new Date()))}
+                      title={isJoined ? t("button.leave") : t("button.join")}
+                    >
+                      {isJoined ? <IconUserMinus size={14} /> : <IconUserPlus size={14} />}
+                      {isJoined ? t("button.leave") : t("button.join")}
+                    </DepthToggle>
+                    <DepthButton
+                      onClick={() => onCopyMentions(event)}
+                      type="secondary"
+                      size="sm"
+                      disabled={members.length === 0}
+                      title={t("card.copyMentions")}
+                    >
+                      <IconCopy size={14} />
+                    </DepthButton>
                   </div>
                   ) : null}
                 </Stack>
@@ -402,6 +395,37 @@ export function EventCardsView({
         onAddParticipant={onAddParticipant}
         onRemoveParticipant={onRemoveParticipant}
       />
+
+      {/* ── Archive Confirmation Modal ── */}
+      <Modal
+        opened={archiveConfirmEvent !== null}
+        onClose={() => setArchiveConfirmEvent(null)}
+        title={t("archive.confirmTitle")}
+        centered
+        size="sm"
+      >
+        <Stack gap={12}>
+          <Text size="sm">
+            {t("archive.confirmDescription", { title: archiveConfirmEvent?.title ?? "" })}
+          </Text>
+          <Group justify="flex-end" gap={8}>
+            <Button variant="default" onClick={() => setArchiveConfirmEvent(null)}>
+              {t("archive.cancel")}
+            </Button>
+            <Button
+              color="yellow"
+              onClick={() => {
+                if (archiveConfirmEvent) {
+                  onArchiveEvent(archiveConfirmEvent.id);
+                  setArchiveConfirmEvent(null);
+                }
+              }}
+            >
+              {t("archive.confirm")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </>
   );
 }

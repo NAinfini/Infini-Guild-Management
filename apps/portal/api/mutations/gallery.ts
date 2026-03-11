@@ -37,3 +37,10 @@ export function deleteGalleryItem(id: string): Promise<{ ok: true }> {
     method: "DELETE",
   });
 }
+
+export function batchDeleteGalleryItems(ids: string[]): Promise<{ ok: true; deleted: number }> {
+  return apiRequest<{ ok: true; deleted: number }>("/api/gallery/batch-delete", {
+    method: "POST",
+    bodyJson: { ids },
+  });
+}

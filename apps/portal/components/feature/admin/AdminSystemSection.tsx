@@ -1,5 +1,4 @@
-﻿import { Alert, Badge, Loader, Group, Stack, Text } from "@mantine/core";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+﻿import { Alert, Badge, Loader, Group, Stack } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 
 type StatusData = {
@@ -9,22 +8,11 @@ type StatusData = {
   crons: string;
 };
 
-type StatusHealthLog = {
-  at: string;
-  db: string;
-  r2: string;
-  ws: string;
-  crons: string;
-  latencyMs: number | null;
-};
-
 type AdminSystemSectionProps = {
   statusLoading: boolean;
   statusError: boolean;
   loadErrorMessage: string;
   statusData: StatusData | null;
-  statusHealthLogs: StatusHealthLog[];
-  formatDateTime: (iso: string | null) => string;
 };
 
 export function AdminSystemSection({
@@ -32,8 +20,6 @@ export function AdminSystemSection({
   statusError,
   loadErrorMessage,
   statusData,
-  statusHealthLogs,
-  formatDateTime,
 }: AdminSystemSectionProps) {
   const { t } = useTranslation("admin");
   return (
@@ -48,26 +34,6 @@ export function AdminSystemSection({
           <Badge color={statusData.crons === "ok" ? "green" : "red"} variant="light">{t("status.summary.crons", { value: statusData.crons })}</Badge>
         </Group>
       ) : null}
-      <InfiniCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
-          <Text fw={600} size="sm" mb={8}>{t("status.healthLogs.title")}</Text>
-          <div style={{ maxHeight: 180, overflowY: "auto" }}>
-            <Stack gap={6}>
-              {statusHealthLogs.length === 0 ? (
-                <Text c="dimmed" size="sm">{t("status.healthLogs.empty")}</Text>
-              ) : (
-                statusHealthLogs.map((row, index) => (
-                  <Text key={`${row.at}-${index}`} size="xs">
-                    {formatDateTime(row.at)} | DB {row.db} | R2 {row.r2} | WS {row.ws} | Crons {row.crons} | {row.latencyMs ?? "-"}ms
-                  </Text>
-                ))
-              )}
-            </Stack>
-          </div>
-        </div>
-      </InfiniCard>
     </Stack>
   );
 }
-
-

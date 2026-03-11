@@ -13,7 +13,8 @@ import {
   Title,
 } from "@mantine/core";
 import { GlassEffect, InfiniButton } from "@infini-dev-kit/frontend/components";
-import { useEffect, useState } from "react";
+import { useDebouncedValue } from "@mantine/hooks";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
@@ -88,14 +89,9 @@ export function RegisterPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [apiFieldErrors, setApiFieldErrors] = useState<Partial<Record<keyof RegisterFormValues, string>>>({});
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
-  const [debouncedUsername, setDebouncedUsername] = useState("");
 
   const rawUsername = watch("username");
-  useEffect(() => {
-    const nextValue = (rawUsername ?? "").trim();
-    const timer = window.setTimeout(() => setDebouncedUsername(nextValue), 320);
-    return () => window.clearTimeout(timer);
-  }, [rawUsername]);
+  const [debouncedUsername] = useDebouncedValue((rawUsername ?? "").trim(), 320);
 
   const usernameAvailabilityQuery = useQuery({
     queryKey: queryKeys.auth.usernameAvailability(debouncedUsername),

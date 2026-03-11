@@ -73,5 +73,8 @@
   "confirm.deleteCategory.title": "Delete Category",
   "confirm.deleteCategory.description": "Delete \"{{name}}\"? This cannot be undone.",
   "message.articleUnarchived": "Article unarchived",
-  "message.articleUnarchiveFailed": "Failed to unarchive article"
+  "message.articleUnarchiveFailed": "Failed to unarchive article",
+  "validation.titleRequired": "Article title is required.",
+  "welcome.title": "Welcome to the Wiki",
+  "welcome.description": "Select an article from the sidebar to start reading."
 }

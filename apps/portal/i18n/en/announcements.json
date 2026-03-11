@@ -9,6 +9,7 @@
   "filter.scheduled": "Scheduled",
   "list.title": "Announcement List",
   "detail.title": "Announcement Detail",
+  "detail.titleCreate": "New Announcement",
   "field.title": "Title",
   "field.body": "Body",
   "field.pinned": "Pinned",
@@ -75,5 +76,6 @@
   "message.deleteFailed": "Failed to delete announcement",
   "draftTitle": "Untitled Announcement",
   "empty": "No announcements",
-  "empty.filtered": "No announcements match your filters"
+  "empty.filtered": "No announcements match your filters",
+  "validation.schedulePast": "Scheduled publish time must be in the future."
 }

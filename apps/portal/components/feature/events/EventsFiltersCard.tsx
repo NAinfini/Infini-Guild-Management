@@ -1,26 +1,29 @@
 import { EVENT_TYPES } from "@guild/shared";
 import { DepthButton, DepthToggle } from "@infini-dev-kit/frontend/components";
-import { SegmentedControl, Select, TextInput, Tooltip } from "@mantine/core";
+import { SegmentedControl, Select, TextInput } from "@mantine/core";
 import { IconArchive, IconLock, IconPin, IconSearch } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
+import { type EventTypeFilter, type EventWorkbenchViewMode } from "../../../utils/event-navigation";
 import { FilterToolbar } from "../../shared/FilterToolbar";
 
-type EventViewMode = "cards" | "month" | "recurring";
+function isEventTypeFilter(value: string): value is EventTypeFilter {
+  return EVENT_TYPES.includes(value as EventTypeFilter);
+}
 
 type EventsFiltersCardProps = {
   searchQuery: string;
-  eventType: string | undefined;
+  eventType: EventTypeFilter | undefined;
   archivedOnly: boolean;
   pinnedOnly: boolean;
   lockedOnly: boolean;
-  viewMode: EventViewMode;
+  viewMode: EventWorkbenchViewMode;
   canManage: boolean;
   onSearchChange: (value: string) => void;
-  onEventTypeChange: (value: string | undefined) => void;
+  onEventTypeChange: (value: EventTypeFilter | undefined) => void;
   onArchivedOnlyChange: (value: boolean) => void;
   onPinnedOnlyChange: (value: boolean) => void;
   onLockedOnlyChange: (value: boolean) => void;
-  onViewModeChange: (value: EventViewMode) => void;
+  onViewModeChange: (value: EventWorkbenchViewMode) => void;
   onCreateEvent?: () => void;
   onCreateTemplate?: () => void;
 };
@@ -58,50 +61,47 @@ export function EventsFiltersCard({
           clearable
           placeholder={t("filter.type")}
           value={eventType ?? null}
-          aria-label="Filter events by type"
-          onChange={(value) => onEventTypeChange(value ?? undefined)}
+          aria-label={t("aria.filterByType")}
+          onChange={(value) => onEventTypeChange(value && isEventTypeFilter(value) ? value : undefined)}
           data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
           className="events-filter-type"
         />
-        <Tooltip label={t("filter.pinned")} withArrow>
-          <DepthToggle
-            pressed={pinnedOnly}
-            onToggle={onPinnedOnlyChange}
-            type="secondary"
-            size="sm"
-            iconOnly
-            aria-label={t("filter.pinned")}
-          >
-            <IconPin size={16} />
-          </DepthToggle>
-        </Tooltip>
-        <Tooltip label={t("filter.locked")} withArrow>
-          <DepthToggle
-            pressed={lockedOnly}
-            onToggle={onLockedOnlyChange}
-            type="secondary"
-            size="sm"
-            iconOnly
-            aria-label={t("filter.locked")}
-          >
-            <IconLock size={16} />
-          </DepthToggle>
-        </Tooltip>
-        <Tooltip label={t("filter.archived")} withArrow>
-          <DepthToggle
-            pressed={archivedOnly}
-            onToggle={onArchivedOnlyChange}
-            type="secondary"
-            size="sm"
-            iconOnly
-            aria-label={t("filter.archived")}
-          >
-            <IconArchive size={16} />
-          </DepthToggle>
-        </Tooltip>
+        <DepthToggle
+          pressed={pinnedOnly}
+          onToggle={onPinnedOnlyChange}
+          type="secondary"
+          size="sm"
+          iconOnly
+          aria-label={t("filter.pinned")}
+          title={t("filter.pinned")}
+        >
+          <IconPin size={16} />
+        </DepthToggle>
+        <DepthToggle
+          pressed={lockedOnly}
+          onToggle={onLockedOnlyChange}
+          type="secondary"
+          size="sm"
+          iconOnly
+          aria-label={t("filter.locked")}
+          title={t("filter.locked")}
+        >
+          <IconLock size={16} />
+        </DepthToggle>
+        <DepthToggle
+          pressed={archivedOnly}
+          onToggle={onArchivedOnlyChange}
+          type="secondary"
+          size="sm"
+          iconOnly
+          aria-label={t("filter.archived")}
+          title={t("filter.archived")}
+        >
+          <IconArchive size={16} />
+        </DepthToggle>
         <SegmentedControl
           value={viewMode}
-          onChange={(value) => onViewModeChange(value as EventViewMode)}
+          onChange={(value) => onViewModeChange(value as EventWorkbenchViewMode)}
           data={[
             { value: "cards", label: t("view.cards") },
             { value: "month", label: t("view.calendar") },
@@ -125,4 +125,3 @@ export function EventsFiltersCard({
     </FilterToolbar>
   );
 }
-

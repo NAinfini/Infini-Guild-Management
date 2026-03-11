@@ -12,6 +12,9 @@ import { etagMiddleware } from "./middleware/etag";
 import { handleAppError } from "./middleware/error-handler";
 import { hmacMiddleware } from "./middleware/hmac";
 import { createRateLimitMiddleware } from "./middleware/rate-limit";
+import { securityHeadersMiddleware } from "./middleware/security-headers";
+import { sessionMiddleware } from "./middleware/session";
+import { resolveSession } from "./services/auth";
 import { adminRoutes } from "./routes/admin";
 import { announcementsRoutes } from "./routes/announcements";
 import { authRoutes } from "./routes/auth";
@@ -29,6 +32,7 @@ export type Bindings = {
   BOT_RUNTIME_URL?: string;
   BOT_SHARED_SECRET?: string;
   PORTAL_ORIGIN?: string;
+  ENVIRONMENT?: string;
 };
 
 type Variables = {
@@ -85,20 +89,38 @@ app.use(
   cors({
     origin: (origin, c) => {
       const allowedOrigin = c.env.PORTAL_ORIGIN;
-      if (!allowedOrigin) return origin;
+      if (!allowedOrigin) return "";
       return origin === allowedOrigin ? origin : "";
     },
-    allowHeaders: ["Content-Type", "If-None-Match", "If-Match", "X-Signature", "X-Timestamp", "X-Request-Id"],
+    allowHeaders: ["Content-Type", "If-None-Match", "If-Match", "X-Signature", "X-Timestamp", "X-Request-Id", "X-Requested-With"],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
   }),
 );
+
+app.use("*", securityHeadersMiddleware);
+
+app.use("/api/*", async (c, next) => {
+  const portalOrigin = c.env.PORTAL_ORIGIN;
+  if (portalOrigin && isMutationMethod(c.req.method)) {
+    const origin = c.req.header("Origin");
+    if (origin && origin !== portalOrigin) {
+      return c.json({ error_code: "FORBIDDEN", message: "Origin not allowed", request_id: c.get("requestId") }, 403);
+    }
+    if (!c.req.header("X-Requested-With")) {
+      return c.json({ error_code: "FORBIDDEN", message: "Missing required header", request_id: c.get("requestId") }, 403);
+    }
+  }
+  await next();
+});
 
 app.onError((error, c) => handleAppError(error, c));
 
 app.use("/api/*", etagMiddleware);
 app.use("/api/auth/login", authRateLimit);
 app.use("/api/auth/register/*", authRateLimit);
+app.use("/api/auth/check-username", authRateLimit);
+app.use("/api/admin/*", sessionMiddleware);
 app.use("/api/*", async (c, next) => {
   if (c.req.method === "POST" && isUploadPath(c.req.path)) {
     await uploadRateLimit(c, next);
@@ -116,17 +138,30 @@ app.use("/internal/bot/*", hmacMiddleware);
 
 app.get("/api/health", (c) => c.json({ ok: true, request_id: c.get("requestId") }));
 app.post("/api/dev/seed", async (c) => {
+  const env = c.env as Bindings;
+  if (env.ENVIRONMENT !== "development") {
+    return c.json({ error_code: "NOT_FOUND", message: "Not found", request_id: c.get("requestId") }, 404);
+  }
   await seedDatabase(c.env);
   return c.json({ ok: true, message: "Database seeded" });
 });
 app.post("/api/dev/reseed", async (c) => {
+  const env = c.env as Bindings;
+  if (env.ENVIRONMENT !== "development") {
+    return c.json({ error_code: "NOT_FOUND", message: "Not found", request_id: c.get("requestId") }, 404);
+  }
   await clearAllData(c.env);
   await seedDatabase(c.env);
   return c.json({ ok: true, message: "Database cleared and reseeded" });
 });
-app.get("/ws", (c) => {
+app.get("/ws", async (c) => {
   if (c.req.header("Upgrade") !== "websocket") {
     return c.text("Expected websocket", 426);
+  }
+
+  const session = await resolveSession(c);
+  if (!session) {
+    return c.json({ error_code: "UNAUTHORIZED", message: "Authentication required", request_id: c.get("requestId") }, 401);
   }
 
   const objectId = c.env.WS.idFromName("global");

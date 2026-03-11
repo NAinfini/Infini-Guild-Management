@@ -1,0 +1,186 @@
+import {
+  announcementSchema,
+} from "@guild/shared";
+import { and, desc, eq, inArray, like, or, sql, type SQL } from "drizzle-orm";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { nanoid } from "nanoid";
+import { announcements } from "../db/schema";
+import { ok, err, type ServiceResult } from "./result";
+
+// --- Types ---
+
+type DrizzleDb = DrizzleD1Database<Record<string, never>>;
+type AuditLogInput = { entityType: string; action: string; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
+type EntityChangedInput = { entityType: string; entityId: string; hint: string };
+type AnnouncementPublishedInput = { announcementId: string; title: string; publishedAt: string };
+type BotPlatform = "discord" | "wechat";
+type BotTaskType = "event_notify" | "team_comp" | "reminder" | "war_result";
+type BotTaskInput = { platform: BotPlatform; taskType: BotTaskType; targetId: string; idempotencyKey: string; payload: Record<string, unknown>; dispatchNow: boolean };
+
+type AnnouncementStatus = "draft" | "scheduled" | "published" | "archived";
+
+type AnnouncementRow = {
+  id: string; title: string; bodyJson: string; pinned: boolean; pinnedAt: string | null;
+  status: AnnouncementStatus; publishAt: string | null; expiresAt: string | null; archivedAt: string | null;
+  createdBy: string; createdAt: string; updatedAt: string;
+};
+
+export type AnnouncementServiceDeps = {
+  media: R2Bucket;
+  writeAuditLog: (input: AuditLogInput) => Promise<void>;
+  publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
+  publishAnnouncementPublished: (input: AnnouncementPublishedInput) => Promise<void>;
+  createBotTask: (input: BotTaskInput) => Promise<void>;
+};
+
+// --- Helpers ---
+
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
+function toPayload(row: AnnouncementRow) {
+  return announcementSchema.parse({
+    id: row.id, title: row.title, body_json: row.bodyJson, pinned: row.pinned, pinned_at: row.pinnedAt,
+    status: row.status, publish_at: row.publishAt, expires_at: row.expiresAt, archived_at: row.archivedAt,
+    created_by: row.createdBy, created_at: row.createdAt, updated_at: row.updatedAt,
+  });
+}
+
+const COLS = {
+  id: announcements.id, title: announcements.title, bodyJson: announcements.bodyJson,
+  pinned: announcements.pinned, pinnedAt: announcements.pinnedAt, status: announcements.status,
+  publishAt: announcements.publishAt, expiresAt: announcements.expiresAt, archivedAt: announcements.archivedAt,
+  createdBy: announcements.createdBy, createdAt: announcements.createdAt, updatedAt: announcements.updatedAt,
+} as const;
+
+// --- Service ---
+
+export class AnnouncementService {
+  private db: DrizzleDb;
+  private deps: AnnouncementServiceDeps;
+
+  constructor(db: DrizzleDb, deps: AnnouncementServiceDeps) {
+    this.db = db;
+    this.deps = deps;
+  }
+
+  private async getById(id: string): Promise<AnnouncementRow | null> {
+    return (await this.db.select(COLS).from(announcements).where(eq(announcements.id, id)).limit(1))[0] ?? null;
+  }
+
+  private async dispatchNotifications(payload: { id: string; title: string; bodyJson: string; publishAt: string | null; notifyDiscord: boolean; notifyWechat: boolean }) {
+    const messagePayload = { announcement_id: payload.id, title: payload.title, body_json: payload.bodyJson, publish_at: payload.publishAt };
+    if (payload.notifyDiscord) {
+      await this.deps.createBotTask({ platform: "discord", taskType: "event_notify", targetId: "announcement:discord:broadcast", idempotencyKey: `announcement-manual:discord:${payload.id}:${Date.now()}`, payload: messagePayload, dispatchNow: true });
+    }
+    if (payload.notifyWechat) {
+      await this.deps.createBotTask({ platform: "wechat", taskType: "event_notify", targetId: "announcement:wechat:broadcast", idempotencyKey: `announcement-manual:wechat:${payload.id}:${Date.now()}`, payload: messagePayload, dispatchNow: true });
+    }
+  }
+
+  // --- Public ---
+
+  async list(opts: { canReadAll: boolean; page: number; limit: number; status?: string; pinned?: boolean; archived?: boolean; search?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
+    const offset = (opts.page - 1) * opts.limit;
+    const filters: SQL<unknown>[] = [];
+
+    if (opts.status) {
+      if (!opts.canReadAll && opts.status !== "published" && opts.status !== "archived") return err("FORBIDDEN", "Moderator role required to read non-public announcements");
+      filters.push(eq(announcements.status, opts.status as typeof announcements.status.enumValues[number]));
+    } else if (!opts.canReadAll) {
+      if (opts.archived === true) { filters.push(eq(announcements.status, "archived")); }
+      else { filters.push(inArray(announcements.status, ["published", "archived"])); }
+    }
+    if (opts.pinned !== undefined) filters.push(eq(announcements.pinned, opts.pinned));
+    if (opts.search) {
+      const pattern = `%${escapeLikePattern(opts.search)}%`;
+      filters.push(or(like(announcements.title, pattern), like(announcements.bodyJson, pattern))!);
+    }
+
+    const whereClause = and(...filters);
+    const totalRow = (await this.db.select({ count: sql<number>`count(*)` }).from(announcements).where(whereClause))[0];
+    const total = Number(totalRow?.count ?? 0);
+    const rows = await this.db.select(COLS).from(announcements).where(whereClause).orderBy(desc(announcements.pinned), desc(announcements.createdAt), desc(announcements.id)).limit(opts.limit).offset(offset);
+    return ok({ data: rows.map(toPayload), total, page: opts.page, limit: opts.limit, total_pages: Math.max(1, Math.ceil(total / opts.limit)) });
+  }
+
+  async getOne(id: string, canReadAll: boolean): Promise<ServiceResult<unknown>> {
+    const row = await this.getById(id);
+    if (!row) return err("NOT_FOUND", "Announcement not found");
+    if (!canReadAll && row.status !== "published" && row.status !== "archived") return err("NOT_FOUND", "Announcement not found");
+    return ok(toPayload(row));
+  }
+
+  async create(actorId: string, data: { title: string; body_json: string; pinned: boolean; status: AnnouncementStatus; publish_at?: string | null; expires_at?: string | null; notify_discord: boolean; notify_wechat: boolean }): Promise<ServiceResult<unknown>> {
+    const nowIso = new Date().toISOString();
+    const announcementId = nanoid();
+    await this.db.insert(announcements).values({ id: announcementId, title: data.title, bodyJson: data.body_json, pinned: data.pinned, pinnedAt: data.pinned ? nowIso : null, status: data.status, publishAt: data.publish_at ?? null, expiresAt: data.expires_at ?? null, archivedAt: null, createdBy: actorId, updatedAt: nowIso });
+
+    if (data.status === "published") {
+      await this.dispatchNotifications({ id: announcementId, title: data.title, bodyJson: data.body_json, publishAt: data.publish_at ?? nowIso, notifyDiscord: data.notify_discord, notifyWechat: data.notify_wechat });
+    }
+
+    const created = await this.getById(announcementId);
+    if (!created) return err("SERVER_ERROR", "Failed to create announcement");
+    await this.deps.writeAuditLog({ entityType: "announcement", action: "create", actorId, entityId: announcementId, diffTitle: created.title });
+    await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_created" });
+    if (created.status === "published") {
+      await this.deps.publishAnnouncementPublished({ announcementId: created.id, title: created.title, publishedAt: created.publishAt ?? created.updatedAt });
+    }
+    return ok(toPayload(created));
+  }
+
+  async update(actorId: string, announcementId: string, data: { title?: string; body_json?: string; pinned?: boolean; status?: AnnouncementStatus; publish_at?: string | null; expires_at?: string | null; archived_at?: string | null; notify_discord?: boolean; notify_wechat?: boolean }): Promise<ServiceResult<unknown>> {
+    const existing = await this.getById(announcementId);
+    if (!existing) return err("NOT_FOUND", "Announcement not found");
+
+    const patch: Partial<typeof announcements.$inferInsert> = { updatedAt: new Date().toISOString() };
+    if (data.title !== undefined) patch.title = data.title;
+    if (data.body_json !== undefined) patch.bodyJson = data.body_json;
+    if (data.pinned !== undefined) { patch.pinned = data.pinned; patch.pinnedAt = data.pinned ? patch.updatedAt : null; }
+    if (data.status !== undefined) patch.status = data.status;
+    if (data.publish_at !== undefined) patch.publishAt = data.publish_at;
+    if (data.expires_at !== undefined) patch.expiresAt = data.expires_at;
+    if (data.archived_at !== undefined) patch.archivedAt = data.archived_at;
+
+    await this.db.update(announcements).set(patch).where(eq(announcements.id, announcementId));
+    const updated = await this.getById(announcementId);
+    if (!updated) return err("SERVER_ERROR", "Failed to load updated announcement");
+
+    const statusAfter = data.status ?? existing.status;
+    if (statusAfter === "published" && (data.notify_discord || data.notify_wechat)) {
+      await this.dispatchNotifications({ id: updated.id, title: updated.title, bodyJson: updated.bodyJson, publishAt: updated.publishAt ?? updated.updatedAt, notifyDiscord: data.notify_discord ?? false, notifyWechat: data.notify_wechat ?? false });
+    }
+
+    await this.deps.writeAuditLog({ entityType: "announcement", action: "update", actorId, entityId: announcementId, diffTitle: updated.title, detailText: JSON.stringify(data) });
+    await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_updated" });
+    if (existing.status !== "published" && updated.status === "published") {
+      await this.deps.publishAnnouncementPublished({ announcementId: updated.id, title: updated.title, publishedAt: updated.publishAt ?? updated.updatedAt });
+    }
+    return ok(toPayload(updated));
+  }
+
+  async archive(actorId: string, announcementId: string): Promise<ServiceResult<{ ok: true }>> {
+    const existing = await this.getById(announcementId);
+    if (!existing) return err("NOT_FOUND", "Announcement not found");
+    const nowIso = new Date().toISOString();
+    await this.db.update(announcements).set({ status: "archived", archivedAt: nowIso, updatedAt: nowIso }).where(eq(announcements.id, announcementId));
+    await this.deps.writeAuditLog({ entityType: "announcement", action: "archive", actorId, entityId: announcementId, diffTitle: existing.title });
+    await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_archived" });
+    return ok({ ok: true });
+  }
+
+  async uploadImages(actorId: string, announcementId: string, files: Array<{ data: ArrayBuffer; contentType: string }>): Promise<ServiceResult<{ keys: string[] }>> {
+    const existing = await this.getById(announcementId);
+    if (!existing) return err("NOT_FOUND", "Announcement not found");
+    const keys: string[] = [];
+    for (const file of files) {
+      const key = `announcement/${announcementId}/images/${Date.now()}_${nanoid()}`;
+      await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
+      keys.push(key);
+    }
+    await this.deps.writeAuditLog({ entityType: "announcement", action: "upload_images", actorId, entityId: announcementId, detailText: JSON.stringify({ keys }) });
+    return ok({ keys });
+  }
+}

@@ -12,8 +12,8 @@ export async function publishPushMessage(env: Bindings, message: PushMessage): P
       },
       body: JSON.stringify(message),
     });
-  } catch {
-    // Push is best-effort and should never break request flow.
+  } catch (err) {
+    console.error("[push] publishPushMessage failed:", message.type, err);
   }
 }
 

@@ -1,41 +1,31 @@
 import { hasRoleAtLeast } from "@guild/shared";
-import { arrayMove } from "@dnd-kit/sortable";
 import { Button, Drawer, Group, Stack, Text, TextInput, Tooltip, VisuallyHidden } from "@mantine/core";
-import { DepthButton, DepthToggle, InfiniCard } from "@infini-dev-kit/frontend/components";
+import { DepthButton, DepthToggle, InfiniCard, TipTapEditor } from "@infini-dev-kit/frontend/components";
 import { modals } from "@mantine/modals";
 import { IconArchive, IconEdit, IconPinned } from "@tabler/icons-react";
-import { useMediaQuery } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useDebouncedValue, useDisclosure, useMediaQuery } from "@mantine/hooks";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { format } from "date-fns";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  createWikiArticle,
-  createWikiCategory,
-  deleteWikiCategory,
-  uploadWikiArticleImages,
-  updateWikiArticle,
-  updateWikiCategory,
-} from "../../api/mutations/wiki";
-import {
   fetchWikiArticleBySlug,
   fetchWikiArticles,
   fetchWikiCategories,
-} from "../../api/queries/wiki";
-import { queryKeys } from "../../api/query-keys";
-import { useAppError } from "../../hooks/useAppError";
+} from "../../services/WikiService";
 import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
+import { useWikiArticleEditor } from "../../hooks/useWikiArticleEditor";
+import { useWikiCategoryEditor } from "../../hooks/useWikiCategoryEditor";
+import { queryKeys } from "../../services/PortalQueryKeys";
 import { useAuthStore } from "../../stores/auth";
 import { WikiArticleEditorCard } from "../feature/wiki/WikiArticleEditorCard";
 import { WikiArticleListCard } from "../feature/wiki/WikiArticleListCard";
-import { WikiCategoryEditorCard, type WikiCategoryDraft } from "../feature/wiki/WikiCategoryEditorCard";
+import { WikiCategoryEditorCard } from "../feature/wiki/WikiCategoryEditorCard";
 import { PageLayout } from "../layout/PageLayout";
 import { EmptyState } from "../shared/EmptyState";
-import { TipTapEditor, TIPTAP_DEFAULT_JSON } from "../shared/TipTapEditor";
 import "./WikiPage.css";
 
 function formatDateTime(iso: string): string {
@@ -51,36 +41,24 @@ export function WikiPage() {
   const navigate = useNavigate();
   const params = useParams({ strict: false });
   const routeSlug = (params as { slug?: string }).slug ?? null;
-  const isDesktop = useMediaQuery("(min-width: 1200px)");
+  const isDesktop = useMediaQuery("(min-width: 1200px)", true);
   const isMobile = !isDesktop;
-  const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
   const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
   const canEdit = isModerator && !isExternalView;
-  const { showError } = useAppError();
 
   const [search, setSearch] = useState("");
+  const [debouncedSearchRaw] = useDebouncedValue(search, 300);
+  const debouncedSearch = debouncedSearchRaw.trim();
   const [pinnedOnly, setPinnedOnly] = useState(false);
   const [archivedOnly, setArchivedOnly] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(routeSlug);
-
-  const [categoryName, setCategoryName] = useState("");
-  const [categoryDrafts, setCategoryDrafts] = useState<WikiCategoryDraft[]>([]);
-  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
-
-  const [articleTitle, setArticleTitle] = useState("");
-  const [articleBody, setArticleBody] = useState(TIPTAP_DEFAULT_JSON);
-  const [articleSortOrder, setArticleSortOrder] = useState(0);
-  const [articleCategoryId, setArticleCategoryId] = useState<string>("");
-  const [pinnedIntent, setPinnedIntent] = useState<"none" | "pin" | "unpin">("none");
-  const [archiveIntent, setArchiveIntent] = useState<"none" | "archive" | "unarchive">("none");
-  const [isCreatingArticle, setIsCreatingArticle] = useState(false);
   const [editorTab, setEditorTab] = useState<"article" | "categories">("article");
   const [mobilePane, setMobilePane] = useState<"list" | "article">("list");
-  const [showEditorPane, setShowEditorPane] = useState(false);
+  const [showEditorPane, editorPaneHandlers] = useDisclosure(false);
   const isEditorPaneVisible = canEdit && showEditorPane;
 
   const categoriesQuery = useQuery({
@@ -93,13 +71,13 @@ export function WikiPage() {
   const singleSelectedCategoryId = selectedCategoryIds.length === 1 ? selectedCategoryIds[0] : undefined;
 
   const articlesQuery = useQuery({
-    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, search, archivedOnly ? "archived" : "active"),
+    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, archivedOnly ? "archived" : "active"),
     queryFn: () =>
       fetchWikiArticles({
         page: 1,
         limit: 100,
         category_id: singleSelectedCategoryId,
-        search: search.trim() || undefined,
+        search: debouncedSearch || undefined,
         archived: archivedOnly,
       }),
   });
@@ -108,107 +86,6 @@ export function WikiPage() {
     queryKey: queryKeys.wiki.article(selectedSlug),
     enabled: Boolean(selectedSlug),
     queryFn: () => fetchWikiArticleBySlug(selectedSlug as string),
-  });
-
-  const createCategoryMutation = useMutation({
-    mutationFn: createWikiCategory,
-    onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.categoryCreated") });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.categories() });
-      setCategoryName("");
-    },
-    onError: (error) => {
-      showError(error, t("message.categoryCreateFailed"));
-    },
-  });
-
-  const saveCategoryDraftsMutation = useMutation({
-    mutationFn: async (drafts: WikiCategoryDraft[]) => {
-      const currentById = new Map(categories.map((category) => [category.id, category]));
-      const patches = drafts
-        .map((draft) => {
-          const current = currentById.get(draft.id);
-          if (!current) {
-            return null;
-          }
-
-          const payload: Record<string, unknown> = {};
-          const nextName = draft.name.trim();
-          if (nextName && nextName !== current.name) {
-            payload.name = nextName;
-          }
-          const nextParent = draft.parent_id || null;
-          if (nextParent !== current.parent_id) {
-            payload.parent_id = nextParent;
-          }
-          if (draft.sort_order !== current.sort_order) {
-            payload.sort_order = draft.sort_order;
-          }
-          return Object.keys(payload).length > 0 ? { id: draft.id, payload } : null;
-        })
-        .filter((item): item is { id: string; payload: Record<string, unknown> } => item !== null);
-
-      for (const patch of patches) {
-        await updateWikiCategory(patch.id, patch.payload);
-      }
-      return patches.length;
-    },
-    onSuccess: async (changedCount) => {
-      if (changedCount > 0) {
-        notifications.show({ color: "infini-success", message: t("message.categorySaved") });
-      }
-      await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.categories() });
-    },
-    onError: (error) => {
-      showError(error, t("message.categorySaveFailed"));
-    },
-  });
-
-  const deleteCategoryMutation = useMutation({
-    mutationFn: deleteWikiCategory,
-    onMutate: (categoryId) => {
-      setDeletingCategoryId(categoryId);
-    },
-    onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.categoryDeleted") });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.categories() });
-    },
-    onError: (error) => {
-      showError(error, t("message.categoryDeleteFailed"));
-    },
-    onSettled: () => {
-      setDeletingCategoryId(null);
-    },
-  });
-
-  const createArticleMutation = useMutation({
-    mutationFn: createWikiArticle,
-    onSuccess: async (created) => {
-      notifications.show({ color: "infini-success", message: t("message.articleCreated") });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
-      setIsCreatingArticle(false);
-      setSelectedSlug(created.slug);
-    },
-    onError: (error) => {
-      showError(error, t("message.articleCreateFailed"));
-    },
-  });
-
-  const updateArticleMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) =>
-      updateWikiArticle(id, payload),
-    onSuccess: async () => {
-      setPinnedIntent("none");
-      notifications.show({ color: "infini-success", message: t("message.articleSaved") });
-      setArchiveIntent("none");
-      await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
-      if (selectedSlug) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.article(selectedSlug) });
-      }
-    },
-    onError: (error) => {
-      showError(error, t("message.articleSaveFailed"));
-    },
   });
 
   const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
@@ -227,6 +104,15 @@ export function WikiPage() {
     });
   }, [articlesQuery.data?.data, pinnedOnly, selectedCategoryIds]);
   const selectedArticle = detailQuery.data ?? null;
+  const articleEditor = useWikiArticleEditor({
+    canEdit,
+    categories,
+    selectedArticle,
+    selectedCategoryId,
+    selectedCategoryIds,
+    onArticleCreated: setSelectedSlug,
+  });
+  const categoryEditor = useWikiCategoryEditor({ categories });
 
   useEffect(() => {
     if (routeSlug && routeSlug !== selectedSlug) {
@@ -235,18 +121,19 @@ export function WikiPage() {
   }, [routeSlug, selectedSlug]);
 
   useEffect(() => {
-    if (!selectedSlug && !isCreatingArticle && articles.length > 0) {
+    if (!selectedSlug && !articleEditor.isCreatingArticle && articles.length > 0 && routeSlug) {
       const firstSlug = articles[0]?.slug ?? null;
       setSelectedSlug(firstSlug);
       if (firstSlug) {
         void navigate({
           to: "/wiki/$slug",
           params: { slug: firstSlug },
+          replace: true,
           viewTransition: false,
         });
       }
     }
-  }, [articles, isCreatingArticle, navigate, selectedSlug]);
+  }, [articleEditor.isCreatingArticle, articles, navigate, routeSlug, selectedSlug]);
 
   useEffect(() => {
     if (!isMobile) {
@@ -264,96 +151,18 @@ export function WikiPage() {
 
   useEffect(() => {
     if (!canEdit) {
-      setShowEditorPane(false);
-      setIsCreatingArticle(false);
+      editorPaneHandlers.close();
     }
   }, [canEdit]);
-
-  useEffect(() => {
-    if (!selectedArticle) return;
-    setIsCreatingArticle(false);
-    setPinnedIntent("none");
-    setArchiveIntent("none");
-    setArticleTitle(selectedArticle.title);
-    setArticleBody(selectedArticle.body_json);
-    setArticleSortOrder(selectedArticle.sort_order);
-    setArticleCategoryId(selectedArticle.category_id);
-  }, [selectedArticle]);
-
-  useEffect(() => {
-    const nextDrafts = [...categories]
-      .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
-      .map((category) => ({
-        id: category.id,
-        name: category.name,
-        slug: category.slug,
-        parent_id: category.parent_id ?? "",
-        sort_order: category.sort_order,
-      }));
-    setCategoryDrafts(nextDrafts);
-  }, [categories]);
 
   const categoryOptions = categories.map((category) => ({
     value: category.id,
     label: category.name,
   }));
   const selectedCategory = selectedArticle ? categoriesById.get(selectedArticle.category_id) ?? null : null;
-  const hasCategoryDraftChanges = useMemo(() => {
-    if (categoryDrafts.length !== categories.length) {
-      return true;
-    }
-
-    for (const draft of categoryDrafts) {
-      const current = categoriesById.get(draft.id);
-      if (!current) {
-        return true;
-      }
-      if (draft.name.trim() !== current.name) {
-        return true;
-      }
-      if ((draft.parent_id || null) !== current.parent_id) {
-        return true;
-      }
-      if (draft.sort_order !== current.sort_order) {
-        return true;
-      }
-    }
-
-    return false;
-  }, [categories.length, categoriesById, categoryDrafts]);
-
-  const isDirty = useMemo(() => {
-    if (!canEdit) return false;
-
-    const articleDirty = selectedArticle
-      ? articleTitle !== selectedArticle.title ||
-        articleBody !== selectedArticle.body_json ||
-        articleSortOrder !== selectedArticle.sort_order ||
-        articleCategoryId !== selectedArticle.category_id ||
-        pinnedIntent !== "none" ||
-        archiveIntent !== "none"
-      : articleTitle.trim().length > 0 ||
-        articleBody !== TIPTAP_DEFAULT_JSON ||
-        articleSortOrder !== 0 ||
-        articleCategoryId.trim().length > 0;
-
-    return categoryName.trim().length > 0 || hasCategoryDraftChanges || articleDirty;
-  }, [
-    articleBody,
-    articleCategoryId,
-    articleSortOrder,
-    articleTitle,
-    pinnedIntent,
-    archiveIntent,
-    categoryName,
-    hasCategoryDraftChanges,
-    canEdit,
-    selectedArticle,
-  ]);
-  useBeforeUnloadPrompt(isDirty);
+  useBeforeUnloadPrompt(isEditorPaneVisible && (articleEditor.isDirty || categoryEditor.isDirty));
 
   const handleSelectArticle = (slug: string) => {
-    setIsCreatingArticle(false);
     setSelectedSlug(slug);
     void navigate({
       to: "/wiki/$slug",
@@ -367,15 +176,9 @@ export function WikiPage() {
 
   const handleStartCreateArticle = () => {
     setEditorTab("article");
-    setShowEditorPane(true);
-    setIsCreatingArticle(true);
-    setPinnedIntent("none");
-    setArchiveIntent("none");
+    editorPaneHandlers.open();
+    articleEditor.startCreateArticle();
     setSelectedSlug(null);
-    setArticleTitle("");
-    setArticleBody(TIPTAP_DEFAULT_JSON);
-    setArticleSortOrder(0);
-    setArticleCategoryId(selectedCategoryId ?? selectedCategoryIds[0] ?? categories[0]?.id ?? "");
     if (routeSlug) {
       void navigate({ to: "/wiki", viewTransition: false });
     }
@@ -386,7 +189,7 @@ export function WikiPage() {
 
   const handleOpenArticleEditor = () => {
     setEditorTab("article");
-    setShowEditorPane(true);
+    editorPaneHandlers.open();
     if (isMobile) {
       setMobilePane("article");
     }
@@ -394,29 +197,15 @@ export function WikiPage() {
 
   const handleOpenCategoryEditor = () => {
     setEditorTab("categories");
-    setShowEditorPane(true);
-    setIsCreatingArticle(false);
+    editorPaneHandlers.open();
     if (isMobile) {
       setMobilePane("article");
     }
   };
 
   const handleExitArticleEditor = () => {
-    if (selectedArticle) {
-      setArticleTitle(selectedArticle.title);
-      setArticleBody(selectedArticle.body_json);
-      setArticleSortOrder(selectedArticle.sort_order);
-      setArticleCategoryId(selectedArticle.category_id);
-    } else {
-      setArticleTitle("");
-      setArticleBody(TIPTAP_DEFAULT_JSON);
-      setArticleSortOrder(0);
-      setArticleCategoryId("");
-    }
-    setShowEditorPane(false);
-    setIsCreatingArticle(false);
-    setPinnedIntent("none");
-    setArchiveIntent("none");
+    articleEditor.exitEditor();
+    editorPaneHandlers.close();
   };
 
   const handleCategoryFilterChange = (values: string[]) => {
@@ -424,58 +213,9 @@ export function WikiPage() {
     setSelectedCategoryId(values.length === 1 ? values[0] : undefined);
   };
 
-  const handleCreateCategory = () =>
-    createCategoryMutation.mutate({
-      name: categoryName.trim() || t("categoryEditor.defaultName"),
-    });
-
-  const handleCategoryDraftNameChange = (categoryId: string, value: string) => {
-    setCategoryDrafts((current) =>
-      current.map((category) =>
-        category.id === categoryId ? { ...category, name: value } : category,
-      ),
-    );
-  };
-
-  const handleCategoryDraftParentIdChange = (categoryId: string, value: string) => {
-    setCategoryDrafts((current) =>
-      current.map((category) =>
-        category.id === categoryId ? { ...category, parent_id: value } : category,
-      ),
-    );
-  };
-
-  const handleCategoryReorder = (activeId: string, overId: string) => {
-    setCategoryDrafts((current) => {
-      const oldIndex = current.findIndex((category) => category.id === activeId);
-      const newIndex = current.findIndex((category) => category.id === overId);
-      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
-        return current;
-      }
-      return arrayMove(current, oldIndex, newIndex).map((category, index) => ({
-        ...category,
-        sort_order: index,
-      }));
-    });
-  };
-
-  const handleSaveCategoryDrafts = () => {
-    void saveCategoryDraftsMutation.mutateAsync(categoryDrafts);
-  };
-
   const handleCloseCategoryEditorWithoutSave = () => {
-    const resetDrafts = [...categories]
-      .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
-      .map((category) => ({
-        id: category.id,
-        name: category.name,
-        slug: category.slug,
-        parent_id: category.parent_id ?? "",
-        sort_order: category.sort_order,
-      }));
-    setCategoryDrafts(resetDrafts);
-    setShowEditorPane(false);
-    setIsCreatingArticle(false);
+    categoryEditor.resetCategoryDrafts();
+    editorPaneHandlers.close();
   };
 
   const handleDeleteCategory = (categoryId: string) => {
@@ -490,77 +230,9 @@ export function WikiPage() {
         cancel: t("common:action.cancel"),
         confirm: t("common:action.delete"),
       },
-      onConfirm: () => deleteCategoryMutation.mutate(categoryId),
+      onConfirm: () => categoryEditor.deleteCategory(categoryId),
     });
   };
-
-  const handleSaveSelectedArticle = () => {
-    if (!selectedArticle) return;
-    const payload: Record<string, unknown> = {
-      title: articleTitle,
-      body_json: articleBody,
-      sort_order: articleSortOrder,
-      category_id: articleCategoryId || selectedArticle.category_id,
-    };
-    if (pinnedIntent === "pin") {
-      payload.pinned = true;
-    }
-    if (pinnedIntent === "unpin") {
-      payload.pinned = false;
-    }
-    if (archiveIntent === "archive") {
-      payload.archived_at = new Date().toISOString();
-    }
-    if (archiveIntent === "unarchive") {
-      payload.archived_at = null;
-    }
-    updateArticleMutation.mutate({
-      id: selectedArticle.id,
-      payload,
-    });
-  };
-
-  const handleTogglePinnedIntent = () => {
-    if (!selectedArticle) return;
-    setPinnedIntent((current) => {
-      if (selectedArticle.pinned) {
-        return current === "unpin" ? "none" : "unpin";
-      }
-      return current === "pin" ? "none" : "pin";
-    });
-  };
-
-  const handleToggleArchiveIntent = () => {
-    if (!selectedArticle) return;
-    setArchiveIntent((current) => {
-      if (selectedArticle.archived_at) {
-        return current === "unarchive" ? "none" : "unarchive";
-      }
-      return current === "archive" ? "none" : "archive";
-    });
-  };
-
-  const handleUploadWikiArticleImage = async (file: File) => {
-    if (!selectedArticle) {
-      throw new Error("Save article first before uploading images");
-    }
-    const uploaded = await uploadWikiArticleImages(selectedArticle.id, [file]);
-    const key = uploaded.keys[0];
-    if (!key) {
-      throw new Error("Image upload returned no key");
-    }
-    return key;
-  };
-
-  const canCreateArticle = Boolean(articleCategoryId || selectedCategoryId || selectedCategoryIds[0] || categories[0]?.id);
-  const canSaveCategoryDrafts = hasCategoryDraftChanges && !saveCategoryDraftsMutation.isPending;
-  const handleCreateArticle = () =>
-    createArticleMutation.mutate({
-      title: articleTitle || t("articleEditor.defaultTitle"),
-      category_id: articleCategoryId || selectedCategoryId || selectedCategoryIds[0] || categories[0]?.id || "",
-      body_json: articleBody || TIPTAP_DEFAULT_JSON,
-      sort_order: articleSortOrder,
-    });
 
   const renderEditorPane = (mobileMode: boolean) => (
     <Stack
@@ -576,48 +248,48 @@ export function WikiPage() {
       {editorTab === "categories" ? (
         <WikiCategoryEditorCard
           canEdit={canEdit}
-          categoryName={categoryName}
-          categoryDrafts={categoryDrafts}
-          isCreating={createCategoryMutation.isPending}
-          isSavingDrafts={saveCategoryDraftsMutation.isPending}
-          canSaveDrafts={canSaveCategoryDrafts}
-          deletingCategoryId={deletingCategoryId}
-          onCategoryNameChange={setCategoryName}
-          onCreateCategory={handleCreateCategory}
-          onSaveDrafts={handleSaveCategoryDrafts}
+          categoryName={categoryEditor.categoryName}
+          categoryDrafts={categoryEditor.categoryDrafts}
+          isCreating={categoryEditor.isCreating}
+          isSavingDrafts={categoryEditor.isSavingDrafts}
+          canSaveDrafts={categoryEditor.canSaveDrafts}
+          deletingCategoryId={categoryEditor.deletingCategoryId}
+          onCategoryNameChange={categoryEditor.setCategoryName}
+          onCreateCategory={categoryEditor.createCategory}
+          onSaveDrafts={categoryEditor.saveCategoryDrafts}
           onCloseEditor={handleCloseCategoryEditorWithoutSave}
-          onCategoryDraftNameChange={handleCategoryDraftNameChange}
-          onCategoryDraftParentIdChange={handleCategoryDraftParentIdChange}
-          onCategoryReorder={handleCategoryReorder}
+          onCategoryDraftNameChange={categoryEditor.setCategoryDraftName}
+          onCategoryDraftParentIdChange={categoryEditor.setCategoryDraftParentId}
+          onCategoryReorder={categoryEditor.reorderCategories}
           onDeleteCategory={handleDeleteCategory}
         />
       ) : (
         <WikiArticleEditorCard
           canEdit={canEdit}
-          isCreatingArticle={isCreatingArticle}
+          isCreatingArticle={articleEditor.isCreatingArticle}
           selectedArticle={selectedArticle}
           selectedCategory={selectedCategory}
           isLoading={false}
           isError={false}
           warningMessage={t("common:loadError")}
-          articleTitle={articleTitle}
-          articleBody={articleBody}
-          articleCategoryId={articleCategoryId}
+          articleTitle={articleEditor.articleTitle}
+          articleBody={articleEditor.articleBody}
+          articleCategoryId={articleEditor.articleCategoryId}
           categoryOptions={categoryOptions}
-          pinnedIntent={pinnedIntent}
-          archiveIntent={archiveIntent}
-          isSaving={updateArticleMutation.isPending}
-          isCreating={createArticleMutation.isPending}
-          canCreateArticle={canCreateArticle}
-          onArticleTitleChange={setArticleTitle}
-          onArticleBodyChange={setArticleBody}
-          onArticleCategoryChange={setArticleCategoryId}
-          onSaveArticle={handleSaveSelectedArticle}
-          onTogglePinnedIntent={handleTogglePinnedIntent}
-          onToggleArchiveIntent={handleToggleArchiveIntent}
-          onCreateArticle={handleCreateArticle}
+          pinnedIntent={articleEditor.pinnedIntent}
+          archiveIntent={articleEditor.archiveIntent}
+          isSaving={articleEditor.isSaving}
+          isCreating={articleEditor.isCreating}
+          canCreateArticle={articleEditor.canCreateArticle}
+          onArticleTitleChange={articleEditor.setArticleTitle}
+          onArticleBodyChange={articleEditor.setArticleBody}
+          onArticleCategoryChange={articleEditor.setArticleCategoryId}
+          onSaveArticle={articleEditor.saveSelectedArticle}
+          onTogglePinnedIntent={articleEditor.togglePinnedIntent}
+          onToggleArchiveIntent={articleEditor.toggleArchiveIntent}
+          onCreateArticle={articleEditor.createArticle}
           onExitEditor={handleExitArticleEditor}
-          onImageUpload={handleUploadWikiArticleImage}
+          onImageUpload={articleEditor.uploadWikiArticleImage}
           emptyTitle={t("empty")}
         />
       )}
@@ -638,8 +310,12 @@ export function WikiPage() {
       <InfiniCard className="wiki-article-reader-card" interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Stack gap={12}>
-            {!selectedArticle ? (
-              <EmptyState title={t("empty")} />
+            {(detailQuery.isLoading || (detailQuery.isFetching && !detailQuery.data)) && selectedSlug ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: "3rem 0" }}>
+                <Text c="dimmed">{t("common:loading")}</Text>
+              </div>
+            ) : !selectedArticle ? (
+              <EmptyState title={t("welcome.title")} description={t("welcome.description")} />
             ) : (
               <>
                 <Group justify="space-between" align="start">

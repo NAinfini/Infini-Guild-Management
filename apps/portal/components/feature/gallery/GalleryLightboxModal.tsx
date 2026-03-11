@@ -1,5 +1,6 @@
 ﻿import { LeftOutlined, RightOutlined } from "@portal/utils/icons";
 import { Alert, Button, Group, Modal, Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import type { GalleryItem } from "./shared";
 
 type GalleryLightboxModalProps = {
@@ -31,21 +32,22 @@ export function GalleryLightboxModal({
   toEmbedVideoUrl,
   fieldR2ObjectLabel,
 }: GalleryLightboxModalProps) {
+  const { t } = useTranslation("gallery");
   return (
     <Modal opened={open} onClose={onClose} size="980px" withCloseButton>
       {item ? (
         <div className="gallery-lightbox">
           <div className="gallery-lightbox__toolbar">
             <Group gap={8}>
-              <Button onClick={onPrev} aria-label="Previous item">
+              <Button onClick={onPrev} aria-label={t("aria.prevItem")}>
                 <LeftOutlined />
               </Button>
-              <Button onClick={onNext} aria-label="Next item">
+              <Button onClick={onNext} aria-label={t("aria.nextItem")}>
                 <RightOutlined />
               </Button>
-              <Button onClick={() => setZoom((value) => Math.max(1, Number((value - 0.2).toFixed(2))))}>-</Button>
-              <Button onClick={() => setZoom(1)}>100%</Button>
-              <Button onClick={() => setZoom((value) => Math.min(2.6, Number((value + 0.2).toFixed(2))))}>+</Button>
+              <Button onClick={() => setZoom((value) => Math.max(1, Number((value - 0.2).toFixed(2))))} aria-label={t("aria.zoomOut")}>-</Button>
+              <Button onClick={() => setZoom(1)} aria-label={t("aria.zoomReset")}>100%</Button>
+              <Button onClick={() => setZoom((value) => Math.min(2.6, Number((value + 0.2).toFixed(2))))} aria-label={t("aria.zoomIn")}>+</Button>
             </Group>
             <Text c="dimmed">
               {Math.max(1, index + 1)} / {total}

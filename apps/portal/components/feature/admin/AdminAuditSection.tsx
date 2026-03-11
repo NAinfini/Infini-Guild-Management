@@ -1,13 +1,15 @@
-import { Button, Group, Stack, TextInput } from "@mantine/core";
+import type { AuditLogEntry } from "@guild/shared";
+import { Button, Group, Stack, TextInput, Title } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import type { ReactNode } from "react";
-import type { fetchAdminAuditLog } from "../../../api/queries/admin";
+import { useTranslation } from "react-i18next";
+import { useAuthStore } from "../../../stores/auth";
+import { formatAuditDiffHeader, formatDateTime, maskIdentifier } from "../../../utils/admin";
+import { canManageRoles, canManageBot, canViewStatus } from "../../../utils/permissions";
 import { AuditLogViewer } from "./AuditLogViewer";
 
-type AuditRow = Awaited<ReturnType<typeof fetchAdminAuditLog>>["data"][number];
+type AuditRow = AuditLogEntry;
 
 type AdminAuditSectionProps = {
-  heading: ReactNode;
   auditSearch: string;
   onAuditSearchChange: (value: string) => void;
   auditDateFrom: string;
@@ -17,29 +19,18 @@ type AdminAuditSectionProps = {
   onSetDatePreset: (preset: "1d" | "7d" | "1m") => void;
   onDownloadFilteredCsv: () => void;
   onDownloadFilteredJson: () => void;
-  searchPlaceholder: string;
-  lastDayLabel: string;
-  last7DaysLabel: string;
-  lastMonthLabel: string;
-  downloadFilteredCsvLabel: string;
-  downloadFilteredJsonLabel: string;
   exportAuditLogPending: boolean;
   auditLoading: boolean;
   auditError: boolean;
-  loadErrorMessage: string;
   auditRows: AuditRow[];
   auditPageCurrent: number;
   auditPageSize: number;
   auditTotal: number;
   onAuditPageChange: (nextPage: number) => void;
-  isAdmin: boolean;
-  maskIdentifier: (value: string, isAdmin: boolean) => string;
-  formatAuditDiffHeader: (diffTitle: string | null, detailText: string | null) => string;
-  formatDateTime: (iso: string | null) => string;
+  rolesData: import("@guild/shared").AdminRole[];
 };
 
 export function AdminAuditSection({
-  heading,
   auditSearch,
   onAuditSearchChange,
   auditDateFrom,
@@ -49,26 +40,28 @@ export function AdminAuditSection({
   onSetDatePreset,
   onDownloadFilteredCsv,
   onDownloadFilteredJson,
-  searchPlaceholder,
-  lastDayLabel,
-  last7DaysLabel,
-  lastMonthLabel,
-  downloadFilteredCsvLabel,
-  downloadFilteredJsonLabel,
   exportAuditLogPending,
   auditLoading,
   auditError,
-  loadErrorMessage,
   auditRows,
   auditPageCurrent,
   auditPageSize,
   auditTotal,
   onAuditPageChange,
-  isAdmin,
-  maskIdentifier,
-  formatAuditDiffHeader,
-  formatDateTime,
+  rolesData,
 }: AdminAuditSectionProps) {
+  const { t } = useTranslation("admin");
+  const { t: tc } = useTranslation("common");
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = Boolean(
+    user &&
+      (canManageRoles(rolesData, user.role) ||
+        canManageBot(rolesData, user.role) ||
+        canViewStatus(rolesData, user.role)),
+  );
+  const loadErrorMessage = tc("loadError");
+  const heading = <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.audit")}</Title>;
+
   return (
     <Stack gap={12}>
       {heading}
@@ -76,9 +69,9 @@ export function AdminAuditSection({
         <div style={{ padding: "1.2rem" }}>
           <Group wrap="wrap" gap={8}>
             <TextInput
-              placeholder={searchPlaceholder}
+              placeholder={t("audit.search")}
               style={{ width: 200 }}
-              aria-label="Search audit logs"
+              aria-label={t("audit.aria.search")}
               value={auditSearch}
               onChange={(event) => onAuditSearchChange(event.currentTarget.value)}
             />
@@ -86,32 +79,32 @@ export function AdminAuditSection({
               type="date"
               value={auditDateFrom}
               onChange={(event) => onAuditDateFromChange(event.currentTarget.value)}
-              aria-label="Audit date from"
+              aria-label={t("audit.aria.dateFrom")}
               style={{ width: 170 }}
             />
             <TextInput
               type="date"
               value={auditDateTo}
               onChange={(event) => onAuditDateToChange(event.currentTarget.value)}
-              aria-label="Audit date to"
+              aria-label={t("audit.aria.dateTo")}
               style={{ width: 170 }}
             />
-            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("1d")}>{lastDayLabel}</Button>
-            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("7d")}>{last7DaysLabel}</Button>
-            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("1m")}>{lastMonthLabel}</Button>
+            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("1d")}>{t("audit.lastDay")}</Button>
+            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("7d")}>{t("audit.last7Days")}</Button>
+            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("1m")}>{t("audit.lastMonth")}</Button>
             <Button
               variant="light"
               onClick={onDownloadFilteredCsv}
               loading={exportAuditLogPending}
             >
-              {downloadFilteredCsvLabel}
+              {t("audit.downloadFilteredCsv")}
             </Button>
             <Button
               variant="light"
               onClick={onDownloadFilteredJson}
               loading={exportAuditLogPending}
             >
-              {downloadFilteredJsonLabel}
+              {t("audit.downloadFilteredJson")}
             </Button>
           </Group>
         </div>
@@ -134,4 +127,3 @@ export function AdminAuditSection({
     </Stack>
   );
 }
-

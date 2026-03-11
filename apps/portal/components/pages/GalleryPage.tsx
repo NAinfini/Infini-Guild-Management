@@ -2,24 +2,27 @@ import { hasRoleAtLeast } from "@guild/shared";
 import { IconPhoto } from "@tabler/icons-react";
 import { MotionButton } from "@infini-dev-kit/frontend/components";
 import { Button, Group, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
+import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone";
+import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDebouncedValue, useDisclosure, useIntersection } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import {
+  batchDeleteGalleryItems,
   createGalleryVideo,
   deleteGalleryItem,
+  fetchGallery,
   uploadGalleryImages,
-} from "../../api/mutations/gallery";
-import { queryKeys } from "../../api/query-keys";
-import { fetchGallery } from "../../api/queries/gallery";
+} from "../../services/GalleryService";
 import { useAppError } from "../../hooks/useAppError";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
+import { queryKeys } from "../../services/PortalQueryKeys";
 import { useAuthStore } from "../../stores/auth";
-import { DEFAULT_IMAGE_WEBP_QUALITY, convertImageToWebP } from "../../utils/media-conversion";
-import { toEmbedVideoUrl } from "../../utils/video-embed";
+import { DEFAULT_IMAGE_WEBP_QUALITY, convertImageToWebP, toEmbedVideoUrl } from "@infini-dev-kit/frontend/utils";
 import { GalleryFiltersCard } from "../feature/gallery/GalleryFiltersCard";
 import { GalleryGrid } from "../feature/gallery/GalleryGrid";
 import { GalleryLightboxModal } from "../feature/gallery/GalleryLightboxModal";
@@ -36,7 +39,7 @@ function formatDateTime(iso: string): string {
 }
 
 function isHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
+  return /^(https?:\/\/|\/(?!\/)|\.\.?\/|data:image\/|blob:)/i.test(value);
 }
 
 export function GalleryPage() {
@@ -54,17 +57,18 @@ export function GalleryPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [search, setSearch] = useState("");
+  const [debouncedSearchRaw] = useDebouncedValue(search, 300);
+  const debouncedSearch = debouncedSearchRaw.trim().toLowerCase();
   const [videoUrl, setVideoUrl] = useState("");
   const [videoCaption, setVideoCaption] = useState("");
   const [uploadQueue, setUploadQueue] = useState<UploadTask[]>([]);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [addMediaModalOpen, setAddMediaModalOpen] = useState(false);
+  const [addMediaModalOpen, addMediaModalHandlers] = useDisclosure(false);
   const [addMediaTab, setAddMediaTab] = useState<"image" | "video">("image");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [lightboxId, setLightboxId] = useState<string | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState(1);
 
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const { ref: loadMoreRef, entry } = useIntersection({ rootMargin: "200px" });
 
   const galleryQuery = useInfiniteQuery({
     queryKey: queryKeys.gallery.list(
@@ -72,7 +76,7 @@ export function GalleryPage() {
       typeFilter ?? "all",
       dateFrom || "none",
       dateTo || "none",
-      search.trim().toLowerCase() || "none",
+      debouncedSearch || "none",
     ),
     queryFn: ({ pageParam }) =>
       fetchGallery({
@@ -81,7 +85,7 @@ export function GalleryPage() {
         type: typeFilter,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
-        search: search.trim() || undefined,
+        search: debouncedSearch || undefined,
         order: sortOrder,
       }),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
@@ -89,20 +93,10 @@ export function GalleryPage() {
   });
 
   useEffect(() => {
-    const node = loadMoreRef.current;
-    if (!node) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const first = entries[0];
-        if (!first?.isIntersecting) return;
-        if (!galleryQuery.hasNextPage || galleryQuery.isFetchingNextPage) return;
-        void galleryQuery.fetchNextPage();
-      },
-      { rootMargin: "200px" },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [galleryQuery]);
+    if (entry?.isIntersecting && galleryQuery.hasNextPage && !galleryQuery.isFetchingNextPage) {
+      void galleryQuery.fetchNextPage();
+    }
+  }, [entry?.isIntersecting, galleryQuery]);
 
   const createVideoMutation = useMutation({
     mutationFn: createGalleryVideo,
@@ -110,7 +104,7 @@ export function GalleryPage() {
       notifications.show({ color: "infini-success", message: t("message.videoCreated") });
       setVideoUrl("");
       setVideoCaption("");
-      setAddMediaModalOpen(false);
+      addMediaModalHandlers.close();
       await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
     },
     onError: (error) => {
@@ -130,10 +124,8 @@ export function GalleryPage() {
 
   const bulkDeleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      for (const id of ids) {
-        await deleteGalleryItem(id);
-      }
-      return ids.length;
+      const res = await batchDeleteGalleryItems(ids);
+      return res.deleted;
     },
     onSuccess: async (count) => {
       notifications.show({ color: "infini-success", message: t("message.bulkDeleted", { count }) });
@@ -184,22 +176,7 @@ export function GalleryPage() {
 
   const openAddMediaModal = (tab: "image" | "video") => {
     setAddMediaTab(tab);
-    setAddMediaModalOpen(true);
-  };
-
-  const handleDropzoneDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDropzoneDragLeave = () => {
-    setIsDragOver(false);
-  };
-
-  const handleDropzoneDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragOver(false);
-    selectFiles(event.dataTransfer.files);
+    addMediaModalHandlers.open();
   };
 
   const runUploadQueue = useCallback(async () => {
@@ -208,6 +185,7 @@ export function GalleryPage() {
     }
 
     const pending = uploadQueue.filter((item) => item.status === "queued");
+    let failedCount = 0;
     for (const task of pending) {
       setUploadQueue((current) =>
         current.map((item) =>
@@ -234,6 +212,7 @@ export function GalleryPage() {
           ),
         );
       } catch (error) {
+        failedCount++;
         const fallback = t("message.uploadFailed");
         const errorText = error instanceof Error ? error.message : fallback;
         setUploadQueue((current) =>
@@ -251,7 +230,9 @@ export function GalleryPage() {
     }
 
     await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
-    notifications.show({ color: "infini-success", message: t("message.uploaded") });
+    if (failedCount === 0) {
+      notifications.show({ color: "infini-success", message: t("message.uploaded") });
+    }
   }, [queuedCount, queryClient, t, uploadQueue]);
 
   const clearFinishedUploads = useCallback(() => {
@@ -269,23 +250,23 @@ export function GalleryPage() {
     setLightboxId(target.id);
   };
 
-  const openLightboxPrev = () => {
+  const openLightboxPrev = useCallback(() => {
     if (rows.length === 0) return;
     if (lightboxIndex <= 0) {
       openLightboxAt(rows.length - 1);
       return;
     }
     openLightboxAt(lightboxIndex - 1);
-  };
+  }, [rows, lightboxIndex]);
 
-  const openLightboxNext = () => {
+  const openLightboxNext = useCallback(() => {
     if (rows.length === 0) return;
     if (lightboxIndex < 0 || lightboxIndex >= rows.length - 1) {
       openLightboxAt(0);
       return;
     }
     openLightboxAt(lightboxIndex + 1);
-  };
+  }, [rows, lightboxIndex]);
 
   useEffect(() => {
     if (!lightboxItem) {
@@ -304,17 +285,21 @@ export function GalleryPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [lightboxItem, lightboxIndex, rows.length]);
+  }, [lightboxItem, lightboxIndex, rows.length, openLightboxPrev, openLightboxNext]);
 
   useLoadWarningToast(galleryQuery.isError, t("common:loadErrorRetry"));
   const emptyTitle = typeFilter || dateFrom || dateTo ? t("empty.filtered") : t("empty.default");
-  const emptyDescription = canUpload ? t("empty.hintUpload") : undefined;
+  const emptyDescription = canUpload
+    ? t("empty.hintUpload")
+    : !user
+      ? t("empty.guest")
+      : undefined;
 
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconPhoto size={22} />} className="gallery-page">
       <Modal
         opened={addMediaModalOpen}
-        onClose={() => setAddMediaModalOpen(false)}
+        onClose={addMediaModalHandlers.close}
         title={t("modal.addMedia.title")}
         size="lg"
       >
@@ -326,21 +311,17 @@ export function GalleryPage() {
 
           <Tabs.Panel value="image" pt="sm">
             <Stack gap={10}>
-              <div
-                className={`gallery-dropzone gallery-dropzone--modal${isDragOver ? " gallery-dropzone--active" : ""}`}
-                onDragOver={handleDropzoneDragOver}
-                onDragLeave={handleDropzoneDragLeave}
-                onDrop={handleDropzoneDrop}
+              <Dropzone
+                onDrop={(files) => selectFiles(files)}
+                accept={IMAGE_MIME_TYPE}
+                maxSize={MAX_GALLERY_IMAGE_SIZE_BYTES}
+                className="gallery-dropzone gallery-dropzone--modal"
               >
-                <Text>{t("dropzone")}</Text>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={(event) => selectFiles(event.target.files)}
-                  aria-label="Select gallery images"
-                />
-              </div>
+                <Group justify="center" gap="xl" style={{ pointerEvents: "none" }}>
+                  <IconPhoto size={40} stroke={1.5} />
+                  <Text>{t("dropzone")}</Text>
+                </Group>
+              </Dropzone>
               <Group gap={8} wrap="wrap" justify="space-between">
                 <Group gap={8} wrap="wrap">
                   <MotionButton
@@ -463,10 +444,17 @@ export function GalleryPage() {
           setDateTo("");
         }}
         onToggleSelect={toggleSelect}
-        onDelete={(id) => deleteMutation.mutate(id)}
+        onDelete={(id) =>
+          modals.openConfirmModal({
+            title: t("confirm.delete.title"),
+            children: <Text size="sm">{t("confirm.delete.description")}</Text>,
+            labels: { confirm: t("action.delete"), cancel: t("common:cancel") },
+            confirmProps: { color: "infini-danger" },
+            onConfirm: () => deleteMutation.mutate(id),
+          })
+        }
         onOpenLightbox={setLightboxId}
         isHttpUrl={isHttpUrl}
-        toEmbedVideoUrl={toEmbedVideoUrl}
         formatDateTime={formatDateTime}
         actionDeleteLabel={t("action.delete")}
         fieldR2ObjectLabel={t("field.r2Object")}

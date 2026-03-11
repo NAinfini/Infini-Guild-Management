@@ -45,5 +45,6 @@
   "message.htmlCopied": "HTML copied",
   "message.generatedHtmlCopied": "Generated HTML copied",
   "theme.title": "Theme Showcase",
-  "theme.current": "Current theme:"
+  "theme.current": "Current theme:",
+  "sandbox.defaultTitle": "Guild Vanguard"
 }

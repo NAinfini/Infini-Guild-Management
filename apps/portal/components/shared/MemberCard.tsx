@@ -2,6 +2,7 @@
 import { CLASS_COLOR_GROUP, CLASS_NAMES } from "@guild/shared";
 import DOMPurify from "dompurify";
 import { memo, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import "./MemberCard.css";
 
 type MemberCardProps = {
@@ -61,6 +62,7 @@ export const MemberCard = memo(function MemberCard({
   selected = false,
   resolveMediaUrl = defaultMediaResolver,
 }: MemberCardProps) {
+  const { t } = useTranslation("common");
   const primaryClass = profile.classes[0] ?? null;
   const classGroup = resolveClassGroup(primaryClass);
   const status = getMemberStatus(user, profile);
@@ -70,7 +72,7 @@ export const MemberCard = memo(function MemberCard({
     () =>
       DOMPurify.sanitize(profile.title_html ?? "", {
         ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
-        ALLOWED_ATTR: ["style"],
+        ALLOWED_ATTR: [],
       }),
     [profile.title_html],
   );
@@ -82,11 +84,11 @@ export const MemberCard = memo(function MemberCard({
         className={`member-card member-card--compact member-card--${classGroup}${selected ? " member-card--selected" : ""}`}
         onClick={onClick}
         onDoubleClick={onDoubleClick}
-        aria-label={`Select ${user.username}`}
+        aria-label={t("a11y.select", { name: user.username })}
       >
         <span className="member-card__compact-username">{user.username}</span>
         <span className="member-card__compact-meta">{primaryClass ?? "-"}</span>
-        <span className="member-card__compact-meta">Power {profile.power}</span>
+        <span className="member-card__compact-meta">{t("member.power")} {profile.power}</span>
       </button>
     );
   }
@@ -97,13 +99,13 @@ export const MemberCard = memo(function MemberCard({
         type="button"
         className={`member-card member-card--full member-card--animated${selected ? " member-card--selected" : ""}`}
         tabIndex={-1}
-        aria-label={`Open profile for ${user.username}`}
+        aria-label={t("a11y.openProfile", { name: user.username })}
       >
         <div className="member-card__avatar-wrap">
           {avatarSrc ? (
             <img
               src={avatarSrc}
-              alt={`${user.username} avatar`}
+              alt={t("a11y.avatar", { name: user.username })}
               loading="lazy"
               decoding="async"
               className="member-card__avatar"
@@ -115,13 +117,13 @@ export const MemberCard = memo(function MemberCard({
           )}
           <span
             className={`member-card__status-dot member-card__status-dot--${status}`}
-            aria-label={`${status} status`}
+            aria-label={t("a11y.status", { status })}
           />
         </div>
 
         <div className="member-card__meta-row">
-          <span className="member-card__pill member-card__pill--photo">Photo {profile.images.length}</span>
-          <span className="member-card__pill member-card__pill--video">Video {profile.video_urls.length}</span>
+          <span className="member-card__pill member-card__pill--photo">{t("member.photo")} {profile.images.length}</span>
+          <span className="member-card__pill member-card__pill--video">{t("member.video")} {profile.video_urls.length}</span>
         </div>
 
         <div className="member-card__content">

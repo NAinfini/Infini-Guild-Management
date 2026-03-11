@@ -1,5 +1,6 @@
 ﻿import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { Group, Progress, Stack, Text, TextInput } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import type { UploadStatus, UploadTask } from "./shared";
 
 function progressByStatus(status: UploadStatus): number {
@@ -30,6 +31,8 @@ export function GalleryUploadQueueCard({
   captionPlaceholder,
   onCaptionChange,
 }: GalleryUploadQueueCardProps) {
+  const { t } = useTranslation("gallery");
+
   if (uploadQueue.length === 0) {
     return null;
   }
@@ -40,7 +43,7 @@ export function GalleryUploadQueueCard({
         <Stack gap={8}>
           <Text fw={600}>{uploadQueueTitle}</Text>
           <Text c="dimmed" size="sm">
-            Images are converted to WebP (80% quality) before upload.
+            {t("upload.webpHint")}
           </Text>
           {uploadQueue.map((task) => (
             <div key={task.id} aria-live="polite">
@@ -61,7 +64,7 @@ export function GalleryUploadQueueCard({
                 value={task.caption}
                 maxLength={200}
                 placeholder={captionPlaceholder}
-                aria-label={`Caption for ${task.file.name}`}
+                aria-label={t("upload.captionAria", { fileName: task.file.name })}
                 disabled={uploadingCount > 0 || task.status === "uploading" || task.status === "done"}
                 onChange={(event) => onCaptionChange(task.id, event.currentTarget.value)}
                 mt={6}

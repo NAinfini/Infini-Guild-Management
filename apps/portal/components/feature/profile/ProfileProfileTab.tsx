@@ -4,6 +4,7 @@ import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { Badge, Button, Group, NumberInput, Select, Stack, Text, TextInput, Textarea } from "@mantine/core";
 import { IconExternalLink, IconPlus, IconDeviceFloppy } from "@tabler/icons-react";
 import type { ReactNode } from "react";
+import DOMPurify from "dompurify";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 
@@ -58,14 +59,25 @@ export function ProfileProfileTab({
   return (
     <Stack gap={16}>
       <InfiniCard interactive={false}>
-        <Stack gap={14} style={{ padding: "1.2rem" }}>
+        <Group justify="flex-end" gap={8} p="1.2rem">
+          <Badge color={isDirty ? "infini-warning" : "infini-success"}>
+            {isDirty ? t("status.unsavedChanges") : t("status.saved")}
+          </Badge>
+          <Button onClick={onSaveProfile} loading={savePending} leftSection={<IconDeviceFloppy size={16} />}>
+            {t("action.saveProfile")}
+          </Button>
+        </Group>
+      </InfiniCard>
+
+      <InfiniCard interactive={false}>
+        <Stack gap={14} p="1.2rem">
           <Text fw={700} size="md">{t("section.basicInfo")}</Text>
 
           <TextInput
             label={t("field.wechat")}
             value={wechatName}
             onChange={(event) => onWechatNameChange(event.currentTarget.value)}
-            placeholder="WeChat"
+            placeholder={t("field.wechatPlaceholder")}
           />
           <NumberInput
             label={t("field.power")}
@@ -82,7 +94,7 @@ export function ProfileProfileTab({
       </InfiniCard>
 
       <InfiniCard interactive={false}>
-        <Stack gap={12} style={{ padding: "1.2rem" }}>
+        <Stack gap={12} p="1.2rem">
           <Text fw={700} size="md">{t("section.classes")}</Text>
           <Group gap={8} wrap="nowrap">
             <Select
@@ -106,7 +118,7 @@ export function ProfileProfileTab({
       </InfiniCard>
 
       <InfiniCard interactive={false}>
-        <Stack gap={12} style={{ padding: "1.2rem" }}>
+        <Stack gap={12} p="1.2rem">
           <Text fw={700} size="md">{t("section.about")}</Text>
           <TextInput
             label={
@@ -124,7 +136,7 @@ export function ProfileProfileTab({
           {titleHtml ? (
             <div>
               <Text c="dimmed" size="xs" mb={4}>{t("field.titlePreview")}</Text>
-              <div dangerouslySetInnerHTML={{ __html: titleHtml }} />
+              <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(titleHtml) }} />
             </div>
           ) : null}
           <Textarea
@@ -136,13 +148,6 @@ export function ProfileProfileTab({
           />
         </Stack>
       </InfiniCard>
-
-      <Group justify="flex-end" align="center">
-        <Badge color={isDirty ? "infini-warning" : "infini-success"}>
-          {isDirty ? t("status.unsavedChanges") : t("status.saved")}
-        </Badge>
-        <Button onClick={onSaveProfile} loading={savePending} leftSection={<IconDeviceFloppy size={16} />}>{t("action.saveProfile")}</Button>
-      </Group>
     </Stack>
   );
 }

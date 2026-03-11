@@ -13,7 +13,7 @@ import {
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { IconPin, IconCalendarTime, IconBrandDiscord, IconBrandWechat, IconDeviceFloppy, IconX } from "@tabler/icons-react";
-import { TipTapEditor, TIPTAP_DEFAULT_JSON } from "../../shared/TipTapEditor";
+import { TipTapEditor, TIPTAP_DEFAULT_JSON } from "@infini-dev-kit/frontend/components";
 
 function toDateTimeLocalValue(value: string): string {
   return value ? value.replace(" ", "T") : "";
@@ -95,12 +95,8 @@ export function CreateAnnouncementModal({
     const hasTime = publishAt.trim().length > 0;
     if (scheduleEnabled && hasTime) {
       setConfirmAction("publish");
-    } else if (scheduleEnabled && !hasTime) {
-      setConfirmAction("publishNow");
-    } else if (!scheduleEnabled && hasTime) {
-      setConfirmAction("publishNow");
     } else {
-      setConfirmAction("publish");
+      setConfirmAction("publishNow");
     }
   };
 
@@ -213,7 +209,7 @@ export function CreateAnnouncementModal({
                 <Text size="xs" c="dimmed">{t("field.publishAt")}</Text>
                 <TextInput
                   type="datetime-local"
-                  value={toDateTimeLocalValue(publishAt)}
+                  value={toDateTimeLocalValue(publishAt) || undefined}
                   onChange={(event) => setPublishAt(fromDateTimeLocalValue(event.currentTarget.value))}
                   aria-label="Announcement publish time"
                   size="sm"
@@ -223,7 +219,7 @@ export function CreateAnnouncementModal({
                 <Text size="xs" c="dimmed">{t("field.expiresAt")}</Text>
                 <TextInput
                   type="datetime-local"
-                  value={toDateTimeLocalValue(expiresAt)}
+                  value={toDateTimeLocalValue(expiresAt) || undefined}
                   onChange={(event) => setExpiresAt(fromDateTimeLocalValue(event.currentTarget.value))}
                   aria-label="Announcement expire time"
                   size="sm"

@@ -11,7 +11,7 @@
 - **Object Storage:** Cloudflare R2
 - **Realtime:** Cloudflare Durable Objects (WebSocket)
 - **Package manager:** pnpm 10.6.2
-- **Node.js:** 20 (see `.nvmrc`)
+- **Node.js:** 20+
 
 ## Relationship to Infini Dev Kit
 
@@ -33,6 +33,7 @@ pnpm db:generate    # Generate Drizzle migrations from schema changes
 pnpm db:studio      # Drizzle visual editor
 pnpm db:mock:rebuild  # Reset local D1 (drop + apply migrations)
 pnpm db:mock:init     # Apply migrations only (keep data)
+pnpm db:mock:seed     # Reseed local D1 through the running dev worker
 pnpm db:mock:status   # Show local table list
 ```
 
@@ -55,10 +56,11 @@ apps/
 | `package.json` | Root workspace config, all scripts |
 | `tsconfig.json` | Root tsconfig with path aliases (`@infini-dev-kit/*`, `@portal`, `@guild/shared`) |
 | `wrangler.jsonc` | Cloudflare Worker config (D1, R2, Durable Objects, crons) |
-| `.nvmrc` | Node.js version pin |
 | `.npmrc` | pnpm config |
 | `README.md` | Human-readable documentation |
 | `AGENTS.md` | This file |
+| `eslint.config.js` | Root ESLint flat config |
+| **docs/** | Planning specs, database ER diagram |
 
 ### apps/shared/ — Shared Contract
 
@@ -79,7 +81,7 @@ apps/
 | `constants/event-types.ts` | Event type categories |
 | `constants/media.ts` | File size limits, image quotas |
 | `constants/errors.ts` | Error codes and HTTP status mappings |
-| `api/` | Endpoint registry |
+| `api/registry.ts` | Endpoint registry |
 | `index.ts` | Barrel export |
 
 ### apps/worker/ — Backend (Cloudflare Worker)
@@ -100,31 +102,50 @@ apps/
 | **middleware/** | |
 | `middleware/session.ts` | `sessionMiddleware`, `requireSessionMiddleware` |
 | `middleware/rbac.ts` | `requireRole()` — role-based access control |
-| `middleware/rate-limit.ts` | `createRateLimitMiddleware()` — token bucket |
+| `middleware/rate-limit.ts` | `createRateLimitMiddleware()` — Cache API sliding window rate limiter |
 | `middleware/hmac.ts` | `hmacMiddleware` — HMAC-SHA256 for bot requests |
+| `middleware/security-headers.ts` | Security headers middleware (CSP, HSTS, etc.) |
 | `middleware/etag.ts` | `etagMiddleware` — HTTP caching |
 | `middleware/error-handler.ts` | `handleAppError()` — global error handler |
+| `middleware/request-id.ts` | Request ID generation middleware |
 | **services/** | |
 | `services/auth.ts` | PBKDF2 password hashing, session management (30-day TTL) |
 | `services/bot-dispatch.ts` | Queue bot tasks to Discord/WeChat, retry failed tasks |
 | `services/push.ts` | WebSocket push notifications via Durable Objects |
 | `services/media.ts` | R2 media storage with content-type normalization |
 | `services/audit.ts` | Audit trail logging |
-| `services/search.ts` | Cmd+K search index |
+| `services/search.ts` | Search index (stub — not yet implemented) |
+| `services/result.ts` | `Result<T,E>` type for service return values |
+| `services/AuthService.ts` | Auth business logic (login, register, session) |
+| `services/EventService.ts` | Event business logic (validation, recurrence, attachments) |
+| `services/AnnouncementService.ts` | Announcement lifecycle management |
+| `services/GuildWarService.ts` | War analytics, team validation, conflict detection |
+| `services/AdminService.ts` | Bulk ops, audit queries, invite management |
+| `services/UserService.ts` | User profile business logic |
+| `services/WikiService.ts` | Wiki article and category management |
+| `services/GalleryService.ts` | Gallery CRUD operations |
+| `services/InternalBotService.ts` | Internal bot task processing |
 | **crons/** | |
 | `crons/event-instance-gen.ts` | Generate recurring event instances 56 days ahead (daily 00:00 UTC) |
 | `crons/announcement-publish.ts` | Publish scheduled announcements (every 15 min) |
 | `crons/bot-reminder.ts` | Send event reminders 15 min before start (every 15 min) |
 | `crons/audit-archive.ts` | Archive audit logs >90 days to R2 (daily 02:00 UTC) |
 | `crons/media-orphan-cleanup.ts` | Delete R2 media for deleted users (daily 03:00 UTC) |
+| `crons/event-auto-archive.ts` | Auto-archive past events (every 15 min) |
 | **db/** | |
 | `db/schema/` | Modular Drizzle schema (see Database section below) |
 | `db/schema/index.ts` | Barrel export for all schema modules |
 | `db/migrations/` | D1 SQL migrations |
 | `db/versions/` | Migration version snapshots |
 | `db/seed.ts` | Mock data seeder |
+| `scripts/seed-local-d1.mjs` | Wait for local worker health and reseed D1 via `/api/dev/reseed` |
 | **durable-objects/** | |
 | `durable-objects/WebSocketDO.ts` | WebSocket Durable Object for realtime push |
+| **tests/** | |
+| `tests/events.test.ts` | Event endpoint integration tests |
+| `tests/contracts/events.test.ts` | Event API contract tests |
+| `tests/contracts/legacy-cleanup.test.ts` | Legacy cleanup contract tests |
+| `tests/integration-smoke.ts` | Integration smoke test runner |
 
 ### apps/portal/ — Frontend (React SPA)
 
@@ -153,37 +174,86 @@ apps/
 | `components/layout/AppShell.tsx` | Main layout wrapper |
 | `components/layout/BottomNav.tsx` | Mobile bottom navigation |
 | `components/layout/CmdKSearch.tsx` | Global search modal (Ctrl+K / Cmd+K) |
-| `components/shared/` | Reusable components (MemberCard, TipTapEditor, AvailabilityGridEditor, etc.) |
-| `components/feature/` | Feature-specific components (admin, announcements, events, gallery, guild-war, profile, wiki) |
+| `components/layout/PageLayout.tsx` | Page-level layout wrapper |
+| `components/layout/UserProfileDropdown.tsx` | User profile dropdown menu |
+| `components/layout/ViewingAsSelector.tsx` | Admin "view as" role selector |
+| `components/shared/` | Reusable components — AppErrorOverlay, EmptyState, FilterToolbar, MemberCard, MemberGrid2x5, OverlayRegistrar, ProfileModal |
+| `components/feature/` | Feature-specific components across 7 domains (admin, announcements, events, gallery, guild-war, profile, wiki) |
 | `components/dashboard/` | Dashboard card components (ActiveMembersCard, LastWarCard, MySignupsCard, UpcomingEventsCard, NotificationsCard) |
+| **services/** | |
+| `services/AdminService.ts` | Admin operations (users, roles, invites, audit) |
+| `services/AnnouncementService.ts` | Announcement CRUD and lifecycle |
+| `services/AttachmentService.ts` | Attachment handling and validation |
+| `services/AuthService.ts` | Auth operations (login, register, session) |
+| `services/EventService.ts` | Event CRUD and participant management |
+| `services/GalleryService.ts` | Gallery uploads and listing |
+| `services/GuildWarService.ts` | War history, teams, stats |
+| `services/PortalQueryKeys.ts` | Centralized TanStack Query key factory |
+| `services/RoleService.ts` | Role permission checks |
+| `services/UserService.ts` | User profile operations |
+| `services/WikiService.ts` | Wiki article and category operations |
 | **stores/** | |
 | `stores/auth.ts` | `useAuthStore` — Zustand session state |
 | `stores/preferences.ts` | `usePreferencesStore` — theme, locale preferences |
 | `stores/notifications.ts` | `useNotificationsStore` — push notification queue |
+| `stores/guildWar.ts` | `useGuildWarStore` — analytics state (Zustand) |
 | **hooks/** | |
 | `hooks/useBeforeUnloadPrompt.ts` | Warn on unsaved changes |
 | `hooks/useExternalView.ts` | External view mode detection |
 | `hooks/useMediaUpload.ts` | File upload with validation |
 | `hooks/useNotificationSync.ts` | WebSocket notification sync |
+| `hooks/useAppError.ts` | Global error handling |
+| `hooks/useColorPicker.ts` | Color picker state |
+| `hooks/useLoadWarningToast.ts` | Load warning toast display |
+| `hooks/useNotificationPresentation.ts` | Notification display logic |
+| `hooks/useAnnouncementsController.ts` | Announcements page controller |
+| `hooks/useEventsFiltering.ts` | Event list filtering logic |
+| `hooks/useEventsMutations.ts` | Event mutation hooks |
+| `hooks/useProfileFormState.ts` | Profile form state management |
+| `hooks/useProfileMutations.ts` | Profile mutation hooks |
+| `hooks/useWikiArticleEditor.ts` | Wiki article editing state |
+| `hooks/useWikiCategoryEditor.ts` | Wiki category editing state |
+| `hooks/useAdminAuditFilter.ts` | Admin audit log filter state |
+| `hooks/useAdminBotController.ts` | Admin bot settings controller |
+| `hooks/useAdminInviteController.ts` | Admin invite management |
+| `hooks/useAdminMemberDetail.ts` | Admin member detail modal |
+| `hooks/useAdminMutations.ts` | Admin mutation hooks |
+| `hooks/useAdminStatusController.ts` | Admin system status controller |
 | `hooks/data/useEventsData.ts` | Events data fetching |
 | `hooks/data/useGuildWarData.ts` | Guild war data fetching |
 | `hooks/data/useProfileData.ts` | Profile data fetching |
 | `hooks/data/useAdminData.ts` | Admin data fetching |
+| `hooks/guild-war/useGuildWarAnalytics.ts` | War analytics computations |
+| `hooks/guild-war/useGuildWarDragController.tsx` | Drag-and-drop team controller |
+| `hooks/guild-war/useGuildWarDragData.ts` | Drag board data preparation |
+| `hooks/guild-war/useGuildWarHistory.tsx` | War history tab controller |
+| `hooks/guild-war/useGuildWarMutations.ts` | Guild war mutation hooks |
+| `hooks/guild-war/useGuildWarSearch.ts` | War member search |
+| **utils/** | |
+| `utils/date.ts` | Date formatting utilities |
+| `utils/copy.ts` | Clipboard copy helpers |
+| `utils/external-view.ts` | External view mode utilities |
+| `utils/icons.tsx` | Icon mappings |
+| `utils/permissions.ts` | Permission check helpers |
+| `utils/availability.ts` | Availability grid calculations |
+| `utils/admin.ts` | Admin utility functions |
 | **i18n/** | |
-| `i18n/en/` | English translations |
-| `i18n/zh/` | Chinese translations |
+| `i18n/en/` | English translations (14 namespace files) |
+| `i18n/zh/` | Chinese translations (14 namespace files) |
 
 ### apps/bot-runtime/ — Bot Runtime (Node.js)
 
 | Path | Purpose |
 |------|---------|
 | `index.ts` | Entry point — boots Discord + WeChat adapters |
+| `config.ts` | Environment configuration |
 | `task-receiver.ts` | HMAC-verified HTTP endpoint (port 3100) |
 | `worker-client.ts` | Client for Worker internal APIs |
+| `devkit-smoke.ts` | Dev-Kit integration smoke test |
 | `discord/` | Discord.js adapter, commands, formatters, reactions |
 | `wechat/` | Wechaty adapter (stub, extensible) |
 
-### doc/Planning/ — Feature Specs
+### docs/Planning/ — Feature Specs
 
 | File | Feature |
 |------|---------|
@@ -378,3 +448,21 @@ Aliases must be kept in sync between:
 - Every page must have a route in `apps/portal/router.tsx`.
 - Every Zod schema must be exported from `apps/shared/index.ts`.
 - Delete files completely when removing — do not leave dead imports or commented-out references.
+<!-- TRELLIS:START -->
+# Trellis Instructions
+
+These instructions are for AI assistants working in this project.
+
+Use the `/trellis:start` command when starting a new session to:
+- Initialize your developer identity
+- Understand current project context
+- Read relevant guidelines
+
+Use `@/.trellis/` to learn:
+- Development workflow (`workflow.md`)
+- Project structure guidelines (`spec/`)
+- Developer workspace (`workspace/`)
+
+Keep this managed block so 'trellis update' can refresh the instructions.
+
+<!-- TRELLIS:END -->

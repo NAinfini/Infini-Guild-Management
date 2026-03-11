@@ -1,17 +1,17 @@
 ﻿import { DepthButton, InfiniCard } from "@infini-dev-kit/frontend/components";
 import {
   Alert,
+  ColorPicker,
   Group,
   Modal,
-  SimpleGrid,
   Slider,
-  Stack,
   Text,
   TextInput,
   Textarea,
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { useLocalStorage } from "@mantine/hooks";
 import {
   IconBold,
   IconCopy,
@@ -23,113 +23,27 @@ import {
   IconTool,
   IconUnderline,
 } from "@tabler/icons-react";
-import DOMPurify from "dompurify";
-import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useDisclosure } from "@mantine/hooks";
 import { useExternalView } from "../../hooks/useExternalView";
 import { copyPlainText } from "../../utils/copy";
 import { FormatPainterOutlined } from "../../utils/icons";
 import { PageLayout } from "../layout/PageLayout";
 import "./ToolsPage.css";
+import { useMemo, useState } from "react";
+import DOMPurify from "dompurify";
 
-const RECENT_COLORS_STORAGE_KEY = "tools.recentColors";
-const OPACITY_STORAGE_KEY = "tools.opacity";
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
-  const sat = clamp(s, 0, 100) / 100;
-  const lig = clamp(l, 0, 100) / 100;
-  const hue = ((h % 360) + 360) % 360;
-  const c = (1 - Math.abs(2 * lig - 1)) * sat;
-  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
-  const m = lig - c / 2;
-
-  let r = 0;
-  let g = 0;
-  let b = 0;
-
-  if (hue < 60) {
-    r = c;
-    g = x;
-  } else if (hue < 120) {
-    r = x;
-    g = c;
-  } else if (hue < 180) {
-    g = c;
-    b = x;
-  } else if (hue < 240) {
-    g = x;
-    b = c;
-  } else if (hue < 300) {
-    r = x;
-    b = c;
-  } else {
-    r = c;
-    b = x;
-  }
-
-  return {
-    r: Math.round((r + m) * 255),
-    g: Math.round((g + m) * 255),
-    b: Math.round((b + m) * 255),
-  };
-}
-
-function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
-  const rn = r / 255;
-  const gn = g / 255;
-  const bn = b / 255;
-  const max = Math.max(rn, gn, bn);
-  const min = Math.min(rn, gn, bn);
-  const delta = max - min;
-
-  let h = 0;
-  if (delta !== 0) {
-    if (max === rn) h = ((gn - bn) / delta) % 6;
-    else if (max === gn) h = (bn - rn) / delta + 2;
-    else h = (rn - gn) / delta + 4;
-  }
-  h = Math.round(h * 60);
-  if (h < 0) h += 360;
-
-  const l = (max + min) / 2;
-  const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
-
-  return {
-    h,
-    s: Math.round(s * 100),
-    l: Math.round(l * 100),
-  };
-}
-
-function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
-  const normalized = hex.trim().replace(/^#/, "");
-  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return null;
-  return {
-    r: Number.parseInt(normalized.slice(0, 2), 16),
-    g: Number.parseInt(normalized.slice(2, 4), 16),
-    b: Number.parseInt(normalized.slice(4, 6), 16),
-  };
-}
-
-function toHex(value: number): string {
-  return clamp(Math.round(value), 0, 255)
-    .toString(16)
-    .padStart(2, "0");
-}
+const PRESET_COLORS = ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"];
 
 export function ToolsPage() {
   const { t } = useTranslation("tools");
   const isExternalView = useExternalView();
+  const [sandboxOpened, sandboxHandlers] = useDisclosure(false);
 
-  const [titleText, setTitleText] = useState("Guild Vanguard");
-  const [hue, setHue] = useState(210);
-  const [saturation, setSaturation] = useState(88);
-  const [lightness, setLightness] = useState(57);
-  const [opacity, setOpacity] = useState(100);
+  const [titleText, setTitleText] = useState(() => t("sandbox.defaultTitle"));
+  const [color, setColor] = useState("#1f6feb");
+  const [opacity, setOpacity] = useLocalStorage({ key: "tools.opacity", defaultValue: 100 });
+  const [recentColors, setRecentColors] = useLocalStorage<string[]>({ key: "tools.recentColors", defaultValue: [] });
   const [bold, setBold] = useState(true);
   const [italic, setItalic] = useState(false);
   const [underline, setUnderline] = useState(false);
@@ -137,17 +51,20 @@ export function ToolsPage() {
   const [fontSize, setFontSize] = useState(16);
   const [letterSpacing, setLetterSpacing] = useState(2);
   const [manualHtml, setManualHtml] = useState("");
-  const [recentColors, setRecentColors] = useState<string[]>([]);
-  const slPickerRef = useRef<HTMLDivElement | null>(null);
 
-  const presets = useMemo(
-    () => ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"],
-    [],
-  );
+  const applyColor = (value: string) => {
+    if (isExternalView) return;
+    setColor(value);
+    setRecentColors((current) => {
+      const next = [value.toLowerCase(), ...current.filter((item) => item.toLowerCase() !== value.toLowerCase())];
+      return next.slice(0, 8);
+    });
+  };
 
-  const rgb = useMemo(() => hslToRgb(hue, saturation, lightness), [hue, saturation, lightness]);
-  const hexColor = `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
   const alpha = opacity / 100;
+  const rgbaColor = color.startsWith("#") && color.length === 7
+    ? `rgba(${parseInt(color.slice(1, 3), 16)}, ${parseInt(color.slice(3, 5), 16)}, ${parseInt(color.slice(5, 7), 16)}, ${alpha.toFixed(2)})`
+    : `rgba(31, 111, 235, ${alpha.toFixed(2)})`;
 
   const generatedHtml = useMemo(() => {
     const decorations: string[] = [];
@@ -156,7 +73,7 @@ export function ToolsPage() {
     const textDecoration = decorations.length > 0 ? decorations.join(" ") : "none";
 
     const styleParts = [
-      `color: rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha.toFixed(2)})`,
+      `color: ${rgbaColor}`,
       bold ? "font-weight: 700" : "font-weight: 500",
       italic ? "font-style: italic" : "font-style: normal",
       `text-decoration: ${textDecoration}`,
@@ -168,94 +85,25 @@ export function ToolsPage() {
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
-      .replace(/\"/g, "&quot;")
+      .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+
     return `<span style="${styleParts.join("; ")}">${safeText}</span>`;
-  }, [alpha, bold, fontSize, italic, letterSpacing, rgb.b, rgb.g, rgb.r, strikethrough, titleText, underline]);
+  }, [alpha, bold, fontSize, italic, letterSpacing, rgbaColor, strikethrough, titleText, underline]);
 
   const safeHtml = useMemo(() => DOMPurify.sanitize(manualHtml.trim() || generatedHtml), [generatedHtml, manualHtml]);
   const previewMetaText = useMemo(() => {
     const segments = [
-      hexColor.toUpperCase(),
+      color.toUpperCase(),
       `${opacity}%`,
       `${fontSize}px`,
       bold ? t("sandbox.preview.fontWeight.bold") : t("sandbox.preview.fontWeight.regular"),
     ];
-    if (italic) {
-      segments.push(t("sandbox.preview.italic"));
-    }
-    if (underline) {
-      segments.push(t("sandbox.preview.underline"));
-    }
-    if (strikethrough) {
-      segments.push(t("sandbox.preview.strikethrough"));
-    }
+    if (italic) segments.push(t("sandbox.preview.italic"));
+    if (underline) segments.push(t("sandbox.preview.underline"));
+    if (strikethrough) segments.push(t("sandbox.preview.strikethrough"));
     return segments.join(" · ");
-  }, [bold, fontSize, hexColor, italic, opacity, strikethrough, t, underline]);
-
-  useEffect(() => {
-    const rawRecent = localStorage.getItem(RECENT_COLORS_STORAGE_KEY);
-    if (rawRecent) {
-      try {
-        const parsed = JSON.parse(rawRecent) as unknown;
-        if (Array.isArray(parsed)) {
-          const next = parsed.filter((item): item is string => typeof item === "string").slice(0, 8);
-          setRecentColors(next);
-        }
-      } catch {
-        // ignore invalid persisted value
-      }
-    }
-
-    const rawOpacity = Number.parseInt(localStorage.getItem(OPACITY_STORAGE_KEY) ?? "", 10);
-    if (Number.isFinite(rawOpacity)) {
-      setOpacity(clamp(rawOpacity, 0, 100));
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(RECENT_COLORS_STORAGE_KEY, JSON.stringify(recentColors.slice(0, 8)));
-  }, [recentColors]);
-
-  useEffect(() => {
-    localStorage.setItem(OPACITY_STORAGE_KEY, String(opacity));
-  }, [opacity]);
-
-  const applyHexColor = (value: string) => {
-    if (isExternalView) {
-      return;
-    }
-    const parsed = hexToRgb(value);
-    if (!parsed) return;
-    const converted = rgbToHsl(parsed.r, parsed.g, parsed.b);
-    setHue(converted.h);
-    setSaturation(converted.s);
-    setLightness(converted.l);
-    setRecentColors((current) => {
-      const next = [value.toLowerCase(), ...current.filter((item) => item.toLowerCase() !== value.toLowerCase())];
-      return next.slice(0, 8);
-    });
-  };
-
-  const setSatLightFromPointer = (clientX: number, clientY: number) => {
-    if (isExternalView) {
-      return;
-    }
-    const element = slPickerRef.current;
-    if (!element) {
-      return;
-    }
-    const rect = element.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) {
-      return;
-    }
-    const x = clamp((clientX - rect.left) / rect.width, 0, 1);
-    const y = clamp((clientY - rect.top) / rect.height, 0, 1);
-    setSaturation(Math.round(x * 100));
-    setLightness(Math.round((1 - y) * 100));
-  };
-
-  const [openModal, setOpenModal] = useState<string | null>(null);
+  }, [bold, fontSize, color, italic, opacity, strikethrough, t, underline]);
 
   const toolCards = [
     {
@@ -283,7 +131,7 @@ export function ToolsPage() {
               className="tool-card__btn"
               onClick={() => {
                 if (isExternalView) return;
-                setOpenModal(tool.key);
+                sandboxHandlers.open();
               }}
             >
               <div className="tool-card__content">
@@ -302,7 +150,7 @@ export function ToolsPage() {
         ))}
       </PageLayout.Grid>
 
-      <Modal title={t("sandbox.title")} opened={openModal === "sandbox"} onClose={() => setOpenModal(null)} size={920}>
+      <Modal title={t("sandbox.title")} opened={sandboxOpened} onClose={sandboxHandlers.close} size={920}>
         <div className={isExternalView ? "tools-readonly" : undefined}>
           <div className="sandbox">
             {/* ── Left: Controls ── */}
@@ -316,6 +164,7 @@ export function ToolsPage() {
                   placeholder={t("sandbox.placeholder")}
                   aria-label={t("sandbox.aria.titleInput")}
                   disabled={isExternalView}
+                  maxLength={200}
                 />
               </div>
 
@@ -326,92 +175,18 @@ export function ToolsPage() {
                   {t("sandbox.section.color")}
                 </Text>
 
-                <div className="sandbox__color-row">
-                  {/* Hue strip */}
-                  <div className="sandbox__hue-wrap">
-                    <input
-                      type="range"
-                      min={0}
-                      max={360}
-                      value={hue}
-                      onChange={(event) => setHue(Number(event.currentTarget.value))}
-                      className="sandbox__hue-slider"
-                      aria-label={t("sandbox.aria.hueSlider")}
-                      disabled={isExternalView}
-                    />
-                  </div>
+                <ColorPicker
+                  value={color}
+                  onChange={applyColor}
+                  format="hex"
+                  swatches={PRESET_COLORS}
+                  style={{ width: "100%", pointerEvents: isExternalView ? "none" : "auto", opacity: isExternalView ? 0.5 : 1 }}
+                />
 
-                  {/* SL picker */}
-                  <div
-                    ref={slPickerRef}
-                    role="application"
-                    aria-label={t("sandbox.aria.saturationLightnessPicker")}
-                    className="sandbox__sl-picker"
-                    onMouseDown={(event) => {
-                      setSatLightFromPointer(event.clientX, event.clientY);
-                      const onMove = (moveEvent: MouseEvent) => setSatLightFromPointer(moveEvent.clientX, moveEvent.clientY);
-                      const onUp = () => {
-                        window.removeEventListener("mousemove", onMove);
-                        window.removeEventListener("mouseup", onUp);
-                      };
-                      window.addEventListener("mousemove", onMove);
-                      window.addEventListener("mouseup", onUp);
-                    }}
-                    style={{
-                      background: `linear-gradient(to top, black, transparent), linear-gradient(to right, white, hsl(${hue}, 100%, 50%))`,
-                    }}
-                  >
-                    <div
-                      className="sandbox__sl-thumb"
-                      style={{
-                        left: `${saturation}%`,
-                        top: `${100 - lightness}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Hex + native picker + opacity */}
-                <div className="sandbox__color-inputs">
-                  <div className="sandbox__hex-group">
-                    <div className="sandbox__color-swatch" style={{ background: hexColor }} />
-                    <TextInput
-                      value={hexColor}
-                      onChange={(event) => applyHexColor(event.currentTarget.value)}
-                      className="sandbox__hex-input"
-                      placeholder="#1f6feb"
-                      aria-label={t("sandbox.aria.hexInput")}
-                      disabled={isExternalView}
-                    />
-                    <input
-                      type="color"
-                      value={hexColor}
-                      onChange={(event) => applyHexColor(event.currentTarget.value)}
-                      className="sandbox__native-picker"
-                      aria-label={t("sandbox.aria.nativeColorPicker")}
-                      disabled={isExternalView}
-                    />
-                  </div>
-                  <div className="sandbox__opacity-wrap">
-                    <Text size="xs" c="dimmed">{t("sandbox.label.opacity")}</Text>
-                    <Slider min={0} max={100} value={opacity} onChange={setOpacity} aria-label={t("sandbox.aria.opacitySlider")} disabled={isExternalView} className="sandbox__opacity-slider" />
-                    <Text size="xs" fw={500} className="sandbox__opacity-value">{opacity}%</Text>
-                  </div>
-                </div>
-
-                {/* Preset colors */}
-                <div className="sandbox__presets">
-                  {presets.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      className={`sandbox__preset-btn${hexColor.toLowerCase() === color ? " sandbox__preset-btn--active" : ""}`}
-                      style={{ background: color }}
-                      onClick={() => applyHexColor(color)}
-                      aria-label={t("sandbox.aria.useColor", { color })}
-                      disabled={isExternalView}
-                    />
-                  ))}
+                <div className="sandbox__opacity-wrap" style={{ marginTop: 12 }}>
+                  <Text size="xs" c="dimmed">{t("sandbox.label.opacity")}</Text>
+                  <Slider min={0} max={100} value={opacity} onChange={setOpacity} aria-label={t("sandbox.aria.opacitySlider")} disabled={isExternalView} className="sandbox__opacity-slider" />
+                  <Text size="xs" fw={500} className="sandbox__opacity-value">{opacity}%</Text>
                 </div>
 
                 {/* Recent colors */}
@@ -419,17 +194,17 @@ export function ToolsPage() {
                   <div className="sandbox__recent">
                     <Text size="xs" c="dimmed">{t("sandbox.label.recent")}</Text>
                     <div className="sandbox__recent-list">
-                      {recentColors.map((color) => (
+                      {recentColors.map((c) => (
                         <button
-                          key={color}
+                          key={c}
                           type="button"
                           className="sandbox__recent-btn"
-                          onClick={() => applyHexColor(color)}
-                          aria-label={t("sandbox.aria.useRecentColor", { color })}
+                          onClick={() => applyColor(c)}
+                          aria-label={t("sandbox.aria.useRecentColor", { color: c })}
                           disabled={isExternalView}
                         >
-                          <span className="sandbox__recent-dot" style={{ background: color }} />
-                          <span>{color}</span>
+                          <span className="sandbox__recent-dot" style={{ background: c }} />
+                          <span>{c}</span>
                         </button>
                       ))}
                     </div>

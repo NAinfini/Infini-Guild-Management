@@ -1,0 +1,139 @@
+import type { QueryClient } from "@tanstack/react-query";
+import { describe, expect, it, vi } from "vitest";
+import { queryKeys } from "../../api/query-keys";
+import { EventService, EventValidationError } from "../EventService";
+
+describe("EventService", () => {
+  it("creates events with trimmed payloads and extracted files", async () => {
+    const file = new File(["image"], "poster.png", { type: "image/png" });
+    const attachmentService = {
+      extractNewFiles: vi.fn(() => [file]),
+      extractExistingUrls: vi.fn(() => []),
+    };
+    const createEvent = vi.fn().mockResolvedValue({ id: "evt-1" });
+    const invalidateQueries = vi.fn().mockResolvedValue(undefined);
+    const service = new EventService({
+      attachmentService,
+      queryClient: { invalidateQueries } as unknown as QueryClient,
+      createEvent,
+      updateEvent: vi.fn(),
+      uploadEventImages: vi.fn(),
+    });
+
+    await service.saveEvent({
+      mode: "create",
+      editingEventId: null,
+      eventType: "social",
+      title: "  Guild Run  ",
+      description: "  Bring food  ",
+      startAt: "2026-03-20T19:00",
+      startIso: "2026-03-20T19:00:00.000Z",
+      endAt: "",
+      endIso: null,
+      capacity: "25",
+      pinned: false,
+      signupLocked: false,
+      attachmentItems: [{ id: "blob-1", src: "blob:poster", file }],
+    });
+
+    expect(createEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "social",
+        title: "Guild Run",
+        description: "Bring food",
+        start_at: "2026-03-20T19:00:00.000Z",
+        end_at: undefined,
+        capacity: 25,
+        attachments: [],
+      }),
+      [file],
+    );
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.events.all });
+  });
+
+  it("updates events by uploading new files and merging existing attachment keys", async () => {
+    const newFile = new File(["image"], "new.png", { type: "image/png" });
+    const attachmentService = {
+      extractNewFiles: vi.fn(() => [newFile]),
+      extractExistingUrls: vi.fn(() => ["events/existing.png"]),
+    };
+    const updateEvent = vi.fn().mockResolvedValue({ id: "evt-1" });
+    const uploadEventImages = vi.fn().mockResolvedValue({
+      keys: ["events/new.png"],
+      attachments: ["events/existing.png", "events/new.png"],
+    });
+    const invalidateQueries = vi.fn().mockResolvedValue(undefined);
+    const service = new EventService({
+      attachmentService,
+      queryClient: { invalidateQueries } as unknown as QueryClient,
+      createEvent: vi.fn(),
+      updateEvent,
+      uploadEventImages,
+    });
+
+    await service.saveEvent({
+      mode: "edit",
+      editingEventId: "evt-1",
+      eventType: "social",
+      title: "War Review",
+      description: "",
+      startAt: "2026-03-21T20:00",
+      startIso: "2026-03-21T20:00:00.000Z",
+      endAt: "",
+      endIso: null,
+      capacity: "",
+      pinned: true,
+      signupLocked: true,
+      attachmentItems: [
+        { id: "existing", src: "events/existing.png" },
+        { id: "new", src: "blob:new", file: newFile },
+      ],
+    });
+
+    expect(uploadEventImages).toHaveBeenCalledWith("evt-1", [newFile]);
+    expect(updateEvent).toHaveBeenCalledWith(
+      "evt-1",
+      expect.objectContaining({
+        title: "War Review",
+        pinned: true,
+        signup_locked: true,
+        attachments: ["events/existing.png", "events/new.png"],
+      }),
+    );
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.events.all });
+  });
+
+  it("rejects invalid drafts before any network call", async () => {
+    const createEvent = vi.fn();
+    const service = new EventService({
+      attachmentService: {
+        extractNewFiles: vi.fn(() => []),
+        extractExistingUrls: vi.fn(() => []),
+      },
+      createEvent,
+      updateEvent: vi.fn(),
+      uploadEventImages: vi.fn(),
+    });
+
+    await expect(
+      service.saveEvent({
+        mode: "create",
+        editingEventId: null,
+        eventType: "social",
+        title: " ",
+        description: "",
+        startAt: "",
+        startIso: null,
+        endAt: "",
+        endIso: null,
+        capacity: "0",
+        pinned: false,
+        signupLocked: false,
+        attachmentItems: [],
+      }),
+    ).rejects.toMatchObject({
+      name: EventValidationError.name,
+    });
+    expect(createEvent).not.toHaveBeenCalled();
+  });
+});

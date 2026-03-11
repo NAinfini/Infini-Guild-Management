@@ -31,11 +31,25 @@
       "@portal": ["apps/portal"],
       "@portal/*": ["apps/portal/*"],
       "@guild/shared": ["apps/shared"],
-      "@guild/shared/*": ["apps/shared/*"]
+      "@guild/shared/*": ["apps/shared/*"],
+      "@tabler/icons-react": ["./node_modules/@tabler/icons-react"],
+      "@tanstack/react-table": ["./node_modules/@tanstack/react-table"],
+      "@tiptap/*": ["./node_modules/@tiptap/*"],
+      "@mantine/carousel": ["./node_modules/@mantine/carousel"],
+      "@mantine/dates": ["./node_modules/@mantine/dates"],
+      "@dnd-kit/*": ["./node_modules/@dnd-kit/*"],
+      "react-hook-form": ["./node_modules/react-hook-form"],
+      "@hookform/resolvers/*": ["./node_modules/@hookform/resolvers/*"],
+      "zod": ["./node_modules/zod"],
+      "dompurify": ["./node_modules/dompurify"],
+      "lowlight": ["./node_modules/lowlight"],
+      "cmdk": ["./node_modules/cmdk"],
+      "swiper/*": ["./node_modules/swiper/*"]
     },
     "noEmit": true
   },
   "include": [
+    "apps/ambient.d.ts",
     "apps/shared/**/*.ts",
     "apps/portal/**/*.ts",
     "apps/portal/**/*.tsx",

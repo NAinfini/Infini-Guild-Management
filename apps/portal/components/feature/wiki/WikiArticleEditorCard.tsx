@@ -2,12 +2,13 @@
 import { DepthButton, DepthToggle } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { Alert, Group, Select, Skeleton, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { IconArchive, IconDeviceFloppy, IconPinned, IconPlus, IconX } from "@tabler/icons-react";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
-import { TipTapEditor } from "../../shared/TipTapEditor";
+import { TipTapEditor } from "@infini-dev-kit/frontend/components";
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
@@ -135,12 +136,29 @@ export function WikiArticleEditorCard({
                       type="primary"
                       size="sm"
                       before={<IconDeviceFloppy size={16} />}
-                      onClick={onSaveArticle}
+                      onClick={() => {
+                        if (!articleTitle.trim()) {
+                          notifications.show({ color: "infini-danger", message: t("validation.titleRequired") });
+                          return;
+                        }
+                        onSaveArticle();
+                      }}
                       disabled={isSaving}
                     >
                       {t("articleEditor.save")}
                     </DepthButton>
                   </>
+                ) : null}
+                {canEdit && isCreatingArticle ? (
+                  <DepthButton
+                    type="primary"
+                    size="sm"
+                    before={<IconPlus size={16} />}
+                    onClick={onCreateArticle}
+                    disabled={!canCreateArticle || isCreating}
+                  >
+                    {t("articleEditor.create")}
+                  </DepthButton>
                 ) : null}
                 <DepthButton
                   type="secondary"
@@ -176,7 +194,7 @@ export function WikiArticleEditorCard({
               />
               <Group gap={8} wrap="wrap">
                 <Select
-                  style={{ width: 260 }}
+                  w={260}
                   label={t("articleEditor.category")}
                   value={articleCategoryId || null}
                   disabled={!canEdit}
@@ -214,17 +232,6 @@ export function WikiArticleEditorCard({
                     </Text>
                   ) : null}
                 </Stack>
-              ) : null}
-              {canEdit && isCreatingArticle ? (
-                <DepthButton
-                  type="primary"
-                  size="sm"
-                  before={<IconPlus size={16} />}
-                  onClick={onCreateArticle}
-                  disabled={!canCreateArticle || isCreating}
-                >
-                  {t("articleEditor.create")}
-                </DepthButton>
               ) : null}
             </Stack>
           ) : null}

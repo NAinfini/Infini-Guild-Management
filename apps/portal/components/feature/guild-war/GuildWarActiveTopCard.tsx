@@ -1,8 +1,7 @@
-﻿import { Button, Divider, Group, Select, Stack, TextInput } from "@mantine/core";
+﻿import { Badge, Button, Divider, Group, Select, Stack, TextInput } from "@mantine/core";
 import { MotionButton } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import { useTranslation } from "react-i18next";
-import { IconTrash } from "@tabler/icons-react";
+import { IconDeviceFloppy, IconTrash } from "@tabler/icons-react";
 
 type GuildWarActiveTopCardProps = {
   selectedEventId: string | undefined;
@@ -10,15 +9,9 @@ type GuildWarActiveTopCardProps = {
   eventPlaceholder: string;
   onSelectedEventIdChange: (value: string) => void;
   canManage: boolean;
-  onInitTeams: () => void;
-  initTeamsPending: boolean;
-  canInitTeams: boolean;
-  onPostTeams: (platform: "discord" | "wechat") => void;
-  postTeamsPending: boolean;
   activeSearch: string;
   onActiveSearchChange: (value: string) => void;
   searchPlaceholder: string;
-  initTeamsLabel: string;
   selectedTemplateId: string;
   templateOptions: Array<{ value: string; label: string }>;
   templatePlaceholder: string;
@@ -39,6 +32,15 @@ type GuildWarActiveTopCardProps = {
   templateApplyPending: boolean;
   templateDeletePending: boolean;
   templateActionDisabled: boolean;
+  matchLabel?: string;
+  onPrevMatch?: () => void;
+  onNextMatch?: () => void;
+  hasMatches?: boolean;
+  isTeamsDirty?: boolean;
+  saveTeamsPending?: boolean;
+  onSaveTeams?: () => void;
+  saveTeamsLabel?: string;
+  unsavedLabel?: string;
 };
 
 export function GuildWarActiveTopCard({
@@ -47,15 +49,9 @@ export function GuildWarActiveTopCard({
   eventPlaceholder,
   onSelectedEventIdChange,
   canManage,
-  onInitTeams,
-  initTeamsPending,
-  canInitTeams,
-  onPostTeams,
-  postTeamsPending,
   activeSearch,
   onActiveSearchChange,
   searchPlaceholder,
-  initTeamsLabel,
   selectedTemplateId,
   templateOptions,
   templatePlaceholder,
@@ -76,8 +72,12 @@ export function GuildWarActiveTopCard({
   templateApplyPending,
   templateDeletePending,
   templateActionDisabled,
+  isTeamsDirty,
+  saveTeamsPending,
+  onSaveTeams,
+  saveTeamsLabel,
+  unsavedLabel,
 }: GuildWarActiveTopCardProps) {
-  const { t } = useTranslation("guild-war");
   return (
     <InfiniCard interactive={false} className="guild-war-active-top-card">
       <div style={{ padding: "1.2rem" }}>
@@ -91,19 +91,6 @@ export function GuildWarActiveTopCard({
               placeholder={searchPlaceholder}
               aria-label="Search active guild war members"
             />
-            {canManage ? (
-              <>
-                <MotionButton onClick={onInitTeams} loading={initTeamsPending} disabled={!canInitTeams}>
-                  {initTeamsLabel}
-                </MotionButton>
-                <MotionButton onClick={() => onPostTeams("discord")} loading={postTeamsPending} disabled={!selectedEventId}>
-                  {t("active.postDiscord")}
-                </MotionButton>
-                <MotionButton onClick={() => onPostTeams("wechat")} loading={postTeamsPending} disabled={!selectedEventId}>
-                  {t("active.postWechat")}
-                </MotionButton>
-              </>
-            ) : null}
             <Select
               style={{ flex: "0 1 320px", marginInlineStart: "auto" }}
               value={selectedEventId ?? null}
@@ -113,6 +100,23 @@ export function GuildWarActiveTopCard({
               data={eventOptions}
             />
           </Group>
+
+          {/* Save teams row (dirty indicator + save button) */}
+          {canManage && onSaveTeams ? (
+            <Group gap={8} wrap="wrap" align="center">
+              {isTeamsDirty ? <Badge color="infini-warning">{unsavedLabel ?? "Unsaved"}</Badge> : null}
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<IconDeviceFloppy size={16} />}
+                onClick={onSaveTeams}
+                loading={saveTeamsPending}
+                disabled={!isTeamsDirty}
+              >
+                {saveTeamsLabel ?? "Save Teams"}
+              </Button>
+            </Group>
+          ) : null}
 
           {/* Row 3: Template management (admin only) */}
           {canManage ? (

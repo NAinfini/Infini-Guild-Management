@@ -1,5 +1,5 @@
 import { botSettingsSchema } from "@guild/shared";
-import { and, eq, gte, isNull, lte } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, or, gt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { eventParticipants, events, memberProfiles } from "../db/schema";
 import type { Bindings } from "../index";
@@ -91,7 +91,11 @@ export async function runBotReminderCron(env: Bindings): Promise<void> {
       .where(
         and(
           eq(eventParticipants.eventId, eventRow.id),
-          isNull(memberProfiles.vacationStart),
+          or(
+            isNull(memberProfiles.vacationStart),
+            gt(memberProfiles.vacationStart, nowIso),
+            lte(memberProfiles.vacationEnd, nowIso),
+          ),
         ),
       );
 

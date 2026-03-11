@@ -103,6 +103,21 @@ export function updateGuildWarMemberStats(
   });
 }
 
+export function batchUpdateGuildWarMemberStats(
+  historyId: string,
+  updates: Array<{ user_id: string; stats: UpdateGuildWarMemberStatsPayload }>,
+): Promise<{ data: WarTeamMember[] }> {
+  return apiRequest<{ data: WarTeamMember[] }>(`/api/guild-war/history/${historyId}/member-stats/batch`, {
+    method: "PATCH",
+    bodyJson: {
+      updates: updates.map((u) => ({
+        user_id: u.user_id,
+        stats: updateMemberStatsSchema.parse(u.stats),
+      })),
+    },
+  });
+}
+
 export function createGuildWarTemplate(payload: CreateGuildWarTemplatePayload): Promise<WarTemplate> {
   const bodyJson = createWarTemplateSchema.parse(payload);
   return apiRequest<WarTemplate>("/api/guild-war/templates", {
@@ -118,6 +133,12 @@ export function applyGuildWarTemplate(
   return apiRequest<{ ok: true; war_history_id: string }>("/api/guild-war/templates/apply", {
     method: "POST",
     bodyJson,
+  });
+}
+
+export function deleteGuildWarHistory(id: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/guild-war/history/${id}`, {
+    method: "DELETE",
   });
 }
 

@@ -1,4 +1,4 @@
-import type { fetchGallery } from "../../../api/queries/gallery";
+export type { GalleryItem } from "@guild/shared";
 
 export type UploadStatus = "queued" | "uploading" | "done" | "error";
 
@@ -9,5 +9,3 @@ export type UploadTask = {
   caption: string;
   error?: string;
 };
-
-export type GalleryItem = Awaited<ReturnType<typeof fetchGallery>>["data"][number];

@@ -85,16 +85,19 @@ apps/
 ├── shared/        # Zod schemas, types, constants (shared contract)
 ├── worker/        # Cloudflare Worker (Hono API + D1 + R2)
 │   ├── routes/    # API route handlers
-│   ├── services/  # Business logic
-│   ├── middleware/ # Auth, RBAC, rate-limit, HMAC, ETag
-│   ├── crons/     # Scheduled jobs
+│   ├── services/  # Business logic (16 services)
+│   ├── middleware/ # Auth, RBAC, rate-limit, HMAC, ETag, request-id, security-headers
+│   ├── crons/     # Scheduled jobs (6 jobs)
+│   ├── tests/     # Integration and contract tests
 │   └── db/        # Drizzle schema + SQL migrations
 ├── portal/        # React SPA (TanStack Router + Query + Mantine)
 │   ├── api/       # HTTP client, queries, mutations
 │   ├── components/ # Pages, layout, shared, feature, dashboard
-│   ├── stores/    # Zustand stores
-│   ├── hooks/     # Custom hooks
-│   └── i18n/      # Translations (en, zh)
+│   ├── services/  # Portal service layer (11 services)
+│   ├── stores/    # Zustand stores (auth, preferences, notifications, guildWar)
+│   ├── hooks/     # Custom hooks (data, guild-war, feature-specific)
+│   ├── utils/     # Utility functions
+│   └── i18n/      # Translations (en, zh — 14 namespaces each)
 └── bot-runtime/   # Node.js service (Discord.js + Wechaty)
 ```
 
@@ -114,10 +117,12 @@ apps/
 
 1. Add TanStack Query fetcher in `apps/portal/api/queries/`.
 2. Add mutation hook in `apps/portal/api/mutations/` if write operation.
-3. Create page component in `apps/portal/components/pages/` or feature component in `apps/portal/components/feature/`.
-4. Add route in `apps/portal/router.tsx`.
-5. Add i18n keys in `apps/portal/i18n/en/` and `zh/`.
-6. Update `CHANGELOG.md` under `[Unreleased]`.
+3. Add portal service in `apps/portal/services/` to encapsulate API interaction logic.
+4. Create page component in `apps/portal/components/pages/` or feature component in `apps/portal/components/feature/`.
+5. Add data hook in `apps/portal/hooks/data/` for complex data fetching patterns.
+6. Add route in `apps/portal/router.tsx`.
+7. Add i18n keys in `apps/portal/i18n/en/` and `zh/`.
+8. Update `CHANGELOG.md` under `[Unreleased]`.
 
 ## Testing
 

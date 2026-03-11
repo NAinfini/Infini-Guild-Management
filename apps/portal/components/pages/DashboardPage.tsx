@@ -6,13 +6,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { addDays, differenceInHours } from "date-fns";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { queryKeys } from "../../api/query-keys";
-import { fetchEventDetail, fetchEventsList } from "../../api/queries/events";
-import { fetchGuildWarHistory, fetchGuildWarHistoryDetail } from "../../api/queries/guild-war";
-import { fetchUsersList } from "../../api/queries/users";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
+import { fetchEventDetailBatch, fetchEventsList, type EventDetailResponse } from "../../services/EventService";
+import { fetchGuildWarHistory, fetchGuildWarHistoryBatch } from "../../services/GuildWarService";
+import { queryKeys } from "../../services/PortalQueryKeys";
+import { fetchUsersList } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
+import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import { PageLayout } from "../layout/PageLayout";
 import {
   type DashboardLastWarMvp,
@@ -47,7 +48,7 @@ function buildUpcomingEventRow(
   item: Event,
   source: Event[],
   now: Date,
-  upcomingEventDetailById: Map<string, Awaited<ReturnType<typeof fetchEventDetail>>>,
+  upcomingEventDetailById: Map<string, EventDetailResponse>,
   participantsByEventId: Map<
     string,
     { user: Awaited<ReturnType<typeof fetchUsersList>>["data"][number]["user"]; profile: Awaited<ReturnType<typeof fetchUsersList>>["data"][number]["profile"] }[]
@@ -139,7 +140,10 @@ export function DashboardPage() {
   const recentWarDetailsQuery = useQuery({
     queryKey: queryKeys.dashboard.lastWarDetail(recentWarIds.join(",") || "none"),
     enabled: recentWarIds.length > 0,
-    queryFn: () => Promise.all(recentWarIds.map((id) => fetchGuildWarHistoryDetail(id))),
+    queryFn: async () => {
+      const res = await fetchGuildWarHistoryBatch(recentWarIds);
+      return res.data;
+    },
   });
 
   const upcomingEventDetailsQuery = useQuery({
@@ -149,7 +153,9 @@ export function DashboardPage() {
     enabled: Boolean(upcomingEventsQuery.data) && Boolean(usersQuery.data),
     queryFn: async () => {
       const eventIds = (upcomingEventsQuery.data?.data ?? []).slice(0, 12).map((item) => item.id);
-      return Promise.all(eventIds.map((eventId) => fetchEventDetail(eventId)));
+      if (eventIds.length === 0) return [];
+      const res = await fetchEventDetailBatch(eventIds);
+      return res.data;
     },
   });
 
@@ -164,8 +170,9 @@ export function DashboardPage() {
         return [] as Event[];
       }
       const eventIds = (upcomingEventsQuery.data?.data ?? []).slice(0, 12).map((item) => item.id);
-      const details = await Promise.all(eventIds.map((eventId) => fetchEventDetail(eventId)));
-      return details
+      if (eventIds.length === 0) return [] as Event[];
+      const res = await fetchEventDetailBatch(eventIds);
+      return res.data
         .filter((detail) => detail.participants.some((participant) => participant.user_id === user.id))
         .map((detail) => detail as Event);
     },
@@ -290,9 +297,11 @@ export function DashboardPage() {
       .slice(0, 3);
   }, [now, participantsByEventId, upcomingEventDetailById, upcomingEvents, user?.id]);
 
-  const openEventDetail = (eventId: string) => {
-    localStorage.setItem("events.openEventId", eventId);
-    void navigate({ to: "/events" });
+  const openEventDetail = (event: Pick<Event, "id" | "title">) => {
+    void navigate({
+      to: "/events",
+      search: buildEventWorkbenchSearch(event),
+    });
   };
 
   const hasError =
@@ -345,8 +354,13 @@ export function DashboardPage() {
               warMvps={recentWarMvps}
               isExternalView={isExternalView}
               onOpenHistory={(warName) => {
-                localStorage.setItem("guildWar.searchWarName", warName);
-                void navigate({ to: "/guild-war" });
+                void navigate({
+                  to: "/guild-war",
+                  search: {
+                    tab: "history",
+                    warName,
+                  },
+                });
               }}
             />
           </Stack>

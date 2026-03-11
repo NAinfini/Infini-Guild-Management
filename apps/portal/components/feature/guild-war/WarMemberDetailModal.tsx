@@ -1,4 +1,5 @@
 import { Modal, Stack, Text } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 
 type ActiveMemberDetail = {
   teamName: string;
@@ -25,26 +26,27 @@ export function WarMemberDetailModal({
   activeDetail,
   onClose,
 }: WarMemberDetailModalProps) {
+  const { t } = useTranslation("guild-war");
   return (
     <Modal
       opened={open}
-      title={activeDetailUserId ? `Member: ${activeDetailUserId}` : "Member detail"}
+      title={activeDetailUserId ? t("memberDetail.title", { userId: activeDetailUserId }) : t("memberDetail.titleFallback")}
       onClose={onClose}
       withCloseButton
     >
       {activeDetail ? (
         <Stack gap={8}>
           <Text>
-            Team: <strong>{activeDetail.teamName}</strong>
+            {t("memberDetail.team")}: <strong>{activeDetail.teamName}</strong>
           </Text>
-          <Text>Role tag: {activeDetail.roleTag ?? "-"}</Text>
+          <Text>{t("memberDetail.roleTag")}: {activeDetail.roleTag ?? "-"}</Text>
           <Text>
-            K/D/A: {activeDetail.kills}/{activeDetail.deaths}/{activeDetail.assists}
+            {t("memberDetail.kda")}: {activeDetail.kills}/{activeDetail.deaths}/{activeDetail.assists}
           </Text>
-          <Text>Damage: {activeDetail.damage}</Text>
-          <Text>Healing: {activeDetail.healing}</Text>
-          <Text>Building: {activeDetail.buildingDamage}</Text>
-          <Text>Credits: {activeDetail.credits}</Text>
+          <Text>{t("memberDetail.damage")}: {activeDetail.damage}</Text>
+          <Text>{t("memberDetail.healing")}: {activeDetail.healing}</Text>
+          <Text>{t("memberDetail.building")}: {activeDetail.buildingDamage}</Text>
+          <Text>{t("memberDetail.credits")}: {activeDetail.credits}</Text>
         </Stack>
       ) : null}
     </Modal>

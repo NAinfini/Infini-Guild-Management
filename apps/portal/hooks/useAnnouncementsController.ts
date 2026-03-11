@@ -1,0 +1,462 @@
+import { hasRoleAtLeast, type Announcement, type PaginatedResponse } from "@guild/shared";
+import { TIPTAP_DEFAULT_JSON } from "@infini-dev-kit/frontend/components";
+import { notifications } from "@mantine/notifications";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { format, isValid, parseISO } from "date-fns";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
+import { useTranslation } from "react-i18next";
+import { useAppError } from "./useAppError";
+import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
+import { useExternalView } from "./useExternalView";
+import {
+  archiveAnnouncement,
+  createAnnouncement,
+  fetchAnnouncement,
+  fetchAnnouncements,
+  type UpdateAnnouncementPayload,
+  updateAnnouncement,
+  uploadAnnouncementImages,
+} from "../services/AnnouncementService";
+import { queryKeys } from "../services/PortalQueryKeys";
+import { useAuthStore } from "../stores/auth";
+
+const message = {
+  success: (text: string) => notifications.show({ color: "infini-success", message: text, autoClose: 3000 }),
+};
+
+function toIsoOrUndefined(value: string): string | undefined {
+  if (!value.trim()) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString();
+}
+
+function toDateTimePickerValue(iso: string | null): string {
+  if (!iso) return "";
+  const date = parseISO(iso);
+  if (!isValid(date)) return "";
+  return format(date, "yyyy-MM-dd'T'HH:mm");
+}
+
+function readAnnouncementsLastSeenAt(): string | null {
+  try {
+    const raw = localStorage.getItem("portal:last_seen");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      announcements?: { lastSeenAt?: string };
+    };
+    const value = parsed.announcements?.lastSeenAt;
+    return typeof value === "string" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function useAnnouncementsController() {
+  const { t } = useTranslation("announcements");
+  const queryClient = useQueryClient();
+  const user = useAuthStore((state) => state.user);
+  const isExternalView = useExternalView();
+  const { showError } = useAppError();
+
+  const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
+  const canEdit = isModerator && !isExternalView;
+
+  const [pinnedFilter, setPinnedFilter] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState("");
+  const [debouncedSearchRaw] = useDebouncedValue(search, 300);
+  const debouncedSearch = debouncedSearchRaw.trim();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isCreating, isCreatingHandlers] = useDisclosure(false);
+  const [title, setTitle] = useState("");
+  const [bodyJson, setBodyJson] = useState(TIPTAP_DEFAULT_JSON);
+  const [pinned, setPinned] = useState(false);
+  const [archived, setArchived] = useState(false);
+  const [draftEnabled, setDraftEnabled] = useState(false);
+  const [publishAt, setPublishAt] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [notifyDiscord, setNotifyDiscord] = useState(true);
+  const [notifyWechat, setNotifyWechat] = useState(false);
+  const [announcementsLastSeenAt, setAnnouncementsLastSeenAt] = useState<string | null>(null);
+
+  const listQuery = useQuery({
+    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch),
+    queryFn: () =>
+      fetchAnnouncements({
+        page: 1,
+        limit: 100,
+        status: statusFilter,
+        pinned: pinnedFilter ? true : undefined,
+        search: debouncedSearch || undefined,
+        archived: statusFilter === "archived",
+      }),
+  });
+
+  const detailQuery = useQuery({
+    queryKey: queryKeys.announcements.detail(selectedId),
+    enabled: Boolean(selectedId),
+    queryFn: () => fetchAnnouncement(selectedId as string),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: createAnnouncement,
+    onSuccess: async (data) => {
+      message.success(t("message.created"));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+      isCreatingHandlers.close();
+      setSelectedId(data.id);
+    },
+    onError: (error) => {
+      showError(error, t("message.createFailed"));
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateAnnouncementPayload }) => updateAnnouncement(id, payload),
+    onMutate: async ({ id, payload }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
+
+      const previousLists = queryClient
+        .getQueriesData<PaginatedResponse<Announcement>>({ queryKey: queryKeys.announcements.all })
+        .filter(([key]) => !(Array.isArray(key) && key[1] === "detail"));
+      const previousDetail = queryClient.getQueryData<Announcement>(queryKeys.announcements.detail(id));
+      const nowIso = new Date().toISOString();
+
+      for (const [key] of previousLists) {
+        queryClient.setQueryData<PaginatedResponse<Announcement>>(key, (current) => {
+          if (!current) {
+            return current;
+          }
+          const shouldRemove = payload.pinned === false && pinnedFilter;
+          return {
+            ...current,
+            data: shouldRemove
+              ? current.data.filter((item) => item.id !== id)
+              : current.data.map((item) =>
+                  item.id === id
+                    ? {
+                        ...item,
+                        ...(payload as Partial<Announcement>),
+                        updated_at: nowIso,
+                      }
+                    : item,
+                ),
+          };
+        });
+      }
+
+      queryClient.setQueryData<Announcement>(queryKeys.announcements.detail(id), (current) => {
+        if (!current) {
+          return current;
+        }
+        return {
+          ...current,
+          ...(payload as Partial<Announcement>),
+          updated_at: nowIso,
+        };
+      });
+
+      return { previousLists, previousDetail };
+    },
+    onSuccess: async () => {
+      message.success(t("message.saved"));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+      if (selectedId) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.detail(selectedId) });
+      }
+    },
+    onError: (error, variables, context) => {
+      if (context) {
+        for (const [key, previous] of context.previousLists) {
+          queryClient.setQueryData(key, previous);
+        }
+        queryClient.setQueryData(queryKeys.announcements.detail(variables.id), context.previousDetail);
+      }
+      showError(error, t("message.saveFailed"));
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: archiveAnnouncement,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
+      const previousLists = queryClient
+        .getQueriesData<PaginatedResponse<Announcement>>({ queryKey: queryKeys.announcements.all })
+        .filter(([key]) => !(Array.isArray(key) && key[1] === "detail"));
+
+      for (const [key] of previousLists) {
+        queryClient.setQueryData<PaginatedResponse<Announcement>>(key, (current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            data: current.data.filter((item) => item.id !== id),
+          };
+        });
+      }
+
+      return { previousLists };
+    },
+    onSuccess: async () => {
+      message.success(t("message.archived"));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+      setSelectedId(null);
+    },
+    onError: (error, _variables, context) => {
+      if (context) {
+        for (const [key, previous] of context.previousLists) {
+          queryClient.setQueryData(key, previous);
+        }
+      }
+      showError(error, t("message.archiveFailed"));
+    },
+  });
+
+  const rows = useMemo(() => {
+    let raw = listQuery.data?.data ?? [];
+    if (!canEdit) {
+      raw = raw.filter((item) => item.status === "published" || item.status === "archived");
+    }
+    if (statusFilter) {
+      raw = raw.filter((item) => item.status === statusFilter);
+    } else {
+      raw = raw.filter((item) => item.status === "published");
+    }
+    if (pinnedFilter) {
+      raw = raw.filter((item) => item.pinned);
+    }
+    return [...raw].sort((left, right) => {
+      if (left.pinned === right.pinned) {
+        return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
+      }
+      return left.pinned ? -1 : 1;
+    });
+  }, [canEdit, listQuery.data?.data, pinnedFilter, statusFilter]);
+
+  const selected = detailQuery.data ?? null;
+
+  useEffect(() => {
+    setAnnouncementsLastSeenAt(readAnnouncementsLastSeenAt());
+  }, []);
+
+  useEffect(() => {
+    if (isCreating) return;
+    if (!selectedId && rows.length > 0) {
+      setSelectedId(rows[0]?.id ?? null);
+      return;
+    }
+    if (selectedId && rows.length > 0 && !rows.some((r) => r.id === selectedId)) {
+      setSelectedId(rows[0]?.id ?? null);
+    }
+    if (selectedId && rows.length === 0) {
+      setSelectedId(null);
+    }
+  }, [isCreating, rows, selectedId]);
+
+  useEffect(() => {
+    if (isCreating) {
+      setTitle("");
+      setBodyJson(TIPTAP_DEFAULT_JSON);
+      setPinned(false);
+      setArchived(false);
+      setDraftEnabled(false);
+      setPublishAt("");
+      setExpiresAt("");
+      setScheduleEnabled(false);
+      setNotifyDiscord(true);
+      setNotifyWechat(false);
+    } else if (selected) {
+      setTitle(selected.title);
+      setBodyJson(selected.body_json);
+      setPinned(selected.pinned);
+      setArchived(selected.status === "archived");
+      setDraftEnabled(selected.status === "draft");
+      setPublishAt(toDateTimePickerValue(selected.publish_at));
+      setExpiresAt(toDateTimePickerValue(selected.expires_at));
+      setScheduleEnabled(selected.status === "scheduled");
+      setNotifyDiscord(selected.status === "published");
+      setNotifyWechat(false);
+    }
+  }, [isCreating, selected]);
+
+  const isDirty = useMemo(() => {
+    if (!canEdit) return false;
+    if (isCreating) {
+      return title.trim().length > 0 || bodyJson !== TIPTAP_DEFAULT_JSON;
+    }
+    if (selected) {
+      return (
+        title !== selected.title ||
+        bodyJson !== selected.body_json ||
+        pinned !== selected.pinned ||
+        publishAt !== toDateTimePickerValue(selected.publish_at) ||
+        expiresAt !== toDateTimePickerValue(selected.expires_at) ||
+        scheduleEnabled !== (selected.status === "scheduled") ||
+        draftEnabled !== (selected.status === "draft") ||
+        archived !== (selected.status === "archived")
+      );
+    }
+    return false;
+  }, [archived, bodyJson, canEdit, draftEnabled, expiresAt, isCreating, pinned, publishAt, scheduleEnabled, selected, title]);
+
+  useBeforeUnloadPrompt(isDirty);
+
+  const handleCreateByStatus = useCallback(() => {
+    isCreatingHandlers.open();
+    setSelectedId(null);
+  }, []);
+
+  const handleSelectId = useCallback((id: string | null) => {
+    if (id !== null) {
+      isCreatingHandlers.close();
+    }
+    setSelectedId(id);
+  }, [isCreatingHandlers]);
+
+  const resetFilters = useCallback(() => {
+    setSearch("");
+    setStatusFilter(undefined);
+    setPinnedFilter(false);
+  }, []);
+
+  const handleFinish = (mode: "none" | "draft" | "archived" | "scheduled") => {
+    if (isCreating) {
+      if (mode === "archived") return;
+
+      const statusMap: Record<string, Announcement["status"]> = {
+        none: "published",
+        draft: "draft",
+        scheduled: "scheduled",
+      };
+      const status = statusMap[mode] ?? "published";
+
+      createMutation.mutate({
+        title,
+        body_json: bodyJson,
+        pinned,
+        status,
+        publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
+        expires_at: toIsoOrUndefined(expiresAt),
+        notify_discord: notifyDiscord,
+        notify_wechat: notifyWechat,
+      });
+      return;
+    }
+
+    if (!selectedId || !selected) return;
+
+    if (mode === "archived") {
+      archiveMutation.mutate(selectedId);
+      return;
+    }
+
+    const statusMap: Record<string, Announcement["status"]> = {
+      none: selected.status === "draft" ? "published" : selected.status,
+      draft: "draft",
+      scheduled: "scheduled",
+    };
+    const status = statusMap[mode] ?? "published";
+
+    updateMutation.mutate({
+      id: selectedId,
+      payload: {
+        title,
+        body_json: bodyJson,
+        pinned,
+        status,
+        publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
+        expires_at: toIsoOrUndefined(expiresAt),
+        notify_discord: notifyDiscord,
+        notify_wechat: notifyWechat,
+      },
+    });
+  };
+
+  const handleCloseEditor = () => {
+    if (isCreating) {
+      isCreatingHandlers.close();
+      if (rows.length > 0) {
+        setSelectedId(rows[0]?.id ?? null);
+      }
+      return;
+    }
+    if (!selected) return;
+    setTitle(selected.title);
+    setBodyJson(selected.body_json);
+    setPinned(selected.pinned);
+    setArchived(selected.status === "archived");
+    setDraftEnabled(selected.status === "draft");
+    setPublishAt(toDateTimePickerValue(selected.publish_at));
+    setExpiresAt(toDateTimePickerValue(selected.expires_at));
+    setScheduleEnabled(selected.status === "scheduled");
+    setNotifyDiscord(selected.status === "published");
+    setNotifyWechat(false);
+  };
+
+  const handleDelete = () => {
+    if (!selectedId) return;
+    archiveMutation.mutate(selectedId);
+  };
+
+  const handleUploadAnnouncementImages = async (file: File) => {
+    if (isCreating || !selectedId) {
+      throw new Error("Save announcement first before uploading images");
+    }
+    const uploaded = await uploadAnnouncementImages(selectedId, [file]);
+    const key = uploaded.keys[0];
+    if (!key) {
+      throw new Error("Image upload returned no key");
+    }
+    return key;
+  };
+
+  return {
+    canEdit,
+    pinnedFilter,
+    setPinnedFilter,
+    statusFilter,
+    setStatusFilter,
+    search,
+    setSearch,
+    selectedId,
+    setSelectedId: handleSelectId,
+    isCreating,
+    title,
+    setTitle,
+    bodyJson,
+    setBodyJson,
+    pinned,
+    setPinned,
+    archived,
+    setArchived,
+    draftEnabled,
+    setDraftEnabled,
+    publishAt,
+    setPublishAt,
+    expiresAt,
+    setExpiresAt,
+    scheduleEnabled,
+    setScheduleEnabled,
+    notifyDiscord,
+    setNotifyDiscord,
+    notifyWechat,
+    setNotifyWechat,
+    announcementsLastSeenAt,
+    listQuery,
+    detailQuery,
+    rows,
+    selected,
+    isBusy: createMutation.isPending || updateMutation.isPending || archiveMutation.isPending,
+    savePending: updateMutation.isPending,
+    deletePending: archiveMutation.isPending,
+    isDirty,
+    resetFilters,
+    handleCreateByStatus,
+    handleFinish,
+    handleCloseEditor,
+    handleDelete,
+    handleUploadAnnouncementImages,
+  };
+}

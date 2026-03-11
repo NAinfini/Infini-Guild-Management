@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640" fill="none">
+  <rect width="640" height="640" rx="36" fill="#111827"/>
+  <circle cx="320" cy="220" r="104" fill="#F59E0B"/>
+  <path d="M164 520c28-92 95-150 156-150 60 0 128 58 156 150" fill="#A855F7"/>
+  <path d="M102 120c72-58 146-86 218-86 76 0 154 30 218 86" stroke="#FDE68A" stroke-width="12" stroke-linecap="round" opacity=".55"/>
+  <text x="320" y="590" fill="#F9FAFB" font-family="Segoe UI, Arial, sans-serif" font-size="34" text-anchor="middle">Infini Guild • Strategist</text>
+</svg>

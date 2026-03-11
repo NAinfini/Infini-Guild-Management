@@ -6,7 +6,9 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Alert,
   Anchor,
+  Button,
   Checkbox,
+  Group,
   Stack,
   Text,
   TextInput,
@@ -21,6 +23,7 @@ import {
 } from "@infini-dev-kit/frontend/components";
 import { IconArrowLeft, IconEye, IconEyeOff, IconKeyboard } from "@tabler/icons-react";
 import { useState } from "react";
+import { useDisclosure } from "@mantine/hooks";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
@@ -40,7 +43,7 @@ type LoginFormValues = z.infer<typeof LOGIN_FORM_SCHEMA>;
 type FieldErrorMap = Record<string, string>;
 
 function isSafeReturnTo(value: string | undefined): value is string {
-  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//");
+  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\");
 }
 
 function firstString(value: unknown): string | null {
@@ -104,7 +107,9 @@ export function LoginPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [apiFieldErrors, setApiFieldErrors] = useState<Partial<Record<keyof LoginFormValues, string>>>({});
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword, showPasswordHandlers] = useDisclosure(false);
+  const [inviteCodeInput, setInviteCodeInput] = useState<string | null>(null);
+  const [inviteCodeError, setInviteCodeError] = useState<string | null>(null);
 
   const usernameValue = watch("username");
   const passwordValue = watch("password");
@@ -144,8 +149,8 @@ export function LoginPage() {
     loginMutation.mutate(values);
   };
 
-  const usernameError = errors.username?.message ?? apiFieldErrors.username;
-  const passwordError = errors.password?.message ?? apiFieldErrors.password;
+  const usernameError = errors.username ? t("validation.usernameRequired") : apiFieldErrors.username;
+  const passwordError = errors.password ? t("validation.passwordRequired") : apiFieldErrors.password;
 
   return (
     <div className="login-page">
@@ -189,6 +194,7 @@ export function LoginPage() {
                   error={usernameError}
                   classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
                   label={t("field.username")}
+                  autoComplete="username"
                 />
               </div>
 
@@ -207,6 +213,7 @@ export function LoginPage() {
                   }}
                   error={passwordError}
                   classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
+                  autoComplete="current-password"
                 />
                 <div className="login-page__password-actions">
                   {isCapsLockOn ? (
@@ -215,8 +222,9 @@ export function LoginPage() {
                   <button
                     type="button"
                     className="login-page__eye-btn"
-                    onClick={() => setShowPassword((v) => !v)}
+                    onClick={showPasswordHandlers.toggle}
                     tabIndex={-1}
+                    aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
                   >
                     {showPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
                   </button>
@@ -239,6 +247,55 @@ export function LoginPage() {
                   {t("button.backToPortal")}
                 </Anchor>
               </MagneticElement>
+
+              <div style={{ textAlign: "center" }}>
+                {inviteCodeInput === null ? (
+                  <Text size="sm" c="dimmed">
+                    {t("button.haveInviteCode")}{" "}
+                    <Anchor underline="hover" onClick={() => setInviteCodeInput("")}>
+                      {t("button.registerHere")}
+                    </Anchor>
+                  </Text>
+                ) : (
+                  <Group gap={6} justify="center">
+                    <TextInput
+                      size="xs"
+                      placeholder={t("field.inviteCode")}
+                      value={inviteCodeInput}
+                      error={inviteCodeError}
+                      onChange={(event) => {
+                        setInviteCodeInput(event.currentTarget.value);
+                        setInviteCodeError(null);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          if (inviteCodeInput.trim()) {
+                            void navigate({ to: "/register/$inviteCode", params: { inviteCode: inviteCodeInput.trim() } });
+                          } else {
+                            setInviteCodeError(t("validation.inviteCodeRequired"));
+                          }
+                        }
+                      }}
+                      style={{ width: 160 }}
+                      autoFocus
+                    />
+                    <Button
+                      size="xs"
+                      variant="light"
+                      onClick={() => {
+                        if (inviteCodeInput.trim()) {
+                          void navigate({ to: "/register/$inviteCode", params: { inviteCode: inviteCodeInput.trim() } });
+                        } else {
+                          setInviteCodeError(t("validation.inviteCodeRequired"));
+                        }
+                      }}
+                    >
+                      {t("button.go")}
+                    </Button>
+                  </Group>
+                )}
+              </div>
             </Stack>
           </form>
         </GlassEffect>

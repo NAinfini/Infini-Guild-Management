@@ -1,7 +1,7 @@
 ﻿import type { MemberProfile, User } from "@guild/shared";
 import { Badge, Modal, Popover, Stack, Text } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
+import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { MemberCard } from "./MemberCard";
 import styles from "./MemberGrid2x5.module.css";
@@ -19,7 +19,7 @@ type MemberGrid2x5Props = {
 export function MemberGrid2x5({ members, onSelect }: MemberGrid2x5Props) {
   const { t } = useTranslation("common");
   const isMobile = useMediaQuery("(max-width: 767px)") ?? false;
-  const [overflowModalOpen, setOverflowModalOpen] = useState(false);
+  const [overflowModalOpen, overflowModalHandlers] = useDisclosure(false);
   const overflowItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const visibleMembers = useMemo(() => members.slice(0, 10), [members]);
@@ -75,7 +75,7 @@ export function MemberGrid2x5({ members, onSelect }: MemberGrid2x5Props) {
     }
     if (event.key === "Escape") {
       event.preventDefault();
-      setOverflowModalOpen(false);
+      overflowModalHandlers.close();
       return;
     }
     if (event.key === "Enter" || event.key === " ") {
@@ -134,7 +134,7 @@ export function MemberGrid2x5({ members, onSelect }: MemberGrid2x5Props) {
             <button
               type="button"
               className={styles.overflowChip}
-              onClick={() => setOverflowModalOpen(true)}
+              onClick={overflowModalHandlers.open}
               aria-label={`Show ${overflowMembers.length} more members`}
             >
               +{overflowMembers.length}
@@ -170,7 +170,7 @@ export function MemberGrid2x5({ members, onSelect }: MemberGrid2x5Props) {
       <Modal
         opened={overflowModalOpen}
         title={`More members (${overflowMembers.length})`}
-        onClose={() => setOverflowModalOpen(false)}
+        onClose={overflowModalHandlers.close}
       >
         {overflowContent}
       </Modal>

@@ -4,7 +4,7 @@ import {
   convertAudioToOpus,
   convertImageToWebP,
   getAudioConversionSupport,
-} from "../utils/media-conversion";
+} from "@infini-dev-kit/frontend/utils";
 
 type UploadContext = {
   onUploadProgress: (percent: number) => void;
@@ -35,6 +35,8 @@ type UseMediaUploadState<TResult> = {
   upload: () => Promise<TResult | null>;
   reset: () => void;
 };
+
+export type { UseMediaUploadState };
 
 export function useMediaUpload<TResult>(
   uploadFn: UploadFunction<TResult>,
@@ -135,6 +137,9 @@ export function useMediaUpload<TResult>(
       setError(supportError);
       return null;
     }
+    if (isUploading) {
+      return null;
+    }
 
     setIsUploading(true);
     setError(null);
@@ -158,7 +163,7 @@ export function useMediaUpload<TResult>(
       const uploadResult = await uploadFn(preparedFiles, {
         onUploadProgress: (percent) => setUploadProgress(Math.min(100, Math.max(0, Math.round(percent)))),
       });
-      setUploadProgress((previous) => (previous === 0 ? 100 : previous));
+      setUploadProgress(100);
       setResult(uploadResult);
       setFiles([]);
       return uploadResult;
@@ -170,7 +175,7 @@ export function useMediaUpload<TResult>(
       setIsConverting(false);
       setIsUploading(false);
     }
-  }, [files, preprocessFiles, supportError, uploadFn]);
+  }, [files, isUploading, preprocessFiles, supportError, uploadFn]);
 
   const reset = useCallback(() => {
     setFiles([]);

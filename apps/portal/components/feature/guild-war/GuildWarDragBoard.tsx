@@ -2,7 +2,7 @@ import { DndContext, DragOverlay, closestCenter, useDroppable, type DragEndEvent
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ActionIcon, Badge, Card, Group, Stack, Text, Tooltip } from "@mantine/core";
-import { IconUser, IconShield, IconBolt } from "@tabler/icons-react";
+import { IconUser, IconShield, IconBolt, IconCopy } from "@tabler/icons-react";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import type { ComponentProps, CSSProperties, MouseEvent, ReactNode } from "react";
 import { useState, useMemo } from "react";
@@ -49,6 +49,11 @@ type GuildWarDragBoardProps = {
   onDragCancel: () => void;
   onDragEnd: (event: DragEndEvent) => void;
   teamStatusContentByContainerId?: Record<string, ReactNode>;
+  disabled?: boolean;
+  onTeamContextMenu?: (containerId: string, event: MouseEvent<HTMLDivElement>) => void;
+  onMemberContextMenu?: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
+  onPoolContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
+  onCopyTeamMentions?: (containerId: string) => void;
 };
 
 
@@ -61,8 +66,10 @@ function SortableMemberCard(props: {
   disabled: boolean;
   selected: boolean;
   isMatched: boolean;
+  userId: string;
   onSelect: (event: MouseEvent<HTMLButtonElement>) => void;
   onOpen?: () => void;
+  onContextMenu?: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: props.itemId,
@@ -92,6 +99,12 @@ function SortableMemberCard(props: {
       className={classNames}
       onClick={props.onSelect}
       onDoubleClick={props.onOpen}
+      onContextMenu={(e) => {
+        if (props.onContextMenu) {
+          e.preventDefault();
+          props.onContextMenu(props.userId, e);
+        }
+      }}
       aria-label={`Select member ${props.username}`}
       disabled={props.disabled}
       {...attributes}
@@ -118,6 +131,10 @@ function DroppableMemberColumn(props: {
   toMemberDomId: (itemId: string) => string;
   onSelectMember: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
   onOpenMember?: (userId: string) => void;
+  onTeamContextMenu?: (containerId: string, event: MouseEvent<HTMLDivElement>) => void;
+  onMemberContextMenu?: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
+  onPoolContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
+  onCopyTeamMentions?: (containerId: string) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `container:${props.column.containerId}`,
@@ -163,18 +180,25 @@ function DroppableMemberColumn(props: {
             {props.column.locked ? <Badge color="infini-danger" size="sm">{t("active.locked")}</Badge> : null}
           </Group>
           <Group gap={4} wrap="nowrap">
+            {props.column.containerId !== "pool" && props.onCopyTeamMentions ? (
+              <Tooltip label={t("active.teamCopied")}>
+                <ActionIcon size="sm" variant="subtle" onClick={() => props.onCopyTeamMentions?.(props.column.containerId)} aria-label={t("active.teamCopied")}>
+                  <IconCopy size={14} />
+                </ActionIcon>
+              </Tooltip>
+            ) : null}
             <Tooltip label={t("active.sort.username")}>
-              <ActionIcon size="sm" variant={sortBy === "username" ? "filled" : "subtle"} onClick={() => toggleSort("username")}>
+              <ActionIcon size="sm" variant={sortBy === "username" ? "filled" : "subtle"} onClick={() => toggleSort("username")} aria-label={t("active.sort.username")}>
                 <IconUser size={14} />
               </ActionIcon>
             </Tooltip>
             <Tooltip label={t("active.sort.class")}>
-              <ActionIcon size="sm" variant={sortBy === "class" ? "filled" : "subtle"} onClick={() => toggleSort("class")}>
+              <ActionIcon size="sm" variant={sortBy === "class" ? "filled" : "subtle"} onClick={() => toggleSort("class")} aria-label={t("active.sort.class")}>
                 <IconShield size={14} />
               </ActionIcon>
             </Tooltip>
             <Tooltip label={t("active.sort.power")}>
-              <ActionIcon size="sm" variant={sortBy === "power" ? "filled" : "subtle"} onClick={() => toggleSort("power")}>
+              <ActionIcon size="sm" variant={sortBy === "power" ? "filled" : "subtle"} onClick={() => toggleSort("power")} aria-label={t("active.sort.power")}>
                 <IconBolt size={14} />
               </ActionIcon>
             </Tooltip>
@@ -182,7 +206,18 @@ function DroppableMemberColumn(props: {
         </Group>
         {props.statusContent ? <div className="guild-war-column-header-status">{props.statusContent}</div> : null}
       </Stack>
-      <div ref={setNodeRef}>
+      <div
+        ref={setNodeRef}
+        onContextMenu={(e) => {
+          if (props.column.containerId === "pool" && props.onPoolContextMenu) {
+            e.preventDefault();
+            props.onPoolContextMenu(e);
+          } else if (props.column.containerId !== "pool" && props.onTeamContextMenu) {
+            e.preventDefault();
+            props.onTeamContextMenu(props.column.containerId, e);
+          }
+        }}
+      >
         <SortableContext items={sortedMembers.map((member) => member.itemId)} strategy={verticalListSortingStrategy}>
           <Stack className="guild-war-column-stack" gap={8}>
             {sortedMembers.length === 0 ? (
@@ -196,6 +231,7 @@ function DroppableMemberColumn(props: {
                   username={member.username}
                   power={member.power}
                   class={member.class}
+                  userId={member.userId}
                   disabled={!props.canDrag || props.column.locked}
                   selected={props.selectedUserIds.has(member.userId)}
                   isMatched={
@@ -204,6 +240,7 @@ function DroppableMemberColumn(props: {
                   }
                   onSelect={(event) => props.onSelectMember(member.userId, event)}
                   onOpen={props.onOpenMember ? () => props.onOpenMember?.(member.userId) : undefined}
+                  onContextMenu={props.onMemberContextMenu}
                 />
               ))
             )}
@@ -230,9 +267,19 @@ export function GuildWarDragBoard({
   onDragCancel,
   onDragEnd,
   teamStatusContentByContainerId,
+  disabled,
+  onTeamContextMenu,
+  onMemberContextMenu,
+  onPoolContextMenu,
+  onCopyTeamMentions,
 }: GuildWarDragBoardProps) {
+  const { t } = useTranslation("guild-war");
   const poolColumn = dragColumns.find((col) => col.containerId === "pool");
   const teamColumns = dragColumns.filter((col) => col.containerId !== "pool");
+
+  if (!poolColumn && teamColumns.length === 0) {
+    return <EmptyState title={emptyText} description={t("active.emptyBoard")} />;
+  }
 
   return (
     <>
@@ -243,7 +290,7 @@ export function GuildWarDragBoard({
         onDragCancel={onDragCancel}
         onDragEnd={onDragEnd}
       >
-        <div className="guild-war-dnd-split">
+        <div className={`guild-war-dnd-split ${disabled ? "guild-war-dnd-split--disabled" : ""}`}>
           <div className="guild-war-dnd-pool">
             {poolColumn ? (
               <DroppableMemberColumn
@@ -256,6 +303,8 @@ export function GuildWarDragBoard({
                 toMemberDomId={toMemberDomId}
                 onSelectMember={onSelectMember}
                 onOpenMember={onOpenMember}
+                onPoolContextMenu={onPoolContextMenu}
+                onMemberContextMenu={onMemberContextMenu}
               />
             ) : null}
           </div>
@@ -274,6 +323,9 @@ export function GuildWarDragBoard({
                   toMemberDomId={toMemberDomId}
                   onSelectMember={onSelectMember}
                   onOpenMember={onOpenMember}
+                  onTeamContextMenu={onTeamContextMenu}
+                  onMemberContextMenu={onMemberContextMenu}
+                  onCopyTeamMentions={onCopyTeamMentions}
                 />
               ))}
             </Stack>

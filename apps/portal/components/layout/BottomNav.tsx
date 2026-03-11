@@ -1,4 +1,5 @@
-import { Button, Indicator, Menu } from "@mantine/core";
+import { Button, Indicator } from "@mantine/core";
+import { InfiniMenu } from "@infini-dev-kit/frontend/components";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { IconProps } from "@tabler/icons-react";
 import type { ComponentType } from "react";
@@ -53,8 +54,8 @@ export function BottomNav({ pathname, mainItems, moreItems, onNavigate }: Bottom
           </Link>
         ))}
 
-        <Menu shadow="md" width={220} position="top-end" withinPortal>
-          <Menu.Target>
+        <InfiniMenu width={220} position="top-end">
+          <InfiniMenu.Target>
             <Button
               variant={isMoreActive ? "filled" : "subtle"}
               size="compact-sm"
@@ -64,13 +65,13 @@ export function BottomNav({ pathname, mainItems, moreItems, onNavigate }: Bottom
               <EllipsisOutlined className="bottom-nav-more-icon" />
               <span className="bottom-nav-label">{t("nav.more")}</span>
             </Button>
-          </Menu.Target>
+          </InfiniMenu.Target>
 
-          <Menu.Dropdown>
+          <InfiniMenu.Dropdown>
             {moreItems.map((item) => {
               const Icon = item.icon;
               return (
-                <Menu.Item
+                <InfiniMenu.Item
                   key={item.to}
                   leftSection={
                     <Indicator disabled={!item.isNew} size={7} offset={1} inline>
@@ -83,11 +84,11 @@ export function BottomNav({ pathname, mainItems, moreItems, onNavigate }: Bottom
                   }}
                 >
                   {item.label}
-                </Menu.Item>
+                </InfiniMenu.Item>
               );
             })}
-          </Menu.Dropdown>
-        </Menu>
+          </InfiniMenu.Dropdown>
+        </InfiniMenu>
       </div>
     </nav>
   );

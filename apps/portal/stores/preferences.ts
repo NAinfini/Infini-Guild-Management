@@ -15,6 +15,30 @@ function isLocale(value: string | null): value is Locale {
   return value === "en" || value === "zh";
 }
 
+function readStorage(key: string): string | null {
+  try {
+    return typeof window !== "undefined" ? localStorage.getItem(key) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage unavailable — keep in-memory state only.
+  }
+}
+
+function removeStorage(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Storage unavailable — ignore.
+  }
+}
+
 type PreferencesState = {
   locale: Locale;
   fancyEffects: boolean;
@@ -25,33 +49,30 @@ type PreferencesState = {
   resetPreferences: () => void;
 };
 
-const initialLocaleRaw = localStorage.getItem("locale");
+const initialLocaleRaw = readStorage("locale");
 const initialLocale = isLocale(initialLocaleRaw) ? initialLocaleRaw : resolveDefaultLocale();
 
 export const usePreferencesStore = create<PreferencesState>((set) => ({
   locale: initialLocale,
-  fancyEffects: localStorage.getItem("fancyEffects") === null ? DEFAULT_FANCY_EFFECTS : localStorage.getItem("fancyEffects") !== "false",
-  pushNotificationSound:
-    localStorage.getItem("pushNotificationSound") === null
-      ? DEFAULT_PUSH_NOTIFICATION_SOUND
-      : localStorage.getItem("pushNotificationSound") !== "false",
+  fancyEffects: (() => { const v = readStorage("fancyEffects"); return v === null ? DEFAULT_FANCY_EFFECTS : v !== "false"; })(),
+  pushNotificationSound: (() => { const v = readStorage("pushNotificationSound"); return v === null ? DEFAULT_PUSH_NOTIFICATION_SOUND : v !== "false"; })(),
   setLocale: (locale) => {
-    localStorage.setItem("locale", locale);
+    writeStorage("locale", locale);
     set({ locale });
   },
   setFancyEffects: (fancyEffects) => {
-    localStorage.setItem("fancyEffects", String(fancyEffects));
+    writeStorage("fancyEffects", String(fancyEffects));
     set({ fancyEffects });
   },
   setPushNotificationSound: (pushNotificationSound) => {
-    localStorage.setItem("pushNotificationSound", String(pushNotificationSound));
+    writeStorage("pushNotificationSound", String(pushNotificationSound));
     set({ pushNotificationSound });
   },
   resetPreferences: () => {
     const locale = resolveDefaultLocale();
-    localStorage.removeItem("locale");
-    localStorage.removeItem("fancyEffects");
-    localStorage.removeItem("pushNotificationSound");
+    removeStorage("locale");
+    removeStorage("fancyEffects");
+    removeStorage("pushNotificationSound");
     set({
       locale,
       fancyEffects: DEFAULT_FANCY_EFFECTS,

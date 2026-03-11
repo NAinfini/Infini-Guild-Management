@@ -6,6 +6,7 @@
   "empty": "No data",
   "card.upcomingEvents.title": "Upcoming Events",
   "card.upcomingEvents.unit": "events",
+  "card.upcomingEvents.viewEvent": "View event",
   "card.mySignups.title": "My Signups",
   "card.mySignups.unit": "events",
   "card.activeMembers.title": "Active Members",
@@ -37,5 +38,7 @@
   "eventType.weekly_mission": "Weekly Mission",
   "eventType.guild_war": "Guild War",
   "eventType.social": "Social",
-  "eventType.other": "Other"
+  "eventType.other": "Other",
+  "guest.banner": "You are browsing as a guest. Log in to access all features.",
+  "guest.login": "Log in"
 }

@@ -1,3 +1,4 @@
+import type { Event } from "@guild/shared";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { Badge, Group, Stack, Text, Tooltip } from "@mantine/core";
 import { useMemo } from "react";
@@ -8,7 +9,7 @@ import { cardHeading, eventTypeTagColor, formatDateTime, type DashboardMySignupE
 type MySignupsCardProps = {
   mySignupEvents: DashboardMySignupEvent[];
   now: Date;
-  onOpenEvent: (eventId: string) => void;
+  onOpenEvent: (event: Pick<Event, "id" | "title">) => void;
 };
 
 function isSameDay(a: Date, b: Date): boolean {
@@ -70,7 +71,7 @@ export function MySignupsCard({ mySignupEvents, now, onOpenEvent }: MySignupsCar
           const box = (
             <div
               key={day.date.toISOString()}
-              onClick={hasEvents && day.events.length === 1 ? () => onOpenEvent(day.events[0].event.id) : undefined}
+              onClick={hasEvents && day.events.length === 1 ? () => onOpenEvent(day.events[0].event) : undefined}
               style={{
                 flex: 1,
                 minWidth: 0,

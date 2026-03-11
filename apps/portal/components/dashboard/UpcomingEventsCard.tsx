@@ -1,3 +1,4 @@
+import type { Event } from "@guild/shared";
 import { InfiniCard, NumberTicker } from "@infini-dev-kit/frontend/components";
 import { Avatar, Badge, Button, Group, RingProgress, Stack, Text, Tooltip } from "@mantine/core";
 import {
@@ -32,7 +33,7 @@ type UpcomingEventsCardProps = {
   upcomingEventsCount: number;
   featuredRows: DashboardUpcomingEventRow[];
   rows: DashboardUpcomingEventRow[];
-  onOpenEvent: (eventId: string) => void;
+  onOpenEvent: (event: Pick<Event, "id" | "title">) => void;
 };
 
 export function UpcomingEventsCard({
@@ -127,8 +128,9 @@ export function UpcomingEventsCard({
                     <Button
                       size="xs"
                       variant="subtle"
-                      onClick={() => onOpenEvent(item.item.id)}
+                      onClick={() => onOpenEvent(item.item)}
                       style={{ minWidth: 32, padding: "4px 8px" }}
+                      aria-label={t("card.upcomingEvents.viewEvent")}
                     >
                       <IconArrowRight size={16} />
                     </Button>

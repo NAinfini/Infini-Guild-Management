@@ -100,8 +100,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     resolve: {
-      dedupe: ["@mantine/core", "@mantine/hooks", "react", "react-dom"],
+      dedupe: ["@mantine/core", "@mantine/hooks", "@mantine/modals", "react", "react-dom"],
       alias: [
+        // Dev-Kit source aliases
         {
           find: "@infini-dev-kit/frontend",
           replacement: resolve(devKitRoot, "frontend"),
@@ -114,6 +115,22 @@ export default defineConfig(({ mode }) => {
           find: "@infini-dev-kit/api-client",
           replacement: resolve(devKitRoot, "api-client"),
         },
+        // Force Dev-Kit peer deps to resolve from Guild-Management node_modules
+        { find: "react", replacement: resolve(repoRoot, "node_modules/react") },
+        { find: "react-dom", replacement: resolve(repoRoot, "node_modules/react-dom") },
+        { find: "@mantine/core", replacement: resolve(repoRoot, "node_modules/@mantine/core") },
+        { find: "@mantine/hooks", replacement: resolve(repoRoot, "node_modules/@mantine/hooks") },
+        { find: "@mantine/modals", replacement: resolve(repoRoot, "node_modules/@mantine/modals") },
+        { find: "@mantine/notifications", replacement: resolve(repoRoot, "node_modules/@mantine/notifications") },
+        { find: "@mantine/dates", replacement: resolve(repoRoot, "node_modules/@mantine/dates") },
+        { find: "@mantine/carousel", replacement: resolve(repoRoot, "node_modules/@mantine/carousel") },
+        { find: "motion", replacement: resolve(repoRoot, "node_modules/motion") },
+        { find: /^@tanstack\/react-table$/, replacement: resolve(repoRoot, "node_modules/@tanstack/react-table") },
+        { find: /^@tiptap\/(.*)$/, replacement: resolve(repoRoot, "node_modules/@tiptap/$1") },
+        { find: /^@tabler\/icons-react$/, replacement: resolve(repoRoot, "node_modules/@tabler/icons-react") },
+        { find: "lowlight", replacement: resolve(repoRoot, "node_modules/lowlight") },
+        { find: "clsx", replacement: resolve(repoRoot, "node_modules/clsx") },
+        // Portal internal aliases
         {
           find: /^@guild\/shared$/,
           replacement: resolve(repoRoot, "apps/shared/index.ts"),

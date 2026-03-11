@@ -7,6 +7,7 @@ import {
   botDeliveryLog,
   botDiscordEventMessages,
   botWechatEventMessages,
+  discordLinkCodes,
   eventParticipants,
   events,
   galleryComments,
@@ -16,6 +17,7 @@ import {
   memberProfiles,
   rolePermissions,
   roles,
+  sessions,
   userAuthPassword,
   users,
   warHistory,
@@ -153,6 +155,10 @@ function addMinutes(base: Date | string, minutes: number): string {
   return next.toISOString();
 }
 
+function seedMockAsset(kind: "portrait" | "scene", index: number): string {
+  return `/mock/${kind}-${(index % 2) + 1}.svg`;
+}
+
 function pickClasses(index: number): string[] {
   const first = CLASSES[index % CLASSES.length];
   const second = CLASSES[(index + 3) % CLASSES.length];
@@ -217,14 +223,14 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       id,
       username: `mod_${index + 1}`,
       role: "moderator" as const,
-      isActive: true,
+      isActive: index !== 2,
       deletedAt: null,
     })),
     ...memberIds.map((id, index) => ({
       id,
       username: `member_${String(index + 1).padStart(2, "0")}`,
       role: "member" as const,
-      isActive: true,
+      isActive: index !== 13,
       deletedAt: null,
     })),
   ];
@@ -251,6 +257,10 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   const profileRows: Array<typeof memberProfiles.$inferInsert> = [];
   for (let index = 0; index < memberIds.length; index += 1) {
     const userId = memberIds[index];
+    const vacationStart = index === 5 ? addDays(now, -1) : index === 11 ? addDays(now, 7) : null;
+    const vacationEnd = index === 5 ? addDays(now, 3) : index === 11 ? addDays(now, 14) : null;
+    const profileImages = index % 4 === 3 ? [] : [seedMockAsset("portrait", index)];
+    const profileVideos = index % 6 === 0 ? ["https://www.youtube.com/watch?v=aqz-KE-bpKQ"] : [];
     profileRows.push({
       id: nanoid(),
       userId,
@@ -259,15 +269,19 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       classes: JSON.stringify(pickClasses(index)),
       titleHtml: `<p>Seed Title ${index + 1}</p>`,
       bio: `Seed profile for member ${index + 1}`,
-      images: JSON.stringify([]),
+      images: JSON.stringify(profileImages),
       audioKey: null,
-      videoUrls: JSON.stringify([]),
-      availability: JSON.stringify({ weekdayEvening: index % 2 === 0 }),
-      vacationStart: null,
-      vacationEnd: null,
+      videoUrls: JSON.stringify(profileVideos),
+      availability: JSON.stringify({
+        weekdayEvening: index % 2 === 0,
+        weekendAfternoon: index % 3 === 0,
+        guildWarNight: index % 4 !== 0,
+      }),
+      vacationStart,
+      vacationEnd,
       discordId: `discord_user_${index + 1}`,
-      discordReminderOptOut: false,
-      notes: index % 5 === 0 ? "High priority member" : null,
+      discordReminderOptOut: index % 6 === 0,
+      notes: index % 5 === 0 ? "High priority member" : vacationStart ? "Vacation scheduled" : null,
     });
   }
 
@@ -280,9 +294,9 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       classes: JSON.stringify(["鸣金虹"]),
       titleHtml: "<p>Guild Leader</p>",
       bio: "Seeded admin profile",
-      images: JSON.stringify([]),
+      images: JSON.stringify([seedMockAsset("portrait", 99)]),
       audioKey: null,
-      videoUrls: JSON.stringify([]),
+      videoUrls: JSON.stringify(["https://www.youtube.com/watch?v=aqz-KE-bpKQ"]),
       availability: JSON.stringify({ all_day: true }),
       vacationStart: null,
       vacationEnd: null,
@@ -601,6 +615,18 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: moderatorIds[1],
     },
+    {
+      id: nanoid(),
+      title: "Retired Raid Rotation",
+      bodyJson: JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Archived for historical reference." }] }] }),
+      pinned: false,
+      pinnedAt: null,
+      status: "archived",
+      publishAt: addDays(now, -21),
+      expiresAt: addDays(now, -7),
+      archivedAt: addDays(now, -6),
+      createdBy: adminId,
+    },
   ]);
 
   const warHistoryRows: Array<typeof warHistory.$inferInsert> = [
@@ -709,16 +735,25 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     const assigned = memberIds.slice(index * 4, index * 4 + 8);
     const teamMemberRows: Array<typeof warTeamMembers.$inferInsert> = [];
     assigned.forEach((userId, memberIndex) => {
+      const base = memberIndex + index * 2 + 3;
       teamMemberRows.push({
         id: nanoid(),
         warTeamId: memberIndex < 4 ? teamAId : teamBId,
         userId,
         roleTag: memberIndex % 2 === 0 ? "core" : "flex",
         sortOrder: memberIndex,
+        kills: base * 4 + (memberIndex % 3),
+        deaths: Math.max(1, base - (memberIndex % 2)),
+        assists: base * 6 + (memberIndex % 5),
+        damage: base * 15000 + memberIndex * 2000,
+        healing: base * 8000 + memberIndex * 1500,
+        buildingDamage: base * 5000 + memberIndex * 1000,
+        credits: base * 1200 + memberIndex * 200,
+        damageTaken: base * 12000 + memberIndex * 1800,
       });
     });
 
-    await db.insert(warTeamMembers).values(teamMemberRows);
+    await batchInsert(db, warTeamMembers, teamMemberRows, 4);
 
     await db.insert(warPoolMembers).values(
       memberIds.slice(10, 13).map((userId) => ({
@@ -794,7 +829,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     ...Array.from({ length: 7 }).map((_, index) => ({
       id: nanoid(),
       type: "image" as const,
-      url: `gallery/images/seed/member_${index + 1}.webp`,
+      url: seedMockAsset("scene", index),
       caption: `Seed image ${index + 1}`,
       uploadedBy: memberIds[index],
     })),
@@ -826,6 +861,15 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       usedCount: 10,
       expiresAt: addDays(now, -1),
       revokedAt: null,
+    },
+    {
+      id: nanoid(),
+      code: "SEEDREVOKED",
+      createdBy: adminId,
+      maxUses: 25,
+      usedCount: 4,
+      expiresAt: addDays(now, 12),
+      revokedAt: addDays(now, -2),
     },
   ]);
 
@@ -1073,6 +1117,40 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   }
   await db.insert(botWechatEventMessages).values(wechatMsgRows);
 
+  // ── Discord link codes ──
+  await db.insert(discordLinkCodes).values([
+    {
+      id: nanoid(),
+      userId: memberIds[0],
+      discordId: "discord_pending_123",
+      code: "123456",
+      expiresAt: addDays(now, 1),
+      used: false,
+    },
+    {
+      id: nanoid(),
+      userId: memberIds[1],
+      discordId: "discord_expired_456",
+      code: "654321",
+      expiresAt: addDays(now, -1),
+      used: false,
+    },
+  ]);
+
+  // ── Sessions ──
+  await db.insert(sessions).values([
+    {
+      id: nanoid(),
+      userId: adminId,
+      expiresAt: addDays(now, 7),
+    },
+    {
+      id: nanoid(),
+      userId: moderatorIds[0],
+      expiresAt: addDays(now, 5),
+    },
+  ]);
+
   await db.insert(auditLog).values([
     {
       id: nanoid(),
@@ -1082,6 +1160,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       entityId: "seed-users",
       diffTitle: "Seed users created",
       detailText: JSON.stringify({ users: userRows.length }),
+      createdAt: addHours(now, -12),
     },
     {
       id: nanoid(),
@@ -1091,6 +1170,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       entityId: "seed-events",
       diffTitle: "Seed events created",
       detailText: JSON.stringify({ events: eventRows.length }),
+      createdAt: addHours(now, -10),
     },
     {
       id: nanoid(),
@@ -1099,7 +1179,8 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       actorId: adminId,
       entityId: "seed-announcements",
       diffTitle: "Seed announcements created",
-      detailText: JSON.stringify({ announcements: 3 }),
+      detailText: JSON.stringify({ announcements: 4 }),
+      createdAt: addHours(now, -9),
     },
     {
       id: nanoid(),
@@ -1109,6 +1190,57 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       entityId: "seed-wiki",
       diffTitle: "Seed wiki created",
       detailText: JSON.stringify({ categories: categoryRows.length, articles: 5 }),
+      createdAt: addHours(now, -8),
+    },
+    {
+      id: nanoid(),
+      entityType: "user",
+      action: "deactivate",
+      actorId: adminId,
+      entityId: memberIds[13],
+      diffTitle: "Marked member_14 as inactive",
+      detailText: JSON.stringify({ reason: "Seeded inactive state for admin QA" }),
+      createdAt: addHours(now, -7),
+    },
+    {
+      id: nanoid(),
+      entityType: "invite",
+      action: "revoke",
+      actorId: adminId,
+      entityId: "SEEDREVOKED",
+      diffTitle: "Revoked compromised invite link",
+      detailText: JSON.stringify({ code: "SEEDREVOKED" }),
+      createdAt: addHours(now, -6),
+    },
+    {
+      id: nanoid(),
+      entityType: "announcement",
+      action: "archive",
+      actorId: moderatorIds[0],
+      entityId: "retired-raid-rotation",
+      diffTitle: "Archived outdated raid rotation",
+      detailText: JSON.stringify({ status: "archived" }),
+      createdAt: addHours(now, -5),
+    },
+    {
+      id: nanoid(),
+      entityType: "gallery",
+      action: "upload",
+      actorId: memberIds[2],
+      entityId: galleryItemRows[2].id!,
+      diffTitle: "Uploaded strategy reference image",
+      detailText: JSON.stringify({ type: galleryItemRows[2].type, caption: galleryItemRows[2].caption }),
+      createdAt: addHours(now, -4),
+    },
+    {
+      id: nanoid(),
+      entityType: "bot",
+      action: "settings.sync",
+      actorId: moderatorIds[1],
+      entityId: "discord-notify-defaults",
+      diffTitle: "Updated Discord notification defaults",
+      detailText: JSON.stringify({ channels: ["discord-channel-1", "discord-channel-2"] }),
+      createdAt: addHours(now, -3),
     },
     {
       id: nanoid(),
@@ -1123,7 +1255,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
           users: userRows.length,
           events: eventRows.length,
           participants: participantRows.length,
-          announcements: 3,
+          announcements: 4,
           wikiCategories: categoryRows.length,
           wikiArticles: articleRows.length,
           galleryItems: galleryItemRows.length,
@@ -1136,6 +1268,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
           botWechatMessages: wechatMsgRows.length,
         },
       }),
+      createdAt: addHours(now, -1),
     },
   ]);
 }

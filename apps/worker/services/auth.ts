@@ -22,6 +22,7 @@ const PBKDF2_HASH = "SHA-256";
 
 const THIRTY_DAYS_IN_SECONDS = 30 * 24 * 60 * 60;
 const SESSION_TTL_MS = THIRTY_DAYS_IN_SECONDS * 1000;
+const MAX_ABSOLUTE_SESSION_MS = 90 * 24 * 60 * 60 * 1000;
 
 export const SESSION_COOKIE_NAME = "ig_session";
 export const SESSION_MODE_COOKIE_NAME = "ig_session_mode";
@@ -54,16 +55,13 @@ function base64ToBytes(value: string): Uint8Array {
   return bytes;
 }
 
-function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-
+async function timingSafeEqual(a: Uint8Array, b: Uint8Array): Promise<boolean> {
+  const hashA = new Uint8Array(await crypto.subtle.digest("SHA-256", a as unknown as ArrayBuffer));
+  const hashB = new Uint8Array(await crypto.subtle.digest("SHA-256", b as unknown as ArrayBuffer));
   let diff = 0;
-  for (let index = 0; index < a.length; index += 1) {
-    diff |= a[index] ^ b[index];
+  for (let index = 0; index < hashA.length; index += 1) {
+    diff |= hashA[index] ^ hashB[index];
   }
-
   return diff === 0;
 }
 
@@ -143,7 +141,7 @@ export async function verifyPassword(password: string, salt: string, passwordHas
     const saltBytes = base64ToBytes(salt);
     const expectedHashBytes = base64ToBytes(passwordHash);
     const actualHashBytes = await derivePasswordHash(password, saltBytes);
-    return timingSafeEqual(actualHashBytes, expectedHashBytes);
+    return await timingSafeEqual(actualHashBytes, expectedHashBytes);
   } catch {
     return false;
   }
@@ -185,6 +183,7 @@ export async function resolveSession(c: Context): Promise<ResolvedSession | null
       .select({
         sessionId: sessions.id,
         expiresAt: sessions.expiresAt,
+        sessionCreatedAt: sessions.createdAt,
         userId: users.id,
         role: users.role,
         isActive: users.isActive,
@@ -202,26 +201,42 @@ export async function resolveSession(c: Context): Promise<ResolvedSession | null
   }
 
   const expiresAtMs = Date.parse(row.expiresAt);
+  const createdAtMs = Date.parse(row.sessionCreatedAt);
   const isExpired = Number.isNaN(expiresAtMs) || expiresAtMs <= Date.now();
+  const isAbsoluteExpired = !Number.isNaN(createdAtMs) && Date.now() - createdAtMs > MAX_ABSOLUTE_SESSION_MS;
   const isUserInvalid = !row.isActive || row.deletedAt !== null;
 
-  if (isExpired || isUserInvalid) {
+  if (isExpired || isAbsoluteExpired || isUserInvalid) {
     await db.delete(sessions).where(eq(sessions.id, row.sessionId));
     clearSessionCookie(c);
     return null;
   }
 
   const stayLoggedIn = getCookie(c, SESSION_MODE_COOKIE_NAME) === "1";
-  const nextExpiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
-  await db.update(sessions).set({ expiresAt: nextExpiresAt }).where(eq(sessions.id, row.sessionId));
-  setSessionCookies(c, row.sessionId, {
-    expiresAt: nextExpiresAt,
-    stayLoggedIn,
-  });
+  const remainingMs = expiresAtMs - Date.now();
+  const renewalThresholdMs = SESSION_TTL_MS * 0.5;
+
+  if (remainingMs < renewalThresholdMs) {
+    const nextExpiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
+    await db.update(sessions).set({ expiresAt: nextExpiresAt }).where(eq(sessions.id, row.sessionId));
+    setSessionCookies(c, row.sessionId, {
+      expiresAt: nextExpiresAt,
+      stayLoggedIn,
+    });
+
+    return {
+      sessionId: row.sessionId,
+      expiresAt: nextExpiresAt,
+      user: {
+        id: row.userId,
+        role: row.role,
+      },
+    };
+  }
 
   return {
     sessionId: row.sessionId,
-    expiresAt: nextExpiresAt,
+    expiresAt: row.expiresAt,
     user: {
       id: row.userId,
       role: row.role,

@@ -19,10 +19,10 @@ import {
 import { IconDeviceFloppy } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { fetchUsersList } from "../../../api/queries/users";
+import type { UsersListResponse } from "../../../services/UserService";
 import styles from "./AdminMemberDetailModal.module.css";
 
-type AdminUserRow = Awaited<ReturnType<typeof fetchUsersList>>["data"][number];
+type AdminUserRow = UsersListResponse["data"][number];
 
 type MemberDetailFormState = {
   wechatName: string;
@@ -227,14 +227,14 @@ export function AdminMemberDetailModal({
                     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
                       <TextInput
                         label={t("detail.field.vacationStart")}
-                        placeholder="YYYY-MM-DD"
+                        placeholder={t("detail.placeholder.dateFormat")}
                         value={form.vacationStart}
                         onChange={(event) => onFormChange({ vacationStart: event.currentTarget.value })}
                         type="date"
                       />
                       <TextInput
                         label={t("detail.field.vacationEnd")}
-                        placeholder="YYYY-MM-DD"
+                        placeholder={t("detail.placeholder.dateFormat")}
                         value={form.vacationEnd}
                         onChange={(event) => onFormChange({ vacationEnd: event.currentTarget.value })}
                         type="date"

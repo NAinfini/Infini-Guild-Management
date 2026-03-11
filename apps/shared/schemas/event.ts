@@ -40,12 +40,14 @@ export const createEventSchema = z.object({
   end_at: z.string().datetime().optional(),
   capacity: z.number().int().positive().optional(),
   attachments: eventAttachmentsSchema.optional(),
+  recurrence_rule: recurrenceRuleSchema.optional(),
 });
 
 export const updateEventSchema = createEventSchema.partial().extend({
   pinned: z.boolean().optional(),
   signup_locked: z.boolean().optional(),
   archived_at: z.string().datetime().nullable().optional(),
+  recurrence_scope: z.enum(["this", "future", "all"]).optional(),
 });
 
 export const eventParticipantSchema = z.object({

@@ -1,177 +1,65 @@
 import { InfiniCard, type ImageGridEditorItem } from "@infini-dev-kit/frontend/components";
 import { ImageGridEditor } from "@infini-dev-kit/frontend/components";
 import { Button, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
+import { modals } from "@mantine/modals";
 import { IconPlus, IconTrash, IconUpload } from "@tabler/icons-react";
-import { notifications } from "@mantine/notifications";
-import { useMutation } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  deleteProfileAudio,
-  deleteProfileImage,
-  updateMyProfile,
-  uploadProfileAudio,
-  uploadProfileImages,
-} from "../../../api/mutations/users";
-import { fetchUsersList } from "../../../api/queries/users";
-import { useMediaUpload } from "../../../hooks/useMediaUpload";
+import type { UseMediaUploadState } from "../../../hooks/useMediaUpload";
+import type { UsersListResponse } from "../../../services/UserService";
 
 const PROFILE_IMAGE_MAX = 10;
-const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-const PROFILE_AUDIO_MAX_BYTES = 20 * 1024 * 1024;
 
-type AdminUserRow = Awaited<ReturnType<typeof fetchUsersList>>["data"][number];
+type AdminUserRow = UsersListResponse["data"][number];
 
 type AdminMemberMediaTabProps = {
   member: AdminUserRow;
   isAdmin: boolean;
   isModerator: boolean;
-  onRefresh: () => Promise<void>;
-  onError: (error: unknown, fallbackMessage: string) => void;
+  imageItems: ImageGridEditorItem[];
+  imageUploader: UseMediaUploadState<unknown>;
+  imageReorderPending: boolean;
+  imageDeletePending: boolean;
+  onImageReorder: (items: ImageGridEditorItem[]) => void;
+  onImageDelete: (item: ImageGridEditorItem) => void;
+  onUploadImages: () => Promise<void>;
+  videoUrls: string[];
+  hasVideoChanges: boolean;
+  saveVideosPending: boolean;
+  onVideoUrlChange: (index: number, value: string) => void;
+  onAddVideoUrl: () => void;
+  onRemoveVideoUrl: (index: number) => void;
+  onSaveVideoUrls: () => Promise<void>;
+  audioUploader: UseMediaUploadState<unknown>;
+  deleteAudioPending: boolean;
+  onUploadAudio: () => Promise<void>;
+  onDeleteAudio: () => void;
 };
 
-function isHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
-}
-
 export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
-  const { member, isAdmin, isModerator, onRefresh, onError } = props;
+  const {
+    member,
+    isAdmin,
+    isModerator,
+    imageItems,
+    imageUploader,
+    imageReorderPending,
+    imageDeletePending,
+    onImageReorder,
+    onImageDelete,
+    onUploadImages,
+    videoUrls,
+    hasVideoChanges,
+    saveVideosPending,
+    onVideoUrlChange,
+    onAddVideoUrl,
+    onRemoveVideoUrl,
+    onSaveVideoUrls,
+    audioUploader,
+    deleteAudioPending,
+    onUploadAudio,
+    onDeleteAudio,
+  } = props;
   const { t } = useTranslation(["admin", "common"]);
-
-  // Convert member images to ImageGridEditorItem[]
-  const imageItems: ImageGridEditorItem[] = useMemo(
-    () =>
-      member.profile.images.map((key) => ({
-        id: key,
-        src: isHttpUrl(key) ? key : undefined,
-        alt: key,
-      })),
-    [member.profile.images],
-  );
-
-  const imageUploader = useMediaUpload(
-    async (files) => uploadProfileImages(member.user.id, files),
-    {
-      maxFiles: PROFILE_IMAGE_MAX,
-      maxFileSizeBytes: PROFILE_IMAGE_MAX_BYTES,
-      mediaType: "image",
-      convertImagesToWebp: true,
-      imageWebpQuality: 0.8,
-    },
-  );
-
-  const audioUploader = useMediaUpload(
-    async (files) => {
-      const file = files[0];
-      if (!file) {
-        throw new Error(t("media.audioFileRequired"));
-      }
-      return uploadProfileAudio(member.user.id, file);
-    },
-    {
-      maxFiles: 1,
-      maxFileSizeBytes: PROFILE_AUDIO_MAX_BYTES,
-      mediaType: "audio",
-      convertAudioToOpus: true,
-    },
-  );
-
-  const deleteImageMutation = useMutation({
-    mutationFn: (key: string) => deleteProfileImage(member.user.id, key),
-    onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.mediaImageRemoved") });
-      await onRefresh();
-    },
-    onError: (error) => onError(error, t("message.mediaImageRemoveFailed")),
-  });
-
-  const reorderImagesMutation = useMutation({
-    mutationFn: (newOrder: string[]) =>
-      updateMyProfile(member.user.id, { images: newOrder }),
-    onSuccess: async () => {
-      await onRefresh();
-    },
-    onError: (error) => onError(error, t("message.mediaImageReorderFailed")),
-  });
-
-  const deleteAudioMutation = useMutation({
-    mutationFn: () => deleteProfileAudio(member.user.id),
-    onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.mediaAudioRemoved") });
-      await onRefresh();
-    },
-    onError: (error) => onError(error, t("message.mediaAudioRemoveFailed")),
-  });
-
-  // Local state for editable video URL list
-  const [videoUrls, setVideoUrls] = useState<string[]>(() => [...member.profile.video_urls]);
-
-  // Sync when member data refreshes (e.g. after save)
-  useEffect(() => {
-    setVideoUrls([...member.profile.video_urls]);
-  }, [member.profile.video_urls]);
-
-  const saveVideosMutation = useMutation({
-    mutationFn: (urls: string[]) =>
-      updateMyProfile(member.user.id, {
-        video_urls: urls.filter((u) => u.trim() !== ""),
-      }),
-    onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.mediaVideosSaved") });
-      await onRefresh();
-    },
-    onError: (error) => onError(error, t("message.mediaVideosSaveFailed")),
-  });
-
-  const handleImageReorder = useCallback(
-    (items: ImageGridEditorItem[]) => {
-      const newOrder = items.map((item) => item.id);
-      reorderImagesMutation.mutate(newOrder);
-    },
-    [reorderImagesMutation],
-  );
-
-  const handleImageDelete = useCallback(
-    (item: ImageGridEditorItem) => {
-      deleteImageMutation.mutate(item.id);
-    },
-    [deleteImageMutation],
-  );
-
-  const handleImageSelectFiles = useCallback(
-    (files: File[]) => {
-      imageUploader.selectFiles(files);
-    },
-    [imageUploader],
-  );
-
-  const handleImageUpload = async () => {
-    try {
-      const result = await imageUploader.upload();
-      if (!result) {
-        return;
-      }
-      notifications.show({ color: "infini-success", message: t("message.mediaImagesUploaded") });
-      await onRefresh();
-      imageUploader.reset();
-    } catch (error) {
-      onError(error, t("message.mediaImagesUploadFailed"));
-    }
-  };
-
-  const handleAudioUpload = async () => {
-    try {
-      const result = await audioUploader.upload();
-      if (!result) {
-        return;
-      }
-      notifications.show({ color: "infini-success", message: t("message.mediaAudioUploaded") });
-      await onRefresh();
-      audioUploader.reset();
-    } catch (error) {
-      onError(error, t("message.mediaAudioUploadFailed"));
-    }
-  };
 
   return (
     <Stack gap={16}>
@@ -184,12 +72,12 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             <Stack gap={12}>
               <ImageGridEditor
                 items={imageItems}
-                onReorder={handleImageReorder}
-                onDelete={isAdmin ? handleImageDelete : undefined}
-                onSelectFiles={isModerator ? handleImageSelectFiles : undefined}
+                onReorder={onImageReorder}
+                onDelete={isAdmin ? onImageDelete : undefined}
+                onFilesSelected={isModerator ? imageUploader.selectFiles : undefined}
                 maxImages={PROFILE_IMAGE_MAX}
                 imageSize={80}
-                disabled={deleteImageMutation.isPending || reorderImagesMutation.isPending}
+                disabled={imageDeletePending || imageReorderPending}
                 aria-label={t("media.aria.profileImagesGrid")}
               />
 
@@ -204,7 +92,9 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                   ) : null}
                   <Button
                     leftSection={<IconUpload size={16} />}
-                    onClick={handleImageUpload}
+                    onClick={() => {
+                      void onUploadImages();
+                    }}
                     loading={imageUploader.isUploading}
                     disabled={imageUploader.files.length === 0}
                     size="sm"
@@ -225,13 +115,9 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             {videoUrls.map((url, index) => (
               <Group key={index} gap={8} wrap="nowrap" align="flex-end">
                 <TextInput
-                  placeholder="https://..."
+                  placeholder={t("media.videoUrlPlaceholder")}
                   value={url}
-                  onChange={(e) => {
-                    const next = [...videoUrls];
-                    next[index] = e.currentTarget.value;
-                    setVideoUrls(next);
-                  }}
+                  onChange={(event) => onVideoUrlChange(index, event.currentTarget.value)}
                   style={{ flex: 1 }}
                   size="sm"
                   disabled={!isModerator}
@@ -243,12 +129,9 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                     variant="light"
                     px={8}
                     onClick={() => {
-                      const next = videoUrls.filter((_, i) => i !== index);
-                      setVideoUrls(next);
-                      // Auto-save the removal
-                      saveVideosMutation.mutate(next);
+                      onRemoveVideoUrl(index);
                     }}
-                    loading={saveVideosMutation.isPending}
+                    loading={saveVideosPending}
                     aria-label={t("media.aria.removeVideoUrl")}
                   >
                     <IconTrash size={16} />
@@ -263,17 +146,18 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                   size="sm"
                   variant="light"
                   leftSection={<IconPlus size={16} />}
-                  onClick={() => setVideoUrls([...videoUrls, ""])}
+                  onClick={onAddVideoUrl}
                   disabled={videoUrls.length >= 10}
                 >
                   {t("media.addVideoUrl")}
                 </Button>
-                {/* Show save only when local state differs from server */}
-                {JSON.stringify(videoUrls) !== JSON.stringify(member.profile.video_urls) ? (
+                {hasVideoChanges ? (
                   <Button
                     size="sm"
-                    onClick={() => saveVideosMutation.mutate(videoUrls)}
-                    loading={saveVideosMutation.isPending}
+                    onClick={() => {
+                      void onSaveVideoUrls();
+                    }}
+                    loading={saveVideosPending}
                   >
                     {t("media.saveVideoUrls")}
                   </Button>
@@ -301,8 +185,16 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                 <Button
                   color="infini-danger"
                   leftSection={<IconTrash size={16} />}
-                  onClick={() => deleteAudioMutation.mutate()}
-                  loading={deleteAudioMutation.isPending}
+                  onClick={() =>
+                    modals.openConfirmModal({
+                      title: t("confirm.deleteAudio.title"),
+                      children: <Text size="sm">{t("confirm.deleteAudio.description")}</Text>,
+                      labels: { confirm: t("media.removeAudio"), cancel: t("common:cancel") },
+                      confirmProps: { color: "infini-danger" },
+                      onConfirm: onDeleteAudio,
+                    })
+                  }
+                  loading={deleteAudioPending}
                   aria-label={t("media.aria.removeAudio")}
                 >
                   {t("media.removeAudio")}
@@ -335,7 +227,9 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
               ) : null}
               <Button
                 leftSection={<IconUpload size={16} />}
-                onClick={handleAudioUpload}
+                onClick={() => {
+                  void onUploadAudio();
+                }}
                 loading={audioUploader.isUploading}
                 disabled={Boolean(audioUploader.supportError) || audioUploader.files.length === 0}
                 size="sm"

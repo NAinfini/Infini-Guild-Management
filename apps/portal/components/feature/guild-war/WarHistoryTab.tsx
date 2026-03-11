@@ -2,6 +2,7 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Button,
   Group,
   Loader,
   Modal,
@@ -14,16 +15,17 @@ import {
 import { modals } from "@mantine/modals";
 import { IconCalendarOff } from "@tabler/icons-react";
 import { CrownOutlined, ShieldOutlined, SwordsOutlined, TargetOutlined } from "@portal/utils/icons";
-import type { ColumnDef, SortingState } from "@tanstack/react-table";
-import { getCoreRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
+import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@infini-dev-kit/frontend/components";
+import type { ColumnDef, SortingState } from "@infini-dev-kit/frontend/components";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { MotionButton } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { EmptyState } from "../../shared/EmptyState";
-import { InfiniTable } from "../../shared/InfiniTable";
+
 
 type HistoryViewMode = "table" | "chart";
 type AnalyticsMetricKey =
@@ -225,6 +227,8 @@ type WarHistoryTabProps = {
   postResultsPending: boolean;
   onSaveMemberStats: (updates: HistoryMemberStatsUpdate[]) => Promise<void>;
   saveMemberStatsPending: boolean;
+  onDeleteHistory: (historyId: string) => void;
+  deleteHistoryPending: boolean;
   renderCounter: (value: number | null | undefined) => ReactNode;
   historyDetailTitle: string;
   historyResultLabel: string;
@@ -268,6 +272,8 @@ export function WarHistoryTab({
   postResultsPending,
   onSaveMemberStats,
   saveMemberStatsPending,
+  onDeleteHistory,
+  deleteHistoryPending,
   renderCounter: _renderCounter,
   historyDetailTitle,
   historyResultLabel,
@@ -282,17 +288,19 @@ export function WarHistoryTab({
 }: WarHistoryTabProps) {
   const { t } = useTranslation("guild-war");
   const [historySearch, setHistorySearch] = useState(initialSearch ?? "");
-  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [detailModalOpen, detailModalHandlers] = useDisclosure(false);
   const [highlightRowId, setHighlightRowId] = useState<string | null>(null);
   const [summarySorting, setSummarySorting] = useState<SortingState>([]);
   const [detailSorting, setDetailSorting] = useState<SortingState>([]);
   const [memberStatsBaseline, setMemberStatsBaseline] = useState<Record<string, MemberStatDraft>>({});
   const [memberStatsDraft, setMemberStatsDraft] = useState<Record<string, MemberStatDraft>>({});
 
-  // Clear localStorage and highlight after initial render
+  useEffect(() => {
+    setHistorySearch(initialSearch ?? "");
+  }, [initialSearch]);
+
   useEffect(() => {
     if (initialSearch) {
-      localStorage.removeItem("guildWar.searchWarName");
       const matchingRow = historyRows.find((row) => row.war_name === initialSearch);
       if (matchingRow) {
         setHighlightRowId(matchingRow.id);
@@ -391,7 +399,7 @@ export function WarHistoryTab({
     if (!confirmed) {
       return;
     }
-    setDetailModalOpen(false);
+    detailModalHandlers.close();
     setMemberStatsBaseline({});
     setMemberStatsDraft({});
   };
@@ -406,6 +414,32 @@ export function WarHistoryTab({
       nextBaseline[userId] = { ...draft };
     }
     setMemberStatsBaseline(nextBaseline);
+  };
+
+  const handleDeleteHistory = async () => {
+    if (!canManage || !historyDetail) return;
+    const confirmed = await new Promise<boolean>((resolve) => {
+      modals.openConfirmModal({
+        title: t("history.deleteConfirmTitle"),
+        children: t("history.deleteConfirmDescription", { name: historyDetail.war_name }),
+        labels: {
+          cancel: t("common:action.cancel"),
+          confirm: t("common:action.delete"),
+        },
+        confirmProps: { color: "infini-danger" },
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+        closeOnConfirm: true,
+        closeOnCancel: true,
+        centered: true,
+      });
+    });
+    if (confirmed) {
+      onDeleteHistory(historyDetail.id);
+      detailModalHandlers.close();
+      setMemberStatsBaseline({});
+      setMemberStatsDraft({});
+    }
   };
 
   const updateDraftMetric = (userId: string, key: EditableMetricKey, value: string | number) => {
@@ -457,7 +491,7 @@ export function WarHistoryTab({
       return;
     }
     onSelectHistoryId(historyId);
-    setDetailModalOpen(true);
+    detailModalHandlers.open();
   };
 
   // Summary table
@@ -698,7 +732,7 @@ export function WarHistoryTab({
         onClose={() => {
           void requestCloseDetailModal();
         }}
-        title={historyDetail ? `${historyDetail.war_name}${historyDetail.enemy_name ? ` vs ${historyDetail.enemy_name}` : ""}` : historyDetailTitle}
+        title={historyDetail ? `${historyDetail.war_name}${historyDetail.enemy_name ? ` ${t("history.versus")} ${historyDetail.enemy_name}` : ""}` : historyDetailTitle}
         size="min(1800px, calc(100vw - 2rem))"
       >
           <Stack gap={16}>
@@ -710,7 +744,7 @@ export function WarHistoryTab({
                 <div>
                   <Text fw={700} className="war-history-detail-title">{historyDetail.war_name}</Text>
                   {historyDetail.enemy_name ? (
-                    <Text size="sm" c="dimmed" style={{ marginTop: 2 }}>vs {historyDetail.enemy_name}</Text>
+                    <Text size="sm" c="dimmed" style={{ marginTop: 2 }}>{t("history.versus")} {historyDetail.enemy_name}</Text>
                   ) : null}
                   <Text style={{ display: "block", marginTop: 4 }}>
                     {historyResultLabel}: <strong>{historyDetail.result ?? "-"}</strong>
@@ -788,7 +822,7 @@ export function WarHistoryTab({
                         <div style={{ padding: "1.2rem" }}>
                         <Stack gap={4}>
                           <Text fw={600}>{team.team_name}</Text>
-                          <Text c="dimmed" size="sm">{team.notes ?? "No team notes"}</Text>
+                          <Text c="dimmed" size="sm">{team.notes ?? t("history.noTeamNotes")}</Text>
                           <Text>
                             {team.members
                               .map((member) => `${member.user_id}${member.role_tag ? ` [${member.role_tag}]` : ""}`)
@@ -811,7 +845,7 @@ export function WarHistoryTab({
                 <InfiniCard interactive={false} className="war-history-chart-card">
                   <div style={{ padding: "1.2rem" }}>
                   <Stack gap={8}>
-                    <Text fw={600}>{`${getMetricLabel(historyChartMetric)} Chart`}</Text>
+                    <Text fw={600}>{t("history.chartTitle", { metric: getMetricLabel(historyChartMetric) })}</Text>
                     <ReactEChartsCore
                       echarts={echarts}
                       theme={chartThemeName}
@@ -841,6 +875,18 @@ export function WarHistoryTab({
               )}
 
               <Group justify="flex-end" gap={8}>
+                {canManage ? (
+                  <Button
+                    color="red"
+                    variant="light"
+                    size="sm"
+                    onClick={handleDeleteHistory}
+                    loading={deleteHistoryPending}
+                    disabled={historyDetailLoading}
+                  >
+                    {t("common:action.delete")}
+                  </Button>
+                ) : null}
                 {canManage ? (
                   <MotionButton
                     type="primary"

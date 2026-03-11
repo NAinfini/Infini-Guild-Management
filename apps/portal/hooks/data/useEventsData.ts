@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "../../api/query-keys";
-import { fetchEventsList } from "../../api/queries/events";
-import { fetchUsersList } from "../../api/queries/users";
+import { fetchEventsList } from "../../services/EventService";
+import { queryKeys } from "../../services/PortalQueryKeys";
+import { fetchUsersList } from "../../services/UserService";
 
 type UseEventsDataOptions = {
   eventType?: string;
@@ -32,4 +32,3 @@ export function useEventsData(options: UseEventsDataOptions) {
     usersQuery,
   };
 }
-

@@ -174,7 +174,7 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
     };
 
     const connect = () => {
-      if (isCleaningUp) {
+      if (isCleaningUp || socket !== null) {
         return;
       }
 
@@ -213,6 +213,7 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
       socket.onclose = () => {
         setWsConnected(false);
         stopHeartbeat();
+        socket = null;
         if (isCleaningUp) {
           return;
         }

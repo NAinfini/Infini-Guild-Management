@@ -1,9 +1,8 @@
 import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
-import { DepthButton } from "@infini-dev-kit/frontend/components";
-import { Badge, Group, Loader, Menu, Stack, Text } from "@mantine/core";
+import { DepthButton, InfiniMenu } from "@infini-dev-kit/frontend/components";
+import { Badge, Group, Loader, Stack, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
 import {
   IconDots,
   IconPencil,
@@ -11,20 +10,13 @@ import {
   IconPlayerPlay,
   IconTrash,
 } from "@tabler/icons-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
+import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import {
-  createTemplate,
-  deleteTemplate,
-  pauseTemplate,
-  resumeTemplate,
-  updateTemplate,
-} from "../../../api/mutations/events";
-import { fetchTemplatesList } from "../../../api/queries/events";
-import { queryKeys } from "../../../api/query-keys";
-import { useAppError } from "../../../hooks/useAppError";
-import { RecurringTemplateFormModal } from "./RecurringTemplateFormModal";
+  RecurringTemplateFormModal,
+  type RecurringTemplateFormPayload,
+} from "./RecurringTemplateFormModal";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 
@@ -54,78 +46,38 @@ function buildRecurrenceSummary(
 type RecurringTemplatesTabProps = {
   canManage: boolean;
   createRequested?: number;
+  templates: RecurringTemplate[];
+  loading: boolean;
+  formSaving: boolean;
+  onCreateTemplate: (payload: RecurringTemplateFormPayload) => Promise<unknown>;
+  onUpdateTemplate: (id: string, payload: RecurringTemplateFormPayload) => Promise<unknown>;
+  onPauseTemplate: (id: string) => Promise<unknown>;
+  onResumeTemplate: (id: string) => Promise<unknown>;
+  onDeleteTemplate: (id: string) => Promise<unknown>;
 };
 
-export function RecurringTemplatesTab({ canManage, createRequested }: RecurringTemplatesTabProps) {
-  const { t } = useTranslation("events");
-  const queryClient = useQueryClient();
-  const { showError } = useAppError();
+export function RecurringTemplatesTab({
+  canManage,
+  createRequested,
+  templates,
+  loading,
+  formSaving,
+  onCreateTemplate,
+  onUpdateTemplate,
+  onPauseTemplate,
+  onResumeTemplate,
+  onDeleteTemplate,
+}: RecurringTemplatesTabProps) {
+  const { t, i18n } = useTranslation("events");
 
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, formHandlers] = useDisclosure(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editingTemplate, setEditingTemplate] = useState<RecurringTemplate | null>(null);
-
-  const templatesQuery = useQuery({
-    queryKey: queryKeys.events.templates(),
-    queryFn: fetchTemplatesList,
-  });
-
-  const templates = templatesQuery.data?.data ?? [];
-
-  const createMutation = useMutation({
-    mutationFn: createTemplate,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.templates() });
-      notifications.show({ color: "infini-success", message: t("recurring.message.created") });
-      setFormOpen(false);
-      setEditingTemplate(null);
-    },
-    onError: (error) => showError(error, t("recurring.message.createFailed")),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateTemplate>[1] }) =>
-      updateTemplate(id, payload),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.templates() });
-      notifications.show({ color: "infini-success", message: t("recurring.message.updated") });
-      setFormOpen(false);
-      setEditingTemplate(null);
-    },
-    onError: (error) => showError(error, t("recurring.message.updateFailed")),
-  });
-
-  const pauseMutation = useMutation({
-    mutationFn: pauseTemplate,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.templates() });
-      notifications.show({ color: "infini-success", message: t("recurring.message.paused") });
-    },
-    onError: (error) => showError(error, t("recurring.message.pauseFailed")),
-  });
-
-  const resumeMutation = useMutation({
-    mutationFn: resumeTemplate,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.templates() });
-      notifications.show({ color: "infini-success", message: t("recurring.message.resumed") });
-    },
-    onError: (error) => showError(error, t("recurring.message.resumeFailed")),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: deleteTemplate,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.templates() });
-      notifications.show({ color: "infini-success", message: t("recurring.message.deleted") });
-    },
-    onError: (error) => showError(error, t("recurring.message.deleteFailed")),
-  });
 
   const handleCreate = useCallback(() => {
     setFormMode("create");
     setEditingTemplate(null);
-    setFormOpen(true);
+    formHandlers.open();
   }, []);
 
   useEffect(() => {
@@ -135,7 +87,7 @@ export function RecurringTemplatesTab({ canManage, createRequested }: RecurringT
   const handleEdit = useCallback((template: RecurringTemplate) => {
     setFormMode("edit");
     setEditingTemplate(template);
-    setFormOpen(true);
+    formHandlers.open();
   }, []);
 
   const handleDelete = useCallback(
@@ -146,25 +98,34 @@ export function RecurringTemplatesTab({ canManage, createRequested }: RecurringT
           <Text size="sm">{t("recurring.confirm.delete.description")}</Text>
         ),
         confirmProps: { color: "infini-danger" },
-        onConfirm: () => deleteMutation.mutate(template.id),
+        onConfirm: () => {
+          void onDeleteTemplate(template.id);
+        },
         centered: true,
       });
     },
-    [t, deleteMutation],
+    [onDeleteTemplate, t],
   );
 
   const handleFormSave = useCallback(
-    (payload: Parameters<typeof createTemplate>[0]) => {
+    async (payload: RecurringTemplateFormPayload) => {
       if (formMode === "create") {
-        createMutation.mutate(payload);
-      } else if (editingTemplate) {
-        updateMutation.mutate({ id: editingTemplate.id, payload });
+        await onCreateTemplate(payload);
+        formHandlers.close();
+        setEditingTemplate(null);
+        return;
+      }
+
+      if (editingTemplate) {
+        await onUpdateTemplate(editingTemplate.id, payload);
+        formHandlers.close();
+        setEditingTemplate(null);
       }
     },
-    [formMode, editingTemplate, createMutation, updateMutation],
+    [editingTemplate, formMode, onCreateTemplate, onUpdateTemplate],
   );
 
-  if (templatesQuery.isLoading) {
+  if (loading) {
     return (
       <Group justify="center" py={40}>
         <Loader size="sm" />
@@ -224,7 +185,7 @@ export function RecurringTemplatesTab({ canManage, createRequested }: RecurringT
                         {template.last_generated_date && (
                           <Text size="xs" c="dimmed">
                             {t("recurring.lastGenerated", {
-                              date: new Date(template.last_generated_date).toLocaleDateString(),
+                              date: new Date(template.last_generated_date).toLocaleDateString(i18n.language),
                             })}
                           </Text>
                         )}
@@ -235,44 +196,49 @@ export function RecurringTemplatesTab({ canManage, createRequested }: RecurringT
                     </Stack>
 
                     {canManage && (
-                      <Menu position="bottom-end" withArrow>
-                        <Menu.Target>
-                          <DepthButton type="secondary" size="xs" iconOnly>
+                      <InfiniMenu position="bottom-end" withArrow>
+                        <InfiniMenu.Target>
+                          <DepthButton type="secondary" size="sm">
                             <IconDots size={16} />
                           </DepthButton>
-                        </Menu.Target>
-                        <Menu.Dropdown>
-                          <Menu.Item
+                        </InfiniMenu.Target>
+                        <InfiniMenu.Dropdown>
+                          <InfiniMenu.Item
                             leftSection={<IconPencil size={14} />}
                             onClick={() => handleEdit(template)}
                           >
                             {t("menu.edit")}
-                          </Menu.Item>
+                          </InfiniMenu.Item>
                           {isPaused ? (
-                            <Menu.Item
+                            <InfiniMenu.Item
                               leftSection={<IconPlayerPlay size={14} />}
-                              onClick={() => resumeMutation.mutate(template.id)}
+                              onClick={() => {
+                                void onResumeTemplate(template.id);
+                              }}
                             >
                               {t("recurring.resume")}
-                            </Menu.Item>
+                            </InfiniMenu.Item>
                           ) : (
-                            <Menu.Item
+                            <InfiniMenu.Item
                               leftSection={<IconPlayerPause size={14} />}
-                              onClick={() => pauseMutation.mutate(template.id)}
+                              onClick={() => {
+                                void onPauseTemplate(template.id);
+                              }}
                             >
                               {t("recurring.pause")}
-                            </Menu.Item>
+                            </InfiniMenu.Item>
                           )}
-                          <Menu.Divider />
-                          <Menu.Item
+                          <InfiniMenu.Divider />
+                          <InfiniMenu.Item
+                            className="infini-menu-item--danger"
                             color="red"
                             leftSection={<IconTrash size={14} />}
                             onClick={() => handleDelete(template)}
                           >
                             {t("recurring.delete")}
-                          </Menu.Item>
-                        </Menu.Dropdown>
-                      </Menu>
+                          </InfiniMenu.Item>
+                        </InfiniMenu.Dropdown>
+                      </InfiniMenu>
                     )}
                   </Group>
                 </div>
@@ -286,9 +252,9 @@ export function RecurringTemplatesTab({ canManage, createRequested }: RecurringT
         open={formOpen}
         mode={formMode}
         template={editingTemplate}
-        confirmLoading={createMutation.isPending || updateMutation.isPending}
+        confirmLoading={formSaving}
         onCancel={() => {
-          setFormOpen(false);
+          formHandlers.close();
           setEditingTemplate(null);
         }}
         onSave={handleFormSave}

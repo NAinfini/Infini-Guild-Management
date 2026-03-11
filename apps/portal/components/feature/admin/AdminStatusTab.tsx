@@ -11,11 +11,16 @@ import {
   SimpleGrid,
   Stack,
   Text,
+  Title,
 } from "@mantine/core";
 import { InfiniCard, ProgressButton } from "@infini-dev-kit/frontend/components";
 import { IconClipboard, IconPlayerPlay, IconTrash } from "@tabler/icons-react";
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useClipboard } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
+import { hasRoleAtLeast } from "@guild/shared";
+import { useAuthStore } from "../../../stores/auth";
+import { formatDateTime } from "../../../utils/admin";
 import { AdminSystemSection } from "./AdminSystemSection";
 
 type StatusData = {
@@ -35,20 +40,13 @@ type StatusHealthLog = {
 };
 
 type AdminStatusTabProps = {
-  heading: ReactNode;
-  isAdmin: boolean;
-  adminOnlyMessage: string;
-  onRetry: () => void;
-  retryLoading: boolean;
   onCopyConfigSummary: () => void;
   canCopyConfigSummary: boolean;
   statusLatencyMs: number | null;
   statusLoading: boolean;
   statusError: boolean;
-  loadErrorMessage: string;
   statusData: StatusData | null;
   statusHealthLogs: StatusHealthLog[];
-  formatDateTime: (iso: string | null) => string;
 };
 
 // ─── API Test Infrastructure ─────────────────────────────────────────
@@ -101,6 +99,16 @@ type TestRunContext = {
   botGuildId: string | null;
   botNotificationChannelId: string | null;
   botTeamCompChannelId: string | null;
+  /** IDs of objects created by tests that need cleanup */
+  registeredUserId: string | null;
+  createdInviteLinkId: string | null;
+  createdAnnouncementId: string | null;
+  createdGalleryImageId: string | null;
+  createdWikiCategoryId: string | null;
+  createdWikiArticleId: string | null;
+  createdWarTemplateId: string | null;
+  createdWarHistoryId: string | null;
+  createdRoleId: string | null;
 };
 
 type PreparedEndpointRequest = {
@@ -148,6 +156,15 @@ function createInitialTestRunContext(): TestRunContext {
     botGuildId: null,
     botNotificationChannelId: null,
     botTeamCompChannelId: null,
+    registeredUserId: null,
+    createdInviteLinkId: null,
+    createdAnnouncementId: null,
+    createdGalleryImageId: null,
+    createdWikiCategoryId: null,
+    createdWikiArticleId: null,
+    createdWarTemplateId: null,
+    createdWarHistoryId: null,
+    createdRoleId: null,
   };
 }
 
@@ -285,22 +302,22 @@ const API_CATEGORIES: CategoryDef[] = [
     label: "Events",
     endpoints: [
       { label: "List Events", method: "GET", path: "/api/events?page=1&limit=5" },
-      { label: "Get Event", method: "GET", path: "/api/events/:id" },
       { label: "Create Event", method: "POST", path: "/api/events" },
+      { label: "Get Event", method: "GET", path: "/api/events/:id" },
       { label: "Update Event", method: "PATCH", path: "/api/events/:id" },
       { label: "Upload Event Images", method: "POST", path: "/api/events/:id/images" },
       { label: "Join Event", method: "POST", path: "/api/events/:id/join" },
-      { label: "Leave Event", method: "DELETE", path: "/api/events/:id/leave" },
       { label: "Add Participant", method: "POST", path: "/api/events/:id/participants" },
       { label: "Remove Participant", method: "DELETE", path: "/api/events/:id/participants/:userId" },
-      { label: "Archive Event", method: "DELETE", path: "/api/events/:id" },
-      { label: "Destroy Event", method: "DELETE", path: "/api/events/:id/destroy" },
+      { label: "Leave Event", method: "DELETE", path: "/api/events/:id/leave" },
       { label: "List Templates", method: "GET", path: "/api/events/templates/list" },
       { label: "Create Template", method: "POST", path: "/api/events/templates" },
       { label: "Update Template", method: "PATCH", path: "/api/events/templates/:id" },
       { label: "Pause Template", method: "POST", path: "/api/events/templates/:id/pause" },
       { label: "Resume Template", method: "POST", path: "/api/events/templates/:id/resume" },
       { label: "Delete Template", method: "DELETE", path: "/api/events/templates/:id" },
+      { label: "Archive Event", method: "DELETE", path: "/api/events/:id" },
+      { label: "Destroy Event", method: "DELETE", path: "/api/events/:id/destroy" },
     ],
   },
   {
@@ -308,11 +325,11 @@ const API_CATEGORIES: CategoryDef[] = [
     label: "Announcements",
     endpoints: [
       { label: "List Announcements", method: "GET", path: "/api/announcements?page=1&limit=5" },
-      { label: "Get Announcement", method: "GET", path: "/api/announcements/:id" },
       { label: "Create Announcement", method: "POST", path: "/api/announcements" },
+      { label: "Get Announcement", method: "GET", path: "/api/announcements/:id" },
       { label: "Update Announcement", method: "PATCH", path: "/api/announcements/:id" },
-      { label: "Archive Announcement", method: "DELETE", path: "/api/announcements/:id" },
       { label: "Upload Images", method: "POST", path: "/api/announcements/:id/images" },
+      { label: "Archive Announcement", method: "DELETE", path: "/api/announcements/:id" },
     ],
   },
   {
@@ -322,12 +339,12 @@ const API_CATEGORIES: CategoryDef[] = [
       { label: "List Gallery", method: "GET", path: "/api/gallery?limit=5" },
       { label: "Upload Images", method: "POST", path: "/api/gallery/images" },
       { label: "Add Video", method: "POST", path: "/api/gallery/videos" },
-      { label: "Delete Item", method: "DELETE", path: "/api/gallery/:id" },
       { label: "Like Item", method: "POST", path: "/api/gallery/:id/like" },
       { label: "List Comments", method: "GET", path: "/api/gallery/:id/comments" },
       { label: "Add Comment", method: "POST", path: "/api/gallery/:id/comments" },
       { label: "Edit Comment", method: "PATCH", path: "/api/gallery/:id/comments/:commentId" },
       { label: "Delete Comment", method: "DELETE", path: "/api/gallery/:id/comments/:commentId" },
+      { label: "Delete Item", method: "DELETE", path: "/api/gallery/:id" },
     ],
   },
   {
@@ -351,6 +368,7 @@ const API_CATEGORIES: CategoryDef[] = [
       { label: "Update History", method: "PATCH", path: "/api/guild-war/history/:id" },
       { label: "Update Member Stats", method: "PATCH", path: "/api/guild-war/history/:id/member-stats/:userId" },
       { label: "Analytics", method: "GET", path: "/api/guild-war/analytics" },
+      { label: "Delete History", method: "DELETE", path: "/api/guild-war/history/:id" },
     ],
   },
   {
@@ -360,13 +378,13 @@ const API_CATEGORIES: CategoryDef[] = [
       { label: "List Categories", method: "GET", path: "/api/wiki/categories" },
       { label: "Create Category", method: "POST", path: "/api/wiki/categories" },
       { label: "Update Category", method: "PATCH", path: "/api/wiki/categories/:id" },
-      { label: "Delete Category", method: "DELETE", path: "/api/wiki/categories/:id" },
       { label: "List Articles", method: "GET", path: "/api/wiki/articles?page=1&limit=5" },
-      { label: "Get Article", method: "GET", path: "/api/wiki/articles/:slug" },
       { label: "Create Article", method: "POST", path: "/api/wiki/articles" },
+      { label: "Get Article", method: "GET", path: "/api/wiki/articles/:slug" },
       { label: "Update Article", method: "PATCH", path: "/api/wiki/articles/:id" },
-      { label: "Archive Article", method: "DELETE", path: "/api/wiki/articles/:id" },
       { label: "Upload Article Images", method: "POST", path: "/api/wiki/articles/:id/images" },
+      { label: "Archive Article", method: "DELETE", path: "/api/wiki/articles/:id" },
+      { label: "Delete Category", method: "DELETE", path: "/api/wiki/categories/:id" },
     ],
   },
   {
@@ -396,14 +414,14 @@ const API_CATEGORIES: CategoryDef[] = [
     label: "Admin — Users",
     endpoints: [
       { label: "Create Member", method: "POST", path: "/api/admin/users" },
-      { label: "Batch Role Change", method: "PATCH", path: "/api/admin/users/batch/role" },
-      { label: "Batch Deactivate", method: "PATCH", path: "/api/admin/users/batch/deactivate" },
-      { label: "Batch Reactivate", method: "PATCH", path: "/api/admin/users/batch/reactivate" },
-      { label: "Batch Delete", method: "PATCH", path: "/api/admin/users/batch/delete" },
       { label: "Change User Role", method: "PATCH", path: "/api/admin/users/:id/role" },
       { label: "Deactivate User", method: "PATCH", path: "/api/admin/users/:id/deactivate" },
       { label: "Reactivate User", method: "PATCH", path: "/api/admin/users/:id/reactivate" },
       { label: "Reset Password", method: "POST", path: "/api/admin/users/:id/reset-password" },
+      { label: "Batch Role Change", method: "PATCH", path: "/api/admin/users/batch/role" },
+      { label: "Batch Deactivate", method: "PATCH", path: "/api/admin/users/batch/deactivate" },
+      { label: "Batch Reactivate", method: "PATCH", path: "/api/admin/users/batch/reactivate" },
+      { label: "Batch Delete", method: "PATCH", path: "/api/admin/users/batch/delete" },
     ],
   },
   {
@@ -1050,6 +1068,12 @@ function captureContextFromResponse(
     return next;
   }
 
+  if (endpoint.path === "/api/auth/register/:inviteCode") {
+    const userId = readString(payload.user_id) ?? readString((isRecord(payload.user) ? payload.user : null)?.id);
+    next.registeredUserId = userId ?? next.registeredUserId;
+    return next;
+  }
+
   if (endpoint.path === "/api/users?page=1&limit=5") {
     if (Array.isArray(payload.data)) {
       const firstCandidate = payload.data.find((item): item is Record<string, unknown> => {
@@ -1135,8 +1159,10 @@ function captureContextFromResponse(
     return next;
   }
 
-  if (endpoint.path === "/api/announcements") {
-    next.announcementId = readString(payload.id) ?? next.announcementId;
+  if (endpoint.path === "/api/announcements" && endpoint.method === "POST") {
+    const id = readString(payload.id);
+    next.announcementId = id ?? next.announcementId;
+    next.createdAnnouncementId = id ?? next.createdAnnouncementId;
     return next;
   }
 
@@ -1150,6 +1176,7 @@ function captureContextFromResponse(
     const firstItem = firstArrayItem(payload.data);
     const itemId = readString(firstItem?.id);
     next.galleryItemId = itemId ?? next.galleryItemId;
+    next.createdGalleryImageId = itemId ?? next.createdGalleryImageId;
     return next;
   }
 
@@ -1186,9 +1213,11 @@ function captureContextFromResponse(
     return next;
   }
 
-  if (endpoint.path === "/api/guild-war/history") {
-    next.warHistoryId = readString(payload.id) ?? next.warHistoryId;
+  if (endpoint.path === "/api/guild-war/history" && endpoint.method === "POST") {
+    const id = readString(payload.id);
+    next.warHistoryId = id ?? next.warHistoryId;
     next.warEventId = readString(payload.event_id) ?? next.warEventId;
+    next.createdWarHistoryId = id ?? next.createdWarHistoryId;
     return next;
   }
 
@@ -1197,7 +1226,11 @@ function captureContextFromResponse(
       const firstTemplate = payload.find((item): item is Record<string, unknown> => isRecord(item));
       next.warTemplateId = readString(firstTemplate?.id) ?? next.warTemplateId;
     } else {
-      next.warTemplateId = readString(payload.id) ?? next.warTemplateId;
+      const id = readString(payload.id);
+      next.warTemplateId = id ?? next.warTemplateId;
+      if (endpoint.method === "POST") {
+        next.createdWarTemplateId = id ?? next.createdWarTemplateId;
+      }
     }
     return next;
   }
@@ -1212,7 +1245,11 @@ function captureContextFromResponse(
       const firstCategory = payload.find((item): item is Record<string, unknown> => isRecord(item));
       next.wikiCategoryId = readString(firstCategory?.id) ?? next.wikiCategoryId;
     } else {
-      next.wikiCategoryId = readString(payload.id) ?? next.wikiCategoryId;
+      const id = readString(payload.id);
+      next.wikiCategoryId = id ?? next.wikiCategoryId;
+      if (endpoint.method === "POST") {
+        next.createdWikiCategoryId = id ?? next.createdWikiCategoryId;
+      }
     }
     return next;
   }
@@ -1225,10 +1262,12 @@ function captureContextFromResponse(
     return next;
   }
 
-  if (endpoint.path === "/api/wiki/articles") {
-    next.wikiArticleId = readString(payload.id) ?? next.wikiArticleId;
+  if (endpoint.path === "/api/wiki/articles" && endpoint.method === "POST") {
+    const id = readString(payload.id);
+    next.wikiArticleId = id ?? next.wikiArticleId;
     next.wikiArticleSlug = readString(payload.slug) ?? next.wikiArticleSlug;
     next.wikiArticleCategoryId = readString(payload.category_id) ?? next.wikiArticleCategoryId;
+    next.createdWikiArticleId = id ?? next.createdWikiArticleId;
     return next;
   }
 
@@ -1238,7 +1277,9 @@ function captureContextFromResponse(
       next.registerInviteCode = readString(firstInvite?.code) ?? next.registerInviteCode;
     } else {
       if (endpoint.method === "POST") {
-        next.inviteLinkId = readString(payload.id) ?? next.inviteLinkId;
+        const id = readString(payload.id);
+        next.inviteLinkId = id ?? next.inviteLinkId;
+        next.createdInviteLinkId = id ?? next.createdInviteLinkId;
       }
       next.registerInviteCode = readString(payload.code) ?? next.registerInviteCode;
     }
@@ -1258,7 +1299,11 @@ function captureContextFromResponse(
       );
       next.adminRoleId = readString(customRole?.id) ?? next.adminRoleId;
     } else {
-      next.adminRoleId = readString(payload.id) ?? next.adminRoleId;
+      const id = readString(payload.id);
+      next.adminRoleId = id ?? next.adminRoleId;
+      if (endpoint.method === "POST") {
+        next.createdRoleId = id ?? next.createdRoleId;
+      }
     }
     return next;
   }
@@ -1518,10 +1563,11 @@ function DebugConsole({
   onClear: () => void;
 }) {
   const { t } = useTranslation("admin");
+  const clipboard = useClipboard();
 
   const copyAll = useCallback(() => {
     const text = logs.map(formatLogEntry).join("\n\n" + "─".repeat(80) + "\n\n");
-    void navigator.clipboard.writeText(text);
+    clipboard.copy(text);
   }, [logs]);
 
   const consoleText = logs.length === 0
@@ -1571,20 +1617,20 @@ function DebugConsole({
 // ─── Main Component ──────────────────────────────────────────────────
 
 export function AdminStatusTab({
-  heading,
-  isAdmin,
-  adminOnlyMessage,
   onCopyConfigSummary,
   canCopyConfigSummary,
   statusLatencyMs,
   statusLoading,
   statusError,
-  loadErrorMessage,
   statusData,
   statusHealthLogs,
-  formatDateTime,
 }: AdminStatusTabProps) {
   const { t } = useTranslation("admin");
+  const { t: tc } = useTranslation("common");
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = Boolean(user && hasRoleAtLeast(user.role, "admin"));
+  const loadErrorMessage = tc("loadError");
+  const heading = <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.status")}</Title>;
   const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
   const [runningSet, setRunningSet] = useState<Set<string>>(new Set());
   const [resultMap, setResultMap] = useState<Map<string, EndpointResult>>(new Map());
@@ -1684,6 +1730,106 @@ export function AdminStatusTab({
 
   const [runningAll, setRunningAll] = useState(false);
 
+  const runCleanup = useCallback(async (signal: AbortSignal) => {
+    const ctx = contextRef.current;
+    const cleanupSteps: Array<{ label: string; method: string; path: string }> = [];
+
+    // Order: dependents first, then parents
+    // Gallery image (the uploaded image that survived the in-category delete of the video)
+    if (ctx.createdGalleryImageId) {
+      cleanupSteps.push({ label: "Cleanup: Gallery Image", method: "DELETE", path: `/api/gallery/${encodeURIComponent(ctx.createdGalleryImageId)}` });
+    }
+    // Announcement (archive = soft delete)
+    if (ctx.createdAnnouncementId) {
+      cleanupSteps.push({ label: "Cleanup: Announcement", method: "DELETE", path: `/api/announcements/${encodeURIComponent(ctx.createdAnnouncementId)}` });
+    }
+    // Wiki article before category (article depends on category)
+    if (ctx.createdWikiArticleId) {
+      cleanupSteps.push({ label: "Cleanup: Wiki Article", method: "DELETE", path: `/api/wiki/articles/${encodeURIComponent(ctx.createdWikiArticleId)}` });
+    }
+    if (ctx.createdWikiCategoryId) {
+      cleanupSteps.push({ label: "Cleanup: Wiki Category", method: "DELETE", path: `/api/wiki/categories/${encodeURIComponent(ctx.createdWikiCategoryId)}` });
+    }
+    // Guild war template
+    if (ctx.createdWarTemplateId) {
+      cleanupSteps.push({ label: "Cleanup: War Template", method: "DELETE", path: `/api/guild-war/templates/${encodeURIComponent(ctx.createdWarTemplateId)}` });
+    }
+    // Guild war history
+    if (ctx.createdWarHistoryId) {
+      cleanupSteps.push({ label: "Cleanup: War History", method: "DELETE", path: `/api/guild-war/history/${encodeURIComponent(ctx.createdWarHistoryId)}` });
+    }
+    // Invite link
+    if (ctx.createdInviteLinkId) {
+      cleanupSteps.push({ label: "Cleanup: Invite Link", method: "DELETE", path: `/api/admin/invite-links/${encodeURIComponent(ctx.createdInviteLinkId)}` });
+    }
+    // Admin role
+    if (ctx.createdRoleId) {
+      cleanupSteps.push({ label: "Cleanup: Admin Role", method: "DELETE", path: `/api/admin/roles/${encodeURIComponent(ctx.createdRoleId)}` });
+    }
+    // Registered test user (batch delete via admin)
+    if (ctx.registeredUserId) {
+      cleanupSteps.push({ label: "Cleanup: Registered User", method: "PATCH", path: "/api/admin/users/batch/delete" });
+    }
+
+    for (const step of cleanupSteps) {
+      if (signal.aborted) break;
+      await waitWithAbort(API_TEST_GAP_MUTATION_MS, signal);
+      if (signal.aborted) break;
+
+      const started = performance.now();
+      const ranAt = new Date().toISOString();
+      try {
+        const isJsonBody = step.method === "PATCH";
+        const fetchOpts: RequestInit = {
+          method: step.method,
+          credentials: "include",
+          signal,
+        };
+        if (isJsonBody && step.label === "Cleanup: Registered User") {
+          fetchOpts.headers = { "Content-Type": "application/json" };
+          fetchOpts.body = JSON.stringify({ user_ids: [ctx.registeredUserId] });
+        }
+        const response = await fetch(step.path, fetchOpts);
+        const latencyMs = Math.round(performance.now() - started);
+        let body = "";
+        const contentType = response.headers.get("content-type") ?? "";
+        if (contentType.includes("json")) {
+          const raw = await response.text();
+          if (raw) body = JSON.stringify(JSON.parse(raw), null, 2);
+        } else {
+          body = await response.text();
+        }
+        pushLog({
+          id: nextLogId(),
+          category: "Cleanup",
+          label: step.label,
+          method: step.method,
+          path: step.path,
+          status: response.status,
+          latencyMs,
+          error: response.ok ? null : `${response.status} ${response.statusText}`,
+          body: truncateJson(body),
+          ranAt,
+        });
+      } catch (err) {
+        if (signal.aborted) break;
+        const latencyMs = Math.round(performance.now() - started);
+        pushLog({
+          id: nextLogId(),
+          category: "Cleanup",
+          label: step.label,
+          method: step.method,
+          path: step.path,
+          status: null,
+          latencyMs,
+          error: err instanceof Error ? err.message : "Unknown error",
+          body: "",
+          ranAt,
+        });
+      }
+    }
+  }, [pushLog]);
+
   const runAllCategories = useCallback(async () => {
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -1697,10 +1843,14 @@ export function AdminStatusTab({
         if (controller.signal.aborted) break;
         await runCategoryInternal(cat, controller.signal);
       }
+      // Cleanup phase: delete test-created objects
+      if (!controller.signal.aborted) {
+        await runCleanup(controller.signal);
+      }
     } finally {
       setRunningAll(false);
     }
-  }, [clearRunConsole, runCategoryInternal]);
+  }, [clearRunConsole, runCategoryInternal, runCleanup]);
 
   const clearDebug = useCallback(() => {
     setDebugLogs([]);
@@ -1712,7 +1862,7 @@ export function AdminStatusTab({
     return (
       <Stack gap={12}>
         {heading}
-        <Alert color="infini-warning" title={adminOnlyMessage} />
+        <Alert color="infini-warning" title={t("adminOnly")} />
       </Stack>
     );
   }
@@ -1742,8 +1892,6 @@ export function AdminStatusTab({
               statusError={statusError}
               loadErrorMessage={loadErrorMessage}
               statusData={statusData}
-              statusHealthLogs={[]}
-              formatDateTime={formatDateTime}
             />
           </div>
         </InfiniCard>

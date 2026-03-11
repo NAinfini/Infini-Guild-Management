@@ -1,12 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "../../api/query-keys";
-import { fetchEventDetail, fetchEventsList } from "../../api/queries/events";
+import {
+  fetchEventDetail,
+  fetchEventsList,
+} from "../../services/EventService";
 import {
   fetchGuildWarActive,
   fetchGuildWarHistory,
   fetchGuildWarHistoryDetail,
   fetchGuildWarTemplates,
-} from "../../api/queries/guild-war";
+} from "../../services/GuildWarService";
+import { queryKeys } from "../../services/PortalQueryKeys";
 
 type UseGuildWarDataOptions = {
   selectedEventId?: string;
@@ -38,11 +41,13 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
   const activeQuery = useQuery({
     queryKey: queryKeys.guildWar.active(selectedEventId ?? "none"),
     queryFn: () => fetchGuildWarActive(selectedEventId),
+    enabled: Boolean(selectedEventId),
   });
 
   const templatesQuery = useQuery({
     queryKey: queryKeys.guildWar.templates(selectedEventId ?? "none"),
     queryFn: () => fetchGuildWarTemplates(selectedEventId),
+    enabled: Boolean(selectedEventId),
   });
 
   const historyQuery = useQuery({
@@ -71,4 +76,3 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
     historyDetailQuery,
   };
 }
-

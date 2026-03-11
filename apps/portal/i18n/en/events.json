@@ -127,11 +127,16 @@
   "menu.archive": "Archive",
   "menu.unarchive": "Unarchive",
   "menu.delete": "Delete",
+  "archive.confirmTitle": "Archive Event",
+  "archive.confirmDescription": "Are you sure you want to archive \"{{title}}\"?",
+  "archive.confirm": "Archive",
+  "archive.cancel": "Cancel",
   "menu.actions": "Event actions",
   "detail.title": "Event Details",
   "detail.eventType": "Event Type",
   "detail.time": "Time",
   "detail.description": "Description",
+  "detail.attachments": "Attachments",
   "detail.members": "Members ({{count}})",
   "detail.membersWithCap": "Members ({{count}} / {{capacity}})",
   "detail.noMembers": "No members have joined yet.",
@@ -177,5 +182,10 @@
   "recurring.message.paused": "Template paused",
   "recurring.message.pauseFailed": "Failed to pause template",
   "recurring.message.resumed": "Template resumed",
-  "recurring.message.resumeFailed": "Failed to resume template"
+  "recurring.message.resumeFailed": "Failed to resume template",
+  "message.capacityInvalid": "Capacity must be a positive number.",
+  "recurring.message.validationFailed": "Title and start time are required.",
+  "field.attachmentsCount": "Attachments ({{current}}/{{max}})",
+  "field.endBeforeStart": "End time must be after start time",
+  "aria.filterByType": "Filter events by type"
 }

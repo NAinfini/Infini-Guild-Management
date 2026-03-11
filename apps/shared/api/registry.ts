@@ -127,6 +127,10 @@ const galleryListQuerySchema = z.object({
   date_to: z.string().optional(),
 });
 
+const mediaKeyQuerySchema = z.object({
+  key: z.string().min(1),
+});
+
 const usersParticipantMutationSchema = z.object({
   user_id: z.string(),
 });
@@ -305,6 +309,12 @@ export const API_REGISTRY = {
     path: "/api/events/:id",
     auth: "optional",
   },
+  eventsImageGet: {
+    method: "GET",
+    path: "/api/events/image",
+    auth: "optional",
+    request: mediaKeyQuerySchema,
+  },
   eventsCreate: {
     method: "POST",
     path: "/api/events",
@@ -336,6 +346,48 @@ export const API_REGISTRY = {
     path: "/api/events/:id/leave",
     auth: "session",
     role: "member",
+  },
+  eventsBatchDetails: {
+    method: "POST",
+    path: "/api/events/batch-details",
+    auth: "optional",
+    request: z.object({ ids: z.array(z.string()).max(50) }),
+  },
+  eventsTemplatesList: {
+    method: "GET",
+    path: "/api/events/templates/list",
+    auth: "session",
+    role: "moderator",
+  },
+  eventsTemplatesCreate: {
+    method: "POST",
+    path: "/api/events/templates",
+    auth: "session",
+    role: "moderator",
+  },
+  eventsTemplatesUpdate: {
+    method: "PATCH",
+    path: "/api/events/templates/:id",
+    auth: "session",
+    role: "moderator",
+  },
+  eventsTemplatesPause: {
+    method: "POST",
+    path: "/api/events/templates/:id/pause",
+    auth: "session",
+    role: "moderator",
+  },
+  eventsTemplatesResume: {
+    method: "POST",
+    path: "/api/events/templates/:id/resume",
+    auth: "session",
+    role: "moderator",
+  },
+  eventsTemplatesDelete: {
+    method: "DELETE",
+    path: "/api/events/templates/:id",
+    auth: "session",
+    role: "moderator",
   },
   eventsParticipantAdd: {
     method: "POST",
@@ -617,6 +669,13 @@ export const API_REGISTRY = {
     role: "admin",
     notes: "Soft revoke by setting revoked_at timestamp.",
   },
+  adminInviteDelete: {
+    method: "DELETE",
+    path: "/api/admin/invite-links/:id/permanent",
+    auth: "session",
+    role: "admin",
+    notes: "Hard delete — permanently removes the invite link record.",
+  },
   adminAuditLog: {
     method: "GET",
     path: "/api/admin/audit-log",
@@ -635,13 +694,13 @@ export const API_REGISTRY = {
     method: "GET",
     path: "/api/admin/audit-archive/months",
     auth: "session",
-    role: "admin",
+    role: "moderator",
   },
   adminAuditArchiveMonth: {
     method: "GET",
     path: "/api/admin/audit-archive/:month",
     auth: "session",
-    role: "admin",
+    role: "moderator",
     request: adminAuditArchiveMonthSchema,
   },
   adminUserRoleUpdate: {
@@ -711,7 +770,7 @@ export const API_REGISTRY = {
     method: "GET",
     path: "/api/admin/bot-settings",
     auth: "session",
-    role: "admin",
+    role: "moderator",
   },
   adminBotSettingsUpdate: {
     method: "PATCH",
@@ -720,11 +779,47 @@ export const API_REGISTRY = {
     role: "admin",
     request: botSettingsSchema,
   },
+  adminBotSettingsDiscordChannels: {
+    method: "GET",
+    path: "/api/admin/bot-settings/discord/channels",
+    auth: "session",
+    role: "moderator",
+  },
+  adminBotSettingsTest: {
+    method: "POST",
+    path: "/api/admin/bot-settings/test",
+    auth: "session",
+    role: "admin",
+  },
+  adminAnalyticsSettingsGet: {
+    method: "GET",
+    path: "/api/admin/analytics-settings",
+    auth: "session",
+    role: "moderator",
+  },
+  adminAnalyticsSettingsUpdate: {
+    method: "PATCH",
+    path: "/api/admin/analytics-settings",
+    auth: "session",
+    role: "admin",
+  },
+  adminAuditArchiveDownload: {
+    method: "GET",
+    path: "/api/admin/audit-archive/download",
+    auth: "session",
+    role: "admin",
+  },
+  adminAuditArchiveDownloadFile: {
+    method: "GET",
+    path: "/api/admin/audit-archive/download/file",
+    auth: "session",
+    role: "admin",
+  },
   adminRolesList: {
     method: "GET",
     path: "/api/admin/roles",
     auth: "session",
-    role: "admin",
+    role: "moderator",
   },
   adminRoleCreate: {
     method: "POST",
@@ -750,7 +845,7 @@ export const API_REGISTRY = {
     method: "GET",
     path: "/api/admin/status",
     auth: "session",
-    role: "admin",
+    role: "moderator",
   },
 
   // Internal bot (HMAC)

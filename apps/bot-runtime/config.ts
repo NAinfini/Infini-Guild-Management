@@ -30,10 +30,14 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
 export function loadConfig(): BotRuntimeConfig {
   const workerApiBaseUrl = (process.env.WORKER_API_BASE_URL ?? "http://127.0.0.1:8787").replace(/\/+$/, "");
   const discordToken = process.env.DISCORD_BOT_TOKEN;
+  const workerSharedSecret = process.env.BOT_SHARED_SECRET?.trim();
+  if (!workerSharedSecret) {
+    throw new Error("BOT_SHARED_SECRET is required");
+  }
 
   return {
     workerApiBaseUrl,
-    workerSharedSecret: process.env.BOT_SHARED_SECRET ?? "dev-secret",
+    workerSharedSecret,
     taskReceiverPort: Number(process.env.BOT_RUNTIME_PORT ?? 3100),
     discordToken,
     discordClientId: process.env.DISCORD_CLIENT_ID,

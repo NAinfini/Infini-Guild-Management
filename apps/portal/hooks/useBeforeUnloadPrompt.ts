@@ -1,19 +1,12 @@
-import { useEffect } from "react";
+import { useBlocker } from "@tanstack/react-router";
 
 export function useBeforeUnloadPrompt(enabled: boolean) {
-  useEffect(() => {
-    if (!enabled) {
-      return;
-    }
-
-    const handler = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-
-    window.addEventListener("beforeunload", handler);
-    return () => {
-      window.removeEventListener("beforeunload", handler);
-    };
-  }, [enabled]);
+  useBlocker({
+    disabled: !enabled,
+    enableBeforeUnload: enabled,
+    shouldBlockFn: () => {
+      if (!enabled) return false;
+      return !window.confirm("You have unsaved changes. Are you sure you want to leave?");
+    },
+  });
 }

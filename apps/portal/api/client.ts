@@ -67,6 +67,11 @@ export async function apiRequest<TResponse>(
   const headers = new Headers(init.headers);
   headers.set("X-Request-Id", nanoid());
 
+  const method = (init.method ?? "GET").toUpperCase();
+  if (method === "POST" || method === "PATCH" || method === "DELETE") {
+    headers.set("X-Requested-With", "XMLHttpRequest");
+  }
+
   if (init.ifMatch) {
     headers.set("If-Match", init.ifMatch);
   }
@@ -160,7 +165,14 @@ export async function apiRequest<TResponse>(
     return {} as TResponse;
   }
 
-  const data = (await response.json()) as TResponse;
+  let data: TResponse;
+  try {
+    data = (await response.json()) as TResponse;
+  } catch {
+    throw new ApiRequestError("Invalid response from server", {
+      status: response.status,
+    });
+  }
 
   return data;
 }
@@ -171,6 +183,11 @@ export async function apiDownload(
 ): Promise<{ blob: Blob; headers: Headers }> {
   const headers = new Headers(init.headers);
   headers.set("X-Request-Id", nanoid());
+
+  const method = (init.method ?? "GET").toUpperCase();
+  if (method === "POST" || method === "PATCH" || method === "DELETE") {
+    headers.set("X-Requested-With", "XMLHttpRequest");
+  }
 
   let response: Response;
   try {

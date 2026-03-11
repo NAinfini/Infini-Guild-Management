@@ -1,9 +1,10 @@
-﻿import { PlayCircleOutlined } from "@portal/utils/icons";
+import { PlayCircleOutlined } from "@portal/utils/icons";
 import { RevealOnScroll } from "@infini-dev-kit/frontend/components";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import { Button, Group, Skeleton, Stack, Text } from "@mantine/core";
-import { IconTrash } from "@tabler/icons-react";
+import { Button, Checkbox, Group, Skeleton, Stack, Text } from "@mantine/core";
+import { IconPlayerPlay, IconTrash } from "@tabler/icons-react";
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
 import type { GalleryItem } from "./shared";
 
@@ -25,7 +26,6 @@ type GalleryGridProps = {
   onDelete: (id: string) => void;
   onOpenLightbox: (id: string) => void;
   isHttpUrl: (value: string) => boolean;
-  toEmbedVideoUrl: (value: string) => string;
   formatDateTime: (iso: string) => string;
   actionDeleteLabel: string;
   fieldR2ObjectLabel: string;
@@ -49,14 +49,14 @@ export function GalleryGrid({
   onDelete,
   onOpenLightbox,
   isHttpUrl,
-  toEmbedVideoUrl,
   formatDateTime,
   actionDeleteLabel,
   fieldR2ObjectLabel,
 }: GalleryGridProps) {
+  const { t } = useTranslation("gallery");
   if (isLoading && rows.length === 0) {
     return (
-      <div className="gallery-masonry" role="grid" aria-label="Gallery loading">
+      <div className="gallery-masonry" role="grid" aria-label={t("aria.galleryLoading")}>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="gallery-masonry__item">
             <InfiniCard interactive={false}>
@@ -104,7 +104,7 @@ export function GalleryGrid({
   }
 
   return (
-    <div className="gallery-masonry" role="grid" aria-label="Gallery items">
+    <div className="gallery-masonry" role="grid" aria-label={t("aria.galleryItems")}>
       {rows.map((item, index) => (
         <RevealOnScroll key={item.id} delayMs={Math.min(index, 18) * 18}>
           <div
@@ -118,11 +118,10 @@ export function GalleryGrid({
                   <Text fw={600}>{item.type.toUpperCase()}</Text>
                   {canModerate ? (
                     <Group gap={8} wrap="wrap">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={selectedIds.includes(item.id)}
                         onChange={() => onToggleSelect(item.id)}
-                        aria-label={`Select gallery item ${item.id}`}
+                        aria-label={t("aria.selectItem", { id: item.id })}
                       />
                       <Button color="infini-danger" size="xs" leftSection={<IconTrash size={16} />} onClick={() => onDelete(item.id)} loading={deletePending}>
                         {actionDeleteLabel}
@@ -135,7 +134,7 @@ export function GalleryGrid({
                         type="button"
                         onClick={() => onOpenLightbox(item.id)}
                         className="gallery-preview-button"
-                        aria-label={`Open image ${item.caption ?? item.id}`}
+                        aria-label={t("aria.openImage", { name: item.caption ?? item.id })}
                       >
                         <div className="gallery-preview-media">
                           <img
@@ -163,19 +162,26 @@ export function GalleryGrid({
                       type="button"
                       onClick={() => onOpenLightbox(item.id)}
                       className="gallery-preview-button"
-                      aria-label={`Open video ${item.caption ?? item.id}`}
+                      aria-label={t("aria.openVideo", { name: item.caption ?? item.id })}
                     >
                       <div className="gallery-preview-media">
                         <span className="gallery-type-badge">
-                          <PlayCircleOutlined /> VIDEO
+                          <PlayCircleOutlined /> {t("media.video")}
                         </span>
-                        <iframe
-                          src={toEmbedVideoUrl(item.url)}
-                          title={item.caption ?? item.id}
-                          style={{ width: "100%", height: 170, border: "none", borderRadius: 8 }}
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                          allowFullScreen
-                        />
+                        <div
+                          className="gallery-video-thumbnail"
+                          style={{
+                            width: "100%",
+                            height: 170,
+                            borderRadius: 8,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "var(--mantine-color-dark-6, #1a1a2e)",
+                          }}
+                        >
+                          <IconPlayerPlay size={48} style={{ opacity: 0.7 }} />
+                        </div>
                         {!isExternalView ? (
                           <span className="gallery-preview-uploader">{item.uploaded_by_name ?? item.uploaded_by}</span>
                         ) : null}

@@ -1,4 +1,12 @@
-﻿export const IMAGE_QUOTAS = {
+﻿export const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+] as const;
+
+export const IMAGE_QUOTAS = {
   profile: 10,
   announcement: 10,
   gallery: 20,

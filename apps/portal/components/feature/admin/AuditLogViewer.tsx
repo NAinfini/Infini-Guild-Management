@@ -1,13 +1,12 @@
-import { Alert, Group, Loader, Pagination, Stack, Text } from "@mantine/core";
+import type { AuditLogEntry } from "@guild/shared";
+import { Alert, Group, Loader, Pagination, ScrollArea, Stack, Text } from "@mantine/core";
 import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import type { ColumnDef, SortingState } from "@tanstack/react-table";
-import { getCoreRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
+import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@infini-dev-kit/frontend/components";
+import type { ColumnDef, SortingState } from "@infini-dev-kit/frontend/components";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { fetchAdminAuditLog } from "../../../api/queries/admin";
-import { InfiniTable } from "../../shared/InfiniTable";
 
-type AuditRow = Awaited<ReturnType<typeof fetchAdminAuditLog>>["data"][number];
+type AuditRow = AuditLogEntry;
 
 type AuditLogViewerProps = {
   auditLoading: boolean;
@@ -114,9 +113,9 @@ export function AuditLogViewer({
       {!auditLoading && !auditError ? (
         <InfiniCard interactive={false}>
           <div style={{ padding: "1.2rem" }}>
-            <div style={{ overflowX: "auto" }}>
+            <ScrollArea type="auto">
               <InfiniTable table={table} highlightOnHover />
-            </div>
+            </ScrollArea>
             <Group justify="flex-end" mt="sm">
               <Pagination value={auditPageCurrent} total={totalPages} onChange={onAuditPageChange} withEdges />
             </Group>

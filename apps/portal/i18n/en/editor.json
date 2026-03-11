@@ -18,5 +18,9 @@
   "toolbar.delTable": "Delete Table",
   "toolbar.image": "Image",
   "slashCommands": "Slash Commands",
-  "message.imageInserted": "Image inserted"
+  "message.imageInserted": "Image inserted",
+  "message.imageUploadFailed": "Image upload failed",
+  "toolbar.linkPrompt": "Link URL",
+  "toolbar.close": "Close",
+  "upload.uploading": "Uploading image..."
 }

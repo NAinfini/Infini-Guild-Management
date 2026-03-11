@@ -1,6 +1,6 @@
 import {
-  type BotSettings,
   type InviteLink,
+  adminUpdateProfileSchema,
   batchDeactivateSchema,
   batchRoleChangeSchema,
   botSettingsSchema,
@@ -15,6 +15,12 @@ export type CreateAdminMemberPayload = z.input<typeof createAdminMemberSchema>;
 export type BatchRoleChangePayload = z.input<typeof batchRoleChangeSchema>;
 export type BatchDeactivatePayload = z.input<typeof batchDeactivateSchema>;
 export type UpdateBotSettingsPayload = z.input<typeof botSettingsSchema>;
+export type AdminUpdateProfilePayload = z.input<typeof adminUpdateProfileSchema>;
+
+export function adminUpdateProfile(userId: string, payload: AdminUpdateProfilePayload): Promise<unknown> {
+  const bodyJson = adminUpdateProfileSchema.parse(payload);
+  return apiRequest(`/api/users/${userId}/profile`, { method: "PATCH", bodyJson });
+}
 
 export function createAdminInviteLink(payload: CreateInviteLinkPayload): Promise<InviteLink> {
   const bodyJson = createInviteLinkSchema.parse(payload);
@@ -23,6 +29,12 @@ export function createAdminInviteLink(payload: CreateInviteLinkPayload): Promise
 
 export function revokeAdminInviteLink(id: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/admin/invite-links/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function deleteAdminInviteLink(id: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/admin/invite-links/${id}/permanent`, {
     method: "DELETE",
   });
 }
@@ -40,14 +52,14 @@ export function updateAdminUserRole(
 export function deactivateAdminUser(userId: string, reason?: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/admin/users/${userId}/deactivate`, {
     method: "PATCH",
-    bodyJson: { reason },
+    bodyJson: reason !== undefined ? { reason } : {},
   });
 }
 
 export function reactivateAdminUser(userId: string, reason?: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/admin/users/${userId}/reactivate`, {
     method: "PATCH",
-    bodyJson: { reason },
+    bodyJson: reason !== undefined ? { reason } : {},
   });
 }
 
@@ -59,7 +71,7 @@ export function resetAdminUserPassword(
     `/api/admin/users/${userId}/reset-password`,
     {
       method: "POST",
-      bodyJson: { temporary_password },
+      bodyJson: temporary_password !== undefined ? { temporary_password } : {},
     },
   );
 }
@@ -130,7 +142,7 @@ export function testAdminBotDispatch(payload: {
 }): Promise<{ ok: true; task_id: string }> {
   return apiRequest<{ ok: true; task_id: string }>("/api/admin/bot-settings/test", {
     method: "POST",
-    bodyJson: payload,
+    bodyJson: { ...payload, dry_run: true },
   });
 }
 

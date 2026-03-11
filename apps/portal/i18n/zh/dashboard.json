@@ -6,6 +6,7 @@
   "empty": "暂无数据",
   "card.upcomingEvents.title": "即将开始活动",
   "card.upcomingEvents.unit": "场",
+  "card.upcomingEvents.viewEvent": "查看活动",
   "card.mySignups.title": "我的报名",
   "card.mySignups.unit": "场",
   "card.activeMembers.title": "数据统计",
@@ -37,5 +38,7 @@
   "eventType.weekly_mission": "周常任务",
   "eventType.guild_war": "公会战",
   "eventType.social": "社交",
-  "eventType.other": "其他"
+  "eventType.other": "其他",
+  "guest.banner": "你正在以访客身份浏览，登录后可使用全部功能。",
+  "guest.login": "登录"
 }

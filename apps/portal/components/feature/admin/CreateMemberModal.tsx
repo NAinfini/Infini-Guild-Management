@@ -8,9 +8,12 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { IconCheck, IconCopy, IconUserPlus } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+
+const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 
 type CreateMemberResult = {
   user_id: string;
@@ -59,6 +62,10 @@ export function CreateMemberModal({
   const handleCreate = async () => {
     const trimmed = username.trim();
     if (!trimmed) return;
+    if (trimmed.length < 3 || trimmed.length > 50 || !USERNAME_PATTERN.test(trimmed)) {
+      notifications.show({ color: "infini-danger", message: t("member.create.usernameInvalid") });
+      return;
+    }
 
     const res = await onCreateMember({
       username: trimmed,

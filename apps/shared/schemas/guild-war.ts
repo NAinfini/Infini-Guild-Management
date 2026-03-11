@@ -1,4 +1,5 @@
-﻿import { z } from "zod";
+import { z } from "zod";
+import { eventSchema } from "./event";
 
 export const warHistorySchema = z.object({
   id: z.string(),
@@ -111,6 +112,7 @@ export const updateMemberStatsSchema = warTeamMemberSchema
 export const warTemplateSchema = z.object({
   id: z.string(),
   template_name: z.string(),
+  template_type: z.enum(["structure", "members"]),
   description: z.string().nullable(),
   source_event_id: z.string().nullable(),
   team_count: z.number().int().nonnegative(),
@@ -120,13 +122,63 @@ export const warTemplateSchema = z.object({
   updated_at: z.string(),
 });
 
-export const createWarTemplateSchema = z.object({
+export const createWarStructureTemplateSchema = z.object({
   event_id: z.string(),
   template_name: z.string().trim().min(1).max(64),
   description: z.string().trim().max(300).optional(),
+  template_type: z.literal("structure"),
 });
+
+export const createWarMemberTemplateSchema = z.object({
+  template_name: z.string().trim().min(1).max(64),
+  description: z.string().trim().max(300).optional(),
+  template_type: z.literal("members"),
+  user_ids: z.array(z.string()).min(1),
+});
+
+export const applyWarStructureTemplateSchema = z.object({
+  event_id: z.string(),
+  template_id: z.string(),
+});
+
+export const previewWarMemberTemplateSchema = z.object({
+  event_id: z.string(),
+  template_id: z.string(),
+  team_id: z.string(),
+});
+
+export const applyWarMemberTemplateSchema = z.object({
+  event_id: z.string(),
+  template_id: z.string(),
+  team_id: z.string(),
+  force_signup_user_ids: z.array(z.string()).optional(),
+});
+
+export const createWarTemplateSchema = z.discriminatedUnion("template_type", [
+  createWarStructureTemplateSchema,
+  createWarMemberTemplateSchema,
+]);
 
 export const applyWarTemplateSchema = z.object({
   event_id: z.string(),
   template_id: z.string(),
+  team_id: z.string().optional(),
+  force_signup_user_ids: z.array(z.string()).optional(),
+});
+
+export const guildWarActivePoolMemberSchema = z.object({
+  id: z.string(),
+  warHistoryId: z.string(),
+  userId: z.string(),
+});
+
+export const guildWarActiveResponseSchema = z.object({
+  event: eventSchema.nullable(),
+  teams: z.array(
+    warTeamSchema.extend({
+      members: z.array(warTeamMemberSchema),
+    }),
+  ),
+  pool: z.array(guildWarActivePoolMemberSchema),
+  etag: z.string().nullable().optional(),
 });

@@ -1,7 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "../../api/query-keys";
-import { fetchUsersList } from "../../api/queries/users";
-import { fetchRoles } from "../../api/queries/roles";
 import {
   fetchAdminAuditArchiveMonths,
   fetchAdminAuditLog,
@@ -10,11 +7,15 @@ import {
   fetchAdminInviteLinks,
   fetchAdminInviteStats,
   fetchAdminStatus,
-} from "../../api/queries/admin";
+} from "../../services/AdminService";
+import { queryKeys } from "../../services/PortalQueryKeys";
+import { fetchRoles } from "../../services/RoleService";
+import { fetchUsersList } from "../../services/UserService";
+import { canManageBot, canViewStatus, canExportAudit } from "../../utils/permissions";
 
 type UseAdminDataOptions = {
   isModerator: boolean;
-  isAdmin: boolean;
+  isAdmin: string;
   auditPage: number;
   auditSearch: string;
   auditDateFrom: string;
@@ -25,13 +26,24 @@ type UseAdminDataOptions = {
 export function useAdminData(options: UseAdminDataOptions) {
   const {
     isModerator,
-    isAdmin,
+    isAdmin: userRole,
     auditPage,
     auditSearch,
     auditDateFrom,
     auditDateTo,
     discordGuildId,
   } = options;
+
+  const rolesQuery = useQuery({
+    queryKey: queryKeys.admin.roles(),
+    queryFn: fetchRoles,
+    enabled: isModerator,
+  });
+
+  const roles = rolesQuery.data ?? [];
+  const hasBotManagePermission = canManageBot(roles, userRole);
+  const hasStatusViewPermission = canViewStatus(roles, userRole);
+  const hasAuditExportPermission = canExportAudit(roles, userRole);
 
   const usersQuery = useQuery({
     queryKey: queryKeys.admin.users(),
@@ -71,31 +83,25 @@ export function useAdminData(options: UseAdminDataOptions) {
   const auditMonthsQuery = useQuery({
     queryKey: queryKeys.admin.auditMonths(),
     queryFn: fetchAdminAuditArchiveMonths,
-    enabled: isAdmin,
+    enabled: hasAuditExportPermission,
   });
 
   const botSettingsQuery = useQuery({
     queryKey: queryKeys.admin.botSettings(),
     queryFn: fetchAdminBotSettings,
-    enabled: isAdmin,
-  });
-
-  const rolesQuery = useQuery({
-    queryKey: queryKeys.admin.roles(),
-    queryFn: fetchRoles,
-    enabled: isAdmin,
+    enabled: hasBotManagePermission,
   });
 
   const discordChannelsQuery = useQuery({
     queryKey: queryKeys.admin.discordChannels(discordGuildId.trim() || "none"),
     queryFn: () => fetchAdminDiscordChannels(discordGuildId.trim()),
-    enabled: isAdmin && discordGuildId.trim().length > 0,
+    enabled: hasBotManagePermission && discordGuildId.trim().length > 0,
   });
 
   const statusQuery = useQuery({
     queryKey: queryKeys.admin.status(),
     queryFn: fetchAdminStatus,
-    enabled: isAdmin,
+    enabled: hasStatusViewPermission,
   });
 
   return {

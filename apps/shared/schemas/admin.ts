@@ -10,17 +10,17 @@ export const inviteLinkSchema = z.object({
   created_by: z.string(),
   max_uses: z.number().int().positive(),
   used_count: z.number().int().min(0),
-  expires_at: z.string().nullable(),
+  expires_at: z.string().datetime({ offset: true }).nullable(),
   created_at: z.string(),
-  revoked_at: z.string().nullable(),
+  revoked_at: z.string().datetime({ offset: true }).nullable(),
 });
 
 export const inviteLinkStatsSchema = z.object({
   id: z.string(),
   used_count: z.number().int().min(0),
   max_uses: z.number().int().positive(),
-  expires_at: z.string().nullable(),
-  revoked_at: z.string().nullable(),
+  expires_at: z.string().datetime({ offset: true }).nullable(),
+  revoked_at: z.string().datetime({ offset: true }).nullable(),
 });
 
 export const createInviteLinkSchema = z.object({
@@ -88,7 +88,7 @@ export const createRoleSchema = z.object({
     .regex(/^[a-z0-9_-]+$/)
     .optional(),
   name: z.string().min(1).max(80),
-  level: z.number().int().min(1).max(2),
+  level: z.number().int().min(1).max(3),
   color: z.string().min(1).max(32).nullable().optional(),
   permissions: rolePermissionsSchema.optional(),
 });

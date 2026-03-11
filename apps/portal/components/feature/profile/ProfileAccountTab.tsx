@@ -1,8 +1,11 @@
-﻿import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { InfiniCard } from "@infini-dev-kit/frontend/components";
 import { MotionButton } from "@infini-dev-kit/frontend/components";
-import { Button, Group, PasswordInput, Stack, Switch, Text, TextInput } from "@mantine/core";
+import { Badge, Button, Group, PasswordInput, Stack, Switch, Text, TextInput } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { IconDeviceFloppy, IconUserMinus } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
+
+const DISCORD_CODE_PATTERN = /^[a-zA-Z0-9]+$/;
 
 type ProfileAccountTabProps = {
   currentPassword: string;
@@ -29,6 +32,10 @@ type ProfileAccountTabProps = {
   onLogout: () => void;
   changePasswordLabel: string;
   changeUsernameLabel: string;
+  changePasswordPending: boolean;
+  changeUsernamePending: boolean;
+  saveDiscordPreferencePending: boolean;
+  isDirty: boolean;
 };
 
 export function ProfileAccountTab({
@@ -56,11 +63,42 @@ export function ProfileAccountTab({
   onLogout,
   changePasswordLabel,
   changeUsernameLabel,
+  changePasswordPending,
+  changeUsernamePending,
+  saveDiscordPreferencePending,
+  isDirty,
 }: ProfileAccountTabProps) {
   const { t } = useTranslation("profile");
+
+  const handleChangePassword = () => {
+    if (!currentPassword.trim()) {
+      notifications.show({ color: "infini-danger", message: t("account.validation.currentPasswordRequired") });
+      return;
+    }
+    if (newPassword.length < 8) {
+      notifications.show({ color: "infini-danger", message: t("account.validation.passwordMinLength") });
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      notifications.show({ color: "infini-danger", message: t("account.validation.passwordMismatch") });
+      return;
+    }
+    onChangePassword();
+  };
+
+  const handleVerifyDiscordLink = () => {
+    const trimmed = discordCode.trim();
+    if (trimmed.length !== 6 || !DISCORD_CODE_PATTERN.test(trimmed)) {
+      notifications.show({ color: "infini-danger", message: t("account.validation.discordCodeFormat") });
+      return;
+    }
+    onVerifyDiscordLink();
+  };
+
   return (
     <Stack gap={16}>
       <InfiniCard interactive={false}>
+        <form onSubmit={(event) => { event.preventDefault(); handleChangePassword(); }}>
         <div style={{ padding: "1.2rem" }}>
           <Stack gap={8}>
             <Text fw={600}>{changePasswordLabel}</Text>
@@ -68,23 +106,27 @@ export function ProfileAccountTab({
               value={currentPassword}
               onChange={(event) => onCurrentPasswordChange(event.currentTarget.value)}
               placeholder={t("account.field.currentPassword")}
-              aria-label="Current password"
+              autoComplete="current-password"
+              aria-label={t("account.aria.currentPassword")}
             />
             <PasswordInput
               value={newPassword}
               onChange={(event) => onNewPasswordChange(event.currentTarget.value)}
               placeholder={t("account.field.newPassword")}
-              aria-label="New password"
+              autoComplete="new-password"
+              aria-label={t("account.aria.newPassword")}
             />
             <PasswordInput
               value={confirmNewPassword}
               onChange={(event) => onConfirmNewPasswordChange(event.currentTarget.value)}
               placeholder={t("account.field.confirmNewPassword")}
-              aria-label="Confirm new password"
+              autoComplete="new-password"
+              aria-label={t("account.aria.confirmNewPassword")}
             />
-            <Button onClick={onChangePassword} leftSection={<IconDeviceFloppy size={16} />}>{changePasswordLabel}</Button>
+            <Button type="submit" loading={changePasswordPending} leftSection={<IconDeviceFloppy size={16} />}>{changePasswordLabel}</Button>
           </Stack>
         </div>
+        </form>
       </InfiniCard>
 
       <InfiniCard interactive={false}>
@@ -95,15 +137,15 @@ export function ProfileAccountTab({
               value={currentPasswordForUsername}
               onChange={(event) => onCurrentPasswordForUsernameChange(event.currentTarget.value)}
               placeholder={t("account.field.currentPassword")}
-              aria-label="Current password for username change"
+              aria-label={t("account.aria.currentPasswordUsername")}
             />
             <TextInput
               value={newUsername}
               onChange={(event) => onNewUsernameChange(event.currentTarget.value)}
               placeholder={t("account.field.newUsername")}
-              aria-label="New username"
+              aria-label={t("account.aria.newUsername")}
             />
-            <Button onClick={onChangeUsername} leftSection={<IconDeviceFloppy size={16} />}>{changeUsernameLabel}</Button>
+            <Button onClick={onChangeUsername} loading={changeUsernamePending} leftSection={<IconDeviceFloppy size={16} />}>{changeUsernameLabel}</Button>
           </Stack>
         </div>
       </InfiniCard>
@@ -120,12 +162,12 @@ export function ProfileAccountTab({
               onChange={(event) => onDiscordCodeChange(event.currentTarget.value)}
               placeholder={t("account.discord.codePlaceholder")}
               maxLength={6}
-              aria-label="Discord verification code"
+              aria-label={t("account.aria.discordCode")}
             />
             <Group gap={8} wrap="wrap">
               <MotionButton
                 type="primary"
-                onClick={onVerifyDiscordLink}
+                onClick={handleVerifyDiscordLink}
                 loading={isDiscordLinking}
                 disabled={discordCode.trim().length !== 6}
               >
@@ -144,9 +186,12 @@ export function ProfileAccountTab({
                 <Switch
                   checked={!discordReminderOptOut}
                   onChange={(event) => onToggleDiscordReminder(event.currentTarget.checked)}
-                  aria-label="Discord reminders toggle"
+                  aria-label={t("account.aria.discordReminders")}
                 />
-                <Button size="xs" onClick={onSaveDiscordPreference} leftSection={<IconDeviceFloppy size={16} />}>
+                <Badge color={isDirty ? "infini-warning" : "infini-success"}>
+                  {isDirty ? t("status.unsavedChanges") : t("status.saved")}
+                </Badge>
+                <Button size="xs" onClick={onSaveDiscordPreference} loading={saveDiscordPreferencePending} leftSection={<IconDeviceFloppy size={16} />}>
                   {t("account.discord.savePreference")}
                 </Button>
               </Group>
@@ -161,4 +206,3 @@ export function ProfileAccountTab({
     </Stack>
   );
 }
-

@@ -18,5 +18,9 @@
   "toolbar.delTable": "删除表格",
   "toolbar.image": "图片",
   "slashCommands": "快捷命令",
-  "message.imageInserted": "图片已插入"
+  "message.imageInserted": "图片已插入",
+  "message.imageUploadFailed": "图片上传失败",
+  "toolbar.linkPrompt": "链接地址",
+  "toolbar.close": "关闭",
+  "upload.uploading": "正在上传图片..."
 }

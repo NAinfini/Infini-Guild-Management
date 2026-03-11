@@ -5,19 +5,22 @@ import {
   Alert,
   Badge,
   ColorInput,
+  ColorSwatch,
   Group,
   Loader,
   ScrollArea,
   Stack,
   Text,
   TextInput,
+  Title,
   UnstyledButton,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { IconCheck, IconDeviceFloppy, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
-import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useAuthStore } from "../../../stores/auth";
+import { canManageRoles } from "../../../utils/permissions";
 
 type RoleDraft = {
   name: string;
@@ -42,12 +45,8 @@ type RoleUpdatePayload = {
 };
 
 type AdminRolesSectionProps = {
-  heading: ReactNode;
-  isAdmin: boolean;
-  adminOnlyMessage: string;
   rolesLoading: boolean;
   rolesError: boolean;
-  loadErrorMessage: string;
   roles: AdminRole[];
   createRolePending: boolean;
   updateRolePending: boolean;
@@ -143,12 +142,8 @@ function isRoleDraftDirty(role: AdminRole, draft: RoleDraft | undefined): boolea
 }
 
 export function AdminRolesSection({
-  heading,
-  isAdmin,
-  adminOnlyMessage,
   rolesLoading,
   rolesError,
-  loadErrorMessage,
   roles,
   createRolePending,
   updateRolePending,
@@ -158,6 +153,11 @@ export function AdminRolesSection({
   onDeleteRole,
 }: AdminRolesSectionProps) {
   const { t } = useTranslation("admin");
+  const { t: tc } = useTranslation("common");
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = Boolean(user && canManageRoles(roles, user.role));
+  const loadErrorMessage = tc("loadError");
+  const heading = <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.roles")}</Title>;
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [newRoleName, setNewRoleName] = useState("");
   const [drafts, setDrafts] = useState<Record<string, RoleDraft>>({});
@@ -179,7 +179,7 @@ export function AdminRolesSection({
     return (
       <Stack gap={12}>
         {heading}
-        <Alert color="infini-warning" title={adminOnlyMessage} />
+        <Alert color="infini-warning" title={t("adminOnly")} />
       </Stack>
     );
   }
@@ -294,17 +294,12 @@ export function AdminRolesSection({
                       <Group gap={8} wrap="nowrap" justify="space-between">
                         <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
                           {role.color ? (
-                            <span
-                              className="admin-roles-color-dot"
-                              style={{ background: role.color }}
-                            />
+                            <ColorSwatch color={role.color} size={14} />
                           ) : (
-                            <span
-                              className="admin-roles-color-dot admin-roles-color-dot--empty"
-                            />
+                            <ColorSwatch color="transparent" size={14} />
                           )}
                           <Text size="sm" fw={isSelected ? 700 : 500} truncate>
-                            {role.name}
+                            {t(`role.${role.id}`, { defaultValue: role.name })}
                           </Text>
                         </Group>
                         <Group gap={4} wrap="nowrap">
@@ -365,6 +360,7 @@ export function AdminRolesSection({
                         value={selectedDraft.name}
                         onChange={(event) => updateDraftField(selectedRole.id, "name", event.currentTarget.value)}
                         style={{ flex: 1, minWidth: 120, maxWidth: 200 }}
+                        disabled={selectedRole.is_builtin}
                       />
                       <ColorInput
                         size="sm"
@@ -372,6 +368,7 @@ export function AdminRolesSection({
                         value={selectedDraft.color}
                         onChange={(value) => updateDraftField(selectedRole.id, "color", value)}
                         style={{ width: 160 }}
+                        disabled={selectedRole.is_builtin}
                         swatches={[
                           "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
                           "#3b82f6", "#6366f1", "#a855f7", "#ec4899", "#64748b",
@@ -428,8 +425,8 @@ export function AdminRolesSection({
                         </Text>
                         <div className="admin-roles-perm-grid">
                           {category.permissions.map((permission) => {
-                            const isReadOnly = selectedRole.id === "admin" || selectedRole.id === "external";
-                            const isGranted = selectedRole.id === "admin" ? true : Boolean(selectedDraft.permissions[permission]);
+                            const isReadOnly = selectedRole.is_builtin;
+                            const isGranted = Boolean(selectedDraft.permissions[permission]);
 
                             return (
                               <DepthToggle

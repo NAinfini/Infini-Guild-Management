@@ -1,6 +1,6 @@
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import { Button, Divider, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
-import { IconUpload, IconTrash, IconPlus } from "@tabler/icons-react";
+import { InfiniCard, ImageGridEditor, type ImageGridEditorItem } from "@infini-dev-kit/frontend/components";
+import { Badge, Button, Divider, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
+import { IconDeviceFloppy, IconUpload, IconTrash, IconPlus } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 
 type UploaderState = {
@@ -27,10 +27,17 @@ type ProfileMediaTabProps = {
   onRemoveVideo: (index: number) => void;
   onUploadImages: () => void;
   onUploadAudio: () => void;
-  onMoveImage: (index: number, delta: number) => void;
+  onReorderImages: (nextImages: string[]) => void;
   onRemoveImage: (key: string) => void;
   onRemoveAudio: () => void;
+  onSaveProfile: () => void;
+  savePending: boolean;
+  isDirty: boolean;
 };
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
 
 export function ProfileMediaTab({
   videoDraft,
@@ -45,49 +52,68 @@ export function ProfileMediaTab({
   onRemoveVideo,
   onUploadImages,
   onUploadAudio,
-  onMoveImage,
+  onReorderImages,
   onRemoveImage,
   onRemoveAudio,
+  onSaveProfile,
+  savePending,
+  isDirty,
 }: ProfileMediaTabProps) {
   const { t } = useTranslation("profile");
+  const imageItems: ImageGridEditorItem[] = imageList.map((key) => ({
+    id: key,
+    src: isHttpUrl(key) ? key : undefined,
+    alt: key,
+  }));
 
   return (
     <Stack gap={16}>
+      <InfiniCard interactive={false}>
+        <Group justify="flex-end" gap={8} p="1.2rem">
+          <Badge color={isDirty ? "infini-warning" : "infini-success"}>
+            {isDirty ? t("status.unsavedChanges") : t("status.saved")}
+          </Badge>
+          <Button onClick={onSaveProfile} loading={savePending} leftSection={<IconDeviceFloppy size={16} />}>
+            {t("action.saveProfile")}
+          </Button>
+        </Group>
+      </InfiniCard>
+
       {/* ── Images ── */}
       <InfiniCard interactive={false}>
-        <Stack gap={12} style={{ padding: "1.2rem" }}>
+        <Stack gap={12} p="1.2rem">
           <Group justify="space-between" align="center">
             <Text fw={700} size="md">{t("media.images")}</Text>
             <Text c="dimmed" size="sm">{t("media.imageCount", { count: imageList.length })}</Text>
           </Group>
 
-          <Group gap={8} align="flex-end">
-            <FileButton
-              onChange={(files) => imageUploader.selectFiles(files)}
-              accept="image/*"
-              multiple
-            >
-              {(props) => (
-                <Button variant="light" size="compact-sm" {...props}>
-                  {t("media.selectImages")}
-                </Button>
-              )}
-            </FileButton>
-            {imageUploader.files.length > 0 ? (
+          <ImageGridEditor
+            items={imageItems}
+            onReorder={(items) => onReorderImages(items.map((item) => item.id))}
+            onDelete={(item) => onRemoveImage(item.id)}
+            onFilesSelected={(files) => imageUploader.selectFiles(files)}
+            maxImages={10}
+            imageSize={80}
+            disabled={imageUploader.isUploading || imageUploader.isConverting}
+            aria-label={t("media.images")}
+          />
+
+          {imageUploader.files.length > 0 ? (
+            <Group gap={8} align="center">
               <Text size="xs" c="dimmed">
                 {t("media.filesSelected", { count: imageUploader.files.length })}
               </Text>
-            ) : null}
-            <Button
-              size="compact-sm"
-              onClick={onUploadImages}
-              disabled={imageUploader.files.length === 0}
-              loading={imageUploader.isUploading}
-              leftSection={<IconUpload size={16} />}
-            >
-              {t("action.upload")}
-            </Button>
-          </Group>
+              <Button
+                size="compact-sm"
+                onClick={onUploadImages}
+                disabled={imageUploader.files.length === 0}
+                loading={imageUploader.isUploading}
+                leftSection={<IconUpload size={16} />}
+              >
+                {t("action.upload")}
+              </Button>
+            </Group>
+          ) : null}
 
           {imageUploader.error ? <Text c="infini-danger" size="sm">{imageUploader.error}</Text> : null}
           {imageUploader.isConverting || imageUploader.isUploading ? (
@@ -97,35 +123,12 @@ export function ProfileMediaTab({
             </Stack>
           ) : null}
 
-          {imageList.length > 0 ? (
-            <>
-              <Divider />
-              <Stack gap={6}>
-                {imageList.map((imageKey, index) => (
-                  <Group key={`${imageKey}-${index}`} gap={8} wrap="wrap" align="center">
-                    <Text size="sm" style={{ flex: 1, minWidth: 0 }} truncate="end">{imageKey}</Text>
-                    <Group gap={4} wrap="nowrap">
-                      <Button size="compact-xs" variant="default" onClick={() => onMoveImage(index, -1)} disabled={index === 0}>
-                        {t("action.up")}
-                      </Button>
-                      <Button size="compact-xs" variant="default" onClick={() => onMoveImage(index, 1)} disabled={index === imageList.length - 1}>
-                        {t("action.down")}
-                      </Button>
-                      <Button size="compact-xs" color="infini-danger" variant="light" leftSection={<IconTrash size={16} />} onClick={() => onRemoveImage(imageKey)}>
-                        {t("action.delete")}
-                      </Button>
-                    </Group>
-                  </Group>
-                ))}
-              </Stack>
-            </>
-          ) : null}
         </Stack>
       </InfiniCard>
 
       {/* ── Videos ── */}
       <InfiniCard interactive={false}>
-        <Stack gap={12} style={{ padding: "1.2rem" }}>
+        <Stack gap={12} p="1.2rem">
           <Group justify="space-between" align="center">
             <Text fw={700} size="md">{t("media.videos")}</Text>
             <Text c="dimmed" size="sm">{t("media.videoCount", { count: videoList.length })}</Text>
@@ -174,7 +177,7 @@ export function ProfileMediaTab({
 
       {/* ── Audio ── */}
       <InfiniCard interactive={false}>
-        <Stack gap={12} style={{ padding: "1.2rem" }}>
+        <Stack gap={12} p="1.2rem">
           <Group justify="space-between" align="center">
             <Text fw={700} size="md">{t("media.audio")}</Text>
             <Text c="dimmed" size="sm">{profileAudioKey ? t("media.audioUploaded") : t("media.noAudio")}</Text>

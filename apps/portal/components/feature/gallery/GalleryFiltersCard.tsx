@@ -78,7 +78,7 @@ export function GalleryFiltersCard({
             placeholder={filterTypeLabel}
             style={{ width: 180 }}
             value={typeFilter ?? null}
-            aria-label="Filter gallery by type"
+            aria-label={t("aria.filterByType")}
             onChange={(value) => onTypeFilterChange((value as "image" | "video" | null) ?? undefined)}
             data={[
               { value: "image", label: "image" },
@@ -98,17 +98,17 @@ export function GalleryFiltersCard({
             value={dateFrom}
             onChange={(event) => onDateFromChange(event.currentTarget.value)}
             style={{ width: 170 }}
-            aria-label="Gallery date from"
+            aria-label={t("aria.dateFrom")}
           />
           <TextInput
             type="date"
             value={dateTo}
             onChange={(event) => onDateToChange(event.currentTarget.value)}
             style={{ width: 170 }}
-            aria-label="Gallery date to"
+            aria-label={t("aria.dateTo")}
           />
           <Tooltip label={t("filter.clearDates")}>
-            <ActionIcon variant="subtle" onClick={onClearDates} disabled={!dateFrom && !dateTo} aria-label="Clear dates">
+            <ActionIcon variant="subtle" onClick={onClearDates} disabled={!dateFrom && !dateTo} aria-label={t("aria.clearDates")}>
               <IconCalendarOff size={18} />
             </ActionIcon>
           </Tooltip>
@@ -117,7 +117,7 @@ export function GalleryFiltersCard({
             value={search}
             onChange={(event) => onSearchChange(event.currentTarget.value)}
             placeholder={t("filter.searchPlaceholder")}
-            aria-label="Search gallery caption or uploader"
+            aria-label={t("aria.searchCaption")}
           />
           <Group gap={8} wrap="wrap" className="gallery-filters-card__actions">
             {canModerate ? (

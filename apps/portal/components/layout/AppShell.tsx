@@ -19,7 +19,7 @@ import {
 } from "../../utils/icons";
 import { listThemeIds } from "@infini-dev-kit/frontend/theme/theme-specs";
 import type { ThemeId } from "@infini-dev-kit/frontend/theme/theme-types";
-import { ScrollProgress, InfiniButton } from "@infini-dev-kit/frontend/components";
+import { ScrollProgress, InfiniButton, InfiniMenu } from "@infini-dev-kit/frontend/components";
 import { useBridge, useThemeSnapshot, loadLocaleFonts } from "@infini-dev-kit/frontend/provider";
 import type { IconProps } from "@tabler/icons-react";
 import {
@@ -29,7 +29,6 @@ import {
   Badge,
   Group,
   Indicator,
-  Menu,
   Popover,
   ScrollArea,
   Stack,
@@ -44,12 +43,13 @@ import i18n from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from "react";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { apiRequest } from "../../api/client";
-import { queryKeys } from "../../api/query-keys";
-import { fetchRoles } from "../../api/queries/roles";
+import { canAccessAdmin } from "../../utils/permissions";
 import { PageHeaderContext } from "../../context/PageHeaderContext";
 import { useNotificationPresentation } from "../../hooks/useNotificationPresentation";
 import { useNotificationSync } from "../../hooks/useNotificationSync";
+import { logout as requestLogout } from "../../services/AuthService";
+import { queryKeys } from "../../services/PortalQueryKeys";
+import { fetchRoles } from "../../services/RoleService";
 import { useAuthStore } from "../../stores/auth";
 import { useNotificationStore, type NotificationFeature } from "../../stores/notifications";
 import { usePreferencesStore } from "../../stores/preferences";
@@ -328,8 +328,25 @@ export function AppShell() {
 
   const handlePushMessage = useCallback(
     (message: PushMessage) => {
-      if (message.type === "entity_changed" && message.entity_type === "event") {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+      if (message.type === "entity_changed") {
+        switch (message.entity_type) {
+          case "event":
+            void queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+            break;
+          case "wiki":
+            void queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
+            break;
+          case "gallery":
+            void queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
+            break;
+          case "guild_war":
+            void queryClient.invalidateQueries({ queryKey: queryKeys.guildWar.all });
+            break;
+          case "member_profile":
+            void queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+            void queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.all });
+            break;
+        }
       }
       if (message.type === "event_reminder") {
         void queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
@@ -352,7 +369,7 @@ export function AppShell() {
   });
 
   const logoutMutation = useMutation({
-    mutationFn: () => apiRequest<{ ok: true }>("/api/auth/logout", { method: "POST" }),
+    mutationFn: requestLogout,
     onSettled: () => {
       clearSession();
       void navigate({ to: "/login" });
@@ -363,6 +380,14 @@ export function AppShell() {
     logoutMutation.mutate();
   };
 
+  const canSwitchView = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
+
+  const rolesQuery = useQuery({
+    queryKey: queryKeys.admin.roles(),
+    queryFn: fetchRoles,
+    enabled: canSwitchView,
+  });
+
   const visibleNavItems = useMemo(
     () =>
       NAV_ITEMS.filter((item) => {
@@ -372,12 +397,13 @@ export function AppShell() {
         if (item.requiresSession && !user) {
           return false;
         }
-        if (item.requiresModerator && (!user || !hasRoleAtLeast(user.role, "moderator"))) {
-          return false;
+        if (item.requiresModerator) {
+          const roles = rolesQuery.data ?? [];
+          return canAccessAdmin(roles, viewingAs);
         }
         return true;
       }),
-    [isExternalView, user],
+    [isExternalView, user, viewingAs, rolesQuery.data],
   );
 
   const mobileMainItems = visibleNavItems.filter((item) =>
@@ -457,14 +483,6 @@ export function AppShell() {
       .sort((left, right) => right.to.length - left.to.length)[0];
     return t(activeItem?.labelKey ?? "nav.dashboard");
   }, [pathname, t, visibleNavItems]);
-
-  const canSwitchView = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
-
-  const rolesQuery = useQuery({
-    queryKey: queryKeys.admin.roles(),
-    queryFn: fetchRoles,
-    enabled: canSwitchView,
-  });
 
   if (hideNavigation) {
     return (
@@ -589,7 +607,7 @@ export function AppShell() {
           <div className="app-header__right">
             <div className="app-header-tools">
               {!isMobile ? <CmdKSearch /> : null}
-              <Popover width={420} position="bottom-end" shadow="md" withArrow onOpen={() => { markAllPushAsRead(); markFeatureAsRead("announcements"); }}>
+              <Popover width={420} position="bottom-end" shadow="md" withArrow trapFocus onOpen={() => { markAllPushAsRead(); markFeatureAsRead("announcements"); }}>
                 <Popover.Target>
                   <ActionIcon variant="subtle" className="app-header-icon-btn" aria-label={t("label.notifications")}>
                     <Indicator
@@ -659,43 +677,43 @@ export function AppShell() {
                 </Popover.Dropdown>
               </Popover>
 
-              <Menu shadow="md" width={220} position="bottom-end" withinPortal>
-                <Menu.Target>
+              <InfiniMenu width={160} position="bottom-end">
+                <InfiniMenu.Target>
                   <ActionIcon variant="subtle" className="app-header-icon-btn" aria-label={t("label.theme")}>
                     <MoonOutlined />
                   </ActionIcon>
-                </Menu.Target>
-                <Menu.Dropdown>
+                </InfiniMenu.Target>
+                <InfiniMenu.Dropdown>
                   {themeIds.map((themeId) => (
-                    <Menu.Item
+                    <InfiniMenu.Item
                       key={themeId}
+                      className={themeSnapshot.id === themeId ? "infini-menu-item--active" : undefined}
                       onClick={() => {
                         const nextThemeId = themeId as ThemeId;
                         bridge.setTheme(nextThemeId);
                       }}
-                      style={{ fontWeight: themeSnapshot.id === themeId ? 700 : 400 }}
                     >
-                      {themeId}
-                    </Menu.Item>
+                      {i18n.t(`settings:theme.${themeId}`, { defaultValue: themeId })}
+                    </InfiniMenu.Item>
                   ))}
-                </Menu.Dropdown>
-              </Menu>
+                </InfiniMenu.Dropdown>
+              </InfiniMenu>
 
-              <Menu shadow="md" width={160} position="bottom-end" withinPortal>
-                <Menu.Target>
+              <InfiniMenu width={160} position="bottom-end">
+                <InfiniMenu.Target>
                   <ActionIcon variant="subtle" className="app-header-icon-btn" aria-label={t("label.locale")}>
                     <TranslationOutlined />
                   </ActionIcon>
-                </Menu.Target>
-                <Menu.Dropdown>
-                  <Menu.Item onClick={() => setLocale("en")} style={{ fontWeight: locale === "en" ? 700 : 400 }}>
+                </InfiniMenu.Target>
+                <InfiniMenu.Dropdown>
+                  <InfiniMenu.Item className={locale === "en" ? "infini-menu-item--active" : undefined} onClick={() => setLocale("en")}>
                     English
-                  </Menu.Item>
-                  <Menu.Item onClick={() => setLocale("zh")} style={{ fontWeight: locale === "zh" ? 700 : 400 }}>
+                  </InfiniMenu.Item>
+                  <InfiniMenu.Item className={locale === "zh" ? "infini-menu-item--active" : undefined} onClick={() => setLocale("zh")}>
                     中文
-                  </Menu.Item>
-                </Menu.Dropdown>
-              </Menu>
+                  </InfiniMenu.Item>
+                </InfiniMenu.Dropdown>
+              </InfiniMenu>
             </div>
 
             {user ? (

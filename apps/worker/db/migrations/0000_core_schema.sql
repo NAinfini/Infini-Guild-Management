@@ -163,6 +163,7 @@ CREATE TABLE IF NOT EXISTS war_templates (
   id TEXT PRIMARY KEY NOT NULL,
   template_name TEXT NOT NULL,
   description TEXT,
+  template_type TEXT NOT NULL DEFAULT 'structure',
   source_event_id TEXT REFERENCES events(id),
   payload_json TEXT NOT NULL,
   created_by TEXT NOT NULL REFERENCES users(id),

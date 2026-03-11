@@ -14,13 +14,15 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { useDisclosure } from "@mantine/hooks";
 import { format } from "date-fns";
-import { useState, type ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { IconArchive, IconPin, IconCalendarTime, IconBrandDiscord, IconBrandWechat, IconTrash, IconX, IconNote } from "@tabler/icons-react";
 import { PencilOutlined } from "@portal/utils/icons";
 import { EmptyState } from "../../shared/EmptyState";
-import { TipTapEditor } from "../../shared/TipTapEditor";
+import { TipTapEditor } from "@infini-dev-kit/frontend/components";
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "-";
@@ -122,8 +124,18 @@ export function AnnouncementDetailCard({
   emptyTitle,
 }: AnnouncementDetailCardProps) {
   const { t } = useTranslation("announcements");
-  const [editing, setEditing] = useState(false);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const isCreateMode = selectedId === "new" && !selected;
+  const [editing, editingHandlers] = useDisclosure(isCreateMode);
+  const [deleteConfirmOpen, deleteConfirmHandlers] = useDisclosure(false);
+
+  // Auto-open editor when entering create mode, close when leaving
+  useEffect(() => {
+    if (isCreateMode) {
+      editingHandlers.open();
+    } else {
+      editingHandlers.close();
+    }
+  }, [isCreateMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const statusMode = deriveStatusMode(archived, scheduleEnabled, draftEnabled);
 
@@ -133,12 +145,8 @@ export function AnnouncementDetailCard({
     onDraftEnabledChange(mode === "draft");
   };
 
-  const toggleStatusMode = (mode: StatusMode) => {
-    if (statusMode === mode) {
-      setStatusMode("none");
-    } else {
-      setStatusMode(mode);
-    }
+  const handleStatusToggle = (mode: Exclude<StatusMode, "none">, nextPressed: boolean) => {
+    setStatusMode(nextPressed ? mode : "none");
   };
 
   const finishLabel = (() => {
@@ -147,24 +155,31 @@ export function AnnouncementDetailCard({
       case "archived": return t("action.archive");
       case "scheduled": return t("action.postScheduled");
       default:
-        // No status toggle pressed — if currently draft, offer "Post Now"; otherwise "Save"
-        return selected?.status === "draft" ? t("action.postNow") : t("action.save");
+        // No status toggle pressed — create mode: "Post Now"; draft: "Post Now"; otherwise "Save"
+        return isCreateMode || selected?.status === "draft" ? t("action.postNow") : t("action.save");
     }
   })();
 
   const handleFinishClick = () => {
+    if (statusMode === "scheduled" && publishAt) {
+      const scheduledDate = new Date(publishAt.replace(" ", "T"));
+      if (!Number.isNaN(scheduledDate.getTime()) && scheduledDate <= new Date()) {
+        notifications.show({ color: "infini-danger", message: t("validation.schedulePast") });
+        return;
+      }
+    }
     onFinish(statusMode);
-    setEditing(false);
+    editingHandlers.close();
   };
 
   const handleDeleteConfirm = () => {
     onDelete();
-    setDeleteConfirmOpen(false);
-    setEditing(false);
+    deleteConfirmHandlers.close();
+    editingHandlers.close();
   };
 
   const handleCloseEditor = () => {
-    setEditing(false);
+    editingHandlers.close();
     onCloseEditor();
   };
 
@@ -175,7 +190,7 @@ export function AnnouncementDetailCard({
           {/* ── Header ── */}
           <Group justify="space-between" align="center">
             <Text fw={600}>{title}</Text>
-            {canEdit && selectedId && selected ? (
+            {canEdit && (selectedId && selected || isCreateMode) ? (
               editing ? (
                 <Group gap={8}>
                   {isDirty ? <Badge color="infini-warning">{t("status.unsaved")}</Badge> : <Badge color="infini-success">{t("status.saved")}</Badge>}
@@ -198,7 +213,7 @@ export function AnnouncementDetailCard({
                 </Group>
               ) : (
                 <DepthButton
-                  onClick={() => setEditing(true)}
+                  onClick={editingHandlers.open}
                   type="secondary"
                   size="sm"
                   before={<PencilOutlined size={14} />}
@@ -246,8 +261,8 @@ export function AnnouncementDetailCard({
             </Stack>
           ) : null}
 
-          {/* ── Editor View (moderators only, after clicking Edit) ── */}
-          {!isLoading && !isError && selected && editing ? (
+          {/* ── Editor View (moderators only, after clicking Edit or in create mode) ── */}
+          {!isLoading && !isError && (selected || isCreateMode) && editing ? (
             <div className="announcement-editor-layout">
               {/* Left: Title + Editor */}
               <div className="announcement-editor-main">
@@ -287,7 +302,7 @@ export function AnnouncementDetailCard({
                     <Tooltip label={t("action.draft")} withArrow>
                       <DepthToggle
                         pressed={statusMode === "draft"}
-                        onToggle={() => toggleStatusMode("draft")}
+                        onToggle={(nextPressed) => handleStatusToggle("draft", nextPressed)}
                         type="secondary"
                         iconOnly
                         size="sm"
@@ -295,21 +310,23 @@ export function AnnouncementDetailCard({
                         aria-label={t("action.draft")}
                       />
                     </Tooltip>
-                    <Tooltip label={t("action.archive")} withArrow>
-                      <DepthToggle
-                        pressed={statusMode === "archived"}
-                        onToggle={() => toggleStatusMode("archived")}
-                        type="secondary"
-                        iconOnly
-                        size="sm"
-                        before={<IconArchive size={16} />}
-                        aria-label={t("action.archive")}
-                      />
-                    </Tooltip>
+                    {!isCreateMode ? (
+                      <Tooltip label={t("action.archive")} withArrow>
+                        <DepthToggle
+                          pressed={statusMode === "archived"}
+                          onToggle={(nextPressed) => handleStatusToggle("archived", nextPressed)}
+                          type="secondary"
+                          iconOnly
+                          size="sm"
+                          before={<IconArchive size={16} />}
+                          aria-label={t("action.archive")}
+                        />
+                      </Tooltip>
+                    ) : null}
                     <Tooltip label={t("action.publishOnTime")} withArrow>
                       <DepthToggle
                         pressed={statusMode === "scheduled"}
-                        onToggle={() => toggleStatusMode("scheduled")}
+                        onToggle={(nextPressed) => handleStatusToggle("scheduled", nextPressed)}
                         type="secondary"
                         iconOnly
                         size="sm"
@@ -317,15 +334,17 @@ export function AnnouncementDetailCard({
                         aria-label={t("action.publishOnTime")}
                       />
                     </Tooltip>
-                    <Tooltip label={t("action.delete")} withArrow>
-                      <DepthButton
-                        onClick={() => setDeleteConfirmOpen(true)}
-                        type="danger"
-                        size="sm"
-                      >
-                        <IconTrash size={16} />
-                      </DepthButton>
-                    </Tooltip>
+                    {!isCreateMode ? (
+                      <Tooltip label={t("action.delete")} withArrow>
+                        <DepthButton
+                          onClick={deleteConfirmHandlers.open}
+                          type="danger"
+                          size="sm"
+                        >
+                          <IconTrash size={16} />
+                        </DepthButton>
+                      </Tooltip>
+                    ) : null}
                   </Group>
 
                   <Divider />
@@ -368,7 +387,7 @@ export function AnnouncementDetailCard({
                       <Text size="xs" c="dimmed">{t("field.publishAt")}</Text>
                       <TextInput
                         type="datetime-local"
-                        value={toDateTimeLocalValue(publishAt)}
+                        value={toDateTimeLocalValue(publishAt) || undefined}
                         onChange={(event) => onPublishAtChange(fromDateTimeLocalValue(event.currentTarget.value))}
                         aria-label="Announcement publish time"
                         size="sm"
@@ -378,7 +397,7 @@ export function AnnouncementDetailCard({
                       <Text size="xs" c="dimmed">{t("field.expiresAt")}</Text>
                       <TextInput
                         type="datetime-local"
-                        value={toDateTimeLocalValue(expiresAt)}
+                        value={toDateTimeLocalValue(expiresAt) || undefined}
                         onChange={(event) => onExpiresAtChange(fromDateTimeLocalValue(event.currentTarget.value))}
                         aria-label="Announcement expire time"
                         size="sm"
@@ -389,22 +408,24 @@ export function AnnouncementDetailCard({
                   <Divider />
 
                   {/* Meta */}
-                  <Text c="dimmed" size="xs">
-                    {t("meta.updated", { datetime: formatDateTime(selected.updated_at) })}
-                  </Text>
+                  {selected ? (
+                    <Text c="dimmed" size="xs">
+                      {t("meta.updated", { datetime: formatDateTime(selected.updated_at) })}
+                    </Text>
+                  ) : null}
                 </Stack>
               </div>
             </div>
           ) : null}
 
-          {!isLoading && !isError && !selected ? <EmptyState title={emptyTitle} /> : null}
+          {!isLoading && !isError && !selected && selectedId !== "new" ? <EmptyState title={emptyTitle} /> : null}
         </Stack>
       </div>
 
       {/* ── Delete Confirmation Modal ── */}
       <Modal
         opened={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
+        onClose={deleteConfirmHandlers.close}
         title={t("modal.deleteAnnouncement")}
         centered
         size="sm"
@@ -412,7 +433,7 @@ export function AnnouncementDetailCard({
         <Stack gap={16}>
           <Text>{t("confirm.delete")}</Text>
           <Group justify="flex-end" gap={8}>
-            <Button variant="default" onClick={() => setDeleteConfirmOpen(false)} leftSection={<IconX size={16} />}>
+            <Button variant="default" onClick={deleteConfirmHandlers.close} leftSection={<IconX size={16} />}>
               {t("action.cancel")}
             </Button>
             <Button

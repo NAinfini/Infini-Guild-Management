@@ -38,6 +38,33 @@ export function fetchEventDetail(eventId: string): Promise<EventDetailResponse> 
   return apiRequest<EventDetailResponse>(`/api/events/${eventId}`);
 }
 
+const BATCH_DETAIL_CHUNK_SIZE = 50;
+
+export async function fetchEventDetailBatch(ids: string[]): Promise<{ data: EventDetailResponse[] }> {
+  if (ids.length <= BATCH_DETAIL_CHUNK_SIZE) {
+    return apiRequest<{ data: EventDetailResponse[] }>("/api/events/batch-details", {
+      method: "POST",
+      bodyJson: { ids },
+    });
+  }
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += BATCH_DETAIL_CHUNK_SIZE) {
+    chunks.push(ids.slice(i, i + BATCH_DETAIL_CHUNK_SIZE));
+  }
+
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      apiRequest<{ data: EventDetailResponse[] }>("/api/events/batch-details", {
+        method: "POST",
+        bodyJson: { ids: chunk },
+      }),
+    ),
+  );
+
+  return { data: results.flatMap((r) => r.data) };
+}
+
 export function fetchTemplatesList(): Promise<{ data: RecurringTemplate[] }> {
   return apiRequest<{ data: RecurringTemplate[] }>("/api/events/templates/list");
 }

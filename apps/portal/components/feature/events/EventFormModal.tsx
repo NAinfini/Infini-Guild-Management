@@ -11,15 +11,9 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
-import { IconTrash, IconUpload, IconX, IconPlus, IconDeviceFloppy } from "@tabler/icons-react";
+import { IconX, IconPlus, IconDeviceFloppy } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
-
-type AttachmentUploaderState = {
-  files: File[];
-  isUploading: boolean;
-  error: string | null;
-  selectFiles: (source: FileList | File[] | null) => void;
-};
+import { ImageGridEditor, type ImageGridEditorItem } from "@infini-dev-kit/frontend/components";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 
@@ -27,7 +21,6 @@ type EventFormModalProps = {
   open: boolean;
   mode: "create" | "edit";
   canManage: boolean;
-  editingEventId: string | null;
   title: string;
   onTitleChange: (value: string) => void;
   eventType: (typeof EVENT_TYPES)[number];
@@ -40,14 +33,10 @@ type EventFormModalProps = {
   onCapacityChange: (value: string) => void;
   description: string;
   onDescriptionChange: (value: string) => void;
-  pinned: boolean;
-  onPinnedChange: (checked: boolean) => void;
-  signupLocked: boolean;
-  onSignupLockedChange: (checked: boolean) => void;
-  attachments: string[];
-  onRemoveAttachment: (index: number) => void;
-  attachmentUploader: AttachmentUploaderState;
-  onUploadAttachments: () => void;
+  attachmentItems: ImageGridEditorItem[];
+  onAttachmentsChange: (items: ImageGridEditorItem[]) => void;
+  onFilesSelected: (files: File[]) => void;
+  onAttachmentDelete: (item: ImageGridEditorItem) => void;
   conflictingEvents: Event[];
   availabilityDaysWithAny: Set<number>;
   availabilityMaxCount: number;
@@ -57,15 +46,10 @@ type EventFormModalProps = {
   onSave: () => void;
 };
 
-function isHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
-}
-
 export function EventFormModal({
   open,
   mode,
   canManage,
-  editingEventId,
   title,
   onTitleChange,
   eventType,
@@ -78,10 +62,10 @@ export function EventFormModal({
   onCapacityChange,
   description,
   onDescriptionChange,
-  attachments,
-  onRemoveAttachment,
-  attachmentUploader,
-  onUploadAttachments,
+  attachmentItems,
+  onAttachmentsChange,
+  onFilesSelected,
+  onAttachmentDelete,
   conflictingEvents,
   availabilityDaysWithAny,
   availabilityMaxCount,
@@ -109,6 +93,7 @@ export function EventFormModal({
           value={title}
           onChange={(event) => onTitleChange(event.currentTarget.value)}
           placeholder={t("field.title")}
+          data-autofocus
         />
 
         {/* ── Type ── */}
@@ -132,6 +117,7 @@ export function EventFormModal({
             type="datetime-local"
             value={endAt}
             onChange={(event) => onEndAtChange(event.currentTarget.value)}
+            error={startAt && endAt && endAt < startAt ? t("field.endBeforeStart") : undefined}
           />
         </Group>
 
@@ -139,10 +125,12 @@ export function EventFormModal({
         <TextInput
           label={t("field.capacity")}
           type="number"
+          min={1}
+          max={9999}
           value={capacity}
           onChange={(event) => onCapacityChange(event.currentTarget.value)}
           placeholder={t("field.unlimited")}
-          style={{ maxWidth: 200 }}
+          maw={200}
         />
 
         {/* ── Description ── */}
@@ -156,54 +144,15 @@ export function EventFormModal({
 
         {/* ── Attachments ── */}
         <Stack gap={6}>
-          <Text size="sm" fw={500}>{t("attachments")} ({attachments.length}/5)</Text>
-          {attachments.length === 0 ? (
-            <Text c="dimmed" size="sm">{t("noAttachments")}</Text>
-          ) : (
-            attachments.map((attachment, index) => (
-              <Group key={`${attachment}-${index}`} align="flex-start" wrap="nowrap">
-                {isHttpUrl(attachment) ? (
-                  <img
-                    src={attachment}
-                    alt="Event attachment"
-                    loading="lazy"
-                    decoding="async"
-                    style={{ width: 80, height: 56, borderRadius: 8, objectFit: "cover" }}
-                  />
-                ) : (
-                  <Text c="dimmed" size="sm" style={{ wordBreak: "break-all", maxWidth: 360 }}>
-                    {attachment}
-                  </Text>
-                )}
-                {canManage ? (
-                  <Button size="xs" color="infini-danger" leftSection={<IconTrash size={16} />} onClick={() => onRemoveAttachment(index)}>
-                    {t("removeAttachment")}
-                  </Button>
-                ) : null}
-              </Group>
-            ))
-          )}
-
-          {canManage && mode === "edit" && editingEventId ? (
-            <Stack gap={4}>
-              <input
-                type="file"
-                multiple
-                accept="image/*"
-                aria-label="Upload event attachments"
-                onChange={(event) => attachmentUploader.selectFiles(event.target.files)}
-              />
-              {attachmentUploader.error ? <Text c="infini-danger" size="sm">{attachmentUploader.error}</Text> : null}
-              <Button
-                onClick={onUploadAttachments}
-                loading={attachmentUploader.isUploading}
-                disabled={attachmentUploader.files.length === 0 || attachments.length >= 5}
-                leftSection={<IconUpload size={16} />}
-              >
-                {t("uploadAttachments")}
-              </Button>
-            </Stack>
-          ) : null}
+          <Text size="sm" fw={500}>{t("field.attachmentsCount", { current: attachmentItems.length, max: 5 })}</Text>
+          <ImageGridEditor
+            items={attachmentItems}
+            onReorder={onAttachmentsChange}
+            onDelete={canManage ? onAttachmentDelete : undefined}
+            onFilesSelected={canManage ? onFilesSelected : undefined}
+            maxImages={5}
+            disabled={!canManage}
+          />
         </Stack>
 
         {/* ── Conflict warning ── */}
