@@ -3,7 +3,7 @@ import "@mantine/dates/styles.css";
 import "@mantine/dropzone/styles.css";
 import "@mantine/nprogress/styles.css";
 import "mantine-contextmenu/styles.css";
-import "@infini-dev-kit/frontend/theme/mantine/mantine-residual.css";
+import "@infini-dev-kit/adapter-mantine/mantine-residual.css";
 import "./styles.css";
 
 const rootElement = document.getElementById("root");

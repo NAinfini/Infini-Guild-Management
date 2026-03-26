@@ -1,12 +1,12 @@
-import { composeMantineTheme } from "@infini-dev-kit/frontend/theme/mantine/mantine-adapter";
-import { KitApp } from "@infini-dev-kit/frontend/provider";
-import { listThemeIds } from "@infini-dev-kit/frontend/theme/theme-specs";
-import type { ThemeId } from "@infini-dev-kit/frontend/theme/theme-types";
+import { composeMantineTheme } from "./theme/mantine-adapter";
+import { listThemeIds } from "@infini-dev-kit/theme-core";
+import type { ThemeId } from "@infini-dev-kit/theme-core";
 import { ContextMenuProvider } from "mantine-contextmenu";
 import { StrictMode } from "react";
 import type { Root } from "react-dom/client";
 import "@gfazioli/mantine-split-pane/styles.css";
 import "./i18n";
+import { PortalThemeProvider } from "./providers/ThemeProvider";
 import { AppRouter } from "./router";
 
 type MotionMode = "off" | "minimum" | "reduced" | "full";
@@ -79,7 +79,7 @@ export function mountApp(root: Root): void {
   rehydrateThemeState();
   root.render(
     <StrictMode>
-      <KitApp>
+      <PortalThemeProvider>
         <ContextMenuProvider
           borderRadius="md"
           classNames={{
@@ -121,7 +121,7 @@ export function mountApp(root: Root): void {
         >
           <AppRouter />
         </ContextMenuProvider>
-      </KitApp>
+      </PortalThemeProvider>
     </StrictMode>,
   );
 }
