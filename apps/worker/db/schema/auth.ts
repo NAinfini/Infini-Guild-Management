@@ -40,7 +40,7 @@ export const users = sqliteTable(
   {
     id: text("id").primaryKey(),
     username: text("username").notNull().unique(),
-    role: text("role", { enum: ["admin", "moderator", "member"] }).notNull().default("member"),
+    role: text("role").notNull().default("member").references(() => roles.id),
     isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
     deletedAt: text("deleted_at"),
     createdAt: text("created_at").notNull().default(nowUtc),

@@ -55,7 +55,7 @@ export const auditLogQuerySchema = z.object({
 
 export const batchRoleChangeSchema = z.object({
   user_ids: z.array(z.string()).min(1).max(50),
-  new_role: z.enum(["member", "moderator"]),
+  new_role: z.string().min(1).max(80).regex(/^[a-z0-9_-]+$/),
 });
 
 export const batchDeactivateSchema = z.object({
