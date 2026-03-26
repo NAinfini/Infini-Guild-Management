@@ -57,6 +57,7 @@ export type DashboardLastWarMvpEntry = {
 export type DashboardLastWarMvp = {
   damage: DashboardLastWarMvpEntry;
   healing: DashboardLastWarMvpEntry;
+  damageTaken: DashboardLastWarMvpEntry;
   building: DashboardLastWarMvpEntry;
 } | null;
 

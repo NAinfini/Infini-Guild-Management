@@ -2,6 +2,7 @@ export const queryKeys = {
   auth: {
     all: ["auth"] as const,
     usernameAvailability: (username: string) => [...queryKeys.auth.all, "username-availability", username] as const,
+    verifyInvite: (code: string) => [...queryKeys.auth.all, "verify-invite", code] as const,
   },
   users: {
     all: ["users"] as const,

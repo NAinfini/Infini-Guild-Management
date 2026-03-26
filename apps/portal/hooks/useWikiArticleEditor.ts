@@ -1,5 +1,5 @@
 import type { WikiArticle, WikiCategory } from "@guild/shared";
-import { TIPTAP_DEFAULT_JSON } from "@infini-dev-kit/frontend/components";
+import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/TipTapEditor";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";

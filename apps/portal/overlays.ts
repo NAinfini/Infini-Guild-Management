@@ -1,4 +1,4 @@
-import type { OverlayService, ToastPayload } from "@infini-dev-kit/frontend/overlays";
+import type { OverlayService, ToastPayload } from "@infini-dev-kit/theme-core";
 
 let portalOverlayService: OverlayService | null = null;
 

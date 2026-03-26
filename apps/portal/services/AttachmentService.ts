@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { type ImageGridEditorItem } from "@infini-dev-kit/frontend/components";
-import { convertImageToWebP } from "@infini-dev-kit/frontend/utils";
+import { type ImageGridEditorItem } from "@infini-dev-kit/react";
+import { convertImageToWebP } from "@infini-dev-kit/react";
 
 export type AttachmentItem = ImageGridEditorItem;
 

@@ -1,5 +1,6 @@
 import type { Event } from "@guild/shared";
-import { InfiniCard, NumberTicker } from "@infini-dev-kit/frontend/components";
+import { NumberTicker } from "@infini-dev-kit/react";
+import { PortalCard } from "../shared/PortalCard";
 import { Avatar, Badge, Button, Group, RingProgress, Stack, Text, Tooltip } from "@mantine/core";
 import {
   IconArrowRight,
@@ -47,7 +48,7 @@ export function UpcomingEventsCard({
   const hasAnyRows = featuredRows.length > 0 || rows.length > 0;
 
   return (
-    <InfiniCard className="dashboard-card" interactive={false} overrides={{ glow: { variant: "spotlight", glowIntensity: 0.2 } }}>
+    <PortalCard className="dashboard-card" interactive={false}>
       {cardHeading(t("card.upcomingEvents.title"), <CalendarEventOutlined size={18} />)}
         {safeUpcomingCount > 0 ? (
           <Text size="xl" fw={700} mt={8}>
@@ -140,6 +141,6 @@ export function UpcomingEventsCard({
             })}
           </Stack>
         )}
-    </InfiniCard>
+    </PortalCard>
   );
 }

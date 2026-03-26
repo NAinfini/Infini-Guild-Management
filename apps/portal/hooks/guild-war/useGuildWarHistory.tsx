@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
-import { NumberTicker } from "@infini-dev-kit/frontend/components";
+import { NumberTicker } from "@infini-dev-kit/react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { HistorySummaryRow } from "../../components/feature/guild-war/WarHistoryTab";
 

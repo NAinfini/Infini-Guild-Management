@@ -1,5 +1,5 @@
 import type { Event } from "@guild/shared";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { PortalCard } from "../shared/PortalCard";
 import { Badge, Group, Stack, Text, Tooltip } from "@mantine/core";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -42,7 +42,7 @@ export function MySignupsCard({ mySignupEvents, now, onOpenEvent }: MySignupsCar
   const isToday = (date: Date) => isSameDay(date, now);
 
   return (
-    <InfiniCard className="dashboard-card" interactive={false} overrides={{ glow: { variant: "spotlight", glowIntensity: 0.2 } }}>
+    <PortalCard className="dashboard-card" interactive={false}>
       {cardHeading(t("card.mySignups.title"), <UserCheckOutlined size={18} />)}
       <Group gap={4} mt={12} wrap="nowrap" style={{ width: "100%" }}>
         {days.map((day) => {
@@ -125,6 +125,6 @@ export function MySignupsCard({ mySignupEvents, now, onOpenEvent }: MySignupsCar
           );
         })}
       </Group>
-    </InfiniCard>
+    </PortalCard>
   );
 }

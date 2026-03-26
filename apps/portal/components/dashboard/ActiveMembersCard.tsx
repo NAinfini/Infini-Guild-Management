@@ -1,4 +1,5 @@
-import { InfiniCard, NumberTicker } from "@infini-dev-kit/frontend/components";
+import { NumberTicker } from "@infini-dev-kit/react";
+import { PortalCard } from "../shared/PortalCard";
 import { Group, RingProgress, Stack, Text } from "@mantine/core";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -46,7 +47,7 @@ export function ActiveMembersCard({
   const weeklyEventsPercent = Math.min(100, (safeActiveEventsCount / 7) * 100);
 
   return (
-    <InfiniCard className="dashboard-card" interactive={false} overrides={{ glow: { variant: "spotlight", glowIntensity: 0.25 } }}>
+    <PortalCard className="dashboard-card" interactive={false}>
       {cardHeading(t("card.activeMembers.title"), <TeamOutlined size={18} />)}
       <Group gap={10} mt={12} align="flex-start" justify="space-between" w="100%">
         <Stack gap={8} align="center" style={{ flex: "1 1 0", minWidth: 0 }}>
@@ -89,6 +90,6 @@ export function ActiveMembersCard({
           <Text className="dashboard-stats-circle-label">{t("card.activeMembers.winRate")}</Text>
         </Stack>
       </Group>
-    </InfiniCard>
+    </PortalCard>
   );
 }

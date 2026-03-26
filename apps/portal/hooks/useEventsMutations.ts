@@ -1,5 +1,5 @@
 import type { Event, User } from "@guild/shared";
-import type { ImageGridEditorItem } from "@infini-dev-kit/frontend/components";
+import type { ImageGridEditorItem } from "@infini-dev-kit/react";
 import { notifications } from "@mantine/notifications";
 import { modals } from "@mantine/modals";
 import { useMutation, useQueryClient } from "@tanstack/react-query";

@@ -1,5 +1,5 @@
 ﻿import type { Announcement } from "@guild/shared";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { PortalCard } from "../shared/PortalCard";
 import { Badge, Button, Group, Stack, Text } from "@mantine/core";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslation } from "react-i18next";
@@ -23,7 +23,7 @@ export function NotificationsCard({
   const { t } = useTranslation("dashboard");
 
   return (
-    <InfiniCard className="dashboard-card" interactive={false} overrides={{ glow: { variant: "spotlight", glowIntensity: 0.2 } }}>
+    <PortalCard className="dashboard-card" interactive={false}>
         <Group justify="space-between" align="center">
           {cardHeading(t("card.notifications.title"), <NotificationOutlined size={18} />)}
           <Button
@@ -65,6 +65,6 @@ export function NotificationsCard({
             ))
           )}
         </Stack>
-    </InfiniCard>
+    </PortalCard>
   );
 }

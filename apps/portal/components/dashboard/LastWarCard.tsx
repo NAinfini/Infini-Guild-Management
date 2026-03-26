@@ -1,5 +1,6 @@
 import type { WarHistory } from "@guild/shared";
-import { InfiniCard, NumberTicker } from "@infini-dev-kit/frontend/components";
+import { NumberTicker } from "@infini-dev-kit/react";
+import { PortalCard } from "../shared/PortalCard";
 import { ActionIcon, Avatar, Stack, Text } from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -13,7 +14,8 @@ import {
   TargetOutlined,
   TrophyOutlined,
 } from "../../utils/icons";
-import { IconFlame, IconHeart, IconHammer } from "@tabler/icons-react";
+import { IconFlame, IconHeart, IconHammer, IconShield } from "@tabler/icons-react";
+import { CompareBar } from "../shared/CompareBar";
 import { EmptyState } from "../shared/EmptyState";
 import { cardHeading, formatDateTime, type DashboardLastWarMvp, type DashboardLastWarMvpEntry } from "./shared";
 
@@ -36,45 +38,6 @@ function resultLabel(result: string | null, t: (key: string) => string): string 
   if (result === "loss") return t("card.lastWar.result.defeat");
   if (result === "draw") return t("card.lastWar.result.draw");
   return t("card.lastWar.result.pending");
-}
-
-function CompareBar({
-  icon,
-  label,
-  own,
-  enemy,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  own: number;
-  enemy: number;
-}) {
-  const total = own + enemy || 1;
-  const ownPct = Math.round((own / total) * 100);
-  const enemyPct = 100 - ownPct;
-
-  return (
-    <div className="war-compare-row">
-      <div className="war-compare-label">
-        <span className="war-compare-label-icon">{icon}</span>
-        <span>{label}</span>
-      </div>
-      <div className="war-compare-bar-wrap">
-        <span className="war-compare-val war-compare-val--left">{own.toLocaleString()}</span>
-        <div className="war-compare-bar">
-          <div
-            className={`war-compare-bar-fill war-compare-bar-fill--own${ownPct >= enemyPct ? " war-compare-bar-fill--winning" : ""}`}
-            style={{ width: `${ownPct}%` }}
-          />
-          <div
-            className={`war-compare-bar-fill war-compare-bar-fill--enemy${enemyPct > ownPct ? " war-compare-bar-fill--winning" : ""}`}
-            style={{ width: `${enemyPct}%` }}
-          />
-        </div>
-        <span className="war-compare-val war-compare-val--right">{enemy.toLocaleString()}</span>
-      </div>
-    </div>
-  );
 }
 
 function MvpChip({ entry, icon }: { entry: DashboardLastWarMvpEntry; icon: React.ReactNode }) {
@@ -112,7 +75,7 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
   const hasNext = index < total - 1;
 
   return (
-    <InfiniCard className="dashboard-card" interactive={false} overrides={{ glow: { variant: "spotlight", glowIntensity: 0.3 } }}>
+    <PortalCard className="dashboard-card" interactive={false}>
       <div className="war-card-header">
         {cardHeading(t("card.lastWar.title"), <SwordsOutlined size={18} />)}
         {total > 1 ? (
@@ -176,6 +139,7 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
           {/* Comparison bars */}
           <Stack gap={8}>
             <CompareBar
+              classPrefix="war-compare-"
               icon={<TargetOutlined size={13} />}
               label={t("card.lastWar.kills")}
               own={war.own_kills ?? 0}
@@ -184,18 +148,21 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
             {!isExternalView ? (
               <>
                 <CompareBar
+                  classPrefix="war-compare-"
                   icon={<CrownOutlined size={13} />}
                   label={t("card.lastWar.credits")}
                   own={war.own_credits ?? 0}
                   enemy={war.enemy_credits ?? 0}
                 />
                 <CompareBar
+                  classPrefix="war-compare-"
                   icon={<ShieldOutlined size={13} />}
                   label={t("card.lastWar.towers")}
                   own={war.own_towers ?? 0}
                   enemy={war.enemy_towers ?? 0}
                 />
                 <CompareBar
+                  classPrefix="war-compare-"
                   icon={<ShieldOutlined size={13} />}
                   label={t("card.lastWar.baseHp")}
                   own={war.own_base_hp ?? 0}
@@ -214,6 +181,7 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
               <Stack gap={6}>
                 <MvpChip entry={{ ...mvp.damage, label: t("card.lastWar.mvp.damage") }} icon={<IconFlame size={12} />} />
                 <MvpChip entry={{ ...mvp.healing, label: t("card.lastWar.mvp.healing") }} icon={<IconHeart size={12} />} />
+                <MvpChip entry={{ ...mvp.damageTaken, label: t("card.lastWar.mvp.damageTaken") }} icon={<IconShield size={12} />} />
                 <MvpChip entry={{ ...mvp.building, label: t("card.lastWar.mvp.building") }} icon={<IconHammer size={12} />} />
               </Stack>
             </Stack>
@@ -222,6 +190,6 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
       ) : (
         <EmptyState title={t("empty")} />
       )}
-    </InfiniCard>
+    </PortalCard>
   );
 }

@@ -1,7 +1,7 @@
 import { hasRoleAtLeast, type Announcement, type PaginatedResponse } from "@guild/shared";
-import { TIPTAP_DEFAULT_JSON } from "@infini-dev-kit/frontend/components";
+import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/TipTapEditor";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { format, isValid, parseISO } from "date-fns";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
@@ -11,6 +11,7 @@ import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
 import { useExternalView } from "./useExternalView";
 import {
   archiveAnnouncement,
+  buildAnnouncementImageUrl,
   createAnnouncement,
   fetchAnnouncement,
   fetchAnnouncements,
@@ -70,6 +71,7 @@ export function useAnnouncementsController() {
   const debouncedSearch = debouncedSearchRaw.trim();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isCreating, isCreatingHandlers] = useDisclosure(false);
+  const [draftAnnouncementId, setDraftAnnouncementId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [bodyJson, setBodyJson] = useState(TIPTAP_DEFAULT_JSON);
   const [pinned, setPinned] = useState(false);
@@ -93,12 +95,14 @@ export function useAnnouncementsController() {
         search: debouncedSearch || undefined,
         archived: statusFilter === "archived",
       }),
+    placeholderData: keepPreviousData,
   });
 
   const detailQuery = useQuery({
     queryKey: queryKeys.announcements.detail(selectedId),
     enabled: Boolean(selectedId),
     queryFn: () => fetchAnnouncement(selectedId as string),
+    placeholderData: keepPreviousData,
   });
 
   const createMutation = useMutation({
@@ -305,6 +309,7 @@ export function useAnnouncementsController() {
 
   const handleCreateByStatus = useCallback(() => {
     isCreatingHandlers.open();
+    setDraftAnnouncementId(null);
     setSelectedId(null);
   }, []);
 
@@ -331,6 +336,26 @@ export function useAnnouncementsController() {
         scheduled: "scheduled",
       };
       const status = statusMap[mode] ?? "published";
+
+      if (draftAnnouncementId) {
+        updateMutation.mutate({
+          id: draftAnnouncementId,
+          payload: {
+            title,
+            body_json: bodyJson,
+            pinned,
+            status,
+            publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
+            expires_at: toIsoOrUndefined(expiresAt),
+            notify_discord: notifyDiscord,
+            notify_wechat: notifyWechat,
+          },
+        });
+        isCreatingHandlers.close();
+        setSelectedId(draftAnnouncementId);
+        setDraftAnnouncementId(null);
+        return;
+      }
 
       createMutation.mutate({
         title,
@@ -376,7 +401,12 @@ export function useAnnouncementsController() {
 
   const handleCloseEditor = () => {
     if (isCreating) {
+      const orphanDraftId = draftAnnouncementId;
       isCreatingHandlers.close();
+      setDraftAnnouncementId(null);
+      if (orphanDraftId) {
+        archiveMutation.mutate(orphanDraftId);
+      }
       if (rows.length > 0) {
         setSelectedId(rows[0]?.id ?? null);
       }
@@ -401,15 +431,32 @@ export function useAnnouncementsController() {
   };
 
   const handleUploadAnnouncementImages = async (file: File) => {
-    if (isCreating || !selectedId) {
-      throw new Error("Save announcement first before uploading images");
+    let announcementId = selectedId;
+
+    if (isCreating || !announcementId) {
+      if (draftAnnouncementId) {
+        announcementId = draftAnnouncementId;
+      } else {
+        const created = await createAnnouncement({
+          title: title.trim() || t("draftTitle"),
+          body_json: bodyJson || TIPTAP_DEFAULT_JSON,
+          pinned: false,
+          status: "draft",
+          notify_discord: false,
+          notify_wechat: false,
+        });
+        setDraftAnnouncementId(created.id);
+        announcementId = created.id;
+        await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+      }
     }
-    const uploaded = await uploadAnnouncementImages(selectedId, [file]);
+
+    const uploaded = await uploadAnnouncementImages(announcementId, [file]);
     const key = uploaded.keys[0];
     if (!key) {
       throw new Error("Image upload returned no key");
     }
-    return key;
+    return buildAnnouncementImageUrl(key);
   };
 
   return {
