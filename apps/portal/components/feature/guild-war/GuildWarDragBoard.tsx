@@ -3,7 +3,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import { ActionIcon, Badge, Card, Group, Stack, Text, Tooltip } from "@mantine/core";
 import { IconUser, IconShield, IconBolt, IconCopy } from "@tabler/icons-react";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { PortalCard } from "../../shared/PortalCard";
 import type { ComponentProps, CSSProperties, MouseEvent, ReactNode } from "react";
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -167,7 +167,7 @@ function DroppableMemberColumn(props: {
   };
 
   return (
-    <InfiniCard
+    <PortalCard
       interactive={false}
       className={`guild-war-column-card ${isOver ? "guild-war-column-card--over" : ""}`}
       style={{ overflow: "visible" }}
@@ -247,7 +247,7 @@ function DroppableMemberColumn(props: {
           </Stack>
         </SortableContext>
       </div>
-    </InfiniCard>
+    </PortalCard>
   );
 }
 

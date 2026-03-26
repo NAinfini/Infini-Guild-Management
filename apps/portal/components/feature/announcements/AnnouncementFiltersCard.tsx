@@ -1,4 +1,5 @@
-import { DepthToggle, InfiniCard } from "@infini-dev-kit/frontend/components";
+import { DepthToggle } from "@portal/components/shared/DepthToggle";
+import { PortalCard } from "../../shared/PortalCard";
 import { Group, TextInput } from "@mantine/core";
 import { IconArchive, IconCalendarTime, IconFileText, IconPin } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
@@ -29,7 +30,7 @@ export function AnnouncementFiltersCard({
   };
 
   return (
-    <InfiniCard interactive={false}>
+    <PortalCard interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Group gap={8} wrap="wrap" align="center">
           <TextInput
@@ -46,7 +47,7 @@ export function AnnouncementFiltersCard({
             size="sm"
             iconOnly
             aria-label={t("filter.pinned")}
-            title={t("filter.pinned")}
+            tooltip={t("filter.pinned")}
           >
             <IconPin size={16} />
           </DepthToggle>
@@ -57,7 +58,7 @@ export function AnnouncementFiltersCard({
             size="sm"
             iconOnly
             aria-label={t("filter.archived")}
-            title={t("filter.archived")}
+            tooltip={t("filter.archived")}
           >
             <IconArchive size={16} />
           </DepthToggle>
@@ -70,7 +71,7 @@ export function AnnouncementFiltersCard({
                 size="sm"
                 iconOnly
                 aria-label={t("filter.draft")}
-                title={t("filter.draft")}
+                tooltip={t("filter.draft")}
               >
                 <IconFileText size={16} />
               </DepthToggle>
@@ -81,7 +82,7 @@ export function AnnouncementFiltersCard({
                 size="sm"
                 iconOnly
                 aria-label={t("filter.scheduled")}
-                title={t("filter.scheduled")}
+                tooltip={t("filter.scheduled")}
               >
                 <IconCalendarTime size={16} />
               </DepthToggle>
@@ -89,6 +90,6 @@ export function AnnouncementFiltersCard({
           ) : null}
         </Group>
       </div>
-    </InfiniCard>
+    </PortalCard>
   );
 }

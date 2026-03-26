@@ -13,7 +13,8 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { InfiniCard, ProgressButton } from "@infini-dev-kit/frontend/components";
+import { ProgressButton } from "@infini-dev-kit/react";
+import { PortalCard } from "../../shared/PortalCard";
 import { IconClipboard, IconPlayerPlay, IconTrash } from "@tabler/icons-react";
 import { useCallback, useRef, useState } from "react";
 import { useClipboard } from "@mantine/hooks";
@@ -109,6 +110,8 @@ type TestRunContext = {
   createdWarTemplateId: string | null;
   createdWarHistoryId: string | null;
   createdRoleId: string | null;
+  /** Snapshot of target user's profile before modification, for cleanup restore */
+  targetProfileSnapshot: { bio: string | null; classes: string[]; discord_reminder_opt_out: boolean } | null;
 };
 
 type PreparedEndpointRequest = {
@@ -165,6 +168,7 @@ function createInitialTestRunContext(): TestRunContext {
     createdWarTemplateId: null,
     createdWarHistoryId: null,
     createdRoleId: null,
+    targetProfileSnapshot: null,
   };
 }
 
@@ -188,14 +192,22 @@ function toIso(hoursFromNow: number): string {
   return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
 }
 
-function createTinyImageFile(): File {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="#4dabf7"/></svg>`;
-  return new File([svg], "api-test-image.svg", { type: "image/svg+xml" });
+function createTinyPngFile(): File {
+  // Minimal valid 1x1 red PNG (68 bytes)
+  const bytes = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // PNG signature
+    0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+    0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, // IDAT chunk
+    0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00, 0x00, 0x00, 0x03, 0x00, 0x01, 0x36, 0x28, 0xcf,
+    0x80, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82, // IEND chunk
+  ]);
+  return new File([bytes], "systemtest-image.png", { type: "image/png" });
 }
 
 function createTinyAudioFile(): File {
   const payload = new Uint8Array([82, 73, 70, 70, 24, 0, 0, 0, 87, 65, 86, 69]);
-  return new File([payload], "api-test-audio.wav", { type: "audio/wav" });
+  return new File([payload], "systemtest-audio.wav", { type: "audio/wav" });
 }
 
 function buildJsonRequest(path: string, body: unknown): PreparedEndpointRequest {
@@ -680,7 +692,7 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
     case "POST /api/auth/register/:inviteCode":
       return {
         ...buildJsonRequest(path, {
-        username: `apitest_${nowId}`,
+        username: `systemtest_${nowId}`,
         password: "Passw0rd!",
         confirmPassword: "Passw0rd!",
         }),
@@ -690,13 +702,13 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
 
     case "PATCH /api/users/:id/profile":
       return buildJsonRequest(path, {
-        bio: "API test profile update",
+        bio: "[systemtest] API test profile update",
         classes: ["鸣金虹"],
         discord_reminder_opt_out: false,
       });
 
     case "POST /api/users/:id/media/images":
-      return buildFormRequest(path, [["file", createTinyImageFile()]]);
+      return buildFormRequest(path, [["file", createTinyPngFile()]]);
 
     case "POST /api/users/:id/media/audio":
       return buildFormRequest(path, [["file", createTinyAudioFile()]]);
@@ -713,8 +725,8 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
     case "POST /api/events":
       return buildJsonRequest(path, {
         type: "weekly_mission",
-        title: `API Test Event ${nowId}`,
-        description: "Created by admin API tester",
+        title: `[systemtest] API Test Event ${nowId}`,
+        description: "[systemtest] Created by admin API tester",
         start_at: toIso(2),
         end_at: toIso(3),
         capacity: 20,
@@ -722,11 +734,11 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
 
     case "PATCH /api/events/:id":
       return buildJsonRequest(path, {
-        title: `API Updated Event ${nowId}`,
+        title: `[systemtest] API Updated Event ${nowId}`,
       });
 
     case "POST /api/events/:id/images":
-      return buildFormRequest(path, [["file", createTinyImageFile()]]);
+      return buildFormRequest(path, [["file", createTinyPngFile()]]);
 
     case "POST /api/events/:id/participants":
       if (!context.targetUserId && !context.meId) {
@@ -739,8 +751,8 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
     case "POST /api/events/templates":
       return buildJsonRequest(path, {
         type: "social",
-        title: `API Template ${nowId}`,
-        description: "Recurring template from API tester",
+        title: `[systemtest] API Template ${nowId}`,
+        description: "[systemtest] Recurring template from API tester",
         start_at: toIso(4),
         end_at: toIso(5),
         recurrence_rule: {
@@ -752,13 +764,13 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
 
     case "PATCH /api/events/templates/:id":
       return buildJsonRequest(path, {
-        title: `API Template Updated ${nowId}`,
+        title: `[systemtest] API Template Updated ${nowId}`,
       });
 
     case "POST /api/announcements":
       return buildJsonRequest(path, {
-        title: `API Announcement ${nowId}`,
-        body_json: "{\"content\":\"Created by API tester\"}",
+        title: `[systemtest] API Announcement ${nowId}`,
+        body_json: "{\"content\":\"[systemtest] Created by API tester\"}",
         pinned: false,
         status: "draft",
         notify_discord: false,
@@ -767,34 +779,34 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
 
     case "PATCH /api/announcements/:id":
       return buildJsonRequest(path, {
-        title: `API Announcement Updated ${nowId}`,
-        body_json: "{\"content\":\"Updated by API tester\"}",
+        title: `[systemtest] API Announcement Updated ${nowId}`,
+        body_json: "{\"content\":\"[systemtest] Updated by API tester\"}",
       });
 
     case "POST /api/announcements/:id/images":
-      return buildFormRequest(path, [["file", createTinyImageFile()]]);
+      return buildFormRequest(path, [["file", createTinyPngFile()]]);
 
     case "POST /api/gallery/images":
       return buildFormRequest(path, [
-        ["file", createTinyImageFile()],
-        ["captions", "API test image"],
+        ["file", createTinyPngFile()],
+        ["captions", "[systemtest] API test image"],
       ]);
 
     case "POST /api/gallery/videos":
       return buildJsonRequest(path, {
         type: "video",
         url: "https://example.com/video.mp4",
-        caption: "API test video",
+        caption: "[systemtest] API test video",
       });
 
     case "POST /api/gallery/:id/comments":
       return buildJsonRequest(path, {
-        body: "API test comment",
+        body: "[systemtest] API test comment",
       });
 
     case "PATCH /api/gallery/:id/comments/:commentId":
       return buildJsonRequest(path, {
-        body: "API test comment (edited)",
+        body: "[systemtest] API test comment (edited)",
       });
 
     case "POST /api/guild-war/save-teams":
@@ -808,7 +820,7 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
         event_id: context.warEventId ?? context.eventId ?? context.createdEventId,
         teams: [
           {
-            team_name: "API Team A",
+            team_name: "[systemtest] API Team A",
             sort_order: 0,
             is_locked: false,
             members: [
@@ -878,8 +890,9 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
       }
       return buildJsonRequest(path, {
         event_id: context.warEventId ?? context.eventId ?? context.createdEventId,
-        template_name: `api-template-${nowId}`,
-        description: "API test guild war template",
+        template_name: `[systemtest] api-template-${nowId}`,
+        description: "[systemtest] API test guild war template",
+        template_type: "structure",
       });
 
     case "POST /api/guild-war/templates/apply":
@@ -897,13 +910,13 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
     case "POST /api/guild-war/history":
       return buildJsonRequest(path, {
         event_id: context.warEventId ?? context.eventId ?? context.createdEventId ?? undefined,
-        war_name: `API Test War ${nowId}`,
+        war_name: `[systemtest] API Test War ${nowId}`,
         result: "win",
       });
 
     case "PATCH /api/guild-war/history/:id":
       return buildJsonRequest(path, {
-        notes: "API test history update",
+        notes: "[systemtest] API test history update",
       });
 
     case "PATCH /api/guild-war/history/:id/member-stats/:userId":
@@ -913,13 +926,13 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
 
     case "POST /api/wiki/categories":
       return buildJsonRequest(path, {
-        name: `API Category ${nowId}`,
+        name: `[systemtest] API Category ${nowId}`,
         sort_order: 0,
       });
 
     case "PATCH /api/wiki/categories/:id":
       return buildJsonRequest(path, {
-        name: `API Category Updated ${nowId}`,
+        name: `[systemtest] API Category Updated ${nowId}`,
       });
 
     case "POST /api/wiki/articles":
@@ -927,19 +940,19 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
         return skipEndpoint(path, "Missing wiki category id");
       }
       return buildJsonRequest(path, {
-        title: `API Article ${nowId}`,
+        title: `[systemtest] API Article ${nowId}`,
         category_id: context.wikiArticleCategoryId ?? context.wikiCategoryId,
-        body_json: "{\"content\":\"Created by API tester\"}",
+        body_json: "{\"content\":\"[systemtest] Created by API tester\"}",
         sort_order: 0,
       });
 
     case "PATCH /api/wiki/articles/:id":
       return buildJsonRequest(path, {
-        title: `API Article Updated ${nowId}`,
+        title: `[systemtest] API Article Updated ${nowId}`,
       });
 
     case "POST /api/wiki/articles/:id/images":
-      return buildFormRequest(path, [["file", createTinyImageFile()]]);
+      return buildFormRequest(path, [["file", createTinyPngFile()]]);
 
     case "POST /api/admin/invite-links":
       return buildJsonRequest(path, {
@@ -948,7 +961,7 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
 
     case "POST /api/admin/users":
       return buildJsonRequest(path, {
-        username: `apitester_${nowId}`,
+        username: `systemtest_admin_${nowId}`,
       });
 
     case "PATCH /api/admin/users/batch/role":
@@ -991,12 +1004,12 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
 
     case "PATCH /api/admin/users/:id/deactivate":
       return buildJsonRequest(path, {
-        reason: "API test deactivate",
+        reason: "[systemtest] API test deactivate",
       });
 
     case "PATCH /api/admin/users/:id/reactivate":
       return buildJsonRequest(path, {
-        reason: "API test reactivate",
+        reason: "[systemtest] API test reactivate",
       });
 
     case "POST /api/admin/users/:id/reset-password":
@@ -1006,15 +1019,15 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
 
     case "POST /api/admin/roles":
       return buildJsonRequest(path, {
-        id: `api_role_${nowId}`,
-        name: `API Role ${nowId}`,
+        id: `systemtest_role_${nowId}`,
+        name: `[systemtest] API Role ${nowId}`,
         level: 1,
         color: "#228be6",
       });
 
     case "PATCH /api/admin/roles/:id":
       return buildJsonRequest(path, {
-        name: `API Role Updated ${nowId}`,
+        name: `[systemtest] API Role Updated ${nowId}`,
       });
 
     case "PATCH /api/admin/bot-settings":
@@ -1110,6 +1123,13 @@ function captureContextFromResponse(
     const firstImage = images.find((item): item is string => typeof item === "string");
     next.userImageKey = firstImage ?? next.userImageKey;
     next.userAudioKey = readString(profile?.audio_key) ?? next.userAudioKey;
+    // Capture profile snapshot for cleanup restore (before PATCH modifies it)
+    if (profile && !next.targetProfileSnapshot) {
+      const bio = typeof profile.bio === "string" ? profile.bio : null;
+      const classes = Array.isArray(profile.classes) ? profile.classes.filter((c): c is string => typeof c === "string") : [];
+      const optOut = typeof profile.discord_reminder_opt_out === "boolean" ? profile.discord_reminder_opt_out : false;
+      next.targetProfileSnapshot = { bio, classes, discord_reminder_opt_out: optOut };
+    }
     return next;
   }
 
@@ -1575,7 +1595,7 @@ function DebugConsole({
     : logs.map(formatLogEntry).join("\n\n" + "─".repeat(80) + "\n\n");
 
   return (
-    <InfiniCard interactive={false}>
+    <PortalCard interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Group justify="space-between" mb={8}>
           <Group gap={8}>
@@ -1610,7 +1630,7 @@ function DebugConsole({
           </Code>
         </ScrollArea.Autosize>
       </div>
-    </InfiniCard>
+    </PortalCard>
   );
 }
 
@@ -1732,7 +1752,7 @@ export function AdminStatusTab({
 
   const runCleanup = useCallback(async (signal: AbortSignal) => {
     const ctx = contextRef.current;
-    const cleanupSteps: Array<{ label: string; method: string; path: string }> = [];
+    const cleanupSteps: Array<{ label: string; method: string; path: string; jsonBody?: unknown }> = [];
 
     // Order: dependents first, then parents
     // Gallery image (the uploaded image that survived the in-category delete of the video)
@@ -1766,9 +1786,36 @@ export function AdminStatusTab({
     if (ctx.createdRoleId) {
       cleanupSteps.push({ label: "Cleanup: Admin Role", method: "DELETE", path: `/api/admin/roles/${encodeURIComponent(ctx.createdRoleId)}` });
     }
-    // Registered test user (batch delete via admin)
+    // Restore modified profile to original values
+    if (ctx.targetUserId && ctx.targetProfileSnapshot) {
+      cleanupSteps.push({
+        label: "Cleanup: Restore Profile",
+        method: "PATCH",
+        path: `/api/users/${encodeURIComponent(ctx.targetUserId)}/profile`,
+        jsonBody: {
+          bio: ctx.targetProfileSnapshot.bio,
+          classes: ctx.targetProfileSnapshot.classes,
+          discord_reminder_opt_out: ctx.targetProfileSnapshot.discord_reminder_opt_out,
+        },
+      });
+    }
+    // Delete registered test user (batch delete via admin)
     if (ctx.registeredUserId) {
-      cleanupSteps.push({ label: "Cleanup: Registered User", method: "PATCH", path: "/api/admin/users/batch/delete" });
+      cleanupSteps.push({
+        label: "Cleanup: Registered User",
+        method: "PATCH",
+        path: "/api/admin/users/batch/delete",
+        jsonBody: { user_ids: [ctx.registeredUserId] },
+      });
+    }
+    // Delete admin-created test user (batch delete via admin)
+    if (ctx.adminCreatedUserId && ctx.adminCreatedUserId !== ctx.registeredUserId) {
+      cleanupSteps.push({
+        label: "Cleanup: Admin Created User",
+        method: "PATCH",
+        path: "/api/admin/users/batch/delete",
+        jsonBody: { user_ids: [ctx.adminCreatedUserId] },
+      });
     }
 
     for (const step of cleanupSteps) {
@@ -1779,15 +1826,14 @@ export function AdminStatusTab({
       const started = performance.now();
       const ranAt = new Date().toISOString();
       try {
-        const isJsonBody = step.method === "PATCH";
         const fetchOpts: RequestInit = {
           method: step.method,
           credentials: "include",
           signal,
         };
-        if (isJsonBody && step.label === "Cleanup: Registered User") {
+        if (step.jsonBody !== undefined) {
           fetchOpts.headers = { "Content-Type": "application/json" };
-          fetchOpts.body = JSON.stringify({ user_ids: [ctx.registeredUserId] });
+          fetchOpts.body = JSON.stringify(step.jsonBody);
         }
         const response = await fetch(step.path, fetchOpts);
         const latencyMs = Math.round(performance.now() - started);
@@ -1877,7 +1923,7 @@ export function AdminStatusTab({
 
       {/* ── System Health ─────────────────────────── */}
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-        <InfiniCard interactive={false}>
+        <PortalCard interactive={false}>
           <div style={{ padding: "1.2rem" }}>
             <Group justify="space-between" mb={12}>
               <Text fw={600} size="sm">{t("status.section.health")}</Text>
@@ -1894,9 +1940,9 @@ export function AdminStatusTab({
               statusData={statusData}
             />
           </div>
-        </InfiniCard>
+        </PortalCard>
 
-        <InfiniCard interactive={false}>
+        <PortalCard interactive={false}>
           <div style={{ padding: "1.2rem" }}>
             <Group justify="space-between" mb={12}>
               <Text fw={600} size="sm">{t("status.healthLogs.title")}</Text>
@@ -1924,11 +1970,11 @@ export function AdminStatusTab({
               </Stack>
             </ScrollArea.Autosize>
           </div>
-        </InfiniCard>
+        </PortalCard>
       </SimpleGrid>
 
       {/* ── API Test Panels ───────────────────────── */}
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Group justify="space-between" mb={4}>
             <Group gap={8}>
@@ -1981,7 +2027,7 @@ export function AdminStatusTab({
             <Progress value={progressPercent} size="sm" radius="xl" striped={runningAll} animated={runningAll} />
           </Stack>
         </div>
-      </InfiniCard>
+      </PortalCard>
 
       {/* ── Debug Console ─────────────────────────── */}
       <DebugConsole logs={debugLogs} onClear={clearDebug} />

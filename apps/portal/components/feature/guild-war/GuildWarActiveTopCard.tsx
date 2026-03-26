@@ -1,6 +1,6 @@
 ﻿import { Badge, Button, Divider, Group, Select, Stack, TextInput } from "@mantine/core";
-import { MotionButton } from "@infini-dev-kit/frontend/components";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { PortalCard } from "../../shared/PortalCard";
 import { IconDeviceFloppy, IconTrash } from "@tabler/icons-react";
 
 type GuildWarActiveTopCardProps = {
@@ -79,7 +79,7 @@ export function GuildWarActiveTopCard({
   unsavedLabel,
 }: GuildWarActiveTopCardProps) {
   return (
-    <InfiniCard interactive={false} className="guild-war-active-top-card">
+    <PortalCard interactive={false} className="guild-war-active-top-card">
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={12}>
           {/* Event selector + search + actions */}
@@ -149,20 +149,20 @@ export function GuildWarActiveTopCard({
                 />
               </Group>
               <Group gap={8} wrap="wrap">
-                <MotionButton
+                <DepthButton
                   onClick={onSaveTemplate}
                   loading={templateSavePending}
                   disabled={templateActionDisabled || templateName.trim().length === 0}
                 >
                   {saveTemplateLabel}
-                </MotionButton>
-                <MotionButton
+                </DepthButton>
+                <DepthButton
                   onClick={onApplyTemplate}
                   loading={templateApplyPending}
                   disabled={templateActionDisabled || !selectedTemplateId}
                 >
                   {applyTemplateLabel}
-                </MotionButton>
+                </DepthButton>
                 <Button
                   variant="light"
                   color="infini-danger"
@@ -178,7 +178,7 @@ export function GuildWarActiveTopCard({
           ) : null}
         </Stack>
       </div>
-    </InfiniCard>
+    </PortalCard>
   );
 }
 

@@ -1,4 +1,4 @@
-﻿import { InfiniCard } from "@infini-dev-kit/frontend/components";
+﻿import { PortalCard } from "../../shared/PortalCard";
 import { Alert, Skeleton, Stack, Text, UnstyledButton } from "@mantine/core";
 import type { ReactNode } from "react";
 import { EmptyState } from "../../shared/EmptyState";
@@ -58,7 +58,7 @@ export function WikiCategoryTreeCard({
     });
 
   return (
-    <InfiniCard className="wiki-category-tree-card" interactive={false}>
+    <PortalCard className="wiki-category-tree-card" interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={10}>
           {title ? <Text fw={600}>{title}</Text> : null}
@@ -76,7 +76,7 @@ export function WikiCategoryTreeCard({
         {!isLoading && !isError && treeData.length === 0 ? <EmptyState title={emptyTitle} /> : null}
         </Stack>
       </div>
-    </InfiniCard>
+    </PortalCard>
   );
 }
 

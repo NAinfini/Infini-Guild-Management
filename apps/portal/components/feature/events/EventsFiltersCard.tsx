@@ -1,5 +1,6 @@
 import { EVENT_TYPES } from "@guild/shared";
-import { DepthButton, DepthToggle } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { SegmentedControl, Select, TextInput } from "@mantine/core";
 import { IconArchive, IconLock, IconPin, IconSearch } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
@@ -73,7 +74,7 @@ export function EventsFiltersCard({
           size="sm"
           iconOnly
           aria-label={t("filter.pinned")}
-          title={t("filter.pinned")}
+          tooltip={t("filter.pinned")}
         >
           <IconPin size={16} />
         </DepthToggle>
@@ -84,7 +85,7 @@ export function EventsFiltersCard({
           size="sm"
           iconOnly
           aria-label={t("filter.locked")}
-          title={t("filter.locked")}
+          tooltip={t("filter.locked")}
         >
           <IconLock size={16} />
         </DepthToggle>
@@ -95,7 +96,7 @@ export function EventsFiltersCard({
           size="sm"
           iconOnly
           aria-label={t("filter.archived")}
-          title={t("filter.archived")}
+          tooltip={t("filter.archived")}
         >
           <IconArchive size={16} />
         </DepthToggle>

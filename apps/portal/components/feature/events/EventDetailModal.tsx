@@ -1,7 +1,8 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
 import { Avatar, Grid, Group, Modal, Select, Stack, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { MotionButton, MediaGallery } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@infini-dev-kit/react";
+import { MediaGallery } from "@portal/components/shared/MediaGallery";
 import {
   IconCalendarEvent,
   IconClock,
@@ -52,7 +53,10 @@ type EventDetailModalProps = {
   members: MemberEntry[];
   allUsers: MemberEntry[];
   canManage: boolean;
+  currentUserId?: string;
   onClose: () => void;
+  onJoin?: (eventId: string) => void;
+  onLeave?: (eventId: string) => void;
   onAddParticipant: (eventId: string, userId: string) => void;
   onRemoveParticipant: (eventId: string, userId: string) => void;
 };
@@ -62,11 +66,24 @@ export function EventDetailModal({
   members,
   allUsers,
   canManage,
+  currentUserId,
   onClose,
+  onJoin,
+  onLeave,
   onAddParticipant,
   onRemoveParticipant,
 }: EventDetailModalProps) {
   const { t, i18n } = useTranslation("events");
+  const isJoined = currentUserId ? members.some((entry) => entry.user.id === currentUserId) : false;
+  const isFull = event?.capacity != null ? members.length >= event.capacity : false;
+  const hasEnded = Boolean(event?.end_at && new Date(event.end_at) < new Date());
+  const showMemberAction = Boolean(currentUserId && (isJoined ? onLeave : onJoin));
+  const memberActionDisabled = event ? event.signup_locked || Boolean(event.archived_at) || hasEnded || (!isJoined && isFull) : true;
+  const memberActionLabel = isJoined
+    ? t("button.leave")
+    : isFull
+      ? t("button.full")
+      : t("button.join");
 
   return (
     <Modal
@@ -108,9 +125,28 @@ export function EventDetailModal({
               ) : null}
 
               <div style={{ padding: "12px", borderRadius: "8px", background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.2)" }}>
-                <Group gap={8} mb={12}>
-                  <IconUsers size={20} style={{ color: "#10b981" }} />
-                  <Text size="md" fw={600}>{event.capacity ? t("detail.membersWithCap", { count: members.length, capacity: event.capacity }) : t("detail.members", { count: members.length })}</Text>
+                <Group justify="space-between" gap={12} mb={12} wrap="wrap">
+                  <Group gap={8}>
+                    <IconUsers size={20} style={{ color: "#10b981" }} />
+                    <Text size="md" fw={600}>{event.capacity ? t("detail.membersWithCap", { count: members.length, capacity: event.capacity }) : t("detail.members", { count: members.length })}</Text>
+                  </Group>
+                  {showMemberAction ? (
+                    <DepthButton
+                      type={isJoined ? "danger" : "primary"}
+                      size="sm"
+                      onClick={() => {
+                        if (isJoined) {
+                          onLeave?.(event.id);
+                          return;
+                        }
+                        onJoin?.(event.id);
+                      }}
+                      disabled={memberActionDisabled}
+                    >
+                      {isJoined ? <IconUserMinus size={14} style={{ marginRight: 4 }} /> : <IconUserPlus size={14} style={{ marginRight: 4 }} />}
+                      {memberActionLabel}
+                    </DepthButton>
+                  ) : null}
                 </Group>
 
                 {canManage ? (
@@ -152,10 +188,9 @@ export function EventDetailModal({
                             </Group>
                           </div>
                           {canManage ? (
-                            <MotionButton
-                              type="primary"
-                              danger
-                              size="small"
+                            <DepthButton
+                              type="danger"
+                              size="sm"
                               onClick={() => {
                                 modals.openConfirmModal({
                                   title: t("detail.confirm.removeMember.title"),
@@ -173,7 +208,7 @@ export function EventDetailModal({
                             >
                               <IconUserMinus size={14} style={{ marginRight: 4 }} />
                               {t("detail.removeMember")}
-                            </MotionButton>
+                            </DepthButton>
                           ) : null}
                         </Group>
                       ))}

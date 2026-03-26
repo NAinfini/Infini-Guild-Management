@@ -1,5 +1,6 @@
 ﻿import type { WikiArticle } from "@guild/shared";
-import { DepthButton, InfiniCard } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { PortalCard } from "../../shared/PortalCard";
 import { Alert, Group, MultiSelect, Skeleton, Stack, Text, Tooltip, VisuallyHidden } from "@mantine/core";
 import { IconArchive, IconEdit, IconPinned, IconPlus } from "@tabler/icons-react";
 import { format } from "date-fns";
@@ -51,29 +52,25 @@ export function WikiArticleListCard({
   const { t } = useTranslation("wiki");
 
   return (
-    <InfiniCard className="wiki-article-list-card" interactive={false}>
+    <PortalCard className="wiki-article-list-card" interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={10}>
           <Group justify="space-between">
             <Text fw={600}>{title}</Text>
             {canEdit ? (
               <Group gap={6}>
-                <Tooltip label={createLabel} withArrow>
-                  <DepthButton type="secondary" size="sm" onClick={onCreateArticle}>
+                <DepthButton type="secondary" size="sm" onClick={onCreateArticle} tooltip={{ label: createLabel, withArrow: true }}>
                     <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                       <IconPlus size={16} />
                     </span>
                     <VisuallyHidden>{createLabel}</VisuallyHidden>
                   </DepthButton>
-                </Tooltip>
-                <Tooltip label={t("editor.editCategories")} withArrow>
-                  <DepthButton type="secondary" size="sm" onClick={onOpenCategoryEditor}>
+                <DepthButton type="secondary" size="sm" onClick={onOpenCategoryEditor} tooltip={{ label: t("editor.editCategories"), withArrow: true }}>
                     <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                       <IconEdit size={16} />
                     </span>
                     <VisuallyHidden>{t("editor.editCategories")}</VisuallyHidden>
                   </DepthButton>
-                </Tooltip>
               </Group>
             ) : null}
           </Group>
@@ -134,6 +131,6 @@ export function WikiArticleListCard({
           ) : null}
         </Stack>
       </div>
-    </InfiniCard>
+    </PortalCard>
   );
 }

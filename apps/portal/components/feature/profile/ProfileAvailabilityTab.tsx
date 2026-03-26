@@ -1,8 +1,8 @@
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { PortalCard } from "../../shared/PortalCard";
 import { Badge, Button, Group, Stack } from "@mantine/core";
 import { IconDeviceFloppy } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
-import { AvailabilityGridEditor } from "@infini-dev-kit/frontend/components";
+import { AvailabilityGridEditor } from "@portal/components/shared/AvailabilityGridEditor";
 
 type ProfileAvailabilityTabProps = {
   availabilityData: Record<string, unknown> | null;
@@ -30,7 +30,7 @@ export function ProfileAvailabilityTab({
   const { t } = useTranslation("profile");
   return (
     <Stack gap={16}>
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <Group justify="flex-end" gap={8} p="1.2rem">
           <Badge color={isDirty ? "infini-warning" : "infini-success"}>
             {isDirty ? t("status.unsavedChanges") : t("status.saved")}
@@ -39,7 +39,7 @@ export function ProfileAvailabilityTab({
             {t("action.saveProfile")}
           </Button>
         </Group>
-      </InfiniCard>
+      </PortalCard>
       <AvailabilityGridEditor
         value={availabilityData}
         vacationStart={vacationStart}

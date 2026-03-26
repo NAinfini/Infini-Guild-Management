@@ -1,18 +1,18 @@
 import type { Announcement } from "@guild/shared";
-import { DepthButton, DepthToggle } from "@infini-dev-kit/frontend/components";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { DepthToggle } from "@portal/components/shared/DepthToggle";
+import { PortalCard } from "../../shared/PortalCard";
 import {
   Alert,
   Badge,
   Button,
   Divider,
   Group,
-  Loader,
+  Skeleton,
   Modal,
   Stack,
   Text,
   TextInput,
-  Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useDisclosure } from "@mantine/hooks";
@@ -22,7 +22,7 @@ import { useTranslation } from "react-i18next";
 import { IconArchive, IconPin, IconCalendarTime, IconBrandDiscord, IconBrandWechat, IconTrash, IconX, IconNote } from "@tabler/icons-react";
 import { PencilOutlined } from "@portal/utils/icons";
 import { EmptyState } from "../../shared/EmptyState";
-import { TipTapEditor } from "@infini-dev-kit/frontend/components";
+import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "-";
@@ -184,7 +184,7 @@ export function AnnouncementDetailCard({
   };
 
   return (
-    <InfiniCard className="announcements-detail-card" interactive={false}>
+    <PortalCard className="announcements-detail-card" interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={12}>
           {/* ── Header ── */}
@@ -224,7 +224,15 @@ export function AnnouncementDetailCard({
             ) : null}
           </Group>
 
-          {isLoading ? <Loader size="sm" /> : null}
+          {isLoading ? (
+            <Stack gap={10}>
+              <Skeleton height={22} width="50%" />
+              <Skeleton height={14} width="30%" />
+              <Skeleton height={14} />
+              <Skeleton height={14} />
+              <Skeleton height={14} width="70%" />
+            </Stack>
+          ) : null}
           {isError ? <Alert color="infini-warning" title={warningMessage} /> : null}
 
           {/* ── Reader View (default for everyone) ── */}
@@ -288,8 +296,7 @@ export function AnnouncementDetailCard({
                 <Stack gap={16}>
                   {/* Top row: Pin, Draft, Archive, Schedule, Delete — icon-only DepthToggles */}
                   <Group gap={8} wrap="nowrap">
-                    <Tooltip label={pinned ? t("action.unpin") : t("action.pin")} withArrow>
-                      <DepthToggle
+                    <DepthToggle
                         pressed={pinned}
                         onToggle={onPinnedChange}
                         type="secondary"
@@ -297,10 +304,9 @@ export function AnnouncementDetailCard({
                         size="sm"
                         before={<IconPin size={16} />}
                         aria-label={pinned ? t("action.unpin") : t("action.pin")}
+                        tooltip={{ label: pinned ? t("action.unpin") : t("action.pin"), withArrow: true }}
                       />
-                    </Tooltip>
-                    <Tooltip label={t("action.draft")} withArrow>
-                      <DepthToggle
+                    <DepthToggle
                         pressed={statusMode === "draft"}
                         onToggle={(nextPressed) => handleStatusToggle("draft", nextPressed)}
                         type="secondary"
@@ -308,10 +314,9 @@ export function AnnouncementDetailCard({
                         size="sm"
                         before={<IconNote size={16} />}
                         aria-label={t("action.draft")}
+                        tooltip={{ label: t("action.draft"), withArrow: true }}
                       />
-                    </Tooltip>
                     {!isCreateMode ? (
-                      <Tooltip label={t("action.archive")} withArrow>
                         <DepthToggle
                           pressed={statusMode === "archived"}
                           onToggle={(nextPressed) => handleStatusToggle("archived", nextPressed)}
@@ -320,11 +325,10 @@ export function AnnouncementDetailCard({
                           size="sm"
                           before={<IconArchive size={16} />}
                           aria-label={t("action.archive")}
+                          tooltip={{ label: t("action.archive"), withArrow: true }}
                         />
-                      </Tooltip>
                     ) : null}
-                    <Tooltip label={t("action.publishOnTime")} withArrow>
-                      <DepthToggle
+                    <DepthToggle
                         pressed={statusMode === "scheduled"}
                         onToggle={(nextPressed) => handleStatusToggle("scheduled", nextPressed)}
                         type="secondary"
@@ -332,18 +336,17 @@ export function AnnouncementDetailCard({
                         size="sm"
                         before={<IconCalendarTime size={16} />}
                         aria-label={t("action.publishOnTime")}
+                        tooltip={{ label: t("action.publishOnTime"), withArrow: true }}
                       />
-                    </Tooltip>
                     {!isCreateMode ? (
-                      <Tooltip label={t("action.delete")} withArrow>
                         <DepthButton
                           onClick={deleteConfirmHandlers.open}
                           type="danger"
                           size="sm"
+                          tooltip={{ label: t("action.delete"), withArrow: true }}
                         >
                           <IconTrash size={16} />
                         </DepthButton>
-                      </Tooltip>
                     ) : null}
                   </Group>
 
@@ -447,6 +450,6 @@ export function AnnouncementDetailCard({
           </Group>
         </Stack>
       </Modal>
-    </InfiniCard>
+    </PortalCard>
   );
 }

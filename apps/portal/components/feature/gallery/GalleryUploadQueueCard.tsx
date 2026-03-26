@@ -1,4 +1,4 @@
-﻿import { InfiniCard } from "@infini-dev-kit/frontend/components";
+﻿import { PortalCard } from "../../shared/PortalCard";
 import { Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { UploadStatus, UploadTask } from "./shared";
@@ -38,7 +38,7 @@ export function GalleryUploadQueueCard({
   }
 
   return (
-    <InfiniCard interactive={false}>
+    <PortalCard interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={8}>
           <Text fw={600}>{uploadQueueTitle}</Text>
@@ -78,7 +78,7 @@ export function GalleryUploadQueueCard({
           ))}
         </Stack>
       </div>
-    </InfiniCard>
+    </PortalCard>
   );
 }
 

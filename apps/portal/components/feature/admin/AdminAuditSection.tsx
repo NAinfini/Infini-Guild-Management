@@ -1,10 +1,11 @@
 import type { AuditLogEntry } from "@guild/shared";
 import { Button, Group, Stack, TextInput, Title } from "@mantine/core";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { PortalCard } from "../../shared/PortalCard";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
 import { formatAuditDiffHeader, formatDateTime, maskIdentifier } from "../../../utils/admin";
 import { canManageRoles, canManageBot, canViewStatus } from "../../../utils/permissions";
+import { AuditArchiveExplorer } from "./AuditArchiveExplorer";
 import { AuditLogViewer } from "./AuditLogViewer";
 
 type AuditRow = AuditLogEntry;
@@ -27,6 +28,19 @@ type AdminAuditSectionProps = {
   auditPageSize: number;
   auditTotal: number;
   onAuditPageChange: (nextPage: number) => void;
+  showArchiveExplorer: boolean;
+  archiveMonths: string[];
+  archiveMonthsLoading: boolean;
+  archiveMonthsError: boolean;
+  selectedArchiveMonth: string | null;
+  onArchiveMonthChange: (month: string) => void;
+  archiveLoading: boolean;
+  archiveError: boolean;
+  archiveRows: AuditRow[];
+  archivePageCurrent: number;
+  archivePageSize: number;
+  archiveTotal: number;
+  onArchivePageChange: (nextPage: number) => void;
   rolesData: import("@guild/shared").AdminRole[];
 };
 
@@ -48,6 +62,19 @@ export function AdminAuditSection({
   auditPageSize,
   auditTotal,
   onAuditPageChange,
+  showArchiveExplorer,
+  archiveMonths,
+  archiveMonthsLoading,
+  archiveMonthsError,
+  selectedArchiveMonth,
+  onArchiveMonthChange,
+  archiveLoading,
+  archiveError,
+  archiveRows,
+  archivePageCurrent,
+  archivePageSize,
+  archiveTotal,
+  onArchivePageChange,
   rolesData,
 }: AdminAuditSectionProps) {
   const { t } = useTranslation("admin");
@@ -65,7 +92,7 @@ export function AdminAuditSection({
   return (
     <Stack gap={12}>
       {heading}
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Group wrap="wrap" gap={8}>
             <TextInput
@@ -108,7 +135,7 @@ export function AdminAuditSection({
             </Button>
           </Group>
         </div>
-      </InfiniCard>
+      </PortalCard>
 
       <AuditLogViewer
         auditLoading={auditLoading}
@@ -124,6 +151,23 @@ export function AdminAuditSection({
         formatAuditDiffHeader={formatAuditDiffHeader}
         formatDateTime={formatDateTime}
       />
+
+      {showArchiveExplorer ? (
+        <AuditArchiveExplorer
+          months={archiveMonths}
+          monthsLoading={archiveMonthsLoading}
+          monthsError={archiveMonthsError}
+          selectedMonth={selectedArchiveMonth}
+          onSelectMonth={onArchiveMonthChange}
+          archiveLoading={archiveLoading}
+          archiveError={archiveError}
+          archiveRows={archiveRows}
+          archivePageCurrent={archivePageCurrent}
+          archivePageSize={archivePageSize}
+          archiveTotal={archiveTotal}
+          onArchivePageChange={onArchivePageChange}
+        />
+      ) : null}
     </Stack>
   );
 }

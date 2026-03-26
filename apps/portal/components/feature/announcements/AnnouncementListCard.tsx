@@ -1,7 +1,8 @@
 ﻿import type { Announcement } from "@guild/shared";
 import { PushpinOutlined } from "@portal/utils/icons";
-import { DepthButton, InfiniCard } from "@infini-dev-kit/frontend/components";
-import { Alert, Badge, Group, Indicator, Loader, Stack, Text, Tooltip } from "@mantine/core";
+import { DepthButton } from "@infini-dev-kit/react";
+import { PortalCard } from "../../shared/PortalCard";
+import { Alert, Badge, Group, Indicator, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
 import { IconArchive, IconCalendarTime, IconCircleCheck, IconFileText, IconPlus } from "@tabler/icons-react";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -58,7 +59,7 @@ export function AnnouncementListCard({
 }: AnnouncementListCardProps) {
   const { t } = useTranslation("announcements");
   return (
-    <InfiniCard className="announcements-list-card" interactive={false}>
+    <PortalCard className="announcements-list-card" interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={8}>
           <Group justify="space-between" align="center">
@@ -74,7 +75,16 @@ export function AnnouncementListCard({
               </DepthButton>
             ) : null}
           </Group>
-          {isLoading ? <Loader size="sm" /> : null}
+          {isLoading ? (
+            <Stack gap={8}>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Stack key={i} gap={4} style={{ padding: "8px 0" }}>
+                  <Skeleton height={14} width="70%" />
+                  <Skeleton height={10} width="40%" />
+                </Stack>
+              ))}
+            </Stack>
+          ) : null}
           {isError ? <Alert color="infini-warning" title={warningMessage} /> : null}
           {!isLoading && !isError ? (
             rows.length > 0 ? (
@@ -128,7 +138,7 @@ export function AnnouncementListCard({
           ) : null}
         </Stack>
       </div>
-    </InfiniCard>
+    </PortalCard>
   );
 }
 

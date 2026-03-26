@@ -1,5 +1,5 @@
-import { Alert, Badge, Button, Divider, Group, Loader, Select, SimpleGrid, Stack, Switch, Text, TextInput, Textarea, Title } from "@mantine/core";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { Alert, Badge, Button, Divider, Group, Loader, Select, Skeleton, SimpleGrid, Stack, Switch, Text, TextInput, Textarea, Title } from "@mantine/core";
+import { PortalCard } from "../../shared/PortalCard";
 import { IconDeviceFloppy, IconRefresh, IconSend } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { hasRoleAtLeast } from "@guild/shared";
@@ -105,12 +105,12 @@ export function AdminBotSection({
   return (
     <Stack gap={16}>
       {heading}
-      {botSettingsLoading ? <Loader size="sm" /> : null}
+      {botSettingsLoading ? <Stack gap={8}><Skeleton height={28} width="30%" />{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={32} />)}</Stack> : null}
       {botSettingsError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
       {!botSettingsLoading && !botSettingsError ? (
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing={16}>
           {/* ── Discord ── */}
-          <InfiniCard interactive={false}>
+          <PortalCard interactive={false}>
             <Stack gap={16} p="1.2rem">
               <Group justify="space-between" align="center">
                 <Group gap={8}>
@@ -206,10 +206,10 @@ export function AdminBotSection({
                 ))}
               </Stack>
             </Stack>
-          </InfiniCard>
+          </PortalCard>
 
           {/* ── WeChat ── */}
-          <InfiniCard interactive={false}>
+          <PortalCard interactive={false}>
             <Stack gap={16} p="1.2rem">
               <Group justify="space-between" align="center">
                 <Text fw={700} size="md">{t("bot.wechat")}</Text>
@@ -252,10 +252,10 @@ export function AdminBotSection({
                 ))}
               </Stack>
             </Stack>
-          </InfiniCard>
+          </PortalCard>
 
           {/* ── JSON Preview (full width) ── */}
-          <InfiniCard interactive={false} style={{ gridColumn: "1 / -1" }}>
+          <PortalCard interactive={false} style={{ gridColumn: "1 / -1" }}>
             <Stack gap={12} p="1.2rem">
               <Text fw={700} size="md">{t("bot.jsonPreview")}</Text>
               <Textarea
@@ -273,7 +273,7 @@ export function AdminBotSection({
                 </Button>
               </Group>
             </Stack>
-          </InfiniCard>
+          </PortalCard>
         </SimpleGrid>
       ) : null}
     </Stack>

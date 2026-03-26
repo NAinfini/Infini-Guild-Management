@@ -1,4 +1,5 @@
-import { DepthButton, InfiniCard } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@infini-dev-kit/react";
+import { PortalCard } from "../../shared/PortalCard";
 import { ActionIcon, Group, SegmentedControl, Select, TextInput, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { IconCalendarOff } from "@tabler/icons-react";
@@ -70,7 +71,7 @@ export function GalleryFiltersCard({
   };
 
   return (
-    <InfiniCard interactive={false}>
+    <PortalCard interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Group gap={8} wrap="wrap" className="gallery-filters-card__row">
           <Select
@@ -138,6 +139,6 @@ export function GalleryFiltersCard({
           </Group>
         </Group>
       </div>
-    </InfiniCard>
+    </PortalCard>
   );
 }

@@ -1,6 +1,9 @@
 ﻿import type { Event, MemberProfile, User } from "@guild/shared";
 import { Avatar, Badge, Button, Group, Modal, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
-import { DepthButton, DepthToggle, MotionButton, InfiniCard, InfiniMenu } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { DepthToggle } from "@portal/components/shared/DepthToggle";
+import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
+import { PortalCard } from "../../shared/PortalCard";
 import {
   IconArchive,
   IconArchiveOff,
@@ -145,7 +148,7 @@ export function EventCardsView({
 
   if (events.length === 0) {
     return (
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <EmptyState
           title={cardsEmptyDescription}
           actions={
@@ -154,14 +157,14 @@ export function EventCardsView({
                 {t("card.resetFilters")}
               </Button>
               {canManage ? (
-                <MotionButton type="primary" onClick={onCreateEvent}>
+                <DepthButton type="primary" onClick={onCreateEvent}>
                   {t("button.create")}
-                </MotionButton>
+                </DepthButton>
               ) : null}
             </Group>
           }
         />
-      </InfiniCard>
+      </PortalCard>
     );
   }
 
@@ -178,7 +181,7 @@ export function EventCardsView({
           const isFocused = focusedEventId === event.id;
 
           return (
-              <InfiniCard key={event.id} className={`event-card${isFocused ? " event-card--focused" : ""}`} onClick={() => setDetailModalEvent(event)} style={{ cursor: "pointer" }} role="button" tabIndex={0} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetailModalEvent(event); } }} aria-label={event.title}>
+              <PortalCard key={event.id} className={`event-card${isFocused ? " event-card--focused" : ""}`} onClick={() => setDetailModalEvent(event)} style={{ cursor: "pointer" }} role="button" tabIndex={0} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetailModalEvent(event); } }} aria-label={event.title}>
               {/* ── Header ── */}
               <div className={`event-card__header ${getTypeGradientClass(event.type)}`}>
                 <div className="event-card__header-left">
@@ -362,7 +365,7 @@ export function EventCardsView({
                       type="primary"
                       size="xs"
                       disabled={!isJoined && (event.signup_locked || Boolean(event.archived_at) || isFull || (event.end_at != null && new Date(event.end_at) < new Date()))}
-                      title={isJoined ? t("button.leave") : t("button.join")}
+                      tooltip={isJoined ? t("button.leave") : t("button.join")}
                     >
                       {isJoined ? <IconUserMinus size={14} /> : <IconUserPlus size={14} />}
                       {isJoined ? t("button.leave") : t("button.join")}
@@ -372,7 +375,7 @@ export function EventCardsView({
                       type="secondary"
                       size="sm"
                       disabled={members.length === 0}
-                      title={t("card.copyMentions")}
+                      tooltip={t("card.copyMentions")}
                     >
                       <IconCopy size={14} />
                     </DepthButton>
@@ -380,7 +383,7 @@ export function EventCardsView({
                   ) : null}
                 </Stack>
               </div>
-            </InfiniCard>
+            </PortalCard>
           );
         })}
       </SimpleGrid>
@@ -391,7 +394,10 @@ export function EventCardsView({
         members={detailModalMembers}
         allUsers={allUsers}
         canManage={canManage}
+        currentUserId={currentUserId ?? undefined}
         onClose={() => setDetailModalEvent(null)}
+        onJoin={onJoinEvent}
+        onLeave={onLeaveEvent}
         onAddParticipant={onAddParticipant}
         onRemoveParticipant={onRemoveParticipant}
       />

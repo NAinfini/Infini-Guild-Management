@@ -1,9 +1,10 @@
 import type { InviteLink } from "@guild/shared";
-import { Alert, Badge, Button, Group, Loader, Modal, NumberInput, SegmentedControl, Stack, Text, TextInput, Title } from "@mantine/core";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { Alert, Badge, Button, Group, Loader, Modal, NumberInput, SegmentedControl, Skeleton, Stack, Text, TextInput, Title } from "@mantine/core";
+import { PortalCard } from "../../shared/PortalCard";
 import { IconBan, IconCopy, IconPlus, IconTrash } from "@tabler/icons-react";
-import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@infini-dev-kit/frontend/components";
-import type { ColumnDef, SortingState } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@infini-dev-kit/react";
+import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@portal/components/shared/InfiniTable";
+import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
 import { useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
@@ -174,12 +175,12 @@ export function AdminInviteSection({
               <Button size="xs" leftSection={<IconCopy size={16} />} onClick={() => handleCopyInviteLink(row.original)} disabled={inactive}>
                 {t("invite.copy")}
               </Button>
-              <Button size="xs" color="infini-danger" leftSection={<IconBan size={16} />} disabled={inactive} onClick={() => handleRevokeInvite(row.original)}>
+              <DepthButton size="sm" type="danger" before={<IconBan size={16} />} disabled={inactive} onClick={() => handleRevokeInvite(row.original)}>
                 {t("invite.revoke")}
-              </Button>
-              <Button size="xs" color="infini-danger" variant="light" leftSection={<IconTrash size={16} />} onClick={() => handleDeleteInvite(row.original)}>
+              </DepthButton>
+              <DepthButton size="sm" type="danger" before={<IconTrash size={16} />} onClick={() => handleDeleteInvite(row.original)}>
                 {t("invite.delete")}
-              </Button>
+              </DepthButton>
             </Group>
           );
         },
@@ -204,7 +205,7 @@ export function AdminInviteSection({
     <Stack gap={12}>
       <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.invite")}</Title>
       {/* Toolbar card: segment + stats + search + create button */}
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Group wrap="wrap" gap={8} justify="space-between">
             <Group wrap="wrap" gap={8}>
@@ -250,17 +251,17 @@ export function AdminInviteSection({
             </Group>
           </Group>
         </div>
-      </InfiniCard>
+      </PortalCard>
 
       {/* Table */}
-      {inviteLinksLoading ? <Loader size="sm" /> : null}
+      {inviteLinksLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
       {inviteLinksError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
       {!inviteLinksLoading && !inviteLinksError ? (
-        <InfiniCard interactive={false}>
+        <PortalCard interactive={false}>
           <div style={{ padding: "1.2rem", overflowX: "auto" }}>
             <InfiniTable table={table} />
           </div>
-        </InfiniCard>
+        </PortalCard>
       ) : null}
 
       {/* Create Invite Modal */}

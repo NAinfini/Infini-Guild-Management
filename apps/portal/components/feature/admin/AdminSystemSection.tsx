@@ -1,4 +1,4 @@
-﻿import { Alert, Badge, Loader, Group, Stack } from "@mantine/core";
+﻿import { Alert, Badge, Skeleton, Group, Stack } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 
 type StatusData = {
@@ -24,7 +24,7 @@ export function AdminSystemSection({
   const { t } = useTranslation("admin");
   return (
     <Stack gap={10}>
-      {statusLoading ? <Loader size="sm" /> : null}
+      {statusLoading ? <Group gap={8}><Skeleton height={22} width={80} radius="xl" /><Skeleton height={22} width={80} radius="xl" /><Skeleton height={22} width={80} radius="xl" /><Skeleton height={22} width={80} radius="xl" /></Group> : null}
       {statusError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
       {statusData ? (
         <Group gap={8} wrap="wrap">

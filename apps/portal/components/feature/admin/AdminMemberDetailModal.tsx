@@ -1,5 +1,5 @@
 import { CLASS_NAMES } from "@guild/shared";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { PortalCard } from "../../shared/PortalCard";
 import {
   Badge,
   Button,
@@ -95,7 +95,7 @@ export function AdminMemberDetailModal({
             {/* Overview: Identity + Combat */}
             <Tabs.Panel value="overview">
               <Stack gap={16}>
-                <InfiniCard interactive={false}>
+                <PortalCard interactive={false}>
                   <div className={styles.sectionBody}>
                     <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.identity")}</Text>
                     <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm">
@@ -133,9 +133,9 @@ export function AdminMemberDetailModal({
                       </FieldSection>
                     </SimpleGrid>
                   </div>
-                </InfiniCard>
+                </PortalCard>
 
-                <InfiniCard interactive={false}>
+                <PortalCard interactive={false}>
                   <div className={styles.sectionBody}>
                     <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.combat")}</Text>
                     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
@@ -158,14 +158,14 @@ export function AdminMemberDetailModal({
                       />
                     </SimpleGrid>
                   </div>
-                </InfiniCard>
+                </PortalCard>
               </Stack>
             </Tabs.Panel>
 
             {/* Profile: Title, Bio, Contact */}
             <Tabs.Panel value="profile">
               <Stack gap={16}>
-                <InfiniCard interactive={false}>
+                <PortalCard interactive={false}>
                   <div className={styles.sectionBody}>
                     <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.profile")}</Text>
                     <Stack gap="sm">
@@ -187,9 +187,9 @@ export function AdminMemberDetailModal({
                       />
                     </Stack>
                   </div>
-                </InfiniCard>
+                </PortalCard>
 
-                <InfiniCard interactive={false}>
+                <PortalCard interactive={false}>
                   <div className={styles.sectionBody}>
                     <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.contact")}</Text>
                     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
@@ -214,14 +214,14 @@ export function AdminMemberDetailModal({
                       mt="sm"
                     />
                   </div>
-                </InfiniCard>
+                </PortalCard>
               </Stack>
             </Tabs.Panel>
 
             {/* Status: Vacation + Notes */}
             <Tabs.Panel value="status">
               <Stack gap={16}>
-                <InfiniCard interactive={false}>
+                <PortalCard interactive={false}>
                   <div className={styles.sectionBody}>
                     <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.vacation")}</Text>
                     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
@@ -241,9 +241,9 @@ export function AdminMemberDetailModal({
                       />
                     </SimpleGrid>
                   </div>
-                </InfiniCard>
+                </PortalCard>
 
-                <InfiniCard interactive={false}>
+                <PortalCard interactive={false}>
                   <div className={styles.sectionBody}>
                     <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.notes")}</Text>
                     <Textarea
@@ -254,7 +254,7 @@ export function AdminMemberDetailModal({
                       autosize
                     />
                   </div>
-                </InfiniCard>
+                </PortalCard>
               </Stack>
             </Tabs.Panel>
 

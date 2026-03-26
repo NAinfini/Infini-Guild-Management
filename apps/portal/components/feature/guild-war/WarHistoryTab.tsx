@@ -4,7 +4,7 @@ import {
   Badge,
   Button,
   Group,
-  Loader,
+  Skeleton,
   Modal,
   NumberInput,
   Stack,
@@ -15,16 +15,17 @@ import {
 import { modals } from "@mantine/modals";
 import { IconCalendarOff } from "@tabler/icons-react";
 import { CrownOutlined, ShieldOutlined, SwordsOutlined, TargetOutlined } from "@portal/utils/icons";
-import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@infini-dev-kit/frontend/components";
-import type { ColumnDef, SortingState } from "@infini-dev-kit/frontend/components";
+import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@portal/components/shared/InfiniTable";
+import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
-import { MotionButton } from "@infini-dev-kit/frontend/components";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { PortalCard } from "../../shared/PortalCard";
 import { EmptyState } from "../../shared/EmptyState";
+import { CompareBar } from "../../shared/CompareBar";
 
 
 type HistoryViewMode = "table" | "chart";
@@ -152,49 +153,6 @@ function createDraftMap(rows: HistoryMemberStat[]): Record<string, MemberStatDra
     draftMap[row.user_id] = createMemberDraft(row);
   }
   return draftMap;
-}
-
-function CompareBar({
-  icon,
-  label,
-  own,
-  enemy,
-}: {
-  icon: ReactNode;
-  label: string;
-  own: number;
-  enemy: number;
-}) {
-  const total = own + enemy || 1;
-  const ownPercent = Math.round((own / total) * 100);
-  const enemyPercent = 100 - ownPercent;
-
-  return (
-    <div className="war-history-compare-row">
-      <div className="war-history-compare-label">
-        <span className="war-history-compare-label-icon">{icon}</span>
-        <span>{label}</span>
-      </div>
-      <div className="war-history-compare-bar-wrap">
-        <span className="war-history-compare-val war-history-compare-val--left">{own.toLocaleString()}</span>
-        <div className="war-history-compare-bar">
-          <div
-            className={`war-history-compare-bar-fill war-history-compare-bar-fill--own${
-              ownPercent >= enemyPercent ? " war-history-compare-bar-fill--winning" : ""
-            }`}
-            style={{ width: `${ownPercent}%` }}
-          />
-          <div
-            className={`war-history-compare-bar-fill war-history-compare-bar-fill--enemy${
-              enemyPercent > ownPercent ? " war-history-compare-bar-fill--winning" : ""
-            }`}
-            style={{ width: `${enemyPercent}%` }}
-          />
-        </div>
-        <span className="war-history-compare-val war-history-compare-val--right">{enemy.toLocaleString()}</span>
-      </div>
-    </div>
-  );
 }
 
 type WarHistoryTabProps = {
@@ -687,22 +645,22 @@ export function WarHistoryTab({
           <>
             <div className="war-history-filters__divider" />
             <div className="war-history-filters__group">
-              <MotionButton onClick={() => onPostResults("discord")} loading={postResultsPending}>
+              <DepthButton onClick={() => onPostResults("discord")} loading={postResultsPending}>
                 {t("active.postDiscord")}
-              </MotionButton>
-              <MotionButton onClick={() => onPostResults("wechat")} loading={postResultsPending}>
+              </DepthButton>
+              <DepthButton onClick={() => onPostResults("wechat")} loading={postResultsPending}>
                 {t("active.postWechat")}
-              </MotionButton>
+              </DepthButton>
             </div>
           </>
         ) : null}
       </div>
 
-      {historyLoading ? <Loader size="sm" /> : null}
+      {historyLoading ? <Stack gap={8}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
       {historyError ? <Alert color="infini-warning">{loadErrorMessage}</Alert> : null}
 
       {!historyLoading && !historyError ? (
-        <InfiniCard interactive={false} className="war-history-list-card">
+        <PortalCard interactive={false} className="war-history-list-card">
           <div style={{ padding: "1.2rem" }}>
           <Stack gap={8}>
             <Group justify="space-between">
@@ -724,7 +682,7 @@ export function WarHistoryTab({
             </div>
           </Stack>
           </div>
-        </InfiniCard>
+        </PortalCard>
       ) : null}
 
       <Modal
@@ -736,7 +694,7 @@ export function WarHistoryTab({
         size="min(1800px, calc(100vw - 2rem))"
       >
           <Stack gap={16}>
-            {historyDetailLoading ? <Loader size="sm" /> : null}
+            {historyDetailLoading ? <Stack gap={8}><Skeleton height={20} width="40%" />{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={16} />)}</Stack> : null}
             {historyDetailError ? <Alert color="infini-warning">{loadErrorMessage}</Alert> : null}
             {!historyDetailLoading && !historyDetailError && historyDetail ? (
               <Stack gap={16}>
@@ -768,30 +726,35 @@ export function WarHistoryTab({
 
               <div className="war-history-compare-section">
                 <CompareBar
+                  classPrefix="war-history-compare-"
                   icon={<TargetOutlined size={13} />}
                   label={t("history.kills")}
                   own={historyDetail.own_kills ?? 0}
                   enemy={historyDetail.enemy_kills ?? 0}
                 />
                 <CompareBar
+                  classPrefix="war-history-compare-"
                   icon={<ShieldOutlined size={13} />}
                   label={t("history.towers")}
                   own={historyDetail.own_towers ?? 0}
                   enemy={historyDetail.enemy_towers ?? 0}
                 />
                 <CompareBar
+                  classPrefix="war-history-compare-"
                   icon={<ShieldOutlined size={13} />}
                   label={t("history.baseHp")}
                   own={historyDetail.own_base_hp ?? 0}
                   enemy={historyDetail.enemy_base_hp ?? 0}
                 />
                 <CompareBar
+                  classPrefix="war-history-compare-"
                   icon={<TargetOutlined size={13} />}
                   label={t("history.distance")}
                   own={historyDetail.own_distance ?? 0}
                   enemy={historyDetail.enemy_distance ?? 0}
                 />
                 <CompareBar
+                  classPrefix="war-history-compare-"
                   icon={<CrownOutlined size={13} />}
                   label={t("history.credits")}
                   own={historyDetail.own_credits ?? 0}
@@ -800,7 +763,7 @@ export function WarHistoryTab({
               </div>
 
               {historyMvp ? (
-                <InfiniCard interactive={false} className="war-history-mvp-card">
+                <PortalCard interactive={false} className="war-history-mvp-card">
                   <div style={{ padding: "1.2rem" }}>
                   <Stack gap={4}>
                     <Text fw={600}>{t("history.mvpHighlights")}</Text>
@@ -809,16 +772,16 @@ export function WarHistoryTab({
                     <Text>{t("analytics.metric.buildingDamage")}: {historyMvp.building}</Text>
                   </Stack>
                   </div>
-                </InfiniCard>
+                </PortalCard>
               ) : null}
 
               {historyDetail.teams.length > 0 ? (
-                <InfiniCard interactive={false} className="war-history-teams-card">
+                <PortalCard interactive={false} className="war-history-teams-card">
                   <div style={{ padding: "1.2rem" }}>
                   <Stack gap={8} className="war-history-team-stack">
                     <Text fw={600}>{t("history.teamSnapshot")}</Text>
                     {historyDetail.teams.map((team) => (
-                      <InfiniCard key={team.id} interactive={false} className="war-history-team-card">
+                      <PortalCard key={team.id} interactive={false} className="war-history-team-card">
                         <div style={{ padding: "1.2rem" }}>
                         <Stack gap={4}>
                           <Text fw={600}>{team.team_name}</Text>
@@ -830,11 +793,11 @@ export function WarHistoryTab({
                           </Text>
                         </Stack>
                         </div>
-                      </InfiniCard>
+                      </PortalCard>
                     ))}
                   </Stack>
                   </div>
-                </InfiniCard>
+                </PortalCard>
               ) : null}
 
               {historyViewMode === "table" ? (
@@ -842,7 +805,7 @@ export function WarHistoryTab({
                   <InfiniTable table={detailTable} />
                 </div>
               ) : (
-                <InfiniCard interactive={false} className="war-history-chart-card">
+                <PortalCard interactive={false} className="war-history-chart-card">
                   <div style={{ padding: "1.2rem" }}>
                   <Stack gap={8}>
                     <Text fw={600}>{t("history.chartTitle", { metric: getMetricLabel(historyChartMetric) })}</Text>
@@ -871,7 +834,7 @@ export function WarHistoryTab({
                     />
                   </Stack>
                   </div>
-                </InfiniCard>
+                </PortalCard>
               )}
 
               <Group justify="flex-end" gap={8}>
@@ -888,7 +851,7 @@ export function WarHistoryTab({
                   </Button>
                 ) : null}
                 {canManage ? (
-                  <MotionButton
+                  <DepthButton
                     type="primary"
                     onClick={handleSaveMemberStats}
                     loading={saveMemberStatsPending}
@@ -896,14 +859,14 @@ export function WarHistoryTab({
                     className={hasUnsavedMemberChanges ? "war-history-save-button--ready" : undefined}
                   >
                     {t("history.saveChanges")}
-                  </MotionButton>
+                  </DepthButton>
                 ) : null}
-                <MotionButton type="primary" onClick={() => onExport("csv")} loading={exportPending}>
+                <DepthButton type="primary" onClick={() => onExport("csv")} loading={exportPending}>
                   {exportCsvLabel}
-                </MotionButton>
-                <MotionButton type="primary" onClick={() => onExport("json")} loading={exportPending}>
+                </DepthButton>
+                <DepthButton type="primary" onClick={() => onExport("json")} loading={exportPending}>
                   {exportJsonLabel}
-                </MotionButton>
+                </DepthButton>
               </Group>
               </Stack>
             ) : null}

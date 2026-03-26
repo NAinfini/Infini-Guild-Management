@@ -12,10 +12,13 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@infini-dev-kit/frontend/components", () => ({
-  MotionButton: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => (
+vi.mock("../../shared/PortalActionButton", () => ({
+  PortalActionButton: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button {...props}>{children}</button>
   ),
+}));
+
+vi.mock("@portal/components/shared/MediaGallery", () => ({
   MediaGallery: ({
     images,
     resolveMediaUrl,

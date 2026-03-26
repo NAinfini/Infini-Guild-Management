@@ -1,4 +1,4 @@
-import { DepthButton } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@infini-dev-kit/react";
 import {
   CopyButton,
   Group,

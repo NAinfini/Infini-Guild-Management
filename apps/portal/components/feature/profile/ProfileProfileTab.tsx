@@ -1,6 +1,6 @@
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { PortalCard } from "../../shared/PortalCard";
 import { Badge, Button, Group, NumberInput, Select, Stack, Text, TextInput, Textarea } from "@mantine/core";
 import { IconExternalLink, IconPlus, IconDeviceFloppy } from "@tabler/icons-react";
 import type { ReactNode } from "react";
@@ -58,7 +58,7 @@ export function ProfileProfileTab({
   const { t } = useTranslation("profile");
   return (
     <Stack gap={16}>
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <Group justify="flex-end" gap={8} p="1.2rem">
           <Badge color={isDirty ? "infini-warning" : "infini-success"}>
             {isDirty ? t("status.unsavedChanges") : t("status.saved")}
@@ -67,9 +67,9 @@ export function ProfileProfileTab({
             {t("action.saveProfile")}
           </Button>
         </Group>
-      </InfiniCard>
+      </PortalCard>
 
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <Stack gap={14} p="1.2rem">
           <Text fw={700} size="md">{t("section.basicInfo")}</Text>
 
@@ -91,9 +91,9 @@ export function ProfileProfileTab({
             variant="filled"
           />
         </Stack>
-      </InfiniCard>
+      </PortalCard>
 
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <Stack gap={12} p="1.2rem">
           <Text fw={700} size="md">{t("section.classes")}</Text>
           <Group gap={8} wrap="nowrap">
@@ -115,9 +115,9 @@ export function ProfileProfileTab({
             </SortableContext>
           </DndContext>
         </Stack>
-      </InfiniCard>
+      </PortalCard>
 
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <Stack gap={12} p="1.2rem">
           <Text fw={700} size="md">{t("section.about")}</Text>
           <TextInput
@@ -147,7 +147,7 @@ export function ProfileProfileTab({
             placeholder={fieldBioPlaceholder}
           />
         </Stack>
-      </InfiniCard>
+      </PortalCard>
     </Stack>
   );
 }

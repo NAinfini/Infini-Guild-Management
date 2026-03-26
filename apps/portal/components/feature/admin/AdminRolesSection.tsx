@@ -1,5 +1,5 @@
 import { PERMISSIONS, type AdminRole, type Permission } from "@guild/shared";
-import { DepthToggle } from "@infini-dev-kit/frontend/components";
+import { DepthToggle } from "@infini-dev-kit/react";
 import {
   ActionIcon,
   Alert,
@@ -7,7 +7,7 @@ import {
   ColorInput,
   ColorSwatch,
   Group,
-  Loader,
+  Skeleton,
   ScrollArea,
   Stack,
   Text,
@@ -267,7 +267,7 @@ export function AdminRolesSection({
   return (
     <Stack gap={12}>
       {heading}
-      {rolesLoading ? <Loader size="sm" /> : null}
+      {rolesLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
       {rolesError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
 
       {!rolesLoading && !rolesError ? (

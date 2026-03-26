@@ -1,7 +1,8 @@
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { DepthButton, InfiniCard } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@infini-dev-kit/react";
+import { PortalCard } from "../../shared/PortalCard";
 import { ActionIcon, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { IconDeviceFloppy, IconGripVertical, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import type { CSSProperties, ReactNode } from "react";
@@ -243,7 +244,7 @@ export function WikiCategoryEditorCard({
   );
 
   return (
-    <InfiniCard interactive={false}>
+    <PortalCard interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={12}>
           <Group justify="space-between" align="center" wrap="wrap">
@@ -366,6 +367,6 @@ export function WikiCategoryEditorCard({
           </Stack>
         </Stack>
       </div>
-    </InfiniCard>
+    </PortalCard>
   );
 }

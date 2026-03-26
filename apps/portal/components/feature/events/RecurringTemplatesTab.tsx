@@ -1,7 +1,8 @@
 import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
-import { DepthButton, InfiniMenu } from "@infini-dev-kit/frontend/components";
-import { Badge, Group, Loader, Stack, Text } from "@mantine/core";
+import { DepthButton } from "@infini-dev-kit/react";
+import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
+import { Badge, Group, Skeleton, Stack, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import {
   IconDots,
@@ -127,9 +128,14 @@ export function RecurringTemplatesTab({
 
   if (loading) {
     return (
-      <Group justify="center" py={40}>
-        <Loader size="sm" />
-      </Group>
+      <Stack gap={12} py={16}>
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Group key={i} gap={8}>
+            <Skeleton height={14} width="30%" />
+            <Skeleton height={14} width="20%" />
+          </Group>
+        ))}
+      </Stack>
     );
   }
 

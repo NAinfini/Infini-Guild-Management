@@ -1,5 +1,5 @@
 import type { Event as GuildEvent } from "@guild/shared";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { PortalCard } from "../../shared/PortalCard";
 import { Badge, Button, Group, Popover, Stack, Text, Tooltip } from "@mantine/core";
 import { addDays, format, getDate, getDay, getMonth, isSameDay, startOfMonth, startOfWeek } from "date-fns";
 import type { CSSProperties, ReactNode } from "react";
@@ -101,7 +101,7 @@ export function EventMonthView({
   const { t } = useTranslation("events");
 
   return (
-    <InfiniCard interactive={false}>
+    <PortalCard interactive={false}>
       <MonthCalendar
         onSelect={(value) => onSelectDate(format(value, "yyyy-MM-dd"))}
         cellRender={(value: Date) => {
@@ -206,6 +206,6 @@ export function EventMonthView({
           );
         }}
       />
-    </InfiniCard>
+    </PortalCard>
   );
 }

@@ -4,7 +4,7 @@
   Checkbox,
   Divider,
   Group,
-  Loader,
+  Skeleton,
   MultiSelect,
   NumberInput,
   SegmentedControl,
@@ -14,7 +14,7 @@
   Switch,
   Text,
 } from "@mantine/core";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { PortalCard } from "../../shared/PortalCard";
 import { Split } from "@gfazioli/mantine-split-pane";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import { useTranslation } from "react-i18next";
@@ -151,7 +151,7 @@ export function GuildWarAnalyticsTab({
 
   return (
     <Stack gap={12} className="guild-war-analytics-layout">
-      <InfiniCard interactive={false} className="guild-war-analytics-control-panel guild-war-analytics-control-panel--top">
+      <PortalCard interactive={false} className="guild-war-analytics-control-panel guild-war-analytics-control-panel--top">
         <div style={{ padding: "1.2rem" }}>
         <div className="guild-war-analytics-toolbar">
           <div className="guild-war-analytics-toolbar__row">
@@ -197,20 +197,20 @@ export function GuildWarAnalyticsTab({
           </div>
         </div>
         </div>
-      </InfiniCard>
+      </PortalCard>
 
       {mode === "compare" && selectedUsers.length > selectionSoftCap ? (
         <Alert color="infini-warning">{t("analytics.compareSoftCap", { cap: selectionSoftCap, count: selectedUsers.length })}</Alert>
       ) : null}
 
-      {analyticsQueryLoading || analyticsDetailsLoading ? <Loader size="sm" /> : null}
+      {analyticsQueryLoading || analyticsDetailsLoading ? <Stack gap={8}><Skeleton height={180} radius={8} />{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
       {analyticsQueryError ? <Alert color="infini-warning">{loadErrorMessage}</Alert> : null}
       {analyticsDetailsError ? <Alert color="infini-warning">{loadErrorMessage}</Alert> : null}
 
       {!analyticsQueryLoading && !analyticsQueryError && !analyticsDetailsLoading && !analyticsDetailsError ? (
         <Split style={{ minHeight: 486 }}>
           <Split.Pane initialWidth="20%" minWidth={200} maxWidth="40%">
-          <InfiniCard interactive={false} className="guild-war-analytics-control-panel guild-war-analytics-control-panel--left">
+          <PortalCard interactive={false} className="guild-war-analytics-control-panel guild-war-analytics-control-panel--left">
             <div style={{ padding: "1.2rem" }}>
             <Stack gap={10}>
               <Text fw={600}>{t("analytics.metrics.title")}</Text>
@@ -279,13 +279,13 @@ export function GuildWarAnalyticsTab({
                 ) : null}
               </Stack>
               </div>
-            </InfiniCard>
+            </PortalCard>
           </Split.Pane>
 
           <Split.Resizer />
 
           <Split.Pane grow>
-          <InfiniCard interactive={false} className="guild-war-analytics-chart-card guild-war-analytics-chart-card--center">
+          <PortalCard interactive={false} className="guild-war-analytics-chart-card guild-war-analytics-chart-card--center">
             <div style={{ padding: "1.2rem" }}>
             <Stack gap={8}>
               <Text fw={600}>{t("analytics.chart")}</Text>
@@ -298,13 +298,13 @@ export function GuildWarAnalyticsTab({
               />
             </Stack>
             </div>
-          </InfiniCard>
+          </PortalCard>
           </Split.Pane>
 
           <Split.Resizer />
 
           <Split.Pane initialWidth="20%" minWidth={200} maxWidth="40%">
-          <InfiniCard interactive={false} className="guild-war-analytics-control-panel guild-war-analytics-control-panel--right">
+          <PortalCard interactive={false} className="guild-war-analytics-control-panel guild-war-analytics-control-panel--right">
             <div style={{ padding: "1.2rem" }}>
             <Stack gap={10}>
               <Text fw={600}>{t("analytics.selection")}</Text>
@@ -442,7 +442,7 @@ export function GuildWarAnalyticsTab({
               ) : null}
             </Stack>
             </div>
-          </InfiniCard>
+          </PortalCard>
           </Split.Pane>
         </Split>
       ) : null}

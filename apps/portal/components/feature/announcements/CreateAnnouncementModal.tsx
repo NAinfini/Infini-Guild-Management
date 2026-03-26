@@ -1,5 +1,5 @@
 import type { Announcement } from "@guild/shared";
-import { DepthToggle } from "@infini-dev-kit/frontend/components";
+import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import {
   Button,
   Divider,
@@ -8,12 +8,11 @@ import {
   Stack,
   Text,
   TextInput,
-  Tooltip,
 } from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { IconPin, IconCalendarTime, IconBrandDiscord, IconBrandWechat, IconDeviceFloppy, IconX } from "@tabler/icons-react";
-import { TipTapEditor, TIPTAP_DEFAULT_JSON } from "@infini-dev-kit/frontend/components";
+import { TipTapEditor, TIPTAP_DEFAULT_JSON } from "@portal/components/shared/TipTapEditor";
 
 function toDateTimeLocalValue(value: string): string {
   return value ? value.replace(" ", "T") : "";
@@ -36,6 +35,7 @@ type CreateAnnouncementModalProps = {
     notify_discord: boolean;
     notify_wechat: boolean;
   }) => void;
+  onImageUpload?: (file: File) => Promise<string>;
   creating: boolean;
 };
 
@@ -43,6 +43,7 @@ export function CreateAnnouncementModal({
   opened,
   onClose,
   onCreateByStatus,
+  onImageUpload,
   creating,
 }: CreateAnnouncementModalProps) {
   const { t } = useTranslation("announcements");
@@ -133,9 +134,7 @@ export function CreateAnnouncementModal({
               onChange={setBodyJson}
               placeholder={t("field.body")}
               editable={true}
-              onImageUpload={async () => {
-                throw new Error(t("error.uploadImageDraft"));
-              }}
+              onImageUpload={onImageUpload}
             />
           </Stack>
         </div>
@@ -145,8 +144,7 @@ export function CreateAnnouncementModal({
           <Stack gap={16}>
             {/* Top row: Pin, Publish On Time — icon-only DepthToggles */}
             <Group gap={8} wrap="nowrap">
-              <Tooltip label={pinned ? t("action.unpin") : t("action.pin")} withArrow>
-                <DepthToggle
+              <DepthToggle
                   pressed={pinned}
                   onToggle={setPinned}
                   type="secondary"
@@ -154,10 +152,9 @@ export function CreateAnnouncementModal({
                   size="sm"
                   before={<IconPin size={16} />}
                   aria-label={pinned ? t("action.unpin") : t("action.pin")}
+                  tooltip={{ label: pinned ? t("action.unpin") : t("action.pin"), withArrow: true }}
                 />
-              </Tooltip>
-              <Tooltip label={t("action.publishOnTime")} withArrow>
-                <DepthToggle
+              <DepthToggle
                   pressed={scheduleEnabled}
                   onToggle={setScheduleEnabled}
                   type="secondary"
@@ -165,8 +162,8 @@ export function CreateAnnouncementModal({
                   size="sm"
                   before={<IconCalendarTime size={16} />}
                   aria-label={t("action.publishOnTime")}
+                  tooltip={{ label: t("action.publishOnTime"), withArrow: true }}
                 />
-              </Tooltip>
             </Group>
 
             <Divider />

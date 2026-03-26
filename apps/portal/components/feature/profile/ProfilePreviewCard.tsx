@@ -1,4 +1,4 @@
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { PortalCard } from "../../shared/PortalCard";
 import { Badge, Divider, Group, Spoiler, Stack, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 
@@ -42,7 +42,7 @@ export function ProfilePreviewCard({
   const isActive = activeNowEstimate === t("availability.activeNow");
 
   return (
-    <InfiniCard interactive={false}>
+    <PortalCard interactive={false}>
       <Stack gap={12} p="1.2rem">
         <Text fw={700} size="lg">{username || "-"}</Text>
 
@@ -93,6 +93,6 @@ export function ProfilePreviewCard({
           </>
         ) : null}
       </Stack>
-    </InfiniCard>
+    </PortalCard>
   );
 }

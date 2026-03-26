@@ -1,8 +1,8 @@
 import type { AuditLogEntry } from "@guild/shared";
-import { Alert, Group, Loader, Pagination, ScrollArea, Stack, Text } from "@mantine/core";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@infini-dev-kit/frontend/components";
-import type { ColumnDef, SortingState } from "@infini-dev-kit/frontend/components";
+import { Alert, Group, Pagination, ScrollArea, Skeleton, Stack, Text } from "@mantine/core";
+import { PortalCard } from "../../shared/PortalCard";
+import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@portal/components/shared/InfiniTable";
+import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -107,11 +107,11 @@ export function AuditLogViewer({
 
   return (
     <Stack gap={12}>
-      {auditLoading ? <Loader size="sm" /> : null}
+      {auditLoading ? <Stack gap={8}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
       {auditError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
 
       {!auditLoading && !auditError ? (
-        <InfiniCard interactive={false}>
+        <PortalCard interactive={false}>
           <div style={{ padding: "1.2rem" }}>
             <ScrollArea type="auto">
               <InfiniTable table={table} highlightOnHover />
@@ -120,7 +120,7 @@ export function AuditLogViewer({
               <Pagination value={auditPageCurrent} total={totalPages} onChange={onAuditPageChange} withEdges />
             </Group>
           </div>
-        </InfiniCard>
+        </PortalCard>
       ) : null}
     </Stack>
   );

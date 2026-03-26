@@ -1,6 +1,7 @@
 import { PlayCircleOutlined } from "@portal/utils/icons";
-import { RevealOnScroll } from "@infini-dev-kit/frontend/components";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { RevealOnScroll } from "@infini-dev-kit/react";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { PortalCard } from "../../shared/PortalCard";
 import { Button, Checkbox, Group, Skeleton, Stack, Text } from "@mantine/core";
 import { IconPlayerPlay, IconTrash } from "@tabler/icons-react";
 import type { CSSProperties } from "react";
@@ -59,7 +60,7 @@ export function GalleryGrid({
       <div className="gallery-masonry" role="grid" aria-label={t("aria.galleryLoading")}>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="gallery-masonry__item">
-            <InfiniCard interactive={false}>
+            <PortalCard interactive={false}>
               <div style={{ padding: "1.2rem" }}>
                 <Stack gap={8}>
                   <Skeleton height={12} width="40%" />
@@ -68,7 +69,7 @@ export function GalleryGrid({
                   <Skeleton height={10} width="50%" />
                 </Stack>
               </div>
-            </InfiniCard>
+            </PortalCard>
           </div>
         ))}
       </div>
@@ -77,17 +78,17 @@ export function GalleryGrid({
 
   if (isError && rows.length === 0) {
     return (
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <EmptyState title={errorTitle} />
         </div>
-      </InfiniCard>
+      </PortalCard>
     );
   }
 
   if (rows.length === 0) {
     return (
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <EmptyState
             title={emptyTitle}
@@ -99,7 +100,7 @@ export function GalleryGrid({
             }
           />
         </div>
-      </InfiniCard>
+      </PortalCard>
     );
   }
 
@@ -112,7 +113,7 @@ export function GalleryGrid({
             role="gridcell"
             style={{ "--stagger-index": index } as CSSProperties}
           >
-            <InfiniCard className="gallery-card" interactive={false}>
+            <PortalCard className="gallery-card" interactive={false}>
               <div style={{ padding: "1.2rem" }}>
                 <Stack gap={8} style={{ width: "100%" }}>
                   <Text fw={600}>{item.type.toUpperCase()}</Text>
@@ -123,9 +124,9 @@ export function GalleryGrid({
                         onChange={() => onToggleSelect(item.id)}
                         aria-label={t("aria.selectItem", { id: item.id })}
                       />
-                      <Button color="infini-danger" size="xs" leftSection={<IconTrash size={16} />} onClick={() => onDelete(item.id)} loading={deletePending}>
+                      <DepthButton type="danger" size="sm" before={<IconTrash size={16} />} onClick={() => onDelete(item.id)} loading={deletePending}>
                         {actionDeleteLabel}
-                      </Button>
+                      </DepthButton>
                     </Group>
                   ) : null}
                   {item.type === "image" ? (
@@ -195,7 +196,7 @@ export function GalleryGrid({
                   <Text c="dimmed">{formatDateTime(item.created_at)}</Text>
                 </Stack>
               </div>
-            </InfiniCard>
+            </PortalCard>
           </div>
         </RevealOnScroll>
       ))}

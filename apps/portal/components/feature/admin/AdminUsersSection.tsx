@@ -1,9 +1,9 @@
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
+import { PortalCard } from "../../shared/PortalCard";
 import type { AdminRole } from "@guild/shared";
 import {
   Alert,
   Group,
-  Loader,
+  Skeleton,
   Progress,
   ScrollArea,
   Stack,
@@ -21,8 +21,8 @@ import {
   IconTrash,
   IconUserPlus,
 } from "@tabler/icons-react";
-import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@infini-dev-kit/frontend/components";
-import type { ColumnDef, SortingState } from "@infini-dev-kit/frontend/components";
+import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@portal/components/shared/InfiniTable";
+import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
 import { useMemo, useState } from "react";
 import { useClipboard } from "@mantine/hooks";
 import { type ContextMenuItemOptions, useContextMenu } from "mantine-contextmenu";
@@ -340,7 +340,7 @@ export function AdminUsersSection({
   return (
     <Stack gap={12}>
       {heading}
-      {usersLoading ? <Loader size="sm" /> : null}
+      {usersLoading ? <Stack gap={8}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
       {usersError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
       {!usersLoading && !usersError ? (
         <>
@@ -366,7 +366,7 @@ export function AdminUsersSection({
             </Group>
           ) : null}
 
-          <InfiniCard interactive={false}>
+          <PortalCard interactive={false}>
             <ScrollArea type="auto" style={{ padding: "1.2rem" }}>
               <InfiniTable
                 table={table}
@@ -379,7 +379,7 @@ export function AdminUsersSection({
                 }
               />
             </ScrollArea>
-          </InfiniCard>
+          </PortalCard>
         </>
       ) : null}
     </Stack>

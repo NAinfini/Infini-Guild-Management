@@ -1,4 +1,4 @@
-import type { ImageGridEditorItem } from "@infini-dev-kit/frontend/components";
+import type { ImageGridEditorItem } from "@infini-dev-kit/react";
 import { notifications } from "@mantine/notifications";
 import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";

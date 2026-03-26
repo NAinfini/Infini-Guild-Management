@@ -1,4 +1,5 @@
-import { InfiniCard, ImageGridEditor, type ImageGridEditorItem } from "@infini-dev-kit/frontend/components";
+import { DepthButton, ImageGridEditor, type ImageGridEditorItem } from "@infini-dev-kit/react";
+import { PortalCard } from "../../shared/PortalCard";
 import { Badge, Button, Divider, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { IconDeviceFloppy, IconUpload, IconTrash, IconPlus } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
@@ -68,7 +69,7 @@ export function ProfileMediaTab({
 
   return (
     <Stack gap={16}>
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <Group justify="flex-end" gap={8} p="1.2rem">
           <Badge color={isDirty ? "infini-warning" : "infini-success"}>
             {isDirty ? t("status.unsavedChanges") : t("status.saved")}
@@ -77,10 +78,10 @@ export function ProfileMediaTab({
             {t("action.saveProfile")}
           </Button>
         </Group>
-      </InfiniCard>
+      </PortalCard>
 
       {/* ── Images ── */}
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <Stack gap={12} p="1.2rem">
           <Group justify="space-between" align="center">
             <Text fw={700} size="md">{t("media.images")}</Text>
@@ -124,10 +125,10 @@ export function ProfileMediaTab({
           ) : null}
 
         </Stack>
-      </InfiniCard>
+      </PortalCard>
 
       {/* ── Videos ── */}
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <Stack gap={12} p="1.2rem">
           <Group justify="space-between" align="center">
             <Text fw={700} size="md">{t("media.videos")}</Text>
@@ -163,9 +164,9 @@ export function ProfileMediaTab({
                       <Button size="compact-xs" variant="default" onClick={() => onMoveVideo(index, 1)} disabled={index === videoList.length - 1}>
                         {t("action.down")}
                       </Button>
-                      <Button size="compact-xs" color="infini-danger" variant="light" leftSection={<IconTrash size={16} />} onClick={() => onRemoveVideo(index)}>
+                      <DepthButton size="sm" type="danger" before={<IconTrash size={16} />} onClick={() => onRemoveVideo(index)}>
                         {t("action.delete")}
-                      </Button>
+                      </DepthButton>
                     </Group>
                   </Group>
                 ))}
@@ -173,10 +174,10 @@ export function ProfileMediaTab({
             </>
           ) : null}
         </Stack>
-      </InfiniCard>
+      </PortalCard>
 
       {/* ── Audio ── */}
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <Stack gap={12} p="1.2rem">
           <Group justify="space-between" align="center">
             <Text fw={700} size="md">{t("media.audio")}</Text>
@@ -232,14 +233,14 @@ export function ProfileMediaTab({
               <Divider />
               <Group gap={8} align="center">
                 <Text size="sm" style={{ flex: 1 }} truncate="end">{profileAudioKey}</Text>
-                <Button size="compact-xs" color="infini-danger" variant="light" leftSection={<IconTrash size={16} />} onClick={onRemoveAudio}>
+                <DepthButton size="sm" type="danger" before={<IconTrash size={16} />} onClick={onRemoveAudio}>
                   {t("action.delete")}
-                </Button>
+                </DepthButton>
               </Group>
             </>
           ) : null}
         </Stack>
-      </InfiniCard>
+      </PortalCard>
     </Stack>
   );
 }

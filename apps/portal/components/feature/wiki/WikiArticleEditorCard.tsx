@@ -1,14 +1,15 @@
 ﻿import type { WikiArticle, WikiCategory } from "@guild/shared";
-import { DepthButton, DepthToggle } from "@infini-dev-kit/frontend/components";
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import { Alert, Group, Select, Skeleton, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { DepthToggle } from "@portal/components/shared/DepthToggle";
+import { PortalCard } from "../../shared/PortalCard";
+import { Alert, Group, Select, Skeleton, Stack, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconArchive, IconDeviceFloppy, IconPinned, IconPlus, IconX } from "@tabler/icons-react";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
-import { TipTapEditor } from "@infini-dev-kit/frontend/components";
+import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
@@ -90,19 +91,19 @@ export function WikiArticleEditorCard({
     : false;
   if (!selectedArticle && !(canEdit && isCreatingArticle)) {
     return (
-      <InfiniCard className="wiki-article-editor-card" interactive={false}>
+      <PortalCard className="wiki-article-editor-card" interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Stack gap={10}>
             <Text fw={600}>{t("articleEditor.title")}</Text>
             <EmptyState title={emptyTitle} />
           </Stack>
         </div>
-      </InfiniCard>
+      </PortalCard>
     );
   }
 
   return (
-    <InfiniCard className="wiki-article-editor-card" interactive={false}>
+    <PortalCard className="wiki-article-editor-card" interactive={false}>
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={12}>
           <Group justify="space-between" align="start">
@@ -111,8 +112,7 @@ export function WikiArticleEditorCard({
               <Group gap={8} wrap="wrap">
                 {selectedArticle ? (
                   <>
-                    <Tooltip label={pinLabel} withArrow>
-                      <DepthToggle
+                    <DepthToggle
                         pressed={pinnedPressed}
                         onToggle={() => onTogglePinnedIntent()}
                         type="primary"
@@ -121,8 +121,8 @@ export function WikiArticleEditorCard({
                         before={<IconPinned size={16} />}
                         disabled={isSaving}
                         aria-label={pinLabel}
+                        tooltip={{ label: pinLabel, withArrow: true }}
                       />
-                    </Tooltip>
                     <DepthButton
                       type={archiveIntent === "none" ? "danger" : "secondary"}
                       size="sm"
@@ -237,6 +237,6 @@ export function WikiArticleEditorCard({
           ) : null}
         </Stack>
       </div>
-    </InfiniCard>
+    </PortalCard>
   );
 }

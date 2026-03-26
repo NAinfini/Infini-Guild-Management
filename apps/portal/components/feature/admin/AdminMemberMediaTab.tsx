@@ -1,5 +1,6 @@
-import { InfiniCard, type ImageGridEditorItem } from "@infini-dev-kit/frontend/components";
-import { ImageGridEditor } from "@infini-dev-kit/frontend/components";
+import { type ImageGridEditorItem } from "@infini-dev-kit/react";
+import { ImageGridEditor } from "@infini-dev-kit/react";
+import { PortalCard } from "../../shared/PortalCard";
 import { Button, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { IconPlus, IconTrash, IconUpload } from "@tabler/icons-react";
@@ -63,7 +64,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
 
   return (
     <Stack gap={16}>
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Text fw={600} size="sm" mb={12}>{t("media.images")}</Text>
           {imageItems.length === 0 && !isModerator ? (
@@ -106,9 +107,9 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             </Stack>
           )}
         </div>
-      </InfiniCard>
+      </PortalCard>
 
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Text fw={600} size="sm" mb={12}>{t("media.videos")}</Text>
           <Stack gap={8}>
@@ -170,9 +171,9 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             ) : null}
           </Stack>
         </div>
-      </InfiniCard>
+      </PortalCard>
 
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Text fw={600} size="sm" mb={12}>{t("media.audio")}</Text>
           {member.profile.audio_key ? (
@@ -239,7 +240,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             </Stack>
           ) : null}
         </div>
-      </InfiniCard>
+      </PortalCard>
     </Stack>
   );
 }

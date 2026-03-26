@@ -13,7 +13,7 @@ import {
 } from "@mantine/core";
 import { IconX, IconPlus, IconDeviceFloppy } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
-import { ImageGridEditor, type ImageGridEditorItem } from "@infini-dev-kit/frontend/components";
+import { ImageGridEditor, type ImageGridEditorItem } from "@infini-dev-kit/react";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 

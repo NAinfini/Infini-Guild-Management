@@ -1,5 +1,5 @@
-import { InfiniCard } from "@infini-dev-kit/frontend/components";
-import { MotionButton } from "@infini-dev-kit/frontend/components";
+import { PortalCard } from "../../shared/PortalCard";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { Badge, Button, Group, PasswordInput, Stack, Switch, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconDeviceFloppy, IconUserMinus } from "@tabler/icons-react";
@@ -97,7 +97,7 @@ export function ProfileAccountTab({
 
   return (
     <Stack gap={16}>
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <form onSubmit={(event) => { event.preventDefault(); handleChangePassword(); }}>
         <div style={{ padding: "1.2rem" }}>
           <Stack gap={8}>
@@ -127,9 +127,9 @@ export function ProfileAccountTab({
           </Stack>
         </div>
         </form>
-      </InfiniCard>
+      </PortalCard>
 
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Stack gap={8}>
             <Text fw={600}>{changeUsernameLabel}</Text>
@@ -148,9 +148,9 @@ export function ProfileAccountTab({
             <Button onClick={onChangeUsername} loading={changeUsernamePending} leftSection={<IconDeviceFloppy size={16} />}>{changeUsernameLabel}</Button>
           </Stack>
         </div>
-      </InfiniCard>
+      </PortalCard>
 
-      <InfiniCard interactive={false}>
+      <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Stack gap={8}>
             <Text fw={600}>{t("account.discord.title")}</Text>
@@ -165,17 +165,17 @@ export function ProfileAccountTab({
               aria-label={t("account.aria.discordCode")}
             />
             <Group gap={8} wrap="wrap">
-              <MotionButton
+              <DepthButton
                 type="primary"
                 onClick={handleVerifyDiscordLink}
                 loading={isDiscordLinking}
                 disabled={discordCode.trim().length !== 6}
               >
                 {t("account.discord.link")}
-              </MotionButton>
-              <Button color="infini-danger" onClick={onUnlinkDiscord} disabled={!discordId} leftSection={<IconUserMinus size={16} />}>
+              </DepthButton>
+              <DepthButton type="danger" onClick={onUnlinkDiscord} disabled={!discordId} before={<IconUserMinus size={16} />}>
                 {t("account.discord.unlink")}
-              </Button>
+              </DepthButton>
             </Group>
             <Text>
               {t("account.discord.linked")}<strong>{discordId ?? "-"}</strong>
@@ -198,11 +198,11 @@ export function ProfileAccountTab({
             ) : null}
           </Stack>
         </div>
-      </InfiniCard>
+      </PortalCard>
 
-      <Button color="infini-danger" onClick={onLogout}>
+      <DepthButton type="danger" onClick={onLogout}>
         {t("action.logout")}
-      </Button>
+      </DepthButton>
     </Stack>
   );
 }

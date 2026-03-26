@@ -15,6 +15,8 @@ type GalleryLightboxModalProps = {
   setZoom: (next: number | ((value: number) => number)) => void;
   isHttpUrl: (value: string) => boolean;
   toEmbedVideoUrl: (value: string) => string;
+  formatDateTime: (iso: string) => string;
+  isExternalView: boolean;
   fieldR2ObjectLabel: string;
 };
 
@@ -30,6 +32,8 @@ export function GalleryLightboxModal({
   setZoom,
   isHttpUrl,
   toEmbedVideoUrl,
+  formatDateTime,
+  isExternalView,
   fieldR2ObjectLabel,
 }: GalleryLightboxModalProps) {
   const { t } = useTranslation("gallery");
@@ -93,6 +97,16 @@ export function GalleryLightboxModal({
               allowFullScreen
             />
           )}
+          <Group justify="space-between" gap={8} wrap="wrap" mt={8}>
+            {!isExternalView ? (
+              <Text size="sm" fw={500}>
+                {item.uploaded_by_name ?? item.uploaded_by}
+              </Text>
+            ) : null}
+            <Text size="sm" c="dimmed">
+              {formatDateTime(item.created_at)}
+            </Text>
+          </Group>
         </div>
       ) : null}
     </Modal>
