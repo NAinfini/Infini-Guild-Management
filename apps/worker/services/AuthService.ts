@@ -12,7 +12,7 @@ import { ok, err, type ServiceResult } from "./result";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 
-type UserRow = { id: string; username: string; role: "admin" | "moderator" | "member"; isActive: boolean; deletedAt: string | null; createdAt: string; updatedAt: string };
+type UserRow = { id: string; username: string; role: string; isActive: boolean; deletedAt: string | null; createdAt: string; updatedAt: string };
 type ProfileRow = { id: string; userId: string; wechatName: string | null; power: number; classes: string; titleHtml: string | null; bio: string | null; images: string; audioKey: string | null; videoUrls: string; availability: string | null; vacationStart: string | null; vacationEnd: string | null; discordId: string | null; discordReminderOptOut: boolean; notes: string | null; createdAt: string; updatedAt: string };
 
 export type AuthServiceDeps = {
@@ -101,6 +101,15 @@ export class AuthService {
     if (!/^[a-zA-Z0-9_]{3,50}$/.test(username)) return ok({ available: false, reason: "invalid_format" });
     const existing = (await this.db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1))[0];
     return ok({ available: !existing });
+  }
+
+  async verifyInvite(code: string): Promise<ServiceResult<{ valid: boolean }>> {
+    if (!code) return ok({ valid: false });
+    const nowIso = new Date().toISOString();
+    const row = (await this.deps.rawDb.prepare(
+      `SELECT id FROM invite_links WHERE code = ? AND revoked_at IS NULL AND used_count < max_uses AND (expires_at IS NULL OR expires_at > ?)`,
+    ).bind(code, nowIso).all()).results[0];
+    return ok({ valid: Boolean(row) });
   }
 
   async register(inviteCode: string, username: string, password: string): Promise<ServiceResult<{ user: unknown }>> {

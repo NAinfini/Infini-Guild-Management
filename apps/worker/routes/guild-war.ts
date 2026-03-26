@@ -3,25 +3,22 @@ import {
   applyWarTemplateSchema,
   createWarHistorySchema,
   createWarTemplateSchema,
-  hasRoleAtLeast,
   saveTeamsPayloadSchema,
   updateMemberStatsSchema,
   updateWarHistorySchema,
   type ErrorCode,
-  type Role,
   type StandardErrorResponse,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { resolveSession } from "../services/auth";
+import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { createBotTask } from "../services/bot-dispatch";
 import { GuildWarService, toWarHistoryPayload } from "../services/GuildWarService";
 
-type SessionUser = { id: string; role: Role };
 type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
 
 export const guildWarRoutes = new Hono();
@@ -49,12 +46,8 @@ function buildError(c: Context, code: ErrorCode, message: string, details?: unkn
   return c.json(body, ERROR_STATUS[code] as ErrorStatusCode);
 }
 
-async function requireRole(c: Context, requiredRole: Role): Promise<SessionUser | Response> {
-  const resolved = await resolveSession(c);
-  if (!resolved) return buildError(c, "UNAUTHORIZED", "Authentication required");
-  if (!hasRoleAtLeast(resolved.user.role, requiredRole)) return buildError(c, "FORBIDDEN", "Insufficient role");
-  return resolved.user;
-}
+async function requireGuildWarManager(c: Context) { return requirePermission(c, "guildwar.manage"); }
+async function requireGuildWarHistoryEditor(c: Context) { return requirePermission(c, "guildwar.history.edit"); }
 
 function parsePage(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -74,7 +67,7 @@ guildWarRoutes.get("/active", async (c) => {
 });
 
 guildWarRoutes.post("/save-teams", async (c) => {
-  const user = await requireRole(c, "moderator");
+  const user = await requireGuildWarManager(c);
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -86,7 +79,7 @@ guildWarRoutes.post("/save-teams", async (c) => {
 });
 
 guildWarRoutes.post("/move", async (c) => {
-  const user = await requireRole(c, "moderator");
+  const user = await requireGuildWarManager(c);
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -100,7 +93,7 @@ guildWarRoutes.post("/move", async (c) => {
 });
 
 guildWarRoutes.patch("/role-tag", async (c) => {
-  const user = await requireRole(c, "moderator");
+  const user = await requireGuildWarManager(c);
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -113,7 +106,7 @@ guildWarRoutes.patch("/role-tag", async (c) => {
 });
 
 guildWarRoutes.post("/post-teams", async (c) => {
-  const user = await requireRole(c, "moderator");
+  const user = await requireGuildWarManager(c);
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -125,7 +118,7 @@ guildWarRoutes.post("/post-teams", async (c) => {
 });
 
 guildWarRoutes.post("/post-results", async (c) => {
-  const user = await requireRole(c, "moderator");
+  const user = await requireGuildWarManager(c);
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -151,7 +144,7 @@ guildWarRoutes.get("/templates", async (c) => {
 });
 
 guildWarRoutes.post("/templates", async (c) => {
-  const user = await requireRole(c, "moderator");
+  const user = await requireGuildWarManager(c);
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -166,7 +159,7 @@ guildWarRoutes.post("/templates", async (c) => {
 });
 
 guildWarRoutes.post("/templates/apply", async (c) => {
-  const user = await requireRole(c, "moderator");
+  const user = await requireGuildWarManager(c);
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -185,7 +178,7 @@ guildWarRoutes.post("/templates/apply", async (c) => {
 });
 
 guildWarRoutes.delete("/templates/:id", async (c) => {
-  const user = await requireRole(c, "moderator");
+  const user = await requireGuildWarManager(c);
   if (user instanceof Response) return user;
   const result = await getService(c).deleteTemplate(user.id, c.req.param("id"));
   return handleResult(c, result);
@@ -215,7 +208,7 @@ guildWarRoutes.get("/history/:id", async (c) => {
 });
 
 guildWarRoutes.post("/history", async (c) => {
-  const user = await requireRole(c, "moderator");
+  const user = await requireGuildWarHistoryEditor(c);
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -227,7 +220,7 @@ guildWarRoutes.post("/history", async (c) => {
 });
 
 guildWarRoutes.patch("/history/:id", async (c) => {
-  const user = await requireRole(c, "moderator");
+  const user = await requireGuildWarHistoryEditor(c);
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -238,14 +231,14 @@ guildWarRoutes.patch("/history/:id", async (c) => {
 });
 
 guildWarRoutes.delete("/history/:id", async (c) => {
-  const user = await requireRole(c, "moderator");
+  const user = await requireGuildWarHistoryEditor(c);
   if (user instanceof Response) return user;
   const result = await getService(c).deleteHistory(user.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 guildWarRoutes.patch("/history/:id/member-stats/:userId", async (c) => {
-  const user = await requireRole(c, "moderator");
+  const user = await requireGuildWarHistoryEditor(c);
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -256,7 +249,7 @@ guildWarRoutes.patch("/history/:id/member-stats/:userId", async (c) => {
 });
 
 guildWarRoutes.patch("/history/:id/member-stats/batch", async (c) => {
-  const user = await requireRole(c, "moderator");
+  const user = await requireGuildWarHistoryEditor(c);
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }

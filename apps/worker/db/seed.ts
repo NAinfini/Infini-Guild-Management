@@ -285,6 +285,25 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     });
   }
 
+  const moderatorProfileRows: Array<typeof memberProfiles.$inferInsert> = moderatorIds.map((id, index) => ({
+    id: nanoid(),
+    userId: id,
+    wechatName: `管理${String(index + 1).padStart(2, "0")}`,
+    power: 6000 + index * 500,
+    classes: JSON.stringify(pickClasses(index + 5)),
+    titleHtml: `<p>Moderator ${index + 1}</p>`,
+    bio: `Seed profile for moderator ${index + 1}`,
+    images: JSON.stringify([seedMockAsset("portrait", index + 20)]),
+    audioKey: null,
+    videoUrls: JSON.stringify(index === 0 ? ["https://www.youtube.com/watch?v=aqz-KE-bpKQ"] : []),
+    availability: JSON.stringify({ weekdayEvening: true, weekendAfternoon: true, guildWarNight: true }),
+    vacationStart: null,
+    vacationEnd: null,
+    discordId: `discord_mod_${index + 1}`,
+    discordReminderOptOut: false,
+    notes: index === 0 ? "Lead moderator" : null,
+  }));
+
   const allProfileRows = [
     {
       id: nanoid(),
@@ -304,6 +323,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       discordReminderOptOut: false,
       notes: "seed-admin",
     },
+    ...moderatorProfileRows,
     ...profileRows,
   ];
   await batchInsert(db, memberProfiles, allProfileRows, 5);
@@ -322,6 +342,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       recurrenceRule: null,
+      attachments: JSON.stringify(["/mock/scene-1.svg", "/mock/scene-2.svg"]),
       seriesId: null,
       isSeriesParent: false,
       instanceDate: null,
@@ -356,6 +377,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       recurrenceRule: null,
+      attachments: JSON.stringify(["/mock/portrait-1.svg"]),
       seriesId: null,
       isSeriesParent: false,
       instanceDate: null,
@@ -548,6 +570,64 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
+    // ── Recurring templates (isSeriesParent = true) ──
+    {
+      id: nanoid(),
+      type: "weekly_mission",
+      title: "Weekly Raid Night",
+      description: "Recurring weekly raid every Wednesday and Friday evening",
+      startAt: addDays(now, 3),
+      endAt: addDays(addHours(now, 2), 3),
+      capacity: 15,
+      pinned: false,
+      signupLocked: false,
+      archivedAt: null,
+      createdBy: adminId,
+      recurrenceRule: JSON.stringify({ frequency: "weekly", interval: 1, daysOfWeek: [3, 5] }),
+      seriesId: null,
+      isSeriesParent: true,
+      instanceDate: null,
+      lastGeneratedDate: addDays(now, -4),
+      generationCount: 8,
+    },
+    {
+      id: nanoid(),
+      type: "guild_war",
+      title: "Bi-Weekly War Practice",
+      description: "Practice war every other Saturday",
+      startAt: addDays(now, 6),
+      endAt: addDays(addHours(now, 3), 6),
+      capacity: 20,
+      pinned: false,
+      signupLocked: false,
+      archivedAt: null,
+      createdBy: moderatorIds[0],
+      recurrenceRule: JSON.stringify({ frequency: "weekly", interval: 2, daysOfWeek: [6] }),
+      seriesId: null,
+      isSeriesParent: true,
+      instanceDate: null,
+      lastGeneratedDate: addDays(now, -10),
+      generationCount: 4,
+    },
+    {
+      id: nanoid(),
+      type: "social",
+      title: "Monthly Guild Meeting",
+      description: "First Sunday of every month — mandatory attendance",
+      startAt: addDays(now, 10),
+      endAt: addDays(addHours(now, 1), 10),
+      capacity: null,
+      pinned: true,
+      signupLocked: false,
+      archivedAt: null,
+      createdBy: adminId,
+      recurrenceRule: JSON.stringify({ frequency: "monthly", interval: 1, dayOfMonth: 1 }),
+      seriesId: null,
+      isSeriesParent: true,
+      instanceDate: null,
+      lastGeneratedDate: addDays(now, -25),
+      generationCount: 3,
+    },
   ];
 
   await batchInsert(db, events, eventRows, 5);
@@ -646,6 +726,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       enemyBaseHp: 0,
       enemyCredits: 9300,
       enemyDistance: 3900,
+      durationMinutes: 42,
       notes: "Solid frontline execution",
       createdBy: adminId,
     },
@@ -665,6 +746,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       enemyBaseHp: 55,
       enemyCredits: 12100,
       enemyDistance: 4600,
+      durationMinutes: 55,
       notes: "Need better split control",
       createdBy: moderatorIds[0],
     },
@@ -684,6 +766,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       enemyBaseHp: 0,
       enemyCredits: 10500,
       enemyDistance: 4200,
+      durationMinutes: 38,
       notes: "Clean sweep — great coordination",
       createdBy: adminId,
     },
@@ -703,6 +786,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       enemyBaseHp: 38,
       enemyCredits: 10800,
       enemyDistance: 4350,
+      durationMinutes: 60,
       notes: "Extremely close match, towers tied",
       createdBy: moderatorIds[1],
     },
@@ -769,7 +853,28 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     { id: nanoid(), name: "Builds", slug: "builds", sortOrder: 1, parentId: null },
     { id: nanoid(), name: "War", slug: "war", sortOrder: 2, parentId: null },
   ];
-  await db.insert(wikiCategories).values(categoryRows);
+  const subCategoryRows: Array<typeof wikiCategories.$inferInsert> = [
+    { id: nanoid(), name: "FAQ", slug: "faq", sortOrder: 0, parentId: categoryRows[0].id },
+    { id: nanoid(), name: "DPS Builds", slug: "dps-builds", sortOrder: 0, parentId: categoryRows[1].id },
+    { id: nanoid(), name: "Support Builds", slug: "support-builds", sortOrder: 1, parentId: categoryRows[1].id },
+    { id: nanoid(), name: "Offense", slug: "war-offense", sortOrder: 0, parentId: categoryRows[2].id },
+    { id: nanoid(), name: "Defense", slug: "war-defense", sortOrder: 1, parentId: categoryRows[2].id },
+  ];
+  await db.insert(wikiCategories).values([...categoryRows, ...subCategoryRows]);
+
+  const tiptap = (...blocks: unknown[]) => JSON.stringify({ type: "doc", content: blocks });
+  const heading = (level: number, text: string) => ({ type: "heading", attrs: { level }, content: [{ type: "text", text }] });
+  const para = (...parts: unknown[]) => ({ type: "paragraph", content: parts });
+  const txt = (text: string) => ({ type: "text", text });
+  const bold = (text: string) => ({ type: "text", marks: [{ type: "bold" }], text });
+  const italic = (text: string) => ({ type: "text", marks: [{ type: "italic" }], text });
+  const bulletList = (...items: string[]) => ({
+    type: "bulletList",
+    content: items.map((item) => ({
+      type: "listItem",
+      content: [{ type: "paragraph", content: [{ type: "text", text: item }] }],
+    })),
+  });
 
   const articleRows: Array<typeof wikiArticles.$inferInsert> = [
     {
@@ -777,7 +882,13 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       title: "Getting Started",
       slug: "getting-started",
       categoryId: categoryRows[0].id,
-      bodyJson: JSON.stringify({ content: "Welcome guide" }),
+      bodyJson: tiptap(
+        heading(1, "Welcome to Infini Guild"),
+        para(txt("This guide covers everything you need to know as a new member. Read through each section carefully.")),
+        heading(2, "First Steps"),
+        bulletList("Set up your profile with your in-game name and class", "Join the Discord server and link your account", "Check the events page for upcoming activities", "Review the war rotation schedule"),
+        para(bold("Important:"), txt(" Make sure to set your availability in your profile so officers can plan events.")),
+      ),
       sortOrder: 0,
       archivedAt: null,
       createdBy: adminId,
@@ -787,8 +898,18 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       title: "Class Build Basics",
       slug: "class-build-basics",
       categoryId: categoryRows[1].id,
-      bodyJson: JSON.stringify({ content: "Build intro" }),
-      sortOrder: 1,
+      bodyJson: tiptap(
+        heading(1, "Class Build Overview"),
+        para(txt("Each class in the game has multiple viable builds. This article covers the fundamentals.")),
+        heading(2, "Core Principles"),
+        bulletList("Focus on one primary stat before branching out", "Synergy between skills matters more than raw numbers", "Always test builds in practice mode before committing resources"),
+        heading(2, "Class Categories"),
+        para(bold("鸣金"), txt(" — Ranged DPS with high burst potential. Best paired with 破竹 for sustained damage.")),
+        para(bold("牵丝"), txt(" — Support/healer class. Essential for guild war compositions.")),
+        para(bold("破竹"), txt(" — Melee DPS with strong AoE. Versatile in both PvE and PvP.")),
+        para(bold("裂石"), txt(" — Tank class with crowd control. Anchors the frontline in wars.")),
+      ),
+      sortOrder: 0,
       archivedAt: null,
       createdBy: moderatorIds[0],
     },
@@ -797,8 +918,16 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       title: "War Rotation",
       slug: "war-rotation",
       categoryId: categoryRows[2].id,
-      bodyJson: JSON.stringify({ content: "Rotation strategy" }),
-      sortOrder: 2,
+      bodyJson: tiptap(
+        heading(1, "Guild War Rotation Strategy"),
+        para(txt("Our standard rotation ensures consistent performance across all war sessions.")),
+        heading(2, "Team Composition"),
+        para(txt("Each war fields two teams of 4 players. The "), bold("Vanguard"), txt(" pushes lanes while the "), bold("Sentinel"), txt(" controls towers.")),
+        heading(2, "Rotation Rules"),
+        bulletList("Teams rotate every 2 wars to prevent burnout", "Pool members fill gaps when regulars are unavailable", "New members observe for 2 wars before joining active rotation"),
+        para(italic("Note: Rotation may be adjusted during tournament seasons.")),
+      ),
+      sortOrder: 0,
       archivedAt: null,
       createdBy: moderatorIds[1],
     },
@@ -806,9 +935,17 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       id: nanoid(),
       title: "Support Role Notes",
       slug: "support-role-notes",
-      categoryId: categoryRows[1].id,
-      bodyJson: JSON.stringify({ content: "Support details" }),
-      sortOrder: 3,
+      categoryId: subCategoryRows[2].id,
+      bodyJson: tiptap(
+        heading(1, "Playing Support in Guild Wars"),
+        para(txt("Support players are the backbone of any successful war team. This guide covers positioning, timing, and build priorities.")),
+        heading(2, "Key Responsibilities"),
+        bulletList("Keep frontline alive during tower pushes", "Provide buffs before major engagements", "Call out enemy flanks and cooldown windows", "Prioritize healing tanks over DPS in sustained fights"),
+        heading(2, "Recommended Builds"),
+        para(bold("牵丝玉"), txt(" — Pure healing focus. Best for defensive compositions.")),
+        para(bold("牵丝霖"), txt(" — Hybrid support with shields. Better for aggressive pushes.")),
+      ),
+      sortOrder: 0,
       archivedAt: null,
       createdBy: moderatorIds[2],
     },
@@ -817,28 +954,84 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       title: "Archived Tactics",
       slug: "archived-tactics",
       categoryId: categoryRows[2].id,
-      bodyJson: JSON.stringify({ content: "Old tactics" }),
-      sortOrder: 4,
+      bodyJson: tiptap(
+        heading(1, "Legacy Tactics Archive"),
+        para(txt("These tactics were used in previous seasons and are kept for historical reference.")),
+        heading(2, "Season 3 Rush Meta"),
+        para(txt("The rush meta relied on overwhelming the enemy base within the first 3 minutes. This was "), bold("patched in Season 4"), txt(" and is no longer viable.")),
+        bulletList("All 8 players pushed a single lane", "Ignored towers entirely", "Required specific class composition: 2 tanks, 4 DPS, 2 supports"),
+      ),
+      sortOrder: 1,
       archivedAt: addDays(now, -10),
       createdBy: adminId,
+    },
+    {
+      id: nanoid(),
+      title: "Common Questions",
+      slug: "common-questions",
+      categoryId: subCategoryRows[0].id,
+      bodyJson: tiptap(
+        heading(1, "Frequently Asked Questions"),
+        heading(2, "How do I join guild wars?"),
+        para(txt("Sign up for guild war events on the events page. Officers will assign you to a team based on your class and availability.")),
+        heading(2, "What are the activity requirements?"),
+        para(txt("Members should participate in at least "), bold("2 events per week"), txt(". Extended absences should be communicated via the vacation system in your profile.")),
+        heading(2, "How do I get promoted?"),
+        para(txt("Promotions are based on consistent participation, war performance, and community contribution. Talk to a moderator for details.")),
+      ),
+      sortOrder: 1,
+      archivedAt: null,
+      createdBy: adminId,
+    },
+    {
+      id: nanoid(),
+      title: "DPS Optimization Guide",
+      slug: "dps-optimization",
+      categoryId: subCategoryRows[1].id,
+      bodyJson: tiptap(
+        heading(1, "Maximizing DPS Output"),
+        para(txt("This guide covers advanced techniques for squeezing maximum damage from DPS classes.")),
+        heading(2, "Skill Rotation"),
+        bulletList("Open with your highest burst skill", "Weave auto-attacks between cooldowns", "Save ultimate for tower pushes or team fights"),
+        para(italic("Tip: Practice your rotation until it becomes muscle memory. Consistency beats theory.")),
+      ),
+      sortOrder: 0,
+      archivedAt: null,
+      createdBy: moderatorIds[0],
+    },
+    {
+      id: nanoid(),
+      title: "Defensive Formations",
+      slug: "defensive-formations",
+      categoryId: subCategoryRows[4].id,
+      bodyJson: tiptap(
+        heading(1, "War Defense Strategies"),
+        para(txt("When the enemy has a stronger lineup, switching to a defensive formation can turn the tide.")),
+        heading(2, "Tower Priority Defense"),
+        bulletList("Station 2 players per tower", "Rotate reinforcements based on enemy push direction", "Use crowd control to stall while towers deal damage"),
+        para(bold("Key principle:"), txt(" Trading time for tower damage is always worth it in close matches.")),
+      ),
+      sortOrder: 0,
+      archivedAt: null,
+      createdBy: moderatorIds[1],
     },
   ];
   await db.insert(wikiArticles).values(articleRows);
 
   const galleryItemRows: Array<typeof galleryItems.$inferInsert> = [
-    ...Array.from({ length: 7 }).map((_, index) => ({
+    ...Array.from({ length: 20 }).map((_, index) => ({
       id: nanoid(),
       type: "image" as const,
       url: seedMockAsset("scene", index),
       caption: `Seed image ${index + 1}`,
-      uploadedBy: memberIds[index],
+      uploadedBy: memberIds[index % memberIds.length],
     })),
-    ...Array.from({ length: 3 }).map((_, index) => ({
+    ...Array.from({ length: 8 }).map((_, index) => ({
       id: nanoid(),
       type: "video" as const,
       url: `https://youtu.be/seed-video-${index + 1}`,
       caption: `Seed video ${index + 1}`,
-      uploadedBy: memberIds[index + 7],
+      uploadedBy: index < 3 ? moderatorIds[index] : memberIds[(index + 5) % memberIds.length],
     })),
   ];
   await batchInsert(db, galleryItems, galleryItemRows);
@@ -1256,7 +1449,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
           events: eventRows.length,
           participants: participantRows.length,
           announcements: 4,
-          wikiCategories: categoryRows.length,
+          wikiCategories: categoryRows.length + subCategoryRows.length,
           wikiArticles: articleRows.length,
           galleryItems: galleryItemRows.length,
           galleryLikes: galleryLikeRows.length,

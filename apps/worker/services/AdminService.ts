@@ -106,8 +106,9 @@ const BUILTIN_ROLE_DEFAULTS: Record<Role, { name: string; level: number; color: 
 
 const MODERATOR_DEFAULT_PERMISSIONS = new Set<Permission>([
   "admin.users.view", "admin.users.edit", "admin.invite.view", "admin.audit.view",
-  "admin.bot.view", "admin.status.view", "guildwar.manage", "guildwar.history.edit",
-  "events.manage", "announcements.manage", "gallery.upload", "wiki.edit",
+  "admin.bot.view", "admin.status.view", "admin.analytics.view", "admin.roles.view",
+  "guildwar.manage", "guildwar.history.edit",
+  "events.manage", "announcements.manage", "gallery.upload", "gallery.manage", "wiki.edit",
 ]);
 const MEMBER_DEFAULT_PERMISSIONS = new Set<Permission>(["gallery.upload"]);
 
@@ -777,15 +778,19 @@ export class AdminService {
     return ok(undefined);
   }
 
-  async batchUpdateRole(actorId: string, userIds: string[], newRole: Role): Promise<ServiceResult<{ updated: number }>> {
+  async batchUpdateRole(actorId: string, userIds: string[], newRoleId: string): Promise<ServiceResult<{ updated: number }>> {
     const targetIds = userIds.filter((id) => id !== actorId);
     if (targetIds.length === 0) return ok({ updated: 0 });
+    if (newRoleId === "admin") return err("FORBIDDEN", "Cannot assign builtin admin role via API");
+    await ensureBuiltinRolesAndPermissions(this.deps.db);
+    const roleExists = (await this.deps.db.select({ id: roles.id }).from(roles).where(eq(roles.id, newRoleId)).limit(1))[0];
+    if (!roleExists) return err("NOT_FOUND", "Role not found");
     const existingUsers = await this.deps.db.select({ id: users.id }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
-      await this.deps.db.update(users).set({ role: newRole, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
+      await this.deps.db.update(users).set({ role: newRoleId, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
     }
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_role_update", actorId, entityId: "batch", detailText: JSON.stringify({ user_ids: targetIds, new_role: newRole }) });
+    await this.deps.writeAuditLog({ entityType: "user", action: "batch_role_update", actorId, entityId: "batch", detailText: JSON.stringify({ user_ids: targetIds, new_role: newRoleId }) });
     return ok({ updated: existingUsers.length });
   }
 
@@ -856,12 +861,16 @@ export class AdminService {
     return ok({ user_id: userId, username, temporary_password: temporaryPassword });
   }
 
-  async updateUserRole(actorId: string, targetUserId: string, newRole: Role): Promise<ServiceResult<void>> {
+  async updateUserRole(actorId: string, targetUserId: string, newRoleId: string): Promise<ServiceResult<void>> {
     if (targetUserId === actorId) return err("CONFLICT", "You cannot change your own role");
+    if (newRoleId === "admin") return err("FORBIDDEN", "Cannot assign builtin admin role via API");
+    await ensureBuiltinRolesAndPermissions(this.deps.db);
+    const roleExists = (await this.deps.db.select({ id: roles.id }).from(roles).where(eq(roles.id, newRoleId)).limit(1))[0];
+    if (!roleExists) return err("NOT_FOUND", "Role not found");
     const target = (await this.deps.db.select({ id: users.id, role: users.role, deletedAt: users.deletedAt }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     if (!target || target.deletedAt !== null) return err("NOT_FOUND", "User not found");
-    await this.deps.db.update(users).set({ role: newRole, updatedAt: this.now().toISOString() }).where(eq(users.id, targetUserId));
-    await this.deps.writeAuditLog({ entityType: "user", action: "update_role", actorId, entityId: targetUserId, detailText: JSON.stringify({ from: target.role, to: newRole }) });
+    await this.deps.db.update(users).set({ role: newRoleId, updatedAt: this.now().toISOString() }).where(eq(users.id, targetUserId));
+    await this.deps.writeAuditLog({ entityType: "user", action: "update_role", actorId, entityId: targetUserId, detailText: JSON.stringify({ from: target.role, to: newRoleId }) });
     return ok(undefined);
   }
 
@@ -918,6 +927,7 @@ export class AdminService {
   async createRole(actorId: string, input: { id?: string; name: string; level: number; color?: string; permissions?: Record<string, boolean> }): Promise<ServiceResult<unknown>> {
     const roleId = (input.id?.trim() || `custom_${this.deps.generateId().toLowerCase()}`).toLowerCase();
     if ((ROLES as readonly string[]).includes(roleId)) return err("CONFLICT", "Built-in role ids are reserved");
+    if (input.level > 2) return err("VALIDATION_ERROR", "Custom role level must be 1 or 2");
     await ensureBuiltinRolesAndPermissions(this.deps.db);
     const existing = (await this.deps.db.select({ id: roles.id }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (existing) return err("CONFLICT", "Role id already exists");
@@ -952,7 +962,7 @@ export class AdminService {
     const [updatedRole] = await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).where(eq(roles.id, roleId)).limit(1);
     if (!updatedRole) return err("SERVER_ERROR", "Failed to load updated role");
     const permissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
-    const assignedCountRow = (await this.deps.db.select({ count: sql<number>`count(*)` }).from(users).where(and(eq(users.role, roleId as Role), isNull(users.deletedAt))).limit(1))[0];
+    const assignedCountRow = (await this.deps.db.select({ count: sql<number>`count(*)` }).from(users).where(and(eq(users.role, roleId), isNull(users.deletedAt))).limit(1))[0];
     const assignedCount = Number(assignedCountRow?.count ?? 0);
     await this.deps.writeAuditLog({ entityType: "role", action: "update", actorId, entityId: roleId, detailText: JSON.stringify({ fields: input, assigned_user_count: assignedCount }) });
     return ok(adminRoleSchema.parse({ id: updatedRole.id, name: updatedRole.name, level: updatedRole.level, color: updatedRole.color, is_builtin: updatedRole.isBuiltin, created_at: updatedRole.createdAt, updated_at: updatedRole.updatedAt, permissions: parsePermissionRecord(roleId, permissionRows), assigned_user_count: assignedCount }));
@@ -963,7 +973,7 @@ export class AdminService {
     const existing = (await this.deps.db.select({ id: roles.id, isBuiltin: roles.isBuiltin }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (!existing) return err("NOT_FOUND", "Role not found");
     if (existing.isBuiltin) return err("CONFLICT", "Built-in roles cannot be deleted");
-    const assignedCountRow = (await this.deps.db.select({ count: sql<number>`count(*)` }).from(users).where(and(eq(users.role, roleId as Role), isNull(users.deletedAt))).limit(1))[0];
+    const assignedCountRow = (await this.deps.db.select({ count: sql<number>`count(*)` }).from(users).where(and(eq(users.role, roleId), isNull(users.deletedAt))).limit(1))[0];
     const assignedCount = Number(assignedCountRow?.count ?? 0);
     if (assignedCount > 0) return err("CONFLICT", "Role is assigned to users", { assigned_user_count: assignedCount });
     await this.deps.db.delete(roles).where(eq(roles.id, roleId));

@@ -65,6 +65,13 @@ authRoutes.get("/check-username", async (c) => {
   return handleResult(c, result);
 });
 
+authRoutes.get("/verify-invite/:code", async (c) => {
+  const code = c.req.param("code");
+  if (!code) return buildError(c, "VALIDATION_ERROR", "Missing invite code");
+  const result = await getService(c).verifyInvite(code);
+  return handleResult(c, result);
+});
+
 authRoutes.post("/register/:inviteCode", async (c) => {
   const inviteCode = c.req.param("inviteCode");
   if (!inviteCode) return buildError(c, "VALIDATION_ERROR", "Missing invite code");

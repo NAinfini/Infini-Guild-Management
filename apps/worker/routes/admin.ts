@@ -15,7 +15,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { customAlphabet, nanoid } from "nanoid";
 import type { Bindings } from "../index";
-import { requireRoleOrError } from "../middleware/rbac";
+import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { AdminService, type MediaLike } from "../services/AdminService";
 import { createPasswordHash } from "../services/auth";
@@ -89,21 +89,21 @@ function buildArchiveDownloadUrl(c: Context, token: string): string {
 
 // Invite Links
 adminRoutes.get("/invite-links", async (c) => {
-  const sessionUser = requireRoleOrError(c, "moderator");
+  const sessionUser = await requirePermission(c, "admin.invite.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).listInviteLinks(parseBoolean(c.req.query("include_expired")) ?? false, parseBoolean(c.req.query("include_revoked")) ?? false);
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
 
 adminRoutes.get("/invite-links/stats", async (c) => {
-  const sessionUser = requireRoleOrError(c, "moderator");
+  const sessionUser = await requirePermission(c, "admin.invite.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).getInviteLinkStats();
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
 
 adminRoutes.post("/invite-links", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.invite.manage");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -114,14 +114,14 @@ adminRoutes.post("/invite-links", async (c) => {
 });
 
 adminRoutes.delete("/invite-links/:id", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.invite.manage");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).revokeInviteLink(sessionUser.id, c.req.param("id"));
   return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
 });
 
 adminRoutes.delete("/invite-links/:id/permanent", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.invite.manage");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).deleteInviteLink(sessionUser.id, c.req.param("id"));
   return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
@@ -129,7 +129,7 @@ adminRoutes.delete("/invite-links/:id/permanent", async (c) => {
 
 // User Management
 adminRoutes.patch("/users/batch/role", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.users.role");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -140,7 +140,7 @@ adminRoutes.patch("/users/batch/role", async (c) => {
 });
 
 adminRoutes.patch("/users/batch/deactivate", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.users.activate");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -151,7 +151,7 @@ adminRoutes.patch("/users/batch/deactivate", async (c) => {
 });
 
 adminRoutes.patch("/users/batch/reactivate", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.users.activate");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -162,7 +162,7 @@ adminRoutes.patch("/users/batch/reactivate", async (c) => {
 });
 
 adminRoutes.patch("/users/batch/delete", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.users.delete");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -173,7 +173,7 @@ adminRoutes.patch("/users/batch/delete", async (c) => {
 });
 
 adminRoutes.post("/users", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.users.edit");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -184,7 +184,7 @@ adminRoutes.post("/users", async (c) => {
 });
 
 adminRoutes.patch("/users/:id/role", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.users.role");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -195,7 +195,7 @@ adminRoutes.patch("/users/:id/role", async (c) => {
 });
 
 adminRoutes.patch("/users/:id/deactivate", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.users.activate");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -206,7 +206,7 @@ adminRoutes.patch("/users/:id/deactivate", async (c) => {
 });
 
 adminRoutes.patch("/users/:id/reactivate", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.users.activate");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -217,7 +217,7 @@ adminRoutes.patch("/users/:id/reactivate", async (c) => {
 });
 
 adminRoutes.post("/users/:id/reset-password", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.users.password");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -229,14 +229,14 @@ adminRoutes.post("/users/:id/reset-password", async (c) => {
 
 // Roles
 adminRoutes.get("/roles", async (c) => {
-  const sessionUser = requireRoleOrError(c, "moderator");
+  const sessionUser = await requirePermission(c, "admin.roles.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).listRoles();
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
 
 adminRoutes.post("/roles", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.roles.manage");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -247,7 +247,7 @@ adminRoutes.post("/roles", async (c) => {
 });
 
 adminRoutes.patch("/roles/:id", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.roles.manage");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -258,7 +258,7 @@ adminRoutes.patch("/roles/:id", async (c) => {
 });
 
 adminRoutes.delete("/roles/:id", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.roles.manage");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).deleteRole(sessionUser.id, c.req.param("id"));
   return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
@@ -266,14 +266,14 @@ adminRoutes.delete("/roles/:id", async (c) => {
 
 // Bot Settings
 adminRoutes.get("/bot-settings", async (c) => {
-  const sessionUser = requireRoleOrError(c, "moderator");
+  const sessionUser = await requirePermission(c, "admin.bot.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).getBotSettings();
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
 
 adminRoutes.get("/bot-settings/discord/channels", async (c) => {
-  const sessionUser = requireRoleOrError(c, "moderator");
+  const sessionUser = await requirePermission(c, "admin.bot.view");
   if (sessionUser instanceof Response) return sessionUser;
   const guildId = c.req.query("guild_id");
   if (!guildId) return buildError(c, "VALIDATION_ERROR", "guild_id query parameter required");
@@ -282,7 +282,7 @@ adminRoutes.get("/bot-settings/discord/channels", async (c) => {
 });
 
 adminRoutes.patch("/bot-settings", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.bot.manage");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -293,7 +293,7 @@ adminRoutes.patch("/bot-settings", async (c) => {
 });
 
 adminRoutes.post("/bot-settings/test", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.bot.manage");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -305,7 +305,7 @@ adminRoutes.post("/bot-settings/test", async (c) => {
 
 // Status
 adminRoutes.get("/status", async (c) => {
-  const sessionUser = requireRoleOrError(c, "moderator");
+  const sessionUser = await requirePermission(c, "admin.status.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).getStatus();
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
@@ -313,14 +313,14 @@ adminRoutes.get("/status", async (c) => {
 
 // Analytics Settings
 adminRoutes.get("/analytics-settings", async (c) => {
-  const sessionUser = requireRoleOrError(c, "moderator");
+  const sessionUser = await requirePermission(c, "admin.analytics.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).getAnalyticsSettings();
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
 
 adminRoutes.patch("/analytics-settings", async (c) => {
-  const sessionUser = requireRoleOrError(c, "admin");
+  const sessionUser = await requirePermission(c, "admin.analytics.manage");
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -330,14 +330,14 @@ adminRoutes.patch("/analytics-settings", async (c) => {
 
 // Audit Archive
 adminRoutes.get("/audit-archive/months", async (c) => {
-  const sessionUser = requireRoleOrError(c, "moderator");
+  const sessionUser = await requirePermission(c, "admin.audit.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).listArchiveMonths();
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
 
 adminRoutes.get("/audit-archive/:month", async (c) => {
-  const sessionUser = requireRoleOrError(c, "moderator");
+  const sessionUser = await requirePermission(c, "admin.audit.view");
   if (sessionUser instanceof Response) return sessionUser;
   const page = Number(c.req.query("page") ?? "1");
   const limit = Number(c.req.query("limit") ?? "100");
@@ -346,7 +346,7 @@ adminRoutes.get("/audit-archive/:month", async (c) => {
 });
 
 adminRoutes.get("/audit-archive/download", async (c) => {
-  const sessionUser = requireRoleOrError(c, "moderator");
+  const sessionUser = await requirePermission(c, "admin.audit.export");
   if (sessionUser instanceof Response) return sessionUser;
   const month = c.req.query("month");
   if (!month) return buildError(c, "VALIDATION_ERROR", "month query parameter required");
@@ -365,7 +365,7 @@ adminRoutes.get("/audit-archive/download/file", async (c) => {
 
 // Audit Log
 adminRoutes.get("/audit-log", async (c) => {
-  const sessionUser = requireRoleOrError(c, "moderator");
+  const sessionUser = await requirePermission(c, "admin.audit.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).listAuditLogs({
     entity_type: c.req.query("entity_type"),
@@ -380,7 +380,7 @@ adminRoutes.get("/audit-log", async (c) => {
 });
 
 adminRoutes.get("/audit-log/export", async (c) => {
-  const sessionUser = requireRoleOrError(c, "moderator");
+  const sessionUser = await requirePermission(c, "admin.audit.export");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).exportAuditLogs(sessionUser.id, {
     entity_type: c.req.query("entity_type"),

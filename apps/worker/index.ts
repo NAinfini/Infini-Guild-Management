@@ -14,7 +14,7 @@ import { hmacMiddleware } from "./middleware/hmac";
 import { createRateLimitMiddleware } from "./middleware/rate-limit";
 import { securityHeadersMiddleware } from "./middleware/security-headers";
 import { sessionMiddleware } from "./middleware/session";
-import { resolveSession } from "./services/auth";
+import { resolveSession, type SessionUser } from "./services/auth";
 import { adminRoutes } from "./routes/admin";
 import { announcementsRoutes } from "./routes/announcements";
 import { authRoutes } from "./routes/auth";
@@ -37,7 +37,7 @@ export type Bindings = {
 
 type Variables = {
   requestId: string;
-  user: { id: string; role: "admin" | "moderator" | "member" } | null;
+  user: SessionUser | null;
 };
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();

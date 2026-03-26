@@ -3,74 +3,67 @@
 ## Summary
 Analyzed all portal pages against the D1 database seed data to identify missing mock data.
 
-## Critical Gaps Fixed ✅
+## All Gaps Fixed ✅
 
-### 1. War Member Stats (CRITICAL)
-**Issue**: Guild War analytics page would be empty - no individual member performance data
-**Fixed**: Added 8 stat fields to all war team members:
-- kills, deaths, assists
-- damage, healing, buildingDamage
-- credits, damageTaken
+### 1. War Member Stats
+Added 8 stat fields to all war team members: kills, deaths, assists, damage, healing, buildingDamage, credits, damageTaken.
 
 ### 2. Discord Link Codes
-**Issue**: Profile page Discord linking had no test data
-**Fixed**: Added 2 codes (1 active, 1 expired)
+Added 2 codes (1 active, 1 expired) for profile Discord linking.
 
 ### 3. Sessions
-**Issue**: Auth testing required manual login every time
-**Fixed**: Added 2 active sessions (admin + mod_1)
+Added 2 active sessions (admin + mod_1).
 
-## Remaining Minor Gaps (Non-Critical)
+### 4. Moderator Profiles (was MISSING)
+**Issue**: mod_1, mod_2, mod_3 had NO member_profiles rows, breaking roster display, war MVP name resolution, and user detail modals.
+**Fixed**: Added 3 moderator profiles with wechat_name, power, classes, discord IDs, and availability.
 
-### 4. Wiki Articles - Basic TipTap Content
-**Current**: Simple `{content: "text"}` structure
-**Portal Expects**: Full TipTap JSON with paragraphs, headings, lists
-**Impact**: Low - articles display but lack rich formatting
-**Recommendation**: Enhance if wiki editing is priority
+### 5. Wiki Articles — TipTap Content
+**Issue**: Articles used `{content: "text"}` instead of proper TipTap `{type: "doc", content: [...]}` format.
+**Fixed**: All articles now use full TipTap JSON with headings, paragraphs, bullet lists, and bold/italic marks. Added 3 new articles for sub-categories (8 total).
 
-### 5. Recurring Event Templates
-**Current**: No recurring templates seeded
-**Portal Has**: `GET /api/events/templates/list` endpoint
-**Impact**: Low - recurring events feature untested
-**Recommendation**: Add 1-2 templates if recurring events are used
+### 6. Wiki Sub-Categories
+**Issue**: All 3 categories were top-level. Wiki tree component's nesting was never exercised.
+**Fixed**: Added 5 sub-categories: FAQ (under General), DPS Builds & Support Builds (under Builds), Offense & Defense (under War).
 
-### 6. Event Attachments
-**Current**: All events have `attachments: '[]'`
-**Impact**: Low - attachment upload/display untested
-**Recommendation**: Add mock attachments to 2-3 events
+### 7. Recurring Event Templates
+**Issue**: Zero events had `isSeriesParent: true` or `recurrenceRule`. RecurringTemplatesTab showed empty.
+**Fixed**: Added 3 recurring templates — Weekly Raid Night (weekly, Wed+Fri), Bi-Weekly War Practice (biweekly, Sat), Monthly Guild Meeting (monthly, 1st).
 
-### 7. Announcement Images
-**Current**: No image attachments on announcements
-**Impact**: Low - image display untested
-**Recommendation**: Add images to 1-2 announcements
+### 8. War History Duration
+**Issue**: All 4 war records had null `durationMinutes`.
+**Fixed**: Added realistic durations: 42, 55, 38, 60 minutes.
 
-### 8. Gallery Data Volume
-**Current**: 10 items (7 images + 3 videos)
-**Impact**: Low - pagination/infinite scroll less realistic
-**Recommendation**: Increase to 30-50 items if testing gallery performance
+### 9. Event Attachments
+**Issue**: All events had empty `attachments: '[]'`.
+**Fixed**: Added mock attachment paths to 2 events (Weekly Mission Alpha, Guild War #1).
+
+### 10. Gallery Volume
+**Issue**: Only 10 items (7 images + 3 videos). Pagination barely exercised.
+**Fixed**: Increased to 28 items (20 images + 8 videos) with varied uploaders including moderators.
 
 ## Data Coverage Summary
 
 | Entity | Seeded | Quality | Notes |
 |--------|--------|---------|-------|
 | Users | 19 (1 admin, 3 mods, 15 members) | ✅ Excellent | Includes inactive users, vacations |
-| Member Profiles | 19 | ✅ Excellent | Power, classes, availability, Discord IDs |
-| Events | 14 | ✅ Excellent | All types, pinned, archived, locked |
-| Event Participants | ~100 | ✅ Excellent | Varied participation |
+| Member Profiles | 19 (1 admin + 3 mods + 15 members) | ✅ Excellent | All users have profiles |
+| Events | 17 (14 regular + 3 recurring templates) | ✅ Excellent | All types, pinned, archived, locked, recurring |
+| Event Participants | ~120 | ✅ Excellent | Varied participation |
 | Announcements | 4 | ✅ Good | All statuses (draft, scheduled, published, archived) |
-| War History | 4 | ✅ Excellent | Win/loss/draw, full stats |
+| War History | 4 | ✅ Excellent | Win/loss/draw, full stats, durations |
 | War Teams | 8 (2 per war) | ✅ Excellent | Alpha/Bravo naming |
-| War Team Members | 32 | ✅ Excellent | **NOW WITH STATS** |
+| War Team Members | 32 | ✅ Excellent | Full stats (8 fields each) |
 | War Pool Members | 12 | ✅ Good | Backup members |
 | War Templates | 3 | ✅ Excellent | Standard, Rush, Defense formations |
-| Wiki Categories | 3 | ✅ Good | General, Builds, War |
-| Wiki Articles | 5 | ⚠️ Basic | Simple content, needs rich TipTap |
-| Gallery Items | 10 | ⚠️ Basic | Could use more volume |
-| Gallery Likes | ~50 | ✅ Good | Varied engagement |
-| Gallery Comments | ~30 | ✅ Good | Realistic comments |
+| Wiki Categories | 8 (3 top + 5 sub) | ✅ Excellent | Nested tree structure |
+| Wiki Articles | 8 | ✅ Excellent | Rich TipTap content, articles in sub-categories |
+| Gallery Items | 28 (20 images + 8 videos) | ✅ Good | Pagination exercised |
+| Gallery Likes | ~100+ | ✅ Good | Varied engagement |
+| Gallery Comments | ~40+ | ✅ Good | Realistic comments |
 | Invite Links | 3 | ✅ Excellent | Active, expired, revoked |
-| Discord Link Codes | 2 | ✅ Good | **NEWLY ADDED** |
-| Sessions | 2 | ✅ Good | **NEWLY ADDED** |
+| Discord Link Codes | 2 | ✅ Good | 1 active, 1 expired |
+| Sessions | 2 | ✅ Good | Admin + mod_1 |
 | Bot Delivery Log | 20 | ✅ Excellent | All statuses, platforms |
 | Bot Discord Messages | 8 | ✅ Good | Event notifications |
 | Bot WeChat Messages | 6 | ✅ Good | Event notifications |
@@ -90,7 +83,3 @@ Member 2:  member_02 / member2234
 ...
 Member 15: member_15 / member15234
 ```
-
-## Conclusion
-
-**Database seed is comprehensive and production-ready** for all core features. The 3 critical gaps have been fixed. Remaining gaps are cosmetic/volume-related and can be addressed if specific features need deeper testing.

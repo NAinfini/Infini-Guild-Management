@@ -4,23 +4,20 @@ import {
   FILE_SIZE_LIMITS,
   createWikiArticleSchema,
   createWikiCategorySchema,
-  hasRoleAtLeast,
   updateWikiCategorySchema,
   updateWikiArticleSchema,
   type ErrorCode,
-  type Role,
   type StandardErrorResponse,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { resolveSession } from "../services/auth";
+import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { WikiService } from "../services/WikiService";
 
-type SessionUser = { id: string; role: Role };
 type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
 
 export const wikiRoutes = new Hono();
@@ -45,12 +42,7 @@ function handleResult(c: Context, result: { ok: true; data: unknown } | { ok: fa
   return c.json(result.data, status as never);
 }
 
-async function requireRole(c: Context, requiredRole: Role): Promise<SessionUser | Response> {
-  const resolved = await resolveSession(c);
-  if (!resolved) return buildError(c, "UNAUTHORIZED", "Authentication required");
-  if (!hasRoleAtLeast(resolved.user.role, requiredRole)) return buildError(c, "FORBIDDEN", "Insufficient role");
-  return resolved.user;
-}
+async function requireWikiEditor(c: Context) { return requirePermission(c, "wiki.edit"); }
 
 function parsePage(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -71,7 +63,7 @@ wikiRoutes.get("/categories", async (c) => {
 });
 
 wikiRoutes.post("/categories", async (c) => {
-  const sessionUser = await requireRole(c, "moderator");
+  const sessionUser = await requireWikiEditor(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -83,7 +75,7 @@ wikiRoutes.post("/categories", async (c) => {
 });
 
 wikiRoutes.patch("/categories/:id", async (c) => {
-  const sessionUser = await requireRole(c, "moderator");
+  const sessionUser = await requireWikiEditor(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -94,7 +86,7 @@ wikiRoutes.patch("/categories/:id", async (c) => {
 });
 
 wikiRoutes.delete("/categories/:id", async (c) => {
-  const sessionUser = await requireRole(c, "admin");
+  const sessionUser = await requireWikiEditor(c);
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).deleteCategory(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
@@ -116,7 +108,7 @@ wikiRoutes.get("/articles/:slug", async (c) => {
 });
 
 wikiRoutes.post("/articles", async (c) => {
-  const sessionUser = await requireRole(c, "moderator");
+  const sessionUser = await requireWikiEditor(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -128,7 +120,7 @@ wikiRoutes.post("/articles", async (c) => {
 });
 
 wikiRoutes.patch("/articles/:id", async (c) => {
-  const sessionUser = await requireRole(c, "moderator");
+  const sessionUser = await requireWikiEditor(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -139,14 +131,14 @@ wikiRoutes.patch("/articles/:id", async (c) => {
 });
 
 wikiRoutes.delete("/articles/:id", async (c) => {
-  const sessionUser = await requireRole(c, "moderator");
+  const sessionUser = await requireWikiEditor(c);
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).archiveArticle(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 wikiRoutes.post("/articles/:id/images", async (c) => {
-  const sessionUser = await requireRole(c, "moderator");
+  const sessionUser = await requireWikiEditor(c);
   if (sessionUser instanceof Response) return sessionUser;
 
   const form = await c.req.formData();

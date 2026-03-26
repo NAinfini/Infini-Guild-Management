@@ -1,13 +1,52 @@
-﻿import { eq } from "drizzle-orm";
+import {
+  PERMISSIONS,
+  isBuiltinRole,
+  roleFromLevel,
+  type BuiltinRole,
+  type Permission,
+  type RoleId,
+} from "@guild/shared";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { nanoid } from "nanoid";
-import { sessions, users } from "../db/schema";
+import { rolePermissions, roles, sessions, users } from "../db/schema";
 import type { Bindings } from "../index";
 
-export type SessionUserRole = "admin" | "moderator" | "member";
-export type SessionUser = { id: string; role: SessionUserRole };
+const RESOLVED_SESSION_PROMISE = Symbol("resolved_session_promise");
+
+const MODERATOR_DEFAULTS: ReadonlySet<Permission> = new Set<Permission>([
+  "admin.users.view",
+  "admin.users.edit",
+  "admin.invite.view",
+  "admin.audit.view",
+  "admin.bot.view",
+  "admin.status.view",
+  "admin.analytics.view",
+  "admin.roles.view",
+  "guildwar.manage",
+  "guildwar.history.edit",
+  "events.manage",
+  "announcements.manage",
+  "gallery.upload",
+  "gallery.manage",
+  "wiki.edit",
+]);
+const MEMBER_DEFAULTS: ReadonlySet<Permission> = new Set<Permission>(["gallery.upload"]);
+
+type ContextWithSessionCache = Context & {
+  [RESOLVED_SESSION_PROMISE]?: Promise<ResolvedSession | null>;
+};
+
+export type SessionUserRole = BuiltinRole;
+export type SessionUser = {
+  id: string;
+  roleId: RoleId;
+  roleLevel: number;
+  role: SessionUserRole;
+  permissions: ReadonlySet<Permission>;
+};
 
 type ResolvedSession = {
   sessionId: string;
@@ -36,6 +75,37 @@ function getDb(c: Context) {
 
 function isSecureRequest(c: Context): boolean {
   return new URL(c.req.url).protocol === "https:";
+}
+
+function buildPermissionSet(
+  roleId: RoleId,
+  permissionRows: Array<{ permission: string; granted: boolean }>,
+): ReadonlySet<Permission> {
+  const perms = new Set<Permission>();
+
+  if (roleId === "admin") {
+    for (const p of PERMISSIONS) perms.add(p);
+    return perms;
+  }
+
+  const defaults = roleId === "moderator" ? MODERATOR_DEFAULTS : roleId === "member" ? MEMBER_DEFAULTS : null;
+  if (defaults) {
+    for (const p of defaults) perms.add(p);
+  }
+
+  for (const row of permissionRows) {
+    if (!(PERMISSIONS as readonly string[]).includes(row.permission)) continue;
+    const p = row.permission as Permission;
+    if (row.granted) perms.add(p);
+    else perms.delete(p);
+  }
+
+  return perms;
+}
+
+function resolveCompatibilityRole(roleId: RoleId, roleLevel: number | null): SessionUserRole {
+  if (isBuiltinRole(roleId)) return roleId;
+  return roleFromLevel(roleLevel ?? 1);
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -172,6 +242,12 @@ export async function createSession(
 }
 
 export async function resolveSession(c: Context): Promise<ResolvedSession | null> {
+  const carrier = c as ContextWithSessionCache;
+  carrier[RESOLVED_SESSION_PROMISE] ??= resolveSessionUncached(c);
+  return await carrier[RESOLVED_SESSION_PROMISE]!;
+}
+
+async function resolveSessionUncached(c: Context): Promise<ResolvedSession | null> {
   const sessionId = getCookie(c, SESSION_COOKIE_NAME);
   if (!sessionId) {
     return null;
@@ -185,12 +261,14 @@ export async function resolveSession(c: Context): Promise<ResolvedSession | null
         expiresAt: sessions.expiresAt,
         sessionCreatedAt: sessions.createdAt,
         userId: users.id,
-        role: users.role,
+        roleId: users.role,
+        roleLevel: roles.level,
         isActive: users.isActive,
         deletedAt: users.deletedAt,
       })
       .from(sessions)
       .innerJoin(users, eq(sessions.userId, users.id))
+      .leftJoin(roles, eq(users.role, roles.id))
       .where(eq(sessions.id, sessionId))
       .limit(1)
   )[0];
@@ -212,6 +290,22 @@ export async function resolveSession(c: Context): Promise<ResolvedSession | null
     return null;
   }
 
+  const permissionRows = await db
+    .select({
+      permission: rolePermissions.permission,
+      granted: rolePermissions.granted,
+    })
+    .from(rolePermissions)
+    .where(eq(rolePermissions.roleId, row.roleId));
+
+  const user: SessionUser = {
+    id: row.userId,
+    roleId: row.roleId,
+    roleLevel: row.roleLevel ?? 1,
+    role: resolveCompatibilityRole(row.roleId, row.roleLevel),
+    permissions: buildPermissionSet(row.roleId, permissionRows),
+  };
+
   const stayLoggedIn = getCookie(c, SESSION_MODE_COOKIE_NAME) === "1";
   const remainingMs = expiresAtMs - Date.now();
   const renewalThresholdMs = SESSION_TTL_MS * 0.5;
@@ -227,20 +321,14 @@ export async function resolveSession(c: Context): Promise<ResolvedSession | null
     return {
       sessionId: row.sessionId,
       expiresAt: nextExpiresAt,
-      user: {
-        id: row.userId,
-        role: row.role,
-      },
+      user,
     };
   }
 
   return {
     sessionId: row.sessionId,
     expiresAt: row.expiresAt,
-    user: {
-      id: row.userId,
-      role: row.role,
-    },
+    user,
   };
 }
 

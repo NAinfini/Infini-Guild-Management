@@ -2,11 +2,9 @@ import {
   ERROR_STATUS,
   createEventSchema,
   createTemplateSchema,
-  hasRoleAtLeast,
   updateEventSchema,
   updateTemplateSchema,
   type ErrorCode,
-  type Role,
   type StandardErrorResponse,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
@@ -16,7 +14,7 @@ import { runEventInstanceGenerationCron } from "../crons/event-instance-gen";
 import { events } from "../db/schema";
 import { eq } from "drizzle-orm";
 import type { Bindings } from "../index";
-import { resolveSession } from "../services/auth";
+import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import {
   EventService,
@@ -27,7 +25,6 @@ import {
 } from "../services/EventService";
 import { publishEntityChanged } from "../services/push";
 
-type SessionUser = { id: string; role: Role };
 type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
 
 export const eventsRoutes = new Hono();
@@ -65,13 +62,11 @@ function parsePage(v: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-async function requireSession(c: Context): Promise<SessionUser | Response> {
-  const resolved = await resolveSession(c);
-  return resolved?.user ?? buildError(c, "UNAUTHORIZED", "Authentication required");
-}
+async function requireEventManager(c: Context) { return requirePermission(c, "events.manage"); }
 
-function requireModerator(c: Context, user: SessionUser): Response | null {
-  return hasRoleAtLeast(user.role, "moderator") ? null : buildError(c, "FORBIDDEN", "Moderator role required");
+async function requireSessionUser(c: Context) {
+  const user = await getRequestUser(c);
+  return user ?? buildError(c, "UNAUTHORIZED", "Authentication required");
 }
 
 async function parseJsonBody(c: Context): Promise<unknown | Response> {
@@ -151,10 +146,8 @@ eventsRoutes.get("/:id", async (c) => {
 });
 
 eventsRoutes.post("/", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireEventManager(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const roleError = requireModerator(c, sessionUser);
-  if (roleError) return roleError;
   try {
     const { body, files } = await parseCreateEventRequest(c);
     const parsed = createEventSchema.safeParse(body);
@@ -167,10 +160,8 @@ eventsRoutes.post("/", async (c) => {
 });
 
 eventsRoutes.patch("/:id", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireEventManager(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const roleError = requireModerator(c, sessionUser);
-  if (roleError) return roleError;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Event not found");
@@ -187,10 +178,8 @@ eventsRoutes.patch("/:id", async (c) => {
 });
 
 eventsRoutes.delete("/:id", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireEventManager(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const roleError = requireModerator(c, sessionUser);
-  if (roleError) return roleError;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Event not found");
@@ -199,10 +188,8 @@ eventsRoutes.delete("/:id", async (c) => {
 });
 
 eventsRoutes.delete("/:id/destroy", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireEventManager(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const roleError = requireModerator(c, sessionUser);
-  if (roleError) return roleError;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Event not found");
@@ -211,10 +198,8 @@ eventsRoutes.delete("/:id/destroy", async (c) => {
 });
 
 eventsRoutes.post("/:id/images", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireEventManager(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const roleError = requireModerator(c, sessionUser);
-  if (roleError) return roleError;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Event not found");
@@ -228,24 +213,22 @@ eventsRoutes.post("/:id/images", async (c) => {
 });
 
 eventsRoutes.post("/:id/join", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireSessionUser(c);
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getEventService(c).joinEvent(sessionUser.id, c.req.param("id"));
   return result.ok ? c.json(toParticipantPayload(result.participant), 201) : buildError(c, result.code, result.message);
 });
 
 eventsRoutes.delete("/:id/leave", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireSessionUser(c);
   if (sessionUser instanceof Response) return sessionUser;
   await getEventService(c).leaveEvent(sessionUser.id, c.req.param("id"));
   return c.json({ ok: true });
 });
 
 eventsRoutes.post("/:id/participants", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireEventManager(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const roleError = requireModerator(c, sessionUser);
-  if (roleError) return roleError;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
   const payload = body as { user_id?: unknown };
@@ -256,10 +239,8 @@ eventsRoutes.post("/:id/participants", async (c) => {
 });
 
 eventsRoutes.delete("/:id/participants/:userId", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireEventManager(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const roleError = requireModerator(c, sessionUser);
-  if (roleError) return roleError;
   await getEventService(c).removeParticipant(sessionUser.id, c.req.param("id"), c.req.param("userId"));
   return c.json({ ok: true });
 });
@@ -267,18 +248,14 @@ eventsRoutes.delete("/:id/participants/:userId", async (c) => {
 // --- Templates ---
 
 eventsRoutes.get("/templates/list", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireEventManager(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const roleError = requireModerator(c, sessionUser);
-  if (roleError) return roleError;
   return c.json({ data: await getEventService(c).listTemplates() });
 });
 
 eventsRoutes.post("/templates", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireEventManager(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const roleError = requireModerator(c, sessionUser);
-  if (roleError) return roleError;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
   const parsed = createTemplateSchema.safeParse(body);
@@ -292,10 +269,8 @@ eventsRoutes.post("/templates", async (c) => {
 });
 
 eventsRoutes.patch("/templates/:id", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireEventManager(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const roleError = requireModerator(c, sessionUser);
-  if (roleError) return roleError;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing || !existing.isSeriesParent) return buildError(c, "NOT_FOUND", "Template not found");
@@ -312,10 +287,8 @@ eventsRoutes.patch("/templates/:id", async (c) => {
 });
 
 eventsRoutes.post("/templates/:id/pause", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireEventManager(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const roleError = requireModerator(c, sessionUser);
-  if (roleError) return roleError;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing || !existing.isSeriesParent) return buildError(c, "NOT_FOUND", "Template not found");
@@ -324,10 +297,8 @@ eventsRoutes.post("/templates/:id/pause", async (c) => {
 });
 
 eventsRoutes.post("/templates/:id/resume", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireEventManager(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const roleError = requireModerator(c, sessionUser);
-  if (roleError) return roleError;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing || !existing.isSeriesParent) return buildError(c, "NOT_FOUND", "Template not found");
@@ -336,10 +307,8 @@ eventsRoutes.post("/templates/:id/resume", async (c) => {
 });
 
 eventsRoutes.delete("/templates/:id", async (c) => {
-  const sessionUser = await requireSession(c);
+  const sessionUser = await requireEventManager(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const roleError = requireModerator(c, sessionUser);
-  if (roleError) return roleError;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing || !existing.isSeriesParent) return buildError(c, "NOT_FOUND", "Template not found");

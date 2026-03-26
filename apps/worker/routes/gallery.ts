@@ -4,22 +4,19 @@ import {
   FILE_SIZE_LIMITS,
   createGalleryCommentSchema,
   createGalleryItemSchema,
-  hasRoleAtLeast,
   updateGalleryCommentSchema,
   type ErrorCode,
-  type Role,
   type StandardErrorResponse,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { resolveSession } from "../services/auth";
+import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { GalleryService } from "../services/GalleryService";
 
-type SessionUser = { id: string; role: Role };
 type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
 
 export const galleryRoutes = new Hono();
@@ -49,12 +46,13 @@ function handleResult(c: Context, result: { ok: true; data: unknown } | { ok: fa
   return c.json(result.data, status as never);
 }
 
-async function requireRole(c: Context, requiredRole: Role): Promise<SessionUser | Response> {
-  const resolved = await resolveSession(c);
-  if (!resolved) return buildError(c, "UNAUTHORIZED", "Authentication required");
-  if (!hasRoleAtLeast(resolved.user.role, requiredRole)) return buildError(c, "FORBIDDEN", "Insufficient role");
-  return resolved.user;
+async function requireSessionUser(c: Context) {
+  const user = await getRequestUser(c);
+  return user ?? buildError(c, "UNAUTHORIZED", "Authentication required");
 }
+
+async function requireGalleryUploader(c: Context) { return requirePermission(c, "gallery.upload"); }
+async function requireGalleryManager(c: Context) { return requirePermission(c, "gallery.manage"); }
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -83,13 +81,13 @@ galleryRoutes.get("/", async (c) => {
   const dateTo = parseDayEndIso(c.req.query("date_to"));
   const search = (c.req.query("search") ?? "").trim().toLowerCase();
   const order = c.req.query("order") === "asc" ? "asc" : "desc";
-  const resolved = await resolveSession(c);
-  const result = await getService(c).listItems({ cursor, limit, type: typeFilter, dateFrom, dateTo, search: search || undefined, order, currentUserId: resolved?.user.id });
+  const user = await getRequestUser(c);
+  const result = await getService(c).listItems({ cursor, limit, type: typeFilter, dateFrom, dateTo, search: search || undefined, order, currentUserId: user?.id });
   return handleResult(c, result);
 });
 
 galleryRoutes.post("/images", async (c) => {
-  const sessionUser = await requireRole(c, "member");
+  const sessionUser = await requireGalleryUploader(c);
   if (sessionUser instanceof Response) return sessionUser;
 
   const form = await c.req.formData();
@@ -115,7 +113,7 @@ galleryRoutes.post("/images", async (c) => {
 });
 
 galleryRoutes.post("/videos", async (c) => {
-  const sessionUser = await requireRole(c, "member");
+  const sessionUser = await requireGalleryUploader(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -128,14 +126,14 @@ galleryRoutes.post("/videos", async (c) => {
 });
 
 galleryRoutes.delete("/:id", async (c) => {
-  const sessionUser = await requireRole(c, "moderator");
+  const sessionUser = await requireGalleryManager(c);
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).deleteItem(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 galleryRoutes.post("/batch-delete", async (c) => {
-  const sessionUser = await requireRole(c, "moderator");
+  const sessionUser = await requireGalleryManager(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -148,7 +146,7 @@ galleryRoutes.post("/batch-delete", async (c) => {
 });
 
 galleryRoutes.post("/:id/like", async (c) => {
-  const sessionUser = await requireRole(c, "member");
+  const sessionUser = await requireSessionUser(c);
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).likeItem(sessionUser.id, c.req.param("id"));
   if (!result.ok) return buildError(c, result.code, result.message, result.details);
@@ -163,7 +161,7 @@ galleryRoutes.get("/:id/comments", async (c) => {
 });
 
 galleryRoutes.post("/:id/comments", async (c) => {
-  const sessionUser = await requireRole(c, "member");
+  const sessionUser = await requireSessionUser(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -175,7 +173,7 @@ galleryRoutes.post("/:id/comments", async (c) => {
 });
 
 galleryRoutes.patch("/:id/comments/:commentId", async (c) => {
-  const sessionUser = await requireRole(c, "member");
+  const sessionUser = await requireSessionUser(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -186,7 +184,7 @@ galleryRoutes.patch("/:id/comments/:commentId", async (c) => {
 });
 
 galleryRoutes.delete("/:id/comments/:commentId", async (c) => {
-  const sessionUser = await requireRole(c, "member");
+  const sessionUser = await requireSessionUser(c);
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).deleteComment(sessionUser.id, sessionUser.role, c.req.param("commentId"));
   return handleResult(c, result);
