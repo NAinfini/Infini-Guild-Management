@@ -61,13 +61,14 @@ CREATE TABLE wiki_articles (
 
 ## Features
 
-### Article List (Sidebar + Content)
+### Article List (Flat List + Reader Pane)
 
-- Desktop: left sidebar with category tree + right content area
-- Mobile: category selector dropdown + article list, drill into article
-- Sidebar shows categories (collapsible) with article titles nested under each
-- Active article highlighted in sidebar
-- Search bar at top of sidebar: searches title + body across all articles
+- Desktop: left panel with flat searchable article list + right reader pane showing selected article
+- Mobile: article list view, tap article to navigate to reader view
+- Article list shows article titles with category badge, sorted by category then sort_order
+- Active article highlighted in list
+- Search bar at top of list: searches title + body across all articles
+- Category filter dropdown above article list to narrow by category
 
 ### Article Viewer
 

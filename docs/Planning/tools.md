@@ -25,13 +25,17 @@ A growing utility hub for guild members. Designed to expand over time with small
 
 - Visual editor for `title_html` (the styled member title)
 - Text input box with live preview
-- Checkbox toggles for styles: bold, italic, underline
-- Full color picker widget (Chrome-style):
+- **Typography controls:**
+  - Bold, italic, underline toggles
+  - Font size selector
+  - Text alignment options
+- **Full color picker widget (Chrome-style):**
   - HSL color area (saturation/lightness square + hue slider)
   - Hex code input field for precise color entry
   - Opacity slider (alpha channel)
   - 12 preset color swatches for quick selection (common guild title colors)
   - Recent colors row (last 5 used, stored in localStorage)
+  - Gradient color support for multi-color titles
 - Output: sanitized HTML string (same allowlist as `title_html` in Global.md)
 - "Copy HTML" button → copies raw HTML string to clipboard
 - "Copy example" button with pre-made examples

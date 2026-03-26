@@ -18,10 +18,9 @@ Community screenshot and video clip gallery. Members upload freely; Admin/Mod ca
 - Infinite scroll pagination (load 20 items per batch)
 - Sort: newest first (default), oldest first
 
-### Upload (Members)
+### Upload (Members only)
 
-- "Upload" button (top-right, visible to logged-in members)
-- **External visitors:** Upload button is visible but disabled with tooltip "Log in to upload"
+- "Upload" button (top-right, visible only to logged-in members — hidden for External visitors)
 - Upload modal:
   - Drag-drop zone or file picker
   - Max 20 images per upload batch

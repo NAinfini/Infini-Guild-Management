@@ -14,8 +14,8 @@ Quick "what's happening" overview on load. Two-column desktop layout; single-col
 
 | Left Column | Right Column |
 |-------------|-------------|
-| Upcoming Events (next 7 days, 3 cards) | My Signups (8-day calendar strip) |
-| Last Guild War (stats + MVPs) | Notifications Card |
+| Upcoming Events (next 7 days, 5 list rows) | My Signups (tooltip bar strip) |
+| Last Guild War (carousel over recent 4 wars) | Notifications Card |
 | Active / Total Members count | - |
 
 ### Mobile
@@ -27,17 +27,16 @@ Quick "what's happening" overview on load. Two-column desktop layout; single-col
 ### Upcoming Events Card
 
 - **Window:** next 7 days
-- **Count:** latest 3 upcoming items across all event types
-- **Pinned/Featured strip:** if any event is pinned (Admin/Mod controlled), show a slim "Featured" strip above the 3 cards
+- **Count:** latest 5 upcoming items across all event types, displayed as compact list rows
+- **Pinned/Featured strip:** if any event is pinned (Admin/Mod controlled), show a slim "Featured" strip above the list
 
-#### Each Event Card Shows
+#### Each Event Row Shows
 
 - Date badge: month (short uppercase) + day number
 - Event type chip with icon + start time (HH:MM)
-- Title (1 line) + short description (1 line clamp)
+- Title (1 line)
 - First 5 participant avatars with username tooltip
 - `+N` text showing remaining participants (display only, not clickable)
-- Capacity ring progress: `current/max` or `∞`
 - Arrow button to navigate to event detail page
 
 #### Dashboard Card Behavior
@@ -46,15 +45,14 @@ Quick "what's happening" overview on load. Two-column desktop layout; single-col
 - All mutations (join, leave, copy signup) happen on `/events/$id` detail page
 - Click arrow button → navigate to event detail for full actions
 
-### My Signups (8-Day Calendar Strip)
+### My Signups (Tooltip Bar Strip)
 
-- Horizontal 8-day strip: yesterday + today + next 6 days
-- Each day cell: date label (Mon 3/2) + stacked event name pills
-- Event pills: colored by event type, truncated name, click navigates to event detail
-- Today column highlighted with accent border
-- Empty days show subtle dash
-- Compact design — no full event cards, just name pills
+- Compact horizontal bar strip showing events the user has signed up for
+- Each bar shows event title, colored by event type
+- Hover bar shows tooltip with event details (time, type, participant count)
+- Click navigates to event detail
 - Only shows events the current user has signed up for
+- Compact design — bars with tooltips, not full event cards
 
 ### Notifications Card
 
@@ -67,17 +65,17 @@ Quick "what's happening" overview on load. Two-column desktop layout; single-col
 
 ### Last Guild War Card
 
-- Shows the most recently completed war (by `created_at` desc from `war_history`)
-- If multiple wars exist, only the single most recent is shown here
-- Top row: wins/loss + kills (both sides)
-- Secondary row: total credits / towers / base HP / distance (both sides)
-- Highlights: overall top KDA + MVPs (damage / tank / healing)
-- "View history" link navigates to Guild War History with latest war preselected
+- Carousel showing the most recent 4 wars (swipeable/navigable)
+- Each war slide shows:
+  - Top row: wins/loss + kills (both sides)
+  - Secondary row: total credits / towers / base HP / distance (both sides)
+  - Highlights: overall top KDA + MVPs (damage / tank / healing)
+- "View history" link navigates to Guild War History with selected war preselected
 
 ### Active Members Card
 
 - Simple stat: "Active: X / Total: Y" with a small donut or progress ring
-- "Active" = members not soft-deleted and not on vacation
+- "Active" = members not soft-deleted (vacation members still count as active)
 - Click navigates to `/roster`
 
 ## Loading & Empty States

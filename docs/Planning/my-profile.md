@@ -45,11 +45,11 @@ Shows how user appears on Roster:
 
 ## Right Column: Tabs
 
-v1 uses exactly 3 tabs only:
+v1 uses exactly 4 tabs:
 - Profile
+- Media
 - Availability
 - Account
-- No Progression tab in v1 (future expansion only)
 
 ### Tab 1: Profile
 
@@ -67,8 +67,14 @@ Editable fields (member self-service):
     lieshi classes:dark red
 - **title_html** - HTML styled title with tooltip explaining styling, copy example button
 - **bio** - Plain text biography
-- **media** (upload and manage):
-  - **Images**: max 10 images, 5 MB each
+
+Rules:
+- react-hook-form + Save/Cancel
+
+### Tab 2: Media
+
+Editable media fields (member self-service):
+- **Images**: max 10 images, 5 MB each
     - Client-side conversion to WebP before upload
     - Drag/drop reorder
     - Delete option
@@ -116,7 +122,7 @@ const ALLOWED_HOSTS = ['youtube.com', 'youtu.be', 'bilibili.com', 'vimeo.com', '
 Rules:
 - react-hook-form + Save/Cancel
 
-### Tab 2: Availability
+### Tab 3: Availability
 
 - Weekly windows editor (Microsoft Teams-style):
   - Grid by day with addable time blocks
@@ -126,7 +132,7 @@ Rules:
 - Vacation range: start/end date
 - "Active now (estimated)" derived from windows (client calc)
 
-### Tab 3: Account
+### Tab 4: Account
 
 - Change password: current password, new password, confirm
 - Change username: current password required, must be unique, invalidates all sessions (see `Global.md` Username Change section)

@@ -180,13 +180,14 @@ Rules:
 
 @FEATURE: WECHAT_BOT
 
-> **v1 scope:** WeChat is notification-only. No signup/leave from chat (intentional). Members use the portal for event signup.
+> **v1 scope:** WeChat supports both notification delivery and interactive commands. Members can use text commands in the WeChat group to interact with the portal.
 
 ### Setup
 
 - Uses dev kit WeChat adapter (`wechaty`-based runtime)
 - Runtime credentials and puppet settings stored in Bot Runtime secrets
 - Admin configures target room IDs in Admin Console
+- Bot Runtime registers text command handlers for interactive commands
 
 ### Feature 1: Event Notifications
 
@@ -231,6 +232,25 @@ Rules:
 
 未分配: @member7 @member8
 ```
+
+### Feature 4: Interactive Text Commands
+
+Bot recognizes text commands in configured WeChat rooms. Commands are prefixed with `!` or `/`.
+
+| Command | Description | Access |
+|---------|-------------|--------|
+| `!events` / `!活动` | List upcoming events (next 7 days) | All room members |
+| `!signup <event_id>` | Join event by ID | Linked members |
+| `!leave <event_id>` | Leave event by ID | Linked members |
+| `!teams` / `!队伍` | Show current guild war team assignments | All room members |
+| `!roster` / `!名单` | Show member list summary | All room members |
+| `!link <username>` | Start account linking flow | Unlinked members |
+
+Rules:
+- Commands are case-insensitive
+- Bot responds in the same room with formatted text
+- Account linking sends verification code via private message
+- Rate limiting: 1 command per user per 5 seconds
 
 ---
 

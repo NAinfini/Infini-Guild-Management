@@ -5,7 +5,7 @@
 
 ## Summary
 
-Centralized Admin/Moderator operations: member management, invite links, audit logs, bot settings, and system health. 5 tabs: Member Management, Invite Links, Audit Log, Bot Settings, and Status/Health.
+Centralized Admin/Moderator operations: member management, invite links, audit logs, bot settings, role management, and system health. 6 tabs: Member Management, Invite Links, Audit Log, Bot Settings, Roles, and Status/Health.
 
 ## Access
 
@@ -17,12 +17,13 @@ Centralized Admin/Moderator operations: member management, invite links, audit l
 ## Layout
 
 - Uses global app shell: left sidebar + top-right profile dropdown
-- 5 tabs:
+- 6 tabs:
   1. Member Management
   2. Invite Links
   3. Audit Log
   4. Bot Settings
-  5. Status / Health
+  5. Roles
+  6. Status / Health
 
 ---
 
@@ -297,7 +298,29 @@ GET /api/admin/audit-archive/download?month=YYYY-MM
 
 ---
 
-## Tab 5: Status / Health
+## Tab 5: Roles (Admin only)
+
+@FEATURE: ROLES_MANAGEMENT
+
+### Goal
+
+Manage portal roles and their permissions. View current role assignments at a glance.
+
+### UI
+
+- Role list: table showing role name, member count, description
+- Click role to view members with that role
+- Admin can create custom roles (future expansion beyond Member/Moderator/Admin)
+- Role assignment changes audited
+
+### Permissions
+
+- Only Admin can view/edit role settings
+- Moderator: no access to this tab
+
+---
+
+## Tab 6: Status / Health
 
 @FEATURE: STATUS_HEALTH
 

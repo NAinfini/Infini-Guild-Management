@@ -38,6 +38,10 @@ Centralized place for user preferences. The only place for Theme and Localizatio
 - "Fancy effects" toggle:
   - Glows on/off
   - 3D card tilt on/off (roster cards)
+  - fancyEffects preference stored in localStorage
+- "Push notification sound" toggle:
+  - Enable/disable audio feedback for push notifications
+  - pushNotificationSound preference stored in localStorage
 
 ### 2. Language
 

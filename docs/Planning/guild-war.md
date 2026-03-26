@@ -219,9 +219,8 @@ Cache immutable historical data
 Modes define the workflow:
 
 1. **Player** (single member focus; best for “one member across many wars”)
-2. **Compare** (multi-member trend lines + summaries)
-3. **Rankings** (Top N; fastest “who’s best”)
-4. **Teams** (team aggregates using snapshots)
+2. **Rankings** (Top N; fastest “who’s best”)
+3. **Teams** (team aggregates using snapshots)
 
 Default mode: **Player**
 
@@ -244,13 +243,6 @@ Default mode: **Player**
   - username, class
   - participated wars / selected wars count
   - Missing chip: `Missing: N` if incomplete stats exist
-
-**Compare mode**
-- Dense list with checkboxes (username + class + compact preview)
-- Presets: Top Damage / Top Heals / Top Credits / Top Building
-- Select all / Clear / Invert / Select by class
-- Focus player mode:
-  - click member => thicker/brighter line, others fade
 
 **Rankings mode**
 - Optional filters:
@@ -280,15 +272,6 @@ Always includes:
   - moving average (optional)
 - Missing data:
   - gaps/dashed segments, never 0-fill
-
-**Compare mode**
-- Trend chart
-  - series = members
-- Legend controls:
-  - Click = Focus toggle
-  - Alt/Option-click = Hide/Show series
-  - Double click = Solo
-  - Shift-click = Compare pair (pins two)
 
 **Rankings mode**
 - Bar chart Top N (Top 10 default)
@@ -322,12 +305,6 @@ Player mode:
 - Participation count
 - Personal records
 
-Compare mode:
-- Top performer per metric (for selected wars)
-- Variance/consistency indicator
-- Participation differences
-- Missing data warnings
-
 Rankings mode:
 - Top 5 snapshot + participation threshold indicator
 
@@ -341,19 +318,15 @@ Rankings mode:
 #### Key Workflows (explicitly supported)
 
 1) **One member across many wars (Player mode)**
-- Select member → select metric(s) → select wars  
+- Select member → select metric(s) → select wars
 - Output: timeline, best/avg/trend, best war link, missing gaps
 
-2) **Compare members across wars (Compare mode)**
-- Select wars → select members → select metric  
-- Output: trend lines + focus member, aggregates (avg/total/best)
-
-3) **Who’s best (Rankings mode)**
-- Select wars → select metric → Top N  
+2) **Who’s best (Rankings mode)**
+- Select wars → select metric → Top N
 - Output: ranked bars + aggregation + min participation filter
 
-4) **Team comparison (Teams mode)**
-- Select wars → select teams  
+3) **Team comparison (Teams mode)**
+- Select wars → select teams
 - Output: team totals/averages per war
 
 ---
@@ -369,10 +342,8 @@ Rankings mode:
 ---
 
 #### Selection Limits (safety rails)
-- Soft cap: 10 members (Compare Trend) => warning + suggest Rankings
-- Hard cap: 20 members in Compare Trend
-- If cap exceeded:
-  - suggest switch to Rankings
+- Rankings: Top 10 default, max Top 20
+- Teams: max 10 teams in comparison
 
 ---
 

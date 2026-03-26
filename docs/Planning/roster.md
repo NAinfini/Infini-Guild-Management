@@ -35,7 +35,7 @@ Rectangular card with 3D tilt animation. Each card is a `<button>` for accessibi
 **Media Count Badges:**
 - Photo count: blue-tinted pill with image icon + count
 - Video count: purple-tinted pill with video icon + count
-- Status chip: active (green) / inactive (red) / unknown (neutral) / vacation (overrides)
+- Status: avatar dot indicator — active (green dot) / inactive (red dot) / unknown (neutral) / vacation (overrides)
 
 **Avatar Fallback:**
 - If no icon or load error: gradient background with centered circle containing first letter of username
@@ -81,11 +81,11 @@ Full-screen overlay with backdrop blur. Animated entrance (y: 24 → 0, scale 0.
 - Each field: small uppercase tracking label + value below
 - Top-right: Edit button (self or Admin/Mod) + Close (X) button
 
-**Media Gallery (Swiper):**
-- Full-width Swiper carousel (no coverflow, clean slide)
+**Media Gallery (Mantine Carousel):**
+- Full-width Mantine Carousel (clean slide transitions)
 - Supports both photos and video URL embeds in one gallery
 - Zoom support on photos (pinch or double-click, max 2.6x)
-- Navigation: Swiper arrows + swipe on mobile
+- Navigation: Carousel arrows + swipe on mobile
 - Pagination dots when multiple items
 - Video items: show play button overlay; click switches to iframe embed mode
 - Video embeds: YouTube, Bilibili, TikTok (auto-detect and convert to embed URL)

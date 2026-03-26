@@ -46,23 +46,26 @@ Shared TipTap editor component used by both Announcements and Wiki.
 
 ### Announcement List
 
-- Cards in vertical list, newest first
-- Clicking card body opens Announcement Detail modal
+- Split workspace layout: left panel shows announcement list, right panel shows selected announcement detail
+- Cards in vertical list in left panel, newest first
+- Clicking card shows Announcement Detail in right panel (no modal)
+- Mobile: list view with drill-in to detail view
 - External view = same UI, read-only
 - Admin / Moderator only create announcement button
-### Pinned Announcements
-
-- Admin/Mod can pin announcements (no hard cap in v1)
-- No warning/soft-protection when pinned count grows (v1)
-- Pinned ordering is fixed: `pinned_at` descending
-- Pinned cards appear at top with pin icon + subtle "featured" styling
 
 ### Filters
 
 - Default: non-archived announcements only
 - Filter chips: All / Pinned / Archived
+- For Admin/Mod editors: additional filter chips for Draft / Scheduled statuses
 - Archived is NOT loaded by default; fetches from server only when user clicks Archived
 - Search: title + body
+
+### Pinned Announcements
+
+- Admin/Mod can pin announcements (no hard cap in v1)
+- Pinned ordering is fixed: `pinned_at` descending
+- Pinned cards appear at top with pin icon + subtle "featured" styling
 
 ### Local "NEW" Indicators
 
