@@ -1,11 +1,11 @@
 import type { MemberProfile, User } from "@guild/shared";
-import { DepthButton } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@infini-dev-kit/react";
 import { Group, Modal, Stack, Text } from "@mantine/core";
 import { IconPencil } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import DOMPurify from "dompurify";
-import { MediaGallery } from "@infini-dev-kit/frontend/components";
+import { MediaGallery } from "@portal/components/shared/MediaGallery";
 import styles from "./ProfileModal.module.css";
 
 type ProfileModalProps = {

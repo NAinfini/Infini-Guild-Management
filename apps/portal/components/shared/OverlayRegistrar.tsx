@@ -1,4 +1,4 @@
-import { useBridge } from "@infini-dev-kit/frontend/provider";
+import { useBridge } from "../../providers/ThemeProvider";
 import { notifications } from "@mantine/notifications";
 import { useEffect } from "react";
 import { setPortalOverlayService } from "../../overlays";

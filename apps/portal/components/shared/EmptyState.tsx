@@ -1,4 +1,4 @@
-import { Result } from "@infini-dev-kit/frontend/components";
+import { Result } from "@infini-dev-kit/react";
 import type { ReactNode } from "react";
 
 type EmptyStateProps = {
