@@ -1,0 +1,44 @@
+import { useBridge } from "../../providers/ThemeProvider";
+import { notifications } from "@mantine/notifications";
+import { useEffect } from "react";
+import { setPortalOverlayService } from "../../overlays";
+
+function mapToastColor(status: "info" | "success" | "warning" | "error"): string {
+  if (status === "success") {
+    return "infini-success";
+  }
+  if (status === "warning") {
+    return "infini-warning";
+  }
+  if (status === "error") {
+    return "infini-danger";
+  }
+  return "infini-primary";
+}
+
+export function OverlayRegistrar() {
+  const bridge = useBridge();
+
+  useEffect(() => {
+    setPortalOverlayService(bridge.overlays);
+
+    const unregister = bridge.overlays.register({
+      toast: (payload) => {
+        notifications.show({
+          title: payload.title,
+          message: payload.description,
+          color: mapToastColor(payload.status),
+          withBorder: true,
+          autoClose: payload.status === "error" ? false : 4000,
+        });
+      },
+    });
+
+    return () => {
+      unregister();
+      setPortalOverlayService(null);
+    };
+  }, [bridge]);
+
+  return null;
+}

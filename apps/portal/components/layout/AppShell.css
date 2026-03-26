@@ -1,0 +1,621 @@
+.app-shell-root {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.app-login-layout,
+.app-login-content,
+.app-login-panel {
+  width: 100%;
+  min-height: 100vh;
+}
+
+.app-sider {
+  border-right: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 94%, transparent);
+  box-shadow: var(--infini-depth-dropdown, none);
+  overflow: hidden;
+  transition: width var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+  display: flex;
+  flex-direction: column;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 72px;
+  padding: 14px 14px 10px;
+}
+
+.app-brand-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.app-brand-mark {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 16%, transparent);
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 14%, var(--infini-color-surface, #ffffff));
+  color: var(--infini-color-primary, #3b82f6);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.app-brand-expand-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 90%, var(--infini-color-surface, #ffffff));
+  color: #fff;
+  opacity: 0;
+  transition: opacity var(--infini-motion-hover, 150ms) var(--infini-motion-easing, ease);
+  cursor: pointer;
+  font-size: 14px;
+  border-radius: 12px;
+}
+
+.app-brand-mark--has-expand {
+  cursor: pointer;
+}
+
+.app-brand-mark--has-expand:hover .app-brand-expand-overlay {
+  opacity: 1;
+}
+
+.app-brand-title-wrap {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.app-brand-title {
+  margin: 0;
+  font-size: var(--infini-text-lg, 16px);
+  white-space: nowrap;
+}
+
+.app-sider-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.app-sider-control-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 84%, transparent);
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 72%, transparent);
+}
+
+.app-sider-control-btn:hover {
+  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 40%, transparent);
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, var(--infini-color-surface, #ffffff));
+  color: var(--infini-color-text, #111827);
+}
+
+.app-viewing-as {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+  flex-shrink: 0;
+}
+
+.app-viewing-as--compact {
+  padding: 8px;
+  align-items: center;
+}
+
+.app-viewing-as-label {
+  font-size: var(--infini-text-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.app-sider-menu {
+  flex: 1;
+}
+
+.app-nav-section-label {
+  display: inline-block;
+  margin-bottom: 2px;
+  padding-left: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 62%, transparent);
+}
+
+.app-nav-item {
+  position: relative;
+  width: 100%;
+  margin: 0;
+  padding: 10px 10px;
+  border-radius: 10px;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 90%, transparent);
+  transition:
+    transform var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease),
+    background var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease),
+    color var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease);
+}
+
+.app-nav-item:hover {
+  transform: translateX(2px);
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, transparent);
+}
+
+.app-nav-item--active {
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 14%, transparent);
+  color: var(--infini-color-primary, #3b82f6);
+}
+
+.app-nav-item--active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--infini-color-primary, #3b82f6);
+}
+
+.app-nav-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.app-nav-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.app-sider--collapsed .app-brand {
+  padding-inline: 8px;
+}
+
+.app-header {
+  height: var(--header-height, 64px);
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 94%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding-inline: 16px;
+}
+
+.app-header__left {
+  min-width: 0;
+}
+
+.app-header__center {
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.app-header__right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.app-header-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.app-header-icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 84%, transparent);
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 78%, transparent);
+}
+
+.app-header-icon-btn:hover {
+  color: var(--infini-color-text, #111827);
+  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 40%, transparent);
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, var(--infini-color-surface, #ffffff));
+}
+
+.app-header-notifications-popover {
+  padding: 0;
+  overflow: visible;
+}
+
+.app-header-notifications-overlay {
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(520px, calc(100vh - 120px));
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px;
+}
+
+.app-header-notifications-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.app-header-notification-action {
+  padding-inline: 6px;
+}
+
+.app-header-notifications-list {
+  margin-top: 6px;
+}
+
+.app-header-notification-item {
+  width: 100%;
+  text-align: left;
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.app-header-notification-item--unread {
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 8%, transparent);
+}
+
+.app-header-notification-item:hover {
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 8%, transparent);
+}
+
+.app-header-notification-row {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.app-header-notification-row .mantine-Stack-root {
+  min-width: 0;
+}
+
+.app-header-notification-row .mantine-Text-root {
+  word-break: break-word;
+}
+
+.app-header-notification-time {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.app-header__page-title {
+  display: inline-block;
+  font-size: var(--infini-text-lg, 16px);
+  line-height: 1.2;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-profile-trigger {
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 86%, transparent);
+  padding: 4px 10px 4px 4px;
+  min-height: 40px;
+  cursor: pointer;
+}
+
+.app-profile-trigger:hover {
+  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 42%, transparent);
+}
+
+.app-profile-trigger--compact {
+  min-height: 40px;
+}
+
+.app-profile-avatar {
+  background: color-mix(in srgb, var(--infini-color-warning, #f59e0b) 80%, black 20%);
+  color: #ffffff;
+}
+
+.app-profile-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  min-width: 0;
+  text-align: left;
+}
+
+.app-profile-name {
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-profile-role {
+  font-size: var(--infini-text-xs, 11px);
+  text-transform: capitalize;
+}
+
+.app-profile-chevron {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 62%, transparent);
+}
+
+.app-content {
+  overflow-y: auto;
+  /* Override Mantine's min-height so overflow-y scrolls instead of growing */
+  min-height: 0 !important;
+  box-sizing: border-box;
+  height: 100vh;
+  height: 100dvh;
+  scrollbar-width: thin;
+  scrollbar-color: var(--infini-color-primary, #6b7280) transparent;
+}
+
+.app-content::-webkit-scrollbar {
+  width: var(--portal-scrollbar-size, 10px);
+}
+
+.app-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-content::-webkit-scrollbar-thumb {
+  background: var(--infini-color-primary, #6b7280);
+  border-radius: var(--infini-radius, 8px);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.app-content::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--infini-color-primary, #6b7280) 82%, #ffffff 18%);
+  background-clip: padding-box;
+}
+
+.app-content-mobile {
+  padding-bottom: calc(var(--bottom-nav-height, 64px) + 20px + env(safe-area-inset-bottom));
+}
+
+.app-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.app-banner {
+  margin-bottom: 0;
+}
+
+.app-route-container {
+  min-width: 0;
+  width: 100%;
+}
+
+@keyframes route-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(min(40vw, 400px));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.app-route-slide-in {
+  animation: route-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── View Transition API: old page slides out, new page slides in ── */
+
+@keyframes vt-slide-out {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(min(-30vw, -300px)) scale(0.96);
+  }
+}
+
+@keyframes vt-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(min(40vw, 400px));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+::view-transition-old(root) {
+  animation: vt-slide-out 0.3s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+::view-transition-new(root) {
+  animation: vt-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Exclude sidebar, header, and bottom nav from the view transition */
+.app-sider {
+  view-transition-name: sidebar;
+}
+
+.app-header {
+  view-transition-name: header;
+}
+
+.app-bottom-nav {
+  view-transition-name: bottom-nav;
+}
+
+/* Keep excluded elements static (no animation) */
+::view-transition-old(sidebar),
+::view-transition-new(sidebar),
+::view-transition-old(header),
+::view-transition-new(header),
+::view-transition-old(bottom-nav),
+::view-transition-new(bottom-nav) {
+  animation: none;
+}
+
+
+
+.app-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  border-top: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 94%, transparent);
+  backdrop-filter: blur(16px);
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+}
+
+.bottom-nav-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.bottom-nav-link {
+  min-height: 52px;
+  padding: 6px 4px 4px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 68%, transparent);
+  text-decoration: none;
+  position: relative;
+  transition: color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease), background var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+}
+
+.bottom-nav-link:hover {
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 8%, transparent);
+  color: var(--infini-color-text, #111827);
+}
+
+.bottom-nav-link--active {
+  color: var(--infini-color-primary, #3b82f6);
+}
+
+.bottom-nav-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.bottom-nav-label {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bottom-nav-indicator {
+  width: 16px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--infini-color-primary, #3b82f6);
+  opacity: 0;
+  transform: scaleX(0.5);
+  transition: opacity var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease), transform var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+}
+
+.bottom-nav-link--active .bottom-nav-indicator {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.bottom-nav-more-button {
+  min-height: 52px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.bottom-nav-more-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+@media (max-width: 767px) {
+  .app-header {
+    height: var(--header-height-mobile, 56px);
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .app-header__center {
+    display: none;
+  }
+
+  .app-header__right {
+    gap: 6px;
+  }
+
+  .app-header-tools {
+    gap: 6px;
+  }
+
+  .app-header-icon-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .app-header-notifications-overlay {
+    width: min(340px, calc(100vw - 24px));
+    max-height: min(420px, calc(100vh - 100px));
+    padding: 8px;
+  }
+
+  .app-profile-meta,
+  .app-profile-chevron {
+    display: none;
+  }
+
+  .app-profile-trigger {
+    padding-right: 4px;
+  }
+}
+

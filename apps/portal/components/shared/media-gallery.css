@@ -1,0 +1,122 @@
+.infini-media-gallery-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.infini-media-gallery-slide {
+  width: 100%;
+  height: min(62vh, 520px);
+  border-radius: 12px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 88%, var(--infini-color-text, #111827) 6%);
+}
+
+.infini-media-gallery-slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.infini-media-gallery-video-slide {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.infini-media-gallery-native-video {
+  width: 100%;
+  height: calc(100% - 72px);
+  border-radius: 8px;
+  background: #000000;
+}
+
+.infini-media-gallery-video-controls {
+  width: 100%;
+}
+
+.infini-media-gallery-video-progress {
+  width: 100%;
+}
+
+.infini-media-gallery-audio-section {
+  width: 100%;
+}
+
+.infini-media-gallery-audio-controls {
+  width: 100%;
+}
+
+.infini-media-gallery-audio-progress {
+  width: 100%;
+}
+
+.infini-media-gallery-thumbnails-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.infini-media-gallery-thumbnails {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.infini-media-gallery-thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 15%, transparent);
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 92%, transparent);
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 58%, transparent);
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.infini-media-gallery-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.infini-media-gallery-thumb-active {
+  border-color: var(--infini-color-primary, #3b82f6);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 40%, transparent);
+}
+
+@media (max-width: 767px) {
+  .infini-media-gallery-slide {
+    height: min(50vh, 360px);
+  }
+
+  .infini-media-gallery-video-slide {
+    padding: 8px;
+  }
+
+  .infini-media-gallery-native-video {
+    height: calc(100% - 84px);
+  }
+
+  .infini-media-gallery-video-controls {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .infini-media-gallery-thumbnails-header {
+    flex-wrap: wrap;
+  }
+
+  .infini-media-gallery-thumb {
+    width: 56px;
+    height: 56px;
+  }
+}

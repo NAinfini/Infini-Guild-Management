@@ -1,0 +1,173 @@
+import react from "@vitejs/plugin-react";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { defineConfig, loadEnv } from "vite";
+
+const portalDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(portalDir, "..", "..");
+const githubRoot = resolve(repoRoot, "..");
+const devKitRoot = resolve(githubRoot, "Infini-Dev-Kit");
+
+function normalizeTarget(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function toWsTarget(httpTarget: string): string {
+  if (httpTarget.startsWith("https://")) {
+    return `wss://${httpTarget.slice("https://".length)}`;
+  }
+  if (httpTarget.startsWith("http://")) {
+    return `ws://${httpTarget.slice("http://".length)}`;
+  }
+  return httpTarget;
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, portalDir, "");
+  const workerHttpTarget = normalizeTarget(
+    env.VITE_WORKER_API_ORIGIN ?? process.env.VITE_WORKER_API_ORIGIN ?? "http://127.0.0.1:8787",
+  );
+  const workerWsTarget = toWsTarget(workerHttpTarget);
+
+  return {
+    root: portalDir,
+    plugins: [react()],
+    build: {
+      chunkSizeWarningLimit: 550,
+      rollupOptions: {
+        output: {
+          experimentalMinChunkSize: 8_000,
+          manualChunks(id) {
+            const normalizedId = id.replace(/\\/g, "/");
+
+            if (normalizedId.includes("/Infini-Dev-Kit/packages/")) {
+              return "devkit";
+            }
+            if (normalizedId.includes("/apps/portal/i18n/")) {
+              return "portal-i18n";
+            }
+            if (normalizedId.includes("/apps/shared/schema")) {
+              return "shared-schema";
+            }
+            if (normalizedId.includes("/apps/portal/api/schema")) {
+              return "portal-schema";
+            }
+            if (!normalizedId.includes("/node_modules/")) {
+              return undefined;
+            }
+            if (normalizedId.includes("/node_modules/react/") || normalizedId.includes("/node_modules/react-dom/")) {
+              return "react-core";
+            }
+            if (normalizedId.includes("/node_modules/@mantine/")) {
+              return "mantine";
+            }
+            if (normalizedId.includes("/node_modules/@tanstack/")) {
+              return "tanstack";
+            }
+            if (normalizedId.includes("/node_modules/i18next/")
+              || normalizedId.includes("/node_modules/react-i18next/")
+              || normalizedId.includes("/node_modules/i18next-browser-languagedetector/")
+            ) {
+              return "i18n";
+            }
+            if (normalizedId.includes("/node_modules/zod/")) {
+              return "zod";
+            }
+            if (normalizedId.includes("/node_modules/@tabler/icons-react/")) {
+              return "tabler-icons";
+            }
+            if (normalizedId.includes("/node_modules/@tiptap/") || normalizedId.includes("/node_modules/prosemirror")) {
+              return "tiptap";
+            }
+            if (normalizedId.includes("/node_modules/echarts-for-react/")) {
+              return "echarts-react";
+            }
+            if (normalizedId.includes("/node_modules/echarts/")) {
+              return "echarts-core";
+            }
+            if (normalizedId.includes("/node_modules/@dnd-kit/")) {
+              return "dnd-kit";
+            }
+            if (normalizedId.includes("/node_modules/swiper/")) {
+              return "swiper";
+            }
+            if (normalizedId.includes("/node_modules/date-fns/")) {
+              return "date-fns";
+            }
+            return undefined;
+          },
+        },
+      },
+    },
+    resolve: {
+      dedupe: ["@mantine/core", "@mantine/hooks", "@mantine/modals", "react", "react-dom"],
+      alias: [
+        // Dev-Kit source aliases
+        {
+          find: "@infini-dev-kit/react",
+          replacement: resolve(devKitRoot, "packages/react"),
+        },
+        {
+          find: "@infini-dev-kit/theme-core",
+          replacement: resolve(devKitRoot, "packages/theme-core"),
+        },
+        {
+          find: "@infini-dev-kit/adapter-mantine",
+          replacement: resolve(devKitRoot, "packages/adapter-mantine"),
+        },
+        {
+          find: "@infini-dev-kit/utils",
+          replacement: resolve(devKitRoot, "packages/utils"),
+        },
+        {
+          find: "@infini-dev-kit/api-client",
+          replacement: resolve(devKitRoot, "packages/api-client"),
+        },
+        // Force Dev-Kit peer deps to resolve from Guild-Management node_modules
+        { find: "react", replacement: resolve(repoRoot, "node_modules/react") },
+        { find: "react-dom", replacement: resolve(repoRoot, "node_modules/react-dom") },
+        { find: "@mantine/core", replacement: resolve(repoRoot, "node_modules/@mantine/core") },
+        { find: "@mantine/hooks", replacement: resolve(repoRoot, "node_modules/@mantine/hooks") },
+        { find: "@mantine/modals", replacement: resolve(repoRoot, "node_modules/@mantine/modals") },
+        { find: "@mantine/notifications", replacement: resolve(repoRoot, "node_modules/@mantine/notifications") },
+        { find: "@mantine/dates", replacement: resolve(repoRoot, "node_modules/@mantine/dates") },
+        { find: "@mantine/carousel", replacement: resolve(repoRoot, "node_modules/@mantine/carousel") },
+        { find: "motion", replacement: resolve(repoRoot, "node_modules/motion") },
+        { find: /^@tanstack\/react-table$/, replacement: resolve(repoRoot, "node_modules/@tanstack/react-table") },
+        { find: /^@tiptap\/(.*)$/, replacement: resolve(repoRoot, "node_modules/@tiptap/$1") },
+        { find: /^@tabler\/icons-react$/, replacement: resolve(repoRoot, "node_modules/@tabler/icons-react") },
+        { find: "lowlight", replacement: resolve(repoRoot, "node_modules/lowlight") },
+        { find: "clsx", replacement: resolve(repoRoot, "node_modules/clsx") },
+        // Portal internal aliases
+        {
+          find: /^@guild\/shared$/,
+          replacement: resolve(repoRoot, "apps/shared/index.ts"),
+        },
+        {
+          find: /^@guild\/shared\/(.*)$/,
+          replacement: resolve(repoRoot, "apps/shared/$1"),
+        },
+        {
+          find: /^@portal$/,
+          replacement: resolve(repoRoot, "apps/portal"),
+        },
+        {
+          find: /^@portal\/(.*)$/,
+          replacement: resolve(repoRoot, "apps/portal/$1"),
+        },
+      ],
+    },
+    server: {
+      proxy: {
+        "^/api/(?!.*\\.[^/]+(?:\\?.*)?$).*": {
+          target: workerHttpTarget,
+          changeOrigin: true,
+        },
+        "/ws": {
+          target: workerWsTarget,
+          ws: true,
+        },
+      },
+    },
+  };
+});

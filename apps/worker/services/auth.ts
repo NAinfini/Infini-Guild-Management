@@ -1,0 +1,342 @@
+import {
+  PERMISSIONS,
+  isBuiltinRole,
+  roleFromLevel,
+  type BuiltinRole,
+  type Permission,
+  type RoleId,
+} from "@guild/shared";
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
+import type { Context } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { nanoid } from "nanoid";
+import { rolePermissions, roles, sessions, users } from "../db/schema";
+import type { Bindings } from "../index";
+
+const RESOLVED_SESSION_PROMISE = Symbol("resolved_session_promise");
+
+const MODERATOR_DEFAULTS: ReadonlySet<Permission> = new Set<Permission>([
+  "admin.users.view",
+  "admin.users.edit",
+  "admin.invite.view",
+  "admin.audit.view",
+  "admin.bot.view",
+  "admin.status.view",
+  "admin.analytics.view",
+  "admin.roles.view",
+  "guildwar.manage",
+  "guildwar.history.edit",
+  "events.manage",
+  "announcements.manage",
+  "gallery.upload",
+  "gallery.manage",
+  "wiki.edit",
+]);
+const MEMBER_DEFAULTS: ReadonlySet<Permission> = new Set<Permission>(["gallery.upload"]);
+
+type ContextWithSessionCache = Context & {
+  [RESOLVED_SESSION_PROMISE]?: Promise<ResolvedSession | null>;
+};
+
+export type SessionUserRole = BuiltinRole;
+export type SessionUser = {
+  id: string;
+  roleId: RoleId;
+  roleLevel: number;
+  role: SessionUserRole;
+  permissions: ReadonlySet<Permission>;
+};
+
+type ResolvedSession = {
+  sessionId: string;
+  expiresAt: string;
+  user: SessionUser;
+};
+
+const PBKDF2_ITERATIONS = 210_000;
+const PBKDF2_KEY_LENGTH_BITS = 256;
+const PBKDF2_SALT_BYTES = 16;
+const PBKDF2_HASH = "SHA-256";
+
+const THIRTY_DAYS_IN_SECONDS = 30 * 24 * 60 * 60;
+const SESSION_TTL_MS = THIRTY_DAYS_IN_SECONDS * 1000;
+const MAX_ABSOLUTE_SESSION_MS = 90 * 24 * 60 * 60 * 1000;
+
+export const SESSION_COOKIE_NAME = "ig_session";
+export const SESSION_MODE_COOKIE_NAME = "ig_session_mode";
+
+const textEncoder = new TextEncoder();
+
+function getDb(c: Context) {
+  const env = c.env as Bindings;
+  return drizzle(env.DB);
+}
+
+function isSecureRequest(c: Context): boolean {
+  return new URL(c.req.url).protocol === "https:";
+}
+
+function buildPermissionSet(
+  roleId: RoleId,
+  permissionRows: Array<{ permission: string; granted: boolean }>,
+): ReadonlySet<Permission> {
+  const perms = new Set<Permission>();
+
+  if (roleId === "admin") {
+    for (const p of PERMISSIONS) perms.add(p);
+    return perms;
+  }
+
+  const defaults = roleId === "moderator" ? MODERATOR_DEFAULTS : roleId === "member" ? MEMBER_DEFAULTS : null;
+  if (defaults) {
+    for (const p of defaults) perms.add(p);
+  }
+
+  for (const row of permissionRows) {
+    if (!(PERMISSIONS as readonly string[]).includes(row.permission)) continue;
+    const p = row.permission as Permission;
+    if (row.granted) perms.add(p);
+    else perms.delete(p);
+  }
+
+  return perms;
+}
+
+function resolveCompatibilityRole(roleId: RoleId, roleLevel: number | null): SessionUserRole {
+  if (isBuiltinRole(roleId)) return roleId;
+  return roleFromLevel(roleLevel ?? 1);
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+async function timingSafeEqual(a: Uint8Array, b: Uint8Array): Promise<boolean> {
+  const hashA = new Uint8Array(await crypto.subtle.digest("SHA-256", a as unknown as ArrayBuffer));
+  const hashB = new Uint8Array(await crypto.subtle.digest("SHA-256", b as unknown as ArrayBuffer));
+  let diff = 0;
+  for (let index = 0; index < hashA.length; index += 1) {
+    diff |= hashA[index] ^ hashB[index];
+  }
+  return diff === 0;
+}
+
+async function derivePasswordHash(password: string, saltBytes: Uint8Array): Promise<Uint8Array> {
+  const keyMaterial = await crypto.subtle.importKey("raw", textEncoder.encode(password), "PBKDF2", false, [
+    "deriveBits",
+  ]);
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: saltBytes as unknown as BufferSource,
+      iterations: PBKDF2_ITERATIONS,
+      hash: PBKDF2_HASH,
+    },
+    keyMaterial,
+    PBKDF2_KEY_LENGTH_BITS,
+  );
+
+  return new Uint8Array(bits);
+}
+
+function clearSessionCookie(c: Context): void {
+  deleteCookie(c, SESSION_COOKIE_NAME, {
+    path: "/",
+    httpOnly: true,
+    sameSite: "Lax",
+    secure: isSecureRequest(c),
+  });
+  deleteCookie(c, SESSION_MODE_COOKIE_NAME, {
+    path: "/",
+    httpOnly: true,
+    sameSite: "Lax",
+    secure: isSecureRequest(c),
+  });
+}
+
+function setSessionCookies(
+  c: Context,
+  sessionId: string,
+  options: { expiresAt: string; stayLoggedIn: boolean },
+): void {
+  const cookieOptions = {
+    httpOnly: true,
+    secure: isSecureRequest(c),
+    sameSite: "Lax" as const,
+    path: "/",
+  };
+
+  const persistentCookie = {
+    ...cookieOptions,
+    maxAge: THIRTY_DAYS_IN_SECONDS,
+    expires: new Date(options.expiresAt),
+  };
+
+  if (options.stayLoggedIn) {
+    setCookie(c, SESSION_COOKIE_NAME, sessionId, persistentCookie);
+    setCookie(c, SESSION_MODE_COOKIE_NAME, "1", persistentCookie);
+    return;
+  }
+
+  setCookie(c, SESSION_COOKIE_NAME, sessionId, cookieOptions);
+  setCookie(c, SESSION_MODE_COOKIE_NAME, "0", cookieOptions);
+}
+
+export async function createPasswordHash(password: string): Promise<{ passwordHash: string; salt: string }> {
+  const saltBytes = crypto.getRandomValues(new Uint8Array(PBKDF2_SALT_BYTES));
+  const hashBytes = await derivePasswordHash(password, saltBytes);
+
+  return {
+    passwordHash: bytesToBase64(hashBytes),
+    salt: bytesToBase64(saltBytes),
+  };
+}
+
+export async function verifyPassword(password: string, salt: string, passwordHash: string): Promise<boolean> {
+  try {
+    const saltBytes = base64ToBytes(salt);
+    const expectedHashBytes = base64ToBytes(passwordHash);
+    const actualHashBytes = await derivePasswordHash(password, saltBytes);
+    return await timingSafeEqual(actualHashBytes, expectedHashBytes);
+  } catch {
+    return false;
+  }
+}
+
+export async function createSession(
+  c: Context,
+  userId: string,
+  options: { stayLoggedIn?: boolean } = {},
+): Promise<{ sessionId: string; expiresAt: string }> {
+  const db = getDb(c);
+  const sessionId = nanoid();
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
+  const stayLoggedIn = options.stayLoggedIn === true;
+
+  await db.insert(sessions).values({
+    id: sessionId,
+    userId,
+    expiresAt,
+  });
+
+  setSessionCookies(c, sessionId, {
+    expiresAt,
+    stayLoggedIn,
+  });
+
+  return { sessionId, expiresAt };
+}
+
+export async function resolveSession(c: Context): Promise<ResolvedSession | null> {
+  const carrier = c as ContextWithSessionCache;
+  carrier[RESOLVED_SESSION_PROMISE] ??= resolveSessionUncached(c);
+  return await carrier[RESOLVED_SESSION_PROMISE]!;
+}
+
+async function resolveSessionUncached(c: Context): Promise<ResolvedSession | null> {
+  const sessionId = getCookie(c, SESSION_COOKIE_NAME);
+  if (!sessionId) {
+    return null;
+  }
+
+  const db = getDb(c);
+  const row = (
+    await db
+      .select({
+        sessionId: sessions.id,
+        expiresAt: sessions.expiresAt,
+        sessionCreatedAt: sessions.createdAt,
+        userId: users.id,
+        roleId: users.role,
+        roleLevel: roles.level,
+        isActive: users.isActive,
+        deletedAt: users.deletedAt,
+      })
+      .from(sessions)
+      .innerJoin(users, eq(sessions.userId, users.id))
+      .leftJoin(roles, eq(users.role, roles.id))
+      .where(eq(sessions.id, sessionId))
+      .limit(1)
+  )[0];
+
+  if (!row) {
+    clearSessionCookie(c);
+    return null;
+  }
+
+  const expiresAtMs = Date.parse(row.expiresAt);
+  const createdAtMs = Date.parse(row.sessionCreatedAt);
+  const isExpired = Number.isNaN(expiresAtMs) || expiresAtMs <= Date.now();
+  const isAbsoluteExpired = !Number.isNaN(createdAtMs) && Date.now() - createdAtMs > MAX_ABSOLUTE_SESSION_MS;
+  const isUserInvalid = !row.isActive || row.deletedAt !== null;
+
+  if (isExpired || isAbsoluteExpired || isUserInvalid) {
+    await db.delete(sessions).where(eq(sessions.id, row.sessionId));
+    clearSessionCookie(c);
+    return null;
+  }
+
+  const permissionRows = await db
+    .select({
+      permission: rolePermissions.permission,
+      granted: rolePermissions.granted,
+    })
+    .from(rolePermissions)
+    .where(eq(rolePermissions.roleId, row.roleId));
+
+  const user: SessionUser = {
+    id: row.userId,
+    roleId: row.roleId,
+    roleLevel: row.roleLevel ?? 1,
+    role: resolveCompatibilityRole(row.roleId, row.roleLevel),
+    permissions: buildPermissionSet(row.roleId, permissionRows),
+  };
+
+  const stayLoggedIn = getCookie(c, SESSION_MODE_COOKIE_NAME) === "1";
+  const remainingMs = expiresAtMs - Date.now();
+  const renewalThresholdMs = SESSION_TTL_MS * 0.5;
+
+  if (remainingMs < renewalThresholdMs) {
+    const nextExpiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
+    await db.update(sessions).set({ expiresAt: nextExpiresAt }).where(eq(sessions.id, row.sessionId));
+    setSessionCookies(c, row.sessionId, {
+      expiresAt: nextExpiresAt,
+      stayLoggedIn,
+    });
+
+    return {
+      sessionId: row.sessionId,
+      expiresAt: nextExpiresAt,
+      user,
+    };
+  }
+
+  return {
+    sessionId: row.sessionId,
+    expiresAt: row.expiresAt,
+    user,
+  };
+}
+
+export async function destroySession(c: Context, sessionId?: string): Promise<void> {
+  const targetSessionId = sessionId ?? getCookie(c, SESSION_COOKIE_NAME);
+  if (targetSessionId) {
+    const db = getDb(c);
+    await db.delete(sessions).where(eq(sessions.id, targetSessionId));
+  }
+  clearSessionCookie(c);
+}

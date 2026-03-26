@@ -1,0 +1,17 @@
+.events-filter-card {
+  position: sticky;
+  top: 8px;
+  z-index: var(--z-sticky);
+  margin-bottom: 12px;
+  overflow: visible !important;
+}
+
+.events-filter-type {
+  width: 200px;
+}
+
+@media (max-width: 767px) {
+  .events-filter-type {
+    width: 100%;
+  }
+}

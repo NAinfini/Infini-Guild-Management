@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" fill="none">
+  <rect width="1280" height="720" fill="#020617"/>
+  <rect x="68" y="78" width="1144" height="564" rx="28" fill="#0F172A" stroke="#38BDF8" stroke-width="8"/>
+  <path d="M110 520 290 360l138 92 174-174 154 120 178-214 236 336H110Z" fill="#22C55E" opacity=".72"/>
+  <circle cx="1028" cy="196" r="54" fill="#F8FAFC" opacity=".95"/>
+  <text x="120" y="168" fill="#E2E8F0" font-family="Segoe UI, Arial, sans-serif" font-size="42">Raid Night Snapshot</text>
+  <text x="120" y="220" fill="#94A3B8" font-family="Segoe UI, Arial, sans-serif" font-size="26">Mock local media for gallery and roster previews</text>
+</svg>

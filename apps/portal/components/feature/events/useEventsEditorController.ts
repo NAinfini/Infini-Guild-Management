@@ -1,0 +1,272 @@
+import { EVENT_TYPES, type Event } from "@guild/shared";
+import { modals } from "@mantine/modals";
+import { useCallback, useMemo, useState } from "react";
+import { useDisclosure } from "@mantine/hooks";
+import { useTranslation } from "react-i18next";
+import { useBeforeUnloadPrompt } from "../../../hooks/useBeforeUnloadPrompt";
+
+type EditorSnapshot = {
+  mode: "create" | "edit";
+  editingEventId: string | null;
+  type: string;
+  title: string;
+  description: string;
+  startAt: string;
+  endAt: string;
+  capacity: string;
+  pinned: boolean;
+  signupLocked: boolean;
+  attachmentSnapshot: string;
+};
+
+function buildEditorSnapshot(input: EditorSnapshot): string {
+  return JSON.stringify({
+    ...input,
+    title: input.title.trim(),
+    description: input.description.trim(),
+    capacity: input.capacity.trim(),
+  });
+}
+
+function toLocalInput(iso: string | null): string {
+  if (!iso) return "";
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const shifted = new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60_000);
+  return shifted.toISOString().slice(0, 16);
+}
+
+function toIso(input: string): string | undefined {
+  if (!input.trim()) return undefined;
+  const parsed = new Date(input);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed.toISOString();
+}
+
+type UseEventsEditorControllerParams = {
+  sortedEvents: Event[];
+  attachmentSnapshot: string;
+};
+
+export function useEventsEditorController({ sortedEvents, attachmentSnapshot }: UseEventsEditorControllerParams) {
+  const { t } = useTranslation("events");
+  const [editorOpen, editorHandlers] = useDisclosure(false);
+  const [editorTouched, setEditorTouched] = useState(false);
+  const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [editorType, setEditorType] = useState<(typeof EVENT_TYPES)[number]>(EVENT_TYPES[0] ?? "raid");
+  const [editorTitle, setEditorTitle] = useState("");
+  const [editorDescription, setEditorDescription] = useState("");
+  const [editorStartAt, setEditorStartAt] = useState("");
+  const [editorEndAt, setEditorEndAt] = useState("");
+  const [editorCapacity, setEditorCapacity] = useState("");
+  const [editorPinned, setEditorPinned] = useState(false);
+  const [editorSignupLocked, setEditorSignupLocked] = useState(false);
+  const [editorBaseline, setEditorBaseline] = useState<string | null>(null);
+
+  const editorStartIso = toIso(editorStartAt);
+  const editorEndIso = toIso(editorEndAt) ?? editorStartIso;
+
+  const conflictingEvents = useMemo(() => {
+    if (!editorStartIso || !editorEndIso) {
+      return [] as Event[];
+    }
+    const nextStart = Date.parse(editorStartIso);
+    const nextEnd = Date.parse(editorEndIso);
+    if (!Number.isFinite(nextStart) || !Number.isFinite(nextEnd)) {
+      return [] as Event[];
+    }
+    return sortedEvents.filter((item) => {
+      if (item.id === editingEventId) return false;
+      const start = Date.parse(item.start_at);
+      const end = Date.parse(item.end_at ?? item.start_at);
+      return nextStart < end && start < nextEnd;
+    });
+  }, [editorEndIso, editorStartIso, editingEventId, sortedEvents]);
+
+  const editorCurrentSnapshot = buildEditorSnapshot({
+    mode: editorMode,
+    editingEventId,
+    type: editorType,
+    title: editorTitle,
+    description: editorDescription,
+    startAt: editorStartAt,
+    endAt: editorEndAt,
+    capacity: editorCapacity,
+    pinned: editorPinned,
+    signupLocked: editorSignupLocked,
+    attachmentSnapshot,
+  });
+  const isEditorDirty = editorOpen && editorBaseline !== null && editorTouched && editorCurrentSnapshot !== editorBaseline;
+  useBeforeUnloadPrompt(isEditorDirty);
+
+  const markEditorTouched = useCallback(() => {
+    setEditorTouched(true);
+  }, []);
+
+  const handleEditorTypeChange = useCallback((value: (typeof EVENT_TYPES)[number]) => {
+    setEditorTouched(true);
+    setEditorType(value);
+  }, []);
+
+  const handleEditorTitleChange = useCallback((value: string) => {
+    setEditorTouched(true);
+    setEditorTitle(value);
+  }, []);
+
+  const handleEditorDescriptionChange = useCallback((value: string) => {
+    setEditorTouched(true);
+    setEditorDescription(value);
+  }, []);
+
+  const handleEditorStartAtChange = useCallback((value: string) => {
+    setEditorTouched(true);
+    setEditorStartAt(value);
+  }, []);
+
+  const handleEditorEndAtChange = useCallback((value: string) => {
+    setEditorTouched(true);
+    setEditorEndAt(value);
+  }, []);
+
+  const handleEditorCapacityChange = useCallback((value: string) => {
+    setEditorTouched(true);
+    setEditorCapacity(value);
+  }, []);
+
+  const openCreateEditor = useCallback((initialDateKey?: string) => {
+    const now = new Date();
+    const fallbackStart = new Date(now.getTime() + 60 * 60_000);
+    const dateStart = initialDateKey ? new Date(`${initialDateKey}T20:00:00`) : fallbackStart;
+    const initialStartAt = toLocalInput(
+      Number.isNaN(dateStart.getTime()) ? fallbackStart.toISOString() : dateStart.toISOString(),
+    );
+    setEditorTouched(false);
+    setEditorMode("create");
+    setEditingEventId(null);
+    setEditorType("guild_war");
+    setEditorTitle("");
+    setEditorDescription("");
+    const initialEndAt = toLocalInput(
+      new Date(
+        (Number.isNaN(dateStart.getTime()) ? fallbackStart : dateStart).getTime() + 2 * 60 * 60_000,
+      ).toISOString(),
+    );
+    setEditorStartAt(initialStartAt);
+    setEditorEndAt(initialEndAt);
+    setEditorCapacity("");
+    setEditorPinned(false);
+    setEditorSignupLocked(false);
+    setEditorBaseline(
+      buildEditorSnapshot({
+        mode: "create",
+        editingEventId: null,
+        type: "guild_war",
+        title: "",
+        description: "",
+        startAt: initialStartAt,
+        endAt: initialEndAt,
+        capacity: "",
+        pinned: false,
+        signupLocked: false,
+        attachmentSnapshot: "[]",
+      }),
+    );
+    editorHandlers.open();
+  }, []);
+
+  const openEditEditor = useCallback((event: Event, initialAttachmentSnapshot?: string) => {
+    const startAt = toLocalInput(event.start_at);
+    const endAt = toLocalInput(event.end_at);
+    const capacity = event.capacity === null ? "" : String(event.capacity);
+
+    setEditorTouched(false);
+    setEditorMode("edit");
+    setEditingEventId(event.id);
+    setEditorType(event.type);
+    setEditorTitle(event.title);
+    setEditorDescription(event.description ?? "");
+    setEditorStartAt(startAt);
+    setEditorEndAt(endAt);
+    setEditorCapacity(capacity);
+    setEditorPinned(event.pinned);
+    setEditorSignupLocked(event.signup_locked);
+    setEditorBaseline(
+      buildEditorSnapshot({
+        mode: "edit",
+        editingEventId: event.id,
+        type: event.type,
+        title: event.title,
+        description: event.description ?? "",
+        startAt,
+        endAt,
+        capacity,
+        pinned: event.pinned,
+        signupLocked: event.signup_locked,
+        attachmentSnapshot: initialAttachmentSnapshot ?? "[]",
+      }),
+    );
+    editorHandlers.open();
+  }, []);
+
+  const closeEditor = useCallback(async () => {
+    if (isEditorDirty) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        modals.openConfirmModal({
+          title: t("confirm.discardUnsaved.title"),
+          children: t("confirm.discardUnsaved.description"),
+          labels: { confirm: t("common:action.delete"), cancel: t("common:action.cancel") },
+          confirmProps: { color: "infini-warning" },
+          onConfirm: () => resolve(true),
+          onCancel: () => resolve(false),
+          closeOnConfirm: true,
+          closeOnCancel: true,
+          centered: true,
+        });
+      });
+      if (!confirmed) {
+        return false;
+      }
+    }
+    editorHandlers.close();
+    setEditorTouched(false);
+    setEditorBaseline(null);
+    return true;
+  }, [isEditorDirty, t]);
+  const closeEditorAfterSave = useCallback(() => {
+    editorHandlers.close();
+    setEditorTouched(false);
+    setEditorBaseline(null);
+  }, []);
+
+  return {
+    editorOpen,
+    editorMode,
+    editingEventId,
+    editorType,
+    editorTitle,
+    editorDescription,
+    editorStartAt,
+    editorEndAt,
+    editorCapacity,
+    editorPinned,
+    editorSignupLocked,
+    editorStartIso,
+    editorEndIso,
+    conflictingEvents,
+    isEditorDirty,
+    setEditorType: handleEditorTypeChange,
+    setEditorTitle: handleEditorTitleChange,
+    setEditorDescription: handleEditorDescriptionChange,
+    setEditorStartAt: handleEditorStartAtChange,
+    setEditorEndAt: handleEditorEndAtChange,
+    setEditorCapacity: handleEditorCapacityChange,
+    markEditorTouched,
+    setEditorPinned,
+    setEditorSignupLocked,
+    openCreateEditor,
+    openEditEditor,
+    closeEditor,
+    closeEditorAfterSave,
+  };
+}

@@ -1,0 +1,72 @@
+.infini-tiptap-toolbar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.infini-tiptap-surface {
+  min-height: 180px;
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 16%, transparent);
+  border-radius: 8px;
+  padding: 10px;
+  outline: none;
+}
+
+.infini-tiptap-surface:focus {
+  border-color: var(--infini-color-primary, #3b82f6);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 24%, transparent);
+}
+
+.infini-tiptap-surface p {
+  margin: 0 0 8px;
+}
+
+.infini-tiptap-surface pre {
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 86%, var(--infini-color-text, #111827) 7%);
+  border-radius: 8px;
+  padding: 10px;
+  overflow-x: auto;
+}
+
+.infini-tiptap-surface blockquote {
+  margin: 8px 0;
+  padding-left: 10px;
+  border-left: 3px solid color-mix(in srgb, var(--infini-color-text, #111827) 24%, transparent);
+  color: color-mix(in srgb, var(--infini-color-text, #111827) 62%, transparent);
+}
+
+.infini-tiptap-surface table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+
+.infini-tiptap-surface th,
+.infini-tiptap-surface td {
+  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 16%, transparent);
+  padding: 6px 8px;
+}
+
+.infini-tiptap-surface img {
+  max-width: 100%;
+  border-radius: 8px;
+  cursor: zoom-in;
+}
+
+.infini-tiptap-slash-menu {
+  border-style: dashed;
+}
+
+.infini-tiptap-lightbox-viewport {
+  overflow: auto;
+  max-height: 78vh;
+}
+
+.infini-tiptap-lightbox-image {
+  width: 100%;
+  max-height: 78vh;
+  object-fit: contain;
+  transform-origin: center center;
+  transition: transform var(--infini-motion-hover, 120ms) var(--infini-motion-easing, ease);
+}

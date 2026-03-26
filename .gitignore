@@ -1,0 +1,28 @@
+node_modules/
+dist/
+.wrangler/
+.agents/
+.trellis/
+.claude/
+.env
+.env.local
+*.local
+
+pnpm-lock.yaml
+.vite/
+coverage/
+
+# Temporary files
+*.log
+*.tmp
+*.temp
+.cache/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

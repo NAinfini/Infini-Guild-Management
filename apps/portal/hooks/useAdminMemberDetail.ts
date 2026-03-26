@@ -1,0 +1,110 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useDisclosure } from "@mantine/hooks";
+import { queryKeys } from "../services/PortalQueryKeys";
+import type { MemberDetailFormState } from "../components/feature/admin/AdminMemberDetailModal";
+import { useAdminMemberMediaController } from "../components/feature/admin/useAdminMemberMediaController";
+import type { UsersListResponse } from "../services/UserService";
+
+type AdminUserRow = UsersListResponse["data"][number];
+
+const DEFAULT_FORM: MemberDetailFormState = {
+  wechatName: "",
+  power: 0,
+  classes: [],
+  titleHtml: "",
+  bio: "",
+  notes: "",
+  discordId: "",
+  vacationStart: "",
+  vacationEnd: "",
+  discordReminderOptOut: false,
+  role: "member",
+  isActive: true,
+};
+
+type UseAdminMemberDetailParams = {
+  usersData: AdminUserRow[] | undefined;
+  memberSearchParam: string | undefined;
+  showError: (error: unknown, fallbackMessage: string) => void;
+};
+
+export function useAdminMemberDetail({
+  usersData,
+  memberSearchParam,
+  showError,
+}: UseAdminMemberDetailParams) {
+  const queryClient = useQueryClient();
+  const [memberDetailId, setMemberDetailId] = useState<string | null>(null);
+  const [createMemberModalOpen, createMemberModalHandlers] = useDisclosure(false);
+  const memberSearchParamConsumedRef = useRef(false);
+  const [memberDetailForm, setMemberDetailForm] = useState<MemberDetailFormState>(DEFAULT_FORM);
+
+  // Sync form state when selected member changes
+  useEffect(() => {
+    if (!memberDetailId) {
+      setMemberDetailForm(DEFAULT_FORM);
+      return;
+    }
+    const target = usersData?.find((row) => row.user.id === memberDetailId);
+    if (!target) {
+      setMemberDetailForm(DEFAULT_FORM);
+      return;
+    }
+    setMemberDetailForm({
+      wechatName: target.profile.wechat_name ?? "",
+      power: target.profile.power,
+      classes: [...target.profile.classes],
+      titleHtml: target.profile.title_html ?? "",
+      bio: target.profile.bio ?? "",
+      notes: target.profile.notes ?? "",
+      discordId: target.profile.discord_id ?? "",
+      vacationStart: target.profile.vacation_start ? target.profile.vacation_start.slice(0, 10) : "",
+      vacationEnd: target.profile.vacation_end ? target.profile.vacation_end.slice(0, 10) : "",
+      discordReminderOptOut: target.profile.discord_reminder_opt_out,
+      role: target.user.role,
+      isActive: target.user.is_active,
+    });
+  }, [memberDetailId, usersData]);
+
+  // Auto-open member detail when navigated with ?member=username
+  useEffect(() => {
+    if (!memberSearchParam || memberSearchParamConsumedRef.current) return;
+    if (!usersData) return;
+    const target = usersData.find(
+      (row) => row.user.username.toLowerCase() === memberSearchParam.toLowerCase(),
+    );
+    if (target) {
+      memberSearchParamConsumedRef.current = true;
+      setMemberDetailId(target.user.id);
+    }
+  }, [memberSearchParam, usersData]);
+
+  const selectedMemberDetail = memberDetailId
+    ? usersData?.find((row) => row.user.id === memberDetailId) ?? null
+    : null;
+
+  const refreshMemberData = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.admin.users() });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.all });
+  }, [queryClient]);
+
+  const memberMediaController = useAdminMemberMediaController({
+    member: selectedMemberDetail,
+    onRefresh: refreshMemberData,
+    onError: showError,
+  });
+
+  return {
+    memberDetailId,
+    setMemberDetailId,
+    memberDetailForm,
+    setMemberDetailForm,
+    selectedMemberDetail,
+    createMemberModalOpen,
+    createMemberModalHandlers,
+    refreshMemberData,
+    memberMediaController,
+  };
+}

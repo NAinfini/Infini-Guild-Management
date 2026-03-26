@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" fill="none">
+  <rect width="1280" height="720" fill="#111827"/>
+  <rect x="78" y="82" width="1124" height="556" rx="28" fill="#1F2937" stroke="#F59E0B" stroke-width="8"/>
+  <rect x="140" y="162" width="300" height="164" rx="18" fill="#312E81"/>
+  <rect x="478" y="162" width="300" height="164" rx="18" fill="#065F46"/>
+  <rect x="816" y="162" width="300" height="164" rx="18" fill="#7C2D12"/>
+  <rect x="140" y="376" width="976" height="156" rx="18" fill="#0F172A"/>
+  <text x="140" y="132" fill="#F9FAFB" font-family="Segoe UI, Arial, sans-serif" font-size="42">War Room Planning Board</text>
+  <text x="140" y="432" fill="#CBD5E1" font-family="Segoe UI, Arial, sans-serif" font-size="28">Local SVG placeholders keep smoke tests and demos independent from external image hosts.</text>
+</svg>

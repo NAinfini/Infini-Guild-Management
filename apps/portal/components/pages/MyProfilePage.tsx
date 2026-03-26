@@ -1,0 +1,284 @@
+import { PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Badge, Grid, Group, Tabs, Text } from "@mantine/core";
+import { DepthButton } from "@infini-dev-kit/react";
+import { IconGripVertical, IconTrash, IconUserCircle } from "@tabler/icons-react";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { uploadProfileAudio, uploadProfileImages } from "../../services/UserService";
+import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
+import { useProfileData } from "../../hooks/data/useProfileData";
+import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
+import { useMediaUpload } from "../../hooks/useMediaUpload";
+import { useProfileFormState } from "../../hooks/useProfileFormState";
+import { useProfileMutations } from "../../hooks/useProfileMutations";
+import { useAuthStore } from "../../stores/auth";
+import { ProfileAccountTab } from "../feature/profile/ProfileAccountTab";
+import { ProfileAvailabilityTab } from "../feature/profile/ProfileAvailabilityTab";
+import { ProfileMediaTab } from "../feature/profile/ProfileMediaTab";
+import { ProfilePreviewCard } from "../feature/profile/ProfilePreviewCard";
+import { ProfileProfileTab } from "../feature/profile/ProfileProfileTab";
+import { PageLayout } from "../layout/PageLayout";
+import "./MyProfilePage.css";
+
+type SortableClassRowProps = {
+  value: string;
+  index: number;
+  isPrimary: boolean;
+  onRemove: () => void;
+};
+
+function SortableClassRow(props: SortableClassRowProps) {
+  const { value, index, isPrimary, onRemove } = props;
+  const { t } = useTranslation("profile");
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: value });
+
+  return (
+    <Group
+      ref={setNodeRef}
+      wrap="wrap"
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={`my-profile-sortable-row ${isDragging ? "my-profile-sortable-row--dragging" : ""}`.trim()}
+    >
+      <div {...attributes} {...listeners} style={{ cursor: "grab", display: "flex", alignItems: "center" }} aria-label={t("classRow.aria.drag", { value })}>
+        <IconGripVertical size={18} />
+      </div>
+      <Badge color={isPrimary ? "yellow" : "gray"}>{value}</Badge>
+      <DepthButton size="sm" type="danger" before={<IconTrash size={16} />} onClick={onRemove}>
+        {t("classRow.remove")}
+      </DepthButton>
+      <Text c="dimmed" size="sm" style={{ fontSize: 12 }}>
+        #{index + 1}
+      </Text>
+    </Group>
+  );
+}
+
+function moveListItem<T>(list: T[], index: number, delta: number): T[] {
+  const nextIndex = index + delta;
+  if (nextIndex < 0 || nextIndex >= list.length) {
+    return list;
+  }
+  const next = [...list];
+  const current = next[index];
+  if (current === undefined) {
+    return list;
+  }
+  next[index] = next[nextIndex] as T;
+  next[nextIndex] = current;
+  return next;
+}
+
+export function MyProfilePage() {
+  const { t } = useTranslation("profile");
+  const user = useAuthStore((state) => state.user);
+  const [activeTab, setActiveTab] = useState("profile");
+  const classSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const { profileQuery } = useProfileData({
+    userId: user?.id,
+  });
+  useLoadWarningToast(profileQuery.isError, t("common:loadErrorRetry"));
+
+  const form = useProfileFormState({ profile: profileQuery.data?.profile });
+  useBeforeUnloadPrompt(form.isDirty);
+
+  const imageUploader = useMediaUpload(
+    async (files) => {
+      if (!user) {
+        throw new Error(t("message.sessionMissing"));
+      }
+      return uploadProfileImages(user.id, files);
+    },
+    {
+      maxFiles: 10,
+      maxFileSizeBytes: 5 * 1024 * 1024,
+      mediaType: "image",
+      convertImagesToWebp: true,
+      imageWebpQuality: 0.8,
+    },
+  );
+
+  const audioUploader = useMediaUpload(
+    async (files) => {
+      if (!user) {
+        throw new Error(t("message.sessionMissing"));
+      }
+      const file = files[0];
+      if (!file) {
+        throw new Error(t("message.audioFileRequired"));
+      }
+      return uploadProfileAudio(user.id, file);
+    },
+    {
+      maxFiles: 1,
+      maxFileSizeBytes: 20 * 1024 * 1024,
+      mediaType: "audio",
+      convertAudioToOpus: true,
+    },
+  );
+
+  const mutations = useProfileMutations({
+    form,
+    imageUploader,
+    audioUploader,
+  });
+
+  const profile = profileQuery.data?.profile;
+
+  return (
+    <PageLayout
+      title={t("title")}
+      subtitle={t("subtitle")}
+      icon={<IconUserCircle size={22} />}
+      className="my-profile-page"
+    >
+      <Grid gutter="md">
+        <Grid.Col span={{ base: 12, lg: 3 }}>
+          <div style={{ position: "sticky", top: 16 }}>
+            <ProfilePreviewCard
+              username={user?.username ?? "-"}
+              wechatName={form.wechatName}
+              power={form.power}
+              primaryClass={form.classList[0] ?? "-"}
+              imageCount={form.imageList.length}
+              videoCount={form.videoList.length}
+              hasAudio={Boolean(profile?.audio_key)}
+              discordId={profile?.discord_id ?? null}
+              activeNowEstimate={form.activeNowEstimate}
+              bio={form.bio}
+            />
+          </div>
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, lg: 9 }}>
+          <Tabs value={activeTab} onChange={(value) => value && setActiveTab(value)}>
+            <Tabs.List>
+              <Tabs.Tab value="profile">{t("tab.profile")}</Tabs.Tab>
+              <Tabs.Tab value="media">{t("tab.media")}</Tabs.Tab>
+              <Tabs.Tab value="availability">{t("tab.availability")}</Tabs.Tab>
+              <Tabs.Tab value="account">{t("tab.account")}</Tabs.Tab>
+            </Tabs.List>
+
+            <Tabs.Panel value="profile" pt="sm">
+              <ProfileProfileTab
+                wechatName={form.wechatName}
+                power={form.power}
+                classDraft={form.classDraft}
+                classOptions={form.classOptions}
+                classList={form.classList}
+                discordId={profile?.discord_id ?? null}
+                titleHtml={form.titleHtml}
+                onTitleHtmlChange={form.setTitleHtml}
+                bio={form.bio}
+                classSensors={classSensors}
+                onWechatNameChange={form.setWechatName}
+                onPowerChange={form.setPower}
+                onClassDraftChange={form.setClassDraft}
+                onAddClass={form.addClass}
+                onClassDragEnd={form.handleClassDragEnd}
+                renderSortableClassRow={(value, index) => (
+                  <SortableClassRow
+                    key={value}
+                    value={value}
+                    index={index}
+                    isPrimary={index === 0}
+                    onRemove={() =>
+                      form.setClassList((current) => current.filter((_, valueIndex) => valueIndex !== index))
+                    }
+                  />
+                )}
+                onBioChange={form.setBio}
+                onSaveProfile={mutations.saveProfile}
+                savePending={mutations.saveProfileMutation.isPending}
+                isDirty={form.isDirty}
+                fieldBioPlaceholder={t("field.bio")}
+              />
+            </Tabs.Panel>
+
+            <Tabs.Panel value="media" pt="sm">
+              <ProfileMediaTab
+                videoDraft={form.videoDraft}
+                videoList={form.videoList}
+                imageList={form.imageList}
+                profileAudioKey={profile?.audio_key ?? null}
+                imageUploader={imageUploader}
+                audioUploader={audioUploader}
+                onVideoDraftChange={form.setVideoDraft}
+                onAddVideoUrl={form.addVideoUrl}
+                onMoveVideo={(index, delta) =>
+                  form.setVideoList((current) => moveListItem(current, index, delta))
+                }
+                onRemoveVideo={(index) =>
+                  form.setVideoList((current) => current.filter((_, valueIndex) => valueIndex !== index))
+                }
+                onUploadImages={() => {
+                  void mutations.uploadImages();
+                }}
+                onUploadAudio={() => {
+                  void mutations.uploadAudio();
+                }}
+                onReorderImages={form.setImageList}
+                onRemoveImage={mutations.removeImage}
+                onRemoveAudio={mutations.removeAudio}
+                onSaveProfile={mutations.saveProfile}
+                savePending={mutations.saveProfileMutation.isPending}
+                isDirty={form.isDirty}
+              />
+            </Tabs.Panel>
+
+            <Tabs.Panel value="availability" pt="sm">
+              <ProfileAvailabilityTab
+                availabilityData={form.availabilityData}
+                vacationStart={form.vacationStart}
+                vacationEnd={form.vacationEnd}
+                onAvailabilityChange={form.setAvailabilityData}
+                onVacationStartChange={form.setVacationStart}
+                onVacationEndChange={form.setVacationEnd}
+                onSaveAvailability={mutations.saveProfile}
+                savePending={mutations.saveProfileMutation.isPending}
+                isDirty={form.isDirty}
+              />
+            </Tabs.Panel>
+
+            <Tabs.Panel value="account" pt="sm">
+              <ProfileAccountTab
+                currentPassword={form.currentPassword}
+                newPassword={form.newPassword}
+                confirmNewPassword={form.confirmNewPassword}
+                currentPasswordForUsername={form.currentPasswordForUsername}
+                newUsername={form.newUsername}
+                discordCode={form.discordCode}
+                isDiscordLinking={form.isDiscordLinking}
+                discordId={profile?.discord_id ?? null}
+                discordReminderOptOut={form.discordReminderOptOut}
+                onCurrentPasswordChange={form.setCurrentPassword}
+                onNewPasswordChange={form.setNewPassword}
+                onConfirmNewPasswordChange={form.setConfirmNewPassword}
+                onCurrentPasswordForUsernameChange={form.setCurrentPasswordForUsername}
+                onNewUsernameChange={form.setNewUsername}
+                onDiscordCodeChange={form.setDiscordCode}
+                onToggleDiscordReminder={(checked) => form.setDiscordReminderOptOut(!checked)}
+                onChangePassword={mutations.changePassword}
+                onChangeUsername={mutations.changeUsername}
+                onVerifyDiscordLink={mutations.verifyDiscordLink}
+                onUnlinkDiscord={mutations.unlinkDiscord}
+                onSaveDiscordPreference={mutations.saveProfile}
+                onLogout={mutations.logout}
+                changePasswordLabel={t("button.changePassword")}
+                changeUsernameLabel={t("button.changeUsername")}
+                changePasswordPending={mutations.changePasswordMutation.isPending}
+                changeUsernamePending={mutations.changeUsernameMutation.isPending}
+                saveDiscordPreferencePending={mutations.saveProfileMutation.isPending}
+                isDirty={form.isDirty}
+              />
+            </Tabs.Panel>
+          </Tabs>
+        </Grid.Col>
+      </Grid>
+    </PageLayout>
+  );
+}

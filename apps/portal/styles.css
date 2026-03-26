@@ -1,0 +1,211 @@
+:root {
+  --header-height: 64px;
+  --header-height-mobile: 56px;
+  --sidebar-width: 236px;
+  --sidebar-collapsed-width: 84px;
+  --bottom-nav-height: 64px;
+  --portal-scrollbar-size: 10px;
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-dropdown: 100;
+  --z-modal: 200;
+  --z-toast: 300;
+
+  /* Legacy token aliases retained for migrated page styles. */
+  --ant-color-text: var(--mantine-color-text);
+  --ant-color-text-secondary: var(--mantine-color-dimmed);
+  --ant-color-text-tertiary: color-mix(in srgb, var(--mantine-color-dimmed) 82%, transparent);
+  --ant-color-text-light-solid: var(--mantine-color-white);
+
+  --ant-color-bg-container: var(--mantine-color-body);
+  --ant-color-border: var(--mantine-color-default-border);
+  --ant-color-border-secondary: color-mix(in srgb, var(--mantine-color-default-border) 78%, transparent);
+
+  --ant-color-fill-secondary: color-mix(in srgb, var(--mantine-color-default) 86%, transparent);
+  --ant-color-fill-tertiary: color-mix(in srgb, var(--mantine-color-default) 70%, transparent);
+  --ant-color-fill-quaternary: color-mix(in srgb, var(--mantine-color-default) 52%, transparent);
+
+  --ant-color-primary: var(--infini-color-primary, var(--mantine-color-blue-6));
+  --ant-color-primary-border: color-mix(in srgb, var(--ant-color-primary) 45%, var(--mantine-color-white));
+  --ant-color-primary-bg: color-mix(in srgb, var(--ant-color-primary) 16%, transparent);
+
+  --ant-color-info: var(--mantine-color-blue-6);
+  --ant-color-info-border: color-mix(in srgb, var(--mantine-color-blue-6) 42%, var(--mantine-color-white));
+  --ant-color-info-bg: color-mix(in srgb, var(--mantine-color-blue-6) 14%, transparent);
+
+  --ant-color-success: var(--mantine-color-green-6);
+  --ant-color-success-text: var(--mantine-color-green-7);
+  --ant-color-success-border: color-mix(in srgb, var(--mantine-color-green-6) 42%, var(--mantine-color-white));
+  --ant-color-success-bg: color-mix(in srgb, var(--mantine-color-green-6) 15%, transparent);
+
+  --ant-color-warning: var(--mantine-color-yellow-7);
+  --ant-color-warning-text: var(--mantine-color-yellow-8);
+  --ant-color-warning-border: color-mix(in srgb, var(--mantine-color-yellow-7) 48%, var(--mantine-color-white));
+  --ant-color-warning-bg: color-mix(in srgb, var(--mantine-color-yellow-7) 14%, transparent);
+
+  --ant-color-error: var(--mantine-color-red-6);
+  --ant-color-error-border: color-mix(in srgb, var(--mantine-color-red-6) 46%, var(--mantine-color-white));
+  --ant-color-error-bg: color-mix(in srgb, var(--mantine-color-red-6) 14%, transparent);
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--infini-color-primary, #6b7280) transparent;
+}
+
+[data-theme-id] .mantine-contextmenu,
+[data-theme-id] .mantine-contextmenu.infini-context-menu-root,
+[data-theme-id] .mantine-contextmenu.infini-context-menu-root.infini-context-menu-root {
+  min-width: 176px;
+  padding: 6px;
+  border: none !important;
+  outline: none !important;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--infini-color-surface, #0f172a) 96%, transparent);
+  box-shadow: 0 16px 34px color-mix(in srgb, black 24%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+[data-theme-id] .mantine-contextmenu button,
+[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button,
+[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item,
+[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item.infini-context-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  min-height: 36px;
+  padding: 9px 12px;
+  border: none !important;
+  outline: none !important;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 9px;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--infini-color-text, #e5e7eb);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  text-align: start;
+  transition:
+    background-color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease),
+    color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease),
+    transform var(--infini-motion-press, 120ms) var(--infini-motion-easing, ease);
+}
+
+[data-theme-id] .mantine-contextmenu button:hover:not([disabled]),
+[data-theme-id] .mantine-contextmenu button:focus:not([disabled]),
+[data-theme-id] .mantine-contextmenu button:focus-visible:not([disabled]),
+[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button:hover:not([disabled]),
+[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button:focus:not([disabled]),
+[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button:focus-visible:not([disabled]),
+[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item:hover:not([disabled]),
+[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item:focus:not([disabled]),
+[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item:focus-visible:not([disabled]) {
+  border: none !important;
+  outline: none !important;
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 14%, transparent) !important;
+  box-shadow: none !important;
+  color: var(--infini-color-text, #f8fafc);
+}
+
+[data-theme-id] .mantine-contextmenu button:active:not([disabled]),
+[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button:active:not([disabled]),
+[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item:active:not([disabled]) {
+  transform: translateY(1px);
+  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 18%, transparent) !important;
+}
+
+[data-theme-id] .mantine-contextmenu button[disabled],
+[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button[disabled],
+[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item[disabled] {
+  opacity: 0.46;
+}
+
+[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button-title,
+.infini-context-menu-root .mantine-contextmenu-item-button-title {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.infini-context-menu-divider {
+  height: 1px;
+  margin: 4px 8px;
+  border: none;
+  background: color-mix(in srgb, var(--infini-color-text, #e5e7eb) 12%, transparent);
+}
+
+body::-webkit-scrollbar {
+  width: var(--portal-scrollbar-size);
+  height: var(--portal-scrollbar-size);
+}
+
+body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body::-webkit-scrollbar-thumb {
+  background: var(--infini-color-primary, #6b7280);
+  border-radius: var(--infini-radius, 8px);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+body::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--infini-color-primary, #6b7280) 82%, #ffffff 18%);
+  background-clip: padding-box;
+}
+
+:focus-visible {
+  outline: 2px solid var(--infini-color-primary, #3b82f6);
+  outline-offset: 2px;
+}
+
+.theme-swatch-button:focus-visible {
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 50%, transparent);
+}
+
+.mantine-Modal-content {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 88%, transparent);
+}
+
+/* ── Locale-specific font stacks ── */
+html[data-locale="zh"] {
+  --mantine-font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+html[data-locale="zh"] .mantine-Title-root,
+html[data-locale="zh"] h1,
+html[data-locale="zh"] h2,
+html[data-locale="zh"] h3,
+html[data-locale="zh"] h4,
+html[data-locale="zh"] h5,
+html[data-locale="zh"] h6 {
+  font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+/* Theme-aware switch state colors (off: error, on: success). */
+input[role="switch"]:not(:disabled):not([data-disabled]) + *,
+.mantine-Switch-input:not(:disabled):not([data-disabled]) + .mantine-Switch-track {
+  --switch-bg: var(--ant-color-error) !important;
+  --switch-bd: color-mix(in srgb, var(--ant-color-error) 68%, var(--mantine-color-body)) !important;
+  --switch-text-color: var(--mantine-color-white) !important;
+}
+
+input[role="switch"]:not(:disabled):not([data-disabled]):is(:checked, [data-checked]) + *,
+.mantine-Switch-input:not(:disabled):not([data-disabled]):is(:checked, [data-checked]) + .mantine-Switch-track {
+  --switch-bg: var(--ant-color-success) !important;
+  --switch-bd: color-mix(in srgb, var(--ant-color-success) 68%, var(--mantine-color-body)) !important;
+}
