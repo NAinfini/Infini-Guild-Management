@@ -92,12 +92,16 @@ const ROLE_PERMISSION_KEYS = [
   "admin.bot.view",
   "admin.bot.manage",
   "admin.status.view",
+  "admin.roles.view",
   "admin.roles.manage",
+  "admin.analytics.view",
+  "admin.analytics.manage",
   "guildwar.manage",
   "guildwar.history.edit",
   "events.manage",
   "announcements.manage",
   "gallery.upload",
+  "gallery.manage",
   "wiki.edit",
 ] as const;
 
@@ -108,11 +112,14 @@ const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
   "admin.audit.view",
   "admin.bot.view",
   "admin.status.view",
+  "admin.roles.view",
+  "admin.analytics.view",
   "guildwar.manage",
   "guildwar.history.edit",
   "events.manage",
   "announcements.manage",
   "gallery.upload",
+  "gallery.manage",
   "wiki.edit",
 ]);
 
