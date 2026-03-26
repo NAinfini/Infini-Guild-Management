@@ -211,10 +211,10 @@ export class GalleryService {
     return ok(toCommentPayload(updated));
   }
 
-  async deleteComment(actorId: string, actorRole: string, commentId: string): Promise<ServiceResult<{ ok: true }>> {
+  async deleteComment(actorId: string, canManage: boolean, commentId: string): Promise<ServiceResult<{ ok: true }>> {
     const existing = (await this.db.select({ id: galleryComments.id, userId: galleryComments.userId, galleryItemId: galleryComments.galleryItemId }).from(galleryComments).where(eq(galleryComments.id, commentId)).limit(1))[0];
     if (!existing) return err("NOT_FOUND", "Comment not found");
-    if (existing.userId !== actorId && actorRole !== "moderator" && actorRole !== "admin" && actorRole !== "owner") return err("FORBIDDEN", "Cannot delete this comment");
+    if (existing.userId !== actorId && !canManage) return err("FORBIDDEN", "Cannot delete this comment");
     await this.db.delete(galleryComments).where(eq(galleryComments.id, commentId));
     await this.deps.writeAuditLog({ entityType: "gallery_comment", action: "delete", actorId, entityId: commentId, detailText: `on gallery item ${existing.galleryItemId}` });
     return ok({ ok: true });

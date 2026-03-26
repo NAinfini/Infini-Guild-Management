@@ -186,6 +186,6 @@ galleryRoutes.patch("/:id/comments/:commentId", async (c) => {
 galleryRoutes.delete("/:id/comments/:commentId", async (c) => {
   const sessionUser = await requireSessionUser(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const result = await getService(c).deleteComment(sessionUser.id, sessionUser.role, c.req.param("commentId"));
+  const result = await getService(c).deleteComment(sessionUser.id, sessionUser.permissions.has("gallery.manage"), c.req.param("commentId"));
   return handleResult(c, result);
 });

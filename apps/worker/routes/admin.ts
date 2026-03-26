@@ -17,7 +17,7 @@ import { customAlphabet, nanoid } from "nanoid";
 import type { Bindings } from "../index";
 import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
-import { AdminService, type MediaLike } from "../services/AdminService";
+import { AdminService, AuditLogQueryError, type MediaLike } from "../services/AdminService";
 import { createPasswordHash } from "../services/auth";
 import { createBotTask, fetchDiscordChannelsFromBotRuntime } from "../services/bot-dispatch";
 
@@ -78,6 +78,11 @@ function parseBoolean(value: string | undefined): boolean | undefined {
   if (value === "true") return true;
   if (value === "false") return false;
   return undefined;
+}
+
+function parsePage(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function buildArchiveDownloadUrl(c: Context, token: string): string {
@@ -339,8 +344,8 @@ adminRoutes.get("/audit-archive/months", async (c) => {
 adminRoutes.get("/audit-archive/:month", async (c) => {
   const sessionUser = await requirePermission(c, "admin.audit.view");
   if (sessionUser instanceof Response) return sessionUser;
-  const page = Number(c.req.query("page") ?? "1");
-  const limit = Number(c.req.query("limit") ?? "100");
+  const page = parsePage(c.req.query("page"), 1);
+  const limit = Math.min(100, parsePage(c.req.query("limit"), 100));
   const result = await getAdminService(c).getArchiveMonth(c.req.param("month"), page, limit);
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
@@ -367,28 +372,38 @@ adminRoutes.get("/audit-archive/download/file", async (c) => {
 adminRoutes.get("/audit-log", async (c) => {
   const sessionUser = await requirePermission(c, "admin.audit.view");
   if (sessionUser instanceof Response) return sessionUser;
-  const result = await getAdminService(c).listAuditLogs({
-    entity_type: c.req.query("entity_type"),
-    actor_id: c.req.query("actor_id"),
-    search: c.req.query("search"),
-    start_at: c.req.query("start_at"),
-    end_at: c.req.query("end_at"),
-    page: c.req.query("page"),
-    limit: c.req.query("limit"),
-  });
-  return c.json(result);
+  try {
+    const result = await getAdminService(c).listAuditLogs({
+      entity_type: c.req.query("entity_type"),
+      actor_id: c.req.query("actor_id"),
+      search: c.req.query("search"),
+      start_at: c.req.query("start_at"),
+      end_at: c.req.query("end_at"),
+      page: c.req.query("page"),
+      limit: c.req.query("limit"),
+    });
+    return c.json(result);
+  } catch (e) {
+    if (e instanceof AuditLogQueryError) return buildError(c, "VALIDATION_ERROR", e.message);
+    throw e;
+  }
 });
 
 adminRoutes.get("/audit-log/export", async (c) => {
   const sessionUser = await requirePermission(c, "admin.audit.export");
   if (sessionUser instanceof Response) return sessionUser;
-  const result = await getAdminService(c).exportAuditLogs(sessionUser.id, {
-    entity_type: c.req.query("entity_type"),
-    actor_id: c.req.query("actor_id"),
-    search: c.req.query("search"),
-    start_at: c.req.query("start_at"),
-    end_at: c.req.query("end_at"),
-    format: c.req.query("format"),
-  });
-  return new Response(result.body, { headers: { "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.filename}"` } });
+  try {
+    const result = await getAdminService(c).exportAuditLogs(sessionUser.id, {
+      entity_type: c.req.query("entity_type"),
+      actor_id: c.req.query("actor_id"),
+      search: c.req.query("search"),
+      start_at: c.req.query("start_at"),
+      end_at: c.req.query("end_at"),
+      format: c.req.query("format"),
+    });
+    return new Response(result.body, { headers: { "Content-Type": result.contentType, "Content-Disposition": `attachment; filename="${result.filename}"` } });
+  } catch (e) {
+    if (e instanceof AuditLogQueryError) return buildError(c, "VALIDATION_ERROR", e.message);
+    throw e;
+  }
 });
