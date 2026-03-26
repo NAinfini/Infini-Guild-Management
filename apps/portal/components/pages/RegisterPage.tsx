@@ -1,19 +1,26 @@
-﻿import type { MemberProfile, User } from "@guild/shared";
+import type { MemberProfile, User } from "@guild/shared";
 import { registerSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
   Alert,
-  Group,
-  PasswordInput,
+  Anchor,
+  Loader,
   Stack,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
-import { GlassEffect, InfiniButton } from "@infini-dev-kit/frontend/components";
-import { useDebouncedValue } from "@mantine/hooks";
+import {
+  BubbleBackground,
+  DepthButton,
+  GlassEffect,
+  GradientText,
+  LampHeading,
+  MagneticElement,
+} from "@infini-dev-kit/react";
+import { IconArrowLeft, IconEye, IconEyeOff, IconKeyboard } from "@tabler/icons-react";
+import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -22,7 +29,6 @@ import { apiRequest, isApiRequestError } from "../../api/client";
 import { queryKeys } from "../../api/query-keys";
 import { useAuthStore } from "../../stores/auth";
 import { FireOutlined } from "../../utils/icons";
-import { AuthHero } from "../auth/AuthHero";
 import "./AuthPages.css";
 
 type AuthSessionResponse = { user: User; profile: MemberProfile };
@@ -72,10 +78,17 @@ export function RegisterPage() {
   const { inviteCode } = useParams({ from: "/register/$inviteCode" });
   const setSession = useAuthStore((state) => state.setSession);
 
+  const inviteQuery = useQuery({
+    queryKey: queryKeys.auth.verifyInvite(inviteCode),
+    queryFn: () => apiRequest<{ valid: boolean }>(`/api/auth/verify-invite/${encodeURIComponent(inviteCode)}`),
+    retry: false,
+    staleTime: 60_000,
+  });
+
   const {
-    register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -89,9 +102,13 @@ export function RegisterPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [apiFieldErrors, setApiFieldErrors] = useState<Partial<Record<keyof RegisterFormValues, string>>>({});
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
+  const [showPassword, showPasswordHandlers] = useDisclosure(false);
+  const [showConfirmPassword, showConfirmPasswordHandlers] = useDisclosure(false);
 
-  const rawUsername = watch("username");
-  const [debouncedUsername] = useDebouncedValue((rawUsername ?? "").trim(), 320);
+  const usernameValue = watch("username");
+  const passwordValue = watch("password");
+  const confirmPasswordValue = watch("confirmPassword");
+  const [debouncedUsername] = useDebouncedValue((usernameValue ?? "").trim(), 320);
 
   const usernameAvailabilityQuery = useQuery({
     queryKey: queryKeys.auth.usernameAvailability(debouncedUsername),
@@ -150,93 +167,164 @@ export function RegisterPage() {
   const confirmPasswordError = errors.confirmPassword?.message ?? apiFieldErrors.confirmPassword;
 
   return (
-    <div className="auth-page-shell">
-      <AuthHero
-        eyebrow={t("register.hero.eyebrow")}
-        title={t("register.hero.title")}
-        subtitle={t("register.hero.subtitle")}
+    <div className="login-page">
+      <div className="login-page__bg" />
+      <BubbleBackground
+        count={24}
+        minSize={4}
+        maxSize={40}
+        speed={0.6}
+        className="login-page__bubbles"
       />
-      <div className="auth-form-column">
-        <GlassEffect className="auth-card" blur={14} opacity={0.12}>
-          <div className="auth-brand">
-            <span className="auth-brand-icon" aria-hidden>
-              <FireOutlined />
-            </span>
-            <div className="auth-brand-copy">
-              <Text fw={700}>{t("brand.name")}</Text>
-              <Text c="dimmed" size="sm">
-                {t("register.brand.subtitle")}
-              </Text>
+
+      <div className="login-page__content">
+        <div className="login-page__heading">
+          <LampHeading coneWidth={320} coneHeight={140} animated>
+            <div className="login-page__brand">
+              <span className="login-page__brand-icon" aria-hidden>
+                <FireOutlined />
+              </span>
+              <GradientText animated duration={4} className="login-page__brand-text">
+                {t("brand.name")}
+              </GradientText>
             </div>
-          </div>
-          <Title order={1} className="auth-form-title">
-            {t("title.register")}
-          </Title>
+          </LampHeading>
+          <Text c="dimmed" size="sm" ta="center" className="login-page__subtitle">
+            {t("register.brand.subtitle")}
+          </Text>
+        </div>
 
-          {submitError ? <Alert color="infini-danger" title={submitError} /> : null}
-          {isCapsLockOn ? <Alert color="infini-warning" title={t("capsLockWarning")} /> : null}
-
-          <form onSubmit={handleSubmit(onSubmit)}>
-            <Stack gap={12}>
-              <TextInput
-                {...register("username")}
-                autoComplete="username"
-                label={t("field.username")}
-                error={usernameError}
-              />
-
-              {!usernameError && debouncedUsername.length >= 3 ? (
-                usernameAvailabilityQuery.isFetching ? (
-                  <Text c="dimmed" size="sm">
-                    {t("checkingUsername")}
-                  </Text>
-                ) : usernameAvailabilityQuery.data ? (
-                  <Text c={usernameAvailabilityQuery.data.available ? "teal" : "red"} size="sm">
-                    {usernameAvailabilityQuery.data.available ? t("usernameAvailable") : t("usernameUnavailable")}
-                  </Text>
-                ) : null
-              ) : null}
-
-              <PasswordInput
-                {...register("password")}
-                autoComplete="new-password"
-                label={t("field.password")}
-                error={passwordError}
-                onKeyUp={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
-                onBlur={() => setIsCapsLockOn(false)}
-              />
-
-              <PasswordInput
-                {...register("confirmPassword")}
-                autoComplete="new-password"
-                label={t("field.confirmPassword")}
-                error={confirmPasswordError}
-                onKeyUp={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
-                onBlur={() => setIsCapsLockOn(false)}
-              />
-
-              <InfiniButton htmlType="submit" loading={registerMutation.isPending}>
-                {t("button.register")}
-              </InfiniButton>
-
-              <div className="auth-social">
-                <Text c="dimmed" className="auth-social-label">
-                  {t("register.social.title")}
-                </Text>
-                <Group grow gap={0}>
-                  <InfiniButton className="auth-social-btn auth-social-btn--discord" disabled>
-                    {t("register.social.discord")}
-                  </InfiniButton>
-                  <InfiniButton className="auth-social-btn auth-social-btn--wechat" disabled>
-                    {t("register.social.wechat")}
-                  </InfiniButton>
-                </Group>
-              </div>
+        <GlassEffect className="login-page__card" blur={16} opacity={0.1} borderOpacity={0.15}>
+          {inviteQuery.isLoading ? (
+            <Stack align="center" py="xl">
+              <Loader color="var(--infini-color-primary)" />
             </Stack>
-          </form>
+          ) : !inviteQuery.data?.valid ? (
+            <Stack align="center" gap="md">
+              <Alert color="infini-danger" title={t("inviteInvalid")} w="100%" />
+              <MagneticElement strength={8} className="login-page__back-link">
+                <Anchor
+                  underline="hover"
+                  onClick={() => void navigate({ to: "/login" })}
+                  className="login-page__back-anchor"
+                >
+                  <IconArrowLeft size={14} />
+                  {t("button.backToLogin")}
+                </Anchor>
+              </MagneticElement>
+            </Stack>
+          ) : (
+            <>
+              {submitError ? <Alert color="infini-danger" title={submitError} /> : null}
+              {isCapsLockOn ? <Alert color="infini-warning" title={t("capsLockWarning")} /> : null}
+
+              <form onSubmit={handleSubmit(onSubmit)}>
+                <Stack gap={20}>
+                  <div className={`login-floating-field${usernameValue.length > 0 ? " login-floating-field--filled" : ""}`}>
+                    <TextInput
+                      value={usernameValue}
+                      onChange={(event) => setValue("username", event.currentTarget.value)}
+                      error={usernameError}
+                      classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
+                      label={t("field.username")}
+                      autoComplete="username"
+                    />
+                  </div>
+
+                  {!usernameError && debouncedUsername.length >= 3 ? (
+                    usernameAvailabilityQuery.isFetching ? (
+                      <Text c="dimmed" size="sm">
+                        {t("checkingUsername")}
+                      </Text>
+                    ) : usernameAvailabilityQuery.data ? (
+                      <Text c={usernameAvailabilityQuery.data.available ? "teal" : "red"} size="sm">
+                        {usernameAvailabilityQuery.data.available ? t("usernameAvailable") : t("usernameUnavailable")}
+                      </Text>
+                    ) : null
+                  ) : null}
+
+                  <div
+                    className={`login-floating-field${passwordValue.length > 0 ? " login-floating-field--filled" : ""}`}
+                    onClickCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
+                    onKeyUpCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
+                    onKeyDownCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
+                  >
+                    <TextInput
+                      label={t("field.password")}
+                      type={showPassword ? "text" : "password"}
+                      value={passwordValue}
+                      onChange={(event) => setValue("password", event.currentTarget.value)}
+                      error={passwordError}
+                      classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
+                      autoComplete="new-password"
+                    />
+                    <div className="login-page__password-actions">
+                      {isCapsLockOn ? (
+                        <IconKeyboard size={18} className="login-page__caps-icon" />
+                      ) : null}
+                      <button
+                        type="button"
+                        className="login-page__eye-btn"
+                        onClick={showPasswordHandlers.toggle}
+                        tabIndex={-1}
+                        aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
+                      >
+                        {showPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    className={`login-floating-field${confirmPasswordValue.length > 0 ? " login-floating-field--filled" : ""}`}
+                    onClickCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
+                    onKeyUpCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
+                    onKeyDownCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
+                  >
+                    <TextInput
+                      label={t("field.confirmPassword")}
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPasswordValue}
+                      onChange={(event) => setValue("confirmPassword", event.currentTarget.value)}
+                      error={confirmPasswordError}
+                      classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
+                      autoComplete="new-password"
+                    />
+                    <div className="login-page__password-actions">
+                      {isCapsLockOn ? (
+                        <IconKeyboard size={18} className="login-page__caps-icon" />
+                      ) : null}
+                      <button
+                        type="button"
+                        className="login-page__eye-btn"
+                        onClick={showConfirmPasswordHandlers.toggle}
+                        tabIndex={-1}
+                        aria-label={showConfirmPassword ? t("aria.hidePassword") : t("aria.showPassword")}
+                      >
+                        {showConfirmPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <DepthButton htmlType="submit" disabled={registerMutation.isPending}>
+                    {t("button.register")}
+                  </DepthButton>
+
+                  <MagneticElement strength={8} className="login-page__back-link">
+                    <Anchor
+                      underline="hover"
+                      onClick={() => void navigate({ to: "/login" })}
+                      className="login-page__back-anchor"
+                    >
+                      <IconArrowLeft size={14} />
+                      {t("button.backToLogin")}
+                    </Anchor>
+                  </MagneticElement>
+                </Stack>
+              </form>
+            </>
+          )}
         </GlassEffect>
       </div>
     </div>
   );
 }
-

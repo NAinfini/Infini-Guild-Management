@@ -17,6 +17,7 @@
   width: min(500px, 38%);
   position: sticky;
   top: 12px;
+  min-height: 400px;
   max-height: calc(100vh - 80px);
   overflow-x: hidden;
   overflow-y: auto;

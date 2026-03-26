@@ -1,11 +1,11 @@
-import { listThemeIds, resolveThemeSpec } from "@infini-dev-kit/frontend/theme/theme-specs";
+import { listThemeIds, resolveThemeSpec } from "@infini-dev-kit/theme-core";
 import { IconSettings } from "@tabler/icons-react";
-import type { ThemeId } from "@infini-dev-kit/frontend/theme/theme-types";
-import { useBridge, useThemeSnapshot } from "@infini-dev-kit/frontend/provider";
+import type { ThemeId } from "@infini-dev-kit/theme-core";
+import { useBridge, useThemeSnapshot } from "../../providers/ThemeProvider";
 import {
   AnimatedTabs,
   ShinyText,
-} from "@infini-dev-kit/frontend/components";
+} from "@infini-dev-kit/react";
 import { SimpleGrid, Stack, Switch, Text, UnstyledButton } from "@mantine/core";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";

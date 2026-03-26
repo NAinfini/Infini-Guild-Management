@@ -1,6 +1,9 @@
 import { hasRoleAtLeast } from "@guild/shared";
-import { Button, Drawer, Group, Stack, Text, TextInput, Tooltip, VisuallyHidden } from "@mantine/core";
-import { DepthButton, DepthToggle, InfiniCard, TipTapEditor } from "@infini-dev-kit/frontend/components";
+import { Button, Drawer, Group, Skeleton, Stack, Text, TextInput, VisuallyHidden } from "@mantine/core";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { DepthToggle } from "@portal/components/shared/DepthToggle";
+import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
+import { PortalCard } from "../shared/PortalCard";
 import { modals } from "@mantine/modals";
 import { IconArchive, IconEdit, IconPinned } from "@tabler/icons-react";
 import { useDebouncedValue, useDisclosure, useMediaQuery } from "@mantine/hooks";
@@ -307,13 +310,20 @@ export function WikiPage() {
           {t("backToList")}
         </Button>
       ) : null}
-      <InfiniCard className="wiki-article-reader-card" interactive={false}>
+      <PortalCard className="wiki-article-reader-card" interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Stack gap={12}>
             {(detailQuery.isLoading || (detailQuery.isFetching && !detailQuery.data)) && selectedSlug ? (
-              <div style={{ display: "flex", justifyContent: "center", padding: "3rem 0" }}>
-                <Text c="dimmed">{t("common:loading")}</Text>
-              </div>
+              <Stack gap={12} style={{ padding: "1rem 0" }}>
+                <Skeleton height={22} width="55%" />
+                <Group gap={8}><Skeleton height={12} width="15%" /><Skeleton height={12} width="25%" /></Group>
+                <Skeleton height={12} width="35%" />
+                <Skeleton height={14} />
+                <Skeleton height={14} />
+                <Skeleton height={14} width="80%" />
+                <Skeleton height={14} />
+                <Skeleton height={14} width="60%" />
+              </Stack>
             ) : !selectedArticle ? (
               <EmptyState title={t("welcome.title")} description={t("welcome.description")} />
             ) : (
@@ -323,14 +333,12 @@ export function WikiPage() {
                     {selectedArticle.title}
                   </Text>
                   {canEdit ? (
-                    <Tooltip label={t("editor.editWiki")} withArrow>
-                      <DepthButton type="secondary" size="sm" onClick={handleOpenArticleEditor}>
+                    <DepthButton type="secondary" size="sm" onClick={handleOpenArticleEditor} tooltip={{ label: t("editor.editWiki"), withArrow: true }}>
                         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                           <IconEdit size={16} />
                         </span>
                         <VisuallyHidden>{t("editor.editWiki")}</VisuallyHidden>
                       </DepthButton>
-                    </Tooltip>
                   ) : null}
                 </Group>
                 <Group gap={6}>
@@ -359,7 +367,7 @@ export function WikiPage() {
             )}
           </Stack>
         </div>
-      </InfiniCard>
+      </PortalCard>
     </Stack>
   );
 
@@ -371,7 +379,7 @@ export function WikiPage() {
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")}>
       <PageLayout.Section>
-        <InfiniCard interactive={false}>
+        <PortalCard interactive={false}>
           <div style={{ padding: "1.2rem" }}>
             <Group gap={8} wrap="wrap">
               <TextInput
@@ -381,33 +389,31 @@ export function WikiPage() {
                 value={search}
                 onChange={(event) => setSearch(event.currentTarget.value)}
               />
-              <Tooltip label={pinnedOnly ? t("filter.showAll") : t("filter.showPinned")} withArrow>
-                <DepthToggle
+              <DepthToggle
                   pressed={pinnedOnly}
                   onToggle={() => setPinnedOnly((value) => !value)}
                   type="secondary"
                   size="sm"
                   iconOnly
                   aria-label={pinnedOnly ? t("filter.showAll") : t("filter.showPinned")}
+                  tooltip={{ label: pinnedOnly ? t("filter.showAll") : t("filter.showPinned"), withArrow: true }}
                 >
                   <IconPinned size={16} />
                 </DepthToggle>
-              </Tooltip>
-              <Tooltip label={archivedOnly ? t("filter.showActive") : t("filter.showArchived")} withArrow>
-                <DepthToggle
+              <DepthToggle
                   pressed={archivedOnly}
                   onToggle={() => setArchivedOnly((value) => !value)}
                   type="secondary"
                   size="sm"
                   iconOnly
                   aria-label={archivedOnly ? t("filter.showActive") : t("filter.showArchived")}
+                  tooltip={{ label: archivedOnly ? t("filter.showActive") : t("filter.showArchived"), withArrow: true }}
                 >
                   <IconArchive size={16} />
                 </DepthToggle>
-              </Tooltip>
             </Group>
           </div>
-        </InfiniCard>
+        </PortalCard>
       </PageLayout.Section>
 
       <div className={`wiki-page-grid ${isMobile ? "wiki-page-grid--mobile" : ""}`}>

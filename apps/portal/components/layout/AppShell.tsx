@@ -17,10 +17,13 @@ import {
   ToolOutlined,
   UserOutlined,
 } from "../../utils/icons";
-import { listThemeIds } from "@infini-dev-kit/frontend/theme/theme-specs";
-import type { ThemeId } from "@infini-dev-kit/frontend/theme/theme-types";
-import { ScrollProgress, InfiniButton, InfiniMenu } from "@infini-dev-kit/frontend/components";
-import { useBridge, useThemeSnapshot, loadLocaleFonts } from "@infini-dev-kit/frontend/provider";
+import { listThemeIds } from "@infini-dev-kit/theme-core";
+import type { ThemeId } from "@infini-dev-kit/theme-core";
+import { ScrollProgress } from "@infini-dev-kit/react";
+import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
+import { DepthButton } from "@infini-dev-kit/react";
+import { loadLocaleFonts } from "@infini-dev-kit/theme-core";
+import { useBridge, useThemeSnapshot } from "../../providers/ThemeProvider";
 import type { IconProps } from "@tabler/icons-react";
 import {
   ActionIcon,
@@ -34,6 +37,7 @@ import {
   Stack,
   Text,
   Title,
+  Tooltip,
   UnstyledButton,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
@@ -54,6 +58,7 @@ import { useAuthStore } from "../../stores/auth";
 import { useNotificationStore, type NotificationFeature } from "../../stores/notifications";
 import { usePreferencesStore } from "../../stores/preferences";
 import { isExternalViewSearch } from "../../utils/external-view";
+import { buildLocaleOptions } from "../../utils/locales";
 import { AppErrorOverlay } from "../shared/AppErrorOverlay";
 import { EmptyState } from "../shared/EmptyState";
 import { OverlayRegistrar } from "../shared/OverlayRegistrar";
@@ -242,6 +247,7 @@ export function AppShell() {
   const markFeatureAsRead = useNotificationStore((state) => state.markFeatureAsRead);
   const markPushAsRead = useNotificationStore((state) => state.markPushAsRead);
   const markAllPushAsRead = useNotificationStore((state) => state.markAllPushAsRead);
+  const localeOptions = useMemo(() => buildLocaleOptions((key) => t(key)), [t]);
   const themeIds = useMemo(() => listThemeIds(), []);
   const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [permissionBanner, setPermissionBanner] = useState<string | null>(null);
@@ -558,24 +564,24 @@ export function AppShell() {
                   const Icon = item.icon;
                   const active = item.to === selectedNavKey;
                   return (
-                    <UnstyledButton
-                      key={item.to}
-                      title={isSidebarCollapsed ? t(item.labelKey) : undefined}
-                      className={`app-nav-item ${active ? "app-nav-item--active" : ""}`}
-                      onClick={() => {
-                        markFeatureAsReadForPath(item.to);
-                        void navigate({ to: item.to as never });
-                      }}
-                    >
-                      <Group gap={10} wrap="nowrap" justify="flex-start">
-                        <Indicator disabled={!navHasNew(item)} offset={2} size={7} inline>
-                          <span className="app-nav-icon">
-                            <Icon />
-                          </span>
-                        </Indicator>
-                        <SidebarLabel collapsed={isSidebarCollapsed} className="app-nav-label">{t(item.labelKey)}</SidebarLabel>
-                      </Group>
-                    </UnstyledButton>
+                    <Tooltip key={item.to} label={t(item.labelKey)} disabled={!isSidebarCollapsed} position="right" withArrow>
+                      <UnstyledButton
+                        className={`app-nav-item ${active ? "app-nav-item--active" : ""}`}
+                        onClick={() => {
+                          markFeatureAsReadForPath(item.to);
+                          void navigate({ to: item.to as never });
+                        }}
+                      >
+                        <Group gap={10} wrap="nowrap" justify="flex-start">
+                          <Indicator disabled={!navHasNew(item)} offset={2} size={7} inline>
+                            <span className="app-nav-icon">
+                              <Icon />
+                            </span>
+                          </Indicator>
+                          <SidebarLabel collapsed={isSidebarCollapsed} className="app-nav-label">{t(item.labelKey)}</SidebarLabel>
+                        </Group>
+                      </UnstyledButton>
+                    </Tooltip>
                   );
                 })}
               </Stack>
@@ -706,12 +712,15 @@ export function AppShell() {
                   </ActionIcon>
                 </InfiniMenu.Target>
                 <InfiniMenu.Dropdown>
-                  <InfiniMenu.Item className={locale === "en" ? "infini-menu-item--active" : undefined} onClick={() => setLocale("en")}>
-                    English
-                  </InfiniMenu.Item>
-                  <InfiniMenu.Item className={locale === "zh" ? "infini-menu-item--active" : undefined} onClick={() => setLocale("zh")}>
-                    中文
-                  </InfiniMenu.Item>
+                  {localeOptions.map((option) => (
+                    <InfiniMenu.Item
+                      key={option.value}
+                      className={locale === option.value ? "infini-menu-item--active" : undefined}
+                      onClick={() => setLocale(option.value)}
+                    >
+                      {option.label}
+                    </InfiniMenu.Item>
+                  ))}
                 </InfiniMenu.Dropdown>
               </InfiniMenu>
             </div>
@@ -719,9 +728,9 @@ export function AppShell() {
             {user ? (
               <UserProfileDropdown user={user} onLogout={logout} compact />
             ) : (
-              <InfiniButton onClick={() => void navigate({ to: "/login" })}>
+              <DepthButton onClick={() => void navigate({ to: "/login" })}>
                 {t("action.login")}
-              </InfiniButton>
+              </DepthButton>
             )}
           </div>
         </MantineAppShell.Header>

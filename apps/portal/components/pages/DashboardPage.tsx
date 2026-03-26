@@ -230,6 +230,7 @@ export function DashboardPage() {
       if (stats.length === 0) return null;
       const topDamage = [...stats].sort((l, r) => (r.damage ?? 0) - (l.damage ?? 0))[0];
       const topHealing = [...stats].sort((l, r) => (r.healing ?? 0) - (l.healing ?? 0))[0];
+      const topDamageTaken = [...stats].sort((l, r) => (r.damage_taken ?? 0) - (l.damage_taken ?? 0))[0];
       const topBuilding = [...stats].sort((l, r) => (r.building_damage ?? 0) - (l.building_damage ?? 0))[0];
       return {
         damage: {
@@ -243,6 +244,12 @@ export function DashboardPage() {
           name: topHealing ? resolveName(topHealing.user_id) : "-",
           initials: topHealing ? initials(topHealing.user_id) : "?",
           value: topHealing?.healing ?? 0,
+        },
+        damageTaken: {
+          label: t("card.lastWar.mvp.damageTaken"),
+          name: topDamageTaken ? resolveName(topDamageTaken.user_id) : "-",
+          initials: topDamageTaken ? initials(topDamageTaken.user_id) : "?",
+          value: topDamageTaken?.damage_taken ?? 0,
         },
         building: {
           label: t("card.lastWar.mvp.building"),

@@ -1,6 +1,6 @@
 ﻿import type { User } from "@guild/shared";
 import { Avatar, Button, Group, Text, UnstyledButton } from "@mantine/core";
-import { InfiniMenu } from "@infini-dev-kit/frontend/components";
+import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { DownOutlined, LogoutOutlined, SettingOutlined, UserOutlined } from "../../utils/icons";

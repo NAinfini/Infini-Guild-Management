@@ -1,7 +1,8 @@
 import { PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Badge, Button, Grid, Group, Tabs, Text } from "@mantine/core";
+import { Badge, Grid, Group, Tabs, Text } from "@mantine/core";
+import { DepthButton } from "@infini-dev-kit/react";
 import { IconGripVertical, IconTrash, IconUserCircle } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -47,9 +48,9 @@ function SortableClassRow(props: SortableClassRowProps) {
         <IconGripVertical size={18} />
       </div>
       <Badge color={isPrimary ? "yellow" : "gray"}>{value}</Badge>
-      <Button size="xs" color="infini-danger" leftSection={<IconTrash size={16} />} onClick={onRemove}>
+      <DepthButton size="sm" type="danger" before={<IconTrash size={16} />} onClick={onRemove}>
         {t("classRow.remove")}
-      </Button>
+      </DepthButton>
       <Text c="dimmed" size="sm" style={{ fontSize: 12 }}>
         #{index + 1}
       </Text>

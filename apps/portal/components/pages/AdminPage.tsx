@@ -1,14 +1,15 @@
 import { hasRoleAtLeast, type AdminRole } from "@guild/shared";
-import { MotionButton } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { IconSettings } from "@tabler/icons-react";
 import { useSearch } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   Alert,
   Badge,
   Card,
-  Center,
   Group,
-  Loader,
+  Skeleton,
+  Stack,
   Tabs,
 } from "@mantine/core";
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
@@ -23,10 +24,12 @@ import { useAdminStatusController } from "../../hooks/useAdminStatusController";
 import { usePageHeaderActions } from "../../context/PageHeaderContext";
 import { useAppError } from "../../hooks/useAppError";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
+import { fetchAdminAuditArchiveMonth } from "../../services/AdminService";
+import { queryKeys } from "../../services/PortalQueryKeys";
 import { useAuthStore } from "../../stores/auth";
-import { canManageRoles, canManageBot, canViewStatus } from "../../utils/permissions";
+import { canManageRoles, canManageBot, canViewStatus, canExportAudit } from "../../utils/permissions";
 import { PageLayout } from "../layout/PageLayout";
-import { ErrorBoundary } from "@infini-dev-kit/frontend/components";
+import { ErrorBoundary } from "@infini-dev-kit/react";
 import "./AdminPage.css";
 
 const LazyAdminStatusTab = lazy(() =>
@@ -71,6 +74,8 @@ export function AdminPage() {
   const [activeTab, setActiveTab] = useState("member");
   const [queryDiscordGuildId, setQueryDiscordGuildId] = useState("");
   const [memberSearch, setMemberSearch] = useState("");
+  const [selectedArchiveMonth, setSelectedArchiveMonth] = useState<string | null>(null);
+  const [archivePage, setArchivePage] = useState(1);
 
   const {
     auditFilter,
@@ -173,6 +178,14 @@ export function AdminPage() {
   const roles = rolesQuery.data ?? [];
   const userRole = user?.role ?? "member";
   const isAdmin = canManageRoles(roles, userRole) || canManageBot(roles, userRole) || canViewStatus(roles, userRole);
+  const showArchiveExplorer = canExportAudit(roles, userRole);
+  const archiveMonths = auditMonthsQuery.data?.months ?? [];
+
+  const auditArchiveQuery = useQuery({
+    queryKey: queryKeys.admin.auditArchive(selectedArchiveMonth, archivePage),
+    queryFn: () => fetchAdminAuditArchiveMonth(selectedArchiveMonth!, { page: archivePage, limit: 50 }),
+    enabled: activeTab === "audit" && showArchiveExplorer && Boolean(selectedArchiveMonth),
+  });
 
   useEffect(() => {
     setQueryDiscordGuildId(botController.botSettings.discordGuildId);
@@ -295,9 +308,9 @@ export function AdminPage() {
       isAdmin && isModerator ? (
         <Group gap={8} wrap="wrap">
           {activeTab === "invite" ? (
-            <MotionButton type="primary" onClick={() => createInviteMutation.mutate()} loading={createInviteMutation.isPending}>
+            <DepthButton type="primary" onClick={() => createInviteMutation.mutate()} loading={createInviteMutation.isPending}>
               {inviteCreateLabel}
-            </MotionButton>
+            </DepthButton>
           ) : null}
         </Group>
       ) : null,
@@ -325,9 +338,10 @@ export function AdminPage() {
   );
   const suspenseFallback = (
     <Card withBorder p="md">
-      <Center>
-        <Loader size="sm" />
-      </Center>
+      <Stack gap={10}>
+        <Group gap={8}><Skeleton height={28} width="30%" /><Skeleton height={28} width="20%" /></Group>
+        {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}
+      </Stack>
     </Card>
   );
 
@@ -445,6 +459,22 @@ export function AdminPage() {
               auditPageSize={auditLogQuery.data?.limit ?? 50}
               auditTotal={auditLogQuery.data?.total ?? 0}
               onAuditPageChange={setAuditPage}
+              showArchiveExplorer={showArchiveExplorer}
+              archiveMonths={archiveMonths}
+              archiveMonthsLoading={auditMonthsQuery.isLoading}
+              archiveMonthsError={auditMonthsQuery.isError}
+              selectedArchiveMonth={selectedArchiveMonth}
+              onArchiveMonthChange={(month) => {
+                setSelectedArchiveMonth(month);
+                setArchivePage(1);
+              }}
+              archiveLoading={auditArchiveQuery.isLoading}
+              archiveError={auditArchiveQuery.isError}
+              archiveRows={auditArchiveQuery.data?.data ?? []}
+              archivePageCurrent={auditArchiveQuery.data?.page ?? archivePage}
+              archivePageSize={auditArchiveQuery.data?.limit ?? 50}
+              archiveTotal={auditArchiveQuery.data?.total ?? 0}
+              onArchivePageChange={setArchivePage}
               rolesData={rolesQuery.data ?? []}
             />
           </Suspense>

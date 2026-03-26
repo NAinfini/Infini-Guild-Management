@@ -7,9 +7,9 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { buildEChartsTheme } from "@infini-dev-kit/frontend/theme/echarts/echarts-adapter";
-import { useThemeSnapshot } from "@infini-dev-kit/frontend/provider";
-import { Alert, Button, Card, Group, Loader, Stack, Tabs, Text } from "@mantine/core";
+import { buildEChartsTheme } from "@infini-dev-kit/theme-core";
+import { useThemeSnapshot } from "../../providers/ThemeProvider";
+import { Alert, Button, Card, Group, Skeleton, Stack, Tabs, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { type ContextMenuItemOptions, useContextMenu } from "mantine-contextmenu";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,7 +18,7 @@ import { BarChart, LineChart } from "echarts/charts";
 import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "../../hooks/useAppError";
 import { useGuildWarData } from "../../hooks/data/useGuildWarData";
@@ -68,40 +68,6 @@ type PageTabsProps = {
 const message = {
   success: (content: string) => notifications.show({ color: "infini-success", message: content }),
 };
-
-function Spin() {
-  return (
-    <Group justify="center" py="sm">
-      <Loader size="sm" />
-    </Group>
-  );
-}
-
-function Space({
-  direction = "horizontal",
-  style,
-  size,
-  children,
-}: {
-  direction?: "horizontal" | "vertical";
-  style?: CSSProperties;
-  size?: number;
-  children: ReactNode;
-}) {
-  if (direction === "vertical") {
-    return (
-      <Stack gap={size} style={style}>
-        {children}
-      </Stack>
-    );
-  }
-
-  return (
-    <Group gap={size} style={style}>
-      {children}
-    </Group>
-  );
-}
 
 function PageTabs({ items, destroyInactiveTabPane = false, initialActiveKey }: PageTabsProps) {
   const [activeKey, setActiveKey] = useState<string | null>(initialActiveKey ?? items[0]?.key ?? null);
@@ -507,8 +473,8 @@ export function GuildWarPage() {
                   key: "active",
                   label: t("tab.active"),
                   children: (
-                    <Space direction="vertical" style={{ display: "flex" }} size={12}>
-                      <Suspense fallback={<Card><Spin /></Card>}>
+                    <Stack gap={12} style={{ display: "flex" }}>
+                      <Suspense fallback={<Card><Stack gap={10} p="md"><Skeleton height={32} width="40%" /><Skeleton height={32} /><Group gap={8}><Skeleton height={32} width="30%" /><Skeleton height={32} width="30%" /></Group></Stack></Card>}>
                         <LazyGuildWarActiveTopCard
                           selectedEventId={selectedEventId}
                           eventOptions={(warEventsQuery.data?.data ?? []).map((item) => ({
@@ -597,7 +563,7 @@ export function GuildWarPage() {
                         </Alert>
                       ) : null}
 
-                      <Suspense fallback={<Card><Spin /></Card>}>
+                      <Suspense fallback={<Card><Group gap={12} p="md" align="flex-start">{Array.from({ length: 4 }).map((_, i) => <Stack key={i} gap={8} style={{ flex: 1 }}><Skeleton height={24} width="60%" /><Skeleton height={60} /><Skeleton height={60} /><Skeleton height={60} /></Stack>)}</Group></Card>}>
                         <LazyGuildWarDragBoard
                           dragColumns={guildWarDrag.dragColumns}
                           canDrag={canManageActive && Boolean(selectedEventId)}
@@ -634,7 +600,7 @@ export function GuildWarPage() {
                           onClose={() => activeController.setActiveDetailUserId(null)}
                         />
                       </Suspense>
-                    </Space>
+                    </Stack>
                   ),
                 },
               ]
@@ -646,7 +612,10 @@ export function GuildWarPage() {
               <Suspense
                 fallback={
                   <Card>
-                    <Spin />
+                    <Stack gap={10} p="md">
+                      <Group gap={8}><Skeleton height={28} width="25%" /><Skeleton height={28} width="25%" /></Group>
+                      {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}
+                    </Stack>
                   </Card>
                 }
               >
@@ -715,7 +684,11 @@ export function GuildWarPage() {
               <Suspense
                 fallback={
                   <Card>
-                    <Spin />
+                    <Stack gap={10} p="md">
+                      <Group gap={8}><Skeleton height={28} width="25%" /><Skeleton height={28} width="25%" /></Group>
+                      <Skeleton height={180} radius={8} />
+                      {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}
+                    </Stack>
                   </Card>
                 }
               >

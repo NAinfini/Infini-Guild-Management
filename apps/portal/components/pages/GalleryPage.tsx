@@ -1,6 +1,6 @@
 import { hasRoleAtLeast } from "@guild/shared";
 import { IconPhoto } from "@tabler/icons-react";
-import { MotionButton } from "@infini-dev-kit/frontend/components";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { Button, Group, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
 import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone";
 import { modals } from "@mantine/modals";
@@ -22,7 +22,7 @@ import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { queryKeys } from "../../services/PortalQueryKeys";
 import { useAuthStore } from "../../stores/auth";
-import { DEFAULT_IMAGE_WEBP_QUALITY, convertImageToWebP, toEmbedVideoUrl } from "@infini-dev-kit/frontend/utils";
+import { DEFAULT_IMAGE_WEBP_QUALITY, convertImageToWebP, toEmbedVideoUrl } from "@infini-dev-kit/react";
 import { GalleryFiltersCard } from "../feature/gallery/GalleryFiltersCard";
 import { GalleryGrid } from "../feature/gallery/GalleryGrid";
 import { GalleryLightboxModal } from "../feature/gallery/GalleryLightboxModal";
@@ -48,7 +48,7 @@ export function GalleryPage() {
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
   const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
-  const canUpload = Boolean(user) && !isExternalView;
+  const canUpload = Boolean(user && hasRoleAtLeast(user.role, "member")) && !isExternalView;
   const canModerate = isModerator && !isExternalView;
   const { showError } = useAppError();
 
@@ -324,7 +324,7 @@ export function GalleryPage() {
               </Dropzone>
               <Group gap={8} wrap="wrap" justify="space-between">
                 <Group gap={8} wrap="wrap">
-                  <MotionButton
+                  <DepthButton
                     type="primary"
                     onClick={() => {
                       void runUploadQueue();
@@ -333,7 +333,7 @@ export function GalleryPage() {
                     disabled={queuedCount === 0}
                   >
                     {uploadImagesLabel}
-                  </MotionButton>
+                  </DepthButton>
                   <Button onClick={clearFinishedUploads} disabled={uploadQueue.every((item) => item.status !== "done")}>
                     {clearDoneLabel}
                   </Button>
@@ -362,7 +362,7 @@ export function GalleryPage() {
                 onChange={(event) => setVideoCaption(event.currentTarget.value)}
               />
               <Group justify="flex-end">
-                <MotionButton
+                <DepthButton
                   onClick={() =>
                     createVideoMutation.mutate({
                       type: "video",
@@ -374,7 +374,7 @@ export function GalleryPage() {
                   disabled={!videoUrl.trim()}
                 >
                   {addVideoLabel}
-                </MotionButton>
+                </DepthButton>
               </Group>
             </Stack>
           </Tabs.Panel>
@@ -485,6 +485,8 @@ export function GalleryPage() {
         setZoom={setLightboxZoom}
         isHttpUrl={isHttpUrl}
         toEmbedVideoUrl={toEmbedVideoUrl}
+        formatDateTime={formatDateTime}
+        isExternalView={isExternalView}
         fieldR2ObjectLabel={t("field.r2Object")}
       />
     </PageLayout>

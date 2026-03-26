@@ -17,10 +17,10 @@ import {
   BubbleBackground,
   GlassEffect,
   GradientText,
-  InfiniButton,
   LampHeading,
   MagneticElement,
-} from "@infini-dev-kit/frontend/components";
+} from "@infini-dev-kit/react";
+import { DepthButton } from "@infini-dev-kit/react";
 import { IconArrowLeft, IconEye, IconEyeOff, IconKeyboard } from "@tabler/icons-react";
 import { useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
@@ -233,9 +233,9 @@ export function LoginPage() {
 
               <Checkbox {...register("stay_logged_in")} label={t("field.stayLoggedIn")} />
 
-              <InfiniButton htmlType="submit" loading={loginMutation.isPending}>
+              <DepthButton htmlType="submit" disabled={loginMutation.isPending}>
                 {t("button.login")}
-              </InfiniButton>
+              </DepthButton>
 
               <MagneticElement strength={8} className="login-page__back-link">
                 <Anchor

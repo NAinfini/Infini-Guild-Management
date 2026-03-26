@@ -1,5 +1,5 @@
 ﻿import type { Event, MemberProfile, User } from "@guild/shared";
-import type { ImageGridEditorItem } from "@infini-dev-kit/frontend/components";
+import type { ImageGridEditorItem } from "@infini-dev-kit/react";
 import { IconCalendarEvent } from "@tabler/icons-react";
 import { hasRoleAtLeast } from "@guild/shared";
 import { useClipboard, useLocalStorage } from "@mantine/hooks";
@@ -360,7 +360,10 @@ export function EventsPage() {
         members={monthDetailEvent ? (filtering.eventMembersMap.get(monthDetailEvent.id) ?? []) : []}
         allUsers={asMemberEntries(filtering.usersQuery.data?.data ?? [])}
         canManage={canManage}
+        currentUserId={user?.id ?? undefined}
         onClose={() => setMonthDetailEvent(null)}
+        onJoin={(eventId) => { void mutations.handleJoin(eventId); }}
+        onLeave={mutations.handleLeave}
         onAddParticipant={mutations.addParticipant}
         onRemoveParticipant={mutations.removeParticipant}
       />

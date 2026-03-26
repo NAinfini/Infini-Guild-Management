@@ -1,4 +1,5 @@
-﻿import { DepthButton, InfiniCard } from "@infini-dev-kit/frontend/components";
+﻿import { DepthButton } from "@infini-dev-kit/react";
+import { PortalCard } from "../shared/PortalCard";
 import {
   Alert,
   ColorPicker,
@@ -122,7 +123,7 @@ export function ToolsPage() {
 
       <PageLayout.Grid cols={{ xs: 2, sm: 3, md: 5 }} gap={16}>
         {toolCards.map((tool) => (
-          <InfiniCard
+          <PortalCard
             key={tool.key}
             className="tool-card"
           >
@@ -146,7 +147,7 @@ export function ToolsPage() {
                 <div className="tool-card__icon">{tool.icon}</div>
               </div>
             </button>
-          </InfiniCard>
+          </PortalCard>
         ))}
       </PageLayout.Grid>
 

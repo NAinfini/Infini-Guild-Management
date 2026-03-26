@@ -1,5 +1,5 @@
 import { Button, Indicator } from "@mantine/core";
-import { InfiniMenu } from "@infini-dev-kit/frontend/components";
+import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { IconProps } from "@tabler/icons-react";
 import type { ComponentType } from "react";

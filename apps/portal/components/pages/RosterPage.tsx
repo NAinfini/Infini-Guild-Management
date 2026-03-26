@@ -1,6 +1,7 @@
 import type { MemberProfile, User } from "@guild/shared";
 import { CLASS_NAMES, hasRoleAtLeast } from "@guild/shared";
-import { DepthToggle, InfiniCard, StaggerList } from "@infini-dev-kit/frontend/components";
+import { DepthToggle, StaggerList } from "@infini-dev-kit/react";
+import { PortalCard } from "../shared/PortalCard";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -307,7 +308,7 @@ export function RosterPage() {
 
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")} className="roster-page">
-      <InfiniCard className="roster-filter-card" interactive={false}>
+      <PortalCard className="roster-filter-card" interactive={false}>
         <div style={{ padding: "1.2rem" }}>
         <Group wrap="wrap" gap="md" className="roster-filter-controls">
           <TextInput
@@ -345,10 +346,10 @@ export function RosterPage() {
           </Text>
         </Group>
         </div>
-      </InfiniCard>
+      </PortalCard>
 
       {sortedRows.length === 0 ? (
-        <InfiniCard className="roster-empty-card" interactive={false}>
+        <PortalCard className="roster-empty-card" interactive={false}>
           <EmptyState
             title={debouncedSearch || classFilter.length > 0 ? t("empty.filtered") : t("empty.default")}
             actions={
@@ -361,7 +362,7 @@ export function RosterPage() {
               </Button>
             }
           />
-        </InfiniCard>
+        </PortalCard>
       ) : null}
 
       {sortedRows.length > 0 ? (
