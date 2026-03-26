@@ -33,6 +33,22 @@ if (typeof window !== "undefined") {
     });
   }
 
+  if (!("IntersectionObserver" in window)) {
+    class IntersectionObserverMock {
+      readonly root: Element | null = null;
+      readonly rootMargin: string = "0px";
+      readonly thresholds: ReadonlyArray<number> = [0];
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords(): IntersectionObserverEntry[] { return []; }
+    }
+    Object.defineProperty(window, "IntersectionObserver", {
+      writable: true,
+      value: IntersectionObserverMock,
+    });
+  }
+
   if (!("ResizeObserver" in window)) {
     class ResizeObserverMock {
       observe() {}

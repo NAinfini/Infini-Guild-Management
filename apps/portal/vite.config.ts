@@ -40,7 +40,7 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             const normalizedId = id.replace(/\\/g, "/");
 
-            if (normalizedId.includes("/Infini-Dev-Kit/frontend/")) {
+            if (normalizedId.includes("/Infini-Dev-Kit/packages/")) {
               return "devkit";
             }
             if (normalizedId.includes("/apps/portal/i18n/")) {
@@ -104,16 +104,24 @@ export default defineConfig(({ mode }) => {
       alias: [
         // Dev-Kit source aliases
         {
-          find: "@infini-dev-kit/frontend",
-          replacement: resolve(devKitRoot, "frontend"),
+          find: "@infini-dev-kit/react",
+          replacement: resolve(devKitRoot, "packages/react"),
+        },
+        {
+          find: "@infini-dev-kit/theme-core",
+          replacement: resolve(devKitRoot, "packages/theme-core"),
+        },
+        {
+          find: "@infini-dev-kit/adapter-mantine",
+          replacement: resolve(devKitRoot, "packages/adapter-mantine"),
         },
         {
           find: "@infini-dev-kit/utils",
-          replacement: resolve(devKitRoot, "utils"),
+          replacement: resolve(devKitRoot, "packages/utils"),
         },
         {
           find: "@infini-dev-kit/api-client",
-          replacement: resolve(devKitRoot, "api-client"),
+          replacement: resolve(devKitRoot, "packages/api-client"),
         },
         // Force Dev-Kit peer deps to resolve from Guild-Management node_modules
         { find: "react", replacement: resolve(repoRoot, "node_modules/react") },

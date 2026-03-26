@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { KitApp } from "@infini-dev-kit/frontend/provider";
+import { PortalThemeProvider } from "../../providers/ThemeProvider";
 import { modals } from "@mantine/modals";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -26,13 +26,13 @@ function ConfirmModalHarness() {
 }
 
 describe("mantine modals bridge", () => {
-  it("opens a confirm modal from portal code under KitApp", async () => {
+  it("opens a confirm modal from portal code under PortalThemeProvider", async () => {
     const user = userEvent.setup();
 
     render(
-      <KitApp>
+      <PortalThemeProvider>
         <ConfirmModalHarness />
-      </KitApp>,
+      </PortalThemeProvider>,
     );
 
     await user.click(screen.getByRole("button", { name: "Open confirm" }));

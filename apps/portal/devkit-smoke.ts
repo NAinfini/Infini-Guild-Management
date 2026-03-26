@@ -1,11 +1,11 @@
-import { composeMantineTheme } from "@infini-dev-kit/frontend/theme/mantine/mantine-adapter";
-import { KitApp } from "@infini-dev-kit/frontend/provider";
+import { composeMantineTheme } from "./theme/mantine-adapter";
+import { createThemeProviderBridge } from "@infini-dev-kit/theme-core";
 import { createApiClient } from "@infini-dev-kit/api-client";
 import { createRequestId } from "@infini-dev-kit/utils";
 
 export const portalDevKitSmoke = {
   composeMantineTheme,
-  KitApp,
+  createThemeProviderBridge,
   createApiClient,
   createRequestId,
 };
