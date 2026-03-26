@@ -142,6 +142,10 @@ app.post("/api/dev/seed", async (c) => {
   if (env.ENVIRONMENT !== "development") {
     return c.json({ error_code: "NOT_FOUND", message: "Not found", request_id: c.get("requestId") }, 404);
   }
+  const session = await resolveSession(c);
+  if (!session || !session.user.permissions.has("admin.roles.manage")) {
+    return c.json({ error_code: "FORBIDDEN", message: "Requires admin permissions", request_id: c.get("requestId") }, 403);
+  }
   await seedDatabase(c.env);
   return c.json({ ok: true, message: "Database seeded" });
 });
@@ -149,6 +153,10 @@ app.post("/api/dev/reseed", async (c) => {
   const env = c.env as Bindings;
   if (env.ENVIRONMENT !== "development") {
     return c.json({ error_code: "NOT_FOUND", message: "Not found", request_id: c.get("requestId") }, 404);
+  }
+  const session = await resolveSession(c);
+  if (!session || !session.user.permissions.has("admin.roles.manage")) {
+    return c.json({ error_code: "FORBIDDEN", message: "Requires admin permissions", request_id: c.get("requestId") }, 403);
   }
   await clearAllData(c.env);
   await seedDatabase(c.env);

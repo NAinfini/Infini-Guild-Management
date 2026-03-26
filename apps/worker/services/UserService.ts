@@ -5,7 +5,6 @@ import {
   adminUpdateProfileSchema,
   changePasswordSchema,
   changeUsernameSchema,
-  hasRoleAtLeast,
   memberProfileSchema,
   updateProfileSchema,
   userSchema,
@@ -19,7 +18,7 @@ import { ok, err, type ServiceResult } from "./result";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
 
-export type SessionUser = { id: string; role: Role };
+export type SessionUser = { id: string; role: Role; permissions: ReadonlySet<string> };
 
 type UserRow = {
   id: string;
@@ -320,9 +319,9 @@ export class UserService {
     )[0];
     if (!target || target.deletedAt !== null) return "not_found";
     if (sessionUser.id === targetUserId) return "allowed";
-    if (sessionUser.role === "admin") return "allowed";
-    if (!hasRoleAtLeast(sessionUser.role, "moderator")) return "forbidden";
-    return target.role !== "admin" ? "allowed" : "forbidden";
+    if (!sessionUser.permissions.has("admin.users.edit")) return "forbidden";
+    if (target.role === "admin" && sessionUser.role !== "admin") return "forbidden";
+    return "allowed";
   }
 
   async listUsers(params: ListUsersParams): Promise<ServiceResult<{
@@ -350,7 +349,7 @@ export class UserService {
       return {
         user: toUserPayload(normalized.user),
         profile: toProfilePayload(normalized.profile, {
-          includeNotes: params.sessionUser?.role === "admin",
+          includeNotes: params.sessionUser?.permissions.has("admin.users.view") === true,
           includeWechat: Boolean(params.sessionUser) && !params.externalView,
         }),
       };
@@ -365,7 +364,7 @@ export class UserService {
     const profile = await this.ensureProfile(targetUserId);
     return ok({
       user: toUserPayload(loaded.user),
-      profile: toProfilePayload(profile, { includeNotes: sessionUser.role === "admin", includeWechat: true }),
+      profile: toProfilePayload(profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includeWechat: true }),
     });
   }
 
@@ -374,7 +373,7 @@ export class UserService {
     if (access === "not_found") return err("NOT_FOUND", "User not found");
     if (access === "forbidden") return err("FORBIDDEN", "You cannot edit this profile");
 
-    const schema = sessionUser.role === "admin" ? adminUpdateProfileSchema : updateProfileSchema;
+    const schema = sessionUser.permissions.has("admin.users.edit") ? adminUpdateProfileSchema : updateProfileSchema;
     const parsed = schema.safeParse(body);
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid profile payload", parsed.error.flatten());
 
@@ -389,7 +388,7 @@ export class UserService {
       entityId: targetUserId, diffTitle: updated.user.username,
     });
     await this.deps.publishEntityChanged({ entityType: "member_profile", entityId: targetUserId, hint: "profile_updated" });
-    return ok(toProfilePayload(updated.profile, { includeNotes: sessionUser.role === "admin", includeWechat: true }));
+    return ok(toProfilePayload(updated.profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includeWechat: true }));
   }
 
   async uploadProfileImages(sessionUser: SessionUser, targetUserId: string, files: File[]): Promise<ServiceResult<{ keys: string[] }>> {
@@ -494,8 +493,15 @@ export class UserService {
   }
 
   async unlinkDiscord(sessionUser: SessionUser, targetUserId: string): Promise<ServiceResult<{ ok: true }>> {
-    if (sessionUser.id !== targetUserId && sessionUser.role !== "admin")
-      return err("FORBIDDEN", "Discord unlink is allowed for self or admin");
+    if (sessionUser.id !== targetUserId) {
+      if (!sessionUser.permissions.has("admin.users.edit"))
+        return err("FORBIDDEN", "Discord unlink is allowed for self or users with admin.users.edit");
+      const target = (
+        await this.db.select({ role: users.role }).from(users).where(eq(users.id, targetUserId)).limit(1)
+      )[0];
+      if (target?.role === "admin" && sessionUser.role !== "admin")
+        return err("FORBIDDEN", "Cannot unlink Discord for admin users");
+    }
 
     await this.db.update(memberProfiles).set({ discordId: null, updatedAt: new Date().toISOString() }).where(eq(memberProfiles.userId, targetUserId));
     await this.deps.writeAuditLog({ entityType: "member_profile", action: "unlink_discord", actorId: sessionUser.id, entityId: targetUserId });

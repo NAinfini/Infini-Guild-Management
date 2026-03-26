@@ -1,5 +1,6 @@
 import {
   ERROR_STATUS,
+  analyticsSettingsSchema,
   batchDeactivateSchema,
   batchRoleChangeSchema,
   botSettingsSchema,
@@ -329,7 +330,9 @@ adminRoutes.patch("/analytics-settings", async (c) => {
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
-  const result = await getAdminService(c).updateAnalyticsSettings(sessionUser.id, body as Record<string, unknown>);
+  const parsed = analyticsSettingsSchema.safeParse(body);
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid analytics settings payload", parsed.error.flatten());
+  const result = await getAdminService(c).updateAnalyticsSettings(sessionUser.id, parsed.data);
   return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
 });
 

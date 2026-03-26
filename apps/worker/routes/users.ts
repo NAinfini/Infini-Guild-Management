@@ -3,11 +3,11 @@ import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { createPasswordHash, destroySession, resolveSession, verifyPassword } from "../services/auth";
+import { createPasswordHash, destroySession, resolveSession, verifyPassword, type SessionUser } from "../services/auth";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { deleteMediaObject, storeProfileAudio, storeProfileImage } from "../services/media";
-import { UserService, type SessionUser } from "../services/UserService";
+import { UserService } from "../services/UserService";
 
 type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
 
