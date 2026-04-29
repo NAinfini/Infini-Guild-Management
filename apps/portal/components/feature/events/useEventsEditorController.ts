@@ -216,7 +216,7 @@ export function useEventsEditorController({ sortedEvents, attachmentSnapshot }: 
           title: t("confirm.discardUnsaved.title"),
           children: t("confirm.discardUnsaved.description"),
           labels: { confirm: t("common:action.delete"), cancel: t("common:action.cancel") },
-          confirmProps: { color: "infini-warning" },
+          confirmProps: { color: "yellow" },
           onConfirm: () => resolve(true),
           onCancel: () => resolve(false),
           closeOnConfirm: true,

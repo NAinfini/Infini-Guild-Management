@@ -108,7 +108,7 @@ export function TeamStatusPanel({
             void copyPlainText(
               `${draftName.trim() || team.team_name}: ${team.members.map((m) => `@${m.user_id}`).join(", ")}`,
             );
-            notifications.show({ color: "infini-success", message: t("active.teamCopied") });
+            notifications.show({ color: "green", message: t("active.teamCopied") });
           }}
         >
           {t("active.teamSetup.copyLabel")}
@@ -150,7 +150,7 @@ export function TeamStatusPanel({
         <Button
           size="xs"
           variant="light"
-          color="infini-danger"
+          color="red"
           leftSection={<IconTrash size={16} />}
           disabled={draftLocked || !selectedEventId || !roleEditor?.userId}
           loading={roleTagMutation.isPending}

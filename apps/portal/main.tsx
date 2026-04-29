@@ -1,9 +1,4 @@
 import { createRoot } from "react-dom/client";
-import "@mantine/dates/styles.css";
-import "@mantine/dropzone/styles.css";
-import "@mantine/nprogress/styles.css";
-import "mantine-contextmenu/styles.css";
-import "@infini-dev-kit/adapter-mantine/mantine-residual.css";
 import "./styles.css";
 
 const rootElement = document.getElementById("root");
@@ -21,8 +16,8 @@ root.render(
       minHeight: "100vh",
       display: "grid",
       placeItems: "center",
-      background: "var(--infini-color-bg, #f6f7fb)",
-      color: "var(--infini-color-text, #111827)",
+      background: "#f9fafb",
+      color: "#111827",
       padding: 24,
       fontFamily: "Inter, system-ui, sans-serif",
     }}

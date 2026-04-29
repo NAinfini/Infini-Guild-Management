@@ -8,14 +8,14 @@ import {
   fetchAdminInviteStats,
   fetchAdminStatus,
 } from "../../services/AdminService";
-import { queryKeys } from "../../services/PortalQueryKeys";
+import { queryKeys } from "../../api/query-keys";
 import { fetchRoles } from "../../services/RoleService";
 import { fetchUsersList } from "../../services/UserService";
 import { canManageBot, canViewStatus, canExportAudit } from "../../utils/permissions";
 
 type UseAdminDataOptions = {
   isModerator: boolean;
-  isAdmin: string;
+  userRole: string;
   auditPage: number;
   auditSearch: string;
   auditDateFrom: string;
@@ -26,7 +26,7 @@ type UseAdminDataOptions = {
 export function useAdminData(options: UseAdminDataOptions) {
   const {
     isModerator,
-    isAdmin: userRole,
+    userRole,
     auditPage,
     auditSearch,
     auditDateFrom,

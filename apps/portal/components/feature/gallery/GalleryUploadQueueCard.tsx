@@ -70,7 +70,7 @@ export function GalleryUploadQueueCard({
                 mt={6}
               />
               {task.error ? (
-                <Text c="infini-danger" size="sm" mt={4}>
+                <Text c="red" size="sm" mt={4}>
                   {task.error}
                 </Text>
               ) : null}

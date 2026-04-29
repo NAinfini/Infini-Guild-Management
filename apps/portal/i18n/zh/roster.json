@@ -6,6 +6,7 @@
   "field.wechat": "微信",
   "modal.details": "成员详情",
   "audio.volume": "音量",
+  "audio.hint": "控制成员背景音乐",
   "audio.aria.mute": "静音",
   "audio.aria.unmute": "取消静音",
   "audio.aria.volumeSlider": "成员语音音量",

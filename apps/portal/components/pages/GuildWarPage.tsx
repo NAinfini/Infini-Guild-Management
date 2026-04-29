@@ -1,4 +1,3 @@
-import { hasRoleAtLeast } from "@guild/shared";
 import { IconSwords, IconX } from "@tabler/icons-react";
 import {
   KeyboardSensor,
@@ -7,10 +6,11 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { buildEChartsTheme } from "@infini-dev-kit/theme-core";
-import { useThemeSnapshot } from "../../providers/ThemeProvider";
-import { Alert, Button, Card, Group, Skeleton, Stack, Tabs, Text } from "@mantine/core";
+import { buildEChartsTheme } from "../../theme/echarts";
+import { useTheme } from "../../providers/ThemeProvider";
+import { Alert, Button, Card, Group, Modal, MultiSelect, Skeleton, Stack, Tabs, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { useDisclosure } from "@mantine/hooks";
 import { type ContextMenuItemOptions, useContextMenu } from "mantine-contextmenu";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
@@ -29,9 +29,10 @@ import { useGuildWarHistory } from "../../hooks/guild-war/useGuildWarHistory";
 import { useGuildWarMutations } from "../../hooks/guild-war/useGuildWarMutations";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { GuildWarService, moveGuildWarMember } from "../../services/GuildWarService";
-import { queryKeys } from "../../services/PortalQueryKeys";
+import { queryKeys } from "../../api/query-keys";
 import { fetchUsersList } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
+import { userHasAnyPermission } from "../../utils/permissions";
 import { useGuildWarStore } from "../../stores/guildWar";
 import { PageLayout } from "../layout/PageLayout";
 import { useGuildWarActiveController } from "../feature/guild-war/useGuildWarActiveController";
@@ -66,7 +67,7 @@ type PageTabsProps = {
 };
 
 const message = {
-  success: (content: string) => notifications.show({ color: "infini-success", message: content }),
+  success: (content: string) => notifications.show({ color: "green", message: content }),
 };
 
 function PageTabs({ items, destroyInactiveTabPane = false, initialActiveKey }: PageTabsProps) {
@@ -135,14 +136,14 @@ export function GuildWarPage() {
     warName?: string;
   };
   const queryClient = useQueryClient();
-  const themeSnapshot = useThemeSnapshot();
+  const { theme: currentTheme } = useTheme();
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
-  const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
+  const isModerator = userHasAnyPermission(user, ["guildwar.teams.edit", "guildwar.teams.post"]);
   const canManageActive = isModerator && !isExternalView;
   const { showError } = useAppError();
-  const chartThemeName = useMemo(() => `infini-kit-${themeSnapshot.state.themeId}`, [themeSnapshot.state.themeId]);
-  const chartThemeConfig = useMemo(() => buildEChartsTheme(themeSnapshot.state.themeId), [themeSnapshot.state.themeId]);
+  const chartThemeName = useMemo(() => `guild-${currentTheme}`, [currentTheme]);
+  const chartThemeConfig = useMemo(() => buildEChartsTheme(currentTheme), [currentTheme]);
   const chartPalette = chartThemeConfig.color;
   const guildWarService = useMemo(
     () =>
@@ -157,12 +158,6 @@ export function GuildWarPage() {
     setSelectedEventId,
     selectedHistoryId,
     setSelectedHistoryId,
-    selectedTemplateId,
-    setSelectedTemplateId,
-    templateName,
-    setTemplateName,
-    templateDescription,
-    setTemplateDescription,
     historyViewMode,
     setHistoryViewMode,
     historyChartMetric,
@@ -171,6 +166,10 @@ export function GuildWarPage() {
     setHistoryDateFrom,
     historyDateTo,
     setHistoryDateTo,
+    historyPage,
+    setHistoryPage,
+    historyPerPage,
+    setHistoryPerPage,
   } = useGuildWarStore();
 
   const initialTabKey = useMemo(() => {
@@ -202,7 +201,6 @@ export function GuildWarPage() {
     warEventsQuery,
     selectedEventDetailQuery,
     activeQuery,
-    templatesQuery,
     historyQuery,
     historyDetailQuery,
   } = useGuildWarData({
@@ -210,6 +208,9 @@ export function GuildWarPage() {
     selectedHistoryId,
     historyDateFrom,
     historyDateTo,
+    historyPage,
+    historyPerPage,
+    hasSession: Boolean(user),
   });
 
   const activeController = useGuildWarActiveController({
@@ -246,41 +247,16 @@ export function GuildWarPage() {
     }
   }, [historyQuery.data, selectedHistoryId, setSelectedHistoryId]);
 
-  useEffect(() => {
-    const templates = templatesQuery.data ?? [];
-    if (templates.length === 0) {
-      if (selectedTemplateId) {
-        setSelectedTemplateId("");
-      }
-      return;
-    }
-    if (!selectedTemplateId || !templates.some((template) => template.id === selectedTemplateId)) {
-      setSelectedTemplateId(templates[0]?.id ?? "");
-    }
-  }, [selectedTemplateId, setSelectedTemplateId, templatesQuery.data]);
-
   const guildWarMutations = useGuildWarMutations({
     selectedEventId,
     selectedHistoryId: selectedHistoryId ?? "",
-    selectedTemplateId,
-    templateName,
-    templateDescription,
     historyDateFrom,
     historyDateTo,
-    setTemplateName,
-    setTemplateDescription,
-    setSelectedTemplateId,
     setSelectedHistoryId,
   });
 
   const guildWarHistory = useGuildWarHistory({
     historyDetailData: historyDetailQuery.data ?? null,
-    templatesData: templatesQuery.data ?? [],
-    canManageActive,
-    selectedEventId,
-    createTemplatePending: guildWarMutations.createTemplateMutation.isPending,
-    applyTemplatePending: guildWarMutations.applyTemplateMutation.isPending,
-    deleteTemplatePending: guildWarMutations.deleteTemplateMutation.isPending,
   });
 
   const guildWarAnalytics = useGuildWarAnalytics({
@@ -299,6 +275,48 @@ export function GuildWarPage() {
     guildWarService,
     showError,
   });
+
+  const [addToPoolOpen, addToPoolHandlers] = useDisclosure(false);
+  const [addToPoolSelection, setAddToPoolSelection] = useState<string[]>([]);
+  const [addToPoolPending, setAddToPoolPending] = useState(false);
+
+  const availableForPool = useMemo(() => {
+    const assignedIds = new Set<string>();
+    const activeData = activeQuery.data;
+    if (activeData) {
+      for (const team of activeData.teams) {
+        for (const member of team.members) assignedIds.add(member.user_id);
+      }
+      for (const poolMember of activeData.pool) assignedIds.add(poolMember.userId);
+    }
+    return (usersQuery.data?.data ?? [])
+      .filter((u) => !assignedIds.has(u.user.id))
+      .map((u) => ({ value: u.user.id, label: u.user.username }));
+  }, [activeQuery.data, usersQuery.data]);
+
+  const handleAddToPool = useCallback(async () => {
+    if (!selectedEventId || addToPoolSelection.length === 0) return;
+    setAddToPoolPending(true);
+    try {
+      for (const userId of addToPoolSelection) {
+        await moveGuildWarMember({
+          event_id: selectedEventId,
+          user_id: userId,
+          to: "pool",
+        });
+      }
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.guildWar.active(selectedEventId),
+      });
+      message.success(t("message.membersAddedToPool", { count: addToPoolSelection.length }));
+      setAddToPoolSelection([]);
+      addToPoolHandlers.close();
+    } catch (error) {
+      showError(error, t("message.addToPoolFailed"));
+    } finally {
+      setAddToPoolPending(false);
+    }
+  }, [addToPoolHandlers, addToPoolSelection, queryClient, selectedEventId, showError, t]);
 
   const handleTeamContextMenu = useCallback((containerId: string, event: ReactMouseEvent<HTMLDivElement>) => {
     const items: ContextMenuItemOptions[] = [
@@ -395,18 +413,11 @@ export function GuildWarPage() {
     showContextMenu([
       {
         key: "pool-add-member",
-        onClick: () => {},
+        onClick: () => addToPoolHandlers.open(),
         title: t("menu.pool.addMember"),
       },
     ])(event);
-  }, [showContextMenu, t]);
-
-  const templateActionDisabled =
-    !canManageActive ||
-    !selectedEventId ||
-    guildWarMutations.createTemplateMutation.isPending ||
-    guildWarMutations.applyTemplateMutation.isPending ||
-    guildWarMutations.deleteTemplateMutation.isPending;
+  }, [addToPoolHandlers, showContextMenu, t]);
 
   useEffect(() => {
     if (!activeController.undoMove || activeController.undoRemainingSec > 0) {
@@ -453,7 +464,6 @@ export function GuildWarPage() {
     warEventsQuery.isError ||
       selectedEventDetailQuery.isError ||
       activeQuery.isError ||
-      templatesQuery.isError ||
       historyQuery.isError ||
       historyDetailQuery.isError ||
       guildWarAnalytics.analyticsQuery.isError ||
@@ -498,34 +508,6 @@ export function GuildWarPage() {
                           onNextMatch={() => activeController.setSearchJumpIndex((current) => current + 1)}
                           hasMatches={guildWarDrag.matchedItemIds.length > 0}
                           searchPlaceholder={t("active.searchPlaceholder")}
-                          selectedTemplateId={selectedTemplateId}
-                          templateOptions={guildWarHistory.templateOptions}
-                          templatePlaceholder={t("active.template.placeholder")}
-                          templateName={templateName}
-                          templateNamePlaceholder={t("active.template.name")}
-                          onTemplateNameChange={setTemplateName}
-                          templateDescription={templateDescription}
-                          templateDescriptionPlaceholder={t("active.template.description")}
-                          onTemplateDescriptionChange={setTemplateDescription}
-                          onSelectedTemplateIdChange={(value) => {
-                            setSelectedTemplateId(value);
-                            const selectedTemplate = (templatesQuery.data ?? []).find((template) => template.id === value);
-                            if (!selectedTemplate) {
-                              return;
-                            }
-                            setTemplateName(selectedTemplate.template_name);
-                            setTemplateDescription(selectedTemplate.description ?? "");
-                          }}
-                          onSaveTemplate={() => guildWarMutations.createTemplateMutation.mutate()}
-                          onApplyTemplate={() => guildWarMutations.applyTemplateMutation.mutate()}
-                          onDeleteTemplate={() => guildWarMutations.deleteTemplateMutation.mutate()}
-                          saveTemplateLabel={t("active.template.save")}
-                          applyTemplateLabel={t("active.template.apply")}
-                          deleteTemplateLabel={t("active.template.delete")}
-                          templateSavePending={guildWarMutations.createTemplateMutation.isPending}
-                          templateApplyPending={guildWarMutations.applyTemplateMutation.isPending}
-                          templateDeletePending={guildWarMutations.deleteTemplateMutation.isPending}
-                          templateActionDisabled={templateActionDisabled}
                           isTeamsDirty={activeController.isTeamsDirty}
                           saveTeamsPending={activeController.saveTeamsPending}
                           onSaveTeams={activeController.handleSaveTeams}
@@ -535,7 +517,7 @@ export function GuildWarPage() {
                       </Suspense>
 
                       {activeController.undoMove && activeController.undoRemainingSec > 0 ? (
-                        <Alert color="infini-primary" variant="light">
+                        <Alert color="blue" variant="light">
                           <Group justify="space-between" align="center" wrap="wrap" gap="xs">
                             <Text size="sm">
                               {activeController.undoMove.moves.length === 1
@@ -600,6 +582,34 @@ export function GuildWarPage() {
                           onClose={() => activeController.setActiveDetailUserId(null)}
                         />
                       </Suspense>
+
+                      <Modal
+                        opened={addToPoolOpen}
+                        onClose={addToPoolHandlers.close}
+                        title={t("active.addToPoolTitle")}
+                        centered
+                      >
+                        <Stack gap={12}>
+                          <MultiSelect
+                            searchable
+                            clearable
+                            placeholder={t("active.addToPoolPlaceholder")}
+                            data={availableForPool}
+                            value={addToPoolSelection}
+                            onChange={setAddToPoolSelection}
+                          />
+                          <Group justify="flex-end">
+                            <Button variant="default" onClick={addToPoolHandlers.close}>{t("common:action.cancel")}</Button>
+                            <Button
+                              onClick={handleAddToPool}
+                              loading={addToPoolPending}
+                              disabled={addToPoolSelection.length === 0}
+                            >
+                              {t("active.addToPoolConfirm", { count: addToPoolSelection.length })}
+                            </Button>
+                          </Group>
+                        </Stack>
+                      </Modal>
                     </Stack>
                   ),
                 },
@@ -641,6 +651,11 @@ export function GuildWarPage() {
                   historyLoading={historyQuery.isLoading}
                   historyError={historyQuery.isError}
                   historyRows={historyQuery.data?.data ?? []}
+                  historyTotalPages={historyQuery.data?.total_pages ?? 1}
+                  historyPage={historyPage}
+                  historyPerPage={historyPerPage}
+                  onHistoryPageChange={setHistoryPage}
+                  onHistoryPerPageChange={setHistoryPerPage}
                   historyColumns={guildWarHistory.historyColumns}
                   onSelectHistoryId={setSelectedHistoryId}
                   historyDetailLoading={historyDetailQuery.isLoading}
@@ -662,6 +677,8 @@ export function GuildWarPage() {
                   saveMemberStatsPending={guildWarMutations.updateMemberStatsMutation.isPending}
                   onDeleteHistory={(id) => guildWarMutations.deleteHistoryMutation.mutate(id)}
                   deleteHistoryPending={guildWarMutations.deleteHistoryMutation.isPending}
+                  onBulkDeleteHistory={(ids) => guildWarMutations.batchDeleteHistoryMutation.mutate(ids)}
+                  bulkDeleteHistoryPending={guildWarMutations.batchDeleteHistoryMutation.isPending}
                   renderCounter={guildWarHistory.renderCounter}
                   historyDetailTitle={t("history.detail")}
                   historyResultLabel={t("history.result")}
@@ -709,12 +726,11 @@ export function GuildWarPage() {
                   focusedUser={guildWarAnalytics.analyticsFocusedUser}
                   onFocusedUserChange={guildWarAnalytics.setAnalyticsFocusedUser}
                   selectableUserIds={guildWarAnalytics.analyticsSelectableUserIds}
+                  userIdToUsername={guildWarAnalytics.analyticsUserIdToUsername}
                   onlyParticipated={guildWarAnalytics.analyticsOnlyParticipated}
                   onOnlyParticipatedChange={guildWarAnalytics.setAnalyticsOnlyParticipated}
                   selectedUsers={guildWarAnalytics.analyticsSelectedUsers}
                   onSelectedUsersChange={guildWarAnalytics.applyAnalyticsSelection}
-                  compareUserIds={guildWarAnalytics.analyticsCompareUserIds}
-                  onLegendInteraction={guildWarAnalytics.handleLegendInteraction}
                   hashToPaletteColor={guildWarAnalytics.hashToPaletteColor}
                   chartPalette={chartPalette}
                   aggregation={guildWarAnalytics.analyticsAggregation}

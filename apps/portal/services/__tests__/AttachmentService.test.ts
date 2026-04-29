@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AttachmentService } from "../AttachmentService";
 
-vi.mock("@infini-dev-kit/react", () => ({
+vi.mock("@guild/shared/utils/media", () => ({
   convertImageToWebP: vi.fn(async (file: File) => file),
 }));
 

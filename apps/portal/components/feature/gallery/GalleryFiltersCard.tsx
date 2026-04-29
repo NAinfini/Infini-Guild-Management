@@ -1,4 +1,4 @@
-import { DepthButton } from "@infini-dev-kit/react";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
 import { ActionIcon, Group, SegmentedControl, Select, TextInput, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
@@ -57,7 +57,7 @@ export function GalleryFiltersCard({
       modals.openConfirmModal({
         title: t("confirm.bulkDelete.title"),
         children: t("confirm.bulkDelete.description", { count: selectedCount }),
-        confirmProps: { color: "infini-danger" },
+        confirmProps: { color: "red" },
         onConfirm: () => resolve(true),
         onCancel: () => resolve(false),
         closeOnConfirm: true,

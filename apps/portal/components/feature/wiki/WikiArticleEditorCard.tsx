@@ -138,7 +138,7 @@ export function WikiArticleEditorCard({
                       before={<IconDeviceFloppy size={16} />}
                       onClick={() => {
                         if (!articleTitle.trim()) {
-                          notifications.show({ color: "infini-danger", message: t("validation.titleRequired") });
+                          notifications.show({ color: "red", message: t("validation.titleRequired") });
                           return;
                         }
                         onSaveArticle();
@@ -180,7 +180,7 @@ export function WikiArticleEditorCard({
               ))}
             </Stack>
           ) : null}
-          {isError ? <Alert color="infini-warning" title={warningMessage} /> : null}
+          {isError ? <Alert color="yellow" title={warningMessage} /> : null}
 
           {!isLoading && !isError ? (
             <Stack gap={12}>
@@ -224,10 +224,10 @@ export function WikiArticleEditorCard({
                     <Text size="sm">{selectedArticle.title}</Text>
                   </Group>
                   <Text c="dimmed" size="sm">
-                    {t("articleEditor.lastUpdatedBy", { user: selectedArticle.created_by, date: formatDateTime(selectedArticle.updated_at) })}
+                    {t("articleEditor.lastUpdatedBy", { user: selectedArticle.created_by.slice(0, 8), date: formatDateTime(selectedArticle.updated_at) })}
                   </Text>
                   {selectedArticle.archived_at ? (
-                    <Text c="infini-warning" size="sm">
+                    <Text c="yellow" size="sm">
                       {t("articleEditor.archivedAt", { date: formatDateTime(selectedArticle.archived_at) })}
                     </Text>
                   ) : null}

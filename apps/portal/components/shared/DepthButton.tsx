@@ -1,23 +1,72 @@
-import { forwardRef, type ReactNode } from "react";
-import { Tooltip } from "@mantine/core";
-import { DepthButton as BaseDepthButton, type DepthButtonProps as BaseProps } from "@infini-dev-kit/react";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { Button, Tooltip } from "@mantine/core";
+
+type ButtonVariant = "primary" | "secondary" | "danger" | "success" | "warning" | "info";
+type ButtonSize = "xs" | "sm" | "md" | "lg";
 
 type TooltipConfig = string | { label: ReactNode; withArrow?: boolean };
 
-export interface DepthButtonProps extends BaseProps {
-  tooltip?: TooltipConfig;
+export interface DepthButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "color"> {
+  type?: ButtonVariant;
+  htmlType?: ButtonHTMLAttributes<HTMLButtonElement>["type"];
+  size?: ButtonSize;
+  before?: ReactNode;
+  after?: ReactNode;
   loading?: boolean;
+  tooltip?: TooltipConfig;
+  iconOnly?: boolean;
 }
 
+const variantToMantine: Record<ButtonVariant, { color: string; variant: string }> = {
+  primary: { color: "blue", variant: "filled" },
+  secondary: { color: "gray", variant: "light" },
+  danger: { color: "red", variant: "filled" },
+  success: { color: "green", variant: "filled" },
+  warning: { color: "yellow", variant: "filled" },
+  info: { color: "cyan", variant: "filled" },
+};
+
 export const DepthButton = forwardRef<HTMLButtonElement, DepthButtonProps>(
-  ({ tooltip, loading, disabled, children, ...rest }, ref) => {
+  (
+    {
+      type = "primary",
+      htmlType = "button",
+      size = "md",
+      before,
+      after,
+      loading,
+      disabled,
+      tooltip,
+      iconOnly,
+      className,
+      children,
+      ...rest
+    },
+    ref,
+  ) => {
+    const { color, variant } = variantToMantine[type];
+    const tooltipLabel = typeof tooltip === "string" ? tooltip : tooltip?.label;
+
     const btn = (
-      <BaseDepthButton ref={ref} disabled={disabled || loading} {...rest}>
-        {loading ? "…" : children}
-      </BaseDepthButton>
+      <Button
+        ref={ref}
+        type={htmlType}
+        color={color}
+        variant={variant}
+        size={size}
+        disabled={disabled}
+        loading={loading}
+        leftSection={before}
+        rightSection={after}
+        className={className}
+        {...rest}
+      >
+        {iconOnly ? null : children}
+      </Button>
     );
-    if (!tooltip) return btn;
-    const tipProps = typeof tooltip === "string" ? { label: tooltip } : tooltip;
+
+    if (!tooltipLabel) return btn;
+    const tipProps = typeof tooltip === "string" ? { label: tooltip } : tooltip!;
     return <Tooltip {...tipProps}>{btn}</Tooltip>;
   },
 );

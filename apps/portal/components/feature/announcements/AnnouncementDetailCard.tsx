@@ -135,7 +135,7 @@ export function AnnouncementDetailCard({
     } else {
       editingHandlers.close();
     }
-  }, [isCreateMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isCreateMode]);  
 
   const statusMode = deriveStatusMode(archived, scheduleEnabled, draftEnabled);
 
@@ -164,7 +164,15 @@ export function AnnouncementDetailCard({
     if (statusMode === "scheduled" && publishAt) {
       const scheduledDate = new Date(publishAt.replace(" ", "T"));
       if (!Number.isNaN(scheduledDate.getTime()) && scheduledDate <= new Date()) {
-        notifications.show({ color: "infini-danger", message: t("validation.schedulePast") });
+        notifications.show({ color: "red", message: t("validation.schedulePast") });
+        return;
+      }
+    }
+    if (publishAt && expiresAt) {
+      const publishDate = new Date(publishAt.replace(" ", "T"));
+      const expiryDate = new Date(expiresAt.replace(" ", "T"));
+      if (!Number.isNaN(publishDate.getTime()) && !Number.isNaN(expiryDate.getTime()) && expiryDate <= publishDate) {
+        notifications.show({ color: "red", message: t("validation.expiresBeforePublish") });
         return;
       }
     }
@@ -193,7 +201,7 @@ export function AnnouncementDetailCard({
             {canEdit && (selectedId && selected || isCreateMode) ? (
               editing ? (
                 <Group gap={8}>
-                  {isDirty ? <Badge color="infini-warning">{t("status.unsaved")}</Badge> : <Badge color="infini-success">{t("status.saved")}</Badge>}
+                  {isDirty ? <Badge color="yellow">{t("status.unsaved")}</Badge> : <Badge color="green">{t("status.saved")}</Badge>}
                   <DepthButton
                     onClick={handleFinishClick}
                     type="primary"
@@ -233,7 +241,7 @@ export function AnnouncementDetailCard({
               <Skeleton height={14} width="70%" />
             </Stack>
           ) : null}
-          {isError ? <Alert color="infini-warning" title={warningMessage} /> : null}
+          {isError ? <Alert color="yellow" title={warningMessage} /> : null}
 
           {/* ── Reader View (default for everyone) ── */}
           {!isLoading && !isError && selected && !editing ? (
@@ -246,7 +254,7 @@ export function AnnouncementDetailCard({
               {/* Meta badges */}
               <Group gap={8} wrap="wrap">
                 {canEdit && selected.status === "scheduled" && selected.publish_at ? (
-                  <Badge color="infini-primary">{t("meta.scheduled", { datetime: formatDateTime(selected.publish_at) })}</Badge>
+                  <Badge color="blue">{t("meta.scheduled", { datetime: formatDateTime(selected.publish_at) })}</Badge>
                 ) : null}
                 {canEdit && selected.expires_at ? (
                   <Badge variant="outline">{t("meta.expires", { datetime: formatDateTime(selected.expires_at) })}</Badge>

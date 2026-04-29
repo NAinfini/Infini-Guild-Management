@@ -96,6 +96,11 @@ type EventCardsViewProps = {
   createPending: boolean;
   updatePending: boolean;
   archivePending: boolean;
+  joinPending: boolean;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
+  leavePending: boolean;
   onResetFilters: () => void;
   onCreateEvent: () => void;
   onJoinEvent: (eventId: string) => void;
@@ -126,6 +131,8 @@ export function EventCardsView({
   eventFlags,
   eventMembersMap,
   allUsers,
+  joinPending,
+  leavePending,
   onResetFilters,
   onCreateEvent,
   onJoinEvent,
@@ -140,6 +147,9 @@ export function EventCardsView({
   onDeleteEvent,
   onAddParticipant,
   onRemoveParticipant,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: EventCardsViewProps) {
   const { t, i18n } = useTranslation("events");
   const [detailModalEvent, setDetailModalEvent] = useState<Event | null>(null);
@@ -260,7 +270,7 @@ export function EventCardsView({
                       </InfiniMenu.Item>
                       <InfiniMenu.Item
                         className="infini-menu-item--danger"
-                        color="infini-danger"
+                        color="red"
                         leftSection={<IconTrash size={14} />}
                         onClick={() => onDeleteEvent(event)}
                       >
@@ -331,9 +341,9 @@ export function EventCardsView({
                   </div>
 
                   {/* ── Progress bar ── */}
+                  {event.capacity ? (
                   <div className="event-card__progress-wrap">
                     <div className="event-card__progress-track">
-                      {event.capacity ? (
                         <div
                           className="event-card__progress-fill event-card__progress-fill--capped"
                           style={{
@@ -341,14 +351,12 @@ export function EventCardsView({
                             "--progress-hue": `${capacityHue(joinedCount, event.capacity)}`,
                           } as React.CSSProperties}
                         />
-                      ) : (
-                        <div className="event-card__progress-fill event-card__progress-fill--uncapped" />
-                      )}
                     </div>
                     <Text size="xs" c="dimmed" className="event-card__progress-label">
-                      {event.capacity ? `${Math.round((joinedCount / event.capacity) * 100)}%` : "∞"}
+                      {`${Math.round((joinedCount / event.capacity) * 100)}%`}
                     </Text>
                   </div>
+                  ) : null}
 
                   {/* ── Actions ── */}
                   {canInteract ? (
@@ -364,7 +372,7 @@ export function EventCardsView({
                       }}
                       type="primary"
                       size="xs"
-                      disabled={!isJoined && (event.signup_locked || Boolean(event.archived_at) || isFull || (event.end_at != null && new Date(event.end_at) < new Date()))}
+                      disabled={joinPending || leavePending || (!isJoined && (event.signup_locked || Boolean(event.archived_at) || isFull || (event.end_at != null && new Date(event.end_at) < new Date())))}
                       tooltip={isJoined ? t("button.leave") : t("button.join")}
                     >
                       {isJoined ? <IconUserMinus size={14} /> : <IconUserPlus size={14} />}
@@ -388,6 +396,18 @@ export function EventCardsView({
         })}
       </SimpleGrid>
 
+      {hasMore && onLoadMore ? (
+        <Group justify="center" mt={8}>
+          <Button
+            variant="subtle"
+            loading={isLoadingMore}
+            onClick={onLoadMore}
+          >
+            {t("action.loadMore")}
+          </Button>
+        </Group>
+      ) : null}
+
       {/* ── Event Detail Modal ── */}
       <EventDetailModal
         event={detailModalEvent}
@@ -395,6 +415,8 @@ export function EventCardsView({
         allUsers={allUsers}
         canManage={canManage}
         currentUserId={currentUserId ?? undefined}
+        joinPending={joinPending}
+        leavePending={leavePending}
         onClose={() => setDetailModalEvent(null)}
         onJoin={onJoinEvent}
         onLeave={onLeaveEvent}

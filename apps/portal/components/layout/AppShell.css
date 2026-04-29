@@ -1,3 +1,22 @@
+.app-skip-link {
+  position: fixed;
+  top: -100%;
+  left: 16px;
+  z-index: 10000;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--color-primary, #3b82f6);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 150ms ease;
+}
+
+.app-skip-link:focus {
+  top: 12px;
+}
+
 .app-shell-root {
   height: 100vh;
   height: 100dvh;
@@ -11,11 +30,11 @@
 }
 
 .app-sider {
-  border-right: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 94%, transparent);
-  box-shadow: var(--infini-depth-dropdown, none);
+  border-right: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  background: var(--color-surface, #ffffff);
+  box-shadow: 1px 0 8px rgba(0, 0, 0, 0.03);
   overflow: hidden;
-  transition: width var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+  transition: width 160ms ease;
   display: flex;
   flex-direction: column;
 }
@@ -41,14 +60,15 @@
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 16%, transparent);
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 14%, var(--infini-color-surface, #ffffff));
-  color: var(--infini-color-primary, #3b82f6);
+  border: 1px solid color-mix(in srgb, var(--color-primary, #3b82f6) 24%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary, #3b82f6) 14%, var(--color-surface, #ffffff)), color-mix(in srgb, var(--color-secondary, #8b5cf6) 10%, var(--color-surface, #ffffff)));
+  color: var(--color-primary, #3b82f6);
   display: grid;
   place-items: center;
   font-size: 18px;
   flex: 0 0 auto;
   overflow: hidden;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
 }
 
 .app-brand-expand-overlay {
@@ -56,10 +76,10 @@
   inset: 0;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 90%, var(--infini-color-surface, #ffffff));
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 90%, var(--color-surface, #ffffff));
   color: #fff;
   opacity: 0;
-  transition: opacity var(--infini-motion-hover, 150ms) var(--infini-motion-easing, ease);
+  transition: opacity 150ms ease;
   cursor: pointer;
   font-size: 14px;
   border-radius: 12px;
@@ -80,8 +100,10 @@
 
 .app-brand-title {
   margin: 0;
-  font-size: var(--infini-text-lg, 16px);
+  font-size: 13px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .app-sider-controls {
@@ -95,15 +117,15 @@
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 84%, transparent);
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 84%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 72%, transparent);
 }
 
 .app-sider-control-btn:hover {
-  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 40%, transparent);
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, var(--infini-color-surface, #ffffff));
-  color: var(--infini-color-text, #111827);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, var(--color-surface, #ffffff));
+  color: var(--color-text, #111827);
 }
 
 .app-viewing-as {
@@ -111,7 +133,7 @@
   flex-direction: column;
   gap: 8px;
   padding: 12px 14px;
-  border-top: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
   flex-shrink: 0;
 }
 
@@ -121,7 +143,7 @@
 }
 
 .app-viewing-as-label {
-  font-size: var(--infini-text-xs, 11px);
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -137,41 +159,46 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 62%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 62%, transparent);
 }
 
 .app-nav-item {
   position: relative;
   width: 100%;
   margin: 0;
-  padding: 10px 10px;
+  padding: 10px 12px;
   border-radius: 10px;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 90%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 78%, transparent);
+  font-size: 14px;
   transition:
-    transform var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease),
-    background var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease),
-    color var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease);
+    transform 140ms ease,
+    background 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .app-nav-item:hover {
   transform: translateX(2px);
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
+  color: var(--color-text, #111827);
 }
 
 .app-nav-item--active {
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 14%, transparent);
-  color: var(--infini-color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+  color: var(--color-primary, #3b82f6);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
 }
 
 .app-nav-item--active::before {
   content: "";
   position: absolute;
   left: 0;
-  top: 8px;
-  bottom: 8px;
+  top: 6px;
+  bottom: 6px;
   width: 3px;
   border-radius: 999px;
-  background: var(--infini-color-primary, #3b82f6);
+  background: var(--color-primary, #3b82f6);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
 }
 
 .app-nav-icon {
@@ -194,15 +221,16 @@
 
 .app-header {
   height: var(--header-height, 64px);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 94%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr) auto;
   align-items: center;
   gap: 12px;
-  padding-inline: 16px;
+  padding-inline: 20px;
 }
 
 .app-header__left {
@@ -234,15 +262,17 @@
   width: 40px;
   height: 40px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 84%, transparent);
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 90%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 72%, transparent);
+  transition: all 160ms ease;
 }
 
 .app-header-icon-btn:hover {
-  color: var(--infini-color-text, #111827);
-  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 40%, transparent);
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, var(--infini-color-surface, #ffffff));
+  color: var(--color-primary, #3b82f6);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 30%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, var(--color-surface, #ffffff));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
 }
 
 .app-header-notifications-popover {
@@ -282,11 +312,11 @@
 }
 
 .app-header-notification-item--unread {
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 8%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
 }
 
 .app-header-notification-item:hover {
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 8%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
 }
 
 .app-header-notification-row {
@@ -312,7 +342,7 @@
 
 .app-header__page-title {
   display: inline-block;
-  font-size: var(--infini-text-lg, 16px);
+  font-size: 16px;
   line-height: 1.2;
   max-width: 100%;
   white-space: nowrap;
@@ -321,16 +351,16 @@
 }
 
 .app-profile-trigger {
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 86%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, transparent);
   padding: 4px 10px 4px 4px;
   min-height: 40px;
   cursor: pointer;
 }
 
 .app-profile-trigger:hover {
-  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 42%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 42%, transparent);
 }
 
 .app-profile-trigger--compact {
@@ -338,7 +368,7 @@
 }
 
 .app-profile-avatar {
-  background: color-mix(in srgb, var(--infini-color-warning, #f59e0b) 80%, black 20%);
+  background: color-mix(in srgb, var(--color-warning, #f59e0b) 80%, black 20%);
   color: #ffffff;
 }
 
@@ -359,13 +389,13 @@
 }
 
 .app-profile-role {
-  font-size: var(--infini-text-xs, 11px);
+  font-size: 11px;
   text-transform: capitalize;
 }
 
 .app-profile-chevron {
   font-size: 12px;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 62%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 62%, transparent);
 }
 
 .app-content {
@@ -375,8 +405,9 @@
   box-sizing: border-box;
   height: 100vh;
   height: 100dvh;
+  background: var(--color-bg, #f3f4f6);
   scrollbar-width: thin;
-  scrollbar-color: var(--infini-color-primary, #6b7280) transparent;
+  scrollbar-color: var(--color-primary, #6b7280) transparent;
 }
 
 .app-content::-webkit-scrollbar {
@@ -388,14 +419,14 @@
 }
 
 .app-content::-webkit-scrollbar-thumb {
-  background: var(--infini-color-primary, #6b7280);
-  border-radius: var(--infini-radius, 8px);
+  background: var(--color-primary, #6b7280);
+  border-radius: var(8px, 8px);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 .app-content::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--infini-color-primary, #6b7280) 82%, #ffffff 18%);
+  background: color-mix(in srgb, var(--color-primary, #6b7280) 82%, #ffffff 18%);
   background-clip: padding-box;
 }
 
@@ -415,6 +446,13 @@
 
 .app-banner {
   margin-bottom: 0;
+}
+
+/* Dark mode: ensure alert banners don't use light-mode pastel backgrounds */
+.dark .app-banner[data-variant="light"] {
+  background: color-mix(in srgb, var(--mantine-color-body, var(--color-surface, #1e293b)) 85%, var(--alert-color, transparent));
+  color: var(--color-text, #F9FAFB);
+  border-color: color-mix(in srgb, var(--color-border, #334155) 60%, transparent);
 }
 
 .app-route-container {
@@ -500,8 +538,8 @@
   right: 0;
   bottom: 0;
   z-index: var(--z-sticky);
-  border-top: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 94%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 94%, transparent);
   backdrop-filter: blur(16px);
   padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
 }
@@ -521,19 +559,19 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 68%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 68%, transparent);
   text-decoration: none;
   position: relative;
-  transition: color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease), background var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+  transition: color 160ms ease, background 160ms ease;
 }
 
 .bottom-nav-link:hover {
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 8%, transparent);
-  color: var(--infini-color-text, #111827);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
+  color: var(--color-text, #111827);
 }
 
 .bottom-nav-link--active {
-  color: var(--infini-color-primary, #3b82f6);
+  color: var(--color-primary, #3b82f6);
 }
 
 .bottom-nav-icon {
@@ -554,10 +592,10 @@
   width: 16px;
   height: 3px;
   border-radius: 999px;
-  background: var(--infini-color-primary, #3b82f6);
+  background: var(--color-primary, #3b82f6);
   opacity: 0;
   transform: scaleX(0.5);
-  transition: opacity var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease), transform var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+  transition: opacity 160ms ease, transform 160ms ease;
 }
 
 .bottom-nav-link--active .bottom-nav-indicator {

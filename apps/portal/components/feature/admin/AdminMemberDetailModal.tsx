@@ -124,7 +124,7 @@ export function AdminMemberDetailModal({
                             size="sm"
                           />
                           <Badge
-                            color={form.isActive ? "infini-success" : "gray"}
+                            color={form.isActive ? "green" : "gray"}
                             variant="light"
                           >
                             {form.isActive ? t("member.status.active") : t("member.status.inactive")}

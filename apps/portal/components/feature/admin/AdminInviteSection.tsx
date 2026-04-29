@@ -2,15 +2,15 @@ import type { InviteLink } from "@guild/shared";
 import { Alert, Badge, Button, Group, Loader, Modal, NumberInput, SegmentedControl, Skeleton, Stack, Text, TextInput, Title } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
 import { IconBan, IconCopy, IconPlus, IconTrash } from "@tabler/icons-react";
-import { DepthButton } from "@infini-dev-kit/react";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@portal/components/shared/InfiniTable";
 import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
 import { useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { modals } from "@mantine/modals";
-import { hasRoleAtLeast } from "@guild/shared";
 import { useAuthStore } from "../../../stores/auth";
+import { userHasPermission } from "../../../utils/permissions";
 import { formatDateTime } from "../../../utils/admin";
 import { copyPlainText } from "../../../utils/copy";
 import type { InviteLinkStatsSummary } from "../../../services/AdminService";
@@ -60,7 +60,7 @@ export function AdminInviteSection({
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
   const user = useAuthStore((state) => state.user);
-  const isAdmin = Boolean(user && hasRoleAtLeast(user.role, "admin"));
+  const isAdmin = userHasPermission(user, "admin.invite.manage");
   const loadErrorMessage = tc("loadError");
   const [createModalOpen, createModalHandlers] = useDisclosure(false);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -76,7 +76,7 @@ export function AdminInviteSection({
           title: t("confirm.revokeInvite.title"),
           children: t("confirm.revokeInvite.description", { code: row.code }),
           labels: { confirm: t("invite.revoke"), cancel: t("common:action.cancel") },
-          confirmProps: { color: "infini-danger" },
+          confirmProps: { color: "red" },
           onConfirm: () => resolve(true),
           onCancel: () => resolve(false),
           closeOnConfirm: true,
@@ -98,7 +98,7 @@ export function AdminInviteSection({
           title: t("confirm.deleteInvite.title"),
           children: t("confirm.deleteInvite.description", { code: row.code }),
           labels: { confirm: t("common:action.delete"), cancel: t("common:action.cancel") },
-          confirmProps: { color: "infini-danger" },
+          confirmProps: { color: "red" },
           onConfirm: () => resolve(true),
           onCancel: () => resolve(false),
           closeOnConfirm: true,
@@ -140,10 +140,10 @@ export function AdminInviteSection({
           const r = row.original;
           const expired = Boolean(r.expires_at && Date.parse(r.expires_at) <= Date.now());
           const fullyUsed = r.used_count >= r.max_uses;
-          if (r.revoked_at) return <Badge color="infini-danger" variant="light">{t("invite.status.revoked")}</Badge>;
-          if (fullyUsed) return <Badge color="infini-warning" variant="light">{t("invite.status.fullyUsed")}</Badge>;
-          if (expired) return <Badge color="infini-warning" variant="light">{t("invite.status.expired")}</Badge>;
-          return <Badge color="infini-success" variant="light">{t("invite.status.active")}</Badge>;
+          if (r.revoked_at) return <Badge color="red" variant="light">{t("invite.status.revoked")}</Badge>;
+          if (fullyUsed) return <Badge color="yellow" variant="light">{t("invite.status.fullyUsed")}</Badge>;
+          if (expired) return <Badge color="yellow" variant="light">{t("invite.status.expired")}</Badge>;
+          return <Badge color="green" variant="light">{t("invite.status.active")}</Badge>;
         },
       });
     }
@@ -188,7 +188,7 @@ export function AdminInviteSection({
     }
 
     return cols;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [isAdmin, t, isInviteInactive]);
 
   const table = useReactTable({
@@ -221,16 +221,16 @@ export function AdminInviteSection({
               {inviteStatsLoading ? <Loader size="xs" /> : null}
               {inviteStats ? (
                 <Group wrap="wrap" gap={6}>
-                  <Badge color="infini-primary" variant="light">
+                  <Badge color="blue" variant="light">
                     {t("invite.stats.total")}: {inviteStats.total}
                   </Badge>
-                  <Badge color="infini-success" variant="light">
+                  <Badge color="green" variant="light">
                     {t("invite.stats.active")}: {inviteStats.active}
                   </Badge>
-                  <Badge color="infini-danger" variant="light">
+                  <Badge color="red" variant="light">
                     {t("invite.stats.revoked")}: {inviteStats.revoked}
                   </Badge>
-                  <Badge color="infini-warning" variant="light">
+                  <Badge color="yellow" variant="light">
                     {t("invite.stats.expired")}: {inviteStats.expired}
                   </Badge>
                 </Group>
@@ -255,7 +255,7 @@ export function AdminInviteSection({
 
       {/* Table */}
       {inviteLinksLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {inviteLinksError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
+      {inviteLinksError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
       {!inviteLinksLoading && !inviteLinksError ? (
         <PortalCard interactive={false}>
           <div style={{ padding: "1.2rem", overflowX: "auto" }}>

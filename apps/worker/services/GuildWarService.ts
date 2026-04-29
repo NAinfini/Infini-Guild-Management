@@ -8,20 +8,18 @@ import {
   warHistorySchema,
   warTeamMemberSchema,
   warTeamSchema,
-  warTemplateSchema,
 } from "@guild/shared";
 import { and, asc, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
 import {
-  eventParticipants,
   events,
+  users,
   warHistory,
   warPoolMembers,
   warTeamMembers,
   warTeams,
-  warTemplates,
 } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 
@@ -78,18 +76,6 @@ export type WarTeamMemberRow = {
   note: string | null;
 };
 
-export type WarTemplateRow = {
-  id: string;
-  templateName: string;
-  description: string | null;
-  templateType: string;
-  sourceEventId: string | null;
-  payloadJson: string;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type WarTemplateSnapshot = {
   teams: Array<{
     team_name: string;
@@ -99,14 +85,6 @@ export type WarTemplateSnapshot = {
     members: Array<{ user_id: string; role_tag?: string; sort_order: number }>;
   }>;
   pool_members: Array<{ user_id: string }>;
-};
-
-export type StructureTemplatePayload = {
-  teams: Array<{ team_name: string; sort_order: number; notes?: string }>;
-};
-
-export type MemberTemplatePayload = {
-  user_ids: string[];
 };
 
 type BotSettings = {
@@ -187,54 +165,6 @@ export function toMemberPayload(row: WarTeamMemberRow) {
   });
 }
 
-export function parseTemplateSnapshot(payloadJson: string): WarTemplateSnapshot {
-  const parsed = JSON.parse(payloadJson) as unknown;
-  const snapshot = typeof parsed === "object" && parsed !== null
-    ? parsed as Record<string, unknown>
-    : {};
-  const rawTeams = Array.isArray(snapshot.teams) ? snapshot.teams : [];
-  const normalized = saveTeamsPayloadSchema.parse({
-    event_id: "template",
-    ...snapshot,
-    teams: rawTeams.map((t: Record<string, unknown>) => ({
-      ...t,
-      members: Array.isArray(t.members) ? t.members : [],
-    })),
-    pool_members: Array.isArray(snapshot.pool_members) ? snapshot.pool_members : [],
-  });
-  return { teams: normalized.teams, pool_members: normalized.pool_members };
-}
-
-export function buildTemplateSnapshot(teams: WarTeamRow[], members: WarTeamMemberRow[], poolMembers: Array<{ userId: string }>): WarTemplateSnapshot {
-  return {
-    teams: teams.map((team) => ({
-      team_name: team.teamName, sort_order: team.sortOrder, notes: team.notes ?? undefined, is_locked: team.isLocked,
-      members: members.filter((m) => m.warTeamId === team.id).map((m) => ({ user_id: m.userId, role_tag: m.roleTag ?? undefined, sort_order: m.sortOrder })),
-    })),
-    pool_members: poolMembers.map((item) => ({ user_id: item.userId })),
-  };
-}
-
-export function toWarTemplatePayload(row: WarTemplateRow) {
-  const isMembers = row.templateType === "members";
-  if (isMembers) {
-    const payload = JSON.parse(row.payloadJson) as MemberTemplatePayload;
-    return warTemplateSchema.parse({
-      id: row.id, template_name: row.templateName, template_type: "members",
-      description: row.description, source_event_id: row.sourceEventId,
-      team_count: 0, member_count: payload.user_ids?.length ?? 0,
-      created_by: row.createdBy, created_at: row.createdAt, updated_at: row.updatedAt,
-    });
-  }
-  const snapshot = parseTemplateSnapshot(row.payloadJson);
-  return warTemplateSchema.parse({
-    id: row.id, template_name: row.templateName, template_type: "structure",
-    description: row.description, source_event_id: row.sourceEventId,
-    team_count: snapshot.teams.length, member_count: snapshot.teams.reduce((t, team) => t + team.members.length, 0),
-    created_by: row.createdBy, created_at: row.createdAt, updated_at: row.updatedAt,
-  });
-}
-
 export function buildWarEtag(warId: string, updatedAt: string): string {
   return `"war-${warId}-${updatedAt}"`;
 }
@@ -262,11 +192,11 @@ function toCsvCell(value: unknown): string {
   return `"${text.replaceAll('"', '""')}"`;
 }
 
-function buildWarHistoryCsv(rows: WarHistoryRow[]): string {
-  const headers = ["id","event_id","war_name","enemy_name","result","own_kills","enemy_kills","own_towers","enemy_towers","own_base_hp","enemy_base_hp","own_credits","enemy_credits","own_distance","enemy_distance","duration_minutes","notes","created_by","created_at","updated_at"];
+function buildWarHistoryCsv(rows: WarHistoryRow[], creatorMap: Map<string, string>): string {
+  const headers = ["id","event_id","war_name","enemy_name","result","own_kills","enemy_kills","own_towers","enemy_towers","own_base_hp","enemy_base_hp","own_credits","enemy_credits","own_distance","enemy_distance","duration_minutes","notes","created_by","created_by_username","created_at","updated_at"];
   const lines = [headers.join(",")];
   for (const row of rows) {
-    lines.push([toCsvCell(row.id),toCsvCell(row.eventId),toCsvCell(row.warName),toCsvCell(row.enemyName),toCsvCell(row.result),toCsvCell(row.ownKills),toCsvCell(row.enemyKills),toCsvCell(row.ownTowers),toCsvCell(row.enemyTowers),toCsvCell(row.ownBaseHp),toCsvCell(row.enemyBaseHp),toCsvCell(row.ownCredits),toCsvCell(row.enemyCredits),toCsvCell(row.ownDistance),toCsvCell(row.enemyDistance),toCsvCell(row.durationMinutes),toCsvCell(row.notes),toCsvCell(row.createdBy),toCsvCell(row.createdAt),toCsvCell(row.updatedAt)].join(","));
+    lines.push([toCsvCell(row.id),toCsvCell(row.eventId),toCsvCell(row.warName),toCsvCell(row.enemyName),toCsvCell(row.result),toCsvCell(row.ownKills),toCsvCell(row.enemyKills),toCsvCell(row.ownTowers),toCsvCell(row.enemyTowers),toCsvCell(row.ownBaseHp),toCsvCell(row.enemyBaseHp),toCsvCell(row.ownCredits),toCsvCell(row.enemyCredits),toCsvCell(row.ownDistance),toCsvCell(row.enemyDistance),toCsvCell(row.durationMinutes),toCsvCell(row.notes),toCsvCell(row.createdBy),toCsvCell(creatorMap.get(row.createdBy ?? "") ?? row.createdBy),toCsvCell(row.createdAt),toCsvCell(row.updatedAt)].join(","));
   }
   return lines.join("\n");
 }
@@ -286,7 +216,7 @@ function computeWarModifier(
   for (const f of factors) {
     if (f.weight <= 0 || f.ownVal === null || f.enemyVal === null) continue;
     let ownVal = f.ownVal, enemyVal = f.enemyVal;
-    if (f.perCapita && ownTeamSize > 0) { ownVal /= ownTeamSize; enemyVal /= ownTeamSize; }
+    if (f.perCapita && ownTeamSize > 0) { ownVal /= ownTeamSize; }
     valid.push({ key: f.key, weight: f.weight, ratio: enemyVal / Math.max(ownVal, 1) });
   }
   if (valid.length === 0) return { value: 1.0, breakdown: [] };
@@ -426,9 +356,10 @@ export class GuildWarService {
     return await this.db.select({ id: warPoolMembers.id, warHistoryId: warPoolMembers.warHistoryId, userId: warPoolMembers.userId }).from(warPoolMembers).where(eq(warPoolMembers.warHistoryId, warHistoryId));
   }
 
-  async getWarTemplateById(templateId: string): Promise<WarTemplateRow | null> {
-    const row = (await this.db.select({ id: warTemplates.id, templateName: warTemplates.templateName, description: warTemplates.description, templateType: warTemplates.templateType, sourceEventId: warTemplates.sourceEventId, payloadJson: warTemplates.payloadJson, createdBy: warTemplates.createdBy, createdAt: warTemplates.createdAt, updatedAt: warTemplates.updatedAt }).from(warTemplates).where(eq(warTemplates.id, templateId)).limit(1))[0];
-    return row ?? null;
+  private async getUsernameMap(userIds: string[]): Promise<Map<string, string>> {
+    if (userIds.length === 0) return new Map();
+    const rows = await this.db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, userIds));
+    return new Map(rows.map((r) => [r.id, r.username]));
   }
 
   async ensureWarHistoryForEvent(eventId: string, actorId: string): Promise<WarHistoryRow | null> {
@@ -484,9 +415,13 @@ export class GuildWarService {
     });
   }
 
-  async saveTeams(actorId: string, payload: SaveTeamsInput): Promise<ServiceResult<WarHistoryRow>> {
+  async saveTeams(actorId: string, payload: SaveTeamsInput, conditionalEtag?: string): Promise<ServiceResult<WarHistoryRow>> {
     const activeHistory = await this.ensureWarHistoryForEvent(payload.event_id, actorId);
     if (!activeHistory) return err("SERVER_ERROR", "Failed to initialize war history");
+    if (conditionalEtag) {
+      const expectedEtag = buildWarEtag(activeHistory.id, activeHistory.updatedAt);
+      if (conditionalEtag !== expectedEtag) return err("CONFLICT", "Guild war roster changed, refresh and retry", { expected_etag: expectedEtag });
+    }
     const snapshot: WarTemplateSnapshot = { teams: payload.teams, pool_members: payload.pool_members };
     await this.replaceHistoryTeams(activeHistory.id, snapshot);
     const refreshed = await this.getWarHistoryById(activeHistory.id);
@@ -572,134 +507,32 @@ export class GuildWarService {
     if (filters.dateTo) where.push(lte(warHistory.createdAt, filters.dateTo));
     if (filters.eventId) where.push(eq(warHistory.eventId, filters.eventId));
     const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownKills: warHistory.ownKills, ownTowers: warHistory.ownTowers, ownBaseHp: warHistory.ownBaseHp, ownCredits: warHistory.ownCredits, ownDistance: warHistory.ownDistance, enemyKills: warHistory.enemyKills, enemyTowers: warHistory.enemyTowers, enemyBaseHp: warHistory.enemyBaseHp, enemyCredits: warHistory.enemyCredits, enemyDistance: warHistory.enemyDistance, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(where.length > 0 ? and(...where) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(5000);
+    const creatorIds = [...new Set(rows.map((r) => r.createdBy).filter(Boolean) as string[])];
+    const creatorMap = await this.getUsernameMap(creatorIds);
     const dateStamp = new Date().toISOString().slice(0, 10);
     const filename = `guild-war-history-${dateStamp}.${format}`;
     if (format === "json") {
-      const payload = { exported_at: new Date().toISOString(), filters: { date_from: filters.dateFrom ?? null, date_to: filters.dateTo ?? null, event_id: filters.eventId ?? null }, total: rows.length, data: rows.map(toWarHistoryPayload) };
+      const warIds = rows.map((r) => r.id);
+      const allTeams = warIds.length > 0 ? await this.db.select({ id: warTeams.id, warHistoryId: warTeams.warHistoryId, teamName: warTeams.teamName, sortOrder: warTeams.sortOrder, notes: warTeams.notes, isLocked: warTeams.isLocked }).from(warTeams).where(inArray(warTeams.warHistoryId, warIds)).orderBy(asc(warTeams.sortOrder), asc(warTeams.id)) : [];
+      const teamIds = allTeams.map((t) => t.id);
+      const allMembers = teamIds.length > 0 ? await this.getMembersForTeams(teamIds) : [];
+      const memberUserIds = [...new Set(allMembers.map((m) => m.userId))];
+      const memberUsernameMap = await this.getUsernameMap(memberUserIds);
+      const augment = (payload: ReturnType<typeof toMemberPayload>) => ({ ...payload, username: memberUsernameMap.get(payload.user_id) ?? payload.user_id });
+      const data = rows.map((h) => {
+        const hTeams = allTeams.filter((t) => t.warHistoryId === h.id);
+        const hTeamIds = new Set(hTeams.map((t) => t.id));
+        return {
+          ...toWarHistoryPayload(h),
+          created_by_username: creatorMap.get(h.createdBy ?? "") ?? h.createdBy,
+          teams: hTeams.map((team) => ({ ...toTeamPayload(team), members: allMembers.filter((m) => m.warTeamId === team.id).map(toMemberPayload).map(augment) })),
+          member_stats: allMembers.filter((m) => hTeamIds.has(m.warTeamId)).map(toMemberPayload).map(augment),
+        };
+      });
+      const payload = { exported_at: new Date().toISOString(), filters: { date_from: filters.dateFrom ?? null, date_to: filters.dateTo ?? null, event_id: filters.eventId ?? null }, total: rows.length, data };
       return ok({ content: JSON.stringify(payload, null, 2), contentType: "application/json; charset=utf-8", filename });
     }
-    return ok({ content: buildWarHistoryCsv(rows), contentType: "text/csv; charset=utf-8", filename });
-  }
-
-  async listTemplates(eventId?: string, templateType?: string): Promise<ServiceResult<unknown[]>> {
-    const where: SQL<unknown>[] = [];
-    if (templateType) where.push(eq(warTemplates.templateType, templateType));
-    if (eventId) where.push(eq(warTemplates.sourceEventId, eventId));
-    const rows = await this.db.select({ id: warTemplates.id, templateName: warTemplates.templateName, description: warTemplates.description, templateType: warTemplates.templateType, sourceEventId: warTemplates.sourceEventId, payloadJson: warTemplates.payloadJson, createdBy: warTemplates.createdBy, createdAt: warTemplates.createdAt, updatedAt: warTemplates.updatedAt }).from(warTemplates).where(where.length > 0 ? and(...where) : undefined).orderBy(desc(warTemplates.updatedAt), desc(warTemplates.id)).limit(200);
-    return ok(rows.map(toWarTemplatePayload));
-  }
-
-  async createStructureTemplate(actorId: string, templateName: string, description: string | null, eventId: string): Promise<ServiceResult<unknown>> {
-    const activeHistory = await this.getLatestWarHistory(eventId);
-    if (!activeHistory) return err("NOT_FOUND", "Active war history not found for selected event");
-    const teams = await this.getTeamsForHistory(activeHistory.id);
-    if (teams.length === 0) return err("VALIDATION_ERROR", "Cannot save empty structure template");
-    const templateId = nanoid();
-    const payload: StructureTemplatePayload = {
-      teams: teams.map((t) => ({ team_name: t.teamName, sort_order: t.sortOrder, notes: t.notes ?? undefined })),
-    };
-    await this.db.insert(warTemplates).values({ id: templateId, templateName, description, templateType: "structure", sourceEventId: eventId, payloadJson: JSON.stringify(payload), createdBy: actorId });
-    const created = await this.getWarTemplateById(templateId);
-    if (!created) return err("SERVER_ERROR", "Failed to load saved war template");
-    await this.deps.writeAuditLog({ entityType: "guild_war_template", action: "create", actorId, entityId: templateId, diffTitle: created.templateName, detailText: JSON.stringify({ event_id: eventId, type: "structure" }) });
-    await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: templateId, hint: "template_created" });
-    return ok(toWarTemplatePayload(created));
-  }
-
-  async createMemberTemplate(actorId: string, templateName: string, description: string | null, userIds: string[]): Promise<ServiceResult<unknown>> {
-    const templateId = nanoid();
-    const payload: MemberTemplatePayload = { user_ids: userIds };
-    await this.db.insert(warTemplates).values({ id: templateId, templateName, description, templateType: "members", sourceEventId: null, payloadJson: JSON.stringify(payload), createdBy: actorId });
-    const created = await this.getWarTemplateById(templateId);
-    if (!created) return err("SERVER_ERROR", "Failed to load saved member template");
-    await this.deps.writeAuditLog({ entityType: "guild_war_template", action: "create", actorId, entityId: templateId, diffTitle: created.templateName, detailText: JSON.stringify({ type: "members", member_count: userIds.length }) });
-    await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: templateId, hint: "template_created" });
-    return ok(toWarTemplatePayload(created));
-  }
-
-  async applyStructureTemplate(actorId: string, templateId: string, eventId: string): Promise<ServiceResult<{ ok: true; war_history_id: string }>> {
-    const template = await this.getWarTemplateById(templateId);
-    if (!template) return err("NOT_FOUND", "War template not found");
-    if (template.templateType !== "structure") return err("VALIDATION_ERROR", "Template is not a structure template");
-    const payload = JSON.parse(template.payloadJson) as StructureTemplatePayload;
-    const activeHistory = await this.ensureWarHistoryForEvent(eventId, actorId);
-    if (!activeHistory) return err("SERVER_ERROR", "Failed to initialize war history");
-    // Structure templates replace all teams with empty skeleton (no members)
-    const snapshot: WarTemplateSnapshot = {
-      teams: payload.teams.map((t) => ({ ...t, is_locked: false, members: [] })),
-      pool_members: [],
-    };
-    await this.replaceHistoryTeams(activeHistory.id, snapshot);
-    const refreshed = await this.getWarHistoryById(activeHistory.id);
-    if (!refreshed) return err("SERVER_ERROR", "Failed to refresh war history");
-    await this.deps.writeAuditLog({ entityType: "guild_war_template", action: "apply", actorId, entityId: template.id, diffTitle: template.templateName, detailText: JSON.stringify({ event_id: eventId, war_history_id: refreshed.id, type: "structure" }) });
-    await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: refreshed.id, hint: "template_applied" });
-    return ok({ ok: true, war_history_id: refreshed.id });
-  }
-
-  async previewMemberTemplate(templateId: string, eventId: string): Promise<ServiceResult<{ user_ids: string[]; signed_up: string[]; not_signed_up: string[] }>> {
-    const template = await this.getWarTemplateById(templateId);
-    if (!template) return err("NOT_FOUND", "War template not found");
-    if (template.templateType !== "members") return err("VALIDATION_ERROR", "Template is not a members template");
-    const payload = JSON.parse(template.payloadJson) as MemberTemplatePayload;
-    // Check which users are signed up for this event
-    const signups = await this.db.select({ userId: eventParticipants.userId }).from(eventParticipants).where(eq(eventParticipants.eventId, eventId));
-    const signedUpSet = new Set(signups.map((s) => s.userId));
-    const signedUp = payload.user_ids.filter((id) => signedUpSet.has(id));
-    const notSignedUp = payload.user_ids.filter((id) => !signedUpSet.has(id));
-    return ok({ user_ids: payload.user_ids, signed_up: signedUp, not_signed_up: notSignedUp });
-  }
-
-  async applyMemberTemplate(actorId: string, templateId: string, eventId: string, teamId: string, forceSignupUserIds?: string[]): Promise<ServiceResult<{ ok: true }>> {
-    const template = await this.getWarTemplateById(templateId);
-    if (!template) return err("NOT_FOUND", "War template not found");
-    if (template.templateType !== "members") return err("VALIDATION_ERROR", "Template is not a members template");
-    const payload = JSON.parse(template.payloadJson) as MemberTemplatePayload;
-    // Verify the team exists
-    const team = (await this.db.select({ id: warTeams.id, warHistoryId: warTeams.warHistoryId }).from(warTeams).where(eq(warTeams.id, teamId)).limit(1))[0];
-    if (!team) return err("NOT_FOUND", "Team not found");
-    // Force-signup users who aren't signed up yet
-    if (forceSignupUserIds && forceSignupUserIds.length > 0) {
-      const existingSignups = await this.db.select({ userId: eventParticipants.userId }).from(eventParticipants).where(and(eq(eventParticipants.eventId, eventId), inArray(eventParticipants.userId, forceSignupUserIds)));
-      const alreadySignedUp = new Set(existingSignups.map((s) => s.userId));
-      for (const userId of forceSignupUserIds) {
-        if (!alreadySignedUp.has(userId)) {
-          await this.db.insert(eventParticipants).values({ id: nanoid(), eventId, userId });
-        }
-      }
-    }
-    // Ensure all template users are in the pool
-    const poolMembers = await this.db.select({ userId: warPoolMembers.userId }).from(warPoolMembers).where(eq(warPoolMembers.warHistoryId, team.warHistoryId));
-    const poolSet = new Set(poolMembers.map((p) => p.userId));
-    for (const userId of payload.user_ids) {
-      if (!poolSet.has(userId)) {
-        await this.db.insert(warPoolMembers).values({ id: nanoid(), warHistoryId: team.warHistoryId, userId }).onConflictDoNothing();
-      }
-    }
-    // Clear existing members from this team
-    await this.db.delete(warTeamMembers).where(eq(warTeamMembers.warTeamId, teamId));
-    // Add template members to the team
-    for (let i = 0; i < payload.user_ids.length; i++) {
-      await this.db.insert(warTeamMembers).values({ id: nanoid(), warTeamId: teamId, userId: payload.user_ids[i], sortOrder: i });
-    }
-    // Remove added members from pool (they're now on a team)
-    const addedSet = new Set(payload.user_ids);
-    for (const userId of addedSet) {
-      await this.db.delete(warPoolMembers).where(and(eq(warPoolMembers.warHistoryId, team.warHistoryId), eq(warPoolMembers.userId, userId)));
-    }
-    await this.db.update(warHistory).set({ updatedAt: new Date().toISOString() }).where(eq(warHistory.id, team.warHistoryId));
-    await this.deps.writeAuditLog({ entityType: "guild_war_template", action: "apply_members", actorId, entityId: template.id, diffTitle: template.templateName, detailText: JSON.stringify({ event_id: eventId, team_id: teamId, member_count: payload.user_ids.length }) });
-    await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: team.warHistoryId, hint: "template_applied" });
-    return ok({ ok: true });
-  }
-
-  async deleteTemplate(actorId: string, templateId: string): Promise<ServiceResult<{ ok: true }>> {
-    const existing = await this.getWarTemplateById(templateId);
-    if (!existing) return err("NOT_FOUND", "War template not found");
-    await this.db.delete(warTemplates).where(eq(warTemplates.id, templateId));
-    await this.deps.writeAuditLog({ entityType: "guild_war_template", action: "delete", actorId, entityId: templateId, diffTitle: existing.templateName });
-    await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: templateId, hint: "template_deleted" });
-    return ok({ ok: true });
+    return ok({ content: buildWarHistoryCsv(rows, creatorMap), contentType: "text/csv; charset=utf-8", filename });
   }
 
   async listHistory(page: number, limit: number, filters: { dateFrom?: string; dateTo?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
@@ -720,10 +553,18 @@ export class GuildWarService {
     const teamIds = allTeams.map((t) => t.id);
     const allMembers = teamIds.length > 0 ? await this.getMembersForTeams(teamIds) : [];
     const allPool = await this.db.select({ id: warPoolMembers.id, warHistoryId: warPoolMembers.warHistoryId, userId: warPoolMembers.userId }).from(warPoolMembers).where(inArray(warPoolMembers.warHistoryId, ids));
+    const allUserIds = [...new Set([...allMembers.map((m) => m.userId), ...allPool.map((p) => p.userId)])];
+    const usernameMap = await this.getUsernameMap(allUserIds);
+    const augment = (payload: ReturnType<typeof toMemberPayload>) => ({ ...payload, username: usernameMap.get(payload.user_id) ?? payload.user_id });
     const data = histories.map((h) => {
       const hTeams = allTeams.filter((t) => t.warHistoryId === h.id);
       const hTeamIds = new Set(hTeams.map((t) => t.id));
-      return { ...toWarHistoryPayload(h), teams: hTeams.map((team) => ({ ...toTeamPayload(team), members: allMembers.filter((m) => m.warTeamId === team.id).map(toMemberPayload) })), pool: allPool.filter((p) => p.warHistoryId === h.id), member_stats: allMembers.filter((m) => hTeamIds.has(m.warTeamId)).map(toMemberPayload) };
+      return {
+        ...toWarHistoryPayload(h),
+        teams: hTeams.map((team) => ({ ...toTeamPayload(team), members: allMembers.filter((m) => m.warTeamId === team.id).map(toMemberPayload).map(augment) })),
+        pool: allPool.filter((p) => p.warHistoryId === h.id).map((p) => ({ ...p, username: usernameMap.get(p.userId) ?? p.userId })),
+        member_stats: allMembers.filter((m) => hTeamIds.has(m.warTeamId)).map(toMemberPayload).map(augment),
+      };
     });
     return ok({ data });
   }
@@ -734,7 +575,15 @@ export class GuildWarService {
     const teams = await this.getTeamsForHistory(warId);
     const members = await this.getMembersForTeams(teams.map((t) => t.id));
     const pool = await this.getPoolMembers(warId);
-    return ok({ ...toWarHistoryPayload(history), teams: teams.map((team) => ({ ...toTeamPayload(team), members: members.filter((m) => m.warTeamId === team.id).map(toMemberPayload) })), pool, member_stats: members.map(toMemberPayload) });
+    const allUserIds = [...new Set([...members.map((m) => m.userId), ...pool.map((p) => p.userId)])];
+    const usernameMap = await this.getUsernameMap(allUserIds);
+    const augment = (payload: ReturnType<typeof toMemberPayload>) => ({ ...payload, username: usernameMap.get(payload.user_id) ?? payload.user_id });
+    return ok({
+      ...toWarHistoryPayload(history),
+      teams: teams.map((team) => ({ ...toTeamPayload(team), members: members.filter((m) => m.warTeamId === team.id).map(toMemberPayload).map(augment) })),
+      pool: pool.map((p) => ({ ...p, username: usernameMap.get(p.userId) ?? p.userId })),
+      member_stats: members.map(toMemberPayload).map(augment),
+    });
   }
 
   async createHistory(actorId: string, input: CreateWarHistoryInput): Promise<ServiceResult<unknown>> {
@@ -792,6 +641,15 @@ export class GuildWarService {
     await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "delete", actorId, entityId: warId, diffTitle: existing.warName });
     await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: warId, hint: "history_deleted" });
     return ok({ ok: true });
+  }
+
+  async batchDeleteHistory(actorId: string, warIds: string[]): Promise<ServiceResult<{ ok: true; deleted: number }>> {
+    let deleted = 0;
+    for (const warId of warIds) {
+      const result = await this.deleteHistory(actorId, warId);
+      if (result.ok) deleted += 1;
+    }
+    return ok({ ok: true, deleted });
   }
 
   async updateMemberStats(actorId: string, warId: string, targetUserId: string, input: z.infer<typeof updateMemberStatsSchema>): Promise<ServiceResult<unknown>> {

@@ -1,5 +1,4 @@
-import type { BotContext, UnifiedBot } from "@infini-dev-kit/bot-core";
-import type { Client, ChatInputCommandInteraction } from "discord.js";
+import type { Client, ChatInputCommandInteraction, Message } from "discord.js";
 import { REST, Routes, SlashCommandBuilder } from "discord.js";
 import type { BotRuntimeConfig } from "../config";
 import type { WorkerClient } from "../worker-client";
@@ -81,10 +80,6 @@ async function safeReply(interaction: ChatInputCommandInteraction, content: stri
   }
 
   await interaction.reply({ content, ephemeral: true });
-}
-
-async function replyText(ctx: BotContext, content: string): Promise<void> {
-  await ctx.message.reply(content);
 }
 
 function parseReminderMode(mode: string | null | undefined): "on" | "off" | null {
@@ -185,126 +180,115 @@ async function executeReminders(
   return `Discord reminders turned ${mode}.`;
 }
 
-export function registerDiscordTextCommands(bot: UnifiedBot, workerClient: WorkerClient): void {
-  bot.command({
-    name: "help",
-    description: "Show available text commands",
-    handler: async (ctx) => {
-      await replyText(
-        ctx,
-        [
-          "Available text commands:",
-          "/events",
-          "/signup <event_id>",
-          "/leave <event_id>",
-          "/teams",
-          "/roster",
-          "/stats [member]",
-          "/link <username>",
-          "/verify <code>",
-          "/reminders <on|off>",
-        ].join("\n"),
-      );
-    },
-  });
+const COMMAND_PREFIX = "/";
 
-  bot.command({
-    name: "events",
-    description: "List upcoming events",
-    handler: async (ctx) => {
-      await replyText(ctx, await executeEvents(workerClient));
-    },
-  });
+export function handleTextCommand(message: Message, workerClient: WorkerClient): void {
+  const text = message.content.trim();
+  if (!text.startsWith(COMMAND_PREFIX)) {
+    return;
+  }
 
-  bot.command({
-    name: "signup",
-    description: "Sign up for an event",
-    handler: async (ctx, args) => {
-      const eventId = args[0]?.trim();
-      if (!eventId) {
-        await replyText(ctx, "Usage: /signup <event_id>");
+  const withoutPrefix = text.slice(COMMAND_PREFIX.length).trim();
+  if (withoutPrefix.length === 0) {
+    return;
+  }
+
+  const [commandName, ...args] = withoutPrefix.split(/\s+/);
+  const normalized = commandName.toLowerCase();
+  const senderId = message.author.id;
+
+  const reply = async (content: string): Promise<void> => {
+    await message.reply(content);
+  };
+
+  const run = async (): Promise<void> => {
+    switch (normalized) {
+      case "help":
+        await reply(
+          [
+            "Available text commands:",
+            "/events",
+            "/signup <event_id>",
+            "/leave <event_id>",
+            "/teams",
+            "/roster",
+            "/stats [member]",
+            "/link <username>",
+            "/verify <code>",
+            "/reminders <on|off>",
+          ].join("\n"),
+        );
+        return;
+      case "events":
+        await reply(await executeEvents(workerClient));
+        return;
+      case "signup": {
+        const eventId = args[0]?.trim();
+        if (!eventId) {
+          await reply("Usage: /signup <event_id>");
+          return;
+        }
+        await reply(await executeSignup(workerClient, senderId, eventId));
         return;
       }
-      await replyText(ctx, await executeSignup(workerClient, ctx.message.sender.id, eventId));
-    },
-  });
-
-  bot.command({
-    name: "leave",
-    description: "Leave an event",
-    handler: async (ctx, args) => {
-      const eventId = args[0]?.trim();
-      if (!eventId) {
-        await replyText(ctx, "Usage: /leave <event_id>");
+      case "leave": {
+        const eventId = args[0]?.trim();
+        if (!eventId) {
+          await reply("Usage: /leave <event_id>");
+          return;
+        }
+        await reply(await executeLeave(workerClient, senderId, eventId));
         return;
       }
-      await replyText(ctx, await executeLeave(workerClient, ctx.message.sender.id, eventId));
-    },
-  });
-
-  bot.command({
-    name: "teams",
-    description: "Show guild-war teams",
-    handler: async (ctx) => {
-      await replyText(ctx, await executeTeams(workerClient));
-    },
-  });
-
-  bot.command({
-    name: "roster",
-    description: "Show roster",
-    handler: async (ctx) => {
-      await replyText(ctx, await executeRoster(workerClient));
-    },
-  });
-
-  bot.command({
-    name: "stats",
-    description: "Show guild-war stats for a member",
-    handler: async (ctx, args) => {
-      const member = args.join(" ").trim() || undefined;
-      await replyText(ctx, await executeStats(workerClient, ctx.message.sender.id, member));
-    },
-  });
-
-  bot.command({
-    name: "link",
-    description: "Start Discord account link",
-    handler: async (ctx, args) => {
-      const username = args.join(" ").trim();
-      if (!username) {
-        await replyText(ctx, "Usage: /link <username>");
+      case "teams":
+        await reply(await executeTeams(workerClient));
+        return;
+      case "roster":
+        await reply(await executeRoster(workerClient));
+        return;
+      case "stats": {
+        const member = args.join(" ").trim() || undefined;
+        await reply(await executeStats(workerClient, senderId, member));
         return;
       }
-      const code = await executeLinkStart(workerClient, ctx.message.sender.id, username);
-      await replyText(ctx, `Link code: ${code} (valid for 5 minutes). Keep this private.`);
-    },
-  });
-
-  bot.command({
-    name: "verify",
-    description: "Verify Discord link code",
-    handler: async (ctx, args) => {
-      const code = args[0]?.trim();
-      if (!code) {
-        await replyText(ctx, "Usage: /verify <code>");
+      case "link": {
+        const username = args.join(" ").trim();
+        if (!username) {
+          await reply("Usage: /link <username>");
+          return;
+        }
+        const code = await executeLinkStart(workerClient, senderId, username);
+        await reply(`Link code: ${code} (valid for 5 minutes). Keep this private.`);
         return;
       }
-      await replyText(ctx, await executeVerify(workerClient, ctx.message.sender.id, code));
-    },
-  });
-
-  bot.command({
-    name: "reminders",
-    description: "Toggle reminder DMs",
-    handler: async (ctx, args) => {
-      const mode = parseReminderMode(args[0]);
-      if (!mode) {
-        await replyText(ctx, "Usage: /reminders <on|off>");
+      case "verify": {
+        const code = args[0]?.trim();
+        if (!code) {
+          await reply("Usage: /verify <code>");
+          return;
+        }
+        await reply(await executeVerify(workerClient, senderId, code));
         return;
       }
-      await replyText(ctx, await executeReminders(workerClient, ctx.message.sender.id, mode));
-    },
+      case "reminders": {
+        const mode = parseReminderMode(args[0]);
+        if (!mode) {
+          await reply("Usage: /reminders <on|off>");
+          return;
+        }
+        await reply(await executeReminders(workerClient, senderId, mode));
+        return;
+      }
+      default:
+        return;
+    }
+  };
+
+  void run().catch((error) => {
+    console.error(
+      `[bot-discord] text command error sender=${senderId} command=${normalized}`,
+      error,
+    );
   });
 }
 

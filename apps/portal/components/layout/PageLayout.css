@@ -1,6 +1,6 @@
 .page-layout {
-  --page-padding-x: 16px;
-  --page-padding-y: 16px;
+  --page-padding-x: 20px;
+  --page-padding-y: 20px;
   width: 100%;
 }
 
@@ -14,17 +14,17 @@
 }
 
 .page-layout__content {
-  padding: 8px var(--page-padding-x) var(--page-padding-y);
+  padding: 12px var(--page-padding-x) var(--page-padding-y);
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 .page-layout__hero {
-  --page-layout-hero-gradient: var(--infini-gradient-hero, linear-gradient(135deg, #2563eb, #4f46e5));
+  --page-layout-hero-gradient: linear-gradient(135deg, #2563eb, #4f46e5);
   min-height: 120px;
   border-radius: 16px;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
   background: var(--page-layout-hero-gradient);
   color: color-mix(in srgb, #ffffff 92%, transparent);
   display: grid;
@@ -40,7 +40,7 @@
 }
 
 .page-layout__hero-eyebrow {
-  font-size: var(--infini-text-xs, 11px);
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: color-mix(in srgb, #ffffff 84%, transparent);
@@ -86,12 +86,12 @@
 
 .page-layout__hero-stat-label {
   color: color-mix(in srgb, #ffffff 82%, transparent) !important;
-  font-size: var(--infini-text-xs, 11px);
+  font-size: 11px;
 }
 
 .page-layout__hero-stat-value {
   color: #ffffff;
-  font-size: var(--infini-text-base, 14px);
+  font-size: 14px;
 }
 
 .page-layout__hero-actions {
@@ -121,25 +121,29 @@
 
 .page-layout__card,
 .portal-card {
-  border-color: color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
-  background: var(--infini-gradient-card, none), var(--infini-color-surface, #ffffff);
+  border-color: color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  background: none, var(--color-surface, #ffffff);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .page-layout__card.infini-card-hover {
   transition:
-    transform var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease),
-    box-shadow var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease);
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease;
 }
 
 .page-layout__card.infini-card-hover:hover {
   transform: translateY(-2px);
-  box-shadow: var(--infini-depth-card-hover, var(--infini-depth-card, none));
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent);
 }
 
 .page-layout__divider {
   height: 1px;
   width: 100%;
-  background: color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
+  background: color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
 }
 
 @media (max-width: 767px) {

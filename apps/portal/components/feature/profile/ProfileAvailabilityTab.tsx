@@ -32,7 +32,7 @@ export function ProfileAvailabilityTab({
     <Stack gap={16}>
       <PortalCard interactive={false}>
         <Group justify="flex-end" gap={8} p="1.2rem">
-          <Badge color={isDirty ? "infini-warning" : "infini-success"}>
+          <Badge color={isDirty ? "yellow" : "green"}>
             {isDirty ? t("status.unsavedChanges") : t("status.saved")}
           </Badge>
           <Button onClick={onSaveAvailability} loading={savePending} leftSection={<IconDeviceFloppy size={16} />}>

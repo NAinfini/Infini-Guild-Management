@@ -73,6 +73,23 @@ async function parseJsonBody(c: Context): Promise<unknown | Response> {
 
 // --- Routes ---
 
+usersRoutes.get("/image", async (c) => {
+  const key = c.req.query("key");
+  if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
+  if (!key.startsWith("profile/")) return buildError(c, "FORBIDDEN", "Invalid profile media key");
+
+  const object = await (c.env as Bindings).MEDIA.get(key);
+  if (!object?.body) return buildError(c, "NOT_FOUND", "Profile media not found");
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
+  headers.set("Cache-Control", "private, max-age=300");
+  headers.set("ETag", object.httpEtag);
+
+  return new Response(object.body, { headers });
+});
+
 usersRoutes.get("/", async (c) => {
   const resolved = await resolveSession(c);
   const sessionUser = resolved?.user ?? null;

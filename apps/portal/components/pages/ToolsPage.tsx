@@ -1,4 +1,4 @@
-﻿import { DepthButton } from "@infini-dev-kit/react";
+﻿import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../shared/PortalCard";
 import {
   Alert,
@@ -118,7 +118,7 @@ export function ToolsPage() {
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconTool size={22} />}>
       {isExternalView ? (
-        <Alert color="infini-primary" title={t("sandbox.readOnlyHint")} />
+        <Alert color="blue" title={t("sandbox.readOnlyHint")} />
       ) : null}
 
       <PageLayout.Grid cols={{ xs: 2, sm: 3, md: 5 }} gap={16}>
@@ -320,8 +320,8 @@ export function ToolsPage() {
               <Group gap={8}>
                 <DepthButton
                   onClick={() => {
-                    void copyPlainText(generatedHtml);
-                    notifications.show({ color: "infini-success", message: t("message.generatedHtmlCopied") });
+                    void copyPlainText(safeHtml);
+                    notifications.show({ color: "green", message: t("message.generatedHtmlCopied") });
                   }}
                   type="secondary"
                   size="sm"

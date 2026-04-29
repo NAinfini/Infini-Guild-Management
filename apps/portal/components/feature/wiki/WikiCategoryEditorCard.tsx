@@ -1,7 +1,7 @@
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { DepthButton } from "@infini-dev-kit/react";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
 import { ActionIcon, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { IconDeviceFloppy, IconGripVertical, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
@@ -169,7 +169,7 @@ function SortableCategoryRow({
           <Button
             size="sm"
             variant="light"
-            color="infini-danger"
+            color="red"
             leftSection={<IconTrash size={16} />}
             onClick={() => onDeleteCategory(draft.id)}
             loading={deletingCategoryId === draft.id}

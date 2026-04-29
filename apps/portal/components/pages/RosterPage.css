@@ -29,7 +29,7 @@
 
 .roster-volume-label {
   font-size: 12px;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 60%, transparent);
 }
 
 .roster-audio-popover {

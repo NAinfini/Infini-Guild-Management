@@ -12,19 +12,19 @@
 .placeholder {
   min-height: 96px;
   border-radius: 12px;
-  border: 1px dashed color-mix(in srgb, var(--infini-color-text, #111827) 18%, transparent);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 90%, var(--infini-color-text, #111827) 5%);
+  border: 1px dashed color-mix(in srgb, var(--color-text, #111827) 18%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 90%, var(--color-text, #111827) 5%);
   display: grid;
   place-items: center;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 46%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 46%, transparent);
   font-size: 12px;
 }
 
 .overflowChip {
   justify-self: end;
-  border: 1px solid color-mix(in srgb, var(--infini-color-primary, #3b82f6) 36%, transparent);
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 12%, transparent);
-  color: var(--infini-color-primary, #3b82f6);
+  border: 1px solid color-mix(in srgb, var(--color-primary, #3b82f6) 36%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+  color: var(--color-primary, #3b82f6);
   border-radius: 999px;
   padding: 4px 12px;
   font-size: 12px;
@@ -32,7 +32,7 @@
 }
 
 .overflowChip:focus-visible {
-  outline: 2px solid var(--infini-color-primary, #3b82f6);
+  outline: 2px solid var(--color-primary, #3b82f6);
   outline-offset: 2px;
 }
 
@@ -54,12 +54,12 @@
 }
 
 .overflowItem:hover {
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 8%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
 }
 
 .overflowItem span:nth-child(2),
 .overflowItem span:nth-child(3) {
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 62%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 62%, transparent);
   font-size: 12px;
 }
 

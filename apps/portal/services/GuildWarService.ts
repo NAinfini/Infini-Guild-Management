@@ -1,10 +1,8 @@
 import type { QueryClient } from "@tanstack/react-query";
 import {
-  applyGuildWarTemplate,
   batchUpdateGuildWarMemberStats,
-  createGuildWarTemplate,
+  batchDeleteGuildWarHistory,
   deleteGuildWarHistory,
-  deleteGuildWarTemplate,
   moveGuildWarMember,
   postGuildWarResults,
   saveGuildWarTeams as saveGuildWarTeamsMutation,
@@ -20,22 +18,18 @@ import {
   fetchGuildWarHistory,
   fetchGuildWarHistoryBatch,
   fetchGuildWarHistoryDetail,
-  fetchGuildWarTemplates,
 } from "../api/queries/guild-war";
 
 export {
-  applyGuildWarTemplate,
+  batchDeleteGuildWarHistory,
   batchUpdateGuildWarMemberStats,
-  createGuildWarTemplate,
   deleteGuildWarHistory,
-  deleteGuildWarTemplate,
   downloadGuildWarExport,
   fetchGuildWarActive,
   fetchGuildWarAnalytics,
   fetchGuildWarHistory,
   fetchGuildWarHistoryBatch,
   fetchGuildWarHistoryDetail,
-  fetchGuildWarTemplates,
   moveGuildWarMember,
   postGuildWarResults,
   updateGuildWarRoleTag,
@@ -54,6 +48,7 @@ export type PersistTeamSnapshotInput = {
   teamDraftNames: Record<string, string>;
   teamDraftNotes: Record<string, string>;
   teamDraftLocks: Record<string, boolean>;
+  etag?: string;
 };
 
 export type AnalyticsSelectionResult =
@@ -96,9 +91,12 @@ export class GuildWarService {
   }
 
   async persistTeamSnapshot(input: PersistTeamSnapshotInput) {
-    const response = await this.saveGuildWarTeamsFn(this.buildSaveTeamsPayload(input));
+    const response = await this.saveGuildWarTeamsFn(this.buildSaveTeamsPayload(input), input.etag);
     await this.queryClient?.invalidateQueries({
       queryKey: queryKeys.guildWar.active(input.eventId),
+    });
+    await this.queryClient?.invalidateQueries({
+      queryKey: queryKeys.guildWar.historyAll(),
     });
     return response;
   }

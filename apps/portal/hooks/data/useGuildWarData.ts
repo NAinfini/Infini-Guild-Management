@@ -7,19 +7,21 @@ import {
   fetchGuildWarActive,
   fetchGuildWarHistory,
   fetchGuildWarHistoryDetail,
-  fetchGuildWarTemplates,
 } from "../../services/GuildWarService";
-import { queryKeys } from "../../services/PortalQueryKeys";
+import { queryKeys } from "../../api/query-keys";
 
 type UseGuildWarDataOptions = {
   selectedEventId?: string;
   selectedHistoryId: string | null;
   historyDateFrom: string;
   historyDateTo: string;
+  historyPage: number;
+  historyPerPage: number;
+  hasSession?: boolean;
 };
 
 export function useGuildWarData(options: UseGuildWarDataOptions) {
-  const { selectedEventId, selectedHistoryId, historyDateFrom, historyDateTo } = options;
+  const { selectedEventId, selectedHistoryId, historyDateFrom, historyDateTo, historyPage, historyPerPage, hasSession = true } = options;
 
   const warEventsQuery = useQuery({
     queryKey: queryKeys.guildWar.events(),
@@ -41,29 +43,24 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
   const activeQuery = useQuery({
     queryKey: queryKeys.guildWar.active(selectedEventId ?? "none"),
     queryFn: () => fetchGuildWarActive(selectedEventId),
-    enabled: Boolean(selectedEventId),
-  });
-
-  const templatesQuery = useQuery({
-    queryKey: queryKeys.guildWar.templates(selectedEventId ?? "none"),
-    queryFn: () => fetchGuildWarTemplates(selectedEventId),
-    enabled: Boolean(selectedEventId),
+    enabled: hasSession && Boolean(selectedEventId),
   });
 
   const historyQuery = useQuery({
-    queryKey: queryKeys.guildWar.history(historyDateFrom || "none", historyDateTo || "none"),
+    queryKey: queryKeys.guildWar.history(historyDateFrom || "none", historyDateTo || "none", historyPage, historyPerPage),
     queryFn: () =>
       fetchGuildWarHistory({
-        page: 1,
-        limit: 50,
+        page: historyPage,
+        limit: historyPerPage,
         date_from: historyDateFrom ? `${historyDateFrom}T00:00:00.000Z` : undefined,
         date_to: historyDateTo ? `${historyDateTo}T23:59:59.999Z` : undefined,
       }),
+    enabled: hasSession,
   });
 
   const historyDetailQuery = useQuery({
     queryKey: queryKeys.guildWar.historyDetail(selectedHistoryId),
-    enabled: Boolean(selectedHistoryId),
+    enabled: hasSession && Boolean(selectedHistoryId),
     queryFn: () => fetchGuildWarHistoryDetail(selectedHistoryId as string),
   });
 
@@ -71,7 +68,6 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
     warEventsQuery,
     selectedEventDetailQuery,
     activeQuery,
-    templatesQuery,
     historyQuery,
     historyDetailQuery,
   };

@@ -1,9 +1,9 @@
 .gallery-dropzone {
   min-width: 260px;
   min-height: 92px;
-  border: 1px dashed color-mix(in srgb, var(--infini-color-text, #111827) 22%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--color-text, #111827) 22%, transparent);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 92%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
   display: grid;
   place-items: center;
   gap: 8px;
@@ -31,8 +31,8 @@
 .mantine-Modal-body .gallery-video-caption-input { width: 100%; }
 
 .gallery-dropzone--active {
-  border-color: var(--infini-color-primary, #3b82f6);
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 8%, var(--infini-color-surface, #ffffff));
+  border-color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, var(--color-surface, #ffffff));
 }
 
 .gallery-dropzone input[type="file"] { width: 100%; }
@@ -42,7 +42,7 @@
 
 .gallery-masonry__item--animated {
   opacity: 0;
-  animation: gallery-fade-slide-up var(--infini-motion-hover, 260ms) var(--infini-motion-easing, ease) forwards;
+  animation: gallery-fade-slide-up 260ms ease forwards;
   animation-delay: calc(min(var(--stagger-index), 24) * 60ms);
 }
 
@@ -57,7 +57,7 @@
   position: absolute; top: 8px; right: 8px; z-index: 1;
   border-radius: 999px; padding: 2px 8px; font-size: 11px; line-height: 1.4;
   color: #ffffff;
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 72%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 72%, transparent);
   backdrop-filter: blur(4px);
   display: inline-flex; align-items: center; gap: 4px;
 }
@@ -72,8 +72,8 @@
 
 .gallery-object-placeholder {
   width: 100%; min-height: 140px; border-radius: 8px;
-  border: 1px dashed color-mix(in srgb, var(--infini-color-text, #111827) 22%, transparent);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 92%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--color-text, #111827) 22%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
   display: grid; gap: 8px; place-items: center; padding: 12px; text-align: center;
 }
 

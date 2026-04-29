@@ -29,6 +29,15 @@ export function MemberGrid2x5({ members, onSelect }: MemberGrid2x5Props) {
     [visibleMembers.length],
   );
 
+  const memberClickHandlers = useMemo(() => {
+    if (!onSelect) return {};
+    const map: Record<string, () => void> = {};
+    for (const entry of members) {
+      map[entry.user.id] = () => onSelect(entry);
+    }
+    return map;
+  }, [members, onSelect]);
+
   useEffect(() => {
     if (!overflowModalOpen) {
       return;
@@ -118,7 +127,7 @@ export function MemberGrid2x5({ members, onSelect }: MemberGrid2x5Props) {
             user={entry.user}
             profile={entry.profile}
             compact
-            onClick={onSelect ? () => onSelect(entry) : undefined}
+            onClick={memberClickHandlers[entry.user.id]}
           />
         ))}
         {placeholders.map((placeholderKey) => (
@@ -161,7 +170,7 @@ export function MemberGrid2x5({ members, onSelect }: MemberGrid2x5Props) {
           Slots: {Math.min(10, members.length)} / 10
         </Text>
         {overflowMembers.length > 0 ? (
-          <Badge color="infini-primary" variant="light">
+          <Badge color="blue" variant="light">
             {t("members.overflow", { count: overflowMembers.length })}
           </Badge>
         ) : null}

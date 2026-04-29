@@ -44,11 +44,12 @@ export function createWikiArticle(payload: CreateWikiArticlePayload): Promise<Wi
   });
 }
 
-export function updateWikiArticle(id: string, payload: UpdateWikiArticlePayload): Promise<WikiArticle> {
+export function updateWikiArticle(id: string, payload: UpdateWikiArticlePayload, ifMatch?: string): Promise<WikiArticle> {
   const bodyJson = updateWikiArticleSchema.parse(payload);
   return apiRequest<WikiArticle>(`/api/wiki/articles/${id}`, {
     method: "PATCH",
     bodyJson,
+    ifMatch,
   });
 }
 

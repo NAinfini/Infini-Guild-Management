@@ -129,5 +129,14 @@
   "member.video": "Video",
   "profile.modalTitle": "{{name}} Profile",
   "profile.modalTitleFallback": "Profile",
-  "profile.menu.aria.open": "Open profile menu"
+  "profile.menu.aria.open": "Open profile menu",
+  "locale.option.en": "English",
+  "locale.option.en.description": "English interface",
+  "locale.option.zh": "中文",
+  "locale.option.zh.description": "Chinese interface",
+  "notFound.title": "Page Not Found",
+  "notFound.backHome": "Back to dashboard",
+  "settings.theme": "Theme",
+  "settings.theme.light": "Light",
+  "settings.theme.dark": "Dark"
 }

@@ -8,13 +8,13 @@ import {
   fetchGuildWarAnalytics,
   fetchGuildWarHistoryBatch,
 } from "../../services/GuildWarService";
-import { queryKeys } from "../../services/PortalQueryKeys";
+import { queryKeys } from "../../api/query-keys";
 import { useGuildWarStore, type AnalyticsDatePreset } from "../../stores/guildWar";
 import { copyPlainText } from "../../utils/copy";
 
 const message = {
-  success: (content: string) => notifications.show({ color: "infini-success", message: content }),
-  warning: (content: string) => notifications.show({ color: "infini-warning", message: content }),
+  success: (content: string) => notifications.show({ color: "green", message: content }),
+  warning: (content: string) => notifications.show({ color: "yellow", message: content }),
 };
 
 type AnalyticsMetricKey =
@@ -267,6 +267,18 @@ export function useGuildWarAnalytics({
     return Array.from(new Set([...detailIds, ...aggregatedIds])).sort();
   }, [analyticsRows, analyticsWarDetails]);
 
+  const analyticsUserIdToUsername = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const war of analyticsWarDetails) {
+      for (const member of war.member_stats) {
+        if (member.username && !map.has(member.user_id)) {
+          map.set(member.user_id, member.username);
+        }
+      }
+    }
+    return map;
+  }, [analyticsWarDetails]);
+
   const analyticsTeamOptions = useMemo(() => {
     const names = analyticsWarDetails.flatMap((war) => war.teams.map((team) => team.team_name));
     return Array.from(new Set(names)).sort();
@@ -354,13 +366,6 @@ export function useGuildWarAnalytics({
     );
   }, [analyticsWarDetails]);
 
-  const analyticsCompareUserIds = useMemo(() => {
-    if (analyticsSelectedUsers.length > 0) {
-      return analyticsSelectedUsers;
-    }
-    return analyticsSelectableUserIds.slice(0, Math.min(3, analyticsSelectableUserIds.length));
-  }, [analyticsSelectableUserIds, analyticsSelectedUsers]);
-
   const analyticsRankingRows = useMemo(() => {
     const valuesByUser = new Map<string, number[]>();
     for (const war of analyticsTimeline) {
@@ -435,7 +440,7 @@ export function useGuildWarAnalytics({
         analyticsSelectedMetrics.forEach((metric, metricIndex) => {
           series.push({
             type: "line",
-            name: `${userId} - ${t(getMetricLabelKey(metric))}`,
+            name: `${analyticsUserIdToUsername.get(userId) ?? userId} - ${t(getMetricLabelKey(metric))}`,
             smooth: true,
             data: analyticsPlayerRows.map((row) => row[`user${userIndex}_metric${metricIndex}`]),
           });
@@ -458,7 +463,7 @@ export function useGuildWarAnalytics({
         xAxis: { type: "value" },
         yAxis: {
           type: "category",
-          data: analyticsRankingRows.map((row) => row.user_id),
+          data: analyticsRankingRows.map((row) => analyticsUserIdToUsername.get(row.user_id) ?? row.user_id),
           axisLabel: { interval: 0 },
         },
         series: [
@@ -492,7 +497,6 @@ export function useGuildWarAnalytics({
       })),
     };
   }, [
-    analyticsCompareUserIds,
     analyticsMetric,
     analyticsMetricLabel,
     analyticsMetricLabels,
@@ -511,7 +515,7 @@ export function useGuildWarAnalytics({
       return analyticsPlayerRows;
     }
     if (analyticsMode === "rankings") {
-      return analyticsRankingRows.map((row, index) => ({ ...row, rank: index + 1 }));
+      return analyticsRankingRows.map((row, index) => ({ ...row, rank: index + 1, user_id: analyticsUserIdToUsername.get(row.user_id) ?? row.user_id }));
     }
     return analyticsTeamSeries.map((series) => {
       const values = series.points.map((point) => point.value);
@@ -525,7 +529,7 @@ export function useGuildWarAnalytics({
         ),
       };
     });
-  }, [analyticsMode, analyticsPlayerRows, analyticsRankingRows, analyticsTeamSeries]);
+  }, [analyticsMode, analyticsPlayerRows, analyticsRankingRows, analyticsTeamSeries, analyticsUserIdToUsername]);
 
   const analyticsTableColumns = useMemo<AnalyticsTableColumn[]>(() => {
     if (analyticsMode === "player") {
@@ -537,7 +541,7 @@ export function useGuildWarAnalytics({
       analyticsSelectedUsers.forEach((userId, userIndex) => {
         analyticsSelectedMetrics.forEach((metric, metricIndex) => {
           columns.push({
-            title: `${userId} - ${t(getMetricLabelKey(metric))}`,
+            title: `${analyticsUserIdToUsername.get(userId) ?? userId} - ${t(getMetricLabelKey(metric))}`,
             dataIndex: `user${userIndex}_metric${metricIndex}`,
             key: `user${userIndex}_metric${metricIndex}`,
           });
@@ -565,16 +569,12 @@ export function useGuildWarAnalytics({
     if (analyticsMode === "player") {
       return analyticsFocusedUser || "none";
     }
-    if (analyticsMode === "compare") {
-      return analyticsCompareUserIds.join(", ") || "none";
-    }
     if (analyticsMode === "rankings") {
       return `${analyticsAggregation} • top ${analyticsTopN}`;
     }
     return analyticsSelectedTeams.join(", ") || t("analytics.allTeams");
   }, [
     analyticsAggregation,
-    analyticsCompareUserIds,
     analyticsFocusedUser,
     analyticsMode,
     analyticsSelectedTeams,
@@ -589,33 +589,6 @@ export function useGuildWarAnalytics({
       message.warning(t("analytics.largeCompareWarning", { count: result.warning.count }));
     }
     setAnalyticsSelectedUsers(result.selection);
-  };
-
-  const handleLegendInteraction = (userId: string, event: React.MouseEvent<HTMLButtonElement>) => {
-    if (event.altKey) {
-      if (analyticsSelectedUsers.includes(userId)) {
-        applyAnalyticsSelection(analyticsSelectedUsers.filter((item) => item !== userId));
-      } else {
-        applyAnalyticsSelection([...analyticsSelectedUsers, userId]);
-      }
-      return;
-    }
-    if (event.shiftKey) {
-      const next = analyticsSelectedUsers.includes(userId)
-        ? analyticsSelectedUsers
-        : [...analyticsSelectedUsers, userId];
-      applyAnalyticsSelection(next);
-      return;
-    }
-    if (event.detail >= 2) {
-      applyAnalyticsSelection([userId]);
-      return;
-    }
-    if (analyticsSelectedUsers.length === 1 && analyticsSelectedUsers[0] === userId) {
-      applyAnalyticsSelection([]);
-      return;
-    }
-    applyAnalyticsSelection([userId]);
   };
 
   const copyAnalyticsSnapshot = async () => {
@@ -696,16 +669,15 @@ export function useGuildWarAnalytics({
     // derived
     analyticsWarOptions,
     analyticsSelectableUserIds,
+    analyticsUserIdToUsername,
     analyticsTeamOptions,
     analyticsMetricLabel,
-    analyticsCompareUserIds,
     analyticsChartOption,
     analyticsTableRows,
     analyticsTableColumns,
     analyticsFocusLabel,
     // handlers
     applyAnalyticsSelection,
-    handleLegendInteraction,
     copyAnalyticsSnapshot,
     copyAnalyticsCsv,
     handleAnalyticsDatePresetChange,

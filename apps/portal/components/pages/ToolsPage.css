@@ -45,21 +45,21 @@
   font-size: 28px;
   line-height: 1;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 12%, var(--infini-color-surface, #ffffff));
-  color: var(--infini-color-primary, #3b82f6);
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 12%, var(--color-surface, #ffffff));
+  color: var(--color-primary, #3b82f6);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
   transform: rotate(0deg) scale(1);
   will-change: transform;
   transition:
-    transform var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease),
-    background var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease),
-    box-shadow var(--infini-motion-hover, 140ms) var(--infini-motion-easing, ease);
+    transform 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .tool-card:hover .tool-card__icon {
   transform: rotate(12deg) scale(1.18);
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 22%, var(--infini-color-surface, #ffffff));
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 25%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 22%, var(--color-surface, #ffffff));
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--color-primary, #3b82f6) 25%, transparent);
 }
 
 .tool-card:nth-child(even):hover .tool-card__icon {
@@ -175,7 +175,7 @@
   border-radius: 10px;
   position: relative;
   cursor: crosshair;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
 }
 
 .sandbox__sl-thumb {
@@ -206,7 +206,7 @@
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
   flex-shrink: 0;
 }
 
@@ -264,8 +264,8 @@
 }
 
 .sandbox__preset-btn--active {
-  border-color: var(--infini-color-text, #111827);
-  box-shadow: 0 0 0 2px var(--infini-color-surface, #ffffff), 0 0 0 4px var(--infini-color-text, #111827);
+  border-color: var(--color-text, #111827);
+  box-shadow: 0 0 0 2px var(--color-surface, #ffffff), 0 0 0 4px var(--color-text, #111827);
 }
 
 /* ── Recent colors ── */
@@ -290,14 +290,14 @@
   border-radius: 999px;
   cursor: pointer;
   font-size: 11px;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 70%, transparent);
-  background: color-mix(in srgb, var(--infini-color-text, #111827) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 70%, transparent);
+  background: color-mix(in srgb, var(--color-text, #111827) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
   transition: background 100ms ease;
 }
 
 .sandbox__recent-btn:hover {
-  background: color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+  background: color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
 }
 
 .sandbox__recent-dot {
@@ -324,22 +324,22 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 65%, transparent);
-  background: color-mix(in srgb, var(--infini-color-text, #111827) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 65%, transparent);
+  background: color-mix(in srgb, var(--color-text, #111827) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
   transition: all 120ms ease;
 }
 
 .sandbox__typo-btn:hover {
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, transparent);
-  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 25%, transparent);
-  color: var(--infini-color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 25%, transparent);
+  color: var(--color-primary, #3b82f6);
 }
 
 .sandbox__typo-btn--active {
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 14%, transparent);
-  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 35%, transparent);
-  color: var(--infini-color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 35%, transparent);
+  color: var(--color-primary, #3b82f6);
 }
 
 /* ── Typography sliders ── */
@@ -351,7 +351,7 @@
 }
 
 .sandbox__slider-icon {
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 45%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 45%, transparent);
   flex-shrink: 0;
 }
 
@@ -376,7 +376,7 @@
 .sandbox__preview-card {
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
 }
 
 .sandbox__preview-bg {
@@ -387,7 +387,7 @@
   padding: 24px 20px;
   background:
     repeating-conic-gradient(
-      color-mix(in srgb, var(--infini-color-text, #111827) 6%, transparent) 0% 25%,
+      color-mix(in srgb, var(--color-text, #111827) 6%, transparent) 0% 25%,
       transparent 0% 50%
     ) 0 0 / 16px 16px;
 }
@@ -400,8 +400,8 @@
 
 .sandbox__preview-meta {
   padding: 8px 14px;
-  border-top: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 8%, transparent);
-  background: color-mix(in srgb, var(--infini-color-text, #111827) 3%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  background: color-mix(in srgb, var(--color-text, #111827) 3%, transparent);
 }
 
 /* ── Code block ── */
@@ -409,8 +409,8 @@
   position: relative;
   padding: 12px 40px 12px 14px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--infini-color-text, #111827) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 8%, transparent);
+  background: color-mix(in srgb, var(--color-text, #111827) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
   overflow-x: auto;
 }
 
@@ -419,7 +419,7 @@
   font-size: 12px;
   line-height: 1.6;
   word-break: break-all;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 80%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 80%, transparent);
 }
 
 .sandbox__code-copy {
@@ -434,13 +434,13 @@
   height: 28px;
   border-radius: 6px;
   cursor: pointer;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 50%, transparent);
   transition: background 120ms ease, color 120ms ease;
 }
 
 .sandbox__code-copy:hover {
-  background: color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
-  color: var(--infini-color-text, #111827);
+  background: color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  color: var(--color-text, #111827);
 }
 
 /* ── Override textarea ── */
@@ -456,8 +456,8 @@
 .tools-preview-box {
   padding: 14px;
   border-radius: 10px;
-  border: 1px dashed color-mix(in srgb, var(--infini-color-text, #111827) 18%, transparent);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 92%, var(--infini-color-text, #111827) 4%);
+  border: 1px dashed color-mix(in srgb, var(--color-text, #111827) 18%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, var(--color-text, #111827) 4%);
 }
 
 .tools-feedback {
@@ -467,15 +467,15 @@
 }
 
 .tools-feedback--info {
-  border-color: var(--infini-color-info, #3b82f6);
+  border-color: #3b82f6;
 }
 
 .tools-feedback--success {
-  border-color: var(--infini-color-success, #16a34a);
+  border-color: var(--color-success, #16a34a);
 }
 
 .tools-feedback--warning {
-  border-color: var(--infini-color-warning, #f59e0b);
+  border-color: var(--color-warning, #f59e0b);
 }
 
 .tools-motion-bar {
@@ -484,8 +484,8 @@
   background:
     linear-gradient(
       90deg,
-      var(--infini-color-primary, #3b82f6),
-      color-mix(in srgb, var(--infini-color-primary, #3b82f6) 40%, white)
+      var(--color-primary, #3b82f6),
+      color-mix(in srgb, var(--color-primary, #3b82f6) 40%, white)
     );
   animation: tools-theme-motion 1.8s ease-in-out infinite alternate;
 }
@@ -525,5 +525,5 @@
 .tools-chart-bar {
   width: 22px;
   border-radius: 6px;
-  background: var(--infini-color-primary, #3b82f6);
+  background: var(--color-primary, #3b82f6);
 }

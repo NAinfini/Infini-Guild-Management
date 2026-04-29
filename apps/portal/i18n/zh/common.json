@@ -129,5 +129,14 @@
   "member.video": "视频",
   "profile.modalTitle": "{{name}} 的资料",
   "profile.modalTitleFallback": "个人资料",
-  "profile.menu.aria.open": "打开个人菜单"
+  "profile.menu.aria.open": "打开个人菜单",
+  "locale.option.en": "English",
+  "locale.option.en.description": "英文界面",
+  "locale.option.zh": "简体中文",
+  "locale.option.zh.description": "中文界面",
+  "notFound.title": "页面未找到",
+  "notFound.backHome": "返回首页",
+  "settings.theme": "主题",
+  "settings.theme.light": "亮色",
+  "settings.theme.dark": "暗色"
 }

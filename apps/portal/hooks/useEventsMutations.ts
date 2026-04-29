@@ -1,5 +1,5 @@
 import type { Event, User } from "@guild/shared";
-import type { ImageGridEditorItem } from "@infini-dev-kit/react";
+import type { ImageGridEditorItem } from "@guild/shared/types/media";
 import { notifications } from "@mantine/notifications";
 import { modals } from "@mantine/modals";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -21,7 +21,7 @@ import {
   removeEventParticipant,
   updateEvent,
 } from "../services/EventService";
-import { queryKeys } from "../services/PortalQueryKeys";
+import { queryKeys } from "../api/query-keys";
 
 type EventDetailPayload = EventDetailResponse;
 
@@ -72,10 +72,10 @@ export function useEventsMutations({
           confirmProps: {
             color:
               options.intent === "danger"
-                ? "infini-danger"
+                ? "red"
                 : options.intent === "warning"
-                  ? "infini-warning"
-                  : "infini-primary",
+                  ? "yellow"
+                  : "blue",
           },
           onConfirm: () => resolve(true),
           onCancel: () => resolve(false),
@@ -141,7 +141,8 @@ export function useEventsMutations({
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "infini-success", message: t("message.joined") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+      notifications.show({ color: "green", message: t("message.joined") });
     },
     onError: (error, eventId, context) => {
       if (context) {
@@ -199,7 +200,8 @@ export function useEventsMutations({
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "infini-success", message: t("message.left") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+      notifications.show({ color: "green", message: t("message.left") });
     },
     onError: (error, eventId, context) => {
       if (context) {
@@ -218,9 +220,10 @@ export function useEventsMutations({
 
   const saveEventMutation = useMutation({
     mutationFn: (input: EventSaveInput) => eventService.saveEvent(input),
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
       notifications.show({
-        color: "infini-success",
+        color: "green",
         message: variables.mode === "create" ? t("message.created") : t("message.updated"),
       });
       resetAttachmentItems();
@@ -229,7 +232,7 @@ export function useEventsMutations({
     onError: (error, variables) => {
       if (error instanceof EventValidationError) {
         if (error.reason === "invalid_capacity") {
-          notifications.show({ color: "infini-danger", message: t("message.capacityInvalid") });
+          notifications.show({ color: "red", message: t("message.capacityInvalid") });
           return;
         }
         const messageText = error.reason === "missing_start"
@@ -250,7 +253,8 @@ export function useEventsMutations({
       createEvent(payload, files),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "infini-success", message: t("message.created") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+      notifications.show({ color: "green", message: t("message.created") });
     },
     onError: (error) => {
       showError(error, t("message.createFailed"));
@@ -262,7 +266,8 @@ export function useEventsMutations({
       updateEvent(id, payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "infini-success", message: t("message.updated") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+      notifications.show({ color: "green", message: t("message.updated") });
     },
     onError: (error) => {
       showError(error, t("message.updateFailed"));
@@ -273,7 +278,8 @@ export function useEventsMutations({
     mutationFn: (eventId: string) => archiveEvent(eventId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "infini-success", message: t("message.archived") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+      notifications.show({ color: "green", message: t("message.archived") });
     },
     onError: (error) => {
       showError(error, t("message.archiveFailed"));
@@ -284,7 +290,8 @@ export function useEventsMutations({
     mutationFn: (eventId: string) => updateEvent(eventId, { archived_at: null }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "infini-success", message: t("message.unarchived") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+      notifications.show({ color: "green", message: t("message.unarchived") });
     },
     onError: (error) => {
       showError(error, t("message.unarchiveFailed"));
@@ -295,7 +302,8 @@ export function useEventsMutations({
     mutationFn: (eventId: string) => deleteEvent(eventId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "infini-success", message: t("message.deleted") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+      notifications.show({ color: "green", message: t("message.deleted") });
     },
     onError: (error) => {
       showError(error, t("message.deleteFailed"));
@@ -307,7 +315,7 @@ export function useEventsMutations({
       addEventParticipant(eventId, userId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "infini-success", message: t("message.memberAdded") });
+      notifications.show({ color: "green", message: t("message.memberAdded") });
     },
     onError: (error) => {
       showError(error, t("message.memberAddFailed"));
@@ -319,7 +327,7 @@ export function useEventsMutations({
       removeEventParticipant(eventId, userId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "infini-success", message: t("message.memberRemoved") });
+      notifications.show({ color: "green", message: t("message.memberRemoved") });
     },
     onError: (error) => {
       showError(error, t("message.memberRemoveFailed"));
@@ -376,11 +384,19 @@ export function useEventsMutations({
     joinMutation.mutate(eventId);
   };
 
-  const handleLeave = (eventId: string) => {
+  const handleLeave = async (eventId: string) => {
     if (!user || !canInteract) {
       return;
     }
-    leaveMutation.mutate(eventId);
+    const event = eventById.get(eventId);
+    const confirmed = await openConfirm({
+      title: t("confirm.leave.title"),
+      description: t("confirm.leave.description", { title: event?.title ?? "" }),
+      intent: "warning",
+    });
+    if (confirmed) {
+      leaveMutation.mutate(eventId);
+    }
   };
 
   const handleFilesSelected = useCallback(
@@ -472,6 +488,8 @@ export function useEventsMutations({
     updatePending: saveEventMutation.isPending || patchEventMutation.isPending,
     archivePending: archiveEventMutation.isPending,
     savePending: saveEventMutation.isPending,
+    joinPending: joinMutation.isPending,
+    leavePending: leaveMutation.isPending,
     resetAttachmentItems,
     handleJoin,
     handleLeave,

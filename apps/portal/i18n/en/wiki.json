@@ -75,6 +75,9 @@
   "message.articleUnarchived": "Article unarchived",
   "message.articleUnarchiveFailed": "Failed to unarchive article",
   "validation.titleRequired": "Article title is required.",
+  "confirm.discardArticle.title": "Discard unsaved changes?",
+  "confirm.discardArticle.description": "Your current article edits will be lost.",
   "welcome.title": "Welcome to the Wiki",
-  "welcome.description": "Select an article from the sidebar to start reading."
+  "welcome.description": "Select an article from the sidebar to start reading.",
+  "action.loadMore": "Load More"
 }

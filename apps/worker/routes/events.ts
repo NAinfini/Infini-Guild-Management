@@ -36,7 +36,7 @@ function getDb(c: Context) {
 function getEventService(c: Context) {
   const env = c.env as Bindings;
   const db = getDb(c);
-  const svc = new EventService(db as never, env.DB as never, env.MEDIA as never, {
+  const svc: EventService = new EventService(db as never, env.DB as never, env.MEDIA as never, {
     getEventById: (eventId) => svc.getEventById(eventId),
     materializeRecurringSeries: (templateId) => materializeRecurringSeries(c, templateId),
     writeAuditLog: (input) => writeAuditLog(c, input),
@@ -62,7 +62,11 @@ function parsePage(v: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-async function requireEventManager(c: Context) { return requirePermission(c, "events.manage"); }
+async function requireEventCreate(c: Context) { return requirePermission(c, "events.create"); }
+async function requireEventEdit(c: Context) { return requirePermission(c, "events.edit"); }
+async function requireEventArchive(c: Context) { return requirePermission(c, "events.archive"); }
+async function requireEventDelete(c: Context) { return requirePermission(c, "events.delete"); }
+async function requireEventTemplates(c: Context) { return requirePermission(c, "events.templates"); }
 
 async function requireSessionUser(c: Context) {
   const user = await getRequestUser(c);
@@ -146,7 +150,7 @@ eventsRoutes.get("/:id", async (c) => {
 });
 
 eventsRoutes.post("/", async (c) => {
-  const sessionUser = await requireEventManager(c);
+  const sessionUser = await requireEventCreate(c);
   if (sessionUser instanceof Response) return sessionUser;
   try {
     const { body, files } = await parseCreateEventRequest(c);
@@ -160,7 +164,7 @@ eventsRoutes.post("/", async (c) => {
 });
 
 eventsRoutes.patch("/:id", async (c) => {
-  const sessionUser = await requireEventManager(c);
+  const sessionUser = await requireEventEdit(c);
   if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
@@ -178,7 +182,7 @@ eventsRoutes.patch("/:id", async (c) => {
 });
 
 eventsRoutes.delete("/:id", async (c) => {
-  const sessionUser = await requireEventManager(c);
+  const sessionUser = await requireEventArchive(c);
   if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
@@ -188,7 +192,7 @@ eventsRoutes.delete("/:id", async (c) => {
 });
 
 eventsRoutes.delete("/:id/destroy", async (c) => {
-  const sessionUser = await requireEventManager(c);
+  const sessionUser = await requireEventDelete(c);
   if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
@@ -198,7 +202,7 @@ eventsRoutes.delete("/:id/destroy", async (c) => {
 });
 
 eventsRoutes.post("/:id/images", async (c) => {
-  const sessionUser = await requireEventManager(c);
+  const sessionUser = await requireEventEdit(c);
   if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
@@ -227,7 +231,7 @@ eventsRoutes.delete("/:id/leave", async (c) => {
 });
 
 eventsRoutes.post("/:id/participants", async (c) => {
-  const sessionUser = await requireEventManager(c);
+  const sessionUser = await requireEventEdit(c);
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -239,7 +243,7 @@ eventsRoutes.post("/:id/participants", async (c) => {
 });
 
 eventsRoutes.delete("/:id/participants/:userId", async (c) => {
-  const sessionUser = await requireEventManager(c);
+  const sessionUser = await requireEventEdit(c);
   if (sessionUser instanceof Response) return sessionUser;
   await getEventService(c).removeParticipant(sessionUser.id, c.req.param("id"), c.req.param("userId"));
   return c.json({ ok: true });
@@ -248,13 +252,13 @@ eventsRoutes.delete("/:id/participants/:userId", async (c) => {
 // --- Templates ---
 
 eventsRoutes.get("/templates/list", async (c) => {
-  const sessionUser = await requireEventManager(c);
+  const sessionUser = await requireEventTemplates(c);
   if (sessionUser instanceof Response) return sessionUser;
   return c.json({ data: await getEventService(c).listTemplates() });
 });
 
 eventsRoutes.post("/templates", async (c) => {
-  const sessionUser = await requireEventManager(c);
+  const sessionUser = await requireEventTemplates(c);
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -269,7 +273,7 @@ eventsRoutes.post("/templates", async (c) => {
 });
 
 eventsRoutes.patch("/templates/:id", async (c) => {
-  const sessionUser = await requireEventManager(c);
+  const sessionUser = await requireEventTemplates(c);
   if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
@@ -287,7 +291,7 @@ eventsRoutes.patch("/templates/:id", async (c) => {
 });
 
 eventsRoutes.post("/templates/:id/pause", async (c) => {
-  const sessionUser = await requireEventManager(c);
+  const sessionUser = await requireEventTemplates(c);
   if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
@@ -297,7 +301,7 @@ eventsRoutes.post("/templates/:id/pause", async (c) => {
 });
 
 eventsRoutes.post("/templates/:id/resume", async (c) => {
-  const sessionUser = await requireEventManager(c);
+  const sessionUser = await requireEventTemplates(c);
   if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
@@ -307,7 +311,7 @@ eventsRoutes.post("/templates/:id/resume", async (c) => {
 });
 
 eventsRoutes.delete("/templates/:id", async (c) => {
-  const sessionUser = await requireEventManager(c);
+  const sessionUser = await requireEventTemplates(c);
   if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));

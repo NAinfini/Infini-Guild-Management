@@ -1,19 +1,94 @@
-import { forwardRef, type ReactNode } from "react";
-import { Tooltip } from "@mantine/core";
-import { DepthToggle as BaseDepthToggle, type DepthToggleProps as BaseProps } from "@infini-dev-kit/react";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { ActionIcon, Button, Tooltip } from "@mantine/core";
+
+type ToggleVariant = "primary" | "secondary" | "danger" | "success" | "warning" | "info";
+type ToggleSize = "xs" | "sm" | "md" | "lg";
 
 type TooltipConfig = string | { label: ReactNode; withArrow?: boolean };
 
-export interface DepthToggleProps extends BaseProps {
+export interface DepthToggleProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "onToggle" | "color"> {
+  type?: ToggleVariant;
+  size?: ToggleSize;
+  pressed?: boolean;
+  onToggle?: (nextPressed: boolean) => void;
+  before?: ReactNode;
+  after?: ReactNode;
+  iconOnly?: boolean;
   tooltip?: TooltipConfig;
 }
 
+const variantColor: Record<ToggleVariant, string> = {
+  primary: "blue",
+  secondary: "gray",
+  danger: "red",
+  success: "green",
+  warning: "yellow",
+  info: "cyan",
+};
+
 export const DepthToggle = forwardRef<HTMLButtonElement, DepthToggleProps>(
-  ({ tooltip, ...rest }, ref) => {
-    const toggle = <BaseDepthToggle ref={ref} {...rest} />;
-    if (!tooltip) return toggle;
-    const tipProps = typeof tooltip === "string" ? { label: tooltip } : tooltip;
-    return <Tooltip {...tipProps}>{toggle}</Tooltip>;
+  (
+    {
+      type = "primary",
+      size = "md",
+      pressed = false,
+      onToggle,
+      before,
+      after,
+      iconOnly,
+      tooltip,
+      className,
+      children,
+      onClick,
+      disabled,
+      ...rest
+    },
+    ref,
+  ) => {
+    const color = variantColor[type];
+
+    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+      onToggle?.(!pressed);
+      onClick?.(e);
+    };
+
+    const tooltipLabel = typeof tooltip === "string" ? tooltip : tooltip?.label;
+
+    const inner = iconOnly ? (
+      <ActionIcon
+        ref={ref}
+        variant={pressed ? "filled" : "light"}
+        color={color}
+        size={size}
+        disabled={disabled}
+        onClick={handleClick}
+        aria-pressed={pressed}
+        className={className}
+        {...rest}
+      >
+        {children}
+      </ActionIcon>
+    ) : (
+      <Button
+        ref={ref}
+        variant={pressed ? "filled" : "light"}
+        color={color}
+        size={size}
+        disabled={disabled}
+        onClick={handleClick}
+        leftSection={before}
+        rightSection={after}
+        aria-pressed={pressed}
+        className={className}
+        {...rest}
+      >
+        {children}
+      </Button>
+    );
+
+    if (!tooltipLabel) return inner;
+    const tipProps = typeof tooltip === "string" ? { label: tooltip } : tooltip!;
+    return <Tooltip {...tipProps}>{inner}</Tooltip>;
   },
 );
 DepthToggle.displayName = "DepthToggle";

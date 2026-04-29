@@ -34,6 +34,7 @@ type SearchItem = {
   subtitle: string;
   body?: string;
   category: "user" | "event" | "announcement" | "wiki" | "gallery" | "war";
+  role?: string;
   to: string;
   entityId?: string;
 };
@@ -83,6 +84,7 @@ export function CmdKSearch() {
               entry.profile.wechat_name ?? "-"
             }`,
             category: "user",
+            role: entry.user.role,
             to: "/roster",
           }))
         : [];
@@ -240,6 +242,17 @@ export function CmdKSearch() {
     }
   };
 
+  const roleBadgeColor = (role: string | undefined): string => {
+    switch (role) {
+      case "admin":
+        return "red";
+      case "moderator":
+        return "orange";
+      default:
+        return "blue";
+    }
+  };
+
   return (
     <>
       <Button onClick={openHandlers.open} size="xs" aria-label={t("cmdk.aria.openSearch")}>
@@ -261,7 +274,7 @@ export function CmdKSearch() {
             aria-label={t("cmdk.aria.searchInput")}
             style={{
               width: "100%",
-              border: "1px solid color-mix(in srgb, var(--infini-color-text, #111827) 20%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--color-text, #111827) 20%, transparent)",
               borderRadius: 8,
               padding: "10px 12px",
               marginTop: 4,
@@ -308,7 +321,9 @@ export function CmdKSearch() {
                       <Group align="center">
                         {categoryIcon(item.category)}
                         <Highlight highlight={query} fw={600}>{item.title}</Highlight>
-                        <Badge>{categoryLabel(item.category)}</Badge>
+                        <Badge color={item.category === "user" ? roleBadgeColor(item.role) : undefined}>
+                          {item.category === "user" && item.role ? item.role : categoryLabel(item.category)}
+                        </Badge>
                       </Group>
                       <Highlight highlight={query} c="dimmed" size="sm">
                         {item.subtitle}

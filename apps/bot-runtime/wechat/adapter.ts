@@ -1,14 +1,4 @@
 import type { BotTask } from "@guild/shared";
-import {
-  createBot,
-  errorBoundaryMiddleware,
-  loggerMiddleware,
-  rateLimitMiddleware,
-  type BotContext,
-  type BotAdapter,
-  type UnifiedBot,
-} from "@infini-dev-kit/bot-core";
-import { createWechatAdapter, type WechatBotLike } from "@infini-dev-kit/bot-wechat";
 import type { BotRuntimeConfig } from "../config";
 import type { WorkerClient } from "../worker-client";
 import { buildWechatMessage } from "./formatters";
@@ -48,13 +38,19 @@ type WechatyModule = {
   };
 };
 
+type WechatMessageLike = {
+  text(): string;
+  talker(): WechatContactLike;
+  room(): WechatRoomLike | null;
+  say(content: string): Promise<unknown>;
+};
+
 type WechatRuntimeState = {
   config: BotRuntimeConfig | null;
   workerClient: WorkerClient | null;
   enabled: boolean;
-  adapter: BotAdapter | null;
-  bot: UnifiedBot | null;
-  client: WechatBotLike | null;
+  bot: WechatyLike | null;
+  running: boolean;
   startPromise: Promise<void> | null;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   readyAt: string | null;
@@ -65,9 +61,8 @@ const state: WechatRuntimeState = {
   config: null,
   workerClient: null,
   enabled: false,
-  adapter: null,
   bot: null,
-  client: null,
+  running: false,
   startPromise: null,
   reconnectTimer: null,
   readyAt: null,
@@ -75,6 +70,7 @@ const state: WechatRuntimeState = {
 };
 
 const RECONNECT_DELAY_MS = 10_000;
+const COMMAND_PREFIX = "/";
 
 function formatIsoDateTime(iso: string): string {
   const date = new Date(iso);
@@ -84,17 +80,27 @@ function formatIsoDateTime(iso: string): string {
   return date.toISOString().replace("T", " ").slice(0, 16) + " UTC";
 }
 
-async function replySafe(ctx: BotContext, content: string): Promise<void> {
-  await ctx.message.reply(content);
-}
+async function handleWechatTextCommand(message: WechatMessageLike, workerClient: WorkerClient): Promise<void> {
+  const text = message.text().trim();
+  if (!text.startsWith(COMMAND_PREFIX)) {
+    return;
+  }
 
-function registerWechatTextCommands(bot: UnifiedBot, workerClient: WorkerClient): void {
-  bot.command({
-    name: "help",
-    description: "Show available WeChat commands",
-    handler: async (ctx) => {
-      await replySafe(
-        ctx,
+  const withoutPrefix = text.slice(COMMAND_PREFIX.length).trim();
+  if (withoutPrefix.length === 0) {
+    return;
+  }
+
+  const [commandName, ...args] = withoutPrefix.split(/\s+/);
+  const normalized = commandName.toLowerCase();
+
+  const reply = async (content: string): Promise<void> => {
+    await message.say(content);
+  };
+
+  switch (normalized) {
+    case "help":
+      await reply(
         [
           "可用指令:",
           "/events - 查看近7天活动",
@@ -103,16 +109,11 @@ function registerWechatTextCommands(bot: UnifiedBot, workerClient: WorkerClient)
           "/stats <用户名> - 查看指定成员帮战数据",
         ].join("\n"),
       );
-    },
-  });
-
-  bot.command({
-    name: "events",
-    description: "List upcoming events",
-    handler: async (ctx) => {
+      return;
+    case "events": {
       const response = await workerClient.events();
       if (response.data.length === 0) {
-        await replySafe(ctx, "近7天没有活动。");
+        await reply("近7天没有活动。");
         return;
       }
 
@@ -120,17 +121,13 @@ function registerWechatTextCommands(bot: UnifiedBot, workerClient: WorkerClient)
         const cap = event.capacity === null ? "" : ` | cap ${event.capacity}`;
         return `${index + 1}. [${event.type}] ${event.title} | ${formatIsoDateTime(event.start_at)}${cap}`;
       });
-      await replySafe(ctx, `近期活动:\n${lines.join("\n")}`);
-    },
-  });
-
-  bot.command({
-    name: "teams",
-    description: "Show guild-war teams",
-    handler: async (ctx) => {
+      await reply(`近期活动:\n${lines.join("\n")}`);
+      return;
+    }
+    case "teams": {
       const response = await workerClient.teams();
       if (!response.war || response.teams.length === 0) {
-        await replySafe(ctx, "当前没有进行中的帮战分队。");
+        await reply("当前没有进行中的帮战分队。");
         return;
       }
 
@@ -141,43 +138,34 @@ function registerWechatTextCommands(bot: UnifiedBot, workerClient: WorkerClient)
         return `• ${team.team_name}: ${members || "暂无成员"}`;
       });
 
-      await replySafe(
-        ctx,
+      await reply(
         `帮战: ${response.war.war_name} (${response.war.created_at.slice(0, 10)})\n${teamLines.join("\n")}`,
       );
-    },
-  });
-
-  bot.command({
-    name: "roster",
-    description: "Show active roster",
-    handler: async (ctx) => {
+      return;
+    }
+    case "roster": {
       const response = await workerClient.roster();
       if (response.data.length === 0) {
-        await replySafe(ctx, "成员名单为空。");
+        await reply("成员名单为空。");
         return;
       }
 
       const lines = response.data.slice(0, 20).map((member, index) => {
         return `${index + 1}. ${member.username} | ${member.class_name ?? "-"} | ${member.power}`;
       });
-      await replySafe(ctx, `成员名单:\n${lines.join("\n")}`);
-    },
-  });
-
-  bot.command({
-    name: "stats",
-    description: "Show guild-war stats for a member",
-    handler: async (ctx, args) => {
+      await reply(`成员名单:\n${lines.join("\n")}`);
+      return;
+    }
+    case "stats": {
       const member = args.join(" ").trim();
       if (!member) {
-        await replySafe(ctx, "用法: /stats <用户名>");
+        await reply("用法: /stats <用户名>");
         return;
       }
 
       const response = await workerClient.stats({ member });
       if (response.wars.length === 0) {
-        await replySafe(ctx, `未找到 ${response.member.username} 的帮战记录。`);
+        await reply(`未找到 ${response.member.username} 的帮战记录。`);
         return;
       }
 
@@ -189,9 +177,12 @@ function registerWechatTextCommands(bot: UnifiedBot, workerClient: WorkerClient)
         const healing = war.healing ?? 0;
         return `${index + 1}. ${war.war_name} (${formatIsoDateTime(war.created_at)}) | K/D/A ${kills}/${deaths}/${assists} | 伤害 ${damage} | 治疗 ${healing}`;
       });
-      await replySafe(ctx, `${response.member.username} 的数据:\n${lines.join("\n")}`);
-    },
-  });
+      await reply(`${response.member.username} 的数据:\n${lines.join("\n")}`);
+      return;
+    }
+    default:
+      return;
+  }
 }
 
 function buildWechatyOptions(config: BotRuntimeConfig): Record<string, unknown> {
@@ -227,13 +218,13 @@ function scheduleReconnect(reason: string): void {
     return;
   }
 
-  console.warn(`[wechat] scheduling reconnect in ${RECONNECT_DELAY_MS}ms: ${reason}`);
+  console.warn(`[bot-wechat] scheduling reconnect in ${RECONNECT_DELAY_MS}ms: ${reason}`);
   state.reconnectTimer = setTimeout(() => {
     state.reconnectTimer = null;
     void ensureWechatStarted(workerClient).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       state.lastError = message;
-      console.error("[wechat] reconnect failed", message);
+      console.error("[bot-wechat] reconnect failed", message);
       scheduleReconnect("reconnect failure");
     });
   }, RECONNECT_DELAY_MS);
@@ -272,64 +263,50 @@ async function resolveRoom(bot: WechatyLike, target: string): Promise<WechatRoom
   return byString ?? null;
 }
 
-async function resolveContact(bot: WechatyLike, target: string): Promise<WechatContactLike | null> {
-  if (!bot.Contact) {
-    return null;
-  }
-
-  const byId = await bot.Contact.find({ id: target });
-  if (byId) {
-    return byId;
-  }
-
-  const byString = await bot.Contact.find(target);
-  return byString ?? null;
-}
-
-async function createWechatClient(config: BotRuntimeConfig): Promise<WechatBotLike> {
+async function createAndWireWechatBot(config: BotRuntimeConfig, workerClient: WorkerClient): Promise<WechatyLike> {
   const wechatyModule = await importWechatyModule();
   const bot = wechatyModule.WechatyBuilder.build(buildWechatyOptions(config));
 
   bot.on("scan", (qrcode, status) => {
     const code = typeof qrcode === "string" ? qrcode.slice(0, 32) : "";
-    console.log(`[wechat] scan status=${String(status)} qrcode=${code}`);
+    console.log(`[bot-wechat] scan status=${String(status)} qrcode=${code}`);
   });
   bot.on("login", (user) => {
     const maybeUser = user as WechatContactLike | undefined;
     const username = maybeUser?.name?.() ?? maybeUser?.id ?? "unknown";
     state.lastError = null;
     state.readyAt = new Date().toISOString();
-    console.log(`[wechat] logged in as ${username}`);
+    console.log(`[bot-wechat] logged in as ${username}`);
   });
   bot.on("logout", (user) => {
     const maybeUser = user as WechatContactLike | undefined;
     const username = maybeUser?.name?.() ?? maybeUser?.id ?? "unknown";
     state.readyAt = null;
-    console.warn(`[wechat] logged out: ${username}`);
+    state.running = false;
+    console.warn(`[bot-wechat] logged out: ${username}`);
     scheduleReconnect("logout");
   });
   bot.on("error", (error) => {
     const normalized = error instanceof Error ? error : new Error(String(error));
     state.lastError = normalized.message;
-    console.error("[wechat] runtime error", normalized);
+    console.error("[bot-wechat] runtime error", normalized);
     scheduleReconnect(normalized.message);
   });
+  bot.on("message", (raw) => {
+    const msg = raw as WechatMessageLike | undefined;
+    if (!msg || typeof msg.text !== "function") {
+      return;
+    }
+    void handleWechatTextCommand(msg, workerClient).catch((error) => {
+      const talkerId = typeof msg.talker === "function" ? msg.talker()?.id : "unknown";
+      console.error(
+        `[bot-wechat] text command error sender=${talkerId}`,
+        error,
+      );
+    });
+  });
 
-  return {
-    start: () => bot.start(),
-    stop: () => bot.stop(),
-    on: (event, listener) => {
-      bot.on(event, (...args: unknown[]) => {
-        listener(...args);
-      });
-    },
-    findRoom: async (id) => {
-      return (await resolveRoom(bot, id)) ?? undefined;
-    },
-    findContact: async (id) => {
-      return (await resolveContact(bot, id)) ?? undefined;
-    },
-  };
+  return bot;
 }
 
 async function ensureWechatStarted(workerClient: WorkerClient): Promise<void> {
@@ -338,46 +315,18 @@ async function ensureWechatStarted(workerClient: WorkerClient): Promise<void> {
   }
   const activeConfig = state.config;
 
-  if (state.adapter?.isRunning()) {
+  if (state.running) {
     return;
   }
 
   if (!state.startPromise) {
     state.startPromise = (async () => {
-      if (!state.client || !state.adapter || !state.bot) {
-        const client = await createWechatClient(activeConfig);
-        const adapter = createWechatAdapter({
-          name: activeConfig.wechatyName,
-          clientFactory: () => client,
-        });
-        const bot = createBot({
-          adapter,
-          middlewares: [
-            errorBoundaryMiddleware(async (error, ctx) => {
-              console.error(
-                `[wechat] middleware error sender=${ctx.message.sender.id} conversation=${ctx.message.conversation.id}`,
-                error,
-              );
-            }),
-            rateLimitMiddleware({
-              maxPerMinute: 60,
-              onLimit: async (ctx) => {
-                await ctx.message.reply("请求过快，请稍后再试。");
-              },
-            }),
-            loggerMiddleware((message) => {
-              console.log(`[wechat][pipeline] ${message}`);
-            }),
-          ],
-        });
-        registerWechatTextCommands(bot, workerClient);
-
-        state.client = client;
-        state.adapter = adapter;
-        state.bot = bot;
+      if (!state.bot) {
+        state.bot = await createAndWireWechatBot(activeConfig, workerClient);
       }
 
       await state.bot.start();
+      state.running = true;
     })()
       .catch((error) => {
         state.lastError = error instanceof Error ? error.message : String(error);
@@ -425,7 +374,7 @@ export function getWechatHealth(): {
 } {
   return {
     enabled: state.enabled,
-    connected: Boolean(state.adapter?.isRunning()),
+    connected: state.running,
     ready_at: state.readyAt,
     last_error: state.lastError,
   };
@@ -441,8 +390,8 @@ export async function sendWechatTask(task: BotTask): Promise<{ messageId: string
   }
 
   await ensureWechatStarted(state.workerClient);
-  if (!state.adapter) {
-    throw new Error("WeChat adapter is not connected");
+  if (!state.bot) {
+    throw new Error("WeChat bot is not connected");
   }
 
   const roomTarget = resolveRoomTarget(task);
@@ -450,8 +399,13 @@ export async function sendWechatTask(task: BotTask): Promise<{ messageId: string
     throw new Error("Missing WeChat room target id");
   }
 
-  const sentMessage = await state.adapter.sendMessage(roomTarget, message);
+  const room = await resolveRoom(state.bot, roomTarget);
+  if (!room) {
+    throw new Error(`WeChat room not found: ${roomTarget}`);
+  }
+
+  await room.say(message);
   return {
-    messageId: sentMessage.id ?? `wechat:${roomTarget}:${Date.now()}`,
+    messageId: `wechat:${roomTarget}:${Date.now()}`,
   };
 }

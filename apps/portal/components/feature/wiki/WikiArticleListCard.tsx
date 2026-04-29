@@ -1,7 +1,7 @@
 ﻿import type { WikiArticle } from "@guild/shared";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
-import { Alert, Group, MultiSelect, Skeleton, Stack, Text, Tooltip, VisuallyHidden } from "@mantine/core";
+import { Alert, Button, Group, MultiSelect, Skeleton, Stack, Text, Tooltip, VisuallyHidden } from "@mantine/core";
 import { IconArchive, IconEdit, IconPinned, IconPlus } from "@tabler/icons-react";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -30,6 +30,9 @@ type WikiArticleListCardProps = {
   selectedSlug: string | null;
   emptyTitle: ReactNode;
   onSelectArticle: (slug: string) => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 };
 
 export function WikiArticleListCard({
@@ -48,6 +51,9 @@ export function WikiArticleListCard({
   selectedSlug,
   emptyTitle,
   onSelectArticle,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: WikiArticleListCardProps) {
   const { t } = useTranslation("wiki");
 
@@ -90,7 +96,7 @@ export function WikiArticleListCard({
               ))}
             </Stack>
           ) : null}
-          {isError ? <Alert color="infini-warning" title={warningMessage} /> : null}
+          {isError ? <Alert color="yellow" title={warningMessage} /> : null}
           {!isLoading && !isError ? (
             <Stack gap={6}>
               {articles.length === 0 ? <EmptyState title={emptyTitle} /> : null}
@@ -108,14 +114,14 @@ export function WikiArticleListCard({
                       <Text fw={600}>{item.title}</Text>
                       {item.pinned ? (
                         <Tooltip label={t("articleEditor.pinned")} withArrow>
-                          <Text c="infini-primary" style={{ display: "inline-flex", alignItems: "center" }}>
+                          <Text c="blue" style={{ display: "inline-flex", alignItems: "center" }}>
                             <IconPinned size={14} aria-hidden />
                           </Text>
                         </Tooltip>
                       ) : null}
                       {item.archived_at ? (
                         <Tooltip label={t("articleEditor.archived")} withArrow>
-                          <Text c="infini-warning" style={{ display: "inline-flex", alignItems: "center" }}>
+                          <Text c="yellow" style={{ display: "inline-flex", alignItems: "center" }}>
                             <IconArchive size={14} aria-hidden />
                           </Text>
                         </Tooltip>
@@ -127,6 +133,17 @@ export function WikiArticleListCard({
                   </Stack>
                 </button>
               ))}
+              {hasMore && onLoadMore ? (
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  loading={isLoadingMore}
+                  onClick={onLoadMore}
+                  style={{ alignSelf: "center" }}
+                >
+                  {t("action.loadMore")}
+                </Button>
+              ) : null}
             </Stack>
           ) : null}
         </Stack>

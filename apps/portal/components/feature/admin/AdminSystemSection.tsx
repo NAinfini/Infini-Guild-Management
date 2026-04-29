@@ -25,7 +25,7 @@ export function AdminSystemSection({
   return (
     <Stack gap={10}>
       {statusLoading ? <Group gap={8}><Skeleton height={22} width={80} radius="xl" /><Skeleton height={22} width={80} radius="xl" /><Skeleton height={22} width={80} radius="xl" /><Skeleton height={22} width={80} radius="xl" /></Group> : null}
-      {statusError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
+      {statusError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
       {statusData ? (
         <Group gap={8} wrap="wrap">
           <Badge color={statusData.db === "ok" ? "green" : "red"} variant="light">{t("status.summary.db", { value: statusData.db })}</Badge>

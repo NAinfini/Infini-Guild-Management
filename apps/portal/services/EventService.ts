@@ -41,6 +41,7 @@ export {
   joinEvent,
   leaveEvent,
   pauseTemplate,
+  queryKeys,
   removeEventParticipant,
   resumeTemplate,
   updateEventMutation as updateEvent,
@@ -189,6 +190,9 @@ export class EventService {
   private async invalidateEvents() {
     await this.queryClient?.invalidateQueries({
       queryKey: queryKeys.events.all,
+    });
+    await this.queryClient?.invalidateQueries({
+      queryKey: queryKeys.event.all,
     });
   }
 }

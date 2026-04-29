@@ -1,7 +1,7 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
 import { Avatar, Grid, Group, Modal, Select, Stack, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { DepthButton } from "@infini-dev-kit/react";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { MediaGallery } from "@portal/components/shared/MediaGallery";
 import {
   IconCalendarEvent,
@@ -54,6 +54,8 @@ type EventDetailModalProps = {
   allUsers: MemberEntry[];
   canManage: boolean;
   currentUserId?: string;
+  joinPending?: boolean;
+  leavePending?: boolean;
   onClose: () => void;
   onJoin?: (eventId: string) => void;
   onLeave?: (eventId: string) => void;
@@ -67,6 +69,8 @@ export function EventDetailModal({
   allUsers,
   canManage,
   currentUserId,
+  joinPending,
+  leavePending,
   onClose,
   onJoin,
   onLeave,
@@ -141,7 +145,7 @@ export function EventDetailModal({
                         }
                         onJoin?.(event.id);
                       }}
-                      disabled={memberActionDisabled}
+                      disabled={memberActionDisabled || joinPending || leavePending}
                     >
                       {isJoined ? <IconUserMinus size={14} style={{ marginRight: 4 }} /> : <IconUserPlus size={14} style={{ marginRight: 4 }} />}
                       {memberActionLabel}
@@ -175,7 +179,7 @@ export function EventDetailModal({
                   <div style={{ maxHeight: "300px", overflowY: "auto" }}>
                     <Stack gap={10}>
                       {members.map((entry) => (
-                        <Group key={entry.user.id} gap={10} style={{ padding: "8px", borderRadius: "6px", background: "color-mix(in srgb, var(--infini-color-text) 8%, transparent)" }}>
+                        <Group key={entry.user.id} gap={10} style={{ padding: "8px", borderRadius: "6px", background: "color-mix(in srgb, var(--color-text) 8%, transparent)" }}>
                           <Avatar size="md" color={EVENT_TYPE_COLORS[event.type] ?? "gray"} radius="xl">
                             {entry.user.username.slice(0, 1).toUpperCase()}
                           </Avatar>

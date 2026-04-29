@@ -1,5 +1,5 @@
 import type { WarHistory } from "@guild/shared";
-import { NumberTicker } from "@infini-dev-kit/react";
+import { NumberTicker } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
 import { ActionIcon, Avatar, Stack, Text } from "@mantine/core";
 import { useState } from "react";
@@ -27,10 +27,10 @@ type LastWarCardProps = {
 };
 
 function resultColor(result: string | null): string {
-  if (result === "win") return "var(--infini-color-success, #22c55e)";
-  if (result === "loss") return "var(--infini-color-danger, #ef4444)";
-  if (result === "draw") return "var(--infini-color-warning, #f59e0b)";
-  return "color-mix(in srgb, var(--infini-color-text, #111827) 50%, transparent)";
+  if (result === "win") return "var(--color-success, #22c55e)";
+  if (result === "loss") return "var(--color-danger, #ef4444)";
+  if (result === "draw") return "var(--color-warning, #f59e0b)";
+  return "color-mix(in srgb, var(--color-text, #111827) 50%, transparent)";
 }
 
 function resultLabel(result: string | null, t: (key: string) => string): string {
@@ -174,7 +174,7 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
 
           {/* MVPs */}
           {!isExternalView && mvp ? (
-            <Stack gap={6} pt={8} style={{ borderTop: "1px solid color-mix(in srgb, var(--infini-color-text, #111827) 8%, transparent)" }}>
+            <Stack gap={6} pt={8} style={{ borderTop: "1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent)" }}>
               <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: "0.08em", marginBottom: 2 }}>
                 {t("card.lastWar.mvps")}
               </Text>

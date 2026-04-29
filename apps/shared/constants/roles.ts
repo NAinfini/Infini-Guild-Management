@@ -1,7 +1,7 @@
 export const ROLES = ["admin", "moderator", "member"] as const;
 
 export type BuiltinRole = (typeof ROLES)[number];
-export type Role = BuiltinRole;
+export type Role = string;
 export type RoleId = string;
 
 export const PERMISSIONS = [
@@ -22,13 +22,23 @@ export const PERMISSIONS = [
   "admin.analytics.manage",
   "admin.roles.view",
   "admin.roles.manage",
-  "guildwar.manage",
+  "guildwar.teams.edit",
+  "guildwar.teams.post",
   "guildwar.history.edit",
-  "events.manage",
-  "announcements.manage",
+  "events.create",
+  "events.edit",
+  "events.archive",
+  "events.delete",
+  "events.templates",
+  "announcements.create",
+  "announcements.edit",
+  "announcements.archive",
   "gallery.upload",
   "gallery.manage",
-  "wiki.edit",
+  "wiki.articles.create",
+  "wiki.articles.edit",
+  "wiki.articles.archive",
+  "wiki.categories.manage",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -48,13 +58,23 @@ export const MODERATOR_DEFAULT_PERMISSIONS: ReadonlySet<Permission> = new Set<Pe
   "admin.status.view",
   "admin.analytics.view",
   "admin.roles.view",
-  "guildwar.manage",
+  "guildwar.teams.edit",
+  "guildwar.teams.post",
   "guildwar.history.edit",
-  "events.manage",
-  "announcements.manage",
+  "events.create",
+  "events.edit",
+  "events.archive",
+  "events.delete",
+  "events.templates",
+  "announcements.create",
+  "announcements.edit",
+  "announcements.archive",
   "gallery.upload",
   "gallery.manage",
-  "wiki.edit",
+  "wiki.articles.create",
+  "wiki.articles.edit",
+  "wiki.articles.archive",
+  "wiki.categories.manage",
 ]);
 
 export const MEMBER_DEFAULT_PERMISSIONS: ReadonlySet<Permission> = new Set<Permission>(["gallery.upload"]);
@@ -77,6 +97,15 @@ export function hasAnyPermission(granted: ReadonlySet<Permission>, required: rea
   return required.some((p) => granted.has(p));
 }
 
-export function hasRoleAtLeast(current: Role, required: Role): boolean {
-  return ROLE_LEVEL[current] >= ROLE_LEVEL[required];
+export function hasRoleAtLeast(current: string, required: BuiltinRole): boolean {
+  const level = isBuiltinRole(current) ? ROLE_LEVEL[current] : 0;
+  return level >= ROLE_LEVEL[required];
+}
+
+export function hasLevelAtLeast(currentLevel: number, required: BuiltinRole): boolean {
+  return currentLevel >= ROLE_LEVEL[required];
+}
+
+export function permissionSetToRecord(permissions: ReadonlySet<Permission>): Record<Permission, boolean> {
+  return Object.fromEntries(PERMISSIONS.map((p) => [p, permissions.has(p)])) as Record<Permission, boolean>;
 }

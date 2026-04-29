@@ -4,8 +4,8 @@ import { eventSchema } from "./event";
 export const warHistorySchema = z.object({
   id: z.string(),
   event_id: z.string().nullable(),
-  war_name: z.string(),
-  enemy_name: z.string().nullable(),
+  war_name: z.string().max(200),
+  enemy_name: z.string().max(200).nullable(),
   result: z.enum(["win", "loss", "draw"]).nullable(),
   own_kills: z.number().int().nullable(),
   own_towers: z.number().int().nullable(),
@@ -18,7 +18,7 @@ export const warHistorySchema = z.object({
   enemy_credits: z.number().int().nullable(),
   enemy_distance: z.number().int().nullable(),
   duration_minutes: z.number().nullable(),
-  notes: z.string().nullable(),
+  notes: z.string().max(2000).nullable(),
   created_by: z.string(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -26,8 +26,8 @@ export const warHistorySchema = z.object({
 
 export const createWarHistorySchema = z.object({
   event_id: z.string().optional(),
-  war_name: z.string().min(1),
-  enemy_name: z.string().optional(),
+  war_name: z.string().min(1).max(200),
+  enemy_name: z.string().max(200).optional(),
   result: z.enum(["win", "loss", "draw"]).optional(),
   own_kills: z.number().int().optional(),
   own_towers: z.number().int().optional(),
@@ -40,7 +40,7 @@ export const createWarHistorySchema = z.object({
   enemy_credits: z.number().int().optional(),
   enemy_distance: z.number().int().optional(),
   duration_minutes: z.number().positive().optional(),
-  notes: z.string().optional(),
+  notes: z.string().max(2000).optional(),
 });
 
 export const updateWarHistorySchema = createWarHistorySchema.partial();
@@ -108,63 +108,6 @@ export const updateMemberStatsSchema = warTeamMemberSchema
     note: true,
   })
   .partial();
-
-export const warTemplateSchema = z.object({
-  id: z.string(),
-  template_name: z.string(),
-  template_type: z.enum(["structure", "members"]),
-  description: z.string().nullable(),
-  source_event_id: z.string().nullable(),
-  team_count: z.number().int().nonnegative(),
-  member_count: z.number().int().nonnegative(),
-  created_by: z.string(),
-  created_at: z.string(),
-  updated_at: z.string(),
-});
-
-export const createWarStructureTemplateSchema = z.object({
-  event_id: z.string(),
-  template_name: z.string().trim().min(1).max(64),
-  description: z.string().trim().max(300).optional(),
-  template_type: z.literal("structure"),
-});
-
-export const createWarMemberTemplateSchema = z.object({
-  template_name: z.string().trim().min(1).max(64),
-  description: z.string().trim().max(300).optional(),
-  template_type: z.literal("members"),
-  user_ids: z.array(z.string()).min(1),
-});
-
-export const applyWarStructureTemplateSchema = z.object({
-  event_id: z.string(),
-  template_id: z.string(),
-});
-
-export const previewWarMemberTemplateSchema = z.object({
-  event_id: z.string(),
-  template_id: z.string(),
-  team_id: z.string(),
-});
-
-export const applyWarMemberTemplateSchema = z.object({
-  event_id: z.string(),
-  template_id: z.string(),
-  team_id: z.string(),
-  force_signup_user_ids: z.array(z.string()).optional(),
-});
-
-export const createWarTemplateSchema = z.discriminatedUnion("template_type", [
-  createWarStructureTemplateSchema,
-  createWarMemberTemplateSchema,
-]);
-
-export const applyWarTemplateSchema = z.object({
-  event_id: z.string(),
-  template_id: z.string(),
-  team_id: z.string().optional(),
-  force_signup_user_ids: z.array(z.string()).optional(),
-});
 
 export const guildWarActivePoolMemberSchema = z.object({
   id: z.string(),

@@ -10,6 +10,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { useState } from "react";
+import { notifications } from "@mantine/notifications";
 import { useTranslation } from "react-i18next";
 import { IconPin, IconCalendarTime, IconBrandDiscord, IconBrandWechat, IconDeviceFloppy, IconX } from "@tabler/icons-react";
 import { TipTapEditor, TIPTAP_DEFAULT_JSON } from "@portal/components/shared/TipTapEditor";
@@ -92,7 +93,27 @@ export function CreateAnnouncementModal({
     notify_wechat: notifyWechat,
   });
 
+  const validateDates = (): boolean => {
+    if (scheduleEnabled && publishAt.trim()) {
+      const scheduledDate = new Date(publishAt.replace(" ", "T"));
+      if (!Number.isNaN(scheduledDate.getTime()) && scheduledDate <= new Date()) {
+        notifications.show({ color: "red", message: t("validation.schedulePast") });
+        return false;
+      }
+    }
+    if (publishAt.trim() && expiresAt.trim()) {
+      const publishDate = new Date(publishAt.replace(" ", "T"));
+      const expiryDate = new Date(expiresAt.replace(" ", "T"));
+      if (!Number.isNaN(publishDate.getTime()) && !Number.isNaN(expiryDate.getTime()) && expiryDate <= publishDate) {
+        notifications.show({ color: "red", message: t("validation.expiresBeforePublish") });
+        return false;
+      }
+    }
+    return true;
+  };
+
   const handlePublishClick = () => {
+    if (!validateDates()) return;
     const hasTime = publishAt.trim().length > 0;
     if (scheduleEnabled && hasTime) {
       setConfirmAction("publish");
@@ -102,6 +123,7 @@ export function CreateAnnouncementModal({
   };
 
   const handlePublishConfirm = (asScheduled: boolean) => {
+    if (!validateDates()) { setConfirmAction(null); return; }
     if (asScheduled) {
       onCreateByStatus(buildPayload("scheduled"));
     } else {
@@ -239,7 +261,7 @@ export function CreateAnnouncementModal({
               </Button>
               <Button
                 fullWidth
-                color="infini-primary"
+                color="blue"
                 onClick={handlePublishClick}
                 loading={creating}
               >

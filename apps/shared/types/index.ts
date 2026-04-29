@@ -5,7 +5,6 @@ import type { announcementSchema } from "../schemas/announcement";
 import type {
   guildWarActiveResponseSchema,
   warHistorySchema,
-  warTemplateSchema,
   warTeamSchema,
   warTeamMemberSchema,
 } from "../schemas/guild-war";
@@ -27,7 +26,6 @@ export type EventParticipant = z.infer<typeof eventParticipantSchema>;
 export type RecurringTemplate = z.infer<typeof recurringTemplateSchema>;
 export type Announcement = z.infer<typeof announcementSchema>;
 export type WarHistory = z.infer<typeof warHistorySchema>;
-export type WarTemplate = z.infer<typeof warTemplateSchema>;
 export type WarTeam = z.infer<typeof warTeamSchema>;
 export type WarTeamMember = z.infer<typeof warTeamMemberSchema>;
 export type GuildWarActiveResponse = z.infer<typeof guildWarActiveResponseSchema>;

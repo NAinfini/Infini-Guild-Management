@@ -1,4 +1,6 @@
 import {
+  MODERATOR_DEFAULT_PERMISSIONS,
+  MEMBER_DEFAULT_PERMISSIONS,
   PERMISSIONS,
   isBuiltinRole,
   roleFromLevel,
@@ -15,25 +17,6 @@ import { rolePermissions, roles, sessions, users } from "../db/schema";
 import type { Bindings } from "../index";
 
 const RESOLVED_SESSION_PROMISE = Symbol("resolved_session_promise");
-
-const MODERATOR_DEFAULTS: ReadonlySet<Permission> = new Set<Permission>([
-  "admin.users.view",
-  "admin.users.edit",
-  "admin.invite.view",
-  "admin.audit.view",
-  "admin.bot.view",
-  "admin.status.view",
-  "admin.analytics.view",
-  "admin.roles.view",
-  "guildwar.manage",
-  "guildwar.history.edit",
-  "events.manage",
-  "announcements.manage",
-  "gallery.upload",
-  "gallery.manage",
-  "wiki.edit",
-]);
-const MEMBER_DEFAULTS: ReadonlySet<Permission> = new Set<Permission>(["gallery.upload"]);
 
 type ContextWithSessionCache = Context & {
   [RESOLVED_SESSION_PROMISE]?: Promise<ResolvedSession | null>;
@@ -88,7 +71,7 @@ function buildPermissionSet(
     return perms;
   }
 
-  const defaults = roleId === "moderator" ? MODERATOR_DEFAULTS : roleId === "member" ? MEMBER_DEFAULTS : null;
+  const defaults = roleId === "moderator" ? MODERATOR_DEFAULT_PERMISSIONS : roleId === "member" ? MEMBER_DEFAULT_PERMISSIONS : null;
   if (defaults) {
     for (const p of defaults) perms.add(p);
   }

@@ -74,9 +74,9 @@ type UseGuildWarDragControllerParams = {
 };
 
 const message = {
-  success: (content: string) => notifications.show({ color: "infini-success", message: content }),
-  warning: (content: string) => notifications.show({ color: "infini-warning", message: content }),
-  info: (content: string) => notifications.show({ color: "infini-primary", message: content }),
+  success: (content: string) => notifications.show({ color: "green", message: content }),
+  warning: (content: string) => notifications.show({ color: "yellow", message: content }),
+  info: (content: string) => notifications.show({ color: "blue", message: content }),
 };
 
 function parseUserIdFromDragId(value: string): string | null {
@@ -208,9 +208,10 @@ export function useGuildWarDragController({
         teamDraftNames,
         teamDraftNotes,
         teamDraftLocks,
+        etag: activeData?.etag ?? undefined,
       });
     },
-    [guildWarService, pool, selectedEventId, teamDraftLocks, teamDraftNames, teamDraftNotes],
+    [activeData?.etag, guildWarService, pool, selectedEventId, teamDraftLocks, teamDraftNames, teamDraftNotes],
   );
 
   const handleBatchMove = useCallback(

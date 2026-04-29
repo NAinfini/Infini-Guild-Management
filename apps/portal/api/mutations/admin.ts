@@ -1,5 +1,6 @@
 import {
   type InviteLink,
+  type MemberProfile,
   adminUpdateProfileSchema,
   batchDeactivateSchema,
   batchRoleChangeSchema,
@@ -17,9 +18,9 @@ export type BatchDeactivatePayload = z.input<typeof batchDeactivateSchema>;
 export type UpdateBotSettingsPayload = z.input<typeof botSettingsSchema>;
 export type AdminUpdateProfilePayload = z.input<typeof adminUpdateProfileSchema>;
 
-export function adminUpdateProfile(userId: string, payload: AdminUpdateProfilePayload): Promise<unknown> {
+export function adminUpdateProfile(userId: string, payload: AdminUpdateProfilePayload): Promise<MemberProfile> {
   const bodyJson = adminUpdateProfileSchema.parse(payload);
-  return apiRequest(`/api/users/${userId}/profile`, { method: "PATCH", bodyJson });
+  return apiRequest<MemberProfile>(`/api/users/${userId}/profile`, { method: "PATCH", bodyJson });
 }
 
 export function createAdminInviteLink(payload: CreateInviteLinkPayload): Promise<InviteLink> {

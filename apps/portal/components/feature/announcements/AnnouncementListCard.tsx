@@ -1,8 +1,8 @@
 ﻿import type { Announcement } from "@guild/shared";
 import { PushpinOutlined } from "@portal/utils/icons";
-import { DepthButton } from "@infini-dev-kit/react";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
-import { Alert, Badge, Group, Indicator, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
+import { Alert, Badge, Button, Group, Indicator, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
 import { IconArchive, IconCalendarTime, IconCircleCheck, IconFileText, IconPlus } from "@tabler/icons-react";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -20,11 +20,11 @@ function statusIcon(value: Announcement["status"]): ReactNode {
     case "draft":
       return <IconFileText size={14} style={{ color: "var(--mantine-color-dimmed)" }} />;
     case "scheduled":
-      return <IconCalendarTime size={14} style={{ color: "var(--mantine-color-infini-primary-filled)" }} />;
+      return <IconCalendarTime size={14} style={{ color: "var(--mantine-color-blue-filled)" }} />;
     case "published":
-      return <IconCircleCheck size={14} style={{ color: "var(--mantine-color-infini-success-filled)" }} />;
+      return <IconCircleCheck size={14} style={{ color: "var(--mantine-color-green-filled)" }} />;
     case "archived":
-      return <IconArchive size={14} style={{ color: "var(--mantine-color-infini-danger-filled)" }} />;
+      return <IconArchive size={14} style={{ color: "var(--mantine-color-red-filled)" }} />;
     default:
       return null;
   }
@@ -42,6 +42,9 @@ type AnnouncementListCardProps = {
   emptyText: ReactNode;
   onSelect: (id: string) => void;
   onCreate?: () => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 };
 
 export function AnnouncementListCard({
@@ -56,6 +59,9 @@ export function AnnouncementListCard({
   emptyText,
   onSelect,
   onCreate,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: AnnouncementListCardProps) {
   const { t } = useTranslation("announcements");
   return (
@@ -85,7 +91,7 @@ export function AnnouncementListCard({
               ))}
             </Stack>
           ) : null}
-          {isError ? <Alert color="infini-warning" title={warningMessage} /> : null}
+          {isError ? <Alert color="yellow" title={warningMessage} /> : null}
           {!isLoading && !isError ? (
             rows.length > 0 ? (
               <Stack gap={8}>
@@ -120,7 +126,7 @@ export function AnnouncementListCard({
                         </div>
                         <Group gap={8}>
                           {canEdit && item.status === "scheduled" && item.publish_at ? (
-                            <Badge color="infini-primary">{t("meta.scheduled", { datetime: formatDateTime(item.publish_at) })}</Badge>
+                            <Badge color="blue">{t("meta.scheduled", { datetime: formatDateTime(item.publish_at) })}</Badge>
                           ) : null}
                         </Group>
                         <Text c="dimmed" size="sm" className="announcement-item-time">
@@ -131,6 +137,17 @@ export function AnnouncementListCard({
                     </Indicator>
                   </div>
                 ))}
+                {hasMore && onLoadMore ? (
+                  <Button
+                    variant="subtle"
+                    size="xs"
+                    loading={isLoadingMore}
+                    onClick={onLoadMore}
+                    style={{ alignSelf: "center" }}
+                  >
+                    {t("action.loadMore")}
+                  </Button>
+                ) : null}
               </Stack>
             ) : (
               <>{emptyText}</>

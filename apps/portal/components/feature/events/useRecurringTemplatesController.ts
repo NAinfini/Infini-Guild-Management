@@ -7,10 +7,10 @@ import {
   deleteTemplate as deleteTemplateMutation,
   fetchTemplatesList as fetchTemplatesListQuery,
   pauseTemplate as pauseTemplateMutation,
+  queryKeys,
   resumeTemplate as resumeTemplateMutation,
   updateTemplate as updateTemplateMutation,
 } from "../../../services/EventService";
-import { queryKeys } from "../../../services/PortalQueryKeys";
 
 type UseRecurringTemplatesControllerParams = {
   enabled?: boolean;
@@ -38,7 +38,7 @@ export function useRecurringTemplatesController({
     mutationFn: createTemplateMutation,
     onSuccess: async () => {
       await invalidateTemplates();
-      notifications.show({ color: "infini-success", message: t("recurring.message.created") });
+      notifications.show({ color: "green", message: t("recurring.message.created") });
     },
     onError: (error) => showError(error, t("recurring.message.createFailed")),
   });
@@ -48,7 +48,7 @@ export function useRecurringTemplatesController({
       updateTemplateMutation(id, payload),
     onSuccess: async () => {
       await invalidateTemplates();
-      notifications.show({ color: "infini-success", message: t("recurring.message.updated") });
+      notifications.show({ color: "green", message: t("recurring.message.updated") });
     },
     onError: (error) => showError(error, t("recurring.message.updateFailed")),
   });
@@ -57,7 +57,7 @@ export function useRecurringTemplatesController({
     mutationFn: pauseTemplateMutation,
     onSuccess: async () => {
       await invalidateTemplates();
-      notifications.show({ color: "infini-success", message: t("recurring.message.paused") });
+      notifications.show({ color: "green", message: t("recurring.message.paused") });
     },
     onError: (error) => showError(error, t("recurring.message.pauseFailed")),
   });
@@ -66,7 +66,7 @@ export function useRecurringTemplatesController({
     mutationFn: resumeTemplateMutation,
     onSuccess: async () => {
       await invalidateTemplates();
-      notifications.show({ color: "infini-success", message: t("recurring.message.resumed") });
+      notifications.show({ color: "green", message: t("recurring.message.resumed") });
     },
     onError: (error) => showError(error, t("recurring.message.resumeFailed")),
   });
@@ -75,7 +75,7 @@ export function useRecurringTemplatesController({
     mutationFn: deleteTemplateMutation,
     onSuccess: async () => {
       await invalidateTemplates();
-      notifications.show({ color: "infini-success", message: t("recurring.message.deleted") });
+      notifications.show({ color: "green", message: t("recurring.message.deleted") });
     },
     onError: (error) => showError(error, t("recurring.message.deleteFailed")),
   });

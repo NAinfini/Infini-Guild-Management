@@ -34,7 +34,7 @@ import {
   IconTableOff,
   IconPhoto,
 } from "@tabler/icons-react";
-import { lowlight } from "lowlight";
+import { lowlight } from "lowlight/lib/common";
 import "./tiptap-editor.css";
 
 type EditorMode = "json" | "html";
@@ -389,7 +389,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
         ) : null}
 
         {isUploadingImage ? (
-          <Alert color="infini-primary" title={labels.uploading} variant="light">
+          <Alert color="blue" title={labels.uploading} variant="light">
             <Progress value={imageUploadProgress} size="sm" mt={8} />
           </Alert>
         ) : null}

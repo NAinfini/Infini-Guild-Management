@@ -1,11 +1,16 @@
 import {
+  MEMBER_DEFAULT_PERMISSIONS,
+  MODERATOR_DEFAULT_PERMISSIONS,
+  PERMISSIONS,
   memberProfileSchema,
+  permissionSetToRecord,
   userSchema,
+  type Permission,
 } from "@guild/shared";
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { memberProfiles, userAuthPassword, users } from "../db/schema";
+import { memberProfiles, rolePermissions, roles, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 
 // --- Types ---
@@ -40,8 +45,18 @@ function parseRecord(jsonValue: string | null): Record<string, unknown> | null {
   } catch { return null; }
 }
 
-export function toUserPayload(user: UserRow) {
-  return userSchema.parse({ id: user.id, username: user.username, role: user.role, is_active: user.isActive, deleted_at: user.deletedAt, created_at: user.createdAt, updated_at: user.updatedAt });
+export function toUserPayload(user: UserRow, extra?: { permissions: Record<Permission, boolean>; roleLevel: number }) {
+  return userSchema.parse({
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    role_level: extra?.roleLevel ?? 1,
+    permissions: extra?.permissions ?? Object.fromEntries(PERMISSIONS.map((p) => [p, false])),
+    is_active: user.isActive,
+    deleted_at: user.deletedAt,
+    created_at: user.createdAt,
+    updated_at: user.updatedAt,
+  });
 }
 
 export function toProfilePayload(profile: ProfileRow) {
@@ -69,6 +84,27 @@ export class AuthService {
     this.deps = deps;
   }
 
+  private async resolveUserPermissions(roleId: string): Promise<{ permissions: Record<Permission, boolean>; roleLevel: number }> {
+    const roleRow = (await this.db.select({ level: roles.level }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
+    const roleLevel = roleRow?.level ?? 1;
+
+    if (roleId === "admin") {
+      return { permissions: Object.fromEntries(PERMISSIONS.map((p) => [p, true])) as Record<Permission, boolean>, roleLevel };
+    }
+
+    const defaults: ReadonlySet<Permission> = roleId === "moderator" ? MODERATOR_DEFAULT_PERMISSIONS : roleId === "member" ? MEMBER_DEFAULT_PERMISSIONS : new Set();
+    const perms = new Set<Permission>(defaults);
+    const permRows = await this.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+    for (const row of permRows) {
+      if (!(PERMISSIONS as readonly string[]).includes(row.permission)) continue;
+      const p = row.permission as Permission;
+      if (row.granted) perms.add(p);
+      else perms.delete(p);
+    }
+
+    return { permissions: permissionSetToRecord(perms), roleLevel };
+  }
+
   private async getProfileByUserId(userId: string): Promise<ProfileRow | null> {
     return (await this.db.select(PROFILE_COLS).from(memberProfiles).where(eq(memberProfiles.userId, userId)).limit(1))[0] ?? null;
   }
@@ -89,7 +125,8 @@ export class AuthService {
     if (!valid) return err("UNAUTHORIZED", "Invalid credentials");
     await this.deps.createSession(account.id, { stayLoggedIn });
     const profile = await this.ensureProfile(account.id);
-    return ok({ user: toUserPayload(account), profile: toProfilePayload(profile) });
+    const extra = await this.resolveUserPermissions(account.role);
+    return ok({ user: toUserPayload(account, extra), profile: toProfilePayload(profile) });
   }
 
   async logout(sessionId: string): Promise<ServiceResult<{ ok: true }>> {
@@ -145,7 +182,8 @@ export class AuthService {
     const createdUser = (await this.db.select(USER_COLS).from(users).where(eq(users.id, userId)).limit(1))[0];
     if (!createdUser) return err("SERVER_ERROR", "Failed to load created user");
     await this.deps.createSession(userId);
-    return ok({ user: toUserPayload(createdUser) });
+    const extra = await this.resolveUserPermissions("member");
+    return ok({ user: toUserPayload(createdUser, extra) });
   }
 
   async getMe(userId: string, sessionId: string): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
@@ -155,6 +193,7 @@ export class AuthService {
       return err("UNAUTHORIZED", "Authentication required");
     }
     const profile = await this.ensureProfile(currentUser.id);
-    return ok({ user: toUserPayload(currentUser), profile: toProfilePayload(profile) });
+    const extra = await this.resolveUserPermissions(currentUser.role);
+    return ok({ user: toUserPayload(currentUser, extra), profile: toProfilePayload(profile) });
   }
 }

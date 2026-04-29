@@ -37,7 +37,7 @@ export function MySignupsCard({ mySignupEvents, now, onOpenEvent }: MySignupsCar
       result.push({ date, label, dayLabel, events: dayEvents });
     }
     return result;
-  }, [mySignupEvents, now]);
+  }, [mySignupEvents, now, i18n.language]);
 
   const isToday = (date: Date) => isSameDay(date, now);
 
@@ -83,10 +83,10 @@ export function MySignupsCard({ mySignupEvents, now, onOpenEvent }: MySignupsCar
                 borderRadius: "8px",
                 cursor: hasEvents && day.events.length === 1 ? "pointer" : "default",
                 background: today
-                  ? "color-mix(in srgb, var(--infini-color-primary, #3b82f6) 12%, transparent)"
-                  : "color-mix(in srgb, var(--infini-color-surface, #fff) 95%, var(--infini-color-text, #111827))",
+                  ? "color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)"
+                  : "color-mix(in srgb, var(--color-surface, #fff) 95%, var(--color-text, #111827))",
                 border: today
-                  ? "1px solid color-mix(in srgb, var(--infini-color-primary, #3b82f6) 30%, transparent)"
+                  ? "1px solid color-mix(in srgb, var(--color-primary, #3b82f6) 30%, transparent)"
                   : "1px solid transparent",
               }}
             >
@@ -100,7 +100,7 @@ export function MySignupsCard({ mySignupEvents, now, onOpenEvent }: MySignupsCar
                       width: "100%",
                       height: 4,
                       borderRadius: 2,
-                      background: `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--infini-color-primary, #3b82f6))`,
+                      background: `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--color-primary, #3b82f6))`,
                     }}
                   />
                 ))}

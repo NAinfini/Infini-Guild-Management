@@ -1,6 +1,7 @@
 import type { MemberProfile, User } from "@guild/shared";
-import { CLASS_NAMES, hasRoleAtLeast } from "@guild/shared";
-import { DepthToggle, StaggerList } from "@infini-dev-kit/react";
+import { CLASS_NAMES } from "@guild/shared";
+import { DepthToggle } from "@portal/components/shared/DepthToggle";
+import { StaggerList } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -21,9 +22,10 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FocusEvent }
 import { useTranslation } from "react-i18next";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
-import { queryKeys } from "../../services/PortalQueryKeys";
+import { queryKeys } from "../../api/query-keys";
 import { fetchUsersListWithOptions } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
+import { userHasPermission } from "../../utils/permissions";
 import { VolumeOutlined, VolumeMutedOutlined } from "../../utils/icons";
 import { PageLayout } from "../layout/PageLayout";
 import { EmptyState } from "../shared/EmptyState";
@@ -33,6 +35,18 @@ import "./RosterPage.css";
 const LazyProfileModal = lazy(() =>
   import("../shared/ProfileModal").then((mod) => ({ default: mod.ProfileModal })),
 );
+
+function resolveProfileMediaUrl(key: string): string {
+  if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:") || key.startsWith("blob:")) {
+    return key;
+  }
+  if (typeof window === "undefined") {
+    return `/api/users/image?key=${encodeURIComponent(key)}`;
+  }
+  const url = new URL("/api/users/image", window.location.origin);
+  url.searchParams.set("key", key);
+  return url.toString();
+}
 
 const rosterCardVariants = {
   hidden: { opacity: 0, y: 8 },
@@ -302,6 +316,7 @@ export function RosterPage() {
       <div className="roster-volume-control">
         <Text size="xs" c="dimmed" className="roster-volume-label">{t("audio.volume")}</Text>
         <Slider min={0} max={100} value={audioVolume} onChange={setAudioVolume} aria-label={t("audio.aria.volumeSlider")} />
+        <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>{t("audio.hint")}</Text>
       </div>
     </Group>
   );
@@ -388,7 +403,7 @@ export function RosterPage() {
                           onFocus={() => handleCardFocus(entry)}
                           onBlur={handleCardBlur}
                         >
-                          <MemberCard user={entry.user} profile={entry.profile} onClick={() => setSelected(entry)} />
+                          <MemberCard user={entry.user} profile={entry.profile} resolveMediaUrl={resolveProfileMediaUrl} onClick={() => setSelected(entry)} />
                         </div>
                       </div>
                     ))}
@@ -408,7 +423,7 @@ export function RosterPage() {
                     onFocus={() => handleCardFocus(entry)}
                     onBlur={handleCardBlur}
                   >
-                    <MemberCard user={entry.user} profile={entry.profile} onClick={() => setSelected(entry)} />
+                    <MemberCard user={entry.user} profile={entry.profile} resolveMediaUrl={resolveProfileMediaUrl} onClick={() => setSelected(entry)} />
                   </div>
                 </motion.div>
               ))}
@@ -429,9 +444,10 @@ export function RosterPage() {
           user={selected?.user ?? null}
           profile={selected?.profile ?? null}
           onClose={() => setSelected(null)}
+          resolveMediaUrl={resolveProfileMediaUrl}
           canEdit={Boolean(
             selected && sessionUser && (
-              hasRoleAtLeast(sessionUser.role, "moderator") ||
+              userHasPermission(sessionUser, "admin.users.edit") ||
               selected.user.id === sessionUser.id
             ),
           )}

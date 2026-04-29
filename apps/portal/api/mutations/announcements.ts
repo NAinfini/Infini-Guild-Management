@@ -17,11 +17,12 @@ export function createAnnouncement(payload: CreateAnnouncementPayload): Promise<
   });
 }
 
-export function updateAnnouncement(id: string, payload: UpdateAnnouncementPayload): Promise<Announcement> {
+export function updateAnnouncement(id: string, payload: UpdateAnnouncementPayload, ifMatch?: string): Promise<Announcement> {
   const bodyJson = updateAnnouncementSchema.parse(payload);
   return apiRequest<Announcement>(`/api/announcements/${id}`, {
     method: "PATCH",
     bodyJson,
+    ifMatch,
   });
 }
 

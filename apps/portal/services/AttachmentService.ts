@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { type ImageGridEditorItem } from "@infini-dev-kit/react";
-import { convertImageToWebP } from "@infini-dev-kit/react";
+import { type ImageGridEditorItem } from "@guild/shared/types/media";
+import { convertImageToWebP } from "@guild/shared/utils/media";
 
 export type AttachmentItem = ImageGridEditorItem;
 
@@ -12,21 +12,21 @@ export class AttachmentService {
   private readonly blobUrls = new Set<string>();
 
   async prepareFiles(files: File[]): Promise<AttachmentItem[]> {
-    const preparedItems: AttachmentItem[] = [];
-
-    for (const file of files) {
-      const preparedFile = file.type.startsWith("image/")
-        ? await convertImageToWebP(file, undefined, { quality: 0.8 })
-        : file;
-      const blobUrl = URL.createObjectURL(preparedFile);
-      this.blobUrls.add(blobUrl);
-      preparedItems.push({
-        id: createAttachmentId(),
-        src: blobUrl,
-        alt: preparedFile.name,
-        file: preparedFile,
-      });
-    }
+    const preparedItems = await Promise.all(
+      files.map(async (file) => {
+        const preparedFile = file.type.startsWith("image/")
+          ? await convertImageToWebP(file, undefined, { quality: 0.8 })
+          : file;
+        const blobUrl = URL.createObjectURL(preparedFile);
+        this.blobUrls.add(blobUrl);
+        return {
+          id: createAttachmentId(),
+          src: blobUrl,
+          alt: preparedFile.name,
+          file: preparedFile,
+        } satisfies AttachmentItem;
+      }),
+    );
 
     return preparedItems;
   }

@@ -60,12 +60,15 @@ export function AnnouncementsPage() {
             selectedId={controller.selectedId}
             canEdit={controller.canEdit}
             announcementsLastSeenAt={controller.announcementsLastSeenAt}
-            isLoading={false}
-            isError={false}
+            isLoading={controller.listQuery.isLoading}
+            isError={controller.listQuery.isError}
             warningMessage={t("common:loadError")}
             emptyText={emptyText}
             onSelect={controller.setSelectedId}
             onCreate={controller.handleCreateByStatus}
+            hasMore={controller.listHasMore}
+            isLoadingMore={controller.listLoadingMore}
+            onLoadMore={controller.onLoadMoreList}
           />
         </Grid.Col>
 
@@ -75,8 +78,8 @@ export function AnnouncementsPage() {
             canEdit={controller.canEdit}
             selectedId={controller.isCreating ? "new" : controller.selectedId}
             selected={controller.isCreating ? null : controller.selected}
-            isLoading={false}
-            isError={false}
+            isLoading={controller.detailQuery.isLoading}
+            isError={controller.detailQuery.isError}
             warningMessage={t("common:loadError")}
             savePending={controller.savePending}
             titleValue={controller.title}

@@ -69,7 +69,7 @@ export function WikiCategoryTreeCard({
               ))}
             </Stack>
           ) : null}
-          {isError ? <Alert color="infini-warning" title={warningMessage} /> : null}
+          {isError ? <Alert color="yellow" title={warningMessage} /> : null}
         {!isLoading && !isError && treeData.length > 0 ? (
           <ul style={{ margin: 0, padding: 0 }}>{renderNodes(treeData, 0)}</ul>
         ) : null}

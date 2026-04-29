@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
-import { NumberTicker } from "@infini-dev-kit/react";
+import { Badge } from "@mantine/core";
+import { NumberTicker } from "@portal/components/effects";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { HistorySummaryRow } from "../../components/feature/guild-war/WarHistoryTab";
 
@@ -15,6 +16,14 @@ function renderCounter(value: number | null | undefined) {
   return <NumberTicker value={value ?? 0} />;
 }
 
+function resolveResultTagColor(result: string | null | undefined): string {
+  const normalized = (result ?? "").toLowerCase();
+  if (normalized.includes("win") || normalized.includes("胜")) return "green";
+  if (normalized.includes("loss") || normalized.includes("lose") || normalized.includes("负")) return "red";
+  if (normalized.includes("draw") || normalized.includes("平")) return "blue";
+  return "gray";
+}
+
 type UseGuildWarHistoryParams = {
   historyDetailData: {
     id: string;
@@ -22,6 +31,7 @@ type UseGuildWarHistoryParams = {
       team_name: string;
       members: Array<{
         user_id: string;
+        username?: string;
         damage?: number | null;
         healing?: number | null;
         building_damage?: number | null;
@@ -29,28 +39,17 @@ type UseGuildWarHistoryParams = {
     }>;
     member_stats: Array<{
       user_id: string;
+      username?: string;
       damage: number | null;
       healing: number | null;
       building_damage: number | null;
+      damage_taken?: number | null;
     }>;
   } | null;
-  templatesData: Array<{
-    id: string;
-    template_name: string;
-    description?: string | null;
-    team_count: number;
-    member_count: number;
-  }>;
-  canManageActive: boolean;
-  selectedEventId: string | undefined;
-  createTemplatePending: boolean;
-  applyTemplatePending: boolean;
-  deleteTemplatePending: boolean;
 };
 
 export function useGuildWarHistory({
   historyDetailData,
-  templatesData,
 }: UseGuildWarHistoryParams) {
   const { t } = useTranslation("guild-war");
 
@@ -75,7 +74,8 @@ export function useGuildWarHistory({
       accessorKey: "result",
       cell: ({ getValue }) => {
         const v = getValue();
-        return typeof v === "string" ? v : "-";
+        const label = typeof v === "string" && v ? v : "-";
+        return <Badge color={resolveResultTagColor(v as string | null)} variant="light">{label}</Badge>;
       },
     },
     {
@@ -104,11 +104,13 @@ export function useGuildWarHistory({
     const topDamage = [...stats].sort((a, b) => (b.damage ?? 0) - (a.damage ?? 0))[0] ?? null;
     const topHealing = [...stats].sort((a, b) => (b.healing ?? 0) - (a.healing ?? 0))[0] ?? null;
     const topBuilding = [...stats].sort((a, b) => (b.building_damage ?? 0) - (a.building_damage ?? 0))[0] ?? null;
+    const topDamageTaken = [...stats].sort((a, b) => (b.damage_taken ?? 0) - (a.damage_taken ?? 0))[0] ?? null;
 
     return {
-      damage: topDamage ? `${topDamage.user_id} (${topDamage.damage ?? 0})` : "-",
-      healing: topHealing ? `${topHealing.user_id} (${topHealing.healing ?? 0})` : "-",
-      building: topBuilding ? `${topBuilding.user_id} (${topBuilding.building_damage ?? 0})` : "-",
+      damage: topDamage ? `${topDamage.username ?? topDamage.user_id} (${topDamage.damage ?? 0})` : "-",
+      healing: topHealing ? `${topHealing.username ?? topHealing.user_id} (${topHealing.healing ?? 0})` : "-",
+      building: topBuilding ? `${topBuilding.username ?? topBuilding.user_id} (${topBuilding.building_damage ?? 0})` : "-",
+      damageTaken: topDamageTaken ? `${topDamageTaken.username ?? topDamageTaken.user_id} (${topDamageTaken.damage_taken ?? 0})` : "-",
     };
   }, [historyDetailData]);
 
@@ -135,20 +137,10 @@ export function useGuildWarHistory({
     return map;
   }, [historyDetailData?.teams, historyTeamSizeBaseline]);
 
-  const templateOptions = useMemo(
-    () =>
-      templatesData.map((template) => ({
-        value: template.id,
-        label: `${template.template_name} (${template.team_count}/${template.member_count})`,
-      })),
-    [templatesData],
-  );
-
   return {
     historyColumns,
     historyMvp,
     historyMissingSlotsByUserId,
-    templateOptions,
     formatDateTime,
     renderCounter,
   };

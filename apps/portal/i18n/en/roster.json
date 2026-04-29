@@ -6,6 +6,7 @@
   "field.wechat": "WeChat",
   "modal.details": "Member details",
   "audio.volume": "Volume",
+  "audio.hint": "Controls profile BGM",
   "audio.aria.mute": "Mute",
   "audio.aria.unmute": "Unmute",
   "audio.aria.volumeSlider": "Roster audio volume",

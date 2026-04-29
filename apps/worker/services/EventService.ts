@@ -399,6 +399,7 @@ export class EventService {
            WHERE e.id = ?2
              AND e.archived_at IS NULL
              AND e.signup_locked = 0
+             AND (e.end_at IS NULL OR e.end_at > datetime('now'))
              AND (e.capacity IS NULL OR (SELECT COUNT(*) FROM event_participants ep WHERE ep.event_id = e.id) < e.capacity)
          )
          AND NOT EXISTS (
@@ -513,7 +514,7 @@ export class EventService {
       await (this.db as any)
         .select({ id: users.id })
         .from(users)
-        .where(eq(users.id, targetUserId))
+        .where(and(eq(users.id, targetUserId), eq(users.isActive, true), isNull(users.deletedAt)))
         .limit(1)
     )[0];
     if (!targetUser) return { ok: false, code: "NOT_FOUND", message: "User not found" };
@@ -526,6 +527,18 @@ export class EventService {
         .limit(1)
     )[0];
     if (existing) return { ok: false, code: "CONFLICT", message: "Participant already exists" };
+
+    if (eventRow.capacity !== null && eventRow.capacity > 0) {
+      const countRow = (
+        await (this.db as any)
+          .select({ count: sql<number>`count(*)` })
+          .from(eventParticipants)
+          .where(eq(eventParticipants.eventId, eventId))
+      )[0];
+      if (Number(countRow?.count ?? 0) >= eventRow.capacity) {
+        return { ok: false, code: "CONFLICT", message: "Event has reached maximum capacity" };
+      }
+    }
 
     const participantId = this.deps.createId?.() ?? nanoid();
     await this.db.insert(eventParticipants).values({
@@ -715,6 +728,7 @@ export class EventService {
   }
 
   async deleteTemplate(actorId: string, templateId: string, existing: EventRow): Promise<void> {
+    await this.db.update(events).set({ seriesId: null }).where(eq(events.seriesId, templateId));
     await this.db.delete(events).where(eq(events.id, templateId));
 
     await this.deps.writeAuditLog({

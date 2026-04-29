@@ -108,7 +108,7 @@ export function AuditLogViewer({
   return (
     <Stack gap={12}>
       {auditLoading ? <Stack gap={8}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {auditError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
+      {auditError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
 
       {!auditLoading && !auditError ? (
         <PortalCard interactive={false}>

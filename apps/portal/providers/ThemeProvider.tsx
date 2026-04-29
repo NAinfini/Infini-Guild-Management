@@ -1,116 +1,65 @@
-import { MantineProvider, type CSSVariablesResolver } from "@mantine/core";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { MantineProvider } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
 
-import "@mantine/core/styles.css";
-import "@mantine/notifications/styles.css";
+type Theme = "light" | "dark";
 
-import { createBrowserLocalStorageAdapter } from "@infini-dev-kit/utils/storage";
-import {
-  createThemeProviderBridge,
-  type ThemeProviderBridge,
-  type ThemeProviderSnapshot,
-} from "@infini-dev-kit/theme-core";
-import { loadThemeFonts } from "@infini-dev-kit/theme-core";
-import { composeMantineTheme, type MantineThemeConfig } from "../theme/mantine-adapter";
+interface ThemeContextValue {
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  toggleTheme: () => void;
+}
 
-const BridgeContext = createContext<ThemeProviderBridge<MantineThemeConfig> | null>(null);
-const SnapshotContext = createContext<ThemeProviderSnapshot<MantineThemeConfig> | null>(null);
+const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-const bridge = createThemeProviderBridge<MantineThemeConfig>({
-  storage: createBrowserLocalStorageAdapter(),
-  prefersReducedMotion: () =>
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  themeComposer: composeMantineTheme,
-});
-
-export function useBridge(): ThemeProviderBridge<MantineThemeConfig> {
-  const ctx = useContext(BridgeContext);
-  if (!ctx) {
-    throw new Error("useBridge must be used inside PortalThemeProvider");
-  }
+export function useTheme(): ThemeContextValue {
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error("useTheme must be used inside ThemeProvider");
   return ctx;
 }
 
-export function useThemeSnapshot(): ThemeProviderSnapshot<MantineThemeConfig> {
-  const ctx = useContext(SnapshotContext);
-  if (!ctx) {
-    throw new Error("useThemeSnapshot must be used inside PortalThemeProvider");
-  }
-  return ctx;
-}
+// Backward-compat aliases for migration period
+export const useBridge = useTheme;
+export const useThemeSnapshot = useTheme;
 
 export function PortalThemeProvider({ children }: { children: ReactNode }) {
-  const [snapshot, setSnapshot] = useState(() => bridge.getSnapshot());
-  const previousScopeClass = useRef<string | null>(null);
+  const [theme, setThemeState] = useState<Theme>(() => {
+    if (typeof window === "undefined") return "light";
+    const stored = localStorage.getItem("theme-mode");
+    if (stored === "dark" || stored === "light") return stored;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
 
-  useEffect(() => bridge.subscribe(setSnapshot), []);
+  const setTheme = useCallback((t: Theme) => {
+    setThemeState(t);
+    localStorage.setItem("theme-mode", t);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setThemeState((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
+      localStorage.setItem("theme-mode", next);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
-    void loadThemeFonts(snapshot.state.themeId);
-  }, [snapshot.state.themeId]);
-
-  useLayoutEffect(() => {
     const root = document.documentElement;
-    const previous = previousScopeClass.current;
+    root.classList.toggle("dark", theme === "dark");
+    root.dataset.theme = theme;
+  }, [theme]);
 
-    if (previous && previous !== snapshot.scope.className) {
-      root.classList.remove(previous);
-    }
-
-    root.classList.add(snapshot.scope.className);
-    previousScopeClass.current = snapshot.scope.className;
-
-    root.dataset.themeId = snapshot.state.themeId;
-    root.dataset.motionMode = snapshot.motion.effectiveMode;
-    if (document.body) {
-      document.body.dataset.themeId = snapshot.state.themeId;
-    }
-
-    return () => {
-      if (previousScopeClass.current) {
-        root.classList.remove(previousScopeClass.current);
-      }
-    };
-  }, [snapshot.scope.className, snapshot.state.themeId, snapshot.motion.effectiveMode]);
-
-  const cssVariablesResolver = useMemo<CSSVariablesResolver>(
-    () => () => ({
-      variables: snapshot.scope.variables.variables,
-      light: {},
-      dark: {},
-    }),
-    [snapshot.scope.variables.variables],
-  );
+  const contextValue = useMemo(() => ({ theme, setTheme, toggleTheme }), [theme, setTheme, toggleTheme]);
 
   return (
-    <BridgeContext.Provider value={bridge}>
-      <SnapshotContext.Provider value={snapshot}>
-        <MantineProvider
-          key={`${snapshot.state.themeId}:${snapshot.composed.colorScheme}`}
-          theme={snapshot.composed.theme}
-          cssVariablesSelector={snapshot.scope.variables.selector}
-          cssVariablesResolver={cssVariablesResolver}
-          forceColorScheme={snapshot.composed.colorScheme}
-          withCssVariables
-          withGlobalClasses
-        >
-          <ModalsProvider>
-            <Notifications position="bottom-right" zIndex={1200} />
-            {children}
-          </ModalsProvider>
-        </MantineProvider>
-      </SnapshotContext.Provider>
-    </BridgeContext.Provider>
+    <ThemeContext.Provider value={contextValue}>
+      <MantineProvider forceColorScheme={theme}>
+        <Notifications position="top-right" />
+        <ModalsProvider>
+          {children}
+        </ModalsProvider>
+      </MantineProvider>
+    </ThemeContext.Provider>
   );
 }

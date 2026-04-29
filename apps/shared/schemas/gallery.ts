@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isAllowedGalleryVideoUrl } from "../utils/video";
 
 export const galleryItemSchema = z.object({
   id: z.string(),
@@ -13,11 +14,21 @@ export const galleryItemSchema = z.object({
   created_at: z.string(),
 });
 
-export const createGalleryItemSchema = z.object({
-  type: z.enum(["image", "video"]),
-  url: z.string(),
-  caption: z.string().max(200).optional(),
-});
+export const createGalleryItemSchema = z
+  .object({
+    type: z.enum(["image", "video"]),
+    url: z.string().url("url must be a valid URL"),
+    caption: z.string().max(200).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === "video" && !isAllowedGalleryVideoUrl(data.url)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["url"],
+        message: "Video URL must be from an allowed host (YouTube, Bilibili, Vimeo, TikTok)",
+      });
+    }
+  });
 
 export const galleryCommentSchema = z.object({
   id: z.string(),

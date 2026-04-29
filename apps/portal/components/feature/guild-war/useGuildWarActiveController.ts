@@ -39,6 +39,10 @@ export function useGuildWarActiveController({ selectedEventId, activeData, guild
     setSelectedDragUserIds([]);
     setSelectionAnchorUserId(null);
     setSearchJumpIndex(0);
+    setTeamDraftNames({});
+    setTeamDraftNotes({});
+    setTeamDraftLocks({});
+    setTeamOrder([]);
   }, [selectedEventId]);
 
   useEffect(() => {

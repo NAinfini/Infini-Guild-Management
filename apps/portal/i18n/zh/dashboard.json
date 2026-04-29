@@ -12,7 +12,7 @@
   "card.activeMembers.title": "数据统计",
   "card.activeMembers.unit": "在线",
   "card.activeMembers.activeRatio": "活跃/总成员",
-  "card.activeMembers.eventsWeek": "每周活动数",
+  "card.activeMembers.upcomingEvents": "即将进行的活动",
   "card.activeMembers.winRate": "全公会战胜率",
   "card.activeMembers.activeEvents": "活跃活动数",
   "card.activeMembers.summaryHint": "公会实时活跃概览",

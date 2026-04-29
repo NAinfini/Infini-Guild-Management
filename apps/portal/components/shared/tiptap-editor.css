@@ -7,15 +7,15 @@
 
 .infini-tiptap-surface {
   min-height: 180px;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 16%, transparent);
   border-radius: 8px;
   padding: 10px;
   outline: none;
 }
 
 .infini-tiptap-surface:focus {
-  border-color: var(--infini-color-primary, #3b82f6);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 24%, transparent);
+  border-color: var(--color-primary, #3b82f6);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #3b82f6) 24%, transparent);
 }
 
 .infini-tiptap-surface p {
@@ -23,7 +23,7 @@
 }
 
 .infini-tiptap-surface pre {
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 86%, var(--infini-color-text, #111827) 7%);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, var(--color-text, #111827) 7%);
   border-radius: 8px;
   padding: 10px;
   overflow-x: auto;
@@ -32,8 +32,8 @@
 .infini-tiptap-surface blockquote {
   margin: 8px 0;
   padding-left: 10px;
-  border-left: 3px solid color-mix(in srgb, var(--infini-color-text, #111827) 24%, transparent);
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 62%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--color-text, #111827) 24%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 62%, transparent);
 }
 
 .infini-tiptap-surface table {
@@ -44,7 +44,7 @@
 
 .infini-tiptap-surface th,
 .infini-tiptap-surface td {
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 16%, transparent);
   padding: 6px 8px;
 }
 
@@ -68,5 +68,5 @@
   max-height: 78vh;
   object-fit: contain;
   transform-origin: center center;
-  transition: transform var(--infini-motion-hover, 120ms) var(--infini-motion-easing, ease);
+  transition: transform 120ms ease;
 }

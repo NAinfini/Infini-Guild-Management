@@ -13,7 +13,7 @@ import {
   updateWikiArticle,
   uploadWikiArticleImages,
 } from "../services/WikiService";
-import { queryKeys } from "../services/PortalQueryKeys";
+import { queryKeys } from "../api/query-keys";
 
 type UseWikiArticleEditorParams = {
   canEdit: boolean;
@@ -75,7 +75,7 @@ export function useWikiArticleEditor({
   const createArticleMutation = useMutation({
     mutationFn: createWikiArticle,
     onSuccess: async (created) => {
-      notifications.show({ color: "infini-success", message: t("message.articleCreated") });
+      notifications.show({ color: "green", message: t("message.articleCreated") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
       isCreatingArticleHandlers.close();
       onArticleCreated(created.slug);
@@ -86,9 +86,9 @@ export function useWikiArticleEditor({
   });
 
   const updateArticleMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: UpdateWikiArticlePayload }) => updateWikiArticle(id, payload),
+    mutationFn: ({ id, payload, ifMatch }: { id: string; payload: UpdateWikiArticlePayload; ifMatch?: string }) => updateWikiArticle(id, payload, ifMatch),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.articleSaved") });
+      notifications.show({ color: "green", message: t("message.articleSaved") });
       setPinnedIntent("none");
       setArchiveIntent("none");
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
@@ -192,6 +192,7 @@ export function useWikiArticleEditor({
     updateArticleMutation.mutate({
       id: selectedArticle.id,
       payload,
+      ifMatch: `"wiki-${selectedArticle.id}-${selectedArticle.updated_at}"`,
     });
   };
 

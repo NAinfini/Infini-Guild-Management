@@ -12,13 +12,15 @@ export const PortalCard = forwardRef<HTMLDivElement, PortalCardProps>(
     const baseStyle: CSSProperties = {
       position: "relative",
       overflow: "hidden",
-      color: "var(--infini-color-text)",
+      color: "var(--color-text)",
       borderStyle: "solid",
-      borderWidth: "var(--infini-border-width)",
-      borderColor: "var(--infini-color-border)",
-      borderRadius: "var(--infini-radius)",
-      boxShadow: "0 12px 28px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
+      borderWidth: "1px",
+      borderColor: "color-mix(in srgb, var(--color-border) 80%, transparent)",
+      borderRadius: "12px",
+      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.04)",
+      background: "var(--color-surface, #ffffff)",
       cursor: onClick ? "pointer" : undefined,
+      transition: interactive ? "box-shadow 180ms ease, transform 180ms ease" : undefined,
       ...style,
     };
 

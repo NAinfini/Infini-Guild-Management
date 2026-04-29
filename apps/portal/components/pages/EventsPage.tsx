@@ -1,7 +1,6 @@
 ﻿import type { Event, MemberProfile, User } from "@guild/shared";
-import type { ImageGridEditorItem } from "@infini-dev-kit/react";
+import type { ImageGridEditorItem } from "@guild/shared/types/media";
 import { IconCalendarEvent } from "@tabler/icons-react";
-import { hasRoleAtLeast } from "@guild/shared";
 import { useClipboard, useLocalStorage } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useQueryClient } from "@tanstack/react-query";
@@ -13,6 +12,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { Card, Skeleton, Stack } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import {
   EventService,
@@ -24,6 +24,7 @@ import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useAttachmentService } from "../../services/AttachmentService";
 import { useAuthStore } from "../../stores/auth";
+import { userHasAnyPermission } from "../../utils/permissions";
 import { buildMentionList } from "../../utils/copy";
 import { sanitizeEventsRouteSearch, type EventWorkbenchViewMode, type EventsRouteSearch } from "../../utils/event-navigation";
 import { useEventsEditorController } from "../feature/events/useEventsEditorController";
@@ -72,7 +73,7 @@ export function EventsPage() {
   const { showError } = useAppError();
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
-  const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
+  const isModerator = userHasAnyPermission(user, ["events.create", "events.edit", "events.archive", "events.delete", "events.templates"]);
   const canManage = isModerator && !isExternalView;
   const canInteract = Boolean(user) && !isExternalView;
 
@@ -224,11 +225,11 @@ export function EventsPage() {
       event.title,
     );
     if (!value.trim()) {
-      notifications.show({ color: "infini-warning", message: t("message.nothingToCopy") });
+      notifications.show({ color: "yellow", message: t("message.nothingToCopy") });
       return;
     }
     clipboard.copy(value);
-    notifications.show({ color: "infini-success", message: t("message.mentionsCopied") });
+    notifications.show({ color: "green", message: t("message.mentionsCopied") });
   };
 
   const hasLoadError = filtering.eventsQuery.isError || filtering.usersQuery.isError;
@@ -236,7 +237,7 @@ export function EventsPage() {
 
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconCalendarEvent size={22} />} className="events-page">
-      <Suspense fallback={null}>
+      <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={36} radius={8} /></Stack></Card>}>
         <LazyEventsFiltersCard
           searchQuery={filtering.searchQuery}
           eventType={filtering.eventType}
@@ -256,7 +257,7 @@ export function EventsPage() {
         />
       </Suspense>
 
-      <Suspense fallback={null}>
+      <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
         {viewMode === "recurring" && canManage ? (
           <LazyRecurringTemplatesTab
             canManage={canManage}
@@ -288,6 +289,8 @@ export function EventsPage() {
             createPending={mutations.createPending}
             updatePending={mutations.updatePending}
             archivePending={mutations.archivePending}
+            joinPending={mutations.joinPending}
+            leavePending={mutations.leavePending}
             onResetFilters={filtering.resetFilters}
             onCreateEvent={() => openCreateEditor()}
             onJoinEvent={(eventId) => {
@@ -304,6 +307,9 @@ export function EventsPage() {
             onDeleteEvent={(event) => { void mutations.deleteEventWithConfirm(event); }}
             onAddParticipant={mutations.addParticipant}
             onRemoveParticipant={mutations.removeParticipant}
+            hasMore={filtering.eventsHasMore}
+            isLoadingMore={filtering.eventsLoadingMore}
+            onLoadMore={filtering.onLoadMoreEvents}
           />
         ) : (
           <LazyEventCalendarView
@@ -320,7 +326,7 @@ export function EventsPage() {
       </Suspense>
 
       {editorOpen ? (
-        <Suspense fallback={null}>
+        <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={120} radius={8} /></Stack></Card>}>
           <LazyEventFormModal
             open={editorOpen}
             mode={editorMode}
@@ -361,6 +367,8 @@ export function EventsPage() {
         allUsers={asMemberEntries(filtering.usersQuery.data?.data ?? [])}
         canManage={canManage}
         currentUserId={user?.id ?? undefined}
+        joinPending={mutations.joinPending}
+        leavePending={mutations.leavePending}
         onClose={() => setMonthDetailEvent(null)}
         onJoin={(eventId) => { void mutations.handleJoin(eventId); }}
         onLeave={mutations.handleLeave}

@@ -1,5 +1,5 @@
 import type { Event } from "@guild/shared";
-import { Grid, Stack } from "@mantine/core";
+import { Grid, Skeleton, Stack } from "@mantine/core";
 import { IconLayoutDashboard } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -10,7 +10,7 @@ import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { fetchEventDetailBatch, fetchEventsList, type EventDetailResponse } from "../../services/EventService";
 import { fetchGuildWarHistory, fetchGuildWarHistoryBatch } from "../../services/GuildWarService";
-import { queryKeys } from "../../services/PortalQueryKeys";
+import { queryKeys } from "../../api/query-keys";
 import { fetchUsersList } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
@@ -124,6 +124,7 @@ export function DashboardPage() {
         page: 1,
         limit: 100,
       }),
+    enabled: Boolean(user),
   });
 
   const usersQuery = useQuery({
@@ -139,7 +140,7 @@ export function DashboardPage() {
 
   const recentWarDetailsQuery = useQuery({
     queryKey: queryKeys.dashboard.lastWarDetail(recentWarIds.join(",") || "none"),
-    enabled: recentWarIds.length > 0,
+    enabled: Boolean(user) && recentWarIds.length > 0,
     queryFn: async () => {
       const res = await fetchGuildWarHistoryBatch(recentWarIds);
       return res.data;
@@ -159,25 +160,6 @@ export function DashboardPage() {
     },
   });
 
-  const mySignupsQuery = useQuery({
-    queryKey: queryKeys.dashboard.mySignups(
-      user?.id ?? "anonymous",
-      upcomingEventsQuery.data?.data.map((item) => item.id).join(",") ?? "",
-    ),
-    enabled: Boolean(user?.id) && Boolean(upcomingEventsQuery.data),
-    queryFn: async () => {
-      if (!user?.id) {
-        return [] as Event[];
-      }
-      const eventIds = (upcomingEventsQuery.data?.data ?? []).slice(0, 12).map((item) => item.id);
-      if (eventIds.length === 0) return [] as Event[];
-      const res = await fetchEventDetailBatch(eventIds);
-      return res.data
-        .filter((detail) => detail.participants.some((participant) => participant.user_id === user.id))
-        .map((detail) => detail as Event);
-    },
-  });
-
   const upcomingEvents = upcomingEventsQuery.data?.data ?? [];
   const users = usersQuery.data?.data ?? [];
   const activeMemberCount = users.filter((entry) => entry.user.is_active && entry.user.deleted_at === null).length;
@@ -190,15 +172,14 @@ export function DashboardPage() {
   );
 
   const mySignupEvents = useMemo(() => {
-    const rawEvents = mySignupsQuery.data ?? [];
-    return rawEvents.map((event) => {
-      const detail = upcomingEventDetailById.get(event.id);
-      return {
-        event,
-        participantCount: detail?.participants.length ?? 0,
-      };
-    });
-  }, [mySignupsQuery.data, upcomingEventDetailById]);
+    if (!user?.id) return [];
+    return (upcomingEventDetailsQuery.data ?? [])
+      .filter((detail) => detail.participants.some((p) => p.user_id === user.id))
+      .map((detail) => ({
+        event: detail as Event,
+        participantCount: detail.participants.length,
+      }));
+  }, [upcomingEventDetailsQuery.data, user?.id]);
 
   const allWarWinRate = useMemo(() => {
     const history = warQuery.data?.data ?? [];
@@ -228,38 +209,45 @@ export function DashboardPage() {
     return details.map((detail) => {
       const stats = detail.member_stats ?? [];
       if (stats.length === 0) return null;
-      const topDamage = [...stats].sort((l, r) => (r.damage ?? 0) - (l.damage ?? 0))[0];
-      const topHealing = [...stats].sort((l, r) => (r.healing ?? 0) - (l.healing ?? 0))[0];
-      const topDamageTaken = [...stats].sort((l, r) => (r.damage_taken ?? 0) - (l.damage_taken ?? 0))[0];
-      const topBuilding = [...stats].sort((l, r) => (r.building_damage ?? 0) - (l.building_damage ?? 0))[0];
+      let topDamage = stats[0];
+      let topHealing = stats[0];
+      let topDamageTaken = stats[0];
+      let topBuilding = stats[0];
+      for (let i = 1; i < stats.length; i++) {
+        const s = stats[i];
+        if ((s.damage ?? 0) > (topDamage.damage ?? 0)) topDamage = s;
+        if ((s.healing ?? 0) > (topHealing.healing ?? 0)) topHealing = s;
+        if ((s.damage_taken ?? 0) > (topDamageTaken.damage_taken ?? 0)) topDamageTaken = s;
+        if ((s.building_damage ?? 0) > (topBuilding.building_damage ?? 0)) topBuilding = s;
+      }
       return {
         damage: {
           label: t("card.lastWar.mvp.damage"),
-          name: topDamage ? resolveName(topDamage.user_id) : "-",
-          initials: topDamage ? initials(topDamage.user_id) : "?",
-          value: topDamage?.damage ?? 0,
+          name: resolveName(topDamage.user_id),
+          initials: initials(topDamage.user_id),
+          value: topDamage.damage ?? 0,
         },
         healing: {
           label: t("card.lastWar.mvp.healing"),
-          name: topHealing ? resolveName(topHealing.user_id) : "-",
-          initials: topHealing ? initials(topHealing.user_id) : "?",
-          value: topHealing?.healing ?? 0,
+          name: resolveName(topHealing.user_id),
+          initials: initials(topHealing.user_id),
+          value: topHealing.healing ?? 0,
         },
         damageTaken: {
           label: t("card.lastWar.mvp.damageTaken"),
-          name: topDamageTaken ? resolveName(topDamageTaken.user_id) : "-",
-          initials: topDamageTaken ? initials(topDamageTaken.user_id) : "?",
-          value: topDamageTaken?.damage_taken ?? 0,
+          name: resolveName(topDamageTaken.user_id),
+          initials: initials(topDamageTaken.user_id),
+          value: topDamageTaken.damage_taken ?? 0,
         },
         building: {
           label: t("card.lastWar.mvp.building"),
-          name: topBuilding ? resolveName(topBuilding.user_id) : "-",
-          initials: topBuilding ? initials(topBuilding.user_id) : "?",
-          value: topBuilding?.building_damage ?? 0,
+          name: resolveName(topBuilding.user_id),
+          initials: initials(topBuilding.user_id),
+          value: topBuilding.building_damage ?? 0,
         },
       };
     });
-  }, [recentWarDetailsQuery.data, userRowById]);
+  }, [recentWarDetailsQuery.data, userRowById, t]);
 
   const participantsByEventId = useMemo(() => {
     const map = new Map<string, { user: (typeof users)[number]["user"]; profile: (typeof users)[number]["profile"] }[]>();
@@ -311,12 +299,15 @@ export function DashboardPage() {
     });
   };
 
+  const isUsersLoading = usersQuery.isLoading;
+  const isWarLoading = warQuery.isLoading;
+  const isEventsLoading = upcomingEventsQuery.isLoading;
+
   const hasError =
     upcomingEventsQuery.isError ||
     warQuery.isError ||
     usersQuery.isError ||
     upcomingEventDetailsQuery.isError ||
-    mySignupsQuery.isError ||
     recentWarDetailsQuery.isError;
   useLoadWarningToast(hasError, t("common:loadErrorRetry"));
 
@@ -331,45 +322,61 @@ export function DashboardPage() {
         <Grid.Col span={{ base: 12, xl: "auto" }}>
           <Stack gap={16}>
             {!isExternalView && (
-              <MySignupsCard
-                mySignupEvents={mySignupEvents}
-                now={now}
+              isEventsLoading ? (
+                <Skeleton height={120} radius={8} />
+              ) : (
+                <MySignupsCard
+                  mySignupEvents={mySignupEvents}
+                  now={now}
+                  onOpenEvent={openEventDetail}
+                />
+              )
+            )}
+
+            {isEventsLoading ? (
+              <Skeleton height={200} radius={8} />
+            ) : (
+              <UpcomingEventsCard
+                upcomingEventsCount={upcomingEvents.length}
+                featuredRows={featuredEventRows}
+                rows={upcomingEventRows}
                 onOpenEvent={openEventDetail}
               />
             )}
-
-            <UpcomingEventsCard
-              upcomingEventsCount={upcomingEvents.length}
-              featuredRows={featuredEventRows}
-              rows={upcomingEventRows}
-              onOpenEvent={openEventDetail}
-            />
           </Stack>
         </Grid.Col>
 
         <Grid.Col span={{ base: 12, xl: isExternalView ? 6 : 4 }}>
           <Stack gap={16}>
-            <ActiveMembersCard
-              activeMemberCount={activeMemberCount}
-              totalMembersCount={totalMembersCount}
-              allWarWinRate={allWarWinRate}
-              activeEventsCount={activeEventsCount}
-            />
+            {isUsersLoading || isWarLoading ? (
+              <Skeleton height={160} radius={8} />
+            ) : (
+              <ActiveMembersCard
+                activeMemberCount={activeMemberCount}
+                totalMembersCount={totalMembersCount}
+                allWarWinRate={allWarWinRate}
+                activeEventsCount={activeEventsCount}
+              />
+            )}
 
-            <LastWarCard
-              recentWars={recentWars}
-              warMvps={recentWarMvps}
-              isExternalView={isExternalView}
-              onOpenHistory={(warName) => {
-                void navigate({
-                  to: "/guild-war",
-                  search: {
-                    tab: "history",
-                    warName,
-                  },
-                });
-              }}
-            />
+            {isWarLoading ? (
+              <Skeleton height={200} radius={8} />
+            ) : (
+              <LastWarCard
+                recentWars={recentWars}
+                warMvps={recentWarMvps}
+                isExternalView={isExternalView}
+                onOpenHistory={(warName) => {
+                  void navigate({
+                    to: "/guild-war",
+                    search: {
+                      tab: "history",
+                      warName,
+                    },
+                  });
+                }}
+              />
+            )}
           </Stack>
         </Grid.Col>
       </Grid>

@@ -3,9 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { format } from "date-fns";
 import { useEventsData } from "./data/useEventsData";
 import { fetchEventDetailBatch } from "../services/EventService";
-import { queryKeys } from "../services/PortalQueryKeys";
+import { queryKeys } from "../api/query-keys";
 import { buildAvailabilityHeatData } from "../utils/availability";
 import { sanitizeEventsRouteSearch, type EventsRouteSearch } from "../utils/event-navigation";
 type MemberEntry = { user: User; profile: MemberProfile };
@@ -70,12 +71,12 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
     updateSearch({ locked: value || undefined });
   }, [updateSearch]);
 
-  const { eventsQuery, usersQuery } = useEventsData({
+  const { eventsQuery, eventsQueryData, eventsHasMore, eventsLoadingMore, onLoadMoreEvents, usersQuery } = useEventsData({
     eventType,
     archivedOnly,
   });
 
-  const events = eventsQuery.data?.data ?? [];
+  const events = eventsQueryData;
   const users = usersQuery.data?.data ?? [];
 
   const sortedEvents = useMemo(() => {
@@ -188,7 +189,7 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   const eventsByDay = useMemo(() => {
     const byDay = new Map<string, Event[]>();
     for (const event of sortedEvents) {
-      const key = event.start_at.slice(0, 10);
+      const key = format(new Date(event.start_at), "yyyy-MM-dd");
       const list = byDay.get(key) ?? [];
       list.push(event);
       byDay.set(key, list);
@@ -261,5 +262,8 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
     availabilityHeatData,
     cardsEmptyDescription,
     resetFilters,
+    eventsHasMore,
+    eventsLoadingMore,
+    onLoadMoreEvents,
   };
 }

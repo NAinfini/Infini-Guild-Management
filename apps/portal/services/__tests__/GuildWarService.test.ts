@@ -69,6 +69,7 @@ describe("GuildWarService", () => {
       expect.objectContaining({
         event_id: "event-1",
       }),
+      undefined,
     );
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.guildWar.active("event-1"),

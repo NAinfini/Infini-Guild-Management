@@ -22,6 +22,8 @@
   "field.endsAt": "结束",
   "confirm.discardUnsaved.title": "放弃未保存更改？",
   "confirm.discardUnsaved.description": "当前活动编辑内容将丢失。",
+  "confirm.leave.title": "确认退出活动？",
+  "confirm.leave.description": "确定要退出「{{title}}」吗？",
   "confirm.timeConflict.title": "时间冲突提醒",
   "confirm.timeConflict.description": "与以下活动冲突：{{titles}}。仍要报名吗？",
   "empty": "暂无活动",
@@ -188,5 +190,6 @@
   "recurring.message.validationFailed": "标题和开始时间不能为空。",
   "field.attachmentsCount": "附件（{{current}}/{{max}}）",
   "field.endBeforeStart": "结束时间必须晚于开始时间",
-  "aria.filterByType": "按类型筛选活动"
+  "aria.filterByType": "按类型筛选活动",
+  "action.loadMore": "加载更多"
 }

@@ -1,9 +1,10 @@
-import { hasRoleAtLeast, type Announcement, type PaginatedResponse } from "@guild/shared";
+import { type Announcement, type PaginatedResponse } from "@guild/shared";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/TipTapEditor";
 import { notifications } from "@mantine/notifications";
+import { modals } from "@mantine/modals";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { format, isValid, parseISO } from "date-fns";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
@@ -19,11 +20,12 @@ import {
   updateAnnouncement,
   uploadAnnouncementImages,
 } from "../services/AnnouncementService";
-import { queryKeys } from "../services/PortalQueryKeys";
+import { queryKeys } from "../api/query-keys";
 import { useAuthStore } from "../stores/auth";
+import { userHasAnyPermission } from "../utils/permissions";
 
 const message = {
-  success: (text: string) => notifications.show({ color: "infini-success", message: text, autoClose: 3000 }),
+  success: (text: string) => notifications.show({ color: "green", message: text, autoClose: 3000 }),
 };
 
 function toIsoOrUndefined(value: string): string | undefined {
@@ -61,7 +63,7 @@ export function useAnnouncementsController() {
   const isExternalView = useExternalView();
   const { showError } = useAppError();
 
-  const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
+  const isModerator = userHasAnyPermission(user, ["announcements.create", "announcements.edit", "announcements.archive"]);
   const canEdit = isModerator && !isExternalView;
 
   const [pinnedFilter, setPinnedFilter] = useState(false);
@@ -84,12 +86,17 @@ export function useAnnouncementsController() {
   const [notifyWechat, setNotifyWechat] = useState(false);
   const [announcementsLastSeenAt, setAnnouncementsLastSeenAt] = useState<string | null>(null);
 
+  const [listPage, setListPage] = useState(1);
+  const accumulatedAnnouncementsRef = useRef<Announcement[]>([]);
+  const [accumulatedAnnouncements, setAccumulatedAnnouncements] = useState<Announcement[]>([]);
+  const [listTotal, setListTotal] = useState(0);
+
   const listQuery = useQuery({
-    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch),
+    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch, listPage),
     queryFn: () =>
       fetchAnnouncements({
-        page: 1,
-        limit: 100,
+        page: listPage,
+        limit: 50,
         status: statusFilter,
         pinned: pinnedFilter ? true : undefined,
         search: debouncedSearch || undefined,
@@ -119,7 +126,7 @@ export function useAnnouncementsController() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: UpdateAnnouncementPayload }) => updateAnnouncement(id, payload),
+    mutationFn: ({ id, payload, ifMatch }: { id: string; payload: UpdateAnnouncementPayload; ifMatch?: string }) => updateAnnouncement(id, payload, ifMatch),
     onMutate: async ({ id, payload }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
 
@@ -219,7 +226,7 @@ export function useAnnouncementsController() {
   });
 
   const rows = useMemo(() => {
-    let raw = listQuery.data?.data ?? [];
+    let raw = accumulatedAnnouncements;
     if (!canEdit) {
       raw = raw.filter((item) => item.status === "published" || item.status === "archived");
     }
@@ -237,13 +244,39 @@ export function useAnnouncementsController() {
       }
       return left.pinned ? -1 : 1;
     });
-  }, [canEdit, listQuery.data?.data, pinnedFilter, statusFilter]);
+  }, [canEdit, accumulatedAnnouncements, pinnedFilter, statusFilter]);
+
+  const listHasMore = accumulatedAnnouncements.length < listTotal;
 
   const selected = detailQuery.data ?? null;
 
   useEffect(() => {
     setAnnouncementsLastSeenAt(readAnnouncementsLastSeenAt());
   }, []);
+
+  // Reset accumulated announcements when filter params change
+  useEffect(() => {
+    accumulatedAnnouncementsRef.current = [];
+    setAccumulatedAnnouncements([]);
+    setListTotal(0);
+    setListPage(1);
+   
+  }, [pinnedFilter, statusFilter, debouncedSearch]);
+
+  // Accumulate announcements across pages
+  useEffect(() => {
+    if (!listQuery.data || listQuery.isFetching) return;
+    const newItems = listQuery.data.data;
+    if (listPage === 1) {
+      accumulatedAnnouncementsRef.current = newItems;
+    } else {
+      const existingIds = new Set(accumulatedAnnouncementsRef.current.map((item) => item.id));
+      const deduplicated = newItems.filter((item) => !existingIds.has(item.id));
+      accumulatedAnnouncementsRef.current = [...accumulatedAnnouncementsRef.current, ...deduplicated];
+    }
+    setAccumulatedAnnouncements([...accumulatedAnnouncementsRef.current]);
+    setListTotal(listQuery.data.total);
+  }, [listQuery.data, listQuery.isFetching, listPage]);
 
   useEffect(() => {
     if (isCreating) return;
@@ -280,7 +313,7 @@ export function useAnnouncementsController() {
       setPublishAt(toDateTimePickerValue(selected.publish_at));
       setExpiresAt(toDateTimePickerValue(selected.expires_at));
       setScheduleEnabled(selected.status === "scheduled");
-      setNotifyDiscord(selected.status === "published");
+      setNotifyDiscord(false);
       setNotifyWechat(false);
     }
   }, [isCreating, selected]);
@@ -314,11 +347,30 @@ export function useAnnouncementsController() {
   }, []);
 
   const handleSelectId = useCallback((id: string | null) => {
+    if (isDirty) {
+      modals.openConfirmModal({
+        title: t("confirm.discardUnsaved.title"),
+        children: t("confirm.discardUnsaved.description"),
+        centered: true,
+        confirmProps: { color: "red" },
+        labels: {
+          cancel: t("action.cancel"),
+          confirm: t("common:action.delete"),
+        },
+        onConfirm: () => {
+          if (id !== null) {
+            isCreatingHandlers.close();
+          }
+          setSelectedId(id);
+        },
+      });
+      return;
+    }
     if (id !== null) {
       isCreatingHandlers.close();
     }
     setSelectedId(id);
-  }, [isCreatingHandlers]);
+  }, [isDirty, isCreatingHandlers, t]);
 
   const resetFilters = useCallback(() => {
     setSearch("");
@@ -396,6 +448,7 @@ export function useAnnouncementsController() {
         notify_discord: notifyDiscord,
         notify_wechat: notifyWechat,
       },
+      ifMatch: `"announcement-${selected.id}-${selected.updated_at}"`,
     });
   };
 
@@ -421,7 +474,7 @@ export function useAnnouncementsController() {
     setPublishAt(toDateTimePickerValue(selected.publish_at));
     setExpiresAt(toDateTimePickerValue(selected.expires_at));
     setScheduleEnabled(selected.status === "scheduled");
-    setNotifyDiscord(selected.status === "published");
+    setNotifyDiscord(false);
     setNotifyWechat(false);
   };
 
@@ -495,6 +548,9 @@ export function useAnnouncementsController() {
     detailQuery,
     rows,
     selected,
+    listHasMore,
+    listLoadingMore: listQuery.isFetching && listPage > 1,
+    onLoadMoreList: () => setListPage((p) => p + 1),
     isBusy: createMutation.isPending || updateMutation.isPending || archiveMutation.isPending,
     savePending: updateMutation.isPending,
     deletePending: archiveMutation.isPending,

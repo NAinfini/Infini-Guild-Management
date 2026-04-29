@@ -19,8 +19,8 @@ import {
   GradientText,
   LampHeading,
   MagneticElement,
-} from "@infini-dev-kit/react";
-import { DepthButton } from "@infini-dev-kit/react";
+} from "@portal/components/effects";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { IconArrowLeft, IconEye, IconEyeOff, IconKeyboard } from "@tabler/icons-react";
 import { useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
@@ -181,9 +181,9 @@ export function LoginPage() {
         </div>
 
         <GlassEffect className="login-page__card" blur={16} opacity={0.1} borderOpacity={0.15}>
-          {search.reason === "expired" ? <Alert color="infini-warning" title={t("sessionExpired")} /> : null}
-          {search.reason === "required" ? <Alert color="infini-primary" title={t("loginRequired")} /> : null}
-          {submitError ? <Alert color="infini-danger" title={submitError} /> : null}
+          {search.reason === "expired" ? <Alert color="yellow" title={t("sessionExpired")} /> : null}
+          {search.reason === "required" ? <Alert color="blue" title={t("loginRequired")} /> : null}
+          {submitError ? <Alert color="red" title={submitError} /> : null}
 
           <form onSubmit={handleSubmit(onSubmit)}>
             <Stack gap={20}>
@@ -237,7 +237,7 @@ export function LoginPage() {
                 {t("button.login")}
               </DepthButton>
 
-              <MagneticElement strength={8} className="login-page__back-link">
+              <MagneticElement strength={0.3} className="login-page__back-link">
                 <Anchor
                   underline="hover"
                   onClick={() => void navigate({ to: "/" })}

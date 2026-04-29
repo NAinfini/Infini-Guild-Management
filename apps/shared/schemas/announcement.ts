@@ -17,7 +17,7 @@ export const announcementSchema = z.object({
 
 export const createAnnouncementSchema = z.object({
   title: z.string().min(1).max(200),
-  body_json: z.string().min(1),
+  body_json: z.string().min(1).max(500000),
   pinned: z.boolean().default(false),
   publish_at: z.string().datetime().optional(),
   expires_at: z.string().datetime().optional(),

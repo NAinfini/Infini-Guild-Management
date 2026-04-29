@@ -1,44 +1,40 @@
-import { useBridge } from "../../providers/ThemeProvider";
 import { notifications } from "@mantine/notifications";
 import { useEffect } from "react";
-import { setPortalOverlayService } from "../../overlays";
+import { setPortalOverlayService, type OverlayService, type ToastPayload } from "../../overlays";
 
 function mapToastColor(status: "info" | "success" | "warning" | "error"): string {
   if (status === "success") {
-    return "infini-success";
+    return "green";
   }
   if (status === "warning") {
-    return "infini-warning";
+    return "yellow";
   }
   if (status === "error") {
-    return "infini-danger";
+    return "red";
   }
-  return "infini-primary";
+  return "blue";
 }
 
-export function OverlayRegistrar() {
-  const bridge = useBridge();
-
-  useEffect(() => {
-    setPortalOverlayService(bridge.overlays);
-
-    const unregister = bridge.overlays.register({
-      toast: (payload) => {
-        notifications.show({
-          title: payload.title,
-          message: payload.description,
-          color: mapToastColor(payload.status),
-          withBorder: true,
-          autoClose: payload.status === "error" ? false : 4000,
-        });
-      },
+const overlayService: OverlayService = {
+  toast(payload: ToastPayload) {
+    notifications.show({
+      title: payload.title,
+      message: payload.message,
+      color: mapToastColor(payload.status ?? "info"),
+      withBorder: true,
+      autoClose: payload.status === "error" ? false : (payload.autoClose ?? 4000),
     });
+    return { delivered: true };
+  },
+};
 
+export function OverlayRegistrar() {
+  useEffect(() => {
+    setPortalOverlayService(overlayService);
     return () => {
-      unregister();
       setPortalOverlayService(null);
     };
-  }, [bridge]);
+  }, []);
 
   return null;
 }

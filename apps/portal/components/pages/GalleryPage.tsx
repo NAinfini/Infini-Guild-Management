@@ -1,4 +1,3 @@
-import { hasRoleAtLeast } from "@guild/shared";
 import { IconPhoto } from "@tabler/icons-react";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { Button, Group, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
@@ -20,9 +19,11 @@ import {
 import { useAppError } from "../../hooks/useAppError";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
-import { queryKeys } from "../../services/PortalQueryKeys";
+import { queryKeys } from "../../api/query-keys";
 import { useAuthStore } from "../../stores/auth";
-import { DEFAULT_IMAGE_WEBP_QUALITY, convertImageToWebP, toEmbedVideoUrl } from "@infini-dev-kit/react";
+import { userHasPermission } from "../../utils/permissions";
+import { DEFAULT_IMAGE_WEBP_QUALITY, convertImageToWebP } from "@guild/shared/utils/media";
+import { isAllowedGalleryVideoUrl, toEmbedVideoUrl } from "@guild/shared/utils/video";
 import { GalleryFiltersCard } from "../feature/gallery/GalleryFiltersCard";
 import { GalleryGrid } from "../feature/gallery/GalleryGrid";
 import { GalleryLightboxModal } from "../feature/gallery/GalleryLightboxModal";
@@ -47,8 +48,8 @@ export function GalleryPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
-  const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
-  const canUpload = Boolean(user && hasRoleAtLeast(user.role, "member")) && !isExternalView;
+  const isModerator = userHasPermission(user, "gallery.manage");
+  const canUpload = userHasPermission(user, "gallery.upload") && !isExternalView;
   const canModerate = isModerator && !isExternalView;
   const { showError } = useAppError();
 
@@ -101,7 +102,7 @@ export function GalleryPage() {
   const createVideoMutation = useMutation({
     mutationFn: createGalleryVideo,
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.videoCreated") });
+      notifications.show({ color: "green", message: t("message.videoCreated") });
       setVideoUrl("");
       setVideoCaption("");
       addMediaModalHandlers.close();
@@ -128,7 +129,7 @@ export function GalleryPage() {
       return res.deleted;
     },
     onSuccess: async (count) => {
-      notifications.show({ color: "infini-success", message: t("message.bulkDeleted", { count }) });
+      notifications.show({ color: "green", message: t("message.bulkDeleted", { count }) });
       setSelectedIds([]);
       await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
     },
@@ -231,7 +232,7 @@ export function GalleryPage() {
 
     await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
     if (failedCount === 0) {
-      notifications.show({ color: "infini-success", message: t("message.uploaded") });
+      notifications.show({ color: "green", message: t("message.uploaded") });
     }
   }, [queuedCount, queryClient, t, uploadQueue]);
 
@@ -363,13 +364,17 @@ export function GalleryPage() {
               />
               <Group justify="flex-end">
                 <DepthButton
-                  onClick={() =>
+                  onClick={() => {
+                    if (!isAllowedGalleryVideoUrl(videoUrl.trim())) {
+                      notifications.show({ color: "red", message: t("message.videoHostUnsupported") });
+                      return;
+                    }
                     createVideoMutation.mutate({
                       type: "video",
                       url: videoUrl,
                       caption: videoCaption || undefined,
-                    })
-                  }
+                    });
+                  }}
                   loading={createVideoMutation.isPending}
                   disabled={!videoUrl.trim()}
                 >
@@ -449,7 +454,7 @@ export function GalleryPage() {
             title: t("confirm.delete.title"),
             children: <Text size="sm">{t("confirm.delete.description")}</Text>,
             labels: { confirm: t("action.delete"), cancel: t("common:cancel") },
-            confirmProps: { color: "infini-danger" },
+            confirmProps: { color: "red" },
             onConfirm: () => deleteMutation.mutate(id),
           })
         }

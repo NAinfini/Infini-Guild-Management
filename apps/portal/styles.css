@@ -1,3 +1,21 @@
+@import "tailwindcss";
+
+/* ── Dark mode: class-based strategy ── */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Theme tokens ── */
+@theme {
+  --color-primary: #3B82F6;
+  --color-secondary: #8B5CF6;
+  --color-accent: #06B6D4;
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+/* ── CSS custom properties for light / dark ── */
 :root {
   --header-height: 64px;
   --header-height-mobile: 56px;
@@ -11,139 +29,41 @@
   --z-modal: 200;
   --z-toast: 300;
 
-  /* Legacy token aliases retained for migrated page styles. */
-  --ant-color-text: var(--mantine-color-text);
-  --ant-color-text-secondary: var(--mantine-color-dimmed);
-  --ant-color-text-tertiary: color-mix(in srgb, var(--mantine-color-dimmed) 82%, transparent);
-  --ant-color-text-light-solid: var(--mantine-color-white);
-
-  --ant-color-bg-container: var(--mantine-color-body);
-  --ant-color-border: var(--mantine-color-default-border);
-  --ant-color-border-secondary: color-mix(in srgb, var(--mantine-color-default-border) 78%, transparent);
-
-  --ant-color-fill-secondary: color-mix(in srgb, var(--mantine-color-default) 86%, transparent);
-  --ant-color-fill-tertiary: color-mix(in srgb, var(--mantine-color-default) 70%, transparent);
-  --ant-color-fill-quaternary: color-mix(in srgb, var(--mantine-color-default) 52%, transparent);
-
-  --ant-color-primary: var(--infini-color-primary, var(--mantine-color-blue-6));
-  --ant-color-primary-border: color-mix(in srgb, var(--ant-color-primary) 45%, var(--mantine-color-white));
-  --ant-color-primary-bg: color-mix(in srgb, var(--ant-color-primary) 16%, transparent);
-
-  --ant-color-info: var(--mantine-color-blue-6);
-  --ant-color-info-border: color-mix(in srgb, var(--mantine-color-blue-6) 42%, var(--mantine-color-white));
-  --ant-color-info-bg: color-mix(in srgb, var(--mantine-color-blue-6) 14%, transparent);
-
-  --ant-color-success: var(--mantine-color-green-6);
-  --ant-color-success-text: var(--mantine-color-green-7);
-  --ant-color-success-border: color-mix(in srgb, var(--mantine-color-green-6) 42%, var(--mantine-color-white));
-  --ant-color-success-bg: color-mix(in srgb, var(--mantine-color-green-6) 15%, transparent);
-
-  --ant-color-warning: var(--mantine-color-yellow-7);
-  --ant-color-warning-text: var(--mantine-color-yellow-8);
-  --ant-color-warning-border: color-mix(in srgb, var(--mantine-color-yellow-7) 48%, var(--mantine-color-white));
-  --ant-color-warning-bg: color-mix(in srgb, var(--mantine-color-yellow-7) 14%, transparent);
-
-  --ant-color-error: var(--mantine-color-red-6);
-  --ant-color-error-border: color-mix(in srgb, var(--mantine-color-red-6) 46%, var(--mantine-color-white));
-  --ant-color-error-bg: color-mix(in srgb, var(--mantine-color-red-6) 14%, transparent);
+  /* Semantic colors — light mode */
+  --color-text: #111827;
+  --color-text-muted: #6B7280;
+  --color-bg: #F3F4F6;
+  --color-surface: #FFFFFF;
+  --color-border: #E5E7EB;
+  --color-surface-elevated: #FFFFFF;
+  --color-primary-alpha: rgba(59,130,246,0.08);
 }
 
+.dark {
+  --color-text: #F9FAFB;
+  --color-text-muted: #9CA3AF;
+  --color-bg: #0F172A;
+  --color-surface: #1E293B;
+  --color-border: #334155;
+  --color-surface-elevated: #263347;
+  --color-primary-alpha: rgba(59,130,246,0.12);
+}
+
+/* ── Base resets ── */
 html, body {
   height: 100%;
   overflow: hidden;
 }
 
 body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
   scrollbar-width: thin;
-  scrollbar-color: var(--infini-color-primary, #6b7280) transparent;
+  scrollbar-color: var(--color-primary, #6b7280) transparent;
 }
 
-[data-theme-id] .mantine-contextmenu,
-[data-theme-id] .mantine-contextmenu.infini-context-menu-root,
-[data-theme-id] .mantine-contextmenu.infini-context-menu-root.infini-context-menu-root {
-  min-width: 176px;
-  padding: 6px;
-  border: none !important;
-  outline: none !important;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--infini-color-surface, #0f172a) 96%, transparent);
-  box-shadow: 0 16px 34px color-mix(in srgb, black 24%, transparent);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-}
-
-[data-theme-id] .mantine-contextmenu button,
-[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button,
-[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item,
-[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item.infini-context-menu-item {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  min-height: 36px;
-  padding: 9px 12px;
-  border: none !important;
-  outline: none !important;
-  appearance: none;
-  -webkit-appearance: none;
-  border-radius: 9px;
-  background: transparent !important;
-  box-shadow: none !important;
-  color: var(--infini-color-text, #e5e7eb);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
-  text-align: start;
-  transition:
-    background-color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease),
-    color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease),
-    transform var(--infini-motion-press, 120ms) var(--infini-motion-easing, ease);
-}
-
-[data-theme-id] .mantine-contextmenu button:hover:not([disabled]),
-[data-theme-id] .mantine-contextmenu button:focus:not([disabled]),
-[data-theme-id] .mantine-contextmenu button:focus-visible:not([disabled]),
-[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button:hover:not([disabled]),
-[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button:focus:not([disabled]),
-[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button:focus-visible:not([disabled]),
-[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item:hover:not([disabled]),
-[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item:focus:not([disabled]),
-[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item:focus-visible:not([disabled]) {
-  border: none !important;
-  outline: none !important;
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 14%, transparent) !important;
-  box-shadow: none !important;
-  color: var(--infini-color-text, #f8fafc);
-}
-
-[data-theme-id] .mantine-contextmenu button:active:not([disabled]),
-[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button:active:not([disabled]),
-[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item:active:not([disabled]) {
-  transform: translateY(1px);
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 18%, transparent) !important;
-}
-
-[data-theme-id] .mantine-contextmenu button[disabled],
-[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button[disabled],
-[data-theme-id] .mantine-contextmenu-item-button.infini-context-menu-item[disabled] {
-  opacity: 0.46;
-}
-
-[data-theme-id] .mantine-contextmenu .mantine-contextmenu-item-button-title,
-.infini-context-menu-root .mantine-contextmenu-item-button-title {
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-.infini-context-menu-divider {
-  height: 1px;
-  margin: 4px 8px;
-  border: none;
-  background: color-mix(in srgb, var(--infini-color-text, #e5e7eb) 12%, transparent);
-}
-
+/* ── Scrollbar (Webkit) ── */
 body::-webkit-scrollbar {
   width: var(--portal-scrollbar-size);
   height: var(--portal-scrollbar-size);
@@ -154,58 +74,76 @@ body::-webkit-scrollbar-track {
 }
 
 body::-webkit-scrollbar-thumb {
-  background: var(--infini-color-primary, #6b7280);
-  border-radius: var(--infini-radius, 8px);
+  background: var(--color-primary, #6b7280);
+  border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 body::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--infini-color-primary, #6b7280) 82%, #ffffff 18%);
+  background: color-mix(in srgb, var(--color-primary, #6b7280) 82%, #ffffff 18%);
   background-clip: padding-box;
 }
 
+/* ── Focus ring ── */
 :focus-visible {
-  outline: 2px solid var(--infini-color-primary, #3b82f6);
+  outline: 2px solid var(--color-primary, #3b82f6);
   outline-offset: 2px;
-}
-
-.theme-swatch-button:focus-visible {
-  border-radius: 10px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 50%, transparent);
-}
-
-.mantine-Modal-content {
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 88%, transparent);
 }
 
 /* ── Locale-specific font stacks ── */
 html[data-locale="zh"] {
-  --mantine-font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-sans: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 
-html[data-locale="zh"] .mantine-Title-root,
-html[data-locale="zh"] h1,
-html[data-locale="zh"] h2,
-html[data-locale="zh"] h3,
-html[data-locale="zh"] h4,
-html[data-locale="zh"] h5,
-html[data-locale="zh"] h6 {
-  font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+/* ── Effect animations ── */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-20px); }
 }
 
-/* Theme-aware switch state colors (off: error, on: success). */
-input[role="switch"]:not(:disabled):not([data-disabled]) + *,
-.mantine-Switch-input:not(:disabled):not([data-disabled]) + .mantine-Switch-track {
-  --switch-bg: var(--ant-color-error) !important;
-  --switch-bd: color-mix(in srgb, var(--ant-color-error) 68%, var(--mantine-color-body)) !important;
-  --switch-text-color: var(--mantine-color-white) !important;
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-input[role="switch"]:not(:disabled):not([data-disabled]):is(:checked, [data-checked]) + *,
-.mantine-Switch-input:not(:disabled):not([data-disabled]):is(:checked, [data-checked]) + .mantine-Switch-track {
-  --switch-bg: var(--ant-color-success) !important;
-  --switch-bd: color-mix(in srgb, var(--ant-color-success) 68%, var(--mantine-color-body)) !important;
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Menu item helpers ── */
+.infini-menu-item--danger {
+  color: var(--mantine-color-red-6, #e03131);
+}
+
+.infini-menu-item--danger:hover {
+  background: var(--mantine-color-red-0, #fff5f5);
+}
+
+.dark .infini-menu-item--danger:hover {
+  background: color-mix(in srgb, var(--mantine-color-red-9, #c92a2a) 20%, transparent);
+}
+
+.infini-menu-item--active {
+  background: var(--mantine-color-blue-0, #dbe4ff);
+  color: var(--mantine-color-blue-7, #1c7ed6);
+}
+
+.dark .infini-menu-item--active {
+  background: color-mix(in srgb, var(--mantine-color-blue-9, #1864ab) 25%, transparent);
+  color: var(--mantine-color-blue-4, #4dabf7);
+}
+
+.infini-menu-item--label {
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--mantine-color-dimmed, #868e96);
+  pointer-events: none;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

@@ -2,12 +2,16 @@ import {
   ALLOWED_IMAGE_TYPES,
   FILE_SIZE_LIMITS,
   IMAGE_QUOTAS,
+  PERMISSIONS,
+  ROLE_LEVEL,
   adminUpdateProfileSchema,
   changePasswordSchema,
   changeUsernameSchema,
+  isBuiltinRole,
   memberProfileSchema,
   updateProfileSchema,
   userSchema,
+  type Permission,
   type Role,
 } from "@guild/shared";
 import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
@@ -124,11 +128,25 @@ function parseRecord(value: string | null): Record<string, unknown> | null {
   }
 }
 
+const TITLE_HTML_ALLOWED_TAGS = new Set(["span", "b", "strong", "i", "em", "u", "br"]);
+
+function sanitizeTitleHtml(html: string): string {
+  return html
+    .replace(/<\s*\/?\s*(\w+)[^>]*>/gi, (match, tagName: string) => {
+      if (!TITLE_HTML_ALLOWED_TAGS.has(tagName.toLowerCase())) return "";
+      // Strip all attributes from allowed tags — none of them need attributes
+      return match.replace(/(<\s*\/?\s*\w+)\s+[^>]*?(\/?\s*>)/, "$1$2");
+    });
+}
+
 function toUserPayload(user: UserRow) {
+  const roleLevel = isBuiltinRole(user.role) ? ROLE_LEVEL[user.role] : 1;
   return userSchema.parse({
     id: user.id,
     username: user.username,
     role: user.role,
+    role_level: roleLevel,
+    permissions: Object.fromEntries(PERMISSIONS.map((p) => [p, false])) as Record<Permission, boolean>,
     is_active: user.isActive,
     deleted_at: user.deletedAt,
     created_at: user.createdAt,
@@ -166,7 +184,7 @@ function buildProfilePatch(
   if (payload.wechat_name !== undefined) patch.wechatName = payload.wechat_name;
   if (payload.power !== undefined) patch.power = payload.power;
   if (payload.classes !== undefined) patch.classes = JSON.stringify(payload.classes);
-  if (payload.title_html !== undefined) patch.titleHtml = payload.title_html;
+  if (payload.title_html !== undefined) patch.titleHtml = payload.title_html === null ? null : sanitizeTitleHtml(payload.title_html);
   if (payload.bio !== undefined) patch.bio = payload.bio;
   if (payload.images !== undefined) patch.images = JSON.stringify(payload.images);
   if (payload.audio_key !== undefined) patch.audioKey = payload.audio_key;

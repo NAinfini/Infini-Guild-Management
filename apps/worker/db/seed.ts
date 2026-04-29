@@ -24,7 +24,6 @@ import {
   warPoolMembers,
   warTeamMembers,
   warTeams,
-  warTemplates,
   wikiArticles,
   wikiCategories,
 } from "./schema";
@@ -96,13 +95,24 @@ const ROLE_PERMISSION_KEYS = [
   "admin.roles.manage",
   "admin.analytics.view",
   "admin.analytics.manage",
-  "guildwar.manage",
+  "guildwar.teams.edit",
+  "guildwar.teams.post",
+  "guildwar.templates",
   "guildwar.history.edit",
-  "events.manage",
-  "announcements.manage",
+  "events.create",
+  "events.edit",
+  "events.archive",
+  "events.delete",
+  "events.templates",
+  "announcements.create",
+  "announcements.edit",
+  "announcements.archive",
   "gallery.upload",
   "gallery.manage",
-  "wiki.edit",
+  "wiki.articles.create",
+  "wiki.articles.edit",
+  "wiki.articles.archive",
+  "wiki.categories.manage",
 ] as const;
 
 const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
@@ -114,13 +124,24 @@ const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
   "admin.status.view",
   "admin.roles.view",
   "admin.analytics.view",
-  "guildwar.manage",
+  "guildwar.teams.edit",
+  "guildwar.teams.post",
+  "guildwar.templates",
   "guildwar.history.edit",
-  "events.manage",
-  "announcements.manage",
+  "events.create",
+  "events.edit",
+  "events.archive",
+  "events.delete",
+  "events.templates",
+  "announcements.create",
+  "announcements.edit",
+  "announcements.archive",
   "gallery.upload",
   "gallery.manage",
-  "wiki.edit",
+  "wiki.articles.create",
+  "wiki.articles.edit",
+  "wiki.articles.archive",
+  "wiki.categories.manage",
 ]);
 
 const MEMBER_GRANTED_PERMISSIONS = new Set<string>(["gallery.upload"]);
@@ -1148,119 +1169,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   );
   await batchInsert(db, galleryComments, galleryCommentRows);
 
-  // ── War templates ──
-  await db.insert(warTemplates).values([
-    {
-      id: nanoid(),
-      templateName: "Standard 4v4 Split",
-      description: "Default 4-player split formation with core/flex roles",
-      sourceEventId: eventRows[2].id,
-      payloadJson: JSON.stringify({
-        teams: [
-          {
-            team_name: "Vanguard",
-            sort_order: 0,
-            notes: "Frontline pressure",
-            is_locked: false,
-            members: [
-              { user_id: moderatorIds[0], role_tag: "core", sort_order: 0 },
-              { user_id: memberIds[0], role_tag: "core", sort_order: 1 },
-              { user_id: memberIds[1], role_tag: "flex", sort_order: 2 },
-              { user_id: memberIds[2], role_tag: "flex", sort_order: 3 },
-            ],
-          },
-          {
-            team_name: "Sentinel",
-            sort_order: 1,
-            notes: "Tower control",
-            is_locked: false,
-            members: [
-              { user_id: moderatorIds[1], role_tag: "core", sort_order: 0 },
-              { user_id: memberIds[3], role_tag: "core", sort_order: 1 },
-              { user_id: memberIds[4], role_tag: "flex", sort_order: 2 },
-              { user_id: memberIds[5], role_tag: "flex", sort_order: 3 },
-            ],
-          },
-        ],
-        pool_members: [{ user_id: memberIds[6] }, { user_id: memberIds[7] }],
-      }),
-      createdBy: adminId,
-    },
-    {
-      id: nanoid(),
-      templateName: "Rush Formation",
-      description: "Aggressive 5-player rush setup",
-      sourceEventId: null,
-      payloadJson: JSON.stringify({
-        teams: [
-          {
-            team_name: "Blitz",
-            sort_order: 0,
-            notes: "Fast engage",
-            is_locked: true,
-            members: [
-              { user_id: moderatorIds[2], role_tag: "core", sort_order: 0 },
-              { user_id: memberIds[8], role_tag: "core", sort_order: 1 },
-              { user_id: memberIds[9], role_tag: "flex", sort_order: 2 },
-              { user_id: memberIds[10], role_tag: "support", sort_order: 3 },
-              { user_id: memberIds[11], role_tag: "support", sort_order: 4 },
-            ],
-          },
-          {
-            team_name: "Lancer",
-            sort_order: 1,
-            notes: "Follow-up burst",
-            is_locked: false,
-            members: [
-              { user_id: moderatorIds[0], role_tag: "core", sort_order: 0 },
-              { user_id: memberIds[12], role_tag: "core", sort_order: 1 },
-              { user_id: memberIds[13], role_tag: "flex", sort_order: 2 },
-              { user_id: memberIds[14], role_tag: "support", sort_order: 3 },
-            ],
-          },
-        ],
-        pool_members: [{ user_id: memberIds[5] }],
-      }),
-      createdBy: moderatorIds[0],
-    },
-    {
-      id: nanoid(),
-      templateName: "Defense Hold",
-      description: "Defensive formation prioritizing tower control",
-      sourceEventId: eventRows[3].id,
-      payloadJson: JSON.stringify({
-        teams: [
-          {
-            team_name: "Aegis",
-            sort_order: 0,
-            notes: "North lane hold",
-            is_locked: false,
-            members: [
-              { user_id: moderatorIds[1], role_tag: "core", sort_order: 0 },
-              { user_id: memberIds[2], role_tag: "support", sort_order: 1 },
-              { user_id: memberIds[4], role_tag: "support", sort_order: 2 },
-              { user_id: memberIds[6], role_tag: "core", sort_order: 3 },
-            ],
-          },
-          {
-            team_name: "Bulwark",
-            sort_order: 1,
-            notes: "South lane hold",
-            is_locked: false,
-            members: [
-              { user_id: moderatorIds[2], role_tag: "core", sort_order: 0 },
-              { user_id: memberIds[7], role_tag: "support", sort_order: 1 },
-              { user_id: memberIds[8], role_tag: "support", sort_order: 2 },
-              { user_id: memberIds[9], role_tag: "core", sort_order: 3 },
-            ],
-          },
-        ],
-        pool_members: [{ user_id: memberIds[10] }, { user_id: memberIds[11] }],
-      }),
-      createdBy: adminId,
-    },
-  ]);
-
   // ── Bot delivery log ──
   const deliveryStatuses = ["queued", "sending", "sent", "failed"] as const;
   const deliveryLogRows: Array<typeof botDeliveryLog.$inferInsert> = [];
@@ -1462,7 +1370,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
           galleryLikes: galleryLikeRows.length,
           galleryComments: galleryCommentRows.length,
           warHistory: warHistoryRows.length,
-          warTemplates: 3,
           botDeliveryLog: deliveryLogRows.length,
           botDiscordMessages: discordMsgRows.length,
           botWechatMessages: wechatMsgRows.length,

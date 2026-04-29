@@ -13,12 +13,12 @@ export function formatDateTime(iso: string | null): string {
 }
 
 export function eventTypeTagColor(value: string): string {
-  if (value === "raid" || value === "weekly_mission") return "infini-primary";
+  if (value === "raid" || value === "weekly_mission") return "blue";
   if (value === "guild_war") return "orange";
-  if (value === "meeting" || value === "social") return "infini-danger";
+  if (value === "meeting" || value === "social") return "red";
   if (value === "training") return "grape";
-  if (value === "other") return "infini-warning";
-  return "infini-primary";
+  if (value === "other") return "yellow";
+  return "blue";
 }
 
 export function cardHeading(text: string, icon?: ReactNode) {

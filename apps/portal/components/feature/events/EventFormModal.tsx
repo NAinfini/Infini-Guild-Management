@@ -12,8 +12,10 @@ import {
   Textarea,
 } from "@mantine/core";
 import { IconX, IconPlus, IconDeviceFloppy } from "@tabler/icons-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ImageGridEditor, type ImageGridEditorItem } from "@infini-dev-kit/react";
+import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
+import type { ImageGridEditorItem } from "@guild/shared/types/media";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 
@@ -75,6 +77,11 @@ export function EventFormModal({
   onSave,
 }: EventFormModalProps) {
   const { t } = useTranslation("events");
+  const [titleTouched, setTitleTouched] = useState(false);
+
+  const titleError = titleTouched && !title.trim() ? t("message.titleRequired") : undefined;
+  const dateError = startAt && endAt && endAt < startAt ? t("field.endBeforeStart") : undefined;
+  const isSaveDisabled = !title.trim() || Boolean(dateError);
 
   return (
     <Modal
@@ -91,8 +98,13 @@ export function EventFormModal({
         <TextInput
           label={t("field.title")}
           value={title}
-          onChange={(event) => onTitleChange(event.currentTarget.value)}
+          onChange={(event) => {
+            setTitleTouched(true);
+            onTitleChange(event.currentTarget.value);
+          }}
+          onBlur={() => setTitleTouched(true)}
           placeholder={t("field.title")}
+          error={titleError}
           data-autofocus
         />
 
@@ -117,7 +129,7 @@ export function EventFormModal({
             type="datetime-local"
             value={endAt}
             onChange={(event) => onEndAtChange(event.currentTarget.value)}
-            error={startAt && endAt && endAt < startAt ? t("field.endBeforeStart") : undefined}
+            error={dateError}
           />
         </Group>
 
@@ -157,7 +169,7 @@ export function EventFormModal({
 
         {/* ── Conflict warning ── */}
         {conflictingEvents.length > 0 ? (
-          <Alert color="infini-warning" title={t("conflict.detected")}>
+          <Alert color="yellow" title={t("conflict.detected")}>
             {t("conflict.description", { count: conflictingEvents.length, titles: conflictingEvents
               .slice(0, 3)
               .map((item) => item.title)
@@ -182,7 +194,7 @@ export function EventFormModal({
           <Button variant="default" onClick={onCancel} leftSection={<IconX size={16} />}>
             {t("button.cancel")}
           </Button>
-          <Button onClick={onSave} loading={confirmLoading} leftSection={mode === "create" ? <IconPlus size={16} /> : <IconDeviceFloppy size={16} />}>
+          <Button onClick={onSave} loading={confirmLoading} disabled={isSaveDisabled} leftSection={mode === "create" ? <IconPlus size={16} /> : <IconDeviceFloppy size={16} />}>
             {mode === "create" ? t("button.create") : t("button.save")}
           </Button>
         </Group>

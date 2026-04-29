@@ -3,7 +3,6 @@ import {
   toWarHistoryPayload,
   toTeamPayload,
   toMemberPayload,
-  toWarTemplatePayload,
   buildWarEtag,
   parseRecurrenceRule,
 } from "../GuildWarService";
@@ -88,27 +87,6 @@ describe("GuildWarService helpers", () => {
         role_tag: "tank",
         kills: 5,
         deaths: 2,
-      }),
-    );
-  });
-
-  it("toWarTemplatePayload maps template row", () => {
-    const payload = toWarTemplatePayload({
-      id: "tpl-1",
-      templateName: "Default",
-      templateType: "structure",
-      description: "desc",
-      sourceEventId: "event-1",
-      payloadJson: "{}",
-      createdBy: "mod-1",
-      createdAt: "2026-03-08T12:00:00.000Z",
-      updatedAt: "2026-03-08T12:00:00.000Z",
-    });
-    expect(payload).toEqual(
-      expect.objectContaining({
-        id: "tpl-1",
-        template_name: "Default",
-        source_event_id: "event-1",
       }),
     );
   });

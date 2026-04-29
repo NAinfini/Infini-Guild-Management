@@ -1,6 +1,9 @@
-import { DepthButton, ImageGridEditor, type ImageGridEditorItem } from "@infini-dev-kit/react";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
+import type { ImageGridEditorItem } from "@guild/shared/types/media";
 import { PortalCard } from "../../shared/PortalCard";
 import { Badge, Button, Divider, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
+import { modals } from "@mantine/modals";
 import { IconDeviceFloppy, IconUpload, IconTrash, IconPlus } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 
@@ -71,7 +74,7 @@ export function ProfileMediaTab({
     <Stack gap={16}>
       <PortalCard interactive={false}>
         <Group justify="flex-end" gap={8} p="1.2rem">
-          <Badge color={isDirty ? "infini-warning" : "infini-success"}>
+          <Badge color={isDirty ? "yellow" : "green"}>
             {isDirty ? t("status.unsavedChanges") : t("status.saved")}
           </Badge>
           <Button onClick={onSaveProfile} loading={savePending} leftSection={<IconDeviceFloppy size={16} />}>
@@ -91,7 +94,16 @@ export function ProfileMediaTab({
           <ImageGridEditor
             items={imageItems}
             onReorder={(items) => onReorderImages(items.map((item) => item.id))}
-            onDelete={(item) => onRemoveImage(item.id)}
+            onDelete={(item) => {
+              modals.openConfirmModal({
+                title: t("confirm.removeImage.title"),
+                children: t("confirm.removeImage.description"),
+                centered: true,
+                confirmProps: { color: "red" },
+                labels: { cancel: t("common:action.cancel"), confirm: t("common:action.delete") },
+                onConfirm: () => onRemoveImage(item.id),
+              });
+            }}
             onFilesSelected={(files) => imageUploader.selectFiles(files)}
             maxImages={10}
             imageSize={80}
@@ -116,7 +128,7 @@ export function ProfileMediaTab({
             </Group>
           ) : null}
 
-          {imageUploader.error ? <Text c="infini-danger" size="sm">{imageUploader.error}</Text> : null}
+          {imageUploader.error ? <Text c="red" size="sm">{imageUploader.error}</Text> : null}
           {imageUploader.isConverting || imageUploader.isUploading ? (
             <Stack gap={4}>
               <Progress value={imageUploader.conversionProgress} size="xs" animated />
@@ -187,13 +199,13 @@ export function ProfileMediaTab({
           <Text c="dimmed" size="xs">{t("media.audioHint")}</Text>
 
           {audioUploader.supportError ? (
-            <Text c="infini-warning" size="sm">{audioUploader.supportError}</Text>
+            <Text c="yellow" size="sm">{audioUploader.supportError}</Text>
           ) : null}
 
           <Group gap={8} align="flex-end">
             <FileButton
               onChange={(files) => audioUploader.selectFiles(files ? [files] : null)}
-              accept="audio/*"
+              accept="audio/ogg,audio/webm,audio/mp4,audio/mpeg,audio/wav"
             >
               {(props) => (
                 <Button
@@ -220,7 +232,7 @@ export function ProfileMediaTab({
             </Button>
           </Group>
 
-          {audioUploader.error ? <Text c="infini-danger" size="sm">{audioUploader.error}</Text> : null}
+          {audioUploader.error ? <Text c="red" size="sm">{audioUploader.error}</Text> : null}
           {audioUploader.isConverting || audioUploader.isUploading ? (
             <Stack gap={4}>
               <Progress value={audioUploader.conversionProgress} size="xs" animated />
@@ -233,7 +245,16 @@ export function ProfileMediaTab({
               <Divider />
               <Group gap={8} align="center">
                 <Text size="sm" style={{ flex: 1 }} truncate="end">{profileAudioKey}</Text>
-                <DepthButton size="sm" type="danger" before={<IconTrash size={16} />} onClick={onRemoveAudio}>
+                <DepthButton size="sm" type="danger" before={<IconTrash size={16} />} onClick={() => {
+                  modals.openConfirmModal({
+                    title: t("confirm.removeAudio.title"),
+                    children: t("confirm.removeAudio.description"),
+                    centered: true,
+                    confirmProps: { color: "red" },
+                    labels: { cancel: t("common:action.cancel"), confirm: t("common:action.delete") },
+                    onConfirm: onRemoveAudio,
+                  });
+                }}>
                   {t("action.delete")}
                 </DepthButton>
               </Group>
@@ -244,3 +265,4 @@ export function ProfileMediaTab({
     </Stack>
   );
 }
+

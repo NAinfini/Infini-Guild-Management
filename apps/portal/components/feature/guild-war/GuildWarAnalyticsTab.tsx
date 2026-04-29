@@ -19,7 +19,7 @@ import { Split } from "@gfazioli/mantine-split-pane";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import { useTranslation } from "react-i18next";
 
-type AnalyticsMode = "player" | "compare" | "rankings" | "teams";
+type AnalyticsMode = "player" | "rankings" | "teams";
 type AnalyticsMetricKey =
   | "kills"
   | "deaths"
@@ -50,12 +50,11 @@ type GuildWarAnalyticsTabProps = {
   focusedUser: string;
   onFocusedUserChange: (value: string) => void;
   selectableUserIds: string[];
+  userIdToUsername: Map<string, string>;
   onlyParticipated: boolean;
   onOnlyParticipatedChange: (value: boolean) => void;
   selectedUsers: string[];
   onSelectedUsersChange: (value: string[]) => void;
-  compareUserIds: string[];
-  onLegendInteraction: (userId: string, event: React.MouseEvent<HTMLButtonElement>) => void;
   hashToPaletteColor: (value: string, palette: string[]) => string;
   chartPalette: string[];
   aggregation: AnalyticsAggregation;
@@ -111,12 +110,11 @@ export function GuildWarAnalyticsTab({
   focusedUser: _focusedUser,
   onFocusedUserChange: _onFocusedUserChange,
   selectableUserIds,
+  userIdToUsername,
   onlyParticipated,
   onOnlyParticipatedChange,
   selectedUsers,
   onSelectedUsersChange,
-  compareUserIds: _compareUserIds,
-  onLegendInteraction: _onLegendInteraction,
   hashToPaletteColor: _hashToPaletteColor,
   chartPalette: _chartPalette,
   aggregation,
@@ -199,15 +197,15 @@ export function GuildWarAnalyticsTab({
         </div>
       </PortalCard>
 
-      {mode === "compare" && selectedUsers.length > selectionSoftCap ? (
-        <Alert color="infini-warning">{t("analytics.compareSoftCap", { cap: selectionSoftCap, count: selectedUsers.length })}</Alert>
+      {analyticsQueryLoading || analyticsDetailsLoading ? <Stack gap={8}><Skeleton height={180} radius={8} />{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
+      {analyticsQueryError ? <Alert color="yellow">{loadErrorMessage}</Alert> : null}
+      {analyticsDetailsError ? <Alert color="yellow">{loadErrorMessage}</Alert> : null}
+
+      {!analyticsQueryLoading && !analyticsQueryError && !analyticsDetailsLoading && !analyticsDetailsError && warOptions.length === 0 ? (
+        <Text c="dimmed" ta="center" py="xl">{t("analytics.noWarsSelected")}</Text>
       ) : null}
 
-      {analyticsQueryLoading || analyticsDetailsLoading ? <Stack gap={8}><Skeleton height={180} radius={8} />{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {analyticsQueryError ? <Alert color="infini-warning">{loadErrorMessage}</Alert> : null}
-      {analyticsDetailsError ? <Alert color="infini-warning">{loadErrorMessage}</Alert> : null}
-
-      {!analyticsQueryLoading && !analyticsQueryError && !analyticsDetailsLoading && !analyticsDetailsError ? (
+      {!analyticsQueryLoading && !analyticsQueryError && !analyticsDetailsLoading && !analyticsDetailsError && warOptions.length > 0 ? (
         <Split style={{ minHeight: 486 }}>
           <Split.Pane initialWidth="20%" minWidth={200} maxWidth="40%">
           <PortalCard interactive={false} className="guild-war-analytics-control-panel guild-war-analytics-control-panel--left">
@@ -228,9 +226,9 @@ export function GuildWarAnalyticsTab({
                     <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
                       <Group gap={8}>
                         <span style={{ fontSize: 16 }}>{(option as typeof metricOptions[0]).icon}</span>
-                        <span style={{ color: checked ? "var(--infini-color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
+                        <span style={{ color: checked ? "var(--color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
                       </Group>
-                      {checked ? <span style={{ color: "var(--infini-color-primary, #3b82f6)" }}>✓</span> : null}
+                      {checked ? <span style={{ color: "var(--color-primary, #3b82f6)" }}>✓</span> : null}
                     </Group>
                   )}
                 />
@@ -318,16 +316,16 @@ export function GuildWarAnalyticsTab({
                     aria-label="Select player analytics members"
                     value={selectedUsers}
                     onChange={(values) => onSelectedUsersChange(values.slice(0, 5))}
-                    data={selectableUserIds.map((userId) => ({ value: userId, label: userId }))}
+                    data={selectableUserIds.map((userId) => ({ value: userId, label: userIdToUsername.get(userId) ?? userId }))}
                     maxValues={5}
                     styles={{ pill: { display: "none" } }}
                     renderOption={({ option, checked }) => (
                       <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
                         <Group gap={8}>
-                          <Avatar size={20} radius="xl">{option.label.slice(0, 2).toUpperCase()}</Avatar>
-                          <span style={{ color: checked ? "var(--infini-color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
+                          <Avatar size={20} radius="xl">{(userIdToUsername.get(option.value) ?? option.value).slice(0, 2).toUpperCase()}</Avatar>
+                          <span style={{ color: checked ? "var(--color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
                         </Group>
-                        {checked ? <span style={{ color: "var(--infini-color-primary, #3b82f6)" }}>✓</span> : null}
+                        {checked ? <span style={{ color: "var(--color-primary, #3b82f6)" }}>✓</span> : null}
                       </Group>
                     )}
                   />
@@ -339,34 +337,6 @@ export function GuildWarAnalyticsTab({
                     onChange={(event) => onOnlyParticipatedChange(event.currentTarget.checked)}
                     label={t("analytics.onlyParticipated")}
                   />
-                </>
-              ) : null}
-
-              {mode === "compare" ? (
-                <>
-                  <MultiSelect
-                    clearable
-                    searchable
-                    placeholder={t("analytics.selectMembers")}
-                    aria-label="Select compare analytics members"
-                    value={selectedUsers}
-                    onChange={(values) => onSelectedUsersChange(values.slice(0, 5))}
-                    data={selectableUserIds.map((userId) => ({ value: userId, label: userId }))}
-                    maxValues={5}
-                    styles={{ pill: { display: "none" } }}
-                    renderOption={({ option, checked }) => (
-                      <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
-                        <Group gap={8}>
-                          <Avatar size={20} radius="xl">{option.label.slice(0, 2).toUpperCase()}</Avatar>
-                          <span style={{ color: checked ? "var(--infini-color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
-                        </Group>
-                        {checked ? <span style={{ color: "var(--infini-color-primary, #3b82f6)" }}>✓</span> : null}
-                      </Group>
-                    )}
-                  />
-                  {selectedUsers.length >= selectionSoftCap ? (
-                    <Text size="xs" c="dimmed">{t("analytics.selectionSoftCap", { count: selectionSoftCap })}</Text>
-                  ) : null}
                 </>
               ) : null}
 
@@ -382,8 +352,8 @@ export function GuildWarAnalyticsTab({
                   styles={{ pill: { display: "none" } }}
                   renderOption={({ option, checked }) => (
                     <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
-                      <span style={{ color: checked ? "var(--infini-color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
-                      {checked ? <span style={{ color: "var(--infini-color-primary, #3b82f6)" }}>✓</span> : null}
+                      <span style={{ color: checked ? "var(--color-primary, #3b82f6)" : undefined, fontWeight: checked ? 600 : 400 }}>{option.label}</span>
+                      {checked ? <span style={{ color: "var(--color-primary, #3b82f6)" }}>✓</span> : null}
                     </Group>
                   )}
                 />

@@ -58,7 +58,7 @@ export function UserProfileDropdown({ user, onLogout, compact = false }: UserPro
           {t("profile.menu.settings")}
         </InfiniMenu.Item>
         <InfiniMenu.Divider />
-        <InfiniMenu.Item className="infini-menu-item--danger" color="infini-danger" leftSection={<LogoutOutlined />} onClick={() => void onLogout()}>
+        <InfiniMenu.Item className="infini-menu-item--danger" color="red" leftSection={<LogoutOutlined />} onClick={() => void onLogout()}>
           {t("action.logout")}
         </InfiniMenu.Item>
       </InfiniMenu.Dropdown>

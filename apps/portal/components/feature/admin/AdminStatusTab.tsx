@@ -13,14 +13,14 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { ProgressButton } from "@infini-dev-kit/react";
+import { ProgressButton } from "@portal/components/effects";
 import { PortalCard } from "../../shared/PortalCard";
 import { IconClipboard, IconPlayerPlay, IconTrash } from "@tabler/icons-react";
 import { useCallback, useRef, useState } from "react";
 import { useClipboard } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
-import { hasRoleAtLeast } from "@guild/shared";
 import { useAuthStore } from "../../../stores/auth";
+import { userCanViewStatus } from "../../../utils/permissions";
 import { formatDateTime } from "../../../utils/admin";
 import { AdminSystemSection } from "./AdminSystemSection";
 
@@ -86,7 +86,6 @@ type TestRunContext = {
   warHistoryId: string | null;
   warTeamId: string | null;
   warMemberUserId: string | null;
-  warTemplateId: string | null;
   wikiCategoryId: string | null;
   wikiArticleId: string | null;
   wikiArticleSlug: string | null;
@@ -107,7 +106,6 @@ type TestRunContext = {
   createdGalleryImageId: string | null;
   createdWikiCategoryId: string | null;
   createdWikiArticleId: string | null;
-  createdWarTemplateId: string | null;
   createdWarHistoryId: string | null;
   createdRoleId: string | null;
   /** Snapshot of target user's profile before modification, for cleanup restore */
@@ -145,7 +143,6 @@ function createInitialTestRunContext(): TestRunContext {
     warHistoryId: null,
     warTeamId: null,
     warMemberUserId: null,
-    warTemplateId: null,
     wikiCategoryId: null,
     wikiArticleId: null,
     wikiArticleSlug: null,
@@ -165,7 +162,6 @@ function createInitialTestRunContext(): TestRunContext {
     createdGalleryImageId: null,
     createdWikiCategoryId: null,
     createdWikiArticleId: null,
-    createdWarTemplateId: null,
     createdWarHistoryId: null,
     createdRoleId: null,
     targetProfileSnapshot: null,
@@ -370,10 +366,6 @@ const API_CATEGORIES: CategoryDef[] = [
       { label: "Post Teams", method: "POST", path: "/api/guild-war/post-teams" },
       { label: "Post Results", method: "POST", path: "/api/guild-war/post-results" },
       { label: "Export", method: "GET", path: "/api/guild-war/export?format=json" },
-      { label: "List Templates", method: "GET", path: "/api/guild-war/templates" },
-      { label: "Create Template", method: "POST", path: "/api/guild-war/templates" },
-      { label: "Apply Template", method: "POST", path: "/api/guild-war/templates/apply" },
-      { label: "Delete Template", method: "DELETE", path: "/api/guild-war/templates/:id" },
       { label: "War History", method: "GET", path: "/api/guild-war/history?page=1&limit=5" },
       { label: "History Detail", method: "GET", path: "/api/guild-war/history/:id" },
       { label: "Create History", method: "POST", path: "/api/guild-war/history" },
@@ -578,14 +570,6 @@ function resolveEndpointPath(endpoint: EndpointDef, context: TestRunContext): { 
     const next = replacePathParam(path, ":commentId", context.galleryCommentId);
     if (!next) {
       return { path, missing: "gallery comment id" };
-    }
-    path = next;
-  }
-
-  if (path.includes("/api/guild-war/templates/:id")) {
-    const next = replacePathParam(path, ":id", context.warTemplateId);
-    if (!next) {
-      return { path, missing: "guild war template id" };
     }
     path = next;
   }
@@ -882,29 +866,6 @@ function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext):
       return buildJsonRequest(path, {
         war_history_id: context.warHistoryId,
         platform: "discord",
-      });
-
-    case "POST /api/guild-war/templates":
-      if (!context.warEventId && !context.eventId && !context.createdEventId) {
-        return skipEndpoint(path, "Missing event id for war template create");
-      }
-      return buildJsonRequest(path, {
-        event_id: context.warEventId ?? context.eventId ?? context.createdEventId,
-        template_name: `[systemtest] api-template-${nowId}`,
-        description: "[systemtest] API test guild war template",
-        template_type: "structure",
-      });
-
-    case "POST /api/guild-war/templates/apply":
-      if (!context.warTemplateId) {
-        return skipEndpoint(path, "Missing war template id");
-      }
-      if (!context.warEventId && !context.eventId && !context.createdEventId) {
-        return skipEndpoint(path, "Missing event id for war template apply");
-      }
-      return buildJsonRequest(path, {
-        template_id: context.warTemplateId,
-        event_id: context.warEventId ?? context.eventId ?? context.createdEventId,
       });
 
     case "POST /api/guild-war/history":
@@ -1238,25 +1199,6 @@ function captureContextFromResponse(
     next.warHistoryId = id ?? next.warHistoryId;
     next.warEventId = readString(payload.event_id) ?? next.warEventId;
     next.createdWarHistoryId = id ?? next.createdWarHistoryId;
-    return next;
-  }
-
-  if (endpoint.path === "/api/guild-war/templates") {
-    if (Array.isArray(payload)) {
-      const firstTemplate = payload.find((item): item is Record<string, unknown> => isRecord(item));
-      next.warTemplateId = readString(firstTemplate?.id) ?? next.warTemplateId;
-    } else {
-      const id = readString(payload.id);
-      next.warTemplateId = id ?? next.warTemplateId;
-      if (endpoint.method === "POST") {
-        next.createdWarTemplateId = id ?? next.createdWarTemplateId;
-      }
-    }
-    return next;
-  }
-
-  if (endpoint.path === "/api/guild-war/templates/apply") {
-    next.warHistoryId = readString(payload.war_history_id) ?? next.warHistoryId;
     return next;
   }
 
@@ -1648,7 +1590,7 @@ export function AdminStatusTab({
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
   const user = useAuthStore((state) => state.user);
-  const isAdmin = Boolean(user && hasRoleAtLeast(user.role, "admin"));
+  const isAdmin = userCanViewStatus(user);
   const loadErrorMessage = tc("loadError");
   const heading = <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.status")}</Title>;
   const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
@@ -1769,10 +1711,6 @@ export function AdminStatusTab({
     }
     if (ctx.createdWikiCategoryId) {
       cleanupSteps.push({ label: "Cleanup: Wiki Category", method: "DELETE", path: `/api/wiki/categories/${encodeURIComponent(ctx.createdWikiCategoryId)}` });
-    }
-    // Guild war template
-    if (ctx.createdWarTemplateId) {
-      cleanupSteps.push({ label: "Cleanup: War Template", method: "DELETE", path: `/api/guild-war/templates/${encodeURIComponent(ctx.createdWarTemplateId)}` });
     }
     // Guild war history
     if (ctx.createdWarHistoryId) {
@@ -1908,7 +1846,7 @@ export function AdminStatusTab({
     return (
       <Stack gap={12}>
         {heading}
-        <Alert color="infini-warning" title={t("adminOnly")} />
+        <Alert color="yellow" title={t("adminOnly")} />
       </Stack>
     );
   }

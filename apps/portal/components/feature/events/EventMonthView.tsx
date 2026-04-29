@@ -6,7 +6,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import "./EventMonthView.css";
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 
 function buildAvailabilityOverlayStyle(intensity: number, maxCount: number): CSSProperties | undefined {
   if (!maxCount || intensity <= 0) {
@@ -15,7 +15,7 @@ function buildAvailabilityOverlayStyle(intensity: number, maxCount: number): CSS
   const ratio = Math.min(1, intensity / maxCount);
   const strength = Math.round(10 + ratio * 72);
   return {
-    background: `color-mix(in srgb, var(--infini-color-success, #22c55e) ${strength}%, transparent)`,
+    background: `color-mix(in srgb, var(--color-success, #22c55e) ${strength}%, transparent)`,
   };
 }
 
@@ -30,6 +30,7 @@ type MonthCalendarProps = {
 };
 
 function MonthCalendar({ onSelect, cellRender, value }: MonthCalendarProps) {
+  const { t } = useTranslation("events");
   const active = value ?? new Date();
   const today = new Date();
   const start = startOfMonthGrid(active);
@@ -38,9 +39,9 @@ function MonthCalendar({ onSelect, cellRender, value }: MonthCalendarProps) {
   return (
     <div className="month-calendar">
       <div className="month-calendar__header">
-        {WEEKDAYS.map((day) => (
-          <div key={day} className="month-calendar__weekday">
-            {day}
+        {WEEKDAY_KEYS.map((key) => (
+          <div key={key} className="month-calendar__weekday">
+            {t(key)}
           </div>
         ))}
       </div>
@@ -180,7 +181,7 @@ export function EventMonthView({
                 {dayEvents.length > 3 ? (
                   <Popover withinPortal>
                     <Popover.Target>
-                      <Badge color="infini-primary" variant="light" size="xs" style={{ cursor: "pointer" }}>
+                      <Badge color="blue" variant="light" size="xs" style={{ cursor: "pointer" }}>
                         +{dayEvents.length - 3} {t("month.more")}
                       </Badge>
                     </Popover.Target>

@@ -35,7 +35,7 @@ export const eventSchema = z.object({
 export const createEventSchema = z.object({
   type: z.enum(EVENT_TYPES),
   title: z.string().min(1).max(200),
-  description: z.string().optional(),
+  description: z.string().max(5000).optional(),
   start_at: z.string().datetime(),
   end_at: z.string().datetime().optional(),
   capacity: z.number().int().positive().optional(),
@@ -79,7 +79,7 @@ export const recurringTemplateSchema = z.object({
 export const createTemplateSchema = z.object({
   type: z.enum(EVENT_TYPES),
   title: z.string().min(1).max(200),
-  description: z.string().optional(),
+  description: z.string().max(5000).optional(),
   start_at: z.string().datetime(),
   end_at: z.string().datetime().optional(),
   capacity: z.number().int().positive().optional(),

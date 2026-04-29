@@ -8,7 +8,7 @@ function showErrorToast(text: string) {
   const delivered = portalToast({ title: text, status: "error" });
   if (!delivered) {
     notifications.show({
-      color: "infini-danger",
+      color: "red",
       message: text,
       autoClose: 6000,
       withCloseButton: true,

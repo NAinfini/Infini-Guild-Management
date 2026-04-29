@@ -1,11 +1,15 @@
 ﻿import { z } from "zod";
 import { CLASS_NAMES } from "../constants/classes";
-import { ROLES } from "../constants/roles";
+import { PERMISSIONS } from "../constants/roles";
+
+const permissionKeySchema = z.enum(PERMISSIONS);
 
 export const userSchema = z.object({
   id: z.string(),
   username: z.string(),
-  role: z.enum(ROLES),
+  role: z.string().min(1),
+  role_level: z.number().int().min(0).max(3),
+  permissions: z.record(permissionKeySchema, z.boolean()),
   is_active: z.boolean(),
   deleted_at: z.string().nullable(),
   created_at: z.string(),
@@ -15,11 +19,11 @@ export const userSchema = z.object({
 export const memberProfileSchema = z.object({
   id: z.string(),
   user_id: z.string(),
-  wechat_name: z.string().nullable(),
+  wechat_name: z.string().max(100).nullable(),
   power: z.number().int().min(0),
   classes: z.array(z.enum(CLASS_NAMES)),
-  title_html: z.string().nullable(),
-  bio: z.string().nullable(),
+  title_html: z.string().max(2000).nullable(),
+  bio: z.string().max(2000).nullable(),
   images: z.array(z.string()).max(10),
   audio_key: z.string().nullable(),
   video_urls: z.array(z.string().url()).max(10),
@@ -28,7 +32,7 @@ export const memberProfileSchema = z.object({
   vacation_end: z.string().nullable(),
   discord_id: z.string().nullable(),
   discord_reminder_opt_out: z.boolean(),
-  notes: z.string().nullable(),
+  notes: z.string().max(2000).nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -51,7 +55,7 @@ export const updateProfileSchema = memberProfileSchema
   .partial();
 
 export const adminUpdateProfileSchema = updateProfileSchema.extend({
-  role: z.enum(ROLES).optional(),
+  role: z.string().min(1).max(80).optional(),
   is_active: z.boolean().optional(),
-  notes: z.string().nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
 });

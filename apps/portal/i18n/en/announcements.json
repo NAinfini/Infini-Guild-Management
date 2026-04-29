@@ -77,5 +77,9 @@
   "draftTitle": "Untitled Announcement",
   "empty": "No announcements",
   "empty.filtered": "No announcements match your filters",
-  "validation.schedulePast": "Scheduled publish time must be in the future."
+  "confirm.discardUnsaved.title": "Discard unsaved changes?",
+  "confirm.discardUnsaved.description": "Your current announcement edits will be lost.",
+  "validation.schedulePast": "Scheduled publish time must be in the future.",
+  "validation.expiresBeforePublish": "Expiry time must be after the publish time.",
+  "action.loadMore": "Load More"
 }

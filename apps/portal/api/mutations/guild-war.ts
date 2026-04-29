@@ -1,13 +1,10 @@
 import {
-  applyWarTemplateSchema,
   createWarHistorySchema,
-  createWarTemplateSchema,
   saveTeamsPayloadSchema,
   updateMemberStatsSchema,
   updateWarHistorySchema,
   type WarHistory,
   type WarTeamMember,
-  type WarTemplate,
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
@@ -16,14 +13,13 @@ export type SaveTeamsPayload = z.input<typeof saveTeamsPayloadSchema>;
 export type CreateGuildWarHistoryPayload = z.input<typeof createWarHistorySchema>;
 export type UpdateGuildWarHistoryPayload = z.input<typeof updateWarHistorySchema>;
 export type UpdateGuildWarMemberStatsPayload = z.input<typeof updateMemberStatsSchema>;
-export type CreateGuildWarTemplatePayload = z.input<typeof createWarTemplateSchema>;
-export type ApplyGuildWarTemplatePayload = z.input<typeof applyWarTemplateSchema>;
 
-export function saveGuildWarTeams(payload: SaveTeamsPayload): Promise<WarHistory> {
+export function saveGuildWarTeams(payload: SaveTeamsPayload, etag?: string): Promise<WarHistory> {
   const bodyJson = saveTeamsPayloadSchema.parse(payload);
   return apiRequest<WarHistory>("/api/guild-war/save-teams", {
     method: "POST",
     bodyJson,
+    ifMatch: etag,
   });
 }
 
@@ -118,32 +114,15 @@ export function batchUpdateGuildWarMemberStats(
   });
 }
 
-export function createGuildWarTemplate(payload: CreateGuildWarTemplatePayload): Promise<WarTemplate> {
-  const bodyJson = createWarTemplateSchema.parse(payload);
-  return apiRequest<WarTemplate>("/api/guild-war/templates", {
-    method: "POST",
-    bodyJson,
-  });
-}
-
-export function applyGuildWarTemplate(
-  payload: ApplyGuildWarTemplatePayload,
-): Promise<{ ok: true; war_history_id: string }> {
-  const bodyJson = applyWarTemplateSchema.parse(payload);
-  return apiRequest<{ ok: true; war_history_id: string }>("/api/guild-war/templates/apply", {
-    method: "POST",
-    bodyJson,
-  });
-}
-
 export function deleteGuildWarHistory(id: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/guild-war/history/${id}`, {
     method: "DELETE",
   });
 }
 
-export function deleteGuildWarTemplate(id: string): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>(`/api/guild-war/templates/${id}`, {
-    method: "DELETE",
+export function batchDeleteGuildWarHistory(ids: string[]): Promise<{ ok: true; deleted: number }> {
+  return apiRequest<{ ok: true; deleted: number }>("/api/guild-war/history/batch-delete", {
+    method: "POST",
+    bodyJson: { ids },
   });
 }

@@ -33,6 +33,12 @@ export function isApiRequestError(error: unknown): error is ApiRequestError {
 
 const INTERNAL_SERVER_MESSAGE_PATTERN = /D1_ERROR|SQLITE_ERROR|no such table|no such column/i;
 
+function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 30000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(id));
+}
+
 function tCommon(key: string, fallback: string): string {
   return i18n.t(`common:${key}`, { defaultValue: fallback });
 }
@@ -82,13 +88,18 @@ export async function apiRequest<TResponse>(
 
   let response: Response;
   try {
-    response = await fetch(input, {
+    response = await fetchWithTimeout(input, {
       ...init,
       credentials: "include",
       body: init.bodyJson ? JSON.stringify(init.bodyJson) : init.body,
       headers,
     });
-  } catch {
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiRequestError(tCommon("errors.requestTimeout", "Request timed out. Please try again."), {
+        status: 0,
+      });
+    }
     if (typeof window !== "undefined") {
       window.dispatchEvent(
         new CustomEvent("guild-api-network", {
@@ -191,13 +202,18 @@ export async function apiDownload(
 
   let response: Response;
   try {
-    response = await fetch(input, {
+    response = await fetchWithTimeout(input, {
       ...init,
       method: init.method ?? "GET",
       credentials: "include",
       headers,
     });
-  } catch {
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiRequestError(tCommon("errors.requestTimeout", "Request timed out. Please try again."), {
+        status: 0,
+      });
+    }
     if (typeof window !== "undefined") {
       window.dispatchEvent(
         new CustomEvent("guild-api-network", {

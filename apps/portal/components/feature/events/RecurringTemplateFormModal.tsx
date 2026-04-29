@@ -137,7 +137,7 @@ export function RecurringTemplateFormModal({
   const handleSave = useCallback(() => {
     const startIso = toIso(startAt);
     if (!startIso || !title.trim()) {
-      notifications.show({ color: "infini-danger", message: t("recurring.message.validationFailed") });
+      notifications.show({ color: "red", message: t("recurring.message.validationFailed") });
       return;
     }
 
@@ -244,7 +244,7 @@ export function RecurringTemplateFormModal({
         />
 
         {/* ── Recurrence settings ── */}
-        <Stack gap={14} style={{ padding: "14px", borderRadius: "8px", background: "color-mix(in srgb, var(--infini-color-primary, #3b82f6) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--infini-color-primary, #3b82f6) 15%, transparent)" }}>
+        <Stack gap={14} style={{ padding: "14px", borderRadius: "8px", background: "color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent)", border: "1px solid color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent)" }}>
           {/* ── Frequency: "Every [N] [day/week/month]" ── */}
           <Group align="flex-end" gap={8}>
             <Text size="sm" fw={500} pb={6}>{t("field.interval")}</Text>
@@ -306,9 +306,9 @@ export function RecurringTemplateFormModal({
                         width: 36,
                         height: 36,
                         borderRadius: "50%",
-                        border: isSelected ? "2px solid var(--infini-color-primary, #3b82f6)" : "1px solid color-mix(in srgb, var(--infini-color-text, #111827) 20%, transparent)",
-                        background: isSelected ? "var(--infini-color-primary, #3b82f6)" : "transparent",
-                        color: isSelected ? "#fff" : "var(--infini-color-text, #111827)",
+                        border: isSelected ? "2px solid var(--color-primary, #3b82f6)" : "1px solid color-mix(in srgb, var(--color-text, #111827) 20%, transparent)",
+                        background: isSelected ? "var(--color-primary, #3b82f6)" : "transparent",
+                        color: isSelected ? "#fff" : "var(--color-text, #111827)",
                         cursor: "pointer",
                         fontSize: 13,
                         fontWeight: isSelected ? 600 : 400,

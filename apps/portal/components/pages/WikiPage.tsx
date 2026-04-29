@@ -1,4 +1,4 @@
-import { hasRoleAtLeast } from "@guild/shared";
+import { type WikiArticle } from "@guild/shared";
 import { Button, Drawer, Group, Skeleton, Stack, Text, TextInput, VisuallyHidden } from "@mantine/core";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
@@ -10,7 +10,7 @@ import { useDebouncedValue, useDisclosure, useMediaQuery } from "@mantine/hooks"
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { format } from "date-fns";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   fetchWikiArticleBySlug,
@@ -22,8 +22,9 @@ import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useWikiArticleEditor } from "../../hooks/useWikiArticleEditor";
 import { useWikiCategoryEditor } from "../../hooks/useWikiCategoryEditor";
-import { queryKeys } from "../../services/PortalQueryKeys";
+import { queryKeys } from "../../api/query-keys";
 import { useAuthStore } from "../../stores/auth";
+import { userHasAnyPermission } from "../../utils/permissions";
 import { WikiArticleEditorCard } from "../feature/wiki/WikiArticleEditorCard";
 import { WikiArticleListCard } from "../feature/wiki/WikiArticleListCard";
 import { WikiCategoryEditorCard } from "../feature/wiki/WikiCategoryEditorCard";
@@ -48,7 +49,7 @@ export function WikiPage() {
   const isMobile = !isDesktop;
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
-  const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
+  const isModerator = userHasAnyPermission(user, ["wiki.articles.create", "wiki.articles.edit", "wiki.articles.archive", "wiki.categories.manage"]);
   const canEdit = isModerator && !isExternalView;
 
   const [search, setSearch] = useState("");
@@ -64,6 +65,11 @@ export function WikiPage() {
   const [showEditorPane, editorPaneHandlers] = useDisclosure(false);
   const isEditorPaneVisible = canEdit && showEditorPane;
 
+  const [articlesPage, setArticlesPage] = useState(1);
+  const accumulatedArticlesRef = useRef<WikiArticle[]>([]);
+  const [accumulatedArticles, setAccumulatedArticles] = useState<WikiArticle[]>([]);
+  const [articlesTotal, setArticlesTotal] = useState(0);
+
   const categoriesQuery = useQuery({
     queryKey: queryKeys.wiki.categories(),
     queryFn: fetchWikiCategories,
@@ -74,11 +80,11 @@ export function WikiPage() {
   const singleSelectedCategoryId = selectedCategoryIds.length === 1 ? selectedCategoryIds[0] : undefined;
 
   const articlesQuery = useQuery({
-    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, archivedOnly ? "archived" : "active"),
+    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, archivedOnly ? "archived" : "active", articlesPage),
     queryFn: () =>
       fetchWikiArticles({
-        page: 1,
-        limit: 100,
+        page: articlesPage,
+        limit: 50,
         category_id: singleSelectedCategoryId,
         search: debouncedSearch || undefined,
         archived: archivedOnly,
@@ -93,10 +99,36 @@ export function WikiPage() {
 
   const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
   const categoriesById = useMemo(() => new Map(categories.map((item) => [item.id, item])), [categories]);
+
+  // Reset accumulated articles when filter params change
+  useEffect(() => {
+    accumulatedArticlesRef.current = [];
+    setAccumulatedArticles([]);
+    setArticlesTotal(0);
+    setArticlesPage(1);
+   
+  }, [selectedCategoryFilterKey, debouncedSearch, archivedOnly]);
+
+  // Accumulate articles across pages
+  useEffect(() => {
+    if (!articlesQuery.data) return;
+    const newItems = articlesQuery.data.data;
+    if (articlesPage === 1) {
+      accumulatedArticlesRef.current = newItems;
+    } else {
+      const existingIds = new Set(accumulatedArticlesRef.current.map((item) => item.id));
+      const deduplicated = newItems.filter((item) => !existingIds.has(item.id));
+      accumulatedArticlesRef.current = [...accumulatedArticlesRef.current, ...deduplicated];
+    }
+    setAccumulatedArticles([...accumulatedArticlesRef.current]);
+    setArticlesTotal(articlesQuery.data.total);
+  }, [articlesQuery.data, articlesPage]);
+
+  const articlesHasMore = accumulatedArticles.length < articlesTotal;
+
   const articles = useMemo(() => {
-    const rows = articlesQuery.data?.data ?? [];
     const selectedSet = new Set(selectedCategoryIds);
-    return rows.filter((item) => {
+    return accumulatedArticles.filter((item) => {
       if (selectedCategoryIds.length > 0 && !selectedSet.has(item.category_id)) {
         return false;
       }
@@ -105,7 +137,7 @@ export function WikiPage() {
       }
       return true;
     });
-  }, [articlesQuery.data?.data, pinnedOnly, selectedCategoryIds]);
+  }, [accumulatedArticles, pinnedOnly, selectedCategoryIds]);
   const selectedArticle = detailQuery.data ?? null;
   const articleEditor = useWikiArticleEditor({
     canEdit,
@@ -207,6 +239,23 @@ export function WikiPage() {
   };
 
   const handleExitArticleEditor = () => {
+    if (articleEditor.isDirty) {
+      modals.openConfirmModal({
+        title: t("confirm.discardArticle.title"),
+        children: t("confirm.discardArticle.description"),
+        centered: true,
+        confirmProps: { color: "red" },
+        labels: {
+          cancel: t("common:action.cancel"),
+          confirm: t("common:action.delete"),
+        },
+        onConfirm: () => {
+          articleEditor.exitEditor();
+          editorPaneHandlers.close();
+        },
+      });
+      return;
+    }
     articleEditor.exitEditor();
     editorPaneHandlers.close();
   };
@@ -228,7 +277,7 @@ export function WikiPage() {
       title: t("confirm.deleteCategory.title"),
       children: t("confirm.deleteCategory.description", { name: category.name }),
       centered: true,
-      confirmProps: { color: "infini-danger" },
+      confirmProps: { color: "red" },
       labels: {
         cancel: t("common:action.cancel"),
         confirm: t("common:action.delete"),
@@ -272,8 +321,8 @@ export function WikiPage() {
           isCreatingArticle={articleEditor.isCreatingArticle}
           selectedArticle={selectedArticle}
           selectedCategory={selectedCategory}
-          isLoading={false}
-          isError={false}
+          isLoading={detailQuery.isLoading}
+          isError={detailQuery.isError}
           warningMessage={t("common:loadError")}
           articleTitle={articleEditor.articleTitle}
           articleBody={articleEditor.articleBody}
@@ -349,10 +398,10 @@ export function WikiPage() {
                   <Text size="sm">{selectedCategory?.name ?? t("articleEditor.categoryFallback")}</Text>
                 </Group>
                 <Text c="dimmed" size="sm">
-                  {t("articleEditor.lastUpdatedBy", { user: selectedArticle.created_by, date: formatDateTime(selectedArticle.updated_at) })}
+                  {t("articleEditor.lastUpdatedBy", { user: selectedArticle.created_by.slice(0, 8), date: formatDateTime(selectedArticle.updated_at) })}
                 </Text>
                 {selectedArticle.archived_at ? (
-                  <Text c="infini-warning" size="sm">
+                  <Text c="yellow" size="sm">
                     {t("articleEditor.archivedAt", { date: formatDateTime(selectedArticle.archived_at) })}
                   </Text>
                 ) : null}
@@ -432,13 +481,16 @@ export function WikiPage() {
               categoryOptions={categoryOptions}
               selectedCategoryIds={selectedCategoryIds}
               onCategoryFilterChange={handleCategoryFilterChange}
-              isLoading={false}
-              isError={false}
+              isLoading={articlesQuery.isLoading && articlesPage === 1}
+              isError={articlesQuery.isError}
               warningMessage={t("common:loadError")}
               articles={articles}
               selectedSlug={selectedSlug}
               emptyTitle={t("empty")}
               onSelectArticle={handleSelectArticle}
+              hasMore={articlesHasMore}
+              isLoadingMore={articlesQuery.isFetching && articlesPage > 1}
+              onLoadMore={() => setArticlesPage((p) => p + 1)}
             />
           </Stack>
         ) : null}

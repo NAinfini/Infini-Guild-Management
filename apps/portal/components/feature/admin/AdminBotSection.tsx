@@ -2,8 +2,8 @@ import { Alert, Badge, Button, Divider, Group, Loader, Select, Skeleton, SimpleG
 import { PortalCard } from "../../shared/PortalCard";
 import { IconDeviceFloppy, IconRefresh, IconSend } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
-import { hasRoleAtLeast } from "@guild/shared";
 import { useAuthStore } from "../../../stores/auth";
+import { userCanManageBot } from "../../../utils/permissions";
 
 type Option = {
   value: string;
@@ -89,7 +89,7 @@ export function AdminBotSection({
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
   const user = useAuthStore((state) => state.user);
-  const isAdmin = Boolean(user && hasRoleAtLeast(user.role, "admin"));
+  const isAdmin = userCanManageBot(user);
   const loadErrorMessage = tc("loadError");
   const heading = <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.bot")}</Title>;
   const saveLabel = t("bot.save");
@@ -97,7 +97,7 @@ export function AdminBotSection({
     return (
       <Stack gap={12}>
         {heading}
-        <Alert color="infini-warning" title={t("adminOnly")} />
+        <Alert color="yellow" title={t("adminOnly")} />
       </Stack>
     );
   }
@@ -106,7 +106,7 @@ export function AdminBotSection({
     <Stack gap={16}>
       {heading}
       {botSettingsLoading ? <Stack gap={8}><Skeleton height={28} width="30%" />{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={32} />)}</Stack> : null}
-      {botSettingsError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
+      {botSettingsError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
       {!botSettingsLoading && !botSettingsError ? (
         <SimpleGrid cols={{ base: 1, md: 2 }} spacing={16}>
           {/* ── Discord ── */}
@@ -163,7 +163,7 @@ export function AdminBotSection({
                 ) : null}
               </Group>
 
-              {discordChannelsError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
+              {discordChannelsError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
 
               <Divider label={t("bot.section.channels")} labelPosition="left" />
 

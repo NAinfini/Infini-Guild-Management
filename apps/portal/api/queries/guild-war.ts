@@ -1,10 +1,11 @@
-import type { GuildWarActiveResponse, PaginatedResponse, WarHistory, WarTemplate } from "@guild/shared";
+import type { GuildWarActiveResponse, PaginatedResponse, WarHistory } from "@guild/shared";
 import { apiDownload, apiRequest } from "../client";
 
 type WarTeamMember = {
   id: string;
   war_team_id: string;
   user_id: string;
+  username?: string;
   role_tag: string | null;
   sort_order: number;
   kills: number | null;
@@ -117,13 +118,6 @@ export function fetchGuildWarAnalytics(params: {
   return apiRequest<GuildWarAnalyticsResponse>(
     `/api/guild-war/analytics${query.size > 0 ? `?${query.toString()}` : ""}`,
   );
-}
-
-export function fetchGuildWarTemplates(eventId?: string): Promise<WarTemplate[]> {
-  const query = new URLSearchParams();
-  if (eventId) query.set("event_id", eventId);
-
-  return apiRequest<WarTemplate[]>(`/api/guild-war/templates${query.size > 0 ? `?${query.toString()}` : ""}`);
 }
 
 function parseFilenameFromContentDisposition(headerValue: string | null, fallback: string): string {

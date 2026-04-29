@@ -1,4 +1,4 @@
-import type { Permission } from "@guild/shared";
+import type { Permission, User } from "@guild/shared";
 import type { AdminRole } from "@guild/shared";
 
 export function hasAnyPermission(
@@ -36,4 +36,40 @@ export function canViewStatus(roles: AdminRole[], roleId: string): boolean {
 
 export function canExportAudit(roles: AdminRole[], roleId: string): boolean {
   return hasAnyPermission(roles, roleId, ["admin.audit.export"]);
+}
+
+export function userHasPermission(user: User | null, permission: Permission): boolean {
+  return user?.permissions[permission] === true;
+}
+
+export function userHasAnyPermission(user: User | null, permissions: Permission[]): boolean {
+  if (!user) return false;
+  return permissions.some((p) => user.permissions[p] === true);
+}
+
+export function userCanAccessAdmin(user: User | null): boolean {
+  return userHasAnyPermission(user, [
+    "admin.users.view",
+    "admin.invite.view",
+    "admin.audit.view",
+    "admin.bot.view",
+    "admin.status.view",
+    "admin.roles.manage",
+  ]);
+}
+
+export function userCanManageRoles(user: User | null): boolean {
+  return userHasPermission(user, "admin.roles.manage");
+}
+
+export function userCanManageBot(user: User | null): boolean {
+  return userHasPermission(user, "admin.bot.manage");
+}
+
+export function userCanViewStatus(user: User | null): boolean {
+  return userHasPermission(user, "admin.status.view");
+}
+
+export function userCanExportAudit(user: User | null): boolean {
+  return userHasPermission(user, "admin.audit.export");
 }

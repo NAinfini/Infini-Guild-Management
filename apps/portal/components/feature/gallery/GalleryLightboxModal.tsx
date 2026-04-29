@@ -84,7 +84,7 @@ export function GalleryLightboxModal({
                 />
               </div>
             ) : (
-              <Alert color="infini-primary" title={fieldR2ObjectLabel}>
+              <Alert color="blue" title={fieldR2ObjectLabel}>
                 {item.url}
               </Alert>
             )

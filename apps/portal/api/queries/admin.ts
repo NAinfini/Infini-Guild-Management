@@ -158,14 +158,10 @@ export function fetchAdminBotSettings(): Promise<BotSettings> {
   return apiRequest<BotSettings>("/api/admin/bot-settings");
 }
 
-export function fetchAdminDiscordChannels(guildId?: string): Promise<{ guild_id: string; channels: AdminDiscordChannel[] }> {
-  const query = new URLSearchParams();
-  if (guildId && guildId.trim()) {
-    query.set("guild_id", guildId.trim());
-  }
-  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+export function fetchAdminDiscordChannels(guildId: string): Promise<{ guild_id: string; channels: AdminDiscordChannel[] }> {
+  const query = new URLSearchParams({ guild_id: guildId.trim() });
   return apiRequest<{ guild_id: string; channels: AdminDiscordChannel[] }>(
-    `/api/admin/bot-settings/discord/channels${suffix}`,
+    `/api/admin/bot-settings/discord/channels?${query.toString()}`,
   );
 }
 

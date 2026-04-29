@@ -21,7 +21,6 @@ const serviceMocks = vi.hoisted(() => ({
   fetchGuildWarActive: vi.fn(),
   fetchGuildWarHistory: vi.fn(),
   fetchGuildWarHistoryDetail: vi.fn(),
-  fetchGuildWarTemplates: vi.fn(),
   fetchRoles: vi.fn(),
   fetchTemplatesList: vi.fn(),
   fetchUserDetail: vi.fn(),
@@ -38,7 +37,6 @@ vi.mock("../../services/GuildWarService", () => ({
   fetchGuildWarActive: serviceMocks.fetchGuildWarActive,
   fetchGuildWarHistory: serviceMocks.fetchGuildWarHistory,
   fetchGuildWarHistoryDetail: serviceMocks.fetchGuildWarHistoryDetail,
-  fetchGuildWarTemplates: serviceMocks.fetchGuildWarTemplates,
 }));
 
 vi.mock("../../services/UserService", () => ({
@@ -97,7 +95,7 @@ describe("portal data hooks", () => {
 
     expect(serviceMocks.fetchEventsList).toHaveBeenCalledWith({
       page: 1,
-      limit: 100,
+      limit: 50,
       type: "social",
       archived: false,
     });
@@ -108,7 +106,6 @@ describe("portal data hooks", () => {
     serviceMocks.fetchEventsList.mockResolvedValueOnce({ data: [] });
     serviceMocks.fetchEventDetail.mockResolvedValueOnce({ id: "event-1", title: "Guild War", participants: [], attachments: [] });
     serviceMocks.fetchGuildWarActive.mockResolvedValueOnce({ teams: [], pool: [], etag: "etag-1" });
-    serviceMocks.fetchGuildWarTemplates.mockResolvedValueOnce([]);
     serviceMocks.fetchGuildWarHistory.mockResolvedValueOnce({ data: [] });
     serviceMocks.fetchGuildWarHistoryDetail.mockResolvedValueOnce({ id: "history-1", teams: [], pool: [], member_stats: [] });
 
@@ -119,6 +116,8 @@ describe("portal data hooks", () => {
           selectedHistoryId: "history-1",
           historyDateFrom: "2026-03-01",
           historyDateTo: "2026-03-08",
+          historyPage: 1,
+          historyPerPage: 20,
         }),
       { wrapper: createWrapper() },
     );
@@ -127,7 +126,6 @@ describe("portal data hooks", () => {
       expect(result.current.warEventsQuery.isSuccess).toBe(true);
       expect(result.current.selectedEventDetailQuery.isSuccess).toBe(true);
       expect(result.current.activeQuery.isSuccess).toBe(true);
-      expect(result.current.templatesQuery.isSuccess).toBe(true);
       expect(result.current.historyQuery.isSuccess).toBe(true);
       expect(result.current.historyDetailQuery.isSuccess).toBe(true);
     });
@@ -140,10 +138,9 @@ describe("portal data hooks", () => {
     });
     expect(serviceMocks.fetchEventDetail).toHaveBeenCalledWith("event-1");
     expect(serviceMocks.fetchGuildWarActive).toHaveBeenCalledWith("event-1");
-    expect(serviceMocks.fetchGuildWarTemplates).toHaveBeenCalledWith("event-1");
     expect(serviceMocks.fetchGuildWarHistory).toHaveBeenCalledWith({
       page: 1,
-      limit: 50,
+      limit: 20,
       date_from: "2026-03-01T00:00:00.000Z",
       date_to: "2026-03-08T23:59:59.999Z",
     });
@@ -180,7 +177,7 @@ describe("portal data hooks", () => {
       () =>
         useAdminData({
           isModerator: true,
-          isAdmin: "admin",
+          userRole: "admin",
           auditPage: 2,
           auditSearch: "raid",
           auditDateFrom: "2026-03-01",

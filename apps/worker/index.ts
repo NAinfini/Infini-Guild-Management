@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { runAnnouncementPublishCron } from "./crons/announcement-publish";
+import { runAnnouncementPublishCron, runAnnouncementExpiryCron } from "./crons/announcement-publish";
 import { runAuditArchiveCron } from "./crons/audit-archive";
 import { runBotReminderCron } from "./crons/bot-reminder";
 import { runEventAutoArchiveCron } from "./crons/event-auto-archive";
@@ -46,6 +46,11 @@ const authRateLimit = createRateLimitMiddleware({
   maxRequests: 5,
   windowMs: 60_000,
 });
+const checkUsernameRateLimit = createRateLimitMiddleware({
+  keyPrefix: "auth-check",
+  maxRequests: 15,
+  windowMs: 60_000,
+});
 const mutationRateLimit = createRateLimitMiddleware({
   keyPrefix: "mutation",
   maxRequests: 80,
@@ -56,9 +61,23 @@ const uploadRateLimit = createRateLimitMiddleware({
   maxRequests: 20,
   windowMs: 60_000,
 });
+const credentialChangeRateLimit = createRateLimitMiddleware({
+  keyPrefix: "cred-change",
+  maxRequests: 5,
+  windowMs: 60_000,
+});
+const readRateLimit = createRateLimitMiddleware({
+  keyPrefix: "read",
+  maxRequests: 30,
+  windowMs: 60_000,
+});
 
 function isMutationMethod(method: string): boolean {
   return method === "POST" || method === "PATCH" || method === "DELETE";
+}
+
+function isCredentialChangePath(path: string): boolean {
+  return path.endsWith("/change-password") || path.endsWith("/change-username");
 }
 
 function isUploadPath(path: string): boolean {
@@ -89,8 +108,8 @@ app.use(
   cors({
     origin: (origin, c) => {
       const allowedOrigin = c.env.PORTAL_ORIGIN;
-      if (!allowedOrigin) return "";
-      return origin === allowedOrigin ? origin : "";
+      if (!allowedOrigin || origin !== allowedOrigin) return "";
+      return origin;
     },
     allowHeaders: ["Content-Type", "If-None-Match", "If-Match", "X-Signature", "X-Timestamp", "X-Request-Id", "X-Requested-With"],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
@@ -102,7 +121,10 @@ app.use("*", securityHeadersMiddleware);
 
 app.use("/api/*", async (c, next) => {
   const portalOrigin = c.env.PORTAL_ORIGIN;
-  if (portalOrigin && isMutationMethod(c.req.method)) {
+  if (isMutationMethod(c.req.method)) {
+    if (!portalOrigin) {
+      return c.json({ error_code: "FORBIDDEN", message: "Server misconfigured: PORTAL_ORIGIN not set", request_id: c.get("requestId") }, 403);
+    }
     const origin = c.req.header("Origin");
     if (origin && origin !== portalOrigin) {
       return c.json({ error_code: "FORBIDDEN", message: "Origin not allowed", request_id: c.get("requestId") }, 403);
@@ -119,11 +141,23 @@ app.onError((error, c) => handleAppError(error, c));
 app.use("/api/*", etagMiddleware);
 app.use("/api/auth/login", authRateLimit);
 app.use("/api/auth/register/*", authRateLimit);
-app.use("/api/auth/check-username", authRateLimit);
+app.use("/api/auth/check-username", checkUsernameRateLimit);
+app.use("/api/users", async (c, next) => {
+  if (c.req.method === "GET") {
+    await readRateLimit(c, next);
+    return;
+  }
+  await next();
+});
 app.use("/api/admin/*", sessionMiddleware);
 app.use("/api/*", async (c, next) => {
   if (c.req.method === "POST" && isUploadPath(c.req.path)) {
     await uploadRateLimit(c, next);
+    return;
+  }
+
+  if (c.req.method === "POST" && isCredentialChangePath(c.req.path)) {
+    await credentialChangeRateLimit(c, next);
     return;
   }
 
@@ -198,6 +232,7 @@ export default {
 
     if (event.cron === "*/15 * * * *") {
       tasks.push(runAnnouncementPublishCron(env));
+      tasks.push(runAnnouncementExpiryCron(env));
       tasks.push(runBotReminderCron(env));
       tasks.push(runEventAutoArchiveCron(env));
     }

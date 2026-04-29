@@ -22,6 +22,8 @@
   "field.endsAt": "Ends",
   "confirm.discardUnsaved.title": "Discard unsaved changes?",
   "confirm.discardUnsaved.description": "Your current event edits will be lost.",
+  "confirm.leave.title": "Leave event?",
+  "confirm.leave.description": "Are you sure you want to leave \"{{title}}\"?",
   "confirm.timeConflict.title": "Time conflict warning",
   "confirm.timeConflict.description": "Conflicts with: {{titles}}. Join anyway?",
   "empty": "No events",
@@ -188,5 +190,6 @@
   "recurring.message.validationFailed": "Title and start time are required.",
   "field.attachmentsCount": "Attachments ({{current}}/{{max}})",
   "field.endBeforeStart": "End time must be after start time",
-  "aria.filterByType": "Filter events by type"
+  "aria.filterByType": "Filter events by type",
+  "action.loadMore": "Load More"
 }

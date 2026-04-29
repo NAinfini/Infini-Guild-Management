@@ -1,4 +1,4 @@
-import { NumberTicker } from "@infini-dev-kit/react";
+import { NumberTicker } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
 import { Group, RingProgress, Stack, Text } from "@mantine/core";
 import type { ReactNode } from "react";
@@ -26,7 +26,7 @@ function renderRing(
       roundCaps
       sections={[{ value, color }]}
       label={label}
-      rootColor="var(--infini-color-border)"
+      rootColor="gray"
     />
   );
 }
@@ -44,7 +44,7 @@ export function ActiveMembersCard({
   const safeWinRate = Number.isFinite(allWarWinRate) ? Math.max(0, Math.min(100, allWarWinRate)) : 0;
   const activeMemberPercent =
     safeTotalMembersCount > 0 ? Math.min(100, (safeActiveMemberCount / safeTotalMembersCount) * 100) : 0;
-  const weeklyEventsPercent = Math.min(100, (safeActiveEventsCount / 7) * 100);
+  const upcomingEventsPercent = Math.min(100, safeActiveEventsCount * 10);
 
   return (
     <PortalCard className="dashboard-card" interactive={false}>
@@ -59,22 +59,22 @@ export function ActiveMembersCard({
                 <span className="dashboard-stats-circle-subvalue">/{safeTotalMembersCount}</span>
               </span>
             </span>,
-            "infini-primary",
+            "blue",
           )}
           <Text className="dashboard-stats-circle-label">{t("card.activeMembers.activeRatio")}</Text>
         </Stack>
 
         <Stack gap={8} align="center" style={{ flex: "1 1 0", minWidth: 0 }}>
           {renderRing(
-            weeklyEventsPercent,
+            upcomingEventsPercent,
             <span className="dashboard-stats-circle-center">
               <span className="dashboard-stats-circle-value">
                 <NumberTicker value={safeActiveEventsCount} />
               </span>
             </span>,
-            "infini-success",
+            "green",
           )}
-          <Text className="dashboard-stats-circle-label">{t("card.activeMembers.eventsWeek")}</Text>
+          <Text className="dashboard-stats-circle-label">{t("card.activeMembers.upcomingEvents")}</Text>
         </Stack>
 
         <Stack gap={8} align="center" style={{ flex: "1 1 0", minWidth: 0 }}>
@@ -85,7 +85,7 @@ export function ActiveMembersCard({
                 <NumberTicker value={safeWinRate} decimals={1} suffix="%" />
               </span>
             </span>,
-            "infini-warning",
+            "yellow",
           )}
           <Text className="dashboard-stats-circle-label">{t("card.activeMembers.winRate")}</Text>
         </Stack>

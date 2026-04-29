@@ -3,6 +3,7 @@ import {
   ERROR_STATUS,
   FILE_SIZE_LIMITS,
   createAnnouncementSchema,
+  hasAnyPermission,
   updateAnnouncementSchema,
   type ErrorCode,
   type StandardErrorResponse,
@@ -43,7 +44,9 @@ function handleResult(c: Context, result: { ok: true; data: unknown } | { ok: fa
   return c.json(result.data, status as never);
 }
 
-async function requireAnnouncementManager(c: Context) { return requirePermission(c, "announcements.manage"); }
+async function requireAnnouncementCreate(c: Context) { return requirePermission(c, "announcements.create"); }
+async function requireAnnouncementEdit(c: Context) { return requirePermission(c, "announcements.edit"); }
+async function requireAnnouncementArchive(c: Context) { return requirePermission(c, "announcements.archive"); }
 
 function parsePage(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -60,7 +63,7 @@ function parseBoolean(value: string | undefined): boolean | undefined {
 
 announcementsRoutes.get("/", async (c) => {
   const user = await getRequestUser(c);
-  const canReadAll = Boolean(user?.permissions.has("announcements.manage"));
+  const canReadAll = user ? hasAnyPermission(user.permissions, ["announcements.create", "announcements.edit", "announcements.archive"]) : false;
   const query = c.req.query();
   const page = parsePage(query.page, 1);
   const limit = Math.min(100, parsePage(query.limit, 20));
@@ -86,13 +89,13 @@ announcementsRoutes.get("/image", async (c) => {
 
 announcementsRoutes.get("/:id", async (c) => {
   const user = await getRequestUser(c);
-  const canReadAll = Boolean(user?.permissions.has("announcements.manage"));
+  const canReadAll = user ? hasAnyPermission(user.permissions, ["announcements.create", "announcements.edit", "announcements.archive"]) : false;
   const result = await getService(c).getOne(c.req.param("id"), canReadAll);
   return handleResult(c, result);
 });
 
 announcementsRoutes.post("/", async (c) => {
-  const sessionUser = await requireAnnouncementManager(c);
+  const sessionUser = await requireAnnouncementCreate(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -104,25 +107,27 @@ announcementsRoutes.post("/", async (c) => {
 });
 
 announcementsRoutes.patch("/:id", async (c) => {
-  const sessionUser = await requireAnnouncementManager(c);
+  const sessionUser = await requireAnnouncementEdit(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
   const parsed = updateAnnouncementSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid announcement payload", parsed.error.flatten());
-  const result = await getService(c).update(sessionUser.id, c.req.param("id"), parsed.data);
+  const ifMatchHeader = c.req.header("If-Match");
+  const conditionalEtag = ifMatchHeader && ifMatchHeader !== "*" ? ifMatchHeader : undefined;
+  const result = await getService(c).update(sessionUser.id, c.req.param("id"), parsed.data, conditionalEtag);
   return handleResult(c, result);
 });
 
 announcementsRoutes.delete("/:id", async (c) => {
-  const sessionUser = await requireAnnouncementManager(c);
+  const sessionUser = await requireAnnouncementArchive(c);
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).archive(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 announcementsRoutes.post("/:id/images", async (c) => {
-  const sessionUser = await requireAnnouncementManager(c);
+  const sessionUser = await requireAnnouncementEdit(c);
   if (sessionUser instanceof Response) return sessionUser;
 
   const form = await c.req.formData();

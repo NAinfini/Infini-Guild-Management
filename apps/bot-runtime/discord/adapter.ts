@@ -1,40 +1,24 @@
 import type { BotTask } from "@guild/shared";
 import {
-  createBot,
-  errorBoundaryMiddleware,
-  loggerMiddleware,
-  rateLimitMiddleware,
-  type BotAdapter,
-  type UnifiedBot,
-} from "@infini-dev-kit/bot-core";
-import {
-  createDiscordAdapter,
-  getDiscordClient,
-  type DiscordClientLike,
-} from "@infini-dev-kit/bot-discord";
-import {
   ChannelType,
   Client,
   GatewayIntentBits,
   Partials,
+  type Message,
   type MessageCreateOptions,
 } from "discord.js";
 import type { BotRuntimeConfig } from "../config";
-import { attachCommandHandlers, registerDiscordTextCommands, registerSlashCommands } from "./commands";
+import { attachCommandHandlers, handleTextCommand, registerSlashCommands } from "./commands";
 import { formatDiscordTaskMessage } from "./formatters";
 import { attachReactionHandlers } from "./reactions";
 import type { WorkerClient } from "../worker-client";
 
 type DiscordRuntimeState = {
-  bot: UnifiedBot | null;
-  adapter: BotAdapter | null;
   client: Client | null;
   startPromise: Promise<void> | null;
 };
 
 const state: DiscordRuntimeState = {
-  bot: null,
-  adapter: null,
   client: null,
   startPromise: null,
 };
@@ -156,17 +140,17 @@ export async function startDiscordAdapter(config: BotRuntimeConfig, workerClient
 
   const discordToken = config.discordToken;
   if (!discordToken) {
-    console.warn("[discord] DISCORD_BOT_TOKEN is missing, adapter disabled");
+    console.warn("[bot-discord] DISCORD_BOT_TOKEN is missing, adapter disabled");
     return;
   }
 
-  if (state.adapter?.isRunning()) {
+  if (state.client) {
     return;
   }
 
   if (!state.startPromise) {
     state.startPromise = (async () => {
-      const rawClient = new Client({
+      const client = new Client({
         intents: [
           GatewayIntentBits.Guilds,
           GatewayIntentBits.GuildMessages,
@@ -177,61 +161,43 @@ export async function startDiscordAdapter(config: BotRuntimeConfig, workerClient
         partials: [Partials.Channel, Partials.Message, Partials.Reaction],
       });
 
-      const adapter = createDiscordAdapter({
-        token: discordToken,
-        clientFactory: () => rawClient as unknown as DiscordClientLike,
-      });
-      const bot = createBot({
-        adapter,
-        middlewares: [
-          errorBoundaryMiddleware(async (error, ctx) => {
-            console.error(
-              `[discord] middleware error sender=${ctx.message.sender.id} conversation=${ctx.message.conversation.id}`,
-              error,
-            );
-          }),
-          rateLimitMiddleware({
-            maxPerMinute: 60,
-            onLimit: async (ctx) => {
-              await ctx.message.reply("Rate limit exceeded. Please retry in one minute.");
-            },
-          }),
-          loggerMiddleware((message) => {
-            console.log(`[discord][pipeline] ${message}`);
-          }),
-        ],
-      });
-      registerDiscordTextCommands(bot, workerClient);
-
-      const client = getDiscordClient(adapter) as unknown as Client;
-
       client.once("ready", async () => {
-        console.log(`[discord] connected as ${client.user?.tag ?? "unknown"}`);
+        console.log(`[bot-discord] connected as ${client.user?.tag ?? "unknown"}`);
         try {
           await registerSlashCommands(config);
-          console.log("[discord] slash commands registered");
+          console.log("[bot-discord] slash commands registered");
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          console.error("[discord] slash command registration failed", message);
+          console.error("[bot-discord] slash command registration failed", message);
         }
       });
 
       client.on("error", (error) => {
-        console.error("[discord] client error", error);
+        console.error("[bot-discord] client error", error);
+      });
+
+      client.on("messageCreate", (message: Message) => {
+        if (message.author.bot) {
+          return;
+        }
+        try {
+          handleTextCommand(message, workerClient);
+        } catch (error) {
+          console.error(
+            `[bot-discord] text command error sender=${message.author.id} channel=${message.channelId}`,
+            error,
+          );
+        }
       });
 
       attachCommandHandlers(client, workerClient);
       attachReactionHandlers(client, workerClient);
 
-      state.bot = bot;
-      state.adapter = adapter;
       state.client = client;
 
-      await bot.start();
+      await client.login(discordToken);
     })()
       .catch((error) => {
-        state.bot = null;
-        state.adapter = null;
         state.client = null;
         throw error;
       })
@@ -245,7 +211,7 @@ export async function startDiscordAdapter(config: BotRuntimeConfig, workerClient
 
 export async function sendDiscordTask(task: BotTask): Promise<{ messageId: string | null }> {
   if (!state.client) {
-    console.warn("[discord-task] skipped: adapter not connected", task.task_id);
+    console.warn("[bot-discord] skipped: adapter not connected", task.task_id);
     return { messageId: null };
   }
 
@@ -256,7 +222,7 @@ export async function sendDiscordTask(task: BotTask): Promise<{ messageId: strin
 
   const channelId = resolveChannelId(task);
   if (!channelId) {
-    console.warn("[discord-task] skipped: missing channel target", task.task_id);
+    console.warn("[bot-discord] skipped: missing channel target", task.task_id);
     return { messageId: null };
   }
 

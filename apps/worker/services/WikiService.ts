@@ -71,6 +71,26 @@ export class WikiService {
     return (await this.db.select(ARTICLE_COLS).from(wikiArticles).where(eq(wikiArticles.id, articleId)).limit(1))[0] ?? null;
   }
 
+  private async uniqueCategorySlug(base: string): Promise<string> {
+    let slug = base;
+    let suffix = 1;
+    while ((await this.db.select({ id: wikiCategories.id }).from(wikiCategories).where(eq(wikiCategories.slug, slug)).limit(1))[0]) {
+      suffix++;
+      slug = `${base}-${suffix}`;
+    }
+    return slug;
+  }
+
+  private async uniqueArticleSlug(base: string): Promise<string> {
+    let slug = base;
+    let suffix = 1;
+    while ((await this.db.select({ id: wikiArticles.id }).from(wikiArticles).where(eq(wikiArticles.slug, slug)).limit(1))[0]) {
+      suffix++;
+      slug = `${base}-${suffix}`;
+    }
+    return slug;
+  }
+
   // --- Categories ---
 
   async listCategories(): Promise<ServiceResult<unknown[]>> {
@@ -85,7 +105,7 @@ export class WikiService {
       if (parent.parentId) return err("VALIDATION_ERROR", "Category nesting supports only one level");
     }
     const categoryId = nanoid();
-    const slug = slugify(data.slug ?? data.name);
+    const slug = await this.uniqueCategorySlug(slugify(data.slug ?? data.name));
     await this.db.insert(wikiCategories).values({ id: categoryId, name: data.name, slug, sortOrder: data.sort_order, parentId: data.parent_id ?? null });
     const created = await this.getCategoryById(categoryId);
     if (!created) return err("SERVER_ERROR", "Failed to create wiki category");
@@ -100,7 +120,12 @@ export class WikiService {
 
     const patch: Partial<typeof wikiCategories.$inferInsert> = {};
     if (data.name !== undefined) patch.name = data.name;
-    if (data.slug !== undefined) patch.slug = slugify(data.slug);
+    if (data.slug !== undefined) {
+      const candidateSlug = slugify(data.slug);
+      const conflict = (await this.db.select({ id: wikiCategories.id }).from(wikiCategories).where(and(eq(wikiCategories.slug, candidateSlug), sql`${wikiCategories.id} != ${categoryId}`)).limit(1))[0];
+      if (conflict) return err("CONFLICT", "Slug already exists");
+      patch.slug = candidateSlug;
+    }
     if (data.sort_order !== undefined) patch.sortOrder = data.sort_order;
     if (data.parent_id !== undefined) {
       if (data.parent_id === categoryId) return err("VALIDATION_ERROR", "Category cannot be its own parent");
@@ -159,7 +184,7 @@ export class WikiService {
 
   async createArticle(actorId: string, data: { title: string; slug?: string; category_id: string; body_json: string; sort_order: number; pinned: boolean }): Promise<ServiceResult<unknown>> {
     const articleId = nanoid();
-    const slug = slugify(data.slug ?? data.title);
+    const slug = await this.uniqueArticleSlug(slugify(data.slug ?? data.title));
     await this.db.insert(wikiArticles).values({ id: articleId, title: data.title, slug, categoryId: data.category_id, bodyJson: data.body_json, sortOrder: data.sort_order, pinned: data.pinned, archivedAt: null, createdBy: actorId });
     const created = await this.getArticleById(articleId);
     if (!created) return err("SERVER_ERROR", "Failed to create wiki article");
@@ -168,12 +193,21 @@ export class WikiService {
     return ok(toArticlePayload(created));
   }
 
-  async updateArticle(actorId: string, articleId: string, data: { title?: string; slug?: string; category_id?: string; body_json?: string; sort_order?: number; pinned?: boolean; archived_at?: string | null }): Promise<ServiceResult<unknown>> {
+  async updateArticle(actorId: string, articleId: string, data: { title?: string; slug?: string; category_id?: string; body_json?: string; sort_order?: number; pinned?: boolean; archived_at?: string | null }, conditionalEtag?: string): Promise<ServiceResult<unknown>> {
     const existing = await this.getArticleById(articleId);
     if (!existing) return err("NOT_FOUND", "Wiki article not found");
+    if (conditionalEtag) {
+      const expectedEtag = `"wiki-${existing.id}-${existing.updatedAt}"`;
+      if (conditionalEtag !== expectedEtag) return err("CONFLICT", "Article has been modified by another user");
+    }
     const patch: Partial<typeof wikiArticles.$inferInsert> = { updatedAt: new Date().toISOString(), updatedBy: actorId };
     if (data.title !== undefined) patch.title = data.title;
-    if (data.slug !== undefined) patch.slug = slugify(data.slug);
+    if (data.slug !== undefined) {
+      const candidateSlug = slugify(data.slug);
+      const conflict = (await this.db.select({ id: wikiArticles.id }).from(wikiArticles).where(and(eq(wikiArticles.slug, candidateSlug), sql`${wikiArticles.id} != ${articleId}`)).limit(1))[0];
+      if (conflict) return err("CONFLICT", "Slug already exists");
+      patch.slug = candidateSlug;
+    }
     if (data.category_id !== undefined) patch.categoryId = data.category_id;
     if (data.body_json !== undefined) patch.bodyJson = data.body_json;
     if (data.sort_order !== undefined) patch.sortOrder = data.sort_order;

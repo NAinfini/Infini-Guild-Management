@@ -5,7 +5,8 @@ import { notifications } from "@mantine/notifications";
 import { IconDeviceFloppy, IconUserMinus } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 
-const DISCORD_CODE_PATTERN = /^[a-zA-Z0-9]+$/;
+const DISCORD_CODE_PATTERN = /^\d{6}$/;
+const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
 
 type ProfileAccountTabProps = {
   currentPassword: string;
@@ -72,15 +73,15 @@ export function ProfileAccountTab({
 
   const handleChangePassword = () => {
     if (!currentPassword.trim()) {
-      notifications.show({ color: "infini-danger", message: t("account.validation.currentPasswordRequired") });
+      notifications.show({ color: "red", message: t("account.validation.currentPasswordRequired") });
       return;
     }
     if (newPassword.length < 8) {
-      notifications.show({ color: "infini-danger", message: t("account.validation.passwordMinLength") });
+      notifications.show({ color: "red", message: t("account.validation.passwordMinLength") });
       return;
     }
     if (newPassword !== confirmNewPassword) {
-      notifications.show({ color: "infini-danger", message: t("account.validation.passwordMismatch") });
+      notifications.show({ color: "red", message: t("account.validation.passwordMismatch") });
       return;
     }
     onChangePassword();
@@ -89,10 +90,25 @@ export function ProfileAccountTab({
   const handleVerifyDiscordLink = () => {
     const trimmed = discordCode.trim();
     if (trimmed.length !== 6 || !DISCORD_CODE_PATTERN.test(trimmed)) {
-      notifications.show({ color: "infini-danger", message: t("account.validation.discordCodeFormat") });
+      notifications.show({ color: "red", message: t("account.validation.discordCodeFormat") });
       return;
     }
     onVerifyDiscordLink();
+  };
+
+  const usernameError = (() => {
+    const trimmed = newUsername.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.length < 3) return t("account.validation.usernameMinLength");
+    if (trimmed.length > 50) return t("account.validation.usernameMaxLength");
+    if (!USERNAME_PATTERN.test(trimmed)) return t("account.validation.usernamePattern");
+    return undefined;
+  })();
+  const isUsernameInvalid = !newUsername.trim() || Boolean(usernameError);
+
+  const handleChangeUsername = () => {
+    if (isUsernameInvalid) return;
+    onChangeUsername();
   };
 
   return (
@@ -144,8 +160,9 @@ export function ProfileAccountTab({
               onChange={(event) => onNewUsernameChange(event.currentTarget.value)}
               placeholder={t("account.field.newUsername")}
               aria-label={t("account.aria.newUsername")}
+              error={usernameError}
             />
-            <Button onClick={onChangeUsername} loading={changeUsernamePending} leftSection={<IconDeviceFloppy size={16} />}>{changeUsernameLabel}</Button>
+            <Button onClick={handleChangeUsername} loading={changeUsernamePending} disabled={isUsernameInvalid} leftSection={<IconDeviceFloppy size={16} />}>{changeUsernameLabel}</Button>
           </Stack>
         </div>
       </PortalCard>
@@ -188,7 +205,7 @@ export function ProfileAccountTab({
                   onChange={(event) => onToggleDiscordReminder(event.currentTarget.checked)}
                   aria-label={t("account.aria.discordReminders")}
                 />
-                <Badge color={isDirty ? "infini-warning" : "infini-success"}>
+                <Badge color={isDirty ? "yellow" : "green"}>
                   {isDirty ? t("status.unsavedChanges") : t("status.saved")}
                 </Badge>
                 <Button size="xs" onClick={onSaveDiscordPreference} loading={saveDiscordPreferencePending} leftSection={<IconDeviceFloppy size={16} />}>

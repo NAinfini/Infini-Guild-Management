@@ -341,7 +341,7 @@ export function AdminUsersSection({
     <Stack gap={12}>
       {heading}
       {usersLoading ? <Stack gap={8}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {usersError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
+      {usersError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
       {!usersLoading && !usersError ? (
         <>
           {isAdmin ? (

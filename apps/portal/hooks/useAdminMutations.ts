@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MemberDetailFormState } from "../components/feature/admin/AdminMemberDetailModal";
+import type { ClassName } from "@guild/shared";
 import {
   adminUpdateProfile,
   batchDeactivateAdminUsers,
@@ -22,7 +23,7 @@ import {
   updateAdminBotSettings,
   updateAdminUserRole,
 } from "../services/AdminService";
-import { queryKeys } from "../services/PortalQueryKeys";
+import { queryKeys } from "../api/query-keys";
 import { createRole, deleteRole, updateRole } from "../services/RoleService";
 import { copyPlainText } from "../utils/copy";
 import { auditExportDatePart, downloadFileBlob, toIsoOrUndefined } from "../utils/admin";
@@ -68,7 +69,7 @@ export function useAdminMutations({
     mutationFn: ({ userId, role }: { userId: string; role: "admin" | "moderator" | "member" }) =>
       updateAdminUserRole(userId, role),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.roleUpdated") });
+      notifications.show({ color: "green", message: t("message.roleUpdated") });
       await invalidateAdminUsers();
     },
     onError: (error) => showError(error, t("message.roleUpdateFailed")),
@@ -77,7 +78,7 @@ export function useAdminMutations({
   const deactivateMutation = useMutation({
     mutationFn: (userId: string) => deactivateAdminUser(userId),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.deactivated") });
+      notifications.show({ color: "green", message: t("message.deactivated") });
       await invalidateAdminUsers();
     },
     onError: (error) => showError(error, t("message.deactivateFailed")),
@@ -86,7 +87,7 @@ export function useAdminMutations({
   const reactivateMutation = useMutation({
     mutationFn: (userId: string) => reactivateAdminUser(userId),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.reactivated") });
+      notifications.show({ color: "green", message: t("message.reactivated") });
       await invalidateAdminUsers();
     },
     onError: (error) => showError(error, t("message.reactivateFailed")),
@@ -96,7 +97,7 @@ export function useAdminMutations({
     mutationFn: (userId: string) => resetAdminUserPassword(userId),
     onSuccess: async (payload) => {
       await copyPlainText(payload.temporary_password);
-      notifications.show({ color: "infini-success", message: t("message.passwordResetCopied") });
+      notifications.show({ color: "green", message: t("message.passwordResetCopied") });
     },
     onError: (error) => showError(error, t("message.passwordResetFailed")),
   });
@@ -119,7 +120,7 @@ export function useAdminMutations({
     },
     onSuccess: async (payload) => {
       notifications.show({
-        color: "infini-success",
+        color: "green",
         message: t("message.memberCreatedPasswordCopied", { username: payload.username }),
       });
       await invalidateAdminUsers();
@@ -135,7 +136,7 @@ export function useAdminMutations({
         new_role: newRole,
       }),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.batchRoleUpdated") });
+      notifications.show({ color: "green", message: t("message.batchRoleUpdated") });
       await invalidateAdminUsers();
     },
     onError: (error) => showError(error, t("message.batchRoleUpdateFailed")),
@@ -144,7 +145,7 @@ export function useAdminMutations({
   const batchDeleteMutation = useMutation({
     mutationFn: (userIds: string[]) => batchDeleteAdminUsers({ user_ids: userIds }),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.batchDeleted") });
+      notifications.show({ color: "green", message: t("message.batchDeleted") });
       await invalidateAdminUsers();
       setSelectedUserIds([]);
     },
@@ -154,7 +155,7 @@ export function useAdminMutations({
   const batchDeactivateMutation = useMutation({
     mutationFn: (userIds: string[]) => batchDeactivateAdminUsers({ user_ids: userIds }),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.batchDeactivated") });
+      notifications.show({ color: "green", message: t("message.batchDeactivated") });
       await invalidateAdminUsers();
     },
     onError: (error) => showError(error, t("message.batchDeactivateFailed")),
@@ -163,7 +164,7 @@ export function useAdminMutations({
   const batchReactivateMutation = useMutation({
     mutationFn: (userIds: string[]) => batchReactivateAdminUsers({ user_ids: userIds }),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.batchReactivated") });
+      notifications.show({ color: "green", message: t("message.batchReactivated") });
       await invalidateAdminUsers();
     },
     onError: (error) => showError(error, t("message.batchReactivateFailed")),
@@ -176,7 +177,7 @@ export function useAdminMutations({
         expires_at: toIsoOrUndefined(invite.expiresAt),
       }),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.inviteCreated") });
+      notifications.show({ color: "green", message: t("message.inviteCreated") });
       await invalidateInviteData();
     },
     onError: (error) => showError(error, t("message.inviteCreateFailed")),
@@ -195,7 +196,7 @@ export function useAdminMutations({
       const endLabel = auditExportDatePart(auditFilter.dateTo);
       downloadFileBlob(`guild-audit-${startLabel}-to-${endLabel}.${format}`, blob);
       notifications.show({
-        color: "infini-success",
+        color: "green",
         message: format === "csv" ? t("message.auditExportedCsv") : t("message.auditExportedJson"),
       });
     },
@@ -205,7 +206,7 @@ export function useAdminMutations({
   const revokeInviteMutation = useMutation({
     mutationFn: revokeAdminInviteLink,
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.inviteRevoked") });
+      notifications.show({ color: "green", message: t("message.inviteRevoked") });
       await invalidateInviteData();
     },
     onError: (error) => showError(error, t("message.inviteRevokeFailed")),
@@ -214,7 +215,7 @@ export function useAdminMutations({
   const deleteInviteMutation = useMutation({
     mutationFn: deleteAdminInviteLink,
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.inviteDeleted") });
+      notifications.show({ color: "green", message: t("message.inviteDeleted") });
       await invalidateInviteData();
     },
     onError: (error) => showError(error, t("message.inviteDeleteFailed")),
@@ -240,7 +241,7 @@ export function useAdminMutations({
       return updateAdminBotSettings(payload);
     },
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.botSettingsSaved") });
+      notifications.show({ color: "green", message: t("message.botSettingsSaved") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.botSettings() });
     },
     onError: (error) => showError(error, t("message.botSettingsSaveFailed")),
@@ -250,7 +251,7 @@ export function useAdminMutations({
     mutationFn: ({ platform }: { platform: "discord" | "wechat" }) => testAdminBotDispatch({ platform }),
     onSuccess: (_, variables) => {
       notifications.show({
-        color: "infini-success",
+        color: "green",
         message: variables.platform === "discord" ? t("message.botTestDiscordSent") : t("message.botTestWechatSent"),
       });
     },
@@ -268,7 +269,7 @@ export function useAdminMutations({
       await adminUpdateProfile(userId, {
         wechat_name: form.wechatName || null,
         power: form.power,
-        classes: form.classes as any,
+        classes: form.classes as ClassName[],
         title_html: form.titleHtml || null,
         bio: form.bio || null,
         vacation_start: form.vacationStart ? new Date(form.vacationStart).toISOString() : null,
@@ -276,15 +277,23 @@ export function useAdminMutations({
         discord_reminder_opt_out: form.discordReminderOptOut,
         notes: form.notes || null,
       });
-      await updateAdminUserRole(userId, form.role as "admin" | "moderator" | "member");
-      if (form.isActive) {
-        await reactivateAdminUser(userId);
-      } else {
-        await deactivateAdminUser(userId);
+      try {
+        await updateAdminUserRole(userId, form.role as "admin" | "moderator" | "member");
+      } catch {
+        throw new Error("Profile saved but role update failed");
+      }
+      try {
+        if (form.isActive) {
+          await reactivateAdminUser(userId);
+        } else {
+          await deactivateAdminUser(userId);
+        }
+      } catch {
+        throw new Error("Profile and role saved but status update failed");
       }
     },
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.memberProfileSaved") });
+      notifications.show({ color: "green", message: t("message.memberProfileSaved") });
       await invalidateAdminUsers();
       await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
     },
@@ -294,7 +303,7 @@ export function useAdminMutations({
   const createRoleMutation = useMutation({
     mutationFn: createRole,
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.roleCreated") });
+      notifications.show({ color: "green", message: t("message.roleCreated") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.roles() });
     },
     onError: (error) => showError(error, t("message.roleCreateFailed")),
@@ -304,7 +313,7 @@ export function useAdminMutations({
     mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateRole>[1] }) =>
       updateRole(id, payload),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.roleConfigSaved") });
+      notifications.show({ color: "green", message: t("message.roleConfigSaved") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.roles() });
     },
     onError: (error) => showError(error, t("message.roleConfigSaveFailed")),
@@ -313,7 +322,7 @@ export function useAdminMutations({
   const deleteRoleMutation = useMutation({
     mutationFn: (id: string) => deleteRole(id),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.roleDeleted") });
+      notifications.show({ color: "green", message: t("message.roleDeleted") });
       await queryClient.invalidateQueries({ queryKey: queryKeys.admin.roles() });
     },
     onError: (error) => showError(error, t("message.roleDeleteFailed")),
@@ -345,7 +354,7 @@ export function useAdminMutations({
   const applyUserSelection = (keys: string[]) => {
     if (keys.length > batchSelectionLimit) {
       notifications.show({
-        color: "infini-warning",
+        color: "yellow",
         message: t("message.batchSelectionLimit", { limit: batchSelectionLimit }),
       });
     }
@@ -363,7 +372,7 @@ export function useAdminMutations({
         title: t("confirm.batchActionTitle"),
         children: message,
         labels: { confirm: t("common:action.save"), cancel: t("common:action.cancel") },
-        confirmProps: { color: "infini-warning" },
+        confirmProps: { color: "yellow" },
         onConfirm: () => resolve(true),
         onCancel: () => resolve(false),
         closeOnConfirm: true,

@@ -1,4 +1,4 @@
-import { DepthButton } from "@infini-dev-kit/react";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import {
   CopyButton,
   Group,
@@ -63,7 +63,7 @@ export function CreateMemberModal({
     const trimmed = username.trim();
     if (!trimmed) return;
     if (trimmed.length < 3 || trimmed.length > 50 || !USERNAME_PATTERN.test(trimmed)) {
-      notifications.show({ color: "infini-danger", message: t("member.create.usernameInvalid") });
+      notifications.show({ color: "red", message: t("member.create.usernameInvalid") });
       return;
     }
 

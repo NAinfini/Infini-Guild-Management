@@ -1,5 +1,5 @@
 import { NotificationOutlined, TeamOutlined, ThunderboltOutlined } from "../../utils/icons";
-import { GradientText, GrainyBackground, LampHeading } from "@infini-dev-kit/react";
+import { GradientText, GrainyBackground, LampHeading } from "@portal/components/effects";
 import { Stack, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 

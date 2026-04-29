@@ -21,6 +21,9 @@ const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const FALLBACK_POLL_INTERVAL_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 25_000;
 const reconnectDelays = [1000, 10_000, 30_000, 60_000];
+const MAX_RETRIES = 10;
+const WS_CLOSE_POLICY_VIOLATION = 1008;
+const WS_CLOSE_UNAUTHORIZED = 4401;
 
 type UsersListResponse = PaginatedResponse<{ user: User; profile: MemberProfile }>;
 
@@ -210,11 +213,21 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
         }
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         setWsConnected(false);
         stopHeartbeat();
         socket = null;
         if (isCleaningUp) {
+          return;
+        }
+        if (event.code === WS_CLOSE_POLICY_VIOLATION || event.code === WS_CLOSE_UNAUTHORIZED) {
+          console.warn(`[useNotificationSync] WebSocket closed with auth error (code ${event.code}). Stopping reconnect.`);
+          startFallbackPolling();
+          return;
+        }
+        if (retryCount >= MAX_RETRIES) {
+          console.warn(`[useNotificationSync] WebSocket max retries (${MAX_RETRIES}) reached. Stopping reconnect.`);
+          startFallbackPolling();
           return;
         }
         startFallbackPolling();

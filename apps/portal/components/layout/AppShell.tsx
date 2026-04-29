@@ -1,4 +1,4 @@
-import { hasRoleAtLeast, type PushMessage } from "@guild/shared";
+import { hasLevelAtLeast, type PushMessage } from "@guild/shared";
 import {
   BookOutlined,
   CalendarOutlined,
@@ -7,6 +7,7 @@ import {
   FireOutlined,
   LeftOutlined,
   MoonOutlined,
+  SunOutlined,
   NotificationOutlined,
   PictureOutlined,
   RightOutlined,
@@ -17,13 +18,13 @@ import {
   ToolOutlined,
   UserOutlined,
 } from "../../utils/icons";
-import { listThemeIds } from "@infini-dev-kit/theme-core";
-import type { ThemeId } from "@infini-dev-kit/theme-core";
-import { ScrollProgress } from "@infini-dev-kit/react";
+// Theme simplified to dark/light
+
+import { ScrollProgress } from "@portal/components/effects";
 import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
-import { DepthButton } from "@infini-dev-kit/react";
-import { loadLocaleFonts } from "@infini-dev-kit/theme-core";
-import { useBridge, useThemeSnapshot } from "../../providers/ThemeProvider";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+// loadLocaleFonts removed — custom fonts no longer needed
+import { useTheme } from "../../providers/ThemeProvider";
 import type { IconProps } from "@tabler/icons-react";
 import {
   ActionIcon,
@@ -52,7 +53,7 @@ import { PageHeaderContext } from "../../context/PageHeaderContext";
 import { useNotificationPresentation } from "../../hooks/useNotificationPresentation";
 import { useNotificationSync } from "../../hooks/useNotificationSync";
 import { logout as requestLogout } from "../../services/AuthService";
-import { queryKeys } from "../../services/PortalQueryKeys";
+import { queryKeys } from "../../api/query-keys";
 import { fetchRoles } from "../../services/RoleService";
 import { useAuthStore } from "../../stores/auth";
 import { useNotificationStore, type NotificationFeature } from "../../stores/notifications";
@@ -228,10 +229,10 @@ function syncViewSearch(nextRole: string) {
 export function AppShell() {
   const { t } = useTranslation("common");
   const navigate = useNavigate();
-  const bridge = useBridge();
+  
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
-  const { theme: themeSnapshot, motion: motionSnapshot } = useThemeSnapshot();
+  const { theme: currentTheme, toggleTheme } = useTheme();
   const isExternalView = isExternalViewSearch(searchStr);
   const isMobile = useMediaQuery("(max-width: 767px)") ?? false;
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
@@ -248,7 +249,6 @@ export function AppShell() {
   const markPushAsRead = useNotificationStore((state) => state.markPushAsRead);
   const markAllPushAsRead = useNotificationStore((state) => state.markAllPushAsRead);
   const localeOptions = useMemo(() => buildLocaleOptions((key) => t(key)), [t]);
-  const themeIds = useMemo(() => listThemeIds(), []);
   const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [permissionBanner, setPermissionBanner] = useState<string | null>(null);
   const [headerActions, setHeaderActions] = useState<ReactNode>(null);
@@ -258,14 +258,13 @@ export function AppShell() {
   const previousPathnameRef = useRef(pathname);
   const scrollContainerRef = useRef<HTMLElement>(null);
   const isWikiInternalNavigation = isWikiPath(previousPathnameRef.current) && isWikiPath(pathname);
-  const shouldAnimateRoute = !hideNavigation && motionSnapshot.effectiveMode !== "off" && !isWikiInternalNavigation;
+  const shouldAnimateRoute = !hideNavigation && true && !isWikiInternalNavigation;
   const pageHeaderContextValue = useMemo(() => ({ setActions: setHeaderActions }), []);
 
   useEffect(() => {
     void i18n.changeLanguage(locale);
     document.documentElement.dataset.locale = locale;
     if (locale === "zh") {
-      void loadLocaleFonts(locale);
     }
   }, [locale]);
 
@@ -302,6 +301,9 @@ export function AppShell() {
 
   useEffect(() => {
     const onUnauthorized = (event: Event) => {
+      const hadSession = Boolean(useAuthStore.getState().user);
+      if (!hadSession) return;
+
       const detail = (event as CustomEvent<{ returnTo?: string }>).detail;
       const returnTo =
         detail?.returnTo && detail.returnTo.startsWith("/")
@@ -310,6 +312,8 @@ export function AppShell() {
       if (window.location.pathname === "/login") {
         return;
       }
+      useAuthStore.getState().clearSession();
+      queryClient.clear();
       void navigate({
         to: "/login",
         search: {
@@ -338,6 +342,7 @@ export function AppShell() {
         switch (message.entity_type) {
           case "event":
             void queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+            void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
             break;
           case "wiki":
             void queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
@@ -378,6 +383,7 @@ export function AppShell() {
     mutationFn: requestLogout,
     onSettled: () => {
       clearSession();
+      queryClient.clear();
       void navigate({ to: "/login" });
     },
   });
@@ -386,7 +392,7 @@ export function AppShell() {
     logoutMutation.mutate();
   };
 
-  const canSwitchView = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
+  const canSwitchView = Boolean(user && hasLevelAtLeast(user.role_level, "moderator"));
 
   const rolesQuery = useQuery({
     queryKey: queryKeys.admin.roles(),
@@ -412,11 +418,13 @@ export function AppShell() {
     [isExternalView, user, viewingAs, rolesQuery.data],
   );
 
-  const mobileMainItems = visibleNavItems.filter((item) =>
-    ["/", "/events", "/guild-war", "/roster"].includes(item.to),
+  const mobileMainItems = useMemo(
+    () => visibleNavItems.filter((item) => ["/", "/events", "/guild-war", "/roster"].includes(item.to)),
+    [visibleNavItems],
   );
-  const mobileMoreItems = visibleNavItems.filter(
-    (item) => !["/", "/events", "/guild-war", "/roster"].includes(item.to),
+  const mobileMoreItems = useMemo(
+    () => visibleNavItems.filter((item) => !["/", "/events", "/guild-war", "/roster"].includes(item.to)),
+    [visibleNavItems],
   );
 
   const notificationState = useMemo(
@@ -476,18 +484,15 @@ export function AppShell() {
     [markFeatureAsRead, markPushAsRead, navigate],
   );
 
-  const selectedNavKey = useMemo(() => {
+  const { selectedNavKey, activePageTitle } = useMemo(() => {
     const matches = visibleNavItems
       .filter((item) => isPathActive(pathname, item.to))
       .sort((left, right) => right.to.length - left.to.length);
-    return matches[0]?.to ?? "";
-  }, [pathname, visibleNavItems]);
-
-  const activePageTitle = useMemo(() => {
-    const activeItem = visibleNavItems
-      .filter((item) => isPathActive(pathname, item.to))
-      .sort((left, right) => right.to.length - left.to.length)[0];
-    return t(activeItem?.labelKey ?? "nav.dashboard");
+    const active = matches[0];
+    return {
+      selectedNavKey: active?.to ?? "",
+      activePageTitle: t(active?.labelKey ?? "nav.dashboard"),
+    };
   }, [pathname, t, visibleNavItems]);
 
   if (hideNavigation) {
@@ -506,6 +511,7 @@ export function AppShell() {
 
   return (
     <PageHeaderContext.Provider value={pageHeaderContextValue}>
+      <a href="#main-content" className="app-skip-link">{t("nav.skipToContent", "Skip to content")}</a>
       <MantineAppShell
         className="app-shell-root"
         layout="alt"
@@ -537,9 +543,11 @@ export function AppShell() {
                   </SidebarExpandOverlay>
                 </div>
                 <SidebarLabel collapsed={isSidebarCollapsed} className="app-brand-title-wrap">
-                  <Title order={4} className="app-brand-title">
-                    {t("app.title")}
-                  </Title>
+                  <Tooltip label={t("app.title")} position="right" withArrow openDelay={400}>
+                    <Title order={4} className="app-brand-title">
+                      {t("app.title")}
+                    </Title>
+                  </Tooltip>
                 </SidebarLabel>
               </div>
               {!isSidebarCollapsed ? (
@@ -655,12 +663,12 @@ export function AppShell() {
                                 <Group gap={8} wrap="nowrap">
                                   <Text fw={600}>{item.title}</Text>
                                   {item.type === "announcement_published" ? (
-                                    <Badge variant="light" color="infini-primary">
+                                    <Badge variant="light" color="blue">
                                       {t("notification.type.announcement")}
                                     </Badge>
                                   ) : null}
                                   {item.type === "event_reminder" ? (
-                                    <Badge variant="light" color="infini-warning">
+                                    <Badge variant="light" color="yellow">
                                       {t("notification.type.eventReminder")}
                                     </Badge>
                                   ) : null}
@@ -683,27 +691,9 @@ export function AppShell() {
                 </Popover.Dropdown>
               </Popover>
 
-              <InfiniMenu width={160} position="bottom-end">
-                <InfiniMenu.Target>
-                  <ActionIcon variant="subtle" className="app-header-icon-btn" aria-label={t("label.theme")}>
-                    <MoonOutlined />
-                  </ActionIcon>
-                </InfiniMenu.Target>
-                <InfiniMenu.Dropdown>
-                  {themeIds.map((themeId) => (
-                    <InfiniMenu.Item
-                      key={themeId}
-                      className={themeSnapshot.id === themeId ? "infini-menu-item--active" : undefined}
-                      onClick={() => {
-                        const nextThemeId = themeId as ThemeId;
-                        bridge.setTheme(nextThemeId);
-                      }}
-                    >
-                      {i18n.t(`settings:theme.${themeId}`, { defaultValue: themeId })}
-                    </InfiniMenu.Item>
-                  ))}
-                </InfiniMenu.Dropdown>
-              </InfiniMenu>
+              <ActionIcon variant="subtle" className="app-header-icon-btn" aria-label={t("label.theme")} onClick={toggleTheme}>
+                {currentTheme === "dark" ? <SunOutlined /> : <MoonOutlined />}
+              </ActionIcon>
 
               <InfiniMenu width={160} position="bottom-end">
                 <InfiniMenu.Target>
@@ -736,20 +726,20 @@ export function AppShell() {
         </MantineAppShell.Header>
 
         <MantineAppShell.Main ref={scrollContainerRef} className={`app-content ${isMobile ? "app-content-mobile" : ""}`}>
-          <main className="app-main">
+          <main id="main-content" className="app-main">
             {isExternalView ? (
-              <Alert color="infini-primary" variant="light" className="app-banner">
+              <Alert color="blue" variant="light" className="app-banner">
                 External view is enabled. Editing and private fields are hidden.
               </Alert>
             ) : null}
             {!isOnline ? (
-              <Alert color="infini-warning" variant="light" className="app-banner" role="status" aria-live="polite">
+              <Alert color="yellow" variant="light" className="app-banner" role="status" aria-live="polite">
                 You are offline. Some actions may fail until connection is restored.
               </Alert>
             ) : null}
             {permissionBanner ? (
               <Alert
-                color="infini-danger"
+                color="red"
                 variant="light"
                 className="app-banner"
                 role="status"

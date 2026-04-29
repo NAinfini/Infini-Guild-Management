@@ -126,11 +126,11 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
 
     const normalized = CLASS_NAMES.find((className) => className.toLowerCase() === next);
     if (!normalized) {
-      notifications.show({ color: "infini-warning", message: t("message.classInvalid") });
+      notifications.show({ color: "yellow", message: t("message.classInvalid") });
       return;
     }
     if (classList.includes(normalized)) {
-      notifications.show({ color: "infini-warning", message: t("message.classDuplicate") });
+      notifications.show({ color: "yellow", message: t("message.classDuplicate") });
       return;
     }
 
@@ -148,11 +148,11 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
       return;
     }
     if (videoList.includes(next)) {
-      notifications.show({ color: "infini-warning", message: t("message.videoUrlDuplicate") });
+      notifications.show({ color: "yellow", message: t("message.videoUrlDuplicate") });
       return;
     }
     if (videoList.length >= 10) {
-      notifications.show({ color: "infini-warning", message: t("message.videoUrlLimit") });
+      notifications.show({ color: "yellow", message: t("message.videoUrlLimit") });
       return;
     }
 

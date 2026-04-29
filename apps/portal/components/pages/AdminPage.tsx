@@ -1,4 +1,4 @@
-import { hasRoleAtLeast, type AdminRole } from "@guild/shared";
+import { type AdminRole } from "@guild/shared";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { IconSettings } from "@tabler/icons-react";
 import { useSearch } from "@tanstack/react-router";
@@ -25,11 +25,11 @@ import { usePageHeaderActions } from "../../context/PageHeaderContext";
 import { useAppError } from "../../hooks/useAppError";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { fetchAdminAuditArchiveMonth } from "../../services/AdminService";
-import { queryKeys } from "../../services/PortalQueryKeys";
+import { queryKeys } from "../../api/query-keys";
 import { useAuthStore } from "../../stores/auth";
-import { canManageRoles, canManageBot, canViewStatus, canExportAudit } from "../../utils/permissions";
+import { canManageRoles, canManageBot, canViewStatus, canExportAudit, userCanAccessAdmin } from "../../utils/permissions";
 import { PageLayout } from "../layout/PageLayout";
-import { ErrorBoundary } from "@infini-dev-kit/react";
+import { ErrorBoundary } from "@portal/components/effects";
 import "./AdminPage.css";
 
 const LazyAdminStatusTab = lazy(() =>
@@ -67,7 +67,7 @@ import type { ColumnDef as TanStackColumnDef } from "@tanstack/react-table";
 export function AdminPage() {
   const { t } = useTranslation("admin");
   const user = useAuthStore((state) => state.user);
-  const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
+  const isModerator = userCanAccessAdmin(user);
   const { showError } = useAppError();
   const { member: memberSearchParam } = useSearch({ strict: false }) as { member?: string };
 
@@ -98,7 +98,7 @@ export function AdminPage() {
     statusQuery,
   } = useAdminData({
     isModerator,
-    isAdmin: user?.role ?? "member",
+    userRole: user?.role ?? "member",
     auditPage: auditFilter.page,
     auditSearch: auditFilter.search,
     auditDateFrom: auditFilter.dateFrom,
@@ -299,7 +299,7 @@ export function AdminPage() {
       header: t("member.table.active"),
       id: "active",
       accessorFn: (row) => row.user.is_active,
-      cell: ({ row }) => (row.original.user.is_active ? <Badge color="infini-success">{t("member.status.active")}</Badge> : <Badge color="gray">{t("member.status.inactive")}</Badge>),
+      cell: ({ row }) => (row.original.user.is_active ? <Badge color="green">{t("member.status.active")}</Badge> : <Badge color="gray">{t("member.status.inactive")}</Badge>),
     },
   ];
 
@@ -346,7 +346,7 @@ export function AdminPage() {
   );
 
   if (!isModerator) {
-    return <Alert color="infini-danger" title={t("forbidden")} />;
+    return <Alert color="red" title={t("forbidden")} />;
   }
 
   return (

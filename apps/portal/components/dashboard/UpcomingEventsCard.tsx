@@ -1,5 +1,5 @@
 import type { Event } from "@guild/shared";
-import { NumberTicker } from "@infini-dev-kit/react";
+import { NumberTicker } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
 import { Avatar, Badge, Button, Group, RingProgress, Stack, Text, Tooltip } from "@mantine/core";
 import {
@@ -62,7 +62,7 @@ export function UpcomingEventsCard({
             {[...featuredRows, ...rows].slice(0, 5).map((item) => {
               const signedUpCount = item.members.length;
               const capacity = item.item.capacity ?? 0;
-              const percentage = capacity > 0 ? Math.round((signedUpCount / capacity) * 100) : 100;
+              const percentage = capacity > 0 ? Math.round((signedUpCount / capacity) * 100) : 0;
               const startDate = new Date(item.item.start_at);
               const month = startDate.toLocaleString(i18n.language, { month: "short" }).toUpperCase();
               const day = startDate.getDate();
@@ -71,9 +71,19 @@ export function UpcomingEventsCard({
                 <div
                   key={item.item.id}
                   style={{
-                    padding: "12px",
-                    background: "color-mix(in srgb, var(--infini-color-surface, #fff) 95%, var(--infini-color-text, #111827))",
-                    borderRadius: "8px",
+                    padding: "14px",
+                    background: "color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #111827))",
+                    borderRadius: "12px",
+                    border: "1px solid color-mix(in srgb, var(--color-text, #111827) 6%, transparent)",
+                    transition: "border-color 160ms ease, box-shadow 160ms ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--color-primary, #3b82f6) 24%, transparent)";
+                    e.currentTarget.style.boxShadow = "0 2px 8px color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--color-text, #111827) 6%, transparent)";
+                    e.currentTarget.style.boxShadow = "none";
                   }}
                 >
                   <Group gap={12} wrap="nowrap" align="center">
@@ -116,9 +126,10 @@ export function UpcomingEventsCard({
                     </Group>
                     <Stack gap={2} align="center">
                       <RingProgress
-                        size={40}
-                        thickness={3}
-                        sections={[{ value: percentage, color: "var(--infini-color-primary, #3b82f6)" }]}
+                        size={44}
+                        thickness={4}
+                        roundCaps
+                        sections={[{ value: percentage, color: "var(--color-primary, #3b82f6)" }]}
                         label={
                           <Text size="10px" ta="center" fw={600}>
                             {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}

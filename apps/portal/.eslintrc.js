@@ -10,10 +10,6 @@ export default {
             message: "Import from services instead of portal API modules.",
           },
           {
-            group: ["@infini-dev-kit/*/src/*", "@infini-dev-kit/*/dist/*"],
-            message: "Import Infini Dev Kit from public package roots only.",
-          },
-          {
             group: ["../../../api/*"],
             message: "Feature components should receive data via services or props.",
           },

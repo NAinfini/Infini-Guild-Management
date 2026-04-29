@@ -42,7 +42,10 @@ function handleResult(c: Context, result: { ok: true; data: unknown } | { ok: fa
   return c.json(result.data, status as never);
 }
 
-async function requireWikiEditor(c: Context) { return requirePermission(c, "wiki.edit"); }
+async function requireWikiArticlesCreate(c: Context) { return requirePermission(c, "wiki.articles.create"); }
+async function requireWikiArticlesEdit(c: Context) { return requirePermission(c, "wiki.articles.edit"); }
+async function requireWikiArticlesArchive(c: Context) { return requirePermission(c, "wiki.articles.archive"); }
+async function requireWikiCategoriesManage(c: Context) { return requirePermission(c, "wiki.categories.manage"); }
 
 function parsePage(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -63,7 +66,7 @@ wikiRoutes.get("/categories", async (c) => {
 });
 
 wikiRoutes.post("/categories", async (c) => {
-  const sessionUser = await requireWikiEditor(c);
+  const sessionUser = await requireWikiCategoriesManage(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -75,7 +78,7 @@ wikiRoutes.post("/categories", async (c) => {
 });
 
 wikiRoutes.patch("/categories/:id", async (c) => {
-  const sessionUser = await requireWikiEditor(c);
+  const sessionUser = await requireWikiCategoriesManage(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -86,7 +89,7 @@ wikiRoutes.patch("/categories/:id", async (c) => {
 });
 
 wikiRoutes.delete("/categories/:id", async (c) => {
-  const sessionUser = await requireWikiEditor(c);
+  const sessionUser = await requireWikiCategoriesManage(c);
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).deleteCategory(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
@@ -108,7 +111,7 @@ wikiRoutes.get("/articles/:slug", async (c) => {
 });
 
 wikiRoutes.post("/articles", async (c) => {
-  const sessionUser = await requireWikiEditor(c);
+  const sessionUser = await requireWikiArticlesCreate(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
@@ -120,25 +123,27 @@ wikiRoutes.post("/articles", async (c) => {
 });
 
 wikiRoutes.patch("/articles/:id", async (c) => {
-  const sessionUser = await requireWikiEditor(c);
+  const sessionUser = await requireWikiArticlesEdit(c);
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
   const parsed = updateWikiArticleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki article payload", parsed.error.flatten());
-  const result = await getService(c).updateArticle(sessionUser.id, c.req.param("id"), parsed.data);
+  const ifMatchHeader = c.req.header("If-Match");
+  const conditionalEtag = ifMatchHeader && ifMatchHeader !== "*" ? ifMatchHeader : undefined;
+  const result = await getService(c).updateArticle(sessionUser.id, c.req.param("id"), parsed.data, conditionalEtag);
   return handleResult(c, result);
 });
 
 wikiRoutes.delete("/articles/:id", async (c) => {
-  const sessionUser = await requireWikiEditor(c);
+  const sessionUser = await requireWikiArticlesArchive(c);
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).archiveArticle(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 wikiRoutes.post("/articles/:id/images", async (c) => {
-  const sessionUser = await requireWikiEditor(c);
+  const sessionUser = await requireWikiArticlesEdit(c);
   if (sessionUser instanceof Response) return sessionUser;
 
   const form = await c.req.formData();

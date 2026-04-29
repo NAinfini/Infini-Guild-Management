@@ -1,5 +1,5 @@
-import { type ImageGridEditorItem } from "@infini-dev-kit/react";
-import { ImageGridEditor } from "@infini-dev-kit/react";
+import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
+import type { ImageGridEditorItem } from "@guild/shared/types/media";
 import { PortalCard } from "../../shared/PortalCard";
 import { Button, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { modals } from "@mantine/modals";
@@ -84,7 +84,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
 
               {imageUploader.files.length > 0 ? (
                 <Stack gap={8}>
-                  {imageUploader.error ? <Text c="infini-danger" size="sm">{imageUploader.error}</Text> : null}
+                  {imageUploader.error ? <Text c="red" size="sm">{imageUploader.error}</Text> : null}
                   {imageUploader.isConverting || imageUploader.isUploading ? (
                     <Stack style={{ width: "100%" }} gap={4}>
                       <Progress value={imageUploader.conversionProgress} size="sm" animated />
@@ -126,7 +126,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                 {isModerator ? (
                   <Button
                     size="sm"
-                    color="infini-danger"
+                    color="red"
                     variant="light"
                     px={8}
                     onClick={() => {
@@ -184,14 +184,14 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
               </Text>
               {isAdmin ? (
                 <Button
-                  color="infini-danger"
+                  color="red"
                   leftSection={<IconTrash size={16} />}
                   onClick={() =>
                     modals.openConfirmModal({
                       title: t("confirm.deleteAudio.title"),
                       children: <Text size="sm">{t("confirm.deleteAudio.description")}</Text>,
                       labels: { confirm: t("media.removeAudio"), cancel: t("common:cancel") },
-                      confirmProps: { color: "infini-danger" },
+                      confirmProps: { color: "red" },
                       onConfirm: onDeleteAudio,
                     })
                   }
@@ -210,7 +210,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             <Stack gap={8} mt="md">
               <Text c="dimmed" size="sm">{t("media.uploadAudioHint")}</Text>
               {audioUploader.supportError ? (
-                <Text c="infini-warning" size="sm">{audioUploader.supportError}</Text>
+                <Text c="yellow" size="sm">{audioUploader.supportError}</Text>
               ) : null}
               <input
                 type="file"
@@ -219,7 +219,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                 disabled={Boolean(audioUploader.supportError)}
                 onChange={(event) => audioUploader.selectFiles(event.target.files)}
               />
-              {audioUploader.error ? <Text c="infini-danger" size="sm">{audioUploader.error}</Text> : null}
+              {audioUploader.error ? <Text c="red" size="sm">{audioUploader.error}</Text> : null}
               {audioUploader.isConverting || audioUploader.isUploading ? (
                 <Stack style={{ width: "100%" }} gap={4}>
                   <Progress value={audioUploader.conversionProgress} size="sm" animated />

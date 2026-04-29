@@ -443,19 +443,21 @@ describe("Recurrence System", () => {
   let seriesInstanceIds: string[] = [];
 
   it("Recurring parent — series instances exist", async () => {
-    // List events filtered by this series
+    // Use start_after filter to find recently-generated future instances
+    // (the server caps limit at 100, so we filter by date to avoid pagination issues)
+    const startAfter = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString();
     const { status, payload } = await api(
-      `/api/events?page=1&limit=50`,
+      `/api/events?page=1&limit=100&start_after=${encodeURIComponent(startAfter)}`,
       { cookie: modCookie },
     );
     expect(status).toBe(200);
 
-    const data = (payload as { data: Array<{ id: string; series_id: string | null; is_series_parent: boolean }> }).data;
-    const seriesInstances = data.filter(
+    const list = payload as { data: Array<{ id: string; series_id: string | null; is_series_parent: boolean }>; total: number };
+    const seriesInstances = list.data.filter(
       (e) => e.series_id === createdRecurringParentId && !e.is_series_parent,
     );
 
-    // Should have generated instances for the 56-day horizon
+    // Should have generated instances within the lookahead window
     expect(seriesInstances.length).toBeGreaterThan(0);
     seriesInstanceIds = seriesInstances.map((e) => e.id);
   });

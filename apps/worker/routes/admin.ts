@@ -260,7 +260,7 @@ adminRoutes.patch("/roles/:id", async (c) => {
   const parsed = updateRoleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role update payload", parsed.error.flatten());
   const result = await getAdminService(c).updateRole(sessionUser.id, c.req.param("id"), parsed.data);
-  return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
+  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
 
 adminRoutes.delete("/roles/:id", async (c) => {
@@ -333,7 +333,7 @@ adminRoutes.patch("/analytics-settings", async (c) => {
   const parsed = analyticsSettingsSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid analytics settings payload", parsed.error.flatten());
   const result = await getAdminService(c).updateAnalyticsSettings(sessionUser.id, parsed.data);
-  return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
+  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
 
 // Audit Archive

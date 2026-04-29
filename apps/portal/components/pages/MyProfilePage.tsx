@@ -1,8 +1,8 @@
 import { PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Badge, Grid, Group, Tabs, Text } from "@mantine/core";
-import { DepthButton } from "@infini-dev-kit/react";
+import { Badge, Grid, Group, Skeleton, Stack, Tabs, Text } from "@mantine/core";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { IconGripVertical, IconTrash, IconUserCircle } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -137,6 +137,22 @@ export function MyProfilePage() {
       icon={<IconUserCircle size={22} />}
       className="my-profile-page"
     >
+      {profileQuery.isLoading ? (
+        <Grid gutter="md">
+          <Grid.Col span={{ base: 12, lg: 3 }}>
+            <Skeleton height={280} radius={8} />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, lg: 9 }}>
+            <Stack gap={12}>
+              <Skeleton height={36} width="50%" radius={8} />
+              <Skeleton height={48} radius={8} />
+              <Skeleton height={48} radius={8} />
+              <Skeleton height={48} radius={8} />
+              <Skeleton height={48} radius={8} />
+            </Stack>
+          </Grid.Col>
+        </Grid>
+      ) : (
       <Grid gutter="md">
         <Grid.Col span={{ base: 12, lg: 3 }}>
           <div style={{ position: "sticky", top: 16 }}>
@@ -279,6 +295,7 @@ export function MyProfilePage() {
           </Tabs>
         </Grid.Col>
       </Grid>
+      )}
     </PageLayout>
   );
 }

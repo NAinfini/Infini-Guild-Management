@@ -3,23 +3,10 @@ import { registerSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import {
-  Alert,
-  Anchor,
-  Loader,
-  Stack,
-  Text,
-  TextInput,
-} from "@mantine/core";
-import {
-  BubbleBackground,
-  DepthButton,
-  GlassEffect,
-  GradientText,
-  LampHeading,
-  MagneticElement,
-} from "@infini-dev-kit/react";
+import { BubbleBackground, GlassEffect, GradientText, LampHeading, MagneticElement } from "@portal/components/effects";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { IconArrowLeft, IconEye, IconEyeOff, IconKeyboard } from "@tabler/icons-react";
+import { Alert, Anchor, Loader, Stack, Text, TextInput } from "@mantine/core";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -197,12 +184,12 @@ export function RegisterPage() {
         <GlassEffect className="login-page__card" blur={16} opacity={0.1} borderOpacity={0.15}>
           {inviteQuery.isLoading ? (
             <Stack align="center" py="xl">
-              <Loader color="var(--infini-color-primary)" />
+              <Loader color="var(--color-primary)" />
             </Stack>
           ) : !inviteQuery.data?.valid ? (
             <Stack align="center" gap="md">
-              <Alert color="infini-danger" title={t("inviteInvalid")} w="100%" />
-              <MagneticElement strength={8} className="login-page__back-link">
+              <Alert color="red" title={t("inviteInvalid")} w="100%" />
+              <MagneticElement strength={0.3} className="login-page__back-link">
                 <Anchor
                   underline="hover"
                   onClick={() => void navigate({ to: "/login" })}
@@ -215,15 +202,15 @@ export function RegisterPage() {
             </Stack>
           ) : (
             <>
-              {submitError ? <Alert color="infini-danger" title={submitError} /> : null}
-              {isCapsLockOn ? <Alert color="infini-warning" title={t("capsLockWarning")} /> : null}
+              {submitError ? <Alert color="red" title={submitError} /> : null}
+              {isCapsLockOn ? <Alert color="yellow" title={t("capsLockWarning")} /> : null}
 
               <form onSubmit={handleSubmit(onSubmit)}>
                 <Stack gap={20}>
                   <div className={`login-floating-field${usernameValue.length > 0 ? " login-floating-field--filled" : ""}`}>
                     <TextInput
                       value={usernameValue}
-                      onChange={(event) => setValue("username", event.currentTarget.value)}
+                      onChange={(event: React.ChangeEvent<HTMLInputElement>) => setValue("username", event.currentTarget.value)}
                       error={usernameError}
                       classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
                       label={t("field.username")}
@@ -253,7 +240,7 @@ export function RegisterPage() {
                       label={t("field.password")}
                       type={showPassword ? "text" : "password"}
                       value={passwordValue}
-                      onChange={(event) => setValue("password", event.currentTarget.value)}
+                      onChange={(event: React.ChangeEvent<HTMLInputElement>) => setValue("password", event.currentTarget.value)}
                       error={passwordError}
                       classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
                       autoComplete="new-password"
@@ -284,7 +271,7 @@ export function RegisterPage() {
                       label={t("field.confirmPassword")}
                       type={showConfirmPassword ? "text" : "password"}
                       value={confirmPasswordValue}
-                      onChange={(event) => setValue("confirmPassword", event.currentTarget.value)}
+                      onChange={(event: React.ChangeEvent<HTMLInputElement>) => setValue("confirmPassword", event.currentTarget.value)}
                       error={confirmPasswordError}
                       classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
                       autoComplete="new-password"
@@ -309,7 +296,7 @@ export function RegisterPage() {
                     {t("button.register")}
                   </DepthButton>
 
-                  <MagneticElement strength={8} className="login-page__back-link">
+                  <MagneticElement strength={0.3} className="login-page__back-link">
                     <Anchor
                       underline="hover"
                       onClick={() => void navigate({ to: "/login" })}

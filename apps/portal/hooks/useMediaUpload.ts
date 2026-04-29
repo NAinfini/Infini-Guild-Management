@@ -4,7 +4,7 @@ import {
   convertAudioToOpus,
   convertImageToWebP,
   getAudioConversionSupport,
-} from "@infini-dev-kit/react";
+} from "@guild/shared/utils/media";
 
 type UploadContext = {
   onUploadProgress: (percent: number) => void;

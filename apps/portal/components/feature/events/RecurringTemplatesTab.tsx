@@ -1,6 +1,6 @@
 import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
-import { DepthButton } from "@infini-dev-kit/react";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
 import { Badge, Group, Skeleton, Stack, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
@@ -98,7 +98,7 @@ export function RecurringTemplatesTab({
         children: (
           <Text size="sm">{t("recurring.confirm.delete.description")}</Text>
         ),
-        confirmProps: { color: "infini-danger" },
+        confirmProps: { color: "red" },
         onConfirm: () => {
           void onDeleteTemplate(template.id);
         },
@@ -157,10 +157,10 @@ export function RecurringTemplatesTab({
                   style={{
                     padding: "14px 16px",
                     borderRadius: 8,
-                    border: "1px solid color-mix(in srgb, var(--infini-color-border, #e5e7eb) 100%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 100%, transparent)",
                     background: isPaused
-                      ? "color-mix(in srgb, var(--infini-color-text, #111827) 3%, transparent)"
-                      : "color-mix(in srgb, var(--infini-color-primary, #3b82f6) 4%, transparent)",
+                      ? "color-mix(in srgb, var(--color-text, #111827) 3%, transparent)"
+                      : "color-mix(in srgb, var(--color-primary, #3b82f6) 4%, transparent)",
                     opacity: isPaused ? 0.7 : 1,
                     transition: "opacity 150ms ease",
                   }}

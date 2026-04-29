@@ -18,12 +18,12 @@ import {
   IconFlame,
   IconHammer,
   IconHeart,
-  IconLanguage,
   IconLayoutDashboard,
   IconLock,
   IconLockOpen,
   IconLogout,
   IconMoon,
+  IconSun,
   IconPin,
   IconPlayerPlay,
   IconPhoto,
@@ -44,6 +44,7 @@ import {
   IconUsers,
   IconVolume,
   IconVolumeOff,
+  IconWorld,
   type IconProps,
 } from "@tabler/icons-react";
 import type { ComponentType } from "react";
@@ -69,7 +70,8 @@ export const UserOutlined = withDefaults(IconUser);
 export const ControlOutlined = withDefaults(IconAdjustments);
 export const FireOutlined = withDefaults(IconFlame);
 export const MoonOutlined = withDefaults(IconMoon);
-export const TranslationOutlined = withDefaults(IconLanguage);
+export const SunOutlined = withDefaults(IconSun);
+export const TranslationOutlined = withDefaults(IconWorld);
 export const EllipsisOutlined = withDefaults(IconDots);
 export const DownOutlined = withDefaults(IconChevronDown);
 export const LogoutOutlined = withDefaults(IconLogout);

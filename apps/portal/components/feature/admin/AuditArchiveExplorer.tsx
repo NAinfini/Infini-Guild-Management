@@ -168,9 +168,9 @@ export function AuditArchiveExplorer({
         const segments = file.key.split("/").filter(Boolean);
         downloadFileBlob(segments[segments.length - 1] ?? `guild-audit-${selectedMonth}.ndjson.gz`, blob);
       }
-      notifications.show({ color: "infini-success", message: t("message.archiveRawDownloaded") });
+      notifications.show({ color: "green", message: t("message.archiveRawDownloaded") });
     } catch {
-      notifications.show({ color: "infini-danger", message: t("message.archiveRawDownloadFailed") });
+      notifications.show({ color: "red", message: t("message.archiveRawDownloadFailed") });
     } finally {
       setDownloadingFormat(null);
     }
@@ -183,7 +183,7 @@ export function AuditArchiveExplorer({
       const response = await requestAdminAuditArchiveDownload(selectedMonth, "raw_ndjson_gz");
       const totalBytes = response.files.reduce((sum, f) => sum + f.size_bytes, 0);
       if (totalBytes > CSV_SIZE_LIMIT_BYTES) {
-        notifications.show({ color: "infini-warning", message: t("auditArchive.rawOnlyMessage") });
+        notifications.show({ color: "yellow", message: t("auditArchive.rawOnlyMessage") });
         setDownloadingFormat(null);
         return;
       }
@@ -197,7 +197,7 @@ export function AuditArchiveExplorer({
 
       const csvBlob = buildCsvBlob(allRows);
       downloadFileBlob(`guild-audit-${selectedMonth}-localtime.csv`, csvBlob);
-      notifications.show({ color: "infini-success", message: t("message.archiveCsvExported") });
+      notifications.show({ color: "green", message: t("message.archiveCsvExported") });
     } catch (error) {
       const key =
         error instanceof Error && error.message === "decompress_failed"
@@ -207,7 +207,7 @@ export function AuditArchiveExplorer({
             : error instanceof Error && error.message === "encode_failed"
               ? "message.archiveCsvExportFailedEncode"
               : "message.archiveCsvExportFailed";
-      notifications.show({ color: "infini-danger", message: t(key) });
+      notifications.show({ color: "red", message: t(key) });
     } finally {
       setDownloadingFormat(null);
     }
@@ -229,10 +229,10 @@ export function AuditArchiveExplorer({
         <Collapse in={opened}>
           <Stack gap={12} pt="xs">
             {monthsLoading ? <Skeleton height={36} /> : null}
-            {monthsError ? <Alert color="infini-warning" title={tc("loadError")} /> : null}
+            {monthsError ? <Alert color="yellow" title={tc("loadError")} /> : null}
 
             {!monthsLoading && !monthsError && months.length === 0 ? (
-              <Alert color="infini-warning">{t("auditArchive.empty")}</Alert>
+              <Alert color="yellow">{t("auditArchive.empty")}</Alert>
             ) : null}
 
             {!monthsLoading && !monthsError && months.length > 0 ? (
@@ -273,7 +273,7 @@ export function AuditArchiveExplorer({
                   </Stack>
                 ) : null}
 
-                {archiveError ? <Alert color="infini-warning" title={tc("loadError")} /> : null}
+                {archiveError ? <Alert color="yellow" title={tc("loadError")} /> : null}
 
                 {!archiveLoading && !archiveError && selectedMonth && archiveRows.length > 0 ? (
                   <>

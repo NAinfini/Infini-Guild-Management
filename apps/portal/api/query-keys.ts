@@ -18,7 +18,7 @@ export const queryKeys = {
   },
   events: {
     all: ["events"] as const,
-    list: (eventType: string, archivedOnly: boolean) => [...queryKeys.events.all, eventType, archivedOnly] as const,
+    list: (eventType: string, archivedOnly: boolean, page?: number) => [...queryKeys.events.all, eventType, archivedOnly, page ?? 1] as const,
     memberPreviewUsers: () => [...queryKeys.events.all, "member-preview-users"] as const,
     previewDetails: () => [...queryKeys.events.all, "preview-details"] as const,
     previewDetailsByIds: (idsKey: string) => [...queryKeys.events.previewDetails(), idsKey] as const,
@@ -26,7 +26,7 @@ export const queryKeys = {
   },
   announcements: {
     all: ["announcements"] as const,
-    list: (scope: string, status: string, search: string) => [...queryKeys.announcements.all, scope, status, search] as const,
+    list: (scope: string, status: string, search: string, page?: number) => [...queryKeys.announcements.all, scope, status, search, page ?? 1] as const,
     detail: (id: string | null) => [...queryKeys.announcements.all, "detail", id] as const,
   },
   gallery: {
@@ -43,9 +43,6 @@ export const queryKeys = {
     upcomingEventDetails: (eventIdsKey: string) =>
       [...queryKeys.dashboard.all, "upcoming-event-details", eventIdsKey] as const,
     upcomingEventDetailsAll: () => [...queryKeys.dashboard.all, "upcoming-event-details"] as const,
-    mySignups: (userId: string, eventIdsKey: string) =>
-      [...queryKeys.dashboard.all, "my-signups", userId, eventIdsKey] as const,
-    mySignupsAll: () => [...queryKeys.dashboard.all, "my-signups"] as const,
   },
   admin: {
     all: ["admin"] as const,
@@ -66,8 +63,7 @@ export const queryKeys = {
     events: () => [...queryKeys.guildWar.all, "events"] as const,
     eventDetail: (eventId: string | null) => [...queryKeys.guildWar.all, "event-detail", eventId] as const,
     active: (eventIdKey: string) => [...queryKeys.guildWar.all, "active", eventIdKey] as const,
-    templates: (eventIdKey: string) => [...queryKeys.guildWar.all, "templates", eventIdKey] as const,
-    history: (fromKey: string, toKey: string) => [...queryKeys.guildWar.all, "history", fromKey, toKey] as const,
+    history: (fromKey: string, toKey: string, page?: number, perPage?: number) => [...queryKeys.guildWar.all, "history", fromKey, toKey, page ?? 1, perPage ?? 20] as const,
     historyAll: () => [...queryKeys.guildWar.all, "history"] as const,
     historyDetail: (historyId: string | null) => [...queryKeys.guildWar.all, "history-detail", historyId] as const,
     analytics: (warIdsKey: string) => [...queryKeys.guildWar.all, "analytics", warIdsKey] as const,
@@ -77,8 +73,8 @@ export const queryKeys = {
   wiki: {
     all: ["wiki"] as const,
     categories: () => [...queryKeys.wiki.all, "categories"] as const,
-    articles: (categoryId: string, search: string, archivedMode: string) =>
-      [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode] as const,
+    articles: (categoryId: string, search: string, archivedMode: string, page?: number) =>
+      [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, page ?? 1] as const,
     article: (slug: string | null) => [...queryKeys.wiki.all, "article", slug] as const,
   },
 } as const;

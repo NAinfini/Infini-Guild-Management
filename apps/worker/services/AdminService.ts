@@ -1,4 +1,6 @@
 import {
+  MODERATOR_DEFAULT_PERMISSIONS,
+  MEMBER_DEFAULT_PERMISSIONS,
   PERMISSIONS,
   ROLES,
   adminRoleSchema,
@@ -8,6 +10,7 @@ import {
   inviteLinkStatsSchema,
   type Permission,
   type Role,
+  type AdminRole,
 } from "@guild/shared";
 import { and, desc, eq, gt, gte, inArray, isNull, like, lte, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
@@ -103,14 +106,6 @@ const BUILTIN_ROLE_DEFAULTS: Record<Role, { name: string; level: number; color: 
   moderator: { name: "Moderator", level: 2, color: "blue" },
   member: { name: "Member", level: 1, color: "gray" },
 };
-
-const MODERATOR_DEFAULT_PERMISSIONS = new Set<Permission>([
-  "admin.users.view", "admin.users.edit", "admin.invite.view", "admin.audit.view",
-  "admin.bot.view", "admin.status.view", "admin.analytics.view", "admin.roles.view",
-  "guildwar.manage", "guildwar.history.edit",
-  "events.manage", "announcements.manage", "gallery.upload", "gallery.manage", "wiki.edit",
-]);
-const MEMBER_DEFAULT_PERMISSIONS = new Set<Permission>(["gallery.upload"]);
 
 // --- Permission helpers (exported for route use) ---
 
@@ -789,6 +784,7 @@ export class AdminService {
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
       await this.deps.db.update(users).set({ role: newRoleId, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
+      await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
     }
     await this.deps.writeAuditLog({ entityType: "user", action: "batch_role_update", actorId, entityId: "batch", detailText: JSON.stringify({ user_ids: targetIds, new_role: newRoleId }) });
     return ok({ updated: existingUsers.length });
@@ -870,6 +866,7 @@ export class AdminService {
     const target = (await this.deps.db.select({ id: users.id, role: users.role, deletedAt: users.deletedAt }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     if (!target || target.deletedAt !== null) return err("NOT_FOUND", "User not found");
     await this.deps.db.update(users).set({ role: newRoleId, updatedAt: this.now().toISOString() }).where(eq(users.id, targetUserId));
+    await this.deps.db.delete(sessions).where(eq(sessions.userId, targetUserId));
     await this.deps.writeAuditLog({ entityType: "user", action: "update_role", actorId, entityId: targetUserId, detailText: JSON.stringify({ from: target.role, to: newRoleId }) });
     return ok(undefined);
   }
@@ -941,7 +938,7 @@ export class AdminService {
     return ok(adminRoleSchema.parse({ id: created.id, name: created.name, level: created.level, color: created.color, is_builtin: created.isBuiltin, created_at: created.createdAt, updated_at: created.updatedAt, permissions: permissionRecord, assigned_user_count: 0 }));
   }
 
-  async updateRole(actorId: string, roleId: string, input: { name?: string; level?: number; color?: string | null; permissions?: Record<string, boolean> }): Promise<ServiceResult<unknown>> {
+  async updateRole(actorId: string, roleId: string, input: { name?: string; level?: number; color?: string | null; permissions?: Record<string, boolean> }): Promise<ServiceResult<AdminRole>> {
     await ensureBuiltinRolesAndPermissions(this.deps.db);
     const existing = (await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (!existing) return err("NOT_FOUND", "Role not found");

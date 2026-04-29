@@ -13,7 +13,7 @@ type PushSignalPayload = {
   key: string;
   title: string;
   message: string;
-  color: "infini-primary" | "infini-warning";
+  color: "blue" | "yellow";
   frequencyHz: number;
 };
 
@@ -30,7 +30,7 @@ function resolveSignalPayload(message: PushMessage): PushSignalPayload | null {
       key: `announcement:${message.announcement_id}`,
       title: "Announcement Published",
       message: message.title,
-      color: "infini-primary",
+      color: "blue",
       frequencyHz: 880,
     };
   }
@@ -40,7 +40,7 @@ function resolveSignalPayload(message: PushMessage): PushSignalPayload | null {
       key: `event-reminder:${message.event_id}`,
       title: "Event Reminder",
       message: `${message.title} (${message.starts_at.slice(0, 16).replace("T", " ")})`,
-      color: "infini-warning",
+      color: "yellow",
       frequencyHz: 740,
     };
   }

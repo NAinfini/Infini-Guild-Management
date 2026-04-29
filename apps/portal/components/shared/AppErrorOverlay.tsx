@@ -29,7 +29,7 @@ export function AppErrorOverlay() {
       notifications.show({
         title: i18n.t("common:errors.conflictTitle"),
         message: extra ? `${messageText}\n${extra}` : messageText,
-        color: "infini-warning",
+        color: "yellow",
         autoClose: false,
         withCloseButton: true,
       });
@@ -43,7 +43,7 @@ export function AppErrorOverlay() {
         message: detail?.message ?? i18n.t("common:errors.connectionIssue", {
           defaultValue: "Unable to reach server. Check your network and retry.",
         }),
-        color: "infini-danger",
+        color: "red",
         autoClose: false,
         withCloseButton: true,
       });

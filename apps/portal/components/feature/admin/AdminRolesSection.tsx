@@ -1,5 +1,5 @@
 import { PERMISSIONS, type AdminRole, type Permission } from "@guild/shared";
-import { DepthToggle } from "@infini-dev-kit/react";
+import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import {
   ActionIcon,
   Alert,
@@ -20,7 +20,7 @@ import { IconCheck, IconDeviceFloppy, IconPlus, IconTrash, IconX } from "@tabler
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
-import { canManageRoles } from "../../../utils/permissions";
+import { userCanManageRoles } from "../../../utils/permissions";
 
 type RoleDraft = {
   name: string;
@@ -87,18 +87,31 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
   },
   {
     labelKey: "roles.category.adminSystem",
-    permissions: ["admin.status.view", "admin.roles.manage"],
+    permissions: ["admin.status.view", "admin.roles.view", "admin.roles.manage"],
   },
   {
-    labelKey: "roles.category.content",
-    permissions: [
-      "guildwar.manage",
-      "guildwar.history.edit",
-      "events.manage",
-      "announcements.manage",
-      "gallery.upload",
-      "wiki.edit",
-    ],
+    labelKey: "roles.category.adminAnalytics",
+    permissions: ["admin.analytics.view", "admin.analytics.manage"],
+  },
+  {
+    labelKey: "roles.category.guildWar",
+    permissions: ["guildwar.teams.edit", "guildwar.teams.post", "guildwar.history.edit"],
+  },
+  {
+    labelKey: "roles.category.events",
+    permissions: ["events.create", "events.edit", "events.archive", "events.delete", "events.templates"],
+  },
+  {
+    labelKey: "roles.category.announcements",
+    permissions: ["announcements.create", "announcements.edit", "announcements.archive"],
+  },
+  {
+    labelKey: "roles.category.gallery",
+    permissions: ["gallery.upload", "gallery.manage"],
+  },
+  {
+    labelKey: "roles.category.wiki",
+    permissions: ["wiki.articles.create", "wiki.articles.edit", "wiki.articles.archive", "wiki.categories.manage"],
   },
 ];
 
@@ -155,7 +168,7 @@ export function AdminRolesSection({
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
   const user = useAuthStore((state) => state.user);
-  const isAdmin = Boolean(user && canManageRoles(roles, user.role));
+  const isAdmin = userCanManageRoles(user);
   const loadErrorMessage = tc("loadError");
   const heading = <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.roles")}</Title>;
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
@@ -179,7 +192,7 @@ export function AdminRolesSection({
     return (
       <Stack gap={12}>
         {heading}
-        <Alert color="infini-warning" title={t("adminOnly")} />
+        <Alert color="yellow" title={t("adminOnly")} />
       </Stack>
     );
   }
@@ -213,7 +226,7 @@ export function AdminRolesSection({
       modals.openConfirmModal({
         title: t("roles.confirmDeleteTitle"),
         children: t("roles.confirmDeleteDescription", { name: role.name }),
-        confirmProps: { color: "infini-danger" },
+        confirmProps: { color: "red" },
         labels: {
           confirm: t("roles.delete"),
           cancel: t("roles.cancel"),
@@ -232,7 +245,8 @@ export function AdminRolesSection({
 
     const deleted = await onDeleteRole(role.id);
     if (deleted && selectedRoleId === role.id) {
-      setSelectedRoleId(roles[0]?.id ?? null);
+      const remaining = roles.filter((r) => r.id !== role.id);
+      setSelectedRoleId(remaining[0]?.id ?? null);
     }
   };
 
@@ -268,7 +282,7 @@ export function AdminRolesSection({
     <Stack gap={12}>
       {heading}
       {rolesLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {rolesError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
+      {rolesError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
 
       {!rolesLoading && !rolesError ? (
         <div className="admin-roles-layout">
@@ -304,7 +318,7 @@ export function AdminRolesSection({
                         </Group>
                         <Group gap={4} wrap="nowrap">
                           {dirty ? (
-                            <Badge size="xs" variant="light" color="infini-warning">*</Badge>
+                            <Badge size="xs" variant="light" color="yellow">*</Badge>
                           ) : null}
                           {role.is_builtin ? (
                             <Badge size="xs" variant="light" color="blue">{t("roles.builtin")}</Badge>
@@ -335,7 +349,7 @@ export function AdminRolesSection({
                 <ActionIcon
                   size="sm"
                   variant="filled"
-                  color="infini-primary"
+                  color="blue"
                   onClick={() => { void handleCreateRole(); }}
                   loading={createRolePending}
                   disabled={!newRoleName.trim()}
@@ -383,7 +397,7 @@ export function AdminRolesSection({
                     <Group gap={8} mt={22}>
                       {!selectedRole.is_builtin ? (
                         <ActionIcon
-                          color="infini-danger"
+                          color="red"
                           variant="light"
                           size="lg"
                           onClick={() => { void handleDeleteRole(selectedRole); }}
@@ -394,7 +408,7 @@ export function AdminRolesSection({
                         </ActionIcon>
                       ) : null}
                       <ActionIcon
-                        color="infini-primary"
+                        color="blue"
                         variant="filled"
                         size="lg"
                         onClick={() => {
@@ -425,7 +439,7 @@ export function AdminRolesSection({
                         </Text>
                         <div className="admin-roles-perm-grid">
                           {category.permissions.map((permission) => {
-                            const isReadOnly = selectedRole.is_builtin;
+                            const isReadOnly = selectedRole.id === "admin";
                             const isGranted = Boolean(selectedDraft.permissions[permission]);
 
                             return (

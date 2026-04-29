@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type AnalyticsMode = "player" | "compare" | "rankings" | "teams";
+export type AnalyticsMode = "player" | "rankings" | "teams";
 export type AnalyticsMetricKey =
   | "kills"
   | "deaths"
@@ -34,9 +34,6 @@ export const DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS: ModifierWeights = {
 type GuildWarStoreState = {
   selectedEventId: string | undefined;
   selectedHistoryId: string | null;
-  selectedTemplateId: string;
-  templateName: string;
-  templateDescription: string;
   analyticsMode: AnalyticsMode;
   analyticsSelectedMetrics: AnalyticsMetricKey[];
   analyticsOnlyParticipated: boolean;
@@ -56,11 +53,10 @@ type GuildWarStoreState = {
   historyChartMetric: AnalyticsMetricKey;
   historyDateFrom: string;
   historyDateTo: string;
+  historyPage: number;
+  historyPerPage: number;
   setSelectedEventId: (selectedEventId: string | undefined) => void;
   setSelectedHistoryId: (selectedHistoryId: string | null) => void;
-  setSelectedTemplateId: (selectedTemplateId: string) => void;
-  setTemplateName: (templateName: string) => void;
-  setTemplateDescription: (templateDescription: string) => void;
   setAnalyticsMode: (analyticsMode: AnalyticsMode) => void;
   setAnalyticsSelectedMetrics: (analyticsSelectedMetrics: AnalyticsMetricKey[]) => void;
   setAnalyticsOnlyParticipated: (analyticsOnlyParticipated: boolean) => void;
@@ -80,14 +76,13 @@ type GuildWarStoreState = {
   setHistoryChartMetric: (historyChartMetric: AnalyticsMetricKey) => void;
   setHistoryDateFrom: (historyDateFrom: string) => void;
   setHistoryDateTo: (historyDateTo: string) => void;
+  setHistoryPage: (historyPage: number) => void;
+  setHistoryPerPage: (historyPerPage: number) => void;
 };
 
 export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   selectedEventId: undefined,
   selectedHistoryId: null,
-  selectedTemplateId: "",
-  templateName: "",
-  templateDescription: "",
   analyticsMode: "player",
   analyticsSelectedMetrics: ["damage"],
   analyticsOnlyParticipated: true,
@@ -107,11 +102,10 @@ export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   historyChartMetric: "damage",
   historyDateFrom: "",
   historyDateTo: "",
+  historyPage: 1,
+  historyPerPage: 20,
   setSelectedEventId: (selectedEventId) => set({ selectedEventId }),
   setSelectedHistoryId: (selectedHistoryId) => set({ selectedHistoryId }),
-  setSelectedTemplateId: (selectedTemplateId) => set({ selectedTemplateId }),
-  setTemplateName: (templateName) => set({ templateName }),
-  setTemplateDescription: (templateDescription) => set({ templateDescription }),
   setAnalyticsMode: (analyticsMode) => set({ analyticsMode }),
   setAnalyticsSelectedMetrics: (analyticsSelectedMetrics) => set({ analyticsSelectedMetrics }),
   setAnalyticsOnlyParticipated: (analyticsOnlyParticipated) => set({ analyticsOnlyParticipated }),
@@ -129,6 +123,8 @@ export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   setModifierWeightsInitialized: (modifierWeightsInitialized) => set({ modifierWeightsInitialized }),
   setHistoryViewMode: (historyViewMode) => set({ historyViewMode }),
   setHistoryChartMetric: (historyChartMetric) => set({ historyChartMetric }),
-  setHistoryDateFrom: (historyDateFrom) => set({ historyDateFrom }),
-  setHistoryDateTo: (historyDateTo) => set({ historyDateTo }),
+  setHistoryDateFrom: (historyDateFrom) => set({ historyDateFrom, historyPage: 1 }),
+  setHistoryDateTo: (historyDateTo) => set({ historyDateTo, historyPage: 1 }),
+  setHistoryPage: (historyPage) => set({ historyPage }),
+  setHistoryPerPage: (historyPerPage) => set({ historyPerPage, historyPage: 1 }),
 }));

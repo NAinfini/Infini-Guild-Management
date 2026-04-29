@@ -1,5 +1,5 @@
 import { PlayCircleOutlined } from "@portal/utils/icons";
-import { RevealOnScroll } from "@infini-dev-kit/react";
+import { RevealOnScroll } from "@portal/components/effects";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
 import { Button, Checkbox, Group, Skeleton, Stack, Text } from "@mantine/core";

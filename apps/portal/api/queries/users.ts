@@ -4,10 +4,10 @@ import { apiRequest } from "../client";
 export type UserDetailResponse = { user: User; profile: MemberProfile };
 export type UsersListResponse = PaginatedResponse<{ user: User; profile: MemberProfile }>;
 
-function buildUsersListPath(options?: { externalView?: boolean }): string {
+function buildUsersListPath(options?: { externalView?: boolean; page?: number; limit?: number }): string {
   const query = new URLSearchParams({
-    page: "1",
-    limit: "100",
+    page: String(options?.page ?? 1),
+    limit: String(options?.limit ?? 500),
   });
 
   if (options?.externalView) {
@@ -21,7 +21,7 @@ export function fetchUsersList(): Promise<UsersListResponse> {
   return apiRequest<UsersListResponse>(buildUsersListPath());
 }
 
-export function fetchUsersListWithOptions(options?: { externalView?: boolean }): Promise<UsersListResponse> {
+export function fetchUsersListWithOptions(options?: { externalView?: boolean; page?: number; limit?: number }): Promise<UsersListResponse> {
   return apiRequest<UsersListResponse>(buildUsersListPath(options));
 }
 

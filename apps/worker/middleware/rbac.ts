@@ -1,5 +1,5 @@
-import { ERROR_STATUS, hasRoleAtLeast } from "@guild/shared";
-import type { Permission, Role, StandardErrorResponse } from "@guild/shared";
+import { ERROR_STATUS, hasLevelAtLeast } from "@guild/shared";
+import type { BuiltinRole, Permission, StandardErrorResponse } from "@guild/shared";
 import type { Context, Next } from "hono";
 import { resolveSession, type SessionUser } from "../services/auth";
 
@@ -43,14 +43,14 @@ export async function requireAnyPermission(
  * For individual handlers that need the authenticated user object, use the
  * controller-level `requirePermission()` pattern defined in each route file instead.
  */
-export function requireRole(roles: Role[]) {
+export function requireRole(roles: BuiltinRole[]) {
   return async (c: Context, next: Next): Promise<Response | void> => {
     const user = await getRequestUser(c);
     if (!user) {
       return buildError(c, "UNAUTHORIZED", "Authentication required");
     }
 
-    const isAllowed = roles.some((role) => hasRoleAtLeast(user.role, role));
+    const isAllowed = roles.some((role) => hasLevelAtLeast(user.roleLevel, role));
     if (!isAllowed) {
       return buildError(c, "FORBIDDEN", "Insufficient role");
     }
@@ -64,9 +64,9 @@ export function requireRole(roles: Role[]) {
  * Preferred when the handler needs access to the authenticated user's id/role.
  * @deprecated Use requirePermission() instead for granular permission checks.
  */
-export function requireRoleOrError(c: Context, requiredRole: Role): SessionUser | Response {
+export function requireRoleOrError(c: Context, requiredRole: BuiltinRole): SessionUser | Response {
   const user = (c.get("user") as SessionUser | null) ?? null;
   if (!user) return buildError(c, "UNAUTHORIZED", "Authentication required");
-  if (!hasRoleAtLeast(user.role, requiredRole)) return buildError(c, "FORBIDDEN", "Insufficient role");
+  if (!hasLevelAtLeast(user.roleLevel, requiredRole)) return buildError(c, "FORBIDDEN", "Insufficient role");
   return user;
 }

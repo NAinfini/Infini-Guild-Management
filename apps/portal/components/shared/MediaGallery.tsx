@@ -4,7 +4,7 @@ import { PortalCard as InfiniCard } from "./PortalCard";
 import { useMediaQuery } from "@mantine/hooks";
 import { forwardRef, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import clsx from "clsx";
-import { isDirectPlayableVideoUrl, isEmbeddableVideoUrl, toEmbedVideoUrl } from "@infini-dev-kit/react";
+import { isDirectPlayableVideoUrl, isEmbeddableVideoUrl, toEmbedVideoUrl } from "@guild/shared/utils/video";
 import "./media-gallery.css";
 
 export type MediaGalleryLabels = {
@@ -107,7 +107,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [audioProgress, setAudioProgress] = useState<VideoProgressState>({ current: 0, duration: 0 });
   const [thumbnailExpanded, setThumbnailExpanded] = useState(true);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const [embla, setEmbla] = useState<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const directVideoRefs = useRef<Record<number, HTMLVideoElement | null>>({});

@@ -175,7 +175,7 @@ export function useAdminBotController({
       t("status.summary.wechatRooms", { value: (botSettingsData?.wechat.room_ids ?? []).join(", ") }),
     ];
     await copyPlainText(lines.join("\n"));
-    notifications.show({ color: "infini-success", message: t("message.configSummaryCopied") });
+    notifications.show({ color: "green", message: t("message.configSummaryCopied") });
   };
 
   return {

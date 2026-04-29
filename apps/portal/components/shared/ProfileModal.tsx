@@ -1,5 +1,5 @@
 import type { MemberProfile, User } from "@guild/shared";
-import { DepthButton } from "@infini-dev-kit/react";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { Group, Modal, Stack, Text } from "@mantine/core";
 import { IconPencil } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";

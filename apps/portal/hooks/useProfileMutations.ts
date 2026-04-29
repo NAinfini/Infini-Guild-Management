@@ -6,7 +6,7 @@ import { useAppError } from "./useAppError";
 import type { UseMediaUploadState } from "./useMediaUpload";
 import type { ProfileFormStateController } from "./useProfileFormState";
 import { logout as requestLogout } from "../services/AuthService";
-import { queryKeys } from "../services/PortalQueryKeys";
+import { queryKeys } from "../api/query-keys";
 import {
   changeMyPassword,
   changeMyUsername,
@@ -53,7 +53,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     onSuccess: async (updatedProfile) => {
       setProfile(updatedProfile);
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
-      notifications.show({ color: "infini-success", message: t("message.profileSaved") });
+      notifications.show({ color: "green", message: t("message.profileSaved") });
     },
     onError: (error) => {
       showError(error, t("message.profileSaveFailed"));
@@ -68,7 +68,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     onSuccess: async (_data, key) => {
       form.setImageList((current) => current.filter((item) => item !== key));
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
-      notifications.show({ color: "infini-success", message: t("message.imageRemoved") });
+      notifications.show({ color: "green", message: t("message.imageRemoved") });
     },
     onError: (error) => {
       showError(error, t("message.imageRemoveFailed"));
@@ -82,7 +82,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
-      notifications.show({ color: "infini-success", message: t("message.audioRemoved") });
+      notifications.show({ color: "green", message: t("message.audioRemoved") });
     },
     onError: (error) => {
       showError(error, t("message.audioRemoveFailed"));
@@ -101,7 +101,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
       form.setDiscordCode("");
-      notifications.show({ color: "infini-success", message: t("message.discordLinked", { discordId: response.discord_id }) });
+      notifications.show({ color: "green", message: t("message.discordLinked", { discordId: response.discord_id }) });
     },
     onError: (error) => {
       showError(error, t("message.discordLinkFailed"));
@@ -119,7 +119,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
-      notifications.show({ color: "infini-success", message: t("message.discordUnlinked") });
+      notifications.show({ color: "green", message: t("message.discordUnlinked") });
     },
     onError: (error) => {
       showError(error, t("message.discordUnlinkFailed"));
@@ -139,7 +139,10 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       form.setCurrentPassword("");
       form.setNewPassword("");
       form.setConfirmNewPassword("");
-      notifications.show({ color: "infini-success", message: t("message.passwordChanged") });
+      notifications.show({ color: "green", message: t("message.passwordChanged") });
+      clearSession();
+      queryClient.clear();
+      void navigate({ to: "/login", search: { reason: "expired" } });
     },
     onError: (error) => {
       showError(error, t("message.passwordChangeFailed"));
@@ -155,7 +158,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       });
     },
     onSuccess: () => {
-      notifications.show({ color: "infini-success", message: t("message.usernameChanged") });
+      notifications.show({ color: "green", message: t("message.usernameChanged") });
       form.setCurrentPasswordForUsername("");
       form.setNewUsername("");
       clearSession();
@@ -185,7 +188,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       const uploaded = await imageUploader.upload();
       if (!uploaded) return;
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user.id) });
-      notifications.show({ color: "infini-success", message: t("message.imagesUploaded") });
+      notifications.show({ color: "green", message: t("message.imagesUploaded") });
     } catch (error) {
       showError(error, t("message.imageUploadFailed"));
     }
@@ -197,7 +200,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       const uploaded = await audioUploader.upload();
       if (!uploaded) return;
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user.id) });
-      notifications.show({ color: "infini-success", message: t("message.audioUploaded") });
+      notifications.show({ color: "green", message: t("message.audioUploaded") });
     } catch (error) {
       showError(error, t("message.audioUploadFailed"));
     }

@@ -177,7 +177,7 @@ function DroppableMemberColumn(props: {
           <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
             <Text size="sm" fw={600} truncate>{props.column.title}</Text>
             <Badge size="sm" variant="light">{props.column.members.length}</Badge>
-            {props.column.locked ? <Badge color="infini-danger" size="sm">{t("active.locked")}</Badge> : null}
+            {props.column.locked ? <Badge color="red" size="sm">{t("active.locked")}</Badge> : null}
           </Group>
           <Group gap={4} wrap="nowrap">
             {props.column.containerId !== "pool" && props.onCopyTeamMentions ? (

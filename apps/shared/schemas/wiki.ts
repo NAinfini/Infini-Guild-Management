@@ -40,7 +40,7 @@ export const createWikiArticleSchema = z.object({
   title: z.string().min(1).max(200),
   slug: z.string().optional(),
   category_id: z.string(),
-  body_json: z.string().min(1),
+  body_json: z.string().min(1).max(500000),
   sort_order: z.number().int().default(0),
   pinned: z.boolean().default(false),
 });

@@ -34,7 +34,7 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@infini-dev-kit/react", () => ({
+vi.mock("../../components/shared/ImageGridEditor", () => ({
   ImageGridEditor: ({
     items,
     onFilesSelected,
@@ -56,7 +56,11 @@ vi.mock("@infini-dev-kit/react", () => ({
       ))}
     </div>
   ),
+}));
+
+vi.mock("@guild/shared/utils/media", () => ({
   convertImageToWebP: vi.fn(async (file: File) => file),
+  DEFAULT_IMAGE_WEBP_QUALITY: 0.82,
 }));
 
 function EventCreationHarness({

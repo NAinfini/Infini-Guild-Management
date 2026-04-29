@@ -1,4 +1,4 @@
-import type { ImageGridEditorItem } from "@infini-dev-kit/react";
+import type { ImageGridEditorItem } from "@guild/shared/types/media";
 import { notifications } from "@mantine/notifications";
 import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -85,7 +85,7 @@ export function useAdminMemberMediaController({
   const deleteImageMutation = useMutation({
     mutationFn: (key: string) => deleteProfileImage(requireMember(member).user.id, key),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.mediaImageRemoved") });
+      notifications.show({ color: "green", message: t("message.mediaImageRemoved") });
       await onRefresh();
     },
     onError: (error) => onError(error, t("message.mediaImageRemoveFailed")),
@@ -103,7 +103,7 @@ export function useAdminMemberMediaController({
   const deleteAudioMutation = useMutation({
     mutationFn: () => deleteProfileAudio(requireMember(member).user.id),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.mediaAudioRemoved") });
+      notifications.show({ color: "green", message: t("message.mediaAudioRemoved") });
       await onRefresh();
     },
     onError: (error) => onError(error, t("message.mediaAudioRemoveFailed")),
@@ -121,7 +121,7 @@ export function useAdminMemberMediaController({
         video_urls: urls.filter((url) => url.trim() !== ""),
       }),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.mediaVideosSaved") });
+      notifications.show({ color: "green", message: t("message.mediaVideosSaved") });
       await onRefresh();
     },
     onError: (error) => onError(error, t("message.mediaVideosSaveFailed")),
@@ -175,7 +175,7 @@ export function useAdminMemberMediaController({
       if (!result) {
         return;
       }
-      notifications.show({ color: "infini-success", message: t("message.mediaImagesUploaded") });
+      notifications.show({ color: "green", message: t("message.mediaImagesUploaded") });
       await onRefresh();
       imageUploader.reset();
     } catch (error) {
@@ -189,7 +189,7 @@ export function useAdminMemberMediaController({
       if (!result) {
         return;
       }
-      notifications.show({ color: "infini-success", message: t("message.mediaAudioUploaded") });
+      notifications.show({ color: "green", message: t("message.mediaAudioUploaded") });
       await onRefresh();
       audioUploader.reset();
     } catch (error) {

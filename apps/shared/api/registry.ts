@@ -18,8 +18,6 @@ import {
 import { discordLinkStartSchema, discordLinkVerifySchema, botSettingsSchema } from "../schemas/bot";
 import { createEventSchema, updateEventSchema } from "../schemas/event";
 import {
-  applyWarTemplateSchema,
-  createWarTemplateSchema,
   createWarHistorySchema,
   saveTeamsPayloadSchema,
   updateMemberStatsSchema,
@@ -107,10 +105,6 @@ const guildWarExportQuerySchema = z.object({
   event_id: z.string().optional(),
   date_from: z.string().datetime().optional(),
   date_to: z.string().datetime().optional(),
-});
-
-const guildWarTemplatesQuerySchema = z.object({
-  event_id: z.string().optional(),
 });
 
 const wikiArticlesQuerySchema = paginatedQuerySchema.extend({
@@ -521,33 +515,6 @@ export const API_REGISTRY = {
     auth: "optional",
     request: guildWarExportQuerySchema,
   },
-  guildWarTemplatesList: {
-    method: "GET",
-    path: "/api/guild-war/templates",
-    auth: "optional",
-    request: guildWarTemplatesQuerySchema,
-  },
-  guildWarTemplateCreate: {
-    method: "POST",
-    path: "/api/guild-war/templates",
-    auth: "session",
-    role: "moderator",
-    request: createWarTemplateSchema,
-  },
-  guildWarTemplateApply: {
-    method: "POST",
-    path: "/api/guild-war/templates/apply",
-    auth: "session",
-    role: "moderator",
-    request: applyWarTemplateSchema,
-  },
-  guildWarTemplateDelete: {
-    method: "DELETE",
-    path: "/api/guild-war/templates/:id",
-    auth: "session",
-    role: "moderator",
-  },
-
   // Wiki
   wikiCategoriesList: {
     method: "GET",

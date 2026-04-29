@@ -113,6 +113,13 @@ export class AnnouncementService {
   }
 
   async create(actorId: string, data: { title: string; body_json: string; pinned: boolean; status: AnnouncementStatus; publish_at?: string | null; expires_at?: string | null; notify_discord: boolean; notify_wechat: boolean }): Promise<ServiceResult<unknown>> {
+    if (data.publish_at && data.expires_at) {
+      const publishDate = new Date(data.publish_at);
+      const expiryDate = new Date(data.expires_at);
+      if (!Number.isNaN(publishDate.getTime()) && !Number.isNaN(expiryDate.getTime()) && expiryDate <= publishDate) {
+        return err("VALIDATION_ERROR", "expires_at must be after publish_at");
+      }
+    }
     const nowIso = new Date().toISOString();
     const announcementId = nanoid();
     await this.db.insert(announcements).values({ id: announcementId, title: data.title, bodyJson: data.body_json, pinned: data.pinned, pinnedAt: data.pinned ? nowIso : null, status: data.status, publishAt: data.publish_at ?? null, expiresAt: data.expires_at ?? null, archivedAt: null, createdBy: actorId, updatedAt: nowIso });
@@ -131,9 +138,23 @@ export class AnnouncementService {
     return ok(toPayload(created));
   }
 
-  async update(actorId: string, announcementId: string, data: { title?: string; body_json?: string; pinned?: boolean; status?: AnnouncementStatus; publish_at?: string | null; expires_at?: string | null; archived_at?: string | null; notify_discord?: boolean; notify_wechat?: boolean }): Promise<ServiceResult<unknown>> {
+  async update(actorId: string, announcementId: string, data: { title?: string; body_json?: string; pinned?: boolean; status?: AnnouncementStatus; publish_at?: string | null; expires_at?: string | null; archived_at?: string | null; notify_discord?: boolean; notify_wechat?: boolean }, conditionalEtag?: string): Promise<ServiceResult<unknown>> {
     const existing = await this.getById(announcementId);
     if (!existing) return err("NOT_FOUND", "Announcement not found");
+    if (conditionalEtag) {
+      const expectedEtag = `"announcement-${existing.id}-${existing.updatedAt}"`;
+      if (conditionalEtag !== expectedEtag) return err("CONFLICT", "Announcement has been modified by another user");
+    }
+
+    const effectivePublishAt = data.publish_at !== undefined ? data.publish_at : existing.publishAt;
+    const effectiveExpiresAt = data.expires_at !== undefined ? data.expires_at : existing.expiresAt;
+    if (effectivePublishAt && effectiveExpiresAt) {
+      const publishDate = new Date(effectivePublishAt);
+      const expiryDate = new Date(effectiveExpiresAt);
+      if (!Number.isNaN(publishDate.getTime()) && !Number.isNaN(expiryDate.getTime()) && expiryDate <= publishDate) {
+        return err("VALIDATION_ERROR", "expires_at must be after publish_at");
+      }
+    }
 
     const patch: Partial<typeof announcements.$inferInsert> = { updatedAt: new Date().toISOString() };
     if (data.title !== undefined) patch.title = data.title;

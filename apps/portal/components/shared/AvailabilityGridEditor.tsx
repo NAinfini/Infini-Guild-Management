@@ -304,7 +304,7 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
             <Text c="dimmed" size="sm">{labels.timezoneNote}</Text>
             <Badge variant="light">{timezone}</Badge>
           </Group>
-          <Button size="compact-xs" variant="light" color="infini-danger" onClick={clearAll}>
+          <Button size="compact-xs" variant="light" color="red" onClick={clearAll}>
             {labels.clearAll}
           </Button>
         </Group>
@@ -400,7 +400,7 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
                           width: `${100 / 7}%`,
                           height: 14,
                           background: grid[day.key][hourSlot]
-                            ? "var(--mantine-primary-color-filled, var(--infini-color-primary, #3b82f6))"
+                            ? "var(--mantine-primary-color-filled, var(--color-primary, #3b82f6))"
                             : "transparent",
                           borderTop: "1px solid var(--mantine-color-default-border)",
                           borderLeft: "1px solid var(--mantine-color-default-border)",
@@ -424,7 +424,7 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
                         style={{
                           height: 14,
                           background: grid[day.key][hourSlot + 1]
-                            ? "var(--mantine-primary-color-filled, var(--infini-color-primary, #3b82f6))"
+                            ? "var(--mantine-primary-color-filled, var(--color-primary, #3b82f6))"
                             : "transparent",
                           borderLeft: "1px solid var(--mantine-color-default-border)",
                           borderRight: "1px solid var(--mantine-color-default-border)",
