@@ -138,5 +138,9 @@
   "notFound.backHome": "返回首页",
   "settings.theme": "主题",
   "settings.theme.light": "亮色",
-  "settings.theme.dark": "暗色"
+  "settings.theme.dark": "暗色",
+  "nav.externalViewBanner": "外部视角已启用，编辑功能和私有字段已隐藏。",
+  "nav.offlineBanner": "您已离线，部分操作可能无法执行，请恢复网络后重试。",
+  "nav.permissionDenied": "您没有执行此操作的权限。",
+  "nav.collapseSidebar": "收起侧边栏"
 }

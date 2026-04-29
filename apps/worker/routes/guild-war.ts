@@ -35,6 +35,7 @@ function getService(c: Context): GuildWarService {
     botRuntimeUrl: env.BOT_RUNTIME_URL ?? "",
     botSharedSecret: env.BOT_SHARED_SECRET ?? "",
     publishEntityChanged: (payload) => publishEntityChanged(env, payload),
+    rawDb: env.DB,
   });
 }
 

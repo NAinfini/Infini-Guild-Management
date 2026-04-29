@@ -325,7 +325,7 @@ export function AppShell() {
 
     const onForbidden = (event: Event) => {
       const detail = (event as CustomEvent<{ message?: string }>).detail;
-      setPermissionBanner(detail?.message ?? "You do not have permission for this action.");
+      setPermissionBanner(detail?.message ?? t("nav.permissionDenied"));
     };
 
     window.addEventListener("guild-api-unauthorized", onUnauthorized as EventListener);
@@ -334,7 +334,7 @@ export function AppShell() {
       window.removeEventListener("guild-api-unauthorized", onUnauthorized as EventListener);
       window.removeEventListener("guild-api-forbidden", onForbidden as EventListener);
     };
-  }, [navigate]);
+  }, [navigate, t]);
 
   const handlePushMessage = useCallback(
     (message: PushMessage) => {
@@ -555,7 +555,7 @@ export function AppShell() {
                   <ActionIcon
                     variant="subtle"
                     className="app-sider-control-btn"
-                    aria-label="Collapse sidebar"
+                    aria-label={t("nav.collapseSidebar")}
                     onClick={() => {
                       setIsSidebarExpanded(false);
                     }}
@@ -729,12 +729,12 @@ export function AppShell() {
           <main id="main-content" className="app-main">
             {isExternalView ? (
               <Alert color="blue" variant="light" className="app-banner">
-                External view is enabled. Editing and private fields are hidden.
+                {t("nav.externalViewBanner")}
               </Alert>
             ) : null}
             {!isOnline ? (
               <Alert color="yellow" variant="light" className="app-banner" role="status" aria-live="polite">
-                You are offline. Some actions may fail until connection is restored.
+                {t("nav.offlineBanner")}
               </Alert>
             ) : null}
             {permissionBanner ? (

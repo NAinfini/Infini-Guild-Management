@@ -364,6 +364,8 @@ adminRoutes.get("/audit-archive/download", async (c) => {
 });
 
 adminRoutes.get("/audit-archive/download/file", async (c) => {
+  const sessionUser = await requirePermission(c, "admin.audit.export");
+  if (sessionUser instanceof Response) return sessionUser;
   const token = c.req.query("token");
   if (!token) return buildError(c, "VALIDATION_ERROR", "token query parameter required");
   const result = await getAdminService(c).verifyAndGetArchiveFile(token);

@@ -58,15 +58,3 @@ export function requireRole(roles: BuiltinRole[]) {
     await next();
   };
 }
-
-/**
- * Controller-level RBAC check — returns the session user for use in handlers.
- * Preferred when the handler needs access to the authenticated user's id/role.
- * @deprecated Use requirePermission() instead for granular permission checks.
- */
-export function requireRoleOrError(c: Context, requiredRole: BuiltinRole): SessionUser | Response {
-  const user = (c.get("user") as SessionUser | null) ?? null;
-  if (!user) return buildError(c, "UNAUTHORIZED", "Authentication required");
-  if (!hasLevelAtLeast(user.roleLevel, requiredRole)) return buildError(c, "FORBIDDEN", "Insufficient role");
-  return user;
-}

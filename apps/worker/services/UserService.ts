@@ -131,12 +131,12 @@ function parseRecord(value: string | null): Record<string, unknown> | null {
 const TITLE_HTML_ALLOWED_TAGS = new Set(["span", "b", "strong", "i", "em", "u", "br"]);
 
 function sanitizeTitleHtml(html: string): string {
-  return html
-    .replace(/<\s*\/?\s*(\w+)[^>]*>/gi, (match, tagName: string) => {
-      if (!TITLE_HTML_ALLOWED_TAGS.has(tagName.toLowerCase())) return "";
-      // Strip all attributes from allowed tags — none of them need attributes
-      return match.replace(/(<\s*\/?\s*\w+)\s+[^>]*?(\/?\s*>)/, "$1$2");
-    });
+  return html.replace(/<(\/?)(\w+)(?:\s[^]*?)?(?:\/?)>/gi, (_match, slash: string, tagName: string) => {
+    if (!TITLE_HTML_ALLOWED_TAGS.has(tagName.toLowerCase())) return "";
+    const isSelfClosing = tagName.toLowerCase() === "br";
+    if (isSelfClosing) return "<br>";
+    return `<${slash}${tagName.toLowerCase()}>`;
+  });
 }
 
 function toUserPayload(user: UserRow) {
@@ -154,7 +154,7 @@ function toUserPayload(user: UserRow) {
   });
 }
 
-function toProfilePayload(profile: ProfileRow, options: { includeNotes: boolean; includeWechat: boolean }) {
+function toProfilePayload(profile: ProfileRow, options: { includeNotes: boolean; includeWechat: boolean; includePrivate: boolean }) {
   return memberProfileSchema.parse({
     id: profile.id,
     user_id: profile.userId,
@@ -166,10 +166,10 @@ function toProfilePayload(profile: ProfileRow, options: { includeNotes: boolean;
     images: parseStringArray(profile.images),
     audio_key: profile.audioKey,
     video_urls: parseStringArray(profile.videoUrls),
-    availability: parseRecord(profile.availability),
+    availability: options.includePrivate ? parseRecord(profile.availability) : null,
     vacation_start: profile.vacationStart,
     vacation_end: profile.vacationEnd,
-    discord_id: profile.discordId,
+    discord_id: options.includePrivate ? profile.discordId : null,
     discord_reminder_opt_out: profile.discordReminderOptOut,
     notes: options.includeNotes ? profile.notes : null,
     created_at: profile.createdAt,
@@ -369,6 +369,7 @@ export class UserService {
         profile: toProfilePayload(normalized.profile, {
           includeNotes: params.sessionUser?.permissions.has("admin.users.view") === true,
           includeWechat: Boolean(params.sessionUser) && !params.externalView,
+          includePrivate: Boolean(params.sessionUser),
         }),
       };
     });
@@ -382,7 +383,7 @@ export class UserService {
     const profile = await this.ensureProfile(targetUserId);
     return ok({
       user: toUserPayload(loaded.user),
-      profile: toProfilePayload(profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includeWechat: true }),
+      profile: toProfilePayload(profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includeWechat: true, includePrivate: true }),
     });
   }
 
@@ -406,7 +407,7 @@ export class UserService {
       entityId: targetUserId, diffTitle: updated.user.username,
     });
     await this.deps.publishEntityChanged({ entityType: "member_profile", entityId: targetUserId, hint: "profile_updated" });
-    return ok(toProfilePayload(updated.profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includeWechat: true }));
+    return ok(toProfilePayload(updated.profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includeWechat: true, includePrivate: true }));
   }
 
   async uploadProfileImages(sessionUser: SessionUser, targetUserId: string, files: File[]): Promise<ServiceResult<{ keys: string[] }>> {

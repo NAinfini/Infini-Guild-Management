@@ -71,7 +71,6 @@ export async function runBotReminderCron(env: Bindings): Promise<void> {
     .where(
       and(
         isNull(events.archivedAt),
-        eq(events.signupLocked, false),
         gte(events.startAt, nowIso),
         lte(events.startAt, cutoffIso),
       ),

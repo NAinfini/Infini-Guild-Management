@@ -67,13 +67,18 @@ export function CreateMemberModal({
       return;
     }
 
-    const res = await onCreateMember({
-      username: trimmed,
-      discordName: discordName.trim(),
-      wechatName: wechatName.trim(),
-      notes: notes.trim(),
-    });
-    setResult(res);
+    try {
+      const res = await onCreateMember({
+        username: trimmed,
+        discordName: discordName.trim(),
+        wechatName: wechatName.trim(),
+        notes: notes.trim(),
+      });
+      setResult(res);
+    } catch {
+      // Parent's onError handler already shows a notification
+      return;
+    }
   };
 
   return (

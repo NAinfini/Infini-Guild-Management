@@ -151,12 +151,22 @@ export async function replaceRolePermissions(
   db: DrizzleDb,
   roleId: string,
   permissionRecord: Record<Permission, boolean>,
+  rawDb?: D1Database,
 ): Promise<void> {
-  await db.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
-  await insertRolePermissionRows(
-    db,
-    PERMISSIONS.map((p) => ({ roleId, permission: p, granted: permissionRecord[p] })),
-  );
+  if (rawDb) {
+    const stmts: D1PreparedStatement[] = [];
+    stmts.push(rawDb.prepare("DELETE FROM role_permissions WHERE role_id = ?1").bind(roleId));
+    for (const perm of PERMISSIONS) {
+      stmts.push(rawDb.prepare("INSERT INTO role_permissions (role_id, permission, granted) VALUES (?1, ?2, ?3)").bind(roleId, perm, permissionRecord[perm] ? 1 : 0));
+    }
+    await rawDb.batch(stmts);
+  } else {
+    await db.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+    await insertRolePermissionRows(
+      db,
+      PERMISSIONS.map((p) => ({ roleId, permission: p, granted: permissionRecord[p] })),
+    );
+  }
 }
 
 export async function ensureBuiltinRolesAndPermissions(db: DrizzleDb): Promise<void> {
@@ -931,7 +941,7 @@ export class AdminService {
     await this.deps.db.insert(roles).values({ id: roleId, name: input.name.trim(), level: input.level, color: input.color ?? null, isBuiltin: false });
     const permissionRecord = emptyPermissionRecord();
     for (const perm of PERMISSIONS) permissionRecord[perm] = Boolean(input.permissions?.[perm]);
-    await replaceRolePermissions(this.deps.db, roleId, permissionRecord);
+    await replaceRolePermissions(this.deps.db, roleId, permissionRecord, this.deps.rawDb);
     await this.deps.writeAuditLog({ entityType: "role", action: "create", actorId, entityId: roleId, detailText: JSON.stringify({ name: input.name.trim(), level: input.level, color: input.color ?? null, permissions: permissionRecord }) });
     const created = (await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (!created) return err("SERVER_ERROR", "Failed to create role");
@@ -949,12 +959,12 @@ export class AdminService {
     if (input.level !== undefined) roleUpdatePayload.level = input.level;
     if (input.color !== undefined) roleUpdatePayload.color = input.color ?? null;
     if (Object.keys(roleUpdatePayload).length > 1) await this.deps.db.update(roles).set(roleUpdatePayload).where(eq(roles.id, roleId));
-    if (roleId === "admin") await replaceRolePermissions(this.deps.db, roleId, fullAdminPermissionRecord());
+    if (roleId === "admin") await replaceRolePermissions(this.deps.db, roleId, fullAdminPermissionRecord(), this.deps.rawDb);
     else if (input.permissions) {
       const currentPermissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
       const nextPermissionRecord = parsePermissionRecord(roleId, currentPermissionRows);
       for (const perm of PERMISSIONS) if (Object.prototype.hasOwnProperty.call(input.permissions, perm)) nextPermissionRecord[perm] = Boolean(input.permissions[perm]);
-      await replaceRolePermissions(this.deps.db, roleId, nextPermissionRecord);
+      await replaceRolePermissions(this.deps.db, roleId, nextPermissionRecord, this.deps.rawDb);
     }
     const [updatedRole] = await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).where(eq(roles.id, roleId)).limit(1);
     if (!updatedRole) return err("SERVER_ERROR", "Failed to load updated role");

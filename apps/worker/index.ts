@@ -6,7 +6,6 @@ import { runBotReminderCron } from "./crons/bot-reminder";
 import { runEventAutoArchiveCron } from "./crons/event-auto-archive";
 import { runEventInstanceGenerationCron } from "./crons/event-instance-gen";
 import { runMediaOrphanCleanupCron } from "./crons/media-orphan-cleanup";
-import { clearAllData, seedDatabase } from "./db/seed";
 import { WebSocketDO } from "./durable-objects/WebSocketDO";
 import { etagMiddleware } from "./middleware/etag";
 import { handleAppError } from "./middleware/error-handler";
@@ -180,6 +179,7 @@ app.post("/api/dev/seed", async (c) => {
   if (!session || !session.user.permissions.has("admin.roles.manage")) {
     return c.json({ error_code: "FORBIDDEN", message: "Requires admin permissions", request_id: c.get("requestId") }, 403);
   }
+  const { seedDatabase } = await import("./db/seed");
   await seedDatabase(c.env);
   return c.json({ ok: true, message: "Database seeded" });
 });
@@ -192,6 +192,7 @@ app.post("/api/dev/reseed", async (c) => {
   if (!session || !session.user.permissions.has("admin.roles.manage")) {
     return c.json({ error_code: "FORBIDDEN", message: "Requires admin permissions", request_id: c.get("requestId") }, 403);
   }
+  const { clearAllData, seedDatabase } = await import("./db/seed");
   await clearAllData(c.env);
   await seedDatabase(c.env);
   return c.json({ ok: true, message: "Database cleared and reseeded" });
@@ -224,25 +225,27 @@ app.route("/internal/bot", internalBotRoutes);
 export default {
   fetch: app.fetch,
   scheduled: async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
+    const safe = (fn: () => Promise<void>, name: string) =>
+      fn().catch((e) => console.error(`[cron] ${name} failed`, e));
     const tasks: Promise<void>[] = [];
 
     if (event.cron === "0 0 * * *") {
-      tasks.push(runEventInstanceGenerationCron(env));
+      tasks.push(safe(() => runEventInstanceGenerationCron(env), "event-instance-gen"));
     }
 
     if (event.cron === "*/15 * * * *") {
-      tasks.push(runAnnouncementPublishCron(env));
-      tasks.push(runAnnouncementExpiryCron(env));
-      tasks.push(runBotReminderCron(env));
-      tasks.push(runEventAutoArchiveCron(env));
+      tasks.push(safe(() => runAnnouncementPublishCron(env), "announcement-publish"));
+      tasks.push(safe(() => runAnnouncementExpiryCron(env), "announcement-expiry"));
+      tasks.push(safe(() => runBotReminderCron(env), "bot-reminder"));
+      tasks.push(safe(() => runEventAutoArchiveCron(env), "event-auto-archive"));
     }
 
     if (event.cron === "0 2 * * *") {
-      tasks.push(runAuditArchiveCron(env));
+      tasks.push(safe(() => runAuditArchiveCron(env), "audit-archive"));
     }
 
     if (event.cron === "0 3 * * *") {
-      tasks.push(runMediaOrphanCleanupCron(env));
+      tasks.push(safe(() => runMediaOrphanCleanupCron(env), "media-orphan-cleanup"));
     }
 
     ctx.waitUntil(Promise.all(tasks));

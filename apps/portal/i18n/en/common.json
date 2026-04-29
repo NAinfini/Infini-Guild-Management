@@ -138,5 +138,9 @@
   "notFound.backHome": "Back to dashboard",
   "settings.theme": "Theme",
   "settings.theme.light": "Light",
-  "settings.theme.dark": "Dark"
+  "settings.theme.dark": "Dark",
+  "nav.externalViewBanner": "External view is enabled. Editing and private fields are hidden.",
+  "nav.offlineBanner": "You are offline. Some actions may fail until connection is restored.",
+  "nav.permissionDenied": "You do not have permission for this action.",
+  "nav.collapseSidebar": "Collapse sidebar"
 }

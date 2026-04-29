@@ -165,16 +165,13 @@ export class AuthService {
     if ((inviteUpdateResult.meta?.changes ?? 0) === 0) return err("CONFLICT", "Invite link is no longer available");
 
     try {
-      await rawDb.prepare(`INSERT INTO users (id, username, role, is_active) VALUES (?, ?, 'member', 1)`).bind(userId, username).run();
-      await rawDb.prepare(`INSERT INTO user_auth_password (user_id, password_hash, salt) VALUES (?, ?, ?)`).bind(userId, passwordRecord.passwordHash, passwordRecord.salt).run();
-      await rawDb.prepare(`INSERT INTO member_profiles (id, user_id, power, classes, images, video_urls, discord_reminder_opt_out) VALUES (?, ?, 0, '[]', '[]', '[]', 0)`).bind(profileId, userId).run();
-    } catch (error) {
-      await Promise.allSettled([
-        rawDb.prepare(`UPDATE invite_links SET used_count = used_count - 1 WHERE code = ? AND used_count > 0`).bind(inviteCode).run(),
-        this.db.delete(memberProfiles).where(eq(memberProfiles.userId, userId)),
-        this.db.delete(userAuthPassword).where(eq(userAuthPassword.userId, userId)),
-        this.db.delete(users).where(eq(users.id, userId)),
+      await rawDb.batch([
+        rawDb.prepare(`INSERT INTO users (id, username, role, is_active) VALUES (?, ?, 'member', 1)`).bind(userId, username),
+        rawDb.prepare(`INSERT INTO user_auth_password (user_id, password_hash, salt) VALUES (?, ?, ?)`).bind(userId, passwordRecord.passwordHash, passwordRecord.salt),
+        rawDb.prepare(`INSERT INTO member_profiles (id, user_id, power, classes, images, video_urls, discord_reminder_opt_out) VALUES (?, ?, 0, '[]', '[]', '[]', 0)`).bind(profileId, userId),
       ]);
+    } catch (error) {
+      await rawDb.prepare(`UPDATE invite_links SET used_count = used_count - 1 WHERE code = ? AND used_count > 0`).bind(inviteCode).run();
       if (error instanceof Error && error.message.includes("UNIQUE constraint failed: users.username")) return err("CONFLICT", "Username already taken");
       throw error;
     }

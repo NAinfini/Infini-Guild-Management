@@ -11,8 +11,6 @@ import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { runEventInstanceGenerationCron } from "../crons/event-instance-gen";
-import { events } from "../db/schema";
-import { eq } from "drizzle-orm";
 import type { Bindings } from "../index";
 import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
@@ -96,14 +94,8 @@ async function parseCreateEventRequest(c: Context): Promise<{ body: unknown; fil
   try { return { body: await c.req.json(), files: [] }; } catch { throw new EventServiceValidationError("Invalid JSON body"); }
 }
 
-async function materializeRecurringSeries(c: Context, templateId: string): Promise<void> {
-  const db = getDb(c);
-  for (let pass = 0; pass < 64; pass += 1) {
-    const before = (await db.select({ generationCount: events.generationCount, lastGeneratedDate: events.lastGeneratedDate }).from(events).where(eq(events.id, templateId)).limit(1))[0];
-    await runEventInstanceGenerationCron(c.env as Bindings);
-    const after = (await db.select({ generationCount: events.generationCount, lastGeneratedDate: events.lastGeneratedDate }).from(events).where(eq(events.id, templateId)).limit(1))[0];
-    if (!before || !after || (before.generationCount === after.generationCount && before.lastGeneratedDate === after.lastGeneratedDate)) return;
-  }
+async function materializeRecurringSeries(c: Context, _templateId: string): Promise<void> {
+  await runEventInstanceGenerationCron(c.env as Bindings);
 }
 
 // --- Routes ---
@@ -117,6 +109,8 @@ eventsRoutes.get("/", async (c) => {
 });
 
 eventsRoutes.post("/batch-details", async (c) => {
+  const sessionUser = await requireSessionUser(c);
+  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids))

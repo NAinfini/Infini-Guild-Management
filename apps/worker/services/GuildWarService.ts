@@ -119,6 +119,7 @@ export type GuildWarServiceDeps = {
   botRuntimeUrl: string;
   botSharedSecret: string;
   publishEntityChanged: (input: { entityType: string; entityId: string; hint: string }) => Promise<void>;
+  rawDb?: D1Database;
 };
 
 // --- Constants ---
@@ -203,21 +204,23 @@ function buildWarHistoryCsv(rows: WarHistoryRow[], creatorMap: Map<string, strin
 
 function computeWarModifier(
   war: { ownKills: number | null; ownTowers: number | null; ownBaseHp: number | null; ownCredits: number | null; ownDistance: number | null; enemyKills: number | null; enemyTowers: number | null; enemyBaseHp: number | null; enemyCredits: number | null; enemyDistance: number | null },
-  ownTeamSize: number, settings: AnalyticsSettings,
+  _ownTeamSize: number, settings: AnalyticsSettings,
 ): { value: number; breakdown: ModifierBreakdown[] } {
+  // Note: Previously some factors used perCapita which divided only ownVal by
+  // ownTeamSize, mixing per-capita and total units. Enemy team size is not
+  // tracked in the schema, so we use raw totals for both sides to keep units
+  // consistent. The ratio thus reflects total team performance comparison.
   const factors = [
-    { key: "kda", weight: settings.modifier_weight_kda, ownVal: war.ownKills, enemyVal: war.enemyKills, perCapita: true },
-    { key: "towers", weight: settings.modifier_weight_towers, ownVal: war.ownTowers, enemyVal: war.enemyTowers, perCapita: false },
-    { key: "credits", weight: settings.modifier_weight_credits, ownVal: war.ownCredits, enemyVal: war.enemyCredits, perCapita: true },
-    { key: "distance", weight: settings.modifier_weight_distance, ownVal: war.ownDistance, enemyVal: war.enemyDistance, perCapita: true },
-    { key: "basehp", weight: settings.modifier_weight_basehp, ownVal: war.ownBaseHp, enemyVal: war.enemyBaseHp, perCapita: false },
+    { key: "kda", weight: settings.modifier_weight_kda, ownVal: war.ownKills, enemyVal: war.enemyKills },
+    { key: "towers", weight: settings.modifier_weight_towers, ownVal: war.ownTowers, enemyVal: war.enemyTowers },
+    { key: "credits", weight: settings.modifier_weight_credits, ownVal: war.ownCredits, enemyVal: war.enemyCredits },
+    { key: "distance", weight: settings.modifier_weight_distance, ownVal: war.ownDistance, enemyVal: war.enemyDistance },
+    { key: "basehp", weight: settings.modifier_weight_basehp, ownVal: war.ownBaseHp, enemyVal: war.enemyBaseHp },
   ];
   const valid: Array<{ key: string; weight: number; ratio: number }> = [];
   for (const f of factors) {
     if (f.weight <= 0 || f.ownVal === null || f.enemyVal === null) continue;
-    let ownVal = f.ownVal, enemyVal = f.enemyVal;
-    if (f.perCapita && ownTeamSize > 0) { ownVal /= ownTeamSize; }
-    valid.push({ key: f.key, weight: f.weight, ratio: enemyVal / Math.max(ownVal, 1) });
+    valid.push({ key: f.key, weight: f.weight, ratio: f.enemyVal / Math.max(f.ownVal, 1) });
   }
   if (valid.length === 0) return { value: 1.0, breakdown: [] };
   const totalWeight = valid.reduce((s, f) => s + f.weight, 0);
@@ -371,24 +374,59 @@ export class GuildWarService {
   }
 
   async replaceHistoryTeams(warHistoryId: string, snapshot: WarTemplateSnapshot): Promise<void> {
-    const existingTeams = await this.getTeamsForHistory(warHistoryId);
-    const existingTeamIds = existingTeams.map((team) => team.id);
-    if (existingTeamIds.length > 0) {
-      await this.db.delete(warTeamMembers).where(inArray(warTeamMembers.warTeamId, existingTeamIds));
-    }
-    await this.db.delete(warTeams).where(eq(warTeams.warHistoryId, warHistoryId));
-    await this.db.delete(warPoolMembers).where(eq(warPoolMembers.warHistoryId, warHistoryId));
-    for (const team of snapshot.teams) {
-      const teamId = nanoid();
-      await this.db.insert(warTeams).values({ id: teamId, warHistoryId, teamName: team.team_name, sortOrder: team.sort_order, notes: team.notes ?? null, isLocked: team.is_locked ?? false });
-      for (const member of team.members) {
-        await this.db.insert(warTeamMembers).values({ id: nanoid(), warTeamId: teamId, userId: member.user_id, roleTag: member.role_tag ?? null, sortOrder: member.sort_order });
+    const rawDb = this.deps.rawDb;
+    if (rawDb) {
+      // --- Atomic path via D1 batch ---
+      const existingTeams = await this.getTeamsForHistory(warHistoryId);
+      const stmts: D1PreparedStatement[] = [];
+
+      // 1. Delete existing members for each team
+      for (const team of existingTeams) {
+        stmts.push(rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id = ?1").bind(team.id));
       }
+      // 2. Delete existing teams and pool members
+      stmts.push(rawDb.prepare("DELETE FROM war_teams WHERE war_history_id = ?1").bind(warHistoryId));
+      stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE war_history_id = ?1").bind(warHistoryId));
+
+      // 3. Insert new teams and members
+      for (const team of snapshot.teams) {
+        const teamId = nanoid();
+        stmts.push(rawDb.prepare("INSERT INTO war_teams (id, war_history_id, team_name, sort_order, notes, is_locked) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(teamId, warHistoryId, team.team_name, team.sort_order, team.notes ?? null, team.is_locked ? 1 : 0));
+        for (const member of team.members) {
+          stmts.push(rawDb.prepare("INSERT INTO war_team_members (id, war_team_id, user_id, role_tag, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)").bind(nanoid(), teamId, member.user_id, member.role_tag ?? null, member.sort_order));
+        }
+      }
+
+      // 4. Insert new pool members
+      for (const poolMember of snapshot.pool_members) {
+        stmts.push(rawDb.prepare("INSERT INTO war_pool_members (id, war_history_id, user_id) VALUES (?1, ?2, ?3)").bind(nanoid(), warHistoryId, poolMember.user_id));
+      }
+
+      // 5. Update timestamp
+      stmts.push(rawDb.prepare("UPDATE war_history SET updated_at = ?1 WHERE id = ?2").bind(new Date().toISOString(), warHistoryId));
+
+      await rawDb.batch(stmts);
+    } else {
+      // --- Fallback: sequential Drizzle calls (non-atomic) ---
+      const existingTeams = await this.getTeamsForHistory(warHistoryId);
+      const existingTeamIds = existingTeams.map((team) => team.id);
+      if (existingTeamIds.length > 0) {
+        await this.db.delete(warTeamMembers).where(inArray(warTeamMembers.warTeamId, existingTeamIds));
+      }
+      await this.db.delete(warTeams).where(eq(warTeams.warHistoryId, warHistoryId));
+      await this.db.delete(warPoolMembers).where(eq(warPoolMembers.warHistoryId, warHistoryId));
+      for (const team of snapshot.teams) {
+        const teamId = nanoid();
+        await this.db.insert(warTeams).values({ id: teamId, warHistoryId, teamName: team.team_name, sortOrder: team.sort_order, notes: team.notes ?? null, isLocked: team.is_locked ?? false });
+        for (const member of team.members) {
+          await this.db.insert(warTeamMembers).values({ id: nanoid(), warTeamId: teamId, userId: member.user_id, roleTag: member.role_tag ?? null, sortOrder: member.sort_order });
+        }
+      }
+      for (const poolMember of snapshot.pool_members) {
+        await this.db.insert(warPoolMembers).values({ id: nanoid(), warHistoryId, userId: poolMember.user_id });
+      }
+      await this.db.update(warHistory).set({ updatedAt: new Date().toISOString() }).where(eq(warHistory.id, warHistoryId));
     }
-    for (const poolMember of snapshot.pool_members) {
-      await this.db.insert(warPoolMembers).values({ id: nanoid(), warHistoryId, userId: poolMember.user_id });
-    }
-    await this.db.update(warHistory).set({ updatedAt: new Date().toISOString() }).where(eq(warHistory.id, warHistoryId));
   }
 
   // --- Public: business logic methods ---

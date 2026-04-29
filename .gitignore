@@ -8,7 +8,6 @@ dist/
 .env.local
 *.local
 
-pnpm-lock.yaml
 .vite/
 coverage/
 
