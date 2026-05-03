@@ -26,14 +26,23 @@ function formatEntityId(
   entityId: string,
   entityType: string,
   userMap?: Map<string, string>,
+  diffTitle?: string | null,
 ): string {
   if (entityType === "event_participant") {
-    const [, userId] = entityId.split(":");
+    const parts = diffTitle?.split(" | ");
+    if (parts && parts.length >= 2) {
+      return `${parts[0]} · ${parts[1]}`;
+    }
+    const [eventPart, userId] = entityId.split(":");
     const userName = userId ? userMap?.get(userId) : undefined;
     if (userName) return userName;
     if (userId) {
       return userMap?.get(userId) ?? `${userId.slice(0, 6)}…`;
     }
+    return eventPart?.slice(0, 8) + "…";
+  }
+  if (entityType === "event" || entityType === "recurring_template") {
+    if (diffTitle) return diffTitle;
   }
   if (userMap?.has(entityId)) {
     return userMap.get(entityId)!;
@@ -47,11 +56,20 @@ function formatEntityId(
 function formatDiffText(
   diffTitle: string | null,
   detailText: string | null,
+  entityType: string,
   formatAuditDiffHeader: (d: string | null, t: string | null) => string,
   userMap?: Map<string, string>,
   t?: (key: string, opts?: Record<string, unknown>) => string,
 ): { primary: string; secondary: string | null } {
   const header = diffTitle?.trim() || null;
+
+  if (entityType === "event_participant" && header) {
+    const parts = header.split(" | ");
+    if (parts.length >= 2) {
+      return { primary: `${parts[0]} · ${parts[1]}`, secondary: null };
+    }
+    return { primary: header, secondary: null };
+  }
 
   if (detailText) {
     try {
@@ -67,7 +85,7 @@ function formatDiffText(
             const label = t?.(`audit.field.${field}`, { defaultValue: field }) ?? field;
             return `${label}: ${formatDiffValue(from)} → ${formatDiffValue(to)}`;
           });
-          return { primary: header ?? "-", secondary: parts.join(", ") };
+          return { primary: header ?? parts[0], secondary: header ? parts.join(", ") : parts.slice(1).join(", ") || null };
         }
       }
     } catch {
@@ -75,16 +93,9 @@ function formatDiffText(
     }
   }
 
-  const raw = formatAuditDiffHeader(diffTitle, detailText);
-  if (!userMap || raw === "-") return { primary: raw, secondary: null };
-  const resolved = raw.replace(
-    /(?:user_id|actor_id):\s*([0-9a-f]{8}-[0-9a-f-]{27,})/gi,
-    (_match, id: string) => {
-      const name = userMap.get(id);
-      return name ? `用户: ${name}` : `用户: ${id.slice(0, 8)}…`;
-    },
-  );
-  return { primary: resolved, secondary: null };
+  if (header) return { primary: header, secondary: null };
+
+  return { primary: "-", secondary: null };
 }
 
 function formatDiffValue(value: unknown): string {
@@ -166,13 +177,13 @@ export function AuditLogViewer({
   };
 
   const rows = useMemo(() => auditRows.map((row) => {
-    const diff = formatDiffText(row.diff_title, row.detail_text, formatAuditDiffHeader, userMap, t);
+    const diff = formatDiffText(row.diff_title, row.detail_text, row.entity_type, formatAuditDiffHeader, userMap, t);
     return {
       ...row,
       resolvedEntityType: resolveEntityType(row.entity_type),
       resolvedAction: resolveAction(row.action),
       resolvedActor: resolveActor(String(row.actor_id ?? "")),
-      resolvedTarget: formatEntityId(String(row.entity_id ?? ""), row.entity_type, userMap),
+      resolvedTarget: formatEntityId(String(row.entity_id ?? ""), row.entity_type, userMap, row.diff_title),
       diffPrimary: diff.primary,
       diffSecondary: diff.secondary,
       formattedTime: formatDateTime(row.created_at),
