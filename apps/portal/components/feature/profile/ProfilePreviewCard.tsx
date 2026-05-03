@@ -2,9 +2,11 @@ import { PortalCard } from "../../shared/PortalCard";
 import { Avatar, Badge, Divider, Group, RingProgress, Spoiler, Stack, Text } from "@mantine/core";
 import { PhotoIcon, VideoIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
+import { resolveProfileMediaUrl } from "../../../utils/media";
 
 type ProfilePreviewCardProps = {
   username: string;
+  avatarKey: string | null;
   power: number;
   primaryClass: string;
   imageCount: number;
@@ -27,6 +29,7 @@ function MediaStat({ icon, count, label }: { icon: React.ReactNode; count: numbe
 
 export function ProfilePreviewCard({
   username,
+  avatarKey,
   power,
   primaryClass,
   imageCount,
@@ -49,6 +52,7 @@ export function ProfilePreviewCard({
             size={52}
             radius="xl"
             color="blue"
+            src={avatarKey ? resolveProfileMediaUrl(avatarKey) : undefined}
             style={{ flexShrink: 0 }}
           >
             {initials}

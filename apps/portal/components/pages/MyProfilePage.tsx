@@ -192,6 +192,7 @@ export function MyProfilePage() {
           <div style={{ position: "sticky", top: 16 }}>
             <ProfilePreviewCard
               username={user?.username ?? "-"}
+              avatarKey={profile?.avatar_key ?? null}
               power={form.power}
               primaryClass={form.classList[0] ?? "-"}
               imageCount={form.imageList.length}
