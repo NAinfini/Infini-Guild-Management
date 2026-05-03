@@ -179,6 +179,7 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
       lastGeneratedDate: events.lastGeneratedDate,
       generationCount: events.generationCount,
       visibilityOffsetHours: events.visibilityOffsetHours,
+      visibleAt: events.visibleAt,
     })
     .from(events)
     .where(
@@ -257,9 +258,12 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
         .limit(1);
 
       if (existing.length === 0) {
-        const visibleAt = template.visibilityOffsetHours != null
-          ? new Date(nextOccurrence.getTime() - template.visibilityOffsetHours * 3_600_000).toISOString()
-          : null;
+        let visibleAt: string | null = null;
+        if (template.visibleAt) {
+          visibleAt = template.visibleAt;
+        } else if (template.visibilityOffsetHours != null) {
+          visibleAt = new Date(nextOccurrence.getTime() - template.visibilityOffsetHours * 3_600_000).toISOString();
+        }
 
         await db.insert(events).values({
           id: nanoid(),

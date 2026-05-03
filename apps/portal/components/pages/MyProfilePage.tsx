@@ -3,7 +3,8 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Badge, Grid, Group, Skeleton, Stack, Tabs, Text } from "@mantine/core";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { IconGripVertical, IconTrash, IconUserCircle } from "@tabler/icons-react";
+import { TrashIcon } from "@portal/components/icons";
+import { IconGripVertical, IconUserCircle } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { uploadProfileAudio, uploadProfileImages } from "../../api/mutations/users";
@@ -48,7 +49,7 @@ function SortableClassRow(props: SortableClassRowProps) {
         <IconGripVertical size={18} />
       </div>
       <Badge color={isPrimary ? "yellow" : "gray"}>{value}</Badge>
-      <DepthButton size="sm" type="danger" iconOnly before={<IconTrash size={16} />} onClick={onRemove}
+      <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={16} />} onClick={onRemove}
         tooltip={{ label: t("classRow.remove"), withArrow: true }}
       />
       <Text c="dimmed" size="sm" style={{ fontSize: 12 }}>

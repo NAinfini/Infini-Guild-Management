@@ -2,7 +2,7 @@ import { DndContext, DragOverlay, closestCenter, useDroppable, type DragEndEvent
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ActionIcon, Badge, Card, Group, Stack, Text, Tooltip } from "@mantine/core";
-import { IconUser, IconShield, IconBolt, IconCopy } from "@tabler/icons-react";
+import { UserIcon, ShieldIcon, BoltIcon, CopyIcon } from "@portal/components/icons";
 import { PortalCard } from "../../shared/PortalCard";
 import { memo, useState, useMemo } from "react";
 import type { ComponentProps, CSSProperties, MouseEvent, ReactNode } from "react";
@@ -184,23 +184,23 @@ function DroppableMemberColumn(props: {
             {props.column.containerId !== "pool" && props.onCopyTeamMentions ? (
               <Tooltip label={t("active.teamCopied")}>
                 <ActionIcon size="sm" variant="subtle" onClick={() => props.onCopyTeamMentions?.(props.column.containerId)} aria-label={t("active.teamCopied")}>
-                  <IconCopy size={14} />
+                  <CopyIcon size={14} />
                 </ActionIcon>
               </Tooltip>
             ) : null}
             <Tooltip label={t("active.sort.username")}>
               <ActionIcon size="sm" variant={sortBy === "username" ? "filled" : "subtle"} onClick={() => toggleSort("username")} aria-label={t("active.sort.username")}>
-                <IconUser size={14} />
+                <UserIcon size={14} />
               </ActionIcon>
             </Tooltip>
             <Tooltip label={t("active.sort.class")}>
               <ActionIcon size="sm" variant={sortBy === "class" ? "filled" : "subtle"} onClick={() => toggleSort("class")} aria-label={t("active.sort.class")}>
-                <IconShield size={14} />
+                <ShieldIcon size={14} />
               </ActionIcon>
             </Tooltip>
             <Tooltip label={t("active.sort.power")}>
               <ActionIcon size="sm" variant={sortBy === "power" ? "filled" : "subtle"} onClick={() => toggleSort("power")} aria-label={t("active.sort.power")}>
-                <IconBolt size={14} />
+                <BoltIcon size={14} />
               </ActionIcon>
             </Tooltip>
           </Group>

@@ -1,4 +1,4 @@
-import { IconSwords, IconX } from "@tabler/icons-react";
+import { SwordsIcon, XIcon } from "@portal/components/icons";
 import {
   KeyboardSensor,
   PointerSensor,
@@ -486,7 +486,7 @@ export function GuildWarPage() {
   );
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconSwords size={22} />} className="guild-war-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<SwordsIcon size={22} />} className="guild-war-page">
       <PageTabs
         destroyInactiveTabPane
         initialActiveKey={initialTabKey}
@@ -548,7 +548,7 @@ export function GuildWarPage() {
                             <Button
                               size="xs"
                               variant="default"
-                              leftSection={<IconX size={16} />}
+                              leftSection={<XIcon size={16} />}
                               onClick={() => {
                                 activeController.setUndoMove(null);
                               }}

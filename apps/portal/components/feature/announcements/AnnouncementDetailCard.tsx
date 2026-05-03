@@ -20,7 +20,7 @@ import { useDisclosure } from "@mantine/hooks";
 import { format } from "date-fns";
 import { type ReactNode, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { IconArchive, IconPin, IconCalendarTime, IconTrash, IconX, IconNote, IconChevronDown, IconSend } from "@tabler/icons-react";
+import { ArchiveIcon, CalendarTimeIcon, ChevronDownIcon, NoteIcon, PinIcon, SendIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { notifyError } from "../../../utils/notifications";
 import { PencilOutlined } from "@portal/utils/icons";
 import { EmptyState } from "../../shared/EmptyState";
@@ -175,7 +175,7 @@ export function AnnouncementDetailCard({
                       color="blue"
                       onClick={() => validateAndFinish("none")}
                       disabled={savePending}
-                      leftSection={<IconSend size={14} />}
+                      leftSection={<SendIcon size={14} />}
                     >
                       {t("action.publish")}
                     </Button>
@@ -187,18 +187,18 @@ export function AnnouncementDetailCard({
                           disabled={savePending}
                           px={8}
                         >
-                          <IconChevronDown size={14} />
+                          <ChevronDownIcon size={14} />
                         </Button>
                       </Menu.Target>
                       <Menu.Dropdown>
                         <Menu.Item
-                          leftSection={<IconNote size={16} />}
+                          leftSection={<NoteIcon size={16} />}
                           onClick={() => validateAndFinish("draft")}
                         >
                           {t("action.saveAsDraft")}
                         </Menu.Item>
                         <Menu.Item
-                          leftSection={<IconCalendarTime size={16} />}
+                          leftSection={<CalendarTimeIcon size={16} />}
                           onClick={() => validateAndFinish("scheduled")}
                         >
                           {t("action.postScheduled")}
@@ -210,7 +210,7 @@ export function AnnouncementDetailCard({
                     onClick={handleCloseEditor}
                     type="secondary"
                     size="sm"
-                    before={<IconX size={14} />}
+                    before={<XIcon size={14} />}
                   >
                     {t("action.cancel")}
                   </DepthButton>
@@ -311,7 +311,7 @@ export function AnnouncementDetailCard({
                         aria-label={pinned ? t("action.unpin") : t("action.pin")}
                         tooltip={{ label: pinned ? t("action.unpin") : t("action.pin"), withArrow: true }}
                       >
-                        <IconPin size={16} />
+                        <PinIcon size={16} />
                       </DepthToggle>
                     {!isCreateMode ? (
                       <DepthToggle
@@ -323,7 +323,7 @@ export function AnnouncementDetailCard({
                         aria-label={t("action.archive")}
                         tooltip={{ label: t("action.archive"), withArrow: true }}
                       >
-                        <IconArchive size={16} />
+                        <ArchiveIcon size={16} />
                       </DepthToggle>
                     ) : null}
                     {!isCreateMode ? (
@@ -334,7 +334,7 @@ export function AnnouncementDetailCard({
                           onClick={deleteConfirmHandlers.open}
                           aria-label={t("action.delete")}
                         >
-                          <IconTrash size={16} />
+                          <TrashIcon size={16} />
                         </ActionIcon>
                     ) : null}
                   </Group>
@@ -396,14 +396,14 @@ export function AnnouncementDetailCard({
         <Stack gap={16}>
           <Text>{t("confirm.delete")}</Text>
           <Group justify="flex-end" gap={8}>
-            <Button variant="default" onClick={deleteConfirmHandlers.close} leftSection={<IconX size={16} />}>
+            <Button variant="default" onClick={deleteConfirmHandlers.close} leftSection={<XIcon size={16} />}>
               {t("action.cancel")}
             </Button>
             <Button
               color="red"
               onClick={handleDeleteConfirm}
               loading={deletePending}
-              leftSection={<IconTrash size={16} />}
+              leftSection={<TrashIcon size={16} />}
             >
               {t("action.delete")}
             </Button>

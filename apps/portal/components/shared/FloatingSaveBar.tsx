@@ -1,5 +1,5 @@
 import { Badge, Button, Group } from "@mantine/core";
-import { IconDeviceFloppy } from "@tabler/icons-react";
+import { SaveIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 
 type FloatingSaveBarProps = {
@@ -17,7 +17,7 @@ export function FloatingSaveBar({ isDirty, saving, onSave, label }: FloatingSave
         <Badge color={isDirty ? "yellow" : "green"} variant="light">
           {isDirty ? t("status.unsavedChanges") : t("status.saved")}
         </Badge>
-        <Button onClick={onSave} loading={saving} leftSection={<IconDeviceFloppy size={16} />}>
+        <Button onClick={onSave} loading={saving} leftSection={<SaveIcon size={16} />}>
           {label ?? t("action.saveProfile")}
         </Button>
       </Group>

@@ -10,7 +10,7 @@ import {
   Text,
   UnstyledButton,
 } from "@mantine/core";
-import { IconTrash } from "@tabler/icons-react";
+import { TrashIcon } from "@portal/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../shared/EmptyState";
@@ -71,7 +71,7 @@ export function NotificationPopover({
             <Text fw={600}>{t("label.notifications")}</Text>
             {displayPushEntries.length > 0 && (
               <ActionIcon variant="subtle" size="sm" onClick={onClearHistory} aria-label={t("action.clearNotifications")}>
-                <IconTrash size={14} />
+                <TrashIcon size={14} />
               </ActionIcon>
             )}
           </div>

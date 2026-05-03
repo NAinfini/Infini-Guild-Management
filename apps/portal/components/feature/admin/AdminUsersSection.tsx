@@ -11,15 +11,10 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { CopyIcon, EyeIcon, PlayIcon, SearchIcon, TrashIcon, UserPlusIcon } from "@portal/components/icons";
 import {
-  IconCopy,
-  IconEye,
   IconKey,
   IconPlayerPause,
-  IconPlayerPlay,
-  IconSearch,
-  IconTrash,
-  IconUserPlus,
 } from "@tabler/icons-react";
 import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@portal/components/shared/InfiniTable";
 import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
@@ -239,7 +234,7 @@ export function AdminUsersSection({
       {
         key: "detail",
         disabled: !contextSingleUserId,
-        icon: <IconEye size={14} />,
+        icon: <EyeIcon size={14} />,
         onClick: () => {
           if (contextSingleUserId) {
             onOpenMemberDetail(contextSingleUserId);
@@ -249,7 +244,7 @@ export function AdminUsersSection({
       },
       {
         key: "copy-row",
-        icon: <IconCopy size={14} />,
+        icon: <CopyIcon size={14} />,
         onClick: () => {
           const lines = nextContextRows.map((row) =>
             [
@@ -273,7 +268,7 @@ export function AdminUsersSection({
         ? [{
             key: "activate",
             disabled: singleActivationPending || batchActivatePending,
-            icon: <IconPlayerPlay size={14} />,
+            icon: <PlayIcon size={14} />,
             onClick: () => {
               if (isBatchContext) {
                 onBatchActivate(nextContextUserIds);
@@ -313,7 +308,7 @@ export function AdminUsersSection({
       { key: "divider-actions" },
       {
         key: "create-member",
-        icon: <IconUserPlus size={14} />,
+        icon: <UserPlusIcon size={14} />,
         onClick: () => {
           onOpenCreateMember();
         },
@@ -324,7 +319,7 @@ export function AdminUsersSection({
         className: "infini-menu-item--danger",
         color: "red",
         disabled: batchDeletePending,
-        icon: <IconTrash size={14} />,
+        icon: <TrashIcon size={14} />,
         onClick: () => {
           onBatchDelete(nextContextUserIds);
         },
@@ -348,7 +343,7 @@ export function AdminUsersSection({
                 value={memberSearch}
                 onChange={(event) => onMemberSearchChange(event.currentTarget.value)}
                 placeholder={t("member.search.placeholder")}
-                leftSection={<IconSearch size={14} />}
+                leftSection={<SearchIcon size={14} />}
                 style={{ flex: 1 }} miw={200} maw={360}
                 size="sm"
               />

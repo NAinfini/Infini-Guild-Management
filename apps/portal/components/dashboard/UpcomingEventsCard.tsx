@@ -2,12 +2,11 @@ import type { Event } from "@guild/shared";
 import { NumberTicker } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
 import { Avatar, Badge, Button, Group, RingProgress, Stack, Text, Tooltip } from "@mantine/core";
+import { CalendarEventIcon, SwordsIcon } from "@portal/components/icons";
 import {
   IconArrowRight,
-  IconCalendarEvent,
   IconClock,
   IconFriends,
-  IconSwords,
   IconTargetArrow,
 } from "@tabler/icons-react";
 import { memo } from "react";
@@ -22,9 +21,9 @@ import {
 
 const EVENT_TYPE_ICON: Record<string, React.ReactNode> = {
   weekly_mission: <IconTargetArrow size={12} />,
-  guild_war: <IconSwords size={12} />,
+  guild_war: <SwordsIcon size={12} />,
   social: <IconFriends size={12} />,
-  other: <IconCalendarEvent size={12} />,
+  other: <CalendarEventIcon size={12} />,
 };
 
 function eventTypeIcon(type: string): React.ReactNode {

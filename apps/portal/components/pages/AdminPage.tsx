@@ -1,6 +1,6 @@
 import { type AdminRole } from "@guild/shared";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { IconSettings } from "@tabler/icons-react";
+import { SettingsIcon } from "@portal/components/icons";
 import { useSearch } from "@tanstack/react-router";
 import {
   Alert,
@@ -295,7 +295,7 @@ export function AdminPage() {
   }
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconSettings size={22} />} className="admin-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<SettingsIcon size={22} />} className="admin-page">
       <Tabs value={activeTab} onChange={(value) => value && setActiveTab(value)}>
         <Tabs.List>
           <Tabs.Tab value="member">{t("tab.member")}</Tabs.Tab>

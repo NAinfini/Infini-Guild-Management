@@ -193,6 +193,8 @@
   "recurring.field.typePlaceholder": "选择活动类型...",
   "recurring.field.visibilityOffset": "活动前多少小时显示报名",
   "recurring.field.visibilityOffsetPlaceholder": "例如 24 = 提前1天可见",
+  "recurring.field.visibleAt": "报名可见时间",
+  "recurring.field.visibleAtHint": "留空则立即可见",
   "field.attachmentsCount": "附件（{{current}}/{{max}}）",
   "field.endBeforeStart": "结束时间必须晚于开始时间",
   "aria.filterByType": "按类型筛选活动",

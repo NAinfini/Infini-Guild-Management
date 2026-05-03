@@ -29,7 +29,6 @@ describe("useEventsEditorController", () => {
   it("does not arm beforeunload until the editor is actually edited", () => {
     const { result } = renderHook(() =>
       useEventsEditorController({
-        sortedEvents: [],
         attachmentSnapshot: "[]",
       }),
     );

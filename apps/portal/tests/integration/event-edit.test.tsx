@@ -115,7 +115,6 @@ function EventEditHarness({
           attachmentService.releaseItem(item);
           setAttachmentItems((current) => current.filter((candidate) => candidate.id !== item.id));
         }}
-        conflictingEvents={[]}
         availabilityDaysWithAny={new Set<number>()}
         availabilityMaxCount={0}
         availabilityMemberCount={0}

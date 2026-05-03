@@ -4,7 +4,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
 import { ActionIcon, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
-import { IconDeviceFloppy, IconGripVertical, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
+import { PlusIcon, SaveIcon, TrashIcon, XIcon } from "@portal/components/icons";
+import { IconGripVertical } from "@tabler/icons-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -170,7 +171,7 @@ function SortableCategoryRow({
             size="sm"
             variant="default"
             color="red"
-            leftSection={<IconTrash size={16} />}
+            leftSection={<TrashIcon size={16} />}
             onClick={() => onDeleteCategory(draft.id)}
             loading={deletingCategoryId === draft.id}
             disabled={Boolean(deletingCategoryId && deletingCategoryId !== draft.id)}
@@ -253,7 +254,7 @@ export function WikiCategoryEditorCard({
               <DepthButton
                 type="primary"
                 size="sm"
-                before={<IconDeviceFloppy size={14} />}
+                before={<SaveIcon size={14} />}
                 onClick={onSaveDrafts}
                 disabled={!canSaveDrafts || isSavingDrafts}
               >
@@ -262,7 +263,7 @@ export function WikiCategoryEditorCard({
               <DepthButton
                 type="secondary"
                 size="sm"
-                before={<IconX size={14} />}
+                before={<XIcon size={14} />}
                 onClick={onCloseEditor}
                 disabled={isSavingDrafts}
               >
@@ -291,7 +292,7 @@ export function WikiCategoryEditorCard({
             <DepthButton
               type="primary"
               size="sm"
-              before={<IconPlus size={14} />}
+              before={<PlusIcon size={14} />}
               onClick={onCreateCategory}
               disabled={categoryName.trim().length === 0 || isCreating}
             >

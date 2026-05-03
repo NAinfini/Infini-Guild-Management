@@ -110,7 +110,6 @@ function EventCreationHarness({
           });
         }}
         onAttachmentDelete={() => {}}
-        conflictingEvents={[]}
         availabilityDaysWithAny={new Set<number>()}
         availabilityMaxCount={0}
         availabilityMemberCount={0}

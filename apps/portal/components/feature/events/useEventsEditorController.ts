@@ -1,6 +1,6 @@
 import { EVENT_TYPES, type Event } from "@guild/shared";
 import { modals } from "@mantine/modals";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { useBeforeUnloadPrompt } from "../../../hooks/useBeforeUnloadPrompt";
@@ -44,11 +44,10 @@ function toIso(input: string): string | undefined {
 }
 
 type UseEventsEditorControllerParams = {
-  sortedEvents: Event[];
   attachmentSnapshot: string;
 };
 
-export function useEventsEditorController({ sortedEvents, attachmentSnapshot }: UseEventsEditorControllerParams) {
+export function useEventsEditorController({ attachmentSnapshot }: UseEventsEditorControllerParams) {
   const { t } = useTranslation("events");
   const [editorOpen, editorHandlers] = useDisclosure(false);
   const [editorTouched, setEditorTouched] = useState(false);
@@ -66,23 +65,6 @@ export function useEventsEditorController({ sortedEvents, attachmentSnapshot }: 
 
   const editorStartIso = toIso(editorStartAt);
   const editorEndIso = toIso(editorEndAt) ?? editorStartIso;
-
-  const conflictingEvents = useMemo(() => {
-    if (!editorStartIso || !editorEndIso) {
-      return [] as Event[];
-    }
-    const nextStart = Date.parse(editorStartIso);
-    const nextEnd = Date.parse(editorEndIso);
-    if (!Number.isFinite(nextStart) || !Number.isFinite(nextEnd)) {
-      return [] as Event[];
-    }
-    return sortedEvents.filter((item) => {
-      if (item.id === editingEventId) return false;
-      const start = Date.parse(item.start_at);
-      const end = Date.parse(item.end_at ?? item.start_at);
-      return nextStart < end && start < nextEnd;
-    });
-  }, [editorEndIso, editorStartIso, editingEventId, sortedEvents]);
 
   const editorCurrentSnapshot = buildEditorSnapshot({
     mode: editorMode,
@@ -253,7 +235,6 @@ export function useEventsEditorController({ sortedEvents, attachmentSnapshot }: 
     editorSignupLocked,
     editorStartIso,
     editorEndIso,
-    conflictingEvents,
     isEditorDirty,
     setEditorType: handleEditorTypeChange,
     setEditorTitle: handleEditorTitleChange,

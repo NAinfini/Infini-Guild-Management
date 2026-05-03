@@ -21,7 +21,8 @@ import {
 
 } from "@portal/components/effects";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { IconArrowLeft, IconEye, IconEyeOff, IconKeyboard } from "@tabler/icons-react";
+import { ArrowLeftIcon, EyeIcon, EyeOffIcon } from "@portal/components/icons";
+import { IconKeyboard } from "@tabler/icons-react";
 import { useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useForm } from "react-hook-form";
@@ -228,7 +229,7 @@ export function LoginPage() {
                     tabIndex={-1}
                     aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
                   >
-                    {showPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                    {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
                   </button>
                 </div>
               </div>
@@ -245,7 +246,7 @@ export function LoginPage() {
                   onClick={() => void navigate({ to: "/" })}
                   className="login-page__back-anchor"
                 >
-                  <IconArrowLeft size={14} />
+                  <ArrowLeftIcon size={14} />
                   {t("button.backToPortal")}
                 </Anchor>
               </div>

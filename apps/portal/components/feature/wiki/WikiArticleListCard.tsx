@@ -2,7 +2,7 @@
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
 import { Alert, Button, Group, MultiSelect, Skeleton, Stack, Text, Tooltip, VisuallyHidden } from "@mantine/core";
-import { IconArchive, IconEdit, IconPinned, IconPlus } from "@tabler/icons-react";
+import { ArchiveIcon, PencilIcon, PinIcon, PlusIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -67,13 +67,13 @@ export function WikiArticleListCard({
               <Group gap={6}>
                 <DepthButton type="secondary" size="sm" onClick={onCreateArticle} tooltip={{ label: createLabel, withArrow: true }}>
                     <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                      <IconPlus size={16} />
+                      <PlusIcon size={16} />
                     </span>
                     <VisuallyHidden>{createLabel}</VisuallyHidden>
                   </DepthButton>
                 <DepthButton type="secondary" size="sm" onClick={onOpenCategoryEditor} tooltip={{ label: t("editor.editCategories"), withArrow: true }}>
                     <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                      <IconEdit size={16} />
+                      <PencilIcon size={16} />
                     </span>
                     <VisuallyHidden>{t("editor.editCategories")}</VisuallyHidden>
                   </DepthButton>
@@ -115,14 +115,14 @@ export function WikiArticleListCard({
                       {item.pinned ? (
                         <Tooltip label={t("articleEditor.pinned")} withArrow>
                           <Text c="blue" style={{ display: "inline-flex", alignItems: "center" }}>
-                            <IconPinned size={14} aria-hidden />
+                            <PinIcon size={14} aria-hidden />
                           </Text>
                         </Tooltip>
                       ) : null}
                       {item.archived_at ? (
                         <Tooltip label={t("articleEditor.archived")} withArrow>
                           <Text c="yellow" style={{ display: "inline-flex", alignItems: "center" }}>
-                            <IconArchive size={14} aria-hidden />
+                            <ArchiveIcon size={14} aria-hidden />
                           </Text>
                         </Tooltip>
                       ) : null}

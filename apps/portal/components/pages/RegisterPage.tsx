@@ -5,7 +5,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { BubbleBackground, GlassEffect, GradientText, LampHeading, MagneticElement } from "@portal/components/effects";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { IconArrowLeft, IconEye, IconEyeOff, IconKeyboard } from "@tabler/icons-react";
+import { ArrowLeftIcon, EyeIcon, EyeOffIcon } from "@portal/components/icons";
+import { IconKeyboard } from "@tabler/icons-react";
 import { Alert, Anchor, Loader, Stack, Text, TextInput } from "@mantine/core";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
 import { useState } from "react";
@@ -197,7 +198,7 @@ export function RegisterPage() {
                   onClick={() => void navigate({ to: "/login" })}
                   className="login-page__back-anchor"
                 >
-                  <IconArrowLeft size={14} />
+                  <ArrowLeftIcon size={14} />
                   {t("button.backToLogin")}
                 </Anchor>
               </div>
@@ -258,7 +259,7 @@ export function RegisterPage() {
                         tabIndex={-1}
                         aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
                       >
-                        {showPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                        {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
                       </button>
                     </div>
                   </div>
@@ -289,7 +290,7 @@ export function RegisterPage() {
                         tabIndex={-1}
                         aria-label={showConfirmPassword ? t("aria.hidePassword") : t("aria.showPassword")}
                       >
-                        {showConfirmPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                        {showConfirmPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
                       </button>
                     </div>
                   </div>
@@ -304,7 +305,7 @@ export function RegisterPage() {
                       onClick={() => void navigate({ to: "/login" })}
                       className="login-page__back-anchor"
                     >
-                      <IconArrowLeft size={14} />
+                      <ArrowLeftIcon size={14} />
                       {t("button.backToLogin")}
                     </Anchor>
                   </MagneticElement>

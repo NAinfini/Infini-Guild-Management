@@ -184,6 +184,7 @@ export function toTemplatePayload(row: EventRow) {
     capacity: row.capacity,
     recurrence_rule: parseRecurrenceRule(row.recurrenceRule),
     visibility_offset_hours: row.visibilityOffsetHours ?? null,
+    visible_at: row.visibleAt ?? null,
     archived_at: row.archivedAt,
     created_by: row.createdBy,
     last_generated_date: row.lastGeneratedDate,
@@ -634,7 +635,7 @@ export class EventService {
     end_at?: string | null;
     capacity?: number | null;
     recurrence_rule: unknown;
-    visibility_offset_hours?: number | null;
+    visible_at?: string | null;
   }): Promise<EventRow> {
     this.validateDateRange(data.start_at, data.end_at);
 
@@ -660,7 +661,7 @@ export class EventService {
       instanceDate: null,
       lastGeneratedDate: null,
       generationCount: 0,
-      visibilityOffsetHours: data.visibility_offset_hours ?? null,
+      visibleAt: data.visible_at ?? null,
     });
 
     const created = await this.deps.getEventById(templateId);
@@ -686,7 +687,7 @@ export class EventService {
     end_at?: string | null;
     capacity?: number | null;
     recurrence_rule?: unknown;
-    visibility_offset_hours?: number | null;
+    visible_at?: string | null;
   }): Promise<EventRow> {
     const effectiveStartAt = data.start_at ?? existing.startAt;
     const effectiveEndAt = data.end_at !== undefined ? data.end_at : existing.endAt;
@@ -702,8 +703,8 @@ export class EventService {
     if (data.recurrence_rule !== undefined) {
       patch.recurrenceRule = JSON.stringify(data.recurrence_rule);
     }
-    if (data.visibility_offset_hours !== undefined) {
-      patch.visibilityOffsetHours = data.visibility_offset_hours;
+    if (data.visible_at !== undefined) {
+      patch.visibleAt = data.visible_at;
     }
 
     await this.db.update(events).set(patch).where(eq(events.id, templateId));

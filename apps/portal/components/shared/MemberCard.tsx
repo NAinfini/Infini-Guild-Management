@@ -1,9 +1,8 @@
 ﻿import type { ClassName, MemberProfile, User } from "@guild/shared";
 import { CLASS_COLOR_GROUP, CLASS_NAMES } from "@guild/shared";
 import DOMPurify from "dompurify";
-import { memo, useCallback, useMemo } from "react";
+import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { playAudio, stopAudio } from "../../utils/audio-player";
 import "./MemberCard.css";
 
 type MemberCardProps = {
@@ -70,16 +69,6 @@ export const MemberCard = memo(function MemberCard({
   const avatarKey = profile.images[0] ?? null;
   const avatarSrc = avatarKey ? resolveMediaUrl(avatarKey) : null;
 
-  const handleMouseEnter = useCallback(() => {
-    if (profile.audio_key) {
-      playAudio(resolveMediaUrl(profile.audio_key));
-    }
-  }, [profile.audio_key, resolveMediaUrl]);
-
-  const handleMouseLeave = useCallback(() => {
-    stopAudio();
-  }, []);
-
   const titleHtml = useMemo(
     () =>
       DOMPurify.sanitize(profile.title_html ?? "", {
@@ -106,7 +95,7 @@ export const MemberCard = memo(function MemberCard({
   }
 
   return (
-    <div className="member-card__frame" onClick={onClick} onDoubleClick={onDoubleClick} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} role="presentation">
+    <div className="member-card__frame" onClick={onClick} onDoubleClick={onDoubleClick} role="presentation">
       <button
         type="button"
         className={`member-card member-card--full member-card--animated${selected ? " member-card--selected" : ""}`}

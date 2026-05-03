@@ -4,6 +4,13 @@
   z-index: var(--z-sticky);
   margin-bottom: 12px;
   overflow: visible;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.dark .roster-filter-card.roster-filter-card {
+  background: color-mix(in srgb, var(--color-surface, #1e293b) 85%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
 }
 
 .roster-filter-controls {
@@ -42,7 +49,8 @@
 }
 
 .roster-virtual-scroll {
-  max-height: 70vh;
+  flex: 1;
+  min-height: 300px;
   overflow-y: auto;
 }
 
@@ -97,6 +105,6 @@
   }
 
   .roster-virtual-scroll {
-    max-height: 80vh;
+    min-height: 200px;
   }
 }

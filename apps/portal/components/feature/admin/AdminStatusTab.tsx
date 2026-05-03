@@ -13,7 +13,7 @@ import {
 } from "@mantine/core";
 import { ProgressButton } from "@portal/components/effects";
 import { PortalCard } from "../../shared/PortalCard";
-import { IconClipboard, IconPlayerPlay } from "@tabler/icons-react";
+import { ClipboardIcon, PlayIcon } from "@portal/components/icons";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
@@ -377,7 +377,7 @@ export function AdminStatusTab({
                 variant="default"
                 onClick={onCopyConfigSummary}
                 disabled={!canCopyConfigSummary}
-                leftSection={<IconClipboard size={14} />}
+                leftSection={<ClipboardIcon size={14} />}
               >
                 {t("status.copyConfig")}
               </Button>
@@ -438,7 +438,7 @@ export function AdminStatusTab({
               disabled={runningAll}
             >
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <IconPlayerPlay size={14} />
+                <PlayIcon size={14} />
                 <span>{t("status.api.runAll")}</span>
               </span>
             </ProgressButton>

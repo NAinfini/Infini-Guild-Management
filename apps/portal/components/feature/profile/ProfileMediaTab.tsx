@@ -5,7 +5,7 @@ import { PortalCard } from "../../shared/PortalCard";
 import { FloatingSaveBar } from "../../shared/FloatingSaveBar";
 import { Button, Divider, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { IconUpload, IconTrash, IconPlus } from "@tabler/icons-react";
+import { PlusIcon, TrashIcon, UploadIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { resolveProfileMediaUrl } from "../../../utils/media";
 
@@ -91,6 +91,16 @@ export function ProfileMediaTab({
                 onConfirm: () => onRemoveImage(item.id),
               });
             }}
+            onSetAsFirst={(item) => {
+              const idx = imageList.indexOf(item.id);
+              if (idx > 0) {
+                const next = [...imageList];
+                next.splice(idx, 1);
+                next.unshift(item.id);
+                onReorderImages(next);
+              }
+            }}
+            avatarLabel={t("media.avatar")}
             onFilesSelected={(files) => imageUploader.selectFiles(files)}
             maxImages={10}
             imageSize={80}
@@ -108,7 +118,7 @@ export function ProfileMediaTab({
                 onClick={onUploadImages}
                 disabled={imageUploader.files.length === 0}
                 loading={imageUploader.isUploading}
-                leftSection={<IconUpload size={16} />}
+                leftSection={<UploadIcon size={16} />}
               >
                 {t("action.upload")}
               </Button>
@@ -144,7 +154,7 @@ export function ProfileMediaTab({
                 if (event.key === "Enter") onAddVideoUrl();
               }}
             />
-            <Button size="compact-sm" onClick={onAddVideoUrl} leftSection={<IconPlus size={16} />}>{t("action.add")}</Button>
+            <Button size="compact-sm" onClick={onAddVideoUrl} leftSection={<PlusIcon size={16} />}>{t("action.add")}</Button>
           </Group>
 
           <Text c="dimmed" size="xs">{t("media.videoHostHint")}</Text>
@@ -163,7 +173,7 @@ export function ProfileMediaTab({
                       <Button size="compact-xs" variant="default" onClick={() => onMoveVideo(index, 1)} disabled={index === videoList.length - 1}>
                         {t("action.down")}
                       </Button>
-                      <DepthButton size="sm" type="danger" iconOnly before={<IconTrash size={16} />} onClick={() => onRemoveVideo(index)} tooltip={{ label: t("action.delete"), withArrow: true }} />
+                      <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={16} />} onClick={() => onRemoveVideo(index)} tooltip={{ label: t("action.delete"), withArrow: true }} />
                     </Group>
                   </Group>
                 ))}
@@ -204,7 +214,7 @@ export function ProfileMediaTab({
               onClick={onUploadAudio}
               disabled={audioUploader.files.length === 0}
               loading={audioUploader.isUploading}
-              leftSection={<IconUpload size={16} />}
+              leftSection={<UploadIcon size={16} />}
             >
               {t("action.upload")}
             </Button>
@@ -223,7 +233,7 @@ export function ProfileMediaTab({
               <Divider />
               <Group gap={8} align="center">
                 <Text size="sm" style={{ flex: 1 }} truncate="end">{profileAudioKey}</Text>
-                <DepthButton size="sm" type="danger" iconOnly before={<IconTrash size={16} />} onClick={() => {
+                <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={16} />} onClick={() => {
                   modals.openConfirmModal({
                     title: t("confirm.removeAudio.title"),
                     children: t("confirm.removeAudio.description"),

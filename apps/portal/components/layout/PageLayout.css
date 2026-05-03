@@ -2,6 +2,10 @@
   --page-padding-x: 20px;
   --page-padding-y: 20px;
   width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .page-layout__actions-bar {
@@ -18,6 +22,8 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  flex: 1;
+  min-height: 0;
 }
 
 .page-layout__content > * {
@@ -44,6 +50,32 @@
 
 .page-layout__section-title {
   margin: 0;
+  position: relative;
+  display: inline-block;
+}
+
+.page-layout__section-title::after {
+  content: "";
+  display: block;
+  width: 32px;
+  height: 2px;
+  margin-top: 4px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, var(--color-primary, #3b82f6), var(--color-secondary, #8b5cf6), var(--color-accent, #06b6d4));
+  background-size: 200% 100%;
+  opacity: 0.6;
+  transition: width 0.3s ease, opacity 0.3s ease;
+  animation: sectionUnderlineShimmer 4s ease-in-out infinite;
+}
+
+@keyframes sectionUnderlineShimmer {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 200% center; }
+}
+
+.page-layout__section:hover .page-layout__section-title::after {
+  width: 56px;
+  opacity: 1;
 }
 
 .page-layout__grid {
@@ -55,6 +87,8 @@
 
 .page-layout__card,
 .portal-card {
+  --spotlight-x: -999px;
+  --spotlight-y: -999px;
   position: relative;
   overflow: hidden;
   color: var(--color-text);
@@ -70,6 +104,32 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+.portal-card__spotlight {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(
+    360px circle at var(--spotlight-x) var(--spotlight-y),
+    color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent),
+    transparent 65%
+  );
+}
+
+.dark .portal-card__spotlight {
+  background: radial-gradient(
+    360px circle at var(--spotlight-x) var(--spotlight-y),
+    color-mix(in srgb, var(--color-primary, #3b82f6) 16%, transparent),
+    transparent 65%
+  );
+}
+
+.portal-card--interactive:hover .portal-card__spotlight {
+  opacity: 1;
+}
+
 .portal-card__inner {
   position: relative;
   z-index: 2;
@@ -77,9 +137,31 @@
 
 .portal-card--interactive {
   transition:
-    box-shadow var(--transition-smooth),
-    transform var(--transition-smooth),
-    border-color var(--transition-smooth);
+    box-shadow 0.25s ease,
+    transform 0.2s ease,
+    border-color 0.25s ease;
+}
+
+.portal-card--interactive::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 30%;
+  height: 100%;
+  z-index: 2;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-primary, #3b82f6) 5%, transparent),
+    transparent
+  );
+  transform: translateX(-100%) skewX(-15deg);
+  pointer-events: none;
+}
+
+.portal-card--interactive:hover::after {
+  animation: shineSweep 0.7s ease-out;
 }
 
 .portal-card--clickable {
@@ -87,15 +169,32 @@
 }
 
 .portal-card--interactive:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 24%, transparent);
+  box-shadow:
+    var(--shadow-md),
+    0 0 24px color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 35%, transparent);
+}
+
+.dark .portal-card {
+  background: color-mix(in srgb, var(--color-surface, #1e293b) 90%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
+}
+
+.dark .portal-card--interactive:hover {
+  box-shadow:
+    var(--shadow-md),
+    0 0 32px color-mix(in srgb, var(--color-primary, #3b82f6) 14%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 45%, transparent);
 }
 
 .portal-card--interactive:active {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.99);
   box-shadow: var(--shadow-sm);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 32%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -106,6 +205,18 @@
 
   .portal-card--interactive {
     transition: none;
+  }
+
+  .portal-card__spotlight {
+    display: none;
+  }
+
+  .portal-card--interactive::after {
+    display: none;
+  }
+
+  .page-layout__section-title::after {
+    animation: none;
   }
 }
 
@@ -125,7 +236,14 @@
 .page-layout__divider {
   height: 1px;
   width: 100%;
-  background: color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent) 30%,
+    color-mix(in srgb, var(--color-border, #e5e7eb) 40%, transparent) 50%,
+    color-mix(in srgb, var(--color-secondary, #8b5cf6) 12%, transparent) 70%,
+    transparent
+  );
 }
 
 @media (min-width: 768px) {

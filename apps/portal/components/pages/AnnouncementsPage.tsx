@@ -1,4 +1,4 @@
-import { IconPlus, IconSpeakerphone } from "@tabler/icons-react";
+import { PlusIcon, SpeakerphoneIcon } from "@portal/components/icons";
 import { Button, Grid, Group, Loader } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { usePageHeaderActions } from "../../context/PageHeaderContext";
@@ -31,7 +31,7 @@ export function AnnouncementsPage() {
             {t("action.resetFilters")}
           </Button>
           {controller.canEdit ? (
-            <Button onClick={controller.handleCreateByStatus} leftSection={<IconPlus size={16} />}>
+            <Button onClick={controller.handleCreateByStatus} leftSection={<PlusIcon size={16} />}>
               {t("action.createAnnouncement")}
             </Button>
           ) : null}
@@ -41,7 +41,7 @@ export function AnnouncementsPage() {
   );
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconSpeakerphone size={22} />} className="announcements-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<SpeakerphoneIcon size={22} />} className="announcements-page">
       <AnnouncementFiltersCard
         pinnedFilter={controller.pinnedFilter}
         statusFilter={controller.statusFilter}

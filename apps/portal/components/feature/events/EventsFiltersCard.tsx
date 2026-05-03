@@ -2,7 +2,7 @@ import { EVENT_TYPES } from "@guild/shared";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { SegmentedControl, Select, TextInput } from "@mantine/core";
-import { IconArchive, IconLock, IconPin, IconSearch } from "@tabler/icons-react";
+import { ArchiveIcon, LockIcon, PinIcon, SearchIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { type EventTypeFilter, type EventWorkbenchViewMode } from "../../../utils/event-navigation";
 import { FilterToolbar } from "../../shared/FilterToolbar";
@@ -54,7 +54,7 @@ export function EventsFiltersCard({
           placeholder={t("filter.search")}
           value={searchQuery}
           onChange={(e) => onSearchChange(e.currentTarget.value)}
-          leftSection={<IconSearch size={16} />}
+          leftSection={<SearchIcon size={16} />}
           className="events-filter-search"
           style={{ minWidth: 180 }}
         />
@@ -76,7 +76,7 @@ export function EventsFiltersCard({
           aria-label={t("filter.pinned")}
           tooltip={t("filter.pinned")}
         >
-          <IconPin size={16} />
+          <PinIcon size={16} />
         </DepthToggle>
         <DepthToggle
           pressed={lockedOnly}
@@ -87,7 +87,7 @@ export function EventsFiltersCard({
           aria-label={t("filter.locked")}
           tooltip={t("filter.locked")}
         >
-          <IconLock size={16} />
+          <LockIcon size={16} />
         </DepthToggle>
         <DepthToggle
           pressed={archivedOnly}
@@ -98,7 +98,7 @@ export function EventsFiltersCard({
           aria-label={t("filter.archived")}
           tooltip={t("filter.archived")}
         >
-          <IconArchive size={16} />
+          <ArchiveIcon size={16} />
         </DepthToggle>
         <SegmentedControl
           value={viewMode}

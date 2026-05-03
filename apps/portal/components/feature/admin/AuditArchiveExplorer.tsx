@@ -26,7 +26,7 @@ import {
 import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { IconArchive } from "@tabler/icons-react";
+import { ArchiveIcon } from "@portal/components/icons";
 import { notifySuccess, notifyError, notifyWarning } from "../../../utils/notifications";
 
 type AuditRow = AuditLogEntry;
@@ -218,7 +218,7 @@ export function AuditArchiveExplorer({
       <Stack gap={12}>
         <Group justify="space-between" align="center">
           <Group gap={8}>
-            <IconArchive size={18} />
+            <ArchiveIcon size={18} />
             <Text fw={600}>{t("auditArchive.title")}</Text>
           </Group>
           <Button variant={opened ? "default" : "light"} size="compact-sm" onClick={() => setOpened((v) => !v)}>

@@ -24,3 +24,19 @@ export function stopAudio(): void {
   audioEl.pause();
   audioEl.currentTime = 0;
 }
+
+export function setAudioVolume(volume: number): void {
+  getAudio().volume = Math.max(0, Math.min(1, volume));
+}
+
+export function setAudioMuted(muted: boolean): void {
+  getAudio().muted = muted;
+}
+
+export function isAudioPlaying(): boolean {
+  return audioEl !== null && !audioEl.paused;
+}
+
+export function getAudioSrc(): string {
+  return currentSrc;
+}

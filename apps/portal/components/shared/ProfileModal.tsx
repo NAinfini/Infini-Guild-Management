@@ -1,12 +1,11 @@
 import type { MemberProfile, User } from "@guild/shared";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { Group, Modal, Stack, Text } from "@mantine/core";
-import { IconPencil } from "@tabler/icons-react";
+import { PencilIcon } from "@portal/components/icons";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import DOMPurify from "dompurify";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
-import { playAudio, stopAudio } from "../../utils/audio-player";
 import styles from "./ProfileModal.module.css";
 
 type ProfileModalProps = {
@@ -68,17 +67,6 @@ export function ProfileModal({
     return () => window.clearTimeout(timeoutId);
   }, [open]);
 
-  useEffect(() => {
-    if (!open) {
-      stopAudio();
-      return;
-    }
-    if (profile?.audio_key && resolveMediaUrl) {
-      playAudio(resolveMediaUrl(profile.audio_key));
-    }
-    return () => stopAudio();
-  }, [open, profile?.audio_key, resolveMediaUrl]);
-
   const handleTrapFocus = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Tab") {
       return;
@@ -128,7 +116,7 @@ export function ProfileModal({
               onClick={onEdit}
               type="secondary"
               size="sm"
-              before={<IconPencil size={14} />}
+              before={<PencilIcon size={14} />}
             >
               {editLabel || t("profile.editProfile")}
             </DepthButton>

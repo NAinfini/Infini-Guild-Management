@@ -2,14 +2,15 @@ import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
-import { Badge, Group, Skeleton, Stack, Text } from "@mantine/core";
+import { PortalCard } from "@portal/components/shared/PortalCard";
+import { Badge, Group, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
+import { DotsIcon, PencilIcon, PlayIcon, TrashIcon } from "@portal/components/icons";
 import {
-  IconDots,
-  IconPencil,
+  IconCalendarRepeat,
   IconPlayerPause,
-  IconPlayerPlay,
-  IconTrash,
+  IconClock,
+  IconUsers,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
@@ -42,6 +43,13 @@ function buildRecurrenceSummary(
     return t("recurring.summary.monthly", { interval, day: rule.dayOfMonth ?? 1 });
   }
   return "";
+}
+
+function extractTime(iso: string | null): string {
+  if (!iso) return "--:--";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "--:--";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 type RecurringTemplatesTabProps = {
@@ -131,10 +139,7 @@ export function RecurringTemplatesTab({
     return (
       <Stack gap={12} py={16}>
         {Array.from({ length: 3 }).map((_, i) => (
-          <Group key={i} gap={8}>
-            <Skeleton height={14} width="30%" />
-            <Skeleton height={14} width="20%" />
-          </Group>
+          <Skeleton key={i} height={80} radius={8} />
         ))}
       </Stack>
     );
@@ -142,116 +147,157 @@ export function RecurringTemplatesTab({
 
   return (
     <>
-      <Stack gap={16}>
+      <Stack gap={12}>
         {templates.length === 0 ? (
-          <Text c="dimmed" ta="center" py={40}>
-            {t("recurring.empty")}
-          </Text>
+          <PortalCard interactive={false}>
+            <Stack align="center" gap={8} py={40} px={16}>
+              <IconCalendarRepeat size={40} stroke={1.2} style={{ opacity: 0.3 }} />
+              <Text c="dimmed" size="sm">{t("recurring.empty")}</Text>
+            </Stack>
+          </PortalCard>
         ) : (
-          <Stack gap={12}>
-            {templates.map((template) => {
-              const isPaused = template.archived_at !== null;
-              const typeDef = EVENT_TYPES.find((et) => et === template.type);
-              return (
-                <div
-                  key={template.id}
-                  style={{
-                    padding: "14px 16px",
-                    borderRadius: 8,
-                    border: "1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 100%, transparent)",
-                    background: isPaused
-                      ? "color-mix(in srgb, var(--color-text, #111827) 3%, transparent)"
-                      : "color-mix(in srgb, var(--color-primary, #3b82f6) 4%, transparent)",
-                    opacity: isPaused ? 0.7 : 1,
-                    transition: "opacity 150ms ease",
-                  }}
-                >
-                  <Group justify="space-between" align="flex-start" wrap="nowrap">
-                    <Stack gap={6} style={{ flex: 1, minWidth: 0 }}>
-                      <Group gap={8} align="center">
-                        <Text fw={600} size="sm" truncate>
-                          {template.title}
-                        </Text>
-                        {typeDef && (
-                          <Badge size="xs" variant="default">
-                            {t(`common:eventType.${typeDef}`)}
-                          </Badge>
-                        )}
-                        <Badge
-                          size="xs"
-                          variant={isPaused ? "default" : "light"}
-                          color={isPaused ? "gray" : "green"}
-                        >
-                          {isPaused ? t("recurring.status.paused") : t("recurring.status.active")}
-                        </Badge>
-                      </Group>
-                      <Text size="xs" c="dimmed">
-                        {buildRecurrenceSummary(t, template.recurrence_rule)}
-                      </Text>
-                      <Group gap={12}>
-                        {template.last_generated_date && (
-                          <Text size="xs" c="dimmed">
-                            {t("recurring.lastGenerated", {
-                              date: new Date(template.last_generated_date).toLocaleDateString(i18n.language),
-                            })}
-                          </Text>
-                        )}
-                        <Text size="xs" c="dimmed">
-                          {t("recurring.generated", { count: template.generation_count })}
-                        </Text>
-                      </Group>
-                    </Stack>
+          templates.map((template) => {
+            const isPaused = template.archived_at !== null;
+            const typeDef = EVENT_TYPES.find((et) => et === template.type);
+            const time = extractTime(template.start_at);
+            return (
+              <PortalCard
+                key={template.id}
+                interactive={canManage}
+                style={{ opacity: isPaused ? 0.65 : 1, transition: "opacity 150ms ease" }}
+                onClick={canManage ? () => handleEdit(template) : undefined}
+              >
+                <div style={{ padding: "12px 16px" }}>
+                  <Group justify="space-between" align="center" wrap="nowrap">
+                    <Group gap={12} align="center" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 8,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: isPaused
+                            ? "color-mix(in srgb, var(--color-text, #111827) 6%, transparent)"
+                            : "color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <IconCalendarRepeat
+                          size={20}
+                          stroke={1.5}
+                          style={{
+                            color: isPaused ? "var(--color-text-muted, #6b7280)" : "var(--color-primary, #3b82f6)",
+                          }}
+                        />
+                      </div>
 
-                    {canManage && (
-                      <InfiniMenu position="bottom-end" withArrow>
-                        <InfiniMenu.Target>
-                          <DepthButton type="secondary" size="sm">
-                            <IconDots size={16} />
-                          </DepthButton>
-                        </InfiniMenu.Target>
-                        <InfiniMenu.Dropdown>
-                          <InfiniMenu.Item
-                            leftSection={<IconPencil size={14} />}
-                            onClick={() => handleEdit(template)}
-                          >
-                            {t("menu.edit")}
-                          </InfiniMenu.Item>
-                          {isPaused ? (
-                            <InfiniMenu.Item
-                              leftSection={<IconPlayerPlay size={14} />}
-                              onClick={() => {
-                                void onResumeTemplate(template.id);
-                              }}
-                            >
-                              {t("recurring.resume")}
-                            </InfiniMenu.Item>
-                          ) : (
-                            <InfiniMenu.Item
-                              leftSection={<IconPlayerPause size={14} />}
-                              onClick={() => {
-                                void onPauseTemplate(template.id);
-                              }}
-                            >
-                              {t("recurring.pause")}
-                            </InfiniMenu.Item>
+                      <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
+                        <Group gap={8} align="center" wrap="nowrap">
+                          <Text fw={600} size="sm" truncate style={{ maxWidth: "100%" }}>
+                            {template.title}
+                          </Text>
+                          {typeDef && (
+                            <Badge size="xs" variant="light" style={{ flexShrink: 0 }}>
+                              {t(`common:eventType.${typeDef}`)}
+                            </Badge>
                           )}
-                          <InfiniMenu.Divider />
-                          <InfiniMenu.Item
-                            className="infini-menu-item--danger"
-                            color="red"
-                            leftSection={<IconTrash size={14} />}
-                            onClick={() => handleDelete(template)}
+                          <Badge
+                            size="xs"
+                            variant="light"
+                            color={isPaused ? "gray" : "green"}
+                            style={{ flexShrink: 0 }}
                           >
-                            {t("recurring.delete")}
-                          </InfiniMenu.Item>
-                        </InfiniMenu.Dropdown>
-                      </InfiniMenu>
-                    )}
+                            {isPaused ? t("recurring.status.paused") : t("recurring.status.active")}
+                          </Badge>
+                        </Group>
+
+                        <Group gap={16} wrap="wrap">
+                          <Group gap={4} align="center">
+                            <IconClock size={13} stroke={1.5} style={{ opacity: 0.5 }} />
+                            <Text size="xs" c="dimmed">{time}</Text>
+                          </Group>
+                          <Text size="xs" c="dimmed">
+                            {buildRecurrenceSummary(t, template.recurrence_rule)}
+                          </Text>
+                          {template.capacity != null && (
+                            <Group gap={4} align="center">
+                              <IconUsers size={13} stroke={1.5} style={{ opacity: 0.5 }} />
+                              <Text size="xs" c="dimmed">{template.capacity}</Text>
+                            </Group>
+                          )}
+                        </Group>
+                      </Stack>
+                    </Group>
+
+                    <Group gap={12} align="center" wrap="nowrap" style={{ flexShrink: 0 }}>
+                      {template.last_generated_date && (
+                        <Tooltip label={t("recurring.lastGenerated", { date: new Date(template.last_generated_date).toLocaleDateString(i18n.language) })} withArrow>
+                          <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                            {t("recurring.generated", { count: template.generation_count })}
+                          </Text>
+                        </Tooltip>
+                      )}
+
+                      {canManage && (
+                        <InfiniMenu position="bottom-end" withArrow>
+                          <InfiniMenu.Target>
+                            <DepthButton
+                              type="secondary"
+                              size="sm"
+                              iconOnly
+                              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                            >
+                              <DotsIcon size={16} />
+                            </DepthButton>
+                          </InfiniMenu.Target>
+                          <InfiniMenu.Dropdown>
+                            <InfiniMenu.Item
+                              leftSection={<PencilIcon size={14} />}
+                              onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleEdit(template); }}
+                            >
+                              {t("menu.edit")}
+                            </InfiniMenu.Item>
+                            {isPaused ? (
+                              <InfiniMenu.Item
+                                leftSection={<PlayIcon size={14} />}
+                                onClick={(e: React.MouseEvent) => {
+                                  e.stopPropagation();
+                                  void onResumeTemplate(template.id);
+                                }}
+                              >
+                                {t("recurring.resume")}
+                              </InfiniMenu.Item>
+                            ) : (
+                              <InfiniMenu.Item
+                                leftSection={<IconPlayerPause size={14} />}
+                                onClick={(e: React.MouseEvent) => {
+                                  e.stopPropagation();
+                                  void onPauseTemplate(template.id);
+                                }}
+                              >
+                                {t("recurring.pause")}
+                              </InfiniMenu.Item>
+                            )}
+                            <InfiniMenu.Divider />
+                            <InfiniMenu.Item
+                              className="infini-menu-item--danger"
+                              color="red"
+                              leftSection={<TrashIcon size={14} />}
+                              onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDelete(template); }}
+                            >
+                              {t("recurring.delete")}
+                            </InfiniMenu.Item>
+                          </InfiniMenu.Dropdown>
+                        </InfiniMenu>
+                      )}
+                    </Group>
                   </Group>
                 </div>
-              );
-            })}
-          </Stack>
+              </PortalCard>
+            );
+          })
         )}
       </Stack>
 

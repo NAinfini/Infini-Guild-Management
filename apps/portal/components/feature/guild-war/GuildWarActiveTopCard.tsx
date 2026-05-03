@@ -1,6 +1,6 @@
 ﻿import { ActionIcon, Badge, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
-import { IconChevronLeft, IconChevronRight, IconDeviceFloppy } from "@tabler/icons-react";
+import { ChevronLeftIcon, ChevronRightIcon, SaveIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 
 type GuildWarActiveTopCardProps = {
@@ -59,11 +59,11 @@ export function GuildWarActiveTopCard({
             {activeSearch && hasMatches ? (
               <Group gap={4} wrap="nowrap">
                 <ActionIcon variant="subtle" size="sm" onClick={onPrevMatch} disabled={!onPrevMatch} aria-label={t("active.aria.prevMatch")}>
-                  <IconChevronLeft size={14} />
+                  <ChevronLeftIcon size={14} />
                 </ActionIcon>
                 <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>{matchLabel}</Text>
                 <ActionIcon variant="subtle" size="sm" onClick={onNextMatch} disabled={!onNextMatch} aria-label={t("active.aria.nextMatch")}>
-                  <IconChevronRight size={14} />
+                  <ChevronRightIcon size={14} />
                 </ActionIcon>
               </Group>
             ) : null}
@@ -84,7 +84,7 @@ export function GuildWarActiveTopCard({
               <Button
                 size="xs"
                 variant="default"
-                leftSection={<IconDeviceFloppy size={16} />}
+                leftSection={<SaveIcon size={16} />}
                 onClick={onSaveTeams}
                 loading={saveTeamsPending}
                 disabled={!isTeamsDirty}

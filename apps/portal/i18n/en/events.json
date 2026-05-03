@@ -193,6 +193,8 @@
   "recurring.field.typePlaceholder": "Select event type...",
   "recurring.field.visibilityOffset": "Show signup before event (hours)",
   "recurring.field.visibilityOffsetPlaceholder": "e.g. 24 = visible 1 day before",
+  "recurring.field.visibleAt": "Signup visible at",
+  "recurring.field.visibleAtHint": "Leave empty to make visible immediately",
   "field.attachmentsCount": "Attachments ({{current}}/{{max}})",
   "field.endBeforeStart": "End time must be after start time",
   "aria.filterByType": "Filter events by type",

@@ -8,7 +8,7 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
-import { IconCheck, IconCopy, IconUserPlus } from "@tabler/icons-react";
+import { CheckIcon, CopyIcon, UserPlusIcon } from "@portal/components/icons";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
@@ -99,7 +99,7 @@ export function CreateMemberModal({
                     onClick={copy}
                     type={copied ? "success" : "secondary"}
                     size="sm"
-                    before={copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                    before={copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
                   >
                     {copied ? t("member.create.copied") : t("member.create.copy")}
                   </DepthButton>
@@ -139,7 +139,7 @@ export function CreateMemberModal({
               onClick={() => { void handleCreate(); }}
               type="success"
               size="sm"
-              before={<IconUserPlus size={16} />}
+              before={<UserPlusIcon size={16} />}
               disabled={!username.trim() || creating}
               loading={creating}
             >

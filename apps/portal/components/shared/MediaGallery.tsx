@@ -5,7 +5,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import { forwardRef, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import clsx from "clsx";
 import { isDirectPlayableVideoUrl, isEmbeddableVideoUrl, toEmbedVideoUrl, getVideoThumbnailUrl } from "@guild/shared/utils/video";
-import { IconChevronUp, IconChevronDown, IconPlayerPlay } from "@tabler/icons-react";
+import { ChevronUpIcon, ChevronDownIcon, PlayIcon } from "@portal/components/icons";
 import "./media-gallery.css";
 
 export type MediaGalleryLabels = {
@@ -304,7 +304,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
               onClick={() => setThumbnailExpanded((v) => !v)}
               aria-label={thumbnailExpanded ? labels.hideThumbnails : labels.showThumbnails}
             >
-              {thumbnailExpanded ? <IconChevronUp size={18} /> : <IconChevronDown size={18} />}
+              {thumbnailExpanded ? <ChevronUpIcon size={18} /> : <ChevronDownIcon size={18} />}
             </button>
           </div>
 
@@ -325,16 +325,16 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                     "thumbnailUrl" in item && item.thumbnailUrl ? (
                       <div className="infini-media-gallery-thumb-video">
                         <img src={item.thumbnailUrl} alt={`Video thumbnail ${index + 1}`} loading="lazy" decoding="async" />
-                        <IconPlayerPlay size={16} className="infini-media-gallery-thumb-play" />
+                        <PlayIcon size={16} className="infini-media-gallery-thumb-play" />
                       </div>
                     ) : "isDirect" in item && item.isDirect ? (
                       <div className="infini-media-gallery-thumb-video">
                         <video src={item.source} preload="metadata" muted className="infini-media-gallery-thumb-vid" />
-                        <IconPlayerPlay size={16} className="infini-media-gallery-thumb-play" />
+                        <PlayIcon size={16} className="infini-media-gallery-thumb-play" />
                       </div>
                     ) : (
                       <div className="infini-media-gallery-thumb-video">
-                        <IconPlayerPlay size={20} className="infini-media-gallery-thumb-play-only" />
+                        <PlayIcon size={20} className="infini-media-gallery-thumb-play-only" />
                       </div>
                     )
                   ) : (

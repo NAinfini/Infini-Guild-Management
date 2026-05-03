@@ -3,7 +3,8 @@ import { PushpinOutlined } from "@portal/utils/icons";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
 import { Alert, Badge, Button, Group, Indicator, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
-import { IconArchive, IconCalendarTime, IconCircleCheck, IconFileText, IconPlus } from "@tabler/icons-react";
+import { PlusIcon } from "@portal/components/icons";
+import { IconArchive, IconCalendarTime, IconCircleCheck, IconFileText } from "@tabler/icons-react";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -75,7 +76,7 @@ export function AnnouncementListCard({
                 onClick={() => onCreate()}
                 type="secondary"
                 size="sm"
-                before={<IconPlus size={16} />}
+                before={<PlusIcon size={16} />}
               >
                 {t("action.newAnnouncement")}
               </DepthButton>

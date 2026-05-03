@@ -1,6 +1,6 @@
 import type { GuildWarActiveResponse } from "@guild/shared";
 import { Button, Group, Select, Stack, Switch, TagsInput, Text, TextInput } from "@mantine/core";
-import { IconCopy, IconDeviceFloppy, IconTrash } from "@tabler/icons-react";
+import { CopyIcon, SaveIcon, TrashIcon } from "@portal/components/icons";
 import { memo, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { copyPlainText } from "../../../utils/copy";
@@ -103,7 +103,7 @@ export const TeamStatusPanel = memo(function TeamStatusPanel({
         <Button
           size="xs"
           variant="default"
-          leftSection={<IconCopy size={16} />}
+          leftSection={<CopyIcon size={16} />}
           onClick={() => {
             void copyPlainText(
               `${draftName.trim() || team.team_name}: ${team.members.map((m) => `@${m.user_id}`).join(", ")}`,
@@ -151,7 +151,7 @@ export const TeamStatusPanel = memo(function TeamStatusPanel({
           size="xs"
           variant="default"
           color="red"
-          leftSection={<IconTrash size={16} />}
+          leftSection={<TrashIcon size={16} />}
           disabled={draftLocked || !selectedEventId || !roleEditor?.userId}
           loading={roleTagMutation.isPending}
           onClick={() => {
@@ -183,7 +183,7 @@ export const TeamStatusPanel = memo(function TeamStatusPanel({
         <Button
           size="xs"
           variant="default"
-          leftSection={<IconDeviceFloppy size={16} />}
+          leftSection={<SaveIcon size={16} />}
           disabled={draftLocked || !selectedEventId || !roleEditor?.userId}
           loading={roleTagMutation.isPending}
           onClick={() => {

@@ -11,7 +11,7 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
-import { IconDeviceFloppy, IconPlus, IconX } from "@tabler/icons-react";
+import { SaveIcon, PlusIcon, XIcon } from "@portal/components/icons";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
@@ -35,7 +35,7 @@ export type RecurringTemplateFormPayload = {
     endAfter?: number;
     endDate?: string;
   };
-  visibility_offset_hours?: number;
+  visible_at?: string;
 };
 
 type RecurringTemplateFormState = {
@@ -46,7 +46,7 @@ type RecurringTemplateFormState = {
   durationValue: number;
   durationUnit: DurationUnit;
   capacity: string;
-  visibilityOffsetHours: string;
+  visibilityAt: string;
   recurrenceFreq: RecurrenceFreq;
   recurrenceInterval: string;
   recurrenceDays: number[];
@@ -109,6 +109,18 @@ type RecurringTemplateFormModalProps = {
   onSave: (payload: RecurringTemplateFormPayload) => void;
 };
 
+function isoToDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${mo}-${day}T${h}:${mi}`;
+}
+
 function buildFormState(template: RecurringTemplate | null): RecurringTemplateFormState {
   const duration = computeDurationFromIso(template?.start_at ?? null, template?.end_at ?? null);
   return {
@@ -134,7 +146,7 @@ function buildFormState(template: RecurringTemplate | null): RecurringTemplateFo
     recurrenceEndCount: template?.recurrence_rule?.endAfter
       ? String(template.recurrence_rule.endAfter)
       : "13",
-    visibilityOffsetHours: template?.visibility_offset_hours != null ? String(template.visibility_offset_hours) : "",
+    visibilityAt: isoToDatetimeLocal(template?.visible_at),
   };
 }
 
@@ -168,7 +180,7 @@ export function RecurringTemplateFormModal({
     recurrenceEndMode,
     recurrenceEndDate,
     recurrenceEndCount,
-    visibilityOffsetHours,
+    visibilityAt,
   } = formState;
 
   const handleSave = useCallback(() => {
@@ -195,12 +207,12 @@ export function RecurringTemplateFormModal({
         endAfter: recurrenceEndMode === "count" ? Math.max(1, Number.parseInt(recurrenceEndCount || "1", 10)) : undefined,
         endDate: recurrenceEndMode === "date" && recurrenceEndDate.trim() ? new Date(recurrenceEndDate).toISOString() : undefined,
       },
-      visibility_offset_hours: visibilityOffsetHours.trim() ? Math.max(0, Math.min(168, Number.parseInt(visibilityOffsetHours, 10))) : undefined,
+      visible_at: visibilityAt.trim() ? new Date(visibilityAt).toISOString() : undefined,
     });
   }, [
     startTime, durationValue, durationUnit, title, description, eventType, capacity,
     recurrenceFreq, recurrenceInterval, recurrenceDays, recurrenceMonthDay,
-    recurrenceEndMode, recurrenceEndDate, recurrenceEndCount, visibilityOffsetHours, onSave, t,
+    recurrenceEndMode, recurrenceEndDate, recurrenceEndCount, visibilityAt, onSave, t,
   ]);
 
   return (
@@ -292,18 +304,16 @@ export function RecurringTemplateFormModal({
           style={{ maxWidth: 200 }}
         />
 
-        {/* ── Visibility offset ── */}
+        {/* ── Visibility datetime ── */}
         <TextInput
-          label={t("recurring.field.visibilityOffset")}
-          type="number"
-          value={visibilityOffsetHours}
+          label={t("recurring.field.visibleAt")}
+          type="datetime-local"
+          value={visibilityAt}
           onChange={(event) =>
-            setFormState((current) => ({ ...current, visibilityOffsetHours: event.currentTarget.value }))
+            setFormState((current) => ({ ...current, visibilityAt: event.currentTarget.value }))
           }
-          placeholder={t("recurring.field.visibilityOffsetPlaceholder")}
+          description={t("recurring.field.visibleAtHint")}
           style={{ maxWidth: 300 }}
-          min={0}
-          max={168}
         />
 
         {/* ── Description ── */}
@@ -473,10 +483,10 @@ export function RecurringTemplateFormModal({
 
         {/* ── Actions ── */}
         <Group justify="flex-end" mt={4}>
-          <Button variant="default" onClick={onCancel} leftSection={<IconX size={16} />}>
+          <Button variant="default" onClick={onCancel} leftSection={<XIcon size={16} />}>
             {t("button.cancel")}
           </Button>
-          <Button onClick={handleSave} loading={confirmLoading} leftSection={mode === "create" ? <IconPlus size={16} /> : <IconDeviceFloppy size={16} />}>
+          <Button onClick={handleSave} loading={confirmLoading} leftSection={mode === "create" ? <PlusIcon size={16} /> : <SaveIcon size={16} />}>
             {mode === "create" ? t("recurring.create") : t("button.save")}
           </Button>
         </Group>

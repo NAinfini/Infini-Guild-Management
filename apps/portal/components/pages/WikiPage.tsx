@@ -5,7 +5,7 @@ import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { TipTapEditor, buildTipTapEditorLabels } from "@portal/components/shared/TipTapEditor";
 import { PortalCard } from "../shared/PortalCard";
 import { modals } from "@mantine/modals";
-import { IconArchive, IconEdit, IconPinned } from "@tabler/icons-react";
+import { ArchiveIcon, PencilIcon, PinIcon } from "@portal/components/icons";
 import { useDebouncedValue, useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
@@ -389,7 +389,7 @@ export function WikiPage() {
                   {canEdit ? (
                     <DepthButton type="secondary" size="sm" onClick={handleOpenArticleEditor} tooltip={{ label: t("editor.editWiki"), withArrow: true }}>
                         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                          <IconEdit size={16} />
+                          <PencilIcon size={16} />
                         </span>
                         <VisuallyHidden>{t("editor.editWiki")}</VisuallyHidden>
                       </DepthButton>
@@ -453,7 +453,7 @@ export function WikiPage() {
                   aria-label={pinnedOnly ? t("filter.showAll") : t("filter.showPinned")}
                   tooltip={{ label: pinnedOnly ? t("filter.showAll") : t("filter.showPinned"), withArrow: true }}
                 >
-                  <IconPinned size={16} />
+                  <PinIcon size={16} />
                 </DepthToggle>
               <DepthToggle
                   pressed={archivedOnly}
@@ -464,7 +464,7 @@ export function WikiPage() {
                   aria-label={archivedOnly ? t("filter.showActive") : t("filter.showArchived")}
                   tooltip={{ label: archivedOnly ? t("filter.showActive") : t("filter.showArchived"), withArrow: true }}
                 >
-                  <IconArchive size={16} />
+                  <ArchiveIcon size={16} />
                 </DepthToggle>
             </Group>
           </div>

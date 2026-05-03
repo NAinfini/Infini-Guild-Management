@@ -1,6 +1,6 @@
 import type { Event } from "@guild/shared";
 import { Grid, Skeleton, Stack } from "@mantine/core";
-import { IconLayoutDashboard } from "@tabler/icons-react";
+import { LayoutGridIcon } from "@portal/components/icons";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { differenceInHours } from "date-fns";
@@ -142,11 +142,11 @@ export function DashboardPage() {
 
   const upcomingEventDetailsQuery = useQuery({
     queryKey: queryKeys.dashboard.upcomingEventDetails(
-      upcomingEventsQuery.data?.data.slice(0, 12).map((item) => item.id).join(",") ?? "",
+      upcomingEventsQuery.data?.data.map((item) => item.id).join(",") ?? "",
     ),
     enabled: Boolean(upcomingEventsQuery.data) && Boolean(usersQuery.data),
     queryFn: async () => {
-      const eventIds = (upcomingEventsQuery.data?.data ?? []).slice(0, 12).map((item) => item.id);
+      const eventIds = (upcomingEventsQuery.data?.data ?? []).map((item) => item.id);
       if (eventIds.length === 0) return [];
       const res = await fetchEventDetailBatch(eventIds);
       return res.data;
@@ -308,7 +308,7 @@ export function DashboardPage() {
     <PageLayout
       title={t("title")}
       subtitle={t("welcome", { name: user?.username ?? t("welcomeFallback") })}
-      icon={<IconLayoutDashboard size={22} />}
+      icon={<LayoutGridIcon size={22} />}
       className="dashboard-page"
     >
       <Grid gutter={16} align="flex-start">

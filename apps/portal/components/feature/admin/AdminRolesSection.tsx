@@ -16,7 +16,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { IconCheck, IconDeviceFloppy, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
+import { CheckIcon, PlusIcon, SaveIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
@@ -350,7 +350,7 @@ export function AdminRolesSection({
                   loading={createRolePending}
                   disabled={!newRoleName.trim()}
                 >
-                  <IconPlus size={14} />
+                  <PlusIcon size={14} />
                 </ActionIcon>
               </Group>
             </div>
@@ -400,7 +400,7 @@ export function AdminRolesSection({
                           loading={deleteRolePending}
                           aria-label={t("roles.delete")}
                         >
-                          <IconTrash size={16} />
+                          <TrashIcon size={16} />
                         </ActionIcon>
                       ) : null}
                       <ActionIcon
@@ -419,7 +419,7 @@ export function AdminRolesSection({
                         disabled={!isDirty}
                         aria-label={t("roles.save")}
                       >
-                        <IconDeviceFloppy size={16} />
+                        <SaveIcon size={16} />
                       </ActionIcon>
                     </Group>
                   </Group>
@@ -452,9 +452,9 @@ export function AdminRolesSection({
                                 disabled={isReadOnly}
                                 before={
                                   isGranted ? (
-                                    <IconCheck size={14} color="#22c55e" />
+                                    <CheckIcon size={14} style={{ color: "#22c55e" }} />
                                   ) : (
-                                    <IconX size={14} color="#ef4444" />
+                                    <XIcon size={14} style={{ color: "#ef4444" }} />
                                   )
                                 }
                               >

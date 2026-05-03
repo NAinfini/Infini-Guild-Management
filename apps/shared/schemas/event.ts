@@ -70,6 +70,7 @@ export const recurringTemplateSchema = z.object({
   capacity: z.number().int().nullable(),
   recurrence_rule: recurrenceRuleSchema,
   visibility_offset_hours: z.number().nullable(),
+  visible_at: z.string().nullable(),
   archived_at: z.string().nullable(),
   created_by: z.string(),
   last_generated_date: z.string().nullable(),
@@ -86,7 +87,7 @@ export const createTemplateSchema = z.object({
   end_at: z.string().datetime().optional(),
   capacity: z.number().int().positive().optional(),
   recurrence_rule: recurrenceRuleSchema,
-  visibility_offset_hours: z.number().min(0).max(168).optional(),
+  visible_at: z.string().datetime().optional(),
 });
 
 export const updateTemplateSchema = createTemplateSchema.partial();

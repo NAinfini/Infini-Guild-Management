@@ -1,7 +1,8 @@
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { PortalCard } from "../../shared/PortalCard";
 import { Group, TextInput } from "@mantine/core";
-import { IconArchive, IconCalendarTime, IconFileText, IconPin } from "@tabler/icons-react";
+import { ArchiveIcon, CalendarTimeIcon, PinIcon } from "@portal/components/icons";
+import { IconFileText } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 
 type AnnouncementFiltersCardProps = {
@@ -49,7 +50,7 @@ export function AnnouncementFiltersCard({
             aria-label={t("filter.pinned")}
             tooltip={t("filter.pinned")}
           >
-            <IconPin size={16} />
+            <PinIcon size={16} />
           </DepthToggle>
           <DepthToggle
             pressed={statusFilter === "archived"}
@@ -60,7 +61,7 @@ export function AnnouncementFiltersCard({
             aria-label={t("filter.archived")}
             tooltip={t("filter.archived")}
           >
-            <IconArchive size={16} />
+            <ArchiveIcon size={16} />
           </DepthToggle>
           {canEdit ? (
             <>
@@ -84,7 +85,7 @@ export function AnnouncementFiltersCard({
                 aria-label={t("filter.scheduled")}
                 tooltip={t("filter.scheduled")}
               >
-                <IconCalendarTime size={16} />
+                <CalendarTimeIcon size={16} />
               </DepthToggle>
             </>
           ) : null}

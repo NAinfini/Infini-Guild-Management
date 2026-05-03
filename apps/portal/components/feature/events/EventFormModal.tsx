@@ -1,7 +1,5 @@
-import type { Event } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
 import {
-  Alert,
   Button,
   Group,
   Modal,
@@ -11,7 +9,7 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
-import { IconX, IconPlus, IconDeviceFloppy } from "@tabler/icons-react";
+import { XIcon, PlusIcon, SaveIcon } from "@portal/components/icons";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
@@ -39,7 +37,6 @@ type EventFormModalProps = {
   onAttachmentsChange: (items: ImageGridEditorItem[]) => void;
   onFilesSelected: (files: File[]) => void;
   onAttachmentDelete: (item: ImageGridEditorItem) => void;
-  conflictingEvents: Event[];
   availabilityDaysWithAny: Set<number>;
   availabilityMaxCount: number;
   availabilityMemberCount: number;
@@ -68,7 +65,6 @@ export function EventFormModal({
   onAttachmentsChange,
   onFilesSelected,
   onAttachmentDelete,
-  conflictingEvents,
   availabilityDaysWithAny,
   availabilityMaxCount,
   availabilityMemberCount,
@@ -167,16 +163,6 @@ export function EventFormModal({
           />
         </Stack>
 
-        {/* ── Conflict warning ── */}
-        {conflictingEvents.length > 0 ? (
-          <Alert color="yellow" title={t("conflict.detected")}>
-            {t("conflict.description", { count: conflictingEvents.length, titles: conflictingEvents
-              .slice(0, 3)
-              .map((item) => item.title)
-              .join(", ") })}
-          </Alert>
-        ) : null}
-
         {/* ── Availability hint ── */}
         {availabilityMaxCount > 0 ? (
           <Text c="dimmed" size="xs">
@@ -191,10 +177,10 @@ export function EventFormModal({
 
         {/* ── Actions ── */}
         <Group justify="flex-end" mt={4}>
-          <Button variant="default" onClick={onCancel} leftSection={<IconX size={16} />}>
+          <Button variant="default" onClick={onCancel} leftSection={<XIcon size={16} />}>
             {t("button.cancel")}
           </Button>
-          <Button onClick={onSave} loading={confirmLoading} disabled={isSaveDisabled} leftSection={mode === "create" ? <IconPlus size={16} /> : <IconDeviceFloppy size={16} />}>
+          <Button onClick={onSave} loading={confirmLoading} disabled={isSaveDisabled} leftSection={mode === "create" ? <PlusIcon size={16} /> : <SaveIcon size={16} />}>
             {mode === "create" ? t("button.create") : t("button.save")}
           </Button>
         </Group>

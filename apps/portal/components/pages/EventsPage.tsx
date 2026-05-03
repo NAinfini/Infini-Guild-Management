@@ -1,6 +1,6 @@
 ﻿import type { Event, MemberProfile, User } from "@guild/shared";
 import type { ImageGridEditorItem } from "@guild/shared/types/media";
-import { IconCalendarEvent } from "@tabler/icons-react";
+import { CalendarEventIcon } from "@portal/components/icons";
 import { useClipboard, useLocalStorage } from "@mantine/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -134,7 +134,6 @@ export function EventsPage() {
     editorSignupLocked,
     editorStartIso,
     editorEndIso,
-    conflictingEvents,
     setEditorType,
     setEditorTitle,
     setEditorDescription,
@@ -146,7 +145,7 @@ export function EventsPage() {
     openEditEditor: openEditEditorBase,
     closeEditor: closeEditorBase,
     closeEditorAfterSave,
-  } = useEventsEditorController({ sortedEvents: filtering.sortedEvents, attachmentSnapshot });
+  } = useEventsEditorController({ attachmentSnapshot });
   const mutations = useEventsMutations({
     canInteract,
     user,
@@ -236,7 +235,7 @@ export function EventsPage() {
   useLoadWarningToast(hasLoadError, t("common:loadErrorRetry"));
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconCalendarEvent size={22} />} className="events-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<CalendarEventIcon size={22} />} className="events-page">
       <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={36} radius={8} /></Stack></Card>}>
         <LazyEventsFiltersCard
           searchQuery={filtering.searchQuery}
@@ -347,7 +346,6 @@ export function EventsPage() {
             onAttachmentsChange={handleAttachmentItemsChange}
             onFilesSelected={handleFilesSelected}
             onAttachmentDelete={handleAttachmentDelete}
-            conflictingEvents={conflictingEvents}
             availabilityDaysWithAny={filtering.availabilityHeatData.daysWithAny}
             availabilityMaxCount={filtering.availabilityHeatData.maxCount}
             availabilityMemberCount={filtering.availabilityHeatData.memberCount}

@@ -5,26 +5,28 @@ import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
 import { PortalCard } from "../../shared/PortalCard";
 import {
+  CopyIcon,
+  DotsIcon,
+  PencilIcon,
+  RefreshCwIcon,
+  SwordsIcon,
+  CalendarEventIcon,
+  TrashIcon,
+  UserPlusIcon,
+} from "@portal/components/icons";
+import {
   IconArchive,
   IconArchiveOff,
-  IconCalendarEvent,
   IconClock,
-  IconCopy,
-  IconDots,
   IconFriends,
   IconLock,
   IconLockOpen,
-  IconPencil,
   IconPin,
   IconPinnedOff,
-  IconRefresh,
   IconSparkles,
   IconSparkles2,
-  IconSwords,
   IconTargetArrow,
-  IconTrash,
   IconUserMinus,
-  IconUserPlus,
   IconUsers,
 } from "@tabler/icons-react";
 import React, { useState } from "react";
@@ -43,9 +45,9 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
 
 const EVENT_TYPE_ICONS: Record<string, React.ReactNode> = {
   weekly_mission: <IconTargetArrow size={12} />,
-  guild_war: <IconSwords size={12} />,
+  guild_war: <SwordsIcon size={12} />,
   social: <IconFriends size={12} />,
-  other: <IconCalendarEvent size={12} />,
+  other: <CalendarEventIcon size={12} />,
 };
 
 function getTypeGradientClass(type: string): string {
@@ -206,7 +208,7 @@ export function EventCardsView({
                   </Badge>
                   {event.recurrence_rule && event.series_id ? (
                     <Tooltip label={t("card.recurring")}>
-                      <IconRefresh size={14} className="event-card__recurring-icon" />
+                      <RefreshCwIcon size={14} className="event-card__recurring-icon" />
                     </Tooltip>
                   ) : null}
                   {event.pinned ? (
@@ -239,14 +241,14 @@ export function EventCardsView({
                   <InfiniMenu position="bottom-end">
                     <InfiniMenu.Target>
                       <button type="button" className="event-card__menu-btn" aria-label={t("menu.actions")} onClick={(e) => e.stopPropagation()}>
-                        <IconDots size={16} />
+                        <DotsIcon size={16} />
                       </button>
                     </InfiniMenu.Target>
                     <InfiniMenu.Dropdown onClick={(e) => e.stopPropagation()}>
-                      <InfiniMenu.Item leftSection={<IconPencil size={14} />} onClick={() => onEditEvent(event)}>
+                      <InfiniMenu.Item leftSection={<PencilIcon size={14} />} onClick={() => onEditEvent(event)}>
                         {t("menu.edit")}
                       </InfiniMenu.Item>
-                      <InfiniMenu.Item leftSection={<IconCopy size={14} />} onClick={() => onDuplicateEvent(event)}>
+                      <InfiniMenu.Item leftSection={<CopyIcon size={14} />} onClick={() => onDuplicateEvent(event)}>
                         {t("menu.duplicate")}
                       </InfiniMenu.Item>
                       <InfiniMenu.Item
@@ -271,7 +273,7 @@ export function EventCardsView({
                       <InfiniMenu.Item
                         className="infini-menu-item--danger"
                         color="red"
-                        leftSection={<IconTrash size={14} />}
+                        leftSection={<TrashIcon size={14} />}
                         onClick={() => onDeleteEvent(event)}
                       >
                         {t("menu.delete")}
@@ -296,7 +298,7 @@ export function EventCardsView({
 
                   {/* Date & Time */}
                   <Group gap={6} align="center" wrap="nowrap">
-                    <IconCalendarEvent size={15} className="event-card__icon-muted" />
+                    <CalendarEventIcon size={15} className="event-card__icon-muted" />
                     <Text size="sm" className="event-card__date-text">
                       {formatLocalDate(event.start_at, i18n.language)}
                     </Text>
@@ -375,7 +377,7 @@ export function EventCardsView({
                       disabled={joinPending || leavePending || (!isJoined && (event.signup_locked || Boolean(event.archived_at) || isFull || (event.end_at != null && new Date(event.end_at) < new Date())))}
                       tooltip={isJoined ? t("button.leave") : t("button.join")}
                     >
-                      {isJoined ? <IconUserMinus size={14} /> : <IconUserPlus size={14} />}
+                      {isJoined ? <IconUserMinus size={14} /> : <UserPlusIcon size={14} />}
                       {isJoined ? t("button.leave") : t("button.join")}
                     </DepthToggle>
                     <DepthButton
@@ -385,7 +387,7 @@ export function EventCardsView({
                       disabled={members.length === 0}
                       tooltip={t("card.copyMentions")}
                       iconOnly
-                      before={<IconCopy size={14} />}
+                      before={<CopyIcon size={14} />}
                     />
                   </div>
                   ) : null}

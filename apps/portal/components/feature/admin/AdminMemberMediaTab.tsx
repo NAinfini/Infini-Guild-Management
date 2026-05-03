@@ -3,7 +3,7 @@ import type { ImageGridEditorItem } from "@guild/shared/types/media";
 import { PortalCard } from "../../shared/PortalCard";
 import { Button, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { IconPlus, IconTrash, IconUpload } from "@tabler/icons-react";
+import { PlusIcon, TrashIcon, UploadIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import type { UseMediaUploadState } from "../../../hooks/useMediaUpload";
 import type { UsersListResponse } from "../../../api/queries/users";
@@ -76,6 +76,16 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                 items={imageItems}
                 onReorder={onImageReorder}
                 onDelete={isAdmin ? onImageDelete : undefined}
+                onSetAsFirst={isModerator ? (item) => {
+                  const idx = imageItems.findIndex((i) => i.id === item.id);
+                  if (idx > 0) {
+                    const next = [...imageItems];
+                    next.splice(idx, 1);
+                    next.unshift(item);
+                    onImageReorder(next);
+                  }
+                } : undefined}
+                avatarLabel={t("media.avatar")}
                 onFilesSelected={isModerator ? imageUploader.selectFiles : undefined}
                 maxImages={PROFILE_IMAGE_MAX}
                 imageSize={80}
@@ -93,7 +103,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                     </Stack>
                   ) : null}
                   <Button
-                    leftSection={<IconUpload size={16} />}
+                    leftSection={<UploadIcon size={16} />}
                     onClick={() => {
                       void onUploadImages();
                     }}
@@ -136,7 +146,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                     loading={saveVideosPending}
                     aria-label={t("media.aria.removeVideoUrl")}
                   >
-                    <IconTrash size={16} />
+                    <TrashIcon size={16} />
                   </Button>
                 ) : null}
               </Group>
@@ -147,7 +157,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                 <Button
                   size="sm"
                   variant="default"
-                  leftSection={<IconPlus size={16} />}
+                  leftSection={<PlusIcon size={16} />}
                   onClick={onAddVideoUrl}
                   disabled={videoUrls.length >= 10}
                 >
@@ -186,7 +196,9 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
               {isAdmin ? (
                 <Button
                   color="red"
-                  leftSection={<IconTrash size={16} />}
+                  size="sm"
+                  w="fit-content"
+                  leftSection={<TrashIcon size={14} />}
                   onClick={() =>
                     modals.openConfirmModal({
                       title: t("confirm.deleteAudio.title"),
@@ -223,13 +235,14 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                 </Stack>
               ) : null}
               <Button
-                leftSection={<IconUpload size={16} />}
+                leftSection={<UploadIcon size={14} />}
                 onClick={() => {
                   void onUploadAudio();
                 }}
                 loading={audioUploader.isUploading}
                 disabled={audioUploader.files.length === 0}
                 size="sm"
+                w="fit-content"
               >
                 {t("media.uploadAudio")}
               </Button>

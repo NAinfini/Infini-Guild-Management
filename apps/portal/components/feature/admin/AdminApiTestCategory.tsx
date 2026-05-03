@@ -1,6 +1,6 @@
 import { Badge, Group, Stack, Text } from "@mantine/core";
 import { ProgressButton } from "@portal/components/effects";
-import { IconPlayerPlay } from "@tabler/icons-react";
+import { PlayIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { type CategoryDef, type EndpointDef, type EndpointResult, methodColor, statusColor } from "./AdminApiTestEngine";
 
@@ -70,7 +70,7 @@ export function ApiTestCategory({
           disabled={catRunning}
         >
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <IconPlayerPlay size={14} />
+            <PlayIcon size={14} />
             <span>{runLabel}</span>
           </span>
         </ProgressButton>

@@ -1,6 +1,47 @@
 ﻿.event-card {
   overflow: hidden;
-  transition: transform 180ms ease, box-shadow 180ms ease;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  position: relative;
+}
+
+.dark .event-card {
+  background: color-mix(in srgb, var(--color-surface, #1e293b) 88%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.event-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 3;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.event-card:hover::before {
+  opacity: 1;
+}
+
+.event-card:has(.event-card__header--weekly_mission)::before,
+.event-card:has(.event-card__header--raid)::before {
+  background: linear-gradient(90deg, var(--color-primary, #3b82f6), color-mix(in srgb, var(--color-primary, #3b82f6) 60%, var(--color-secondary, #22d3ee)));
+}
+
+.event-card:has(.event-card__header--guild_war)::before {
+  background: linear-gradient(90deg, var(--color-danger, #ef4444), color-mix(in srgb, var(--color-danger, #ef4444) 60%, var(--color-warning, #f59e0b)));
+}
+
+.event-card:has(.event-card__header--social)::before {
+  background: linear-gradient(90deg, var(--color-accent, #8b5cf6), color-mix(in srgb, var(--color-accent, #8b5cf6) 60%, var(--color-primary, #3b82f6)));
+}
+
+.event-card:has(.event-card__header--other)::before {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-text, #111827) 30%, transparent), color-mix(in srgb, var(--color-text, #111827) 15%, transparent));
 }
 
 .event-card--focused {
@@ -10,8 +51,32 @@
 }
 
 .event-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  transform: translateY(-4px);
+  box-shadow:
+    0 12px 32px color-mix(in srgb, var(--color-text, #111827) 12%, transparent),
+    0 4px 12px color-mix(in srgb, var(--color-text, #111827) 6%, transparent);
+}
+
+.event-card:has(.event-card__header--weekly_mission):hover,
+.event-card:has(.event-card__header--raid):hover {
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
+  box-shadow:
+    0 12px 32px color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+}
+
+.event-card:has(.event-card__header--guild_war):hover {
+  border-color: color-mix(in srgb, var(--color-danger, #ef4444) 40%, transparent);
+  box-shadow:
+    0 12px 32px color-mix(in srgb, var(--color-danger, #ef4444) 15%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--color-danger, #ef4444) 10%, transparent);
+}
+
+.event-card:has(.event-card__header--social):hover {
+  border-color: color-mix(in srgb, var(--color-accent, #8b5cf6) 40%, transparent);
+  box-shadow:
+    0 12px 32px color-mix(in srgb, var(--color-accent, #8b5cf6) 15%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--color-accent, #8b5cf6) 10%, transparent);
 }
 
 /* ── Header ── */

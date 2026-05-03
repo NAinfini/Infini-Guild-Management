@@ -106,15 +106,16 @@ body::-webkit-scrollbar-track {
 }
 
 body::-webkit-scrollbar-thumb {
-  background: var(--color-primary, #6b7280);
+  background: linear-gradient(180deg, var(--color-primary, #6b7280), color-mix(in srgb, var(--color-secondary, #8b5cf6) 60%, var(--color-primary, #6b7280)));
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 body::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--color-primary, #6b7280) 82%, #ffffff 18%);
+  background: linear-gradient(180deg, var(--color-primary, #6b7280), var(--color-secondary, #8b5cf6));
   background-clip: padding-box;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-primary, #3b82f6) 30%, transparent);
 }
 
 /* ── Focus ring ── */
@@ -142,6 +143,77 @@ html[data-locale="zh"] {
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* ── ClickSpark animation ── */
+@keyframes clickSparkFly {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--spark-x), var(--spark-y)) scale(0);
+  }
+}
+
+/* ── StarBorder — animated rotating gradient border ── */
+.star-border {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.star-border__track {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.star-border__track::before {
+  content: "";
+  position: absolute;
+  inset: -50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    var(--star-border-color, var(--color-primary, #3b82f6)) 10%,
+    transparent 20%,
+    transparent 50%,
+    var(--star-border-color, var(--color-primary, #3b82f6)) 60%,
+    transparent 70%
+  );
+  animation: starBorderSpin var(--star-border-speed, 6s) linear infinite;
+}
+
+.star-border__inner {
+  position: relative;
+  z-index: 1;
+  margin: var(--star-border-width, 1px);
+  border-radius: calc(var(--radius-lg) - var(--star-border-width, 1px));
+  background: var(--color-surface, #1e293b);
+}
+
+@keyframes starBorderSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Text selection styling ── */
+::selection {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 30%, transparent);
+  color: var(--color-text, #111827);
+}
+
+.dark ::selection {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
+}
+
+/* ── Shine sweep for interactive elements ── */
+@keyframes shineSweep {
+  0% { transform: translateX(-100%) skewX(-15deg); }
+  100% { transform: translateX(200%) skewX(-15deg); }
 }
 
 /* ── Menu item helpers ── */
@@ -195,6 +267,16 @@ html[data-locale="zh"] {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent), color-mix(in srgb, var(--color-secondary, #8b5cf6) 8%, transparent));
+  animation: emptyIconFloat 3s ease-in-out infinite;
+}
+
+@keyframes emptyIconFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
 }
 
 .empty-state__icon--info { color: var(--color-primary, #3b82f6); }
@@ -290,5 +372,241 @@ html[data-locale="zh"] {
   .mantine-Tabs-tab {
     flex-shrink: 0;
     white-space: nowrap;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   Interactive Feedback & Micro-interactions
+   ══════════════════════════════════════════════ */
+
+/* ── Button hover glow (filled variant) ── */
+.mantine-Button-root[data-variant="filled"] {
+  position: relative;
+  overflow: hidden;
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.15s ease,
+    background 0.2s ease;
+}
+
+.mantine-Button-root[data-variant="filled"]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.15),
+    transparent
+  );
+  transform: translateX(-100%) skewX(-15deg);
+  pointer-events: none;
+}
+
+.mantine-Button-root[data-variant="filled"]:hover:not(:disabled)::after {
+  animation: shineSweep 0.6s ease-out;
+}
+
+.mantine-Button-root[data-variant="filled"]:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow:
+    0 4px 16px color-mix(in srgb, var(--mantine-color-blue-6, #228be6) 35%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--mantine-color-blue-6, #228be6) 20%, transparent);
+}
+
+.dark .mantine-Button-root[data-variant="filled"]:hover:not(:disabled) {
+  box-shadow:
+    0 6px 24px color-mix(in srgb, var(--mantine-color-blue-6, #228be6) 40%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--mantine-color-blue-6, #228be6) 25%, transparent);
+}
+
+.mantine-Button-root[data-variant="filled"]:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--mantine-color-blue-6, #228be6) 20%, transparent);
+}
+
+/* ── Button hover glow (light/subtle) ── */
+.mantine-Button-root[data-variant="light"],
+.mantine-Button-root[data-variant="subtle"],
+.mantine-Button-root[data-variant="default"],
+.mantine-ActionIcon-root {
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.15s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.mantine-Button-root[data-variant="light"]:hover:not(:disabled),
+.mantine-Button-root[data-variant="subtle"]:hover:not(:disabled),
+.mantine-Button-root[data-variant="default"]:hover:not(:disabled),
+.mantine-ActionIcon-root:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.mantine-Button-root[data-variant="light"]:active:not(:disabled),
+.mantine-Button-root[data-variant="subtle"]:active:not(:disabled),
+.mantine-Button-root[data-variant="default"]:active:not(:disabled),
+.mantine-ActionIcon-root:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+}
+
+/* ── Input focus glow ── */
+.mantine-Input-input:focus-within {
+  border-color: var(--color-primary, #3b82f6) !important;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent),
+    0 0 16px color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent);
+}
+
+.dark .mantine-Input-input:focus-within {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-primary, #3b82f6) 18%, transparent),
+    0 0 20px color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+}
+
+/* ── Badge pulse for "New" / live indicators ── */
+@keyframes badgePulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary, #3b82f6) 30%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary, #3b82f6) 0%, transparent); }
+}
+
+.mantine-Badge-root[data-variant="filled"] {
+  animation: badgePulse 2.5s ease-in-out infinite;
+}
+
+/* ── Status dot glow ── */
+@keyframes statusGlow {
+  0%, 100% { box-shadow: 0 0 3px currentColor; }
+  50% { box-shadow: 0 0 8px currentColor, 0 0 12px currentColor; }
+}
+
+.status-dot--online {
+  animation: statusGlow 2s ease-in-out infinite;
+}
+
+/* ── Tooltip entrance (glassmorphism style) ── */
+.mantine-Tooltip-tooltip {
+  animation: tooltipIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.dark .mantine-Tooltip-tooltip {
+  border: 1px solid color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+}
+
+@keyframes tooltipIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Modal entrance enhancement ── */
+.mantine-Modal-content {
+  animation: modalSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both !important;
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.2),
+    0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent) !important;
+}
+
+.dark .mantine-Modal-content {
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.4),
+    0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent),
+    0 0 60px color-mix(in srgb, var(--color-primary, #3b82f6) 4%, transparent) !important;
+}
+
+.mantine-Modal-overlay {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Notification slide-in ── */
+.mantine-Notification-root {
+  animation: notifSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes notifSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ── Tabs active indicator glow ── */
+.mantine-Tabs-tab[data-active] {
+  position: relative;
+}
+
+.mantine-Tabs-tab[data-active]::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-primary, #3b82f6), var(--color-secondary, #8b5cf6), var(--color-accent, #06b6d4));
+  background-size: 200% 100%;
+  border-radius: 2px 2px 0 0;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
+  animation: tabIndicatorShimmer 3s ease-in-out infinite;
+}
+
+@keyframes tabIndicatorShimmer {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 200% center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mantine-Button-root,
+  .mantine-ActionIcon-root {
+    transition: none !important;
+  }
+  .mantine-Button-root[data-variant="filled"]::after {
+    display: none;
+  }
+  .mantine-Badge-root[data-variant="filled"] {
+    animation: none;
+  }
+  .status-dot--online {
+    animation: none;
+  }
+  .mantine-Tooltip-tooltip,
+  .mantine-Modal-content,
+  .mantine-Notification-root {
+    animation: none !important;
+  }
+  .mantine-Tabs-tab[data-active]::after {
+    animation: none;
+  }
+  .star-border__track::before {
+    animation: none;
   }
 }

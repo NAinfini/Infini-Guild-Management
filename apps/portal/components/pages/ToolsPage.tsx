@@ -11,15 +11,14 @@ import {
   Title,
 } from "@mantine/core";
 import { useLocalStorage } from "@mantine/hooks";
+import { CopyIcon, WrenchIcon } from "@portal/components/icons";
 import {
   IconBold,
-  IconCopy,
   IconItalic,
   IconLetterSpacing,
   IconPalette,
   IconStrikethrough,
   IconTextSize,
-  IconTool,
   IconUnderline,
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
@@ -120,7 +119,7 @@ export function ToolsPage() {
   ];
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconTool size={22} />}>
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<WrenchIcon size={22} />}>
       {isExternalView ? (
         <Alert color="blue" title={t("sandbox.readOnlyHint")} />
       ) : null}
@@ -312,7 +311,7 @@ export function ToolsPage() {
                     }}
                     aria-label={t("sandbox.aria.copyGeneratedHtml")}
                   >
-                    <IconCopy size={14} />
+                    <CopyIcon size={14} />
                   </button>
                 </Group>
                 <Textarea

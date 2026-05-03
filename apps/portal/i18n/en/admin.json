@@ -264,6 +264,7 @@
   "media.noImages": "No images",
   "media.noVideos": "No videos",
   "media.noAudio": "No audio",
+  "media.avatar": "Avatar",
   "media.uploadImages": "Upload Images",
   "media.uploadAudio": "Upload Audio",
   "media.uploadAudioHint": "Audio upload supports conversion to Opus for better compatibility.",

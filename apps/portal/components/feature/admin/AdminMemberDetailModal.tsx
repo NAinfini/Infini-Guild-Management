@@ -16,7 +16,7 @@ import {
   Textarea,
   TextInput,
 } from "@mantine/core";
-import { IconDeviceFloppy } from "@tabler/icons-react";
+import { SaveIcon } from "@portal/components/icons";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { UsersListResponse } from "../../../api/queries/users";
@@ -238,7 +238,7 @@ export function AdminMemberDetailModal({
           {/* Save Button — always visible across all tabs */}
           <Group justify="flex-end" className={styles.saveBar}>
             <Button
-              leftSection={<IconDeviceFloppy size={18} />}
+              leftSection={<SaveIcon size={18} />}
               onClick={() => onSaveProfile(member)}
               loading={saveProfilePending}
               size="md"

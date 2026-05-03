@@ -3,7 +3,7 @@ import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { PortalCard } from "../../shared/PortalCard";
 import { Alert, Group, Select, Skeleton, Stack, Text, TextInput } from "@mantine/core";
-import { IconArchive, IconDeviceFloppy, IconPinned, IconPlus, IconX } from "@tabler/icons-react";
+import { ArchiveIcon, PinIcon, PlusIcon, SaveIcon, XIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
@@ -125,12 +125,12 @@ export function WikiArticleEditorCard({
                         aria-label={pinLabel}
                         tooltip={{ label: pinLabel, withArrow: true }}
                       >
-                        <IconPinned size={16} />
+                        <PinIcon size={16} />
                       </DepthToggle>
                     <DepthButton
                       type={archiveIntent === "none" ? "danger" : "secondary"}
                       size="sm"
-                      before={<IconArchive size={16} />}
+                      before={<ArchiveIcon size={16} />}
                       onClick={onToggleArchiveIntent}
                       disabled={isSaving}
                     >
@@ -139,7 +139,7 @@ export function WikiArticleEditorCard({
                     <DepthButton
                       type="primary"
                       size="sm"
-                      before={<IconDeviceFloppy size={16} />}
+                      before={<SaveIcon size={16} />}
                       onClick={() => {
                         if (!articleTitle.trim()) {
                           notifyError(t("validation.titleRequired"));
@@ -157,7 +157,7 @@ export function WikiArticleEditorCard({
                   <DepthButton
                     type="primary"
                     size="sm"
-                    before={<IconPlus size={16} />}
+                    before={<PlusIcon size={16} />}
                     onClick={onCreateArticle}
                     disabled={!canCreateArticle || isCreating}
                   >
@@ -167,7 +167,7 @@ export function WikiArticleEditorCard({
                 <DepthButton
                   type="secondary"
                   size="sm"
-                  before={<IconX size={16} />}
+                  before={<XIcon size={16} />}
                   onClick={onExitEditor}
                   disabled={isSaving}
                 >

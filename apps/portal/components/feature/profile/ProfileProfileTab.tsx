@@ -3,7 +3,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { PortalCard } from "../../shared/PortalCard";
 import { FloatingSaveBar } from "../../shared/FloatingSaveBar";
 import { Button, Group, NumberInput, Select, Stack, Text, TextInput, Textarea } from "@mantine/core";
-import { IconExternalLink, IconPlus } from "@tabler/icons-react";
+import { ExternalLinkIcon, PlusIcon } from "@portal/components/icons";
 import type { ReactNode } from "react";
 import DOMPurify from "dompurify";
 import { useTranslation } from "react-i18next";
@@ -80,7 +80,7 @@ export function ProfileProfileTab({
               onChange={(value) => onClassDraftChange(value ?? "")}
               onSearchChange={(value) => onClassDraftChange(value)}
             />
-            <Button onClick={onAddClass} leftSection={<IconPlus size={16} />}>{t("action.add")}</Button>
+            <Button onClick={onAddClass} leftSection={<PlusIcon size={16} />}>{t("action.add")}</Button>
           </Group>
           <DndContext sensors={classSensors} collisionDetection={closestCenter} onDragEnd={onClassDragEnd}>
             <SortableContext items={classList} strategy={verticalListSortingStrategy}>
@@ -98,7 +98,7 @@ export function ProfileProfileTab({
               <Group gap={8} align="center" wrap="nowrap" style={{ lineHeight: 1.4 }}>
                 <span>{t("field.titleHtml")}</span>
                 <Text component={Link} to="/tools" size="xs" c="dimmed" td="underline" style={{ cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 2 }}>
-                  {t("action.titleGenerator")}<IconExternalLink size={12} />
+                  {t("action.titleGenerator")}<ExternalLinkIcon size={12} />
                 </Text>
               </Group>
             }

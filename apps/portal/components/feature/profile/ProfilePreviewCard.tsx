@@ -1,6 +1,6 @@
 import { PortalCard } from "../../shared/PortalCard";
 import { Avatar, Badge, Divider, Group, RingProgress, Spoiler, Stack, Text } from "@mantine/core";
-import { IconPhoto, IconVideo } from "@tabler/icons-react";
+import { PhotoIcon, VideoIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 
 type ProfilePreviewCardProps = {
@@ -95,8 +95,8 @@ export function ProfilePreviewCard({
 
         {/* Media stats */}
         <Group gap={8} justify="center">
-          <MediaStat icon={<IconPhoto size={16} color="var(--color-primary, #3b82f6)" />} count={imageCount} label={t("preview.images")} />
-          <MediaStat icon={<IconVideo size={16} color="var(--color-secondary, #8b5cf6)" />} count={videoCount} label={t("preview.videos")} />
+          <MediaStat icon={<PhotoIcon size={16} style={{ color: "var(--color-primary, #3b82f6)" }} />} count={imageCount} label={t("preview.images")} />
+          <MediaStat icon={<VideoIcon size={16} style={{ color: "var(--color-secondary, #8b5cf6)" }} />} count={videoCount} label={t("preview.videos")} />
         </Group>
 
         {bio ? (

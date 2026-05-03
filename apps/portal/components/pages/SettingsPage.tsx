@@ -2,15 +2,8 @@ import { useCallback } from "react";
 import { Button, Group, SimpleGrid, Stack, Switch, Text, Title } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import {
-  IconDeviceFloppy,
-  IconFileImport,
-  IconLanguage,
-  IconMoon,
-  IconRefresh,
-  IconSettings,
-  IconSun,
-} from "@tabler/icons-react";
+import { MoonIcon, RefreshCwIcon, SaveIcon, SettingsIcon, SunIcon } from "@portal/components/icons";
+import { IconFileImport, IconLanguage } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { ShinyText } from "@portal/components/effects";
 
@@ -170,7 +163,7 @@ export function SettingsPage() {
           {t("subtitle")}
         </ShinyText>
       }
-      icon={<IconSettings size={22} />}
+      icon={<SettingsIcon size={22} />}
     >
       <Stack gap="xl">
         {/* ── Appearance ── */}
@@ -186,14 +179,14 @@ export function SettingsPage() {
                   onClick={() => setTheme("light")}
                   label={t("theme.light")}
                   description={t("theme.light.desc")}
-                  icon={<IconSun size={20} />}
+                  icon={<SunIcon size={20} />}
                 />
                 <OptionCard
                   active={currentTheme === "dark"}
                   onClick={() => setTheme("dark")}
                   label={t("theme.dark")}
                   description={t("theme.dark.desc")}
-                  icon={<IconMoon size={20} />}
+                  icon={<MoonIcon size={20} />}
                 />
               </SimpleGrid>
             </div>
@@ -274,7 +267,7 @@ export function SettingsPage() {
           <div className="settings-backup-actions">
             <Button
               variant="default"
-              leftSection={<IconDeviceFloppy size={16} />}
+              leftSection={<SaveIcon size={16} />}
               onClick={handleExport}
             >
               {t("backup.export")}
@@ -293,7 +286,7 @@ export function SettingsPage() {
               <Button
                 variant="default"
                 color="red"
-                leftSection={<IconRefresh size={16} />}
+                leftSection={<RefreshCwIcon size={16} />}
                 onClick={handleReset}
               >
                 {t("reset.button")}

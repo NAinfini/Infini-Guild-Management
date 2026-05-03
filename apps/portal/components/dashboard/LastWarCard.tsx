@@ -14,7 +14,7 @@ import {
   TargetOutlined,
   TrophyOutlined,
 } from "../../utils/icons";
-import { IconFlame, IconHeart, IconHammer, IconShield } from "@tabler/icons-react";
+import { FlameIcon, HeartIcon, HammerIcon, ShieldIcon } from "@portal/components/icons";
 import { CompareBar } from "../shared/CompareBar";
 import { EmptyState } from "../shared/EmptyState";
 import { cardHeading, formatDateTime, type DashboardLastWarMvp, type DashboardLastWarMvpEntry } from "./shared";
@@ -179,10 +179,10 @@ export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isEx
                 {t("card.lastWar.mvps")}
               </Text>
               <Stack gap={6}>
-                <MvpChip entry={{ ...mvp.damage, label: t("card.lastWar.mvp.damage") }} icon={<IconFlame size={12} />} />
-                <MvpChip entry={{ ...mvp.healing, label: t("card.lastWar.mvp.healing") }} icon={<IconHeart size={12} />} />
-                <MvpChip entry={{ ...mvp.damageTaken, label: t("card.lastWar.mvp.damageTaken") }} icon={<IconShield size={12} />} />
-                <MvpChip entry={{ ...mvp.building, label: t("card.lastWar.mvp.building") }} icon={<IconHammer size={12} />} />
+                <MvpChip entry={{ ...mvp.damage, label: t("card.lastWar.mvp.damage") }} icon={<FlameIcon size={12} />} />
+                <MvpChip entry={{ ...mvp.healing, label: t("card.lastWar.mvp.healing") }} icon={<HeartIcon size={12} />} />
+                <MvpChip entry={{ ...mvp.damageTaken, label: t("card.lastWar.mvp.damageTaken") }} icon={<ShieldIcon size={12} />} />
+                <MvpChip entry={{ ...mvp.building, label: t("card.lastWar.mvp.building") }} icon={<HammerIcon size={12} />} />
               </Stack>
             </Stack>
           ) : null}

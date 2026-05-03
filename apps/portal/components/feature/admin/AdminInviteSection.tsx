@@ -1,7 +1,8 @@
 import type { InviteLink } from "@guild/shared";
 import { Alert, Badge, Button, Group, Loader, Modal, NumberInput, SegmentedControl, Skeleton, Stack, Text, TextInput, Title } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
-import { IconBan, IconCopy, IconPlus, IconTrash } from "@tabler/icons-react";
+import { CopyIcon, PlusIcon, TrashIcon } from "@portal/components/icons";
+import { IconBan } from "@tabler/icons-react";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@portal/components/shared/InfiniTable";
 import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
@@ -171,11 +172,11 @@ export function AdminInviteSection({
           const inactive = isInviteInactive(row.original);
           return (
             <Group gap={8}>
-              <Button size="xs" leftSection={<IconCopy size={16} />} onClick={() => handleCopyInviteLink(row.original)} disabled={inactive}>
+              <Button size="xs" leftSection={<CopyIcon size={16} />} onClick={() => handleCopyInviteLink(row.original)} disabled={inactive}>
                 {t("invite.copy")}
               </Button>
               <DepthButton size="sm" type="danger" iconOnly before={<IconBan size={16} />} disabled={inactive} onClick={() => handleRevokeInvite(row.original)} tooltip={{ label: t("invite.revoke"), withArrow: true }} />
-              <DepthButton size="sm" type="danger" iconOnly before={<IconTrash size={16} />} onClick={() => handleDeleteInvite(row.original)} tooltip={{ label: t("invite.delete"), withArrow: true }} />
+              <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={16} />} onClick={() => handleDeleteInvite(row.original)} tooltip={{ label: t("invite.delete"), withArrow: true }} />
             </Group>
           );
         },
@@ -239,7 +240,7 @@ export function AdminInviteSection({
                 style={{ width: 220 }}
               />
               {isAdmin ? (
-                <Button size="sm" leftSection={<IconPlus size={16} />} onClick={createModalHandlers.open}>
+                <Button size="sm" leftSection={<PlusIcon size={16} />} onClick={createModalHandlers.open}>
                   {t("invite.create")}
                 </Button>
               ) : null}
@@ -288,7 +289,7 @@ export function AdminInviteSection({
           </Stack>
           <Button
             fullWidth
-            leftSection={<IconPlus size={16} />}
+            leftSection={<PlusIcon size={16} />}
             onClick={() => {
               onCreateInvite();
               createModalHandlers.close();

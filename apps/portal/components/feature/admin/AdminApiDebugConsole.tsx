@@ -1,7 +1,7 @@
 import { ActionIcon, Badge, Code, Group, ScrollArea, Text } from "@mantine/core";
 import { useClipboard } from "@mantine/hooks";
 import { PortalCard } from "../../shared/PortalCard";
-import { IconClipboard, IconTrash } from "@tabler/icons-react";
+import { ClipboardIcon, TrashIcon } from "@portal/components/icons";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { type DebugLogEntry } from "./AdminApiTestEngine";
@@ -49,7 +49,7 @@ export function AdminApiDebugConsole({
               disabled={logs.length === 0}
               aria-label={t("status.api.copyAll")}
             >
-              <IconClipboard size={14} />
+              <ClipboardIcon size={14} />
             </ActionIcon>
             <ActionIcon
               size="sm"
@@ -59,7 +59,7 @@ export function AdminApiDebugConsole({
               disabled={logs.length === 0}
               aria-label={t("status.api.clearDebug")}
             >
-              <IconTrash size={14} />
+              <TrashIcon size={14} />
             </ActionIcon>
           </Group>
         </Group>

@@ -8,6 +8,36 @@
   padding: 20px;
 }
 
+/* ── Gradient accent strip at top of dashboard cards ── */
+.dashboard-card {
+  position: relative;
+}
+
+.dashboard-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-primary, #3b82f6), var(--color-secondary, #8b5cf6), var(--color-accent, #06b6d4));
+  background-size: 200% 100%;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  opacity: 0.4;
+  transition: opacity 0.3s ease, height 0.3s ease;
+  z-index: 3;
+  animation: dashboardStripShimmer 5s ease-in-out infinite;
+}
+
+@keyframes dashboardStripShimmer {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 200% center; }
+}
+
+.dashboard-card:hover::before {
+  opacity: 1;
+}
+
 .dashboard-card-title {
   margin: 0;
   font-size: 16px;
@@ -85,6 +115,12 @@
   border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
   background: color-mix(in srgb, var(--color-primary, #3b82f6) 5%, var(--color-surface, #ffffff));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+  animation: todayBoxPulse 3s ease-in-out infinite;
+}
+
+@keyframes todayBoxPulse {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent); }
+  50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent), 0 0 12px color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent); }
 }
 
 .signup-box--yesterday {
@@ -317,6 +353,7 @@
   color: var(--war-result-color, #888);
   background: color-mix(in srgb, var(--war-result-color, #888) 10%, var(--color-surface, #fff));
   border: 1px solid color-mix(in srgb, var(--war-result-color, #888) 22%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--war-result-color, #888) 15%, transparent);
 }
 
 /* ── VS bar header ── */
@@ -518,4 +555,13 @@
 
 .war-history-row-highlight {
   animation: war-history-highlight 1.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signup-box--today {
+    animation: none;
+  }
+  .dashboard-card::before {
+    animation: none;
+  }
 }

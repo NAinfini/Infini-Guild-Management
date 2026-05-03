@@ -1,3 +1,4 @@
+import { PhotoIcon } from "@portal/components/icons";
 import { IconPhoto } from "@tabler/icons-react";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { Button, Group, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
@@ -296,7 +297,7 @@ export function GalleryPage() {
       : undefined;
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconPhoto size={22} />} className="gallery-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<PhotoIcon size={22} />} className="gallery-page">
       <Modal
         opened={addMediaModalOpen}
         onClose={addMediaModalHandlers.close}

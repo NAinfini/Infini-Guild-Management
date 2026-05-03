@@ -1,106 +1,151 @@
+import type { IconProps } from "@tabler/icons-react";
+import type { ComponentType, HTMLAttributes } from "react";
 import {
-  IconAdjustments,
-  IconBell,
-  IconBook,
-  IconBolt,
-  IconBrush,
-  IconCalendar,
-  IconCalendarEvent,
-  IconChevronDown,
-  IconCopy,
-  IconCrown,
-  IconDots,
-  IconChevronLeft,
-  IconChevronRight,
-  IconEye,
-  IconExternalLink,
-  IconFileSearch,
-  IconFlame,
-  IconHammer,
-  IconHeart,
-  IconLayoutDashboard,
-  IconLock,
-  IconLockOpen,
-  IconLogout,
-  IconMoon,
-  IconSun,
-  IconPin,
-  IconPlayerPlay,
-  IconPhoto,
-  IconRefresh,
-  IconSearch,
-  IconSettings,
-  IconShare,
-  IconShield,
-  IconSwords,
-  IconTarget,
-  IconTool,
-  IconTrophy,
-  IconUser,
-  IconAlertTriangle,
-  IconPencil,
-  IconPlus,
-  IconUserCheck,
-  IconUsers,
-  IconVolume,
-  IconVolumeOff,
-  IconWorld,
-  type IconProps,
-} from "@tabler/icons-react";
-import type { ComponentType } from "react";
+  LayoutGridIcon,
+  BellIcon,
+  UsersIcon,
+  CalendarDaysIcon,
+  ZapIcon,
+  GalleryThumbnailsIcon,
+  BookTextIcon,
+  WrenchIcon,
+  SettingsIcon,
+  SearchIcon,
+  SunIcon,
+  MoonIcon,
+  LogOutIcon,
+  EyeIcon,
+  CopyIcon,
+  PencilIcon,
+  PlusIcon,
+  PinIcon,
+  RefreshCwIcon,
+  ShareIcon,
+  LockIcon,
+  UnlockIcon,
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ExternalLinkIcon,
+  AlertTriangleIcon,
+  FlameIcon,
+  SwordsIcon,
+  TrophyIcon,
+  CrownIcon,
+  TargetIcon,
+  ShieldIcon,
+  HeartIcon,
+  HammerIcon,
+  UserCheckIcon,
+  CalendarEventIcon,
+  UserIcon,
+  WorldIcon,
+  DotsIcon,
+  PlayIcon,
+  VolumeIcon,
+  VolumeOffIcon,
+  FileSearchIcon,
+  BrushIcon,
+  AdjustmentsIcon,
+  XIcon,
+  SaveIcon,
+  CheckIcon,
+  TrashIcon,
+  UploadIcon,
+  ArchiveIcon,
+  SendIcon,
+  EyeOffIcon,
+  ChevronUpIcon,
+  ClipboardIcon,
+  UserPlusIcon,
+  PhotoIcon,
+  VideoIcon,
+  PauseIcon,
+  CircleCheckIcon,
+  CircleXIcon,
+  InfoCircleIcon,
+  ArrowLeftIcon,
+  NoteIcon,
+  CalendarTimeIcon,
+  BoltIcon,
+  SpeakerphoneIcon,
+} from "../components/icons";
 
 type PortalIcon = ComponentType<IconProps>;
 
-function withDefaults(Icon: PortalIcon): PortalIcon {
-  return function PortalIconWithDefaults(props: IconProps) {
-    return <Icon size={16} stroke={1.9} {...props} />;
+function withAnimated(AnimatedIcon: ComponentType<HTMLAttributes<HTMLDivElement> & { size?: number }>): PortalIcon {
+  return function AnimatedPortalIcon(props: IconProps) {
+    const size = (props.size as number) ?? 16;
+    return <AnimatedIcon size={size} style={{ display: "inline-flex", lineHeight: 0 }} />;
   };
 }
 
-export const DashboardOutlined = withDefaults(IconLayoutDashboard);
-export const CalendarOutlined = withDefaults(IconCalendar);
-export const NotificationOutlined = withDefaults(IconBell);
-export const TeamOutlined = withDefaults(IconUsers);
-export const ThunderboltOutlined = withDefaults(IconBolt);
-export const PictureOutlined = withDefaults(IconPhoto);
-export const BookOutlined = withDefaults(IconBook);
-export const SettingOutlined = withDefaults(IconSettings);
-export const ToolOutlined = withDefaults(IconTool);
-export const UserOutlined = withDefaults(IconUser);
-export const ControlOutlined = withDefaults(IconAdjustments);
-export const FireOutlined = withDefaults(IconFlame);
-export const MoonOutlined = withDefaults(IconMoon);
-export const SunOutlined = withDefaults(IconSun);
-export const TranslationOutlined = withDefaults(IconWorld);
-export const EllipsisOutlined = withDefaults(IconDots);
-export const DownOutlined = withDefaults(IconChevronDown);
-export const LogoutOutlined = withDefaults(IconLogout);
-export const EyeOutlined = withDefaults(IconEye);
-export const GoToOutlined = withDefaults(IconExternalLink);
-export const SearchOutlined = withDefaults(IconSearch);
-export const FileSearchOutlined = withDefaults(IconFileSearch);
-export const CopyOutlined = withDefaults(IconCopy);
-export const LockOutlined = withDefaults(IconLock);
-export const UnlockOutlined = withDefaults(IconLockOpen);
-export const FormatPainterOutlined = withDefaults(IconBrush);
-export const MoreOutlined = withDefaults(IconDots);
-export const PushpinOutlined = withDefaults(IconPin);
-export const PlayCircleOutlined = withDefaults(IconPlayerPlay);
-export const LeftOutlined = withDefaults(IconChevronLeft);
-export const RightOutlined = withDefaults(IconChevronRight);
-export const SyncOutlined = withDefaults(IconRefresh);
-export const VolumeOutlined = withDefaults(IconVolume);
-export const VolumeMutedOutlined = withDefaults(IconVolumeOff);
-export const SwordsOutlined = withDefaults(IconSwords);
-export const TrophyOutlined = withDefaults(IconTrophy);
-export const CrownOutlined = withDefaults(IconCrown);
-export const TargetOutlined = withDefaults(IconTarget);
-export const ShieldOutlined = withDefaults(IconShield);
-export const HeartOutlined = withDefaults(IconHeart);
-export const HammerOutlined = withDefaults(IconHammer);
-export const UserCheckOutlined = withDefaults(IconUserCheck);
-export const CalendarEventOutlined = withDefaults(IconCalendarEvent);
-export const PencilOutlined = withDefaults(IconPencil);
-export const PlusOutlined = withDefaults(IconPlus);
-export const ShareOutlined = withDefaults(IconShare);
-export const AlertOutlined = withDefaults(IconAlertTriangle);
+export const DashboardOutlined = withAnimated(LayoutGridIcon);
+export const CalendarOutlined = withAnimated(CalendarDaysIcon);
+export const NotificationOutlined = withAnimated(BellIcon);
+export const TeamOutlined = withAnimated(UsersIcon);
+export const ThunderboltOutlined = withAnimated(ZapIcon);
+export const PictureOutlined = withAnimated(GalleryThumbnailsIcon);
+export const BookOutlined = withAnimated(BookTextIcon);
+export const SettingOutlined = withAnimated(SettingsIcon);
+export const ToolOutlined = withAnimated(WrenchIcon);
+export const UserOutlined = withAnimated(UserIcon);
+export const ControlOutlined = withAnimated(AdjustmentsIcon);
+export const FireOutlined = withAnimated(FlameIcon);
+export const MoonOutlined = withAnimated(MoonIcon);
+export const SunOutlined = withAnimated(SunIcon);
+export const TranslationOutlined = withAnimated(WorldIcon);
+export const EllipsisOutlined = withAnimated(DotsIcon);
+export const DownOutlined = withAnimated(ChevronDownIcon);
+export const LogoutOutlined = withAnimated(LogOutIcon);
+export const EyeOutlined = withAnimated(EyeIcon);
+export const GoToOutlined = withAnimated(ExternalLinkIcon);
+export const SearchOutlined = withAnimated(SearchIcon);
+export const FileSearchOutlined = withAnimated(FileSearchIcon);
+export const CopyOutlined = withAnimated(CopyIcon);
+export const LockOutlined = withAnimated(LockIcon);
+export const UnlockOutlined = withAnimated(UnlockIcon);
+export const FormatPainterOutlined = withAnimated(BrushIcon);
+export const MoreOutlined = withAnimated(DotsIcon);
+export const PushpinOutlined = withAnimated(PinIcon);
+export const PlayCircleOutlined = withAnimated(PlayIcon);
+export const LeftOutlined = withAnimated(ChevronLeftIcon);
+export const RightOutlined = withAnimated(ChevronRightIcon);
+export const SyncOutlined = withAnimated(RefreshCwIcon);
+export const VolumeOutlined = withAnimated(VolumeIcon);
+export const VolumeMutedOutlined = withAnimated(VolumeOffIcon);
+export const SwordsOutlined = withAnimated(SwordsIcon);
+export const TrophyOutlined = withAnimated(TrophyIcon);
+export const CrownOutlined = withAnimated(CrownIcon);
+export const TargetOutlined = withAnimated(TargetIcon);
+export const ShieldOutlined = withAnimated(ShieldIcon);
+export const HeartOutlined = withAnimated(HeartIcon);
+export const HammerOutlined = withAnimated(HammerIcon);
+export const UserCheckOutlined = withAnimated(UserCheckIcon);
+export const CalendarEventOutlined = withAnimated(CalendarEventIcon);
+export const PencilOutlined = withAnimated(PencilIcon);
+export const PlusOutlined = withAnimated(PlusIcon);
+export const ShareOutlined = withAnimated(ShareIcon);
+export const AlertOutlined = withAnimated(AlertTriangleIcon);
+export const CloseOutlined = withAnimated(XIcon);
+export const SaveOutlined = withAnimated(SaveIcon);
+export const CheckOutlined = withAnimated(CheckIcon);
+export const DeleteOutlined = withAnimated(TrashIcon);
+export const UploadOutlined = withAnimated(UploadIcon);
+export const ArchiveOutlined = withAnimated(ArchiveIcon);
+export const SendOutlined = withAnimated(SendIcon);
+export const EyeOffOutlined = withAnimated(EyeOffIcon);
+export const ChevronUpOutlined = withAnimated(ChevronUpIcon);
+export const ClipboardOutlined = withAnimated(ClipboardIcon);
+export const UserPlusOutlined = withAnimated(UserPlusIcon);
+export const PhotoOutlined = withAnimated(PhotoIcon);
+export const VideoOutlined = withAnimated(VideoIcon);
+export const PauseOutlined = withAnimated(PauseIcon);
+export const CircleCheckOutlined = withAnimated(CircleCheckIcon);
+export const CircleXOutlined = withAnimated(CircleXIcon);
+export const InfoCircleOutlined = withAnimated(InfoCircleIcon);
+export const ArrowLeftOutlined = withAnimated(ArrowLeftIcon);
+export const NoteOutlined = withAnimated(NoteIcon);
+export const CalendarTimeOutlined = withAnimated(CalendarTimeIcon);
+export const BoltOutlined = withAnimated(BoltIcon);
+export const SpeakerphoneOutlined = withAnimated(SpeakerphoneIcon);

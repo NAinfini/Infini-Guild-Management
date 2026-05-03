@@ -1,9 +1,8 @@
-import { PlayCircleOutlined } from "@portal/utils/icons";
 import { RevealOnScroll } from "@portal/components/effects";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
 import { Button, Checkbox, Group, Skeleton, Stack, Text } from "@mantine/core";
-import { IconPlayerPlay, IconTrash } from "@tabler/icons-react";
+import { TrashIcon, PlayIcon } from "@portal/components/icons";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
@@ -59,12 +58,11 @@ export function GalleryGrid({
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="gallery-masonry__item">
             <PortalCard interactive={false}>
-              <div style={{ padding: "1.2rem" }}>
-                <Stack gap={8}>
-                  <Skeleton height={12} width="40%" />
-                  <Skeleton height={200} radius={8} />
+              <div className="gallery-card__inner">
+                <Skeleton height={200} radius={8} />
+                <Stack gap={4} mt={8}>
                   <Skeleton height={12} width="70%" />
-                  <Skeleton height={10} width="50%" />
+                  <Skeleton height={10} width="40%" />
                 </Stack>
               </div>
             </PortalCard>
@@ -112,76 +110,47 @@ export function GalleryGrid({
             style={{ "--stagger-index": index } as CSSProperties}
           >
             <PortalCard className="gallery-card" interactive={false}>
-              <div style={{ padding: "1.2rem" }}>
-                <Stack gap={8} style={{ width: "100%" }}>
-                  <Text fw={600}>{item.type.toUpperCase()}</Text>
-                  {canModerate ? (
-                    <Group gap={8} wrap="wrap">
-                      <Checkbox
-                        checked={selectedIds.includes(item.id)}
-                        onChange={() => onToggleSelect(item.id)}
-                        aria-label={t("aria.selectItem", { id: item.id })}
-                      />
-                      <DepthButton type="danger" size="sm" iconOnly before={<IconTrash size={16} />} onClick={() => onDelete(item.id)} loading={deletePending} tooltip={{ label: actionDeleteLabel, withArrow: true }} />
-                    </Group>
-                  ) : null}
+              <button
+                type="button"
+                onClick={() => onOpenLightbox(item.id)}
+                className="gallery-preview-button"
+                aria-label={t(item.type === "image" ? "aria.openImage" : "aria.openVideo", { name: item.caption ?? item.id })}
+              >
+                <div className="gallery-preview-media">
                   {item.type === "image" ? (
-                    <button
-                      type="button"
-                      onClick={() => onOpenLightbox(item.id)}
-                      className="gallery-preview-button"
-                      aria-label={t("aria.openImage", { name: item.caption ?? item.id })}
-                    >
-                      <div className="gallery-preview-media">
-                        <img
-                          src={resolveImageUrl(item.url)}
-                          alt={item.caption ?? item.id}
-                          loading="lazy"
-                          decoding="async"
-                          style={{ width: "100%", maxHeight: 280, objectFit: "cover", borderRadius: 8 }}
-                        />
-                        {!isExternalView ? (
-                          <span className="gallery-preview-uploader">{item.uploaded_by_name ?? item.uploaded_by}</span>
-                        ) : null}
-                      </div>
-                    </button>
+                    <img
+                      src={resolveImageUrl(item.url)}
+                      alt={item.caption ?? item.id}
+                      loading="lazy"
+                      decoding="async"
+                      className="gallery-preview-img"
+                    />
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => onOpenLightbox(item.id)}
-                      className="gallery-preview-button"
-                      aria-label={t("aria.openVideo", { name: item.caption ?? item.id })}
-                    >
-                      <div className="gallery-preview-media">
-                        <span className="gallery-type-badge">
-                          <PlayCircleOutlined /> {t("media.video")}
-                        </span>
-                        <div
-                          className="gallery-video-thumbnail"
-                          style={{
-                            width: "100%",
-                            height: 170,
-                            borderRadius: 8,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            background: "var(--mantine-color-dark-6, #1a1a2e)",
-                          }}
-                        >
-                          <IconPlayerPlay size={48} style={{ opacity: 0.7 }} />
-                        </div>
-                        {!isExternalView ? (
-                          <span className="gallery-preview-uploader">{item.uploaded_by_name ?? item.uploaded_by}</span>
-                        ) : null}
-                      </div>
-                    </button>
+                    <div className="gallery-video-thumb">
+                      <PlayIcon size={40} />
+                    </div>
                   )}
-                  <Text fw={600}>{item.caption ?? "-"}</Text>
-                  <Text c="dimmed" style={{ wordBreak: "break-all" }}>
-                    {item.url}
-                  </Text>
-                  <Text c="dimmed">{formatDateTime(item.created_at)}</Text>
-                </Stack>
+                  {!isExternalView ? (
+                    <span className="gallery-preview-uploader">{item.uploaded_by_name ?? item.uploaded_by}</span>
+                  ) : null}
+                </div>
+              </button>
+              <div className="gallery-card__footer">
+                <div className="gallery-card__meta">
+                  <Text size="sm" fw={600} lineClamp={1}>{item.caption ?? "-"}</Text>
+                  <Text size="xs" c="dimmed">{formatDateTime(item.created_at)}</Text>
+                </div>
+                {canModerate ? (
+                  <Group gap={6} wrap="nowrap" className="gallery-card__actions">
+                    <Checkbox
+                      size="xs"
+                      checked={selectedIds.includes(item.id)}
+                      onChange={() => onToggleSelect(item.id)}
+                      aria-label={t("aria.selectItem", { id: item.id })}
+                    />
+                    <DepthButton type="danger" size="sm" iconOnly before={<TrashIcon size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); onDelete(item.id); }} loading={deletePending} tooltip={{ label: actionDeleteLabel, withArrow: true }} />
+                  </Group>
+                ) : null}
               </div>
             </PortalCard>
           </div>
@@ -190,4 +159,3 @@ export function GalleryGrid({
     </div>
   );
 }
-
