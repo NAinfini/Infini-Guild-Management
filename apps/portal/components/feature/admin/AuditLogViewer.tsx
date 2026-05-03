@@ -141,6 +141,7 @@ function formatPrimaryText(
   diffTitle: string | null,
   detailData: DetailData,
   entityType: string,
+  userMap?: Map<string, string>,
 ): string {
   const header = diffTitle?.trim() || null;
 
@@ -148,6 +149,14 @@ function formatPrimaryText(
     const parts = header.split(" | ");
     if (parts.length >= 2) return `${parts[0]} · ${parts[1]}`;
     return header;
+  }
+
+  if (entityType === "event_participant" && !header && detailData?.kind === "info") {
+    const userIdEntry = detailData.entries.find((e) => e.field === "user_id" || e.field === "User");
+    if (userIdEntry) {
+      const resolved = userMap?.get(userIdEntry.value) ?? userIdEntry.value;
+      return resolved;
+    }
   }
 
   if (header) return header;
@@ -238,7 +247,7 @@ export function AuditLogViewer({
 
   const rows = useMemo(() => auditRows.map((row) => {
     const detailData = parseDetailData(row.detail_text, t, userMap);
-    const primary = formatPrimaryText(row.diff_title, detailData, row.entity_type);
+    const primary = formatPrimaryText(row.diff_title, detailData, row.entity_type, userMap);
     return {
       ...row,
       resolvedEntityType: resolveEntityType(row.entity_type),
