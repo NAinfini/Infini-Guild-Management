@@ -103,14 +103,15 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
             ) : null}
           </Stack>
         </Group>
-        <Group gap={8} mt={10} wrap="wrap">
-          {roles.map((role) => {
+        <Group gap={6} mt={10} wrap="wrap">
+          {profile.classes.map((cls) => {
+            const role = classToRole(cls);
             const cfg = ROLE_CONFIG[role];
             const Icon = cfg.icon;
             return (
-              <Group key={role} gap={4}>
+              <Group key={cls} gap={4}>
                 <Icon size={14} color={cfg.color} />
-                <Text size="xs" fw={600} style={{ color: cfg.color }}>{cfg.label}</Text>
+                <Text size="xs" fw={600}>{cls}</Text>
               </Group>
             );
           })}

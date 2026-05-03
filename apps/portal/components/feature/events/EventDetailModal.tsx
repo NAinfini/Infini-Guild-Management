@@ -178,7 +178,7 @@ export function EventDetailModal({
                     <Stack gap={10}>
                       {members.map((entry) => (
                         <Group key={entry.user.id} gap={10} style={{ padding: "8px", borderRadius: "6px", background: "color-mix(in srgb, var(--color-text) 8%, transparent)" }}>
-                          <MemberRoleAvatar user={entry.user} profile={entry.profile} size={38} withTooltip={false} />
+                          <MemberRoleAvatar user={entry.user} profile={entry.profile} size={42} withTooltip={false} />
                           <div style={{ flex: 1 }}>
                             <Text size="md" fw={600}>{entry.user.username}</Text>
                             <Group gap={6}>

@@ -315,7 +315,7 @@ export function EventCardsView({
                     <div className="event-card__members-left">
                       <Group gap={4} wrap="wrap">
                         {members.slice(0, 10).map((member) => (
-                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={32} />
+                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={40} />
                         ))}
                         {members.length > 10 ? (
                           <Text size="xs" c="dimmed" fw={600}>+{members.length - 10}</Text>

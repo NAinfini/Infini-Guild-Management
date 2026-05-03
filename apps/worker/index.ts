@@ -266,7 +266,14 @@ export default {
     if (url.pathname.startsWith("/api/") || url.pathname === "/ws") {
       return app.fetch(request, env, ctx);
     }
-    return env.ASSETS.fetch(request);
+    const assetResponse = await env.ASSETS.fetch(request);
+    const contentType = assetResponse.headers.get("content-type") ?? "";
+    if (contentType.includes("text/html")) {
+      const response = new Response(assetResponse.body, assetResponse);
+      response.headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+      return response;
+    }
+    return assetResponse;
   },
   scheduled: async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
     const safe = async (fn: () => Promise<void>, name: string): Promise<void> => {

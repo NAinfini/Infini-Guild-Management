@@ -1,6 +1,6 @@
 import type { Event } from "@guild/shared";
 import { PortalCard } from "../shared/PortalCard";
-import { Badge, Group, Stack, Text, Tooltip } from "@mantine/core";
+import { Tooltip, Stack, Text, Badge, Group } from "@mantine/core";
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { UserCheckOutlined } from "../../utils/icons";
@@ -16,17 +16,22 @@ function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+function formatTime(dateStr: string): string {
+  const d = new Date(dateStr);
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
 export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, onOpenEvent }: MySignupsCardProps) {
   const { t, i18n } = useTranslation("dashboard");
 
   const days = useMemo(() => {
-    const result: { date: Date; label: string; dayLabel: string; events: DashboardMySignupEvent[] }[] = [];
+    const result: { date: Date; label: string; dayLabel: string; isYesterday: boolean; events: DashboardMySignupEvent[] }[] = [];
     for (let offset = -1; offset <= 6; offset++) {
       const date = new Date(now);
       date.setDate(date.getDate() + offset);
       date.setHours(0, 0, 0, 0);
 
-      const dayLabel = date.toLocaleString(i18n.language, { weekday: "short" }).toUpperCase();
+      const dayLabel = date.toLocaleString(i18n.language, { weekday: "short" });
       const label = `${date.getDate()}`;
 
       const dayEvents = mySignupEvents.filter((item) => {
@@ -34,7 +39,7 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
         return isSameDay(startAt, date);
       });
 
-      result.push({ date, label, dayLabel, events: dayEvents });
+      result.push({ date, label, dayLabel, isYesterday: offset === -1, events: dayEvents });
     }
     return result;
   }, [mySignupEvents, now, i18n.language]);
@@ -44,87 +49,63 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
   return (
     <PortalCard className="dashboard-card" interactive={false}>
       {cardHeading(t("card.mySignups.title"), <UserCheckOutlined size={18} />)}
-      <Group gap={4} mt={12} wrap="nowrap" style={{ width: "100%" }}>
+      <div className="signup-boxes">
         {days.map((day) => {
           const today = isToday(day.date);
-          const hasEvents = day.events.length > 0;
+          const boxClass = `signup-box${today ? " signup-box--today" : ""}${day.isYesterday ? " signup-box--yesterday" : ""}`;
 
-          const tooltipContent = hasEvents ? (
-            <Stack gap={4}>
-              {day.events.map((item) => (
-                <Stack key={item.event.id} gap={2}>
-                  <Text size="xs" fw={600}>{item.event.title}</Text>
-                  <Group gap={4}>
-                    <Badge size="xs" color={eventTypeTagColor(item.event.type)} variant="light">
-                      {t(`common:eventType.${item.event.type}`)}
-                    </Badge>
-                    <Text size="xs">{formatDateTime(item.event.start_at)}</Text>
-                  </Group>
-                  {item.event.description ? (
-                    <Text size="xs" c="dimmed" lineClamp={2}>{item.event.description}</Text>
-                  ) : null}
-                </Stack>
-              ))}
-            </Stack>
-          ) : null;
+          return (
+            <div key={day.date.toISOString()} className={boxClass}>
+              <div className="signup-box-header">
+                <span className="signup-box-label">{day.dayLabel}</span>
+                <span className="signup-box-date">{day.label}</span>
+              </div>
+              <div className="signup-box-events">
+                {day.events.length === 0 ? (
+                  <span className="signup-box-empty">—</span>
+                ) : (
+                  day.events.map((item) => {
+                    const color = `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--color-primary, #3b82f6))`;
 
-          const box = (
-            <div
-              key={day.date.toISOString()}
-              onClick={hasEvents && day.events.length === 1 ? () => onOpenEvent(day.events[0].event) : undefined}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "4px",
-                padding: "6px 2px",
-                borderRadius: "8px",
-                cursor: hasEvents && day.events.length === 1 ? "pointer" : "default",
-                background: today
-                  ? "color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)"
-                  : "color-mix(in srgb, var(--color-surface, #fff) 95%, var(--color-text, #111827))",
-                border: today
-                  ? "1px solid color-mix(in srgb, var(--color-primary, #3b82f6) 30%, transparent)"
-                  : "1px solid transparent",
-              }}
-            >
-              <Text size="10px" c="dimmed" fw={600}>{day.dayLabel}</Text>
-              <Text size="sm" fw={today ? 700 : 500}>{day.label}</Text>
-              <Stack gap={2} align="center" style={{ minHeight: 20 }}>
-                {day.events.map((item) => (
-                  <div
-                    key={item.event.id}
-                    style={{
-                      width: "100%",
-                      height: 4,
-                      borderRadius: 2,
-                      background: `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--color-primary, #3b82f6))`,
-                    }}
-                  />
-                ))}
-              </Stack>
-            </div>
-          );
-
-          return hasEvents ? (
-            <Tooltip
-              key={day.date.toISOString()}
-              label={tooltipContent}
-              withArrow
-              multiline
-              w={220}
-            >
-              {box}
-            </Tooltip>
-          ) : (
-            <div key={day.date.toISOString()} style={{ flex: 1, minWidth: 0 }}>
-              {box}
+                    return (
+                      <Tooltip
+                        key={item.event.id}
+                        withArrow
+                        multiline
+                        w={220}
+                        label={
+                          <Stack gap={2}>
+                            <Text size="xs" fw={600}>{item.event.title}</Text>
+                            <Group gap={4}>
+                              <Badge size="xs" color={eventTypeTagColor(item.event.type)} variant="light">
+                                {t(`common:eventType.${item.event.type}`)}
+                              </Badge>
+                              <Text size="xs">{formatDateTime(item.event.start_at)}</Text>
+                            </Group>
+                            {item.event.description ? (
+                              <Text size="xs" c="dimmed" lineClamp={2}>{item.event.description}</Text>
+                            ) : null}
+                          </Stack>
+                        }
+                      >
+                        <button
+                          type="button"
+                          className="signup-box-event"
+                          onClick={() => onOpenEvent(item.event)}
+                        >
+                          <span className="signup-box-event-dot" style={{ background: color }} />
+                          <span className="signup-box-event-title">{item.event.title}</span>
+                          <span className="signup-box-event-time">{formatTime(item.event.start_at)}</span>
+                        </button>
+                      </Tooltip>
+                    );
+                  })
+                )}
+              </div>
             </div>
           );
         })}
-      </Group>
+      </div>
     </PortalCard>
   );
 });
