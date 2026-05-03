@@ -19,7 +19,7 @@ import { parseStringArray, parseRecord } from "./helpers";
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 
 type UserRow = { id: string; username: string; role: string; isActive: boolean; deletedAt: string | null; createdAt: string; updatedAt: string };
-type ProfileRow = { id: string; userId: string; power: number; classes: string; titleHtml: string | null; bio: string | null; images: string; audioKey: string | null; videoUrls: string; availability: string | null; vacationStart: string | null; vacationEnd: string | null; notes: string | null; createdAt: string; updatedAt: string };
+type ProfileRow = { id: string; userId: string; power: number; classes: string; titleHtml: string | null; bio: string | null; avatarKey: string | null; images: string; audioKey: string | null; videoUrls: string; availability: string | null; vacationStart: string | null; vacationEnd: string | null; notes: string | null; createdAt: string; updatedAt: string };
 
 export type AuthServiceDeps = {
   rawDb: D1Database;
@@ -48,7 +48,7 @@ function toProfilePayload(profile: ProfileRow) {
   return memberProfileSchema.parse({
     id: profile.id, user_id: profile.userId, power: profile.power,
     classes: parseStringArray(profile.classes), title_html: profile.titleHtml, bio: profile.bio,
-    images: parseStringArray(profile.images), audio_key: profile.audioKey, video_urls: parseStringArray(profile.videoUrls),
+    avatar_key: profile.avatarKey ?? null, images: parseStringArray(profile.images), audio_key: profile.audioKey, video_urls: parseStringArray(profile.videoUrls),
     availability: parseRecord(profile.availability), vacation_start: profile.vacationStart, vacation_end: profile.vacationEnd,
     notes: profile.notes,
     created_at: profile.createdAt, updated_at: profile.updatedAt,
@@ -56,7 +56,7 @@ function toProfilePayload(profile: ProfileRow) {
 }
 
 const USER_COLS = { id: users.id, username: users.username, role: users.role, isActive: users.isActive, deletedAt: users.deletedAt, createdAt: users.createdAt, updatedAt: users.updatedAt } as const;
-const PROFILE_COLS = { id: memberProfiles.id, userId: memberProfiles.userId, power: memberProfiles.power, classes: memberProfiles.classes, titleHtml: memberProfiles.titleHtml, bio: memberProfiles.bio, images: memberProfiles.images, audioKey: memberProfiles.audioKey, videoUrls: memberProfiles.videoUrls, availability: memberProfiles.availability, vacationStart: memberProfiles.vacationStart, vacationEnd: memberProfiles.vacationEnd, notes: memberProfiles.notes, createdAt: memberProfiles.createdAt, updatedAt: memberProfiles.updatedAt } as const;
+const PROFILE_COLS = { id: memberProfiles.id, userId: memberProfiles.userId, power: memberProfiles.power, classes: memberProfiles.classes, titleHtml: memberProfiles.titleHtml, bio: memberProfiles.bio, avatarKey: memberProfiles.avatarKey, images: memberProfiles.images, audioKey: memberProfiles.audioKey, videoUrls: memberProfiles.videoUrls, availability: memberProfiles.availability, vacationStart: memberProfiles.vacationStart, vacationEnd: memberProfiles.vacationEnd, notes: memberProfiles.notes, createdAt: memberProfiles.createdAt, updatedAt: memberProfiles.updatedAt } as const;
 
 // --- Service ---
 

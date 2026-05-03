@@ -85,8 +85,6 @@ eventsRoutes.get("/", async (c) => {
 });
 
 eventsRoutes.post("/batch-details", async (c) => {
-  const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids))
