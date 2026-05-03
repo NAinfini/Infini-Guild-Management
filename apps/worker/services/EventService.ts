@@ -971,16 +971,15 @@ export class EventService {
     const offset = (params.page - 1) * params.limit;
     const whereClause = and(...EventService.buildEventsWhereFilters(params));
 
-    const totalRow = (await this.db.select({ count: sql<number>`count(*)` }).from(events).where(whereClause).limit(1))[0] as { count: number } | undefined;
-    const total = Number(totalRow?.count ?? 0);
-
     const rows = (await this.db
-      .select(EventService.eventSelectFields)
+      .select({ ...EventService.eventSelectFields, _total: sql<number>`count(*) over()` })
       .from(events)
       .where(whereClause)
       .orderBy(asc(events.startAt), asc(events.id))
       .offset(offset)
-      .limit(params.limit)) as EventRow[];
+      .limit(params.limit)) as (EventRow & { _total: number })[];
+
+    const total = Number(rows[0]?._total ?? 0);
 
     return {
       data: rows.map(toEventPayload),

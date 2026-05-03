@@ -270,12 +270,6 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
 
           {isModerator ? (
             <Stack gap={8} mt="md">
-              <input
-                type="file"
-                accept="audio/*"
-                aria-label={t("media.aria.selectAudio")}
-                onChange={(event) => audioUploader.selectFiles(event.target.files)}
-              />
               {audioUploader.error ? <Text c="red" size="sm">{audioUploader.error}</Text> : null}
               {audioUploader.isConverting || audioUploader.isUploading ? (
                 <Stack style={{ width: "100%" }} gap={4}>
@@ -283,18 +277,34 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                   <Progress value={audioUploader.uploadProgress} size="sm" animated />
                 </Stack>
               ) : null}
-              <Button
-                leftSection={<UploadIcon size={14} />}
-                onClick={() => {
-                  void onUploadAudio();
-                }}
-                loading={audioUploader.isUploading}
-                disabled={audioUploader.files.length === 0}
-                size="sm"
-                w="fit-content"
-              >
-                {t("media.uploadAudio")}
-              </Button>
+              <Group gap={8}>
+                <FileButton
+                  onChange={(file) => { if (file) audioUploader.selectFiles([file]); }}
+                  accept="audio/*"
+                >
+                  {(btnProps) => (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      leftSection={<PlusIcon size={14} />}
+                      {...btnProps}
+                    >
+                      {t("media.selectAudio")}
+                    </Button>
+                  )}
+                </FileButton>
+                <Button
+                  leftSection={<UploadIcon size={14} />}
+                  onClick={() => {
+                    void onUploadAudio();
+                  }}
+                  loading={audioUploader.isUploading}
+                  disabled={audioUploader.files.length === 0}
+                  size="sm"
+                >
+                  {t("media.uploadAudio")}
+                </Button>
+              </Group>
             </Stack>
           ) : null}
         </div>

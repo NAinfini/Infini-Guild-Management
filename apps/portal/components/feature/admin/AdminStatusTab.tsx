@@ -3,6 +3,7 @@ import {
   Alert,
   Badge,
   Button,
+  Collapse,
   Group,
   Progress,
   ScrollArea,
@@ -16,6 +17,7 @@ import { PortalCard } from "../../shared/PortalCard";
 import { ClipboardIcon, PlayIcon } from "@portal/components/icons";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useDisclosure } from "@mantine/hooks";
 import { useAuthStore } from "../../../stores/auth";
 import { userCanViewStatus } from "../../../utils/permissions";
 import { formatDateTime } from "../../../utils/admin";
@@ -82,6 +84,7 @@ export function AdminStatusTab({
   const isAdmin = userCanViewStatus(user);
   const loadErrorMessage = tc("loadError");
   const heading = <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.status")}</Title>;
+  const [healthLogsOpen, { toggle: toggleHealthLogs }] = useDisclosure(false);
   const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
   const [runningSet, setRunningSet] = useState<Set<string>>(new Set());
   const [resultMap, setResultMap] = useState<Map<string, EndpointResult>>(new Map());
@@ -364,8 +367,17 @@ export function AdminStatusTab({
 
         <PortalCard interactive={false}>
           <div style={{ padding: "1.2rem" }}>
-            <Group justify="space-between" mb={12}>
-              <Text fw={600} size="sm">{t("status.healthLogs.title")}</Text>
+            <Group justify="space-between">
+              <Group gap={8}>
+                <Text fw={600} size="sm">{t("status.healthLogs.title")}</Text>
+                <Button
+                  size="compact-xs"
+                  variant="subtle"
+                  onClick={toggleHealthLogs}
+                >
+                  {healthLogsOpen ? t("status.healthLogs.hide") : t("status.healthLogs.show")}
+                </Button>
+              </Group>
               <Button
                 size="compact-xs"
                 variant="default"
@@ -376,48 +388,50 @@ export function AdminStatusTab({
                 {t("status.copyConfig")}
               </Button>
             </Group>
-            <ScrollArea.Autosize mah={240}>
-              {statusHealthLogs.length === 0 ? (
-                <Text c="dimmed" size="sm">{t("status.healthLogs.empty")}</Text>
-              ) : (
-                <table className="health-log-table">
-                  <thead>
-                    <tr>
-                      <th>{t("audit.table.time")}</th>
-                      <th>DB</th>
-                      <th>R2</th>
-                      <th>WS</th>
-                      <th>Crons</th>
-                      <th>Latency</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {statusHealthLogs.map((row, index) => {
-                      const latency = row.latencyMs ?? 0;
-                      const barWidth = Math.min(100, (latency / 500) * 100);
-                      const barColor = latency < 200 ? "#10b981" : latency < 400 ? "#eab308" : "#ef4444";
-                      return (
-                        <tr key={`${row.at}-${index}`}>
-                          <td style={{ color: "color-mix(in srgb, var(--color-text, #111827) 65%, transparent)" }}>
-                            {formatDateTime(row.at)}
-                          </td>
-                          <td><span className={`health-log-dot health-log-dot--${row.db === "ok" ? "ok" : "error"}`} />{row.db}</td>
-                          <td><span className={`health-log-dot health-log-dot--${row.r2 === "ok" ? "ok" : "error"}`} />{row.r2}</td>
-                          <td><span className={`health-log-dot health-log-dot--${row.ws === "ok" ? "ok" : "warn"}`} />{row.ws}</td>
-                          <td><span className={`health-log-dot health-log-dot--${row.crons === "ok" ? "ok" : "error"}`} />{row.crons}</td>
-                          <td>
-                            <span className="health-log-latency">
-                              <span className="health-log-latency-bar" style={{ width: `${barWidth}%`, minWidth: 4, maxWidth: 40, background: barColor }} />
-                              <span style={{ color: barColor, fontWeight: 600 }}>{row.latencyMs ?? "—"}ms</span>
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </ScrollArea.Autosize>
+            <Collapse in={healthLogsOpen}>
+              <ScrollArea.Autosize mah={240} mt={12}>
+                {statusHealthLogs.length === 0 ? (
+                  <Text c="dimmed" size="sm">{t("status.healthLogs.empty")}</Text>
+                ) : (
+                  <table className="health-log-table">
+                    <thead>
+                      <tr>
+                        <th>{t("audit.table.time")}</th>
+                        <th>DB</th>
+                        <th>R2</th>
+                        <th>WS</th>
+                        <th>Crons</th>
+                        <th>Latency</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statusHealthLogs.map((row, index) => {
+                        const latency = row.latencyMs ?? 0;
+                        const barWidth = Math.min(100, (latency / 500) * 100);
+                        const barColor = latency < 200 ? "#10b981" : latency < 400 ? "#eab308" : "#ef4444";
+                        return (
+                          <tr key={`${row.at}-${index}`}>
+                            <td style={{ color: "color-mix(in srgb, var(--color-text, #111827) 65%, transparent)" }}>
+                              {formatDateTime(row.at)}
+                            </td>
+                            <td><span className={`health-log-dot health-log-dot--${row.db === "ok" ? "ok" : "error"}`} />{row.db}</td>
+                            <td><span className={`health-log-dot health-log-dot--${row.r2 === "ok" ? "ok" : "error"}`} />{row.r2}</td>
+                            <td><span className={`health-log-dot health-log-dot--${row.ws === "ok" ? "ok" : "warn"}`} />{row.ws}</td>
+                            <td><span className={`health-log-dot health-log-dot--${row.crons === "ok" ? "ok" : "error"}`} />{row.crons}</td>
+                            <td>
+                              <span className="health-log-latency">
+                                <span className="health-log-latency-bar" style={{ width: `${barWidth}%`, minWidth: 4, maxWidth: 40, background: barColor }} />
+                                <span style={{ color: barColor, fontWeight: 600 }}>{row.latencyMs ?? "—"}ms</span>
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </ScrollArea.Autosize>
+            </Collapse>
           </div>
         </PortalCard>
       </SimpleGrid>

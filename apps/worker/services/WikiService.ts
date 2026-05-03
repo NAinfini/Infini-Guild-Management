@@ -179,9 +179,8 @@ export class WikiService {
       filters.push(or(like(wikiArticles.title, pattern), like(wikiArticles.bodyJson, pattern))!);
     }
     const whereClause = and(...filters);
-    const totalRow = (await this.db.select({ count: sql<number>`count(*)` }).from(wikiArticles).where(whereClause))[0];
-    const total = Number(totalRow?.count ?? 0);
-    const rows = await this.db.select(LIST_ARTICLE_COLS).from(wikiArticles).where(whereClause).orderBy(desc(wikiArticles.pinned), asc(wikiArticles.sortOrder), desc(wikiArticles.updatedAt), asc(wikiArticles.id)).limit(opts.limit).offset(offset);
+    const rows = await this.db.select({ ...LIST_ARTICLE_COLS, _total: sql<number>`count(*) over()` }).from(wikiArticles).where(whereClause).orderBy(desc(wikiArticles.pinned), asc(wikiArticles.sortOrder), desc(wikiArticles.updatedAt), asc(wikiArticles.id)).limit(opts.limit).offset(offset);
+    const total = Number((rows[0] as Record<string, unknown> | undefined)?._total ?? 0);
     return ok({ data: rows.map(toArticleListPayload), total, page: opts.page, limit: opts.limit, total_pages: Math.max(1, Math.ceil(total / opts.limit)) });
   }
 

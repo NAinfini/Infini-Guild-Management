@@ -413,8 +413,6 @@ export class AdminAuditService {
   async listAuditLogs(input: AuditLogQueryInput) {
     const query = this.resolveAuditLogQuery(input);
     const where = buildAuditLogWhere(query);
-    const totalRow = (await this.deps.db.select({ count: sql<number>`count(*)` }).from(auditLog).where(where))[0];
-    const total = Number(totalRow?.count ?? 0);
     const rows = await this.deps.db
       .select({
         id: auditLog.id,
@@ -425,12 +423,15 @@ export class AdminAuditService {
         diffTitle: auditLog.diffTitle,
         detailText: auditLog.detailText,
         createdAt: auditLog.createdAt,
+        _total: sql<number>`count(*) over()`,
       })
       .from(auditLog)
       .where(where)
       .orderBy(desc(auditLog.createdAt))
       .limit(query.limit)
       .offset(query.offset);
+
+    const total = Number((rows[0] as Record<string, unknown> | undefined)?._total ?? 0);
 
     return {
       data: rows.map(serializeAuditLogRow),

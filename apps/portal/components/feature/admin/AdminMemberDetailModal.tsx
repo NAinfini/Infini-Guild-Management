@@ -140,9 +140,10 @@ export function AdminMemberDetailModal({
                         label={t("detail.field.power")}
                         placeholder={t("detail.placeholder.power")}
                         value={form.power}
-                        onChange={(value) => onFormChange({ power: typeof value === "number" ? value : 0 })}
+                        onChange={(value) => { if (typeof value === "number") onFormChange({ power: value }); }}
                         min={0}
                         decimalScale={2}
+                        hideControls
                         thousandSeparator=","
                       />
                       <MultiSelect

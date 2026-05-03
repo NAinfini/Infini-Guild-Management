@@ -174,6 +174,32 @@ function buildProfilePatch(
   return patch;
 }
 
+function buildProfileDiff(
+  old: ProfileRow,
+  patch: ProfilePatch,
+): Record<string, { from: unknown; to: unknown }> | null {
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
+  const fieldMap: Array<[keyof ProfilePatch, keyof ProfileRow]> = [
+    ["power", "power"],
+    ["classes", "classes"],
+    ["titleHtml", "titleHtml"],
+    ["bio", "bio"],
+    ["notes", "notes"],
+    ["vacationStart", "vacationStart"],
+    ["vacationEnd", "vacationEnd"],
+    ["availability", "availability"],
+  ];
+  for (const [patchKey, oldKey] of fieldMap) {
+    if (patch[patchKey] === undefined) continue;
+    const oldVal = String(old[oldKey] ?? "");
+    const newVal = String(patch[patchKey] ?? "");
+    if (oldVal !== newVal) {
+      diff[patchKey] = { from: old[oldKey] ?? null, to: patch[patchKey] ?? null };
+    }
+  }
+  return Object.keys(diff).length > 0 ? diff : null;
+}
+
 function buildUsersWhereFilters(params: {
   search: string;
   roleFilter: Role | undefined;
@@ -310,16 +336,12 @@ export class UserService {
       activeFilter: params.activeFilter,
     }));
 
-    const totalRow = (
-      await this.db.select({ count: sql<number>`count(*)` }).from(users)
-        .leftJoin(memberProfiles, eq(memberProfiles.userId, users.id)).where(whereClause)
-    )[0];
-    const total = Number(totalRow?.count ?? 0);
-
-    const rows = await this.db.select(userProfileSelect).from(users)
+    const rows = await this.db.select({ ...userProfileSelect, _total: sql<number>`count(*) over()` }).from(users)
       .leftJoin(memberProfiles, eq(memberProfiles.userId, users.id))
       .where(whereClause).orderBy(users.createdAt, users.id)
       .limit(params.limit).offset(offset);
+
+    const total = Number((rows[0] as Record<string, unknown> | undefined)?._total ?? 0);
 
     const data = rows.map((row) => {
       const normalized = rowToUserWithProfile(row as unknown as Record<string, unknown>);
@@ -354,15 +376,18 @@ export class UserService {
     const parsed = schema.safeParse(body);
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid profile payload", parsed.error.flatten());
 
-    await this.ensureProfile(targetUserId);
-    await this.db.update(memberProfiles).set(buildProfilePatch(parsed.data)).where(eq(memberProfiles.userId, targetUserId));
+    const oldProfile = await this.ensureProfile(targetUserId);
+    const patch = buildProfilePatch(parsed.data);
+    await this.db.update(memberProfiles).set(patch).where(eq(memberProfiles.userId, targetUserId));
 
     const updated = await this.loadUserWithProfile(targetUserId);
     if (!updated) return err("NOT_FOUND", "User not found");
 
+    const diff = buildProfileDiff(oldProfile, patch);
     await this.deps.writeAuditLog({
       entityType: "member_profile", action: "update", actorId: sessionUser.id,
       entityId: targetUserId, diffTitle: updated.user.username,
+      detailText: diff ? JSON.stringify(diff) : null,
     });
     await this.deps.publishEntityChanged({ entityType: "member_profile", entityId: targetUserId, hint: "profile_updated" });
     return ok(toProfilePayload(updated.profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includePrivate: true }));

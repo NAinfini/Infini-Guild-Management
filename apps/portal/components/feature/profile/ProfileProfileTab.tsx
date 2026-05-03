@@ -61,7 +61,8 @@ export function ProfileProfileTab({
             label={t("field.power")}
             value={power}
             decimalScale={2}
-            onChange={(value) => onPowerChange(typeof value === "number" ? value : 0)}
+            hideControls
+            onChange={(value) => { if (typeof value === "number") onPowerChange(value); }}
           />
         </Stack>
       </PortalCard>
