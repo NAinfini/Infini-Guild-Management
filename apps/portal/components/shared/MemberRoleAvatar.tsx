@@ -11,12 +11,30 @@ const ROLE_CONFIG: Record<ClassRole, { color: string; avatarColor: string; icon:
   dps:    { color: "#3b82f6", avatarColor: "blue", icon: IconSword, label: "输出" },
 };
 
-function getClassRole(classes: string[]): ClassRole {
-  for (const cls of classes) {
-    if (cls === "牵丝霖") return "healer";
-    if (cls === "裂石威") return "tank";
-  }
+function classToRole(cls: string): ClassRole {
+  if (cls === "牵丝霖") return "healer";
+  if (cls === "裂石威") return "tank";
   return "dps";
+}
+
+function getUniqueRoles(classes: string[]): ClassRole[] {
+  if (classes.length === 0) return ["dps"];
+  const seen = new Set<ClassRole>();
+  const roles: ClassRole[] = [];
+  for (const cls of classes) {
+    const role = classToRole(cls);
+    if (!seen.has(role)) {
+      seen.add(role);
+      roles.push(role);
+    }
+  }
+  return roles;
+}
+
+function getPrimaryAvatarColor(roles: ClassRole[]): string {
+  if (roles.includes("healer")) return "green";
+  if (roles.includes("tank")) return "yellow";
+  return "blue";
 }
 
 type MemberRoleAvatarProps = {
@@ -27,35 +45,43 @@ type MemberRoleAvatarProps = {
 };
 
 export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true }: MemberRoleAvatarProps) {
-  const role = getClassRole(profile.classes);
-  const config = ROLE_CONFIG[role];
-  const RoleIcon = config.icon;
+  const roles = getUniqueRoles(profile.classes);
+  const avatarColor = getPrimaryAvatarColor(roles);
   const avatarSrc = profile.avatar_key ? resolveProfileMediaUrl(profile.avatar_key) : undefined;
-  const iconSize = Math.max(10, Math.round(size * 0.38));
-  const badgeSize = iconSize + 6;
+  const iconSize = Math.max(8, Math.round(size * 0.28));
+  const badgePad = 2;
+  const badgeGap = 1;
+  const badgeH = iconSize + badgePad * 2;
+  const badgeW = roles.length * iconSize + (roles.length - 1) * badgeGap + badgePad * 2;
 
   const avatar = (
     <div style={{ position: "relative", display: "inline-flex" }}>
-      <Avatar size={size} radius="xl" color={config.avatarColor} src={avatarSrc}>
+      <Avatar size={size} radius="xl" color={avatarColor} src={avatarSrc}>
         {user.username.slice(0, 1).toUpperCase()}
       </Avatar>
       <div
         style={{
           position: "absolute",
-          bottom: -2,
-          right: -2,
-          width: badgeSize,
-          height: badgeSize,
-          borderRadius: "50%",
-          background: config.color,
+          bottom: -3,
+          right: -3,
+          height: badgeH,
+          width: badgeW,
+          borderRadius: badgeH / 2,
+          background: roles.length === 1 ? ROLE_CONFIG[roles[0]].color : "rgba(30,41,59,0.85)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          gap: badgeGap,
+          padding: `0 ${badgePad}px`,
           border: "2px solid var(--color-surface, #ffffff)",
-          boxShadow: `0 0 4px ${config.color}66`,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
         }}
       >
-        <RoleIcon size={iconSize} color="#fff" stroke={2.5} />
+        {roles.map((role) => {
+          const cfg = ROLE_CONFIG[role];
+          const Icon = cfg.icon;
+          return <Icon key={role} size={iconSize} color={roles.length === 1 ? "#fff" : cfg.color} stroke={2.5} />;
+        })}
       </div>
     </div>
   );
@@ -67,7 +93,7 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
       <HoverCard.Target>{avatar}</HoverCard.Target>
       <HoverCard.Dropdown style={{ padding: "12px" }}>
         <Group gap={10} wrap="nowrap" align="flex-start">
-          <Avatar size={40} radius="xl" color={config.avatarColor} src={avatarSrc}>
+          <Avatar size={40} radius="xl" color={avatarColor} src={avatarSrc}>
             {user.username.slice(0, 1).toUpperCase()}
           </Avatar>
           <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
@@ -77,11 +103,17 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
             ) : null}
           </Stack>
         </Group>
-        <Group gap={12} mt={10}>
-          <Group gap={4}>
-            <RoleIcon size={14} color={config.color} />
-            <Text size="xs" fw={600} style={{ color: config.color }}>{config.label}</Text>
-          </Group>
+        <Group gap={8} mt={10} wrap="wrap">
+          {roles.map((role) => {
+            const cfg = ROLE_CONFIG[role];
+            const Icon = cfg.icon;
+            return (
+              <Group key={role} gap={4}>
+                <Icon size={14} color={cfg.color} />
+                <Text size="xs" fw={600} style={{ color: cfg.color }}>{cfg.label}</Text>
+              </Group>
+            );
+          })}
           {profile.power > 0 ? (
             <Text size="xs" c="dimmed">⚡ {profile.power.toLocaleString()}</Text>
           ) : null}
@@ -91,4 +123,4 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
   );
 }
 
-export { getClassRole, ROLE_CONFIG };
+export { getUniqueRoles, ROLE_CONFIG };
