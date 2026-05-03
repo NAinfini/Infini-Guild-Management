@@ -258,12 +258,20 @@ CREATE INDEX IF NOT EXISTS idx_users_deleted_active_created
   ON users(deleted_at, is_active, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_users_role_active
   ON users(role, is_active, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_users_username
+  ON users(username);
+
+-- member_profiles
+CREATE INDEX IF NOT EXISTS idx_member_profiles_user_id
+  ON member_profiles(user_id);
 
 -- roles
 CREATE INDEX IF NOT EXISTS idx_roles_level
   ON roles(level, id);
 CREATE INDEX IF NOT EXISTS idx_role_permissions_permission
   ON role_permissions(permission);
+CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id
+  ON role_permissions(role_id);
 
 -- sessions
 CREATE INDEX IF NOT EXISTS idx_sessions_user_expires
