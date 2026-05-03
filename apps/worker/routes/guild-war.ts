@@ -12,7 +12,7 @@ import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { GuildWarService, toWarHistoryPayload } from "../services/GuildWarService";
-import { buildError, handleResult, parsePage, requireSessionUser } from "./_shared";
+import { buildError, handleResult, parsePage } from "./_shared";
 
 export const guildWarRoutes = new Hono();
 
@@ -37,8 +37,6 @@ async function requireGuildWarHistoryEditor(c: Context) { return requirePermissi
 // --- Routes ---
 
 guildWarRoutes.get("/active", async (c) => {
-  const user = await requireSessionUser(c);
-  if (user instanceof Response) return user;
   const result = await getService(c).getActive(c.req.query("event_id"));
   return handleResult(c, result);
 });
@@ -85,8 +83,6 @@ guildWarRoutes.patch("/role-tag", async (c) => {
 });
 
 guildWarRoutes.get("/export", async (c) => {
-  const user = await requireSessionUser(c);
-  if (user instanceof Response) return user;
   const format = (c.req.query("format") ?? "csv").trim().toLowerCase();
   if (format !== "csv" && format !== "json") return buildError(c, "VALIDATION_ERROR", "format must be csv or json");
   const result = await getService(c).exportHistory(format, { dateFrom: c.req.query("date_from"), dateTo: c.req.query("date_to"), eventId: c.req.query("event_id") });
@@ -96,8 +92,6 @@ guildWarRoutes.get("/export", async (c) => {
 });
 
 guildWarRoutes.get("/history", async (c) => {
-  const user = await requireSessionUser(c);
-  if (user instanceof Response) return user;
   const page = parsePage(c.req.query("page"), 1);
   const limit = Math.min(100, parsePage(c.req.query("limit"), 20));
   const result = await getService(c).listHistory(page, limit, { dateFrom: c.req.query("date_from"), dateTo: c.req.query("date_to") });
@@ -105,8 +99,6 @@ guildWarRoutes.get("/history", async (c) => {
 });
 
 guildWarRoutes.post("/history/batch", async (c) => {
-  const user = await requireSessionUser(c);
-  if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
@@ -118,8 +110,6 @@ guildWarRoutes.post("/history/batch", async (c) => {
 });
 
 guildWarRoutes.get("/history/:id", async (c) => {
-  const user = await requireSessionUser(c);
-  if (user instanceof Response) return user;
   const result = await getService(c).getHistoryDetail(c.req.param("id"));
   return handleResult(c, result);
 });
@@ -197,8 +187,6 @@ guildWarRoutes.patch("/history/:id/member-stats/batch", async (c) => {
 });
 
 guildWarRoutes.get("/analytics", async (c) => {
-  const user = await requireSessionUser(c);
-  if (user instanceof Response) return user;
   const warIdsRaw = c.req.queries("war_ids") ?? [];
   const userIdsRaw = c.req.queries("user_ids") ?? [];
   const warIds = warIdsRaw.flatMap((item) => item.split(",")).map((item) => item.trim()).filter(Boolean);
