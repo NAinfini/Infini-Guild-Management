@@ -387,9 +387,13 @@
 
 .app-profile-avatar {
   background: linear-gradient(135deg, var(--color-primary, #3b82f6), color-mix(in srgb, var(--color-primary, #3b82f6) 65%, #111827));
-  color: #ffffff;
   font-weight: 700;
   font-size: 14px;
+}
+
+.app-profile-avatar .mantine-Avatar-placeholder {
+  color: #ffffff;
+  background: transparent;
 }
 
 .app-profile-meta {

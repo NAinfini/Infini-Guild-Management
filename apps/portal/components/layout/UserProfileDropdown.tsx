@@ -1,5 +1,6 @@
 ﻿import type { User } from "@guild/shared";
 import { Avatar, Button, Group, Text, UnstyledButton } from "@mantine/core";
+import { IconUser } from "@tabler/icons-react";
 import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -33,7 +34,7 @@ export function UserProfileDropdown({ user, onLogout, compact = false }: UserPro
         >
           <Group gap={8} wrap="nowrap" align="center">
             <Avatar size={32} radius="xl" className="app-profile-avatar">
-              {user.username.slice(0, 1).toUpperCase()}
+              <IconUser size={18} />
             </Avatar>
             <div className="app-profile-meta">
               <Text fw={600} className="app-profile-name">
