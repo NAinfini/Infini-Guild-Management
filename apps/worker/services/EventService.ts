@@ -101,6 +101,7 @@ export class EventServiceValidationError extends Error {
 
 type EventServiceDeps = {
   getEventById: (eventId: string) => Promise<EventRow | null>;
+  getUsername: (userId: string) => Promise<string | null>;
   materializeRecurringSeries: (templateId: string) => Promise<void>;
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
   publishEntityChanged: (payload: { entityType: string; entityId: string; hint: string }) => Promise<void>;
@@ -306,7 +307,7 @@ export class EventService {
       actorId,
       entityId: eventId,
       diffTitle: updated.title,
-      detailText: JSON.stringify(data),
+      detailText: JSON.stringify(this.buildUpdateDiff(existing, data)),
     });
 
     return updated;
@@ -435,12 +436,17 @@ export class EventService {
       return { ok: false, code: "SERVER_ERROR", message: "Failed to join event" };
     }
 
+    const [eventTitle, actorName] = await Promise.all([
+      this.resolveEventTitle(eventId),
+      this.deps.getUsername(actorId),
+    ]);
+
     await this.deps.writeAuditLog({
       entityType: "event_participant",
       action: "join",
       actorId,
       entityId: `${eventId}:${actorId}`,
-      detailText: JSON.stringify({ event_id: eventId, user_id: actorId }),
+      diffTitle: `${eventTitle} | ${actorName ?? actorId}`,
     });
 
     const created = (
@@ -481,12 +487,17 @@ export class EventService {
       .where(and(eq(eventParticipants.eventId, eventId), eq(eventParticipants.userId, actorId)));
 
     if (existing) {
+      const [eventTitle, actorName] = await Promise.all([
+        this.resolveEventTitle(eventId),
+        this.deps.getUsername(actorId),
+      ]);
+
       await this.deps.writeAuditLog({
         entityType: "event_participant",
         action: "leave",
         actorId,
         entityId: `${eventId}:${actorId}`,
-        detailText: JSON.stringify({ event_id: eventId, user_id: actorId }),
+        diffTitle: `${eventTitle} | ${actorName ?? actorId}`,
       });
       await this.deps.publishEntityChanged({
         entityType: "event",
@@ -579,12 +590,17 @@ export class EventService {
 
     if (!created) return { ok: false, code: "SERVER_ERROR", message: "Failed to add participant" };
 
+    const [eventTitle, targetName] = await Promise.all([
+      this.resolveEventTitle(eventId),
+      this.deps.getUsername(targetUserId),
+    ]);
+
     await this.deps.writeAuditLog({
       entityType: "event_participant",
       action: "add_by_moderator",
       actorId,
       entityId: `${eventId}:${targetUserId}`,
-      detailText: JSON.stringify({ event_id: eventId, user_id: targetUserId }),
+      diffTitle: `${eventTitle} | ${targetName ?? targetUserId}`,
     });
 
     await this.deps.publishEntityChanged({
@@ -610,12 +626,17 @@ export class EventService {
       .where(and(eq(eventParticipants.eventId, eventId), eq(eventParticipants.userId, targetUserId)));
 
     if (existing) {
+      const [eventTitle, targetName] = await Promise.all([
+        this.resolveEventTitle(eventId),
+        this.deps.getUsername(targetUserId),
+      ]);
+
       await this.deps.writeAuditLog({
         entityType: "event_participant",
         action: "remove_by_moderator",
         actorId,
         entityId: `${eventId}:${targetUserId}`,
-        detailText: JSON.stringify({ event_id: eventId, user_id: targetUserId }),
+        diffTitle: `${eventTitle} | ${targetName ?? targetUserId}`,
       });
       await this.deps.publishEntityChanged({
         entityType: "event",
@@ -718,7 +739,7 @@ export class EventService {
       actorId,
       entityId: templateId,
       diffTitle: updated.title,
-      detailText: JSON.stringify(data),
+      detailText: JSON.stringify(this.buildTemplateUpdateDiff(existing, data)),
     });
 
     return updated;
@@ -763,6 +784,65 @@ export class EventService {
       entityId: templateId,
       diffTitle: existing.title,
     });
+  }
+
+  private async resolveEventTitle(eventId: string): Promise<string> {
+    const row = await this.deps.getEventById(eventId);
+    return row?.title ?? eventId;
+  }
+
+  private buildUpdateDiff(existing: EventRow, data: UpdateEventInput): Record<string, { from: unknown; to: unknown }> {
+    const diff: Record<string, { from: unknown; to: unknown }> = {};
+    if (data.type !== undefined && data.type !== existing.type)
+      diff.type = { from: existing.type, to: data.type };
+    if (data.title !== undefined && data.title.trim() !== existing.title)
+      diff.title = { from: existing.title, to: data.title.trim() };
+    if (data.description !== undefined && (data.description?.trim() || null) !== existing.description)
+      diff.description = { from: existing.description, to: data.description?.trim() || null };
+    if (data.start_at !== undefined && data.start_at !== existing.startAt)
+      diff.start_at = { from: existing.startAt, to: data.start_at };
+    if (data.end_at !== undefined && (data.end_at ?? null) !== existing.endAt)
+      diff.end_at = { from: existing.endAt, to: data.end_at ?? null };
+    if (data.capacity !== undefined && (data.capacity ?? null) !== existing.capacity)
+      diff.capacity = { from: existing.capacity, to: data.capacity ?? null };
+    if (data.pinned !== undefined && data.pinned !== existing.pinned)
+      diff.pinned = { from: existing.pinned, to: data.pinned };
+    if (data.signup_locked !== undefined && data.signup_locked !== existing.signupLocked)
+      diff.signup_locked = { from: existing.signupLocked, to: data.signup_locked };
+    if (data.archived_at !== undefined && (data.archived_at ?? null) !== existing.archivedAt)
+      diff.archived_at = { from: existing.archivedAt, to: data.archived_at ?? null };
+    if (data.attachments !== undefined) {
+      const existingKeys = parseAttachments(existing.attachments);
+      if (JSON.stringify(data.attachments) !== JSON.stringify(existingKeys))
+        diff.attachments = { from: existingKeys.length, to: data.attachments?.length ?? 0 };
+    }
+    if (data.recurrence_rule !== undefined)
+      diff.recurrence_rule = { from: "changed", to: "changed" };
+    return diff;
+  }
+
+  private buildTemplateUpdateDiff(existing: EventRow, data: {
+    type?: string; title?: string; description?: string | null; start_at?: string;
+    end_at?: string | null; capacity?: number | null; recurrence_rule?: unknown; visible_at?: string | null;
+  }): Record<string, { from: unknown; to: unknown }> {
+    const diff: Record<string, { from: unknown; to: unknown }> = {};
+    if (data.type !== undefined && data.type !== existing.type)
+      diff.type = { from: existing.type, to: data.type };
+    if (data.title !== undefined && data.title !== existing.title)
+      diff.title = { from: existing.title, to: data.title };
+    if (data.description !== undefined && (data.description ?? null) !== existing.description)
+      diff.description = { from: existing.description, to: data.description ?? null };
+    if (data.start_at !== undefined && data.start_at !== existing.startAt)
+      diff.start_at = { from: existing.startAt, to: data.start_at };
+    if (data.end_at !== undefined && (data.end_at ?? null) !== existing.endAt)
+      diff.end_at = { from: existing.endAt, to: data.end_at ?? null };
+    if (data.capacity !== undefined && (data.capacity ?? null) !== existing.capacity)
+      diff.capacity = { from: existing.capacity, to: data.capacity ?? null };
+    if (data.recurrence_rule !== undefined)
+      diff.recurrence_rule = { from: "changed", to: "changed" };
+    if (data.visible_at !== undefined && (data.visible_at ?? null) !== (existing.visibleAt ?? null))
+      diff.visible_at = { from: existing.visibleAt, to: data.visible_at ?? null };
+    return diff;
   }
 
   private validateDateRange(startAt: string | null | undefined, endAt: string | null | undefined) {

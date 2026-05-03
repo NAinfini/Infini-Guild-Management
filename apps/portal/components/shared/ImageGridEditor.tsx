@@ -21,8 +21,6 @@ export interface ImageGridEditorProps {
   onReorder: (items: ImageGridEditorItem[]) => void;
   onDelete?: (item: ImageGridEditorItem) => void;
   onFilesSelected?: (files: File[]) => void;
-  onSetAsFirst?: (item: ImageGridEditorItem) => void;
-  avatarLabel?: string;
   maxImages?: number;
   maxFileSize?: number;
   allowedTypes?: string[];
@@ -52,9 +50,6 @@ function DraggableImageCell({
   imageSize,
   borderRadius,
   onDelete,
-  onSetAsFirst,
-  isFirst,
-  avatarLabel,
   disabled,
   motionAllowed,
 }: {
@@ -62,9 +57,6 @@ function DraggableImageCell({
   imageSize: number;
   borderRadius: number;
   onDelete?: (item: ImageGridEditorItem) => void;
-  onSetAsFirst?: (item: ImageGridEditorItem) => void;
-  isFirst: boolean;
-  avatarLabel?: string;
   disabled: boolean;
   motionAllowed: boolean;
 }) {
@@ -163,58 +155,6 @@ function DraggableImageCell({
           ×
         </motion.button>
       ) : null}
-
-      {onSetAsFirst && isFirst ? (
-        <span
-          style={{
-            position: "absolute",
-            bottom: 2,
-            left: 2,
-            fontSize: Math.max(9, imageSize * 0.11),
-            lineHeight: 1,
-            padding: "1px 4px",
-            borderRadius: 4,
-            background: "rgba(59,130,246,0.85)",
-            color: "#fff",
-            pointerEvents: "none",
-            zIndex: 5,
-          }}
-        >
-          {avatarLabel ?? "Avatar"}
-        </span>
-      ) : null}
-
-      {onSetAsFirst && !isFirst && !disabled ? (
-        <motion.button
-          type="button"
-          aria-label={avatarLabel ?? "Set as avatar"}
-          style={{
-            position: "absolute",
-            bottom: 2,
-            left: 2,
-            fontSize: Math.max(9, imageSize * 0.11),
-            lineHeight: 1,
-            padding: "1px 4px",
-            borderRadius: 4,
-            background: "rgba(0,0,0,0.5)",
-            color: "#fff",
-            border: "none",
-            cursor: "pointer",
-            zIndex: 5,
-            opacity: 0,
-            transition: "opacity 0.15s",
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onSetAsFirst(item);
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0"; }}
-          whileTap={motionAllowed ? { scale: 0.9 } : undefined}
-        >
-          {avatarLabel ?? "Avatar"}
-        </motion.button>
-      ) : null}
     </Reorder.Item>
   );
 }
@@ -226,8 +166,6 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
       onReorder,
       onDelete,
       onFilesSelected,
-      onSetAsFirst,
-      avatarLabel,
       maxImages = 10,
       maxFileSize,
       allowedTypes,
@@ -305,16 +243,13 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
           style={{ display: "flex", flexWrap: "wrap", gap, listStyle: "none", padding: 0, margin: 0 }}
         >
           <AnimatePresence mode="popLayout">
-            {items.map((item, index) => (
+            {items.map((item) => (
               <DraggableImageCell
                 key={item.id}
                 item={item}
                 imageSize={imageSize}
                 borderRadius={borderRadius}
                 onDelete={onDelete}
-                onSetAsFirst={onSetAsFirst}
-                isFirst={index === 0}
-                avatarLabel={avatarLabel}
                 disabled={disabled}
                 motionAllowed={motionAllowed}
               />

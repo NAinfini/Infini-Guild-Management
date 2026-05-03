@@ -5,6 +5,8 @@ import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { DownOutlined, LogoutOutlined, SettingOutlined, UserOutlined } from "../../utils/icons";
+import { useAuthStore } from "../../stores/auth";
+import { resolveProfileMediaUrl } from "../../utils/media";
 
 type UserProfileDropdownProps = {
   user: User | null;
@@ -15,6 +17,7 @@ type UserProfileDropdownProps = {
 export function UserProfileDropdown({ user, onLogout, compact = false }: UserProfileDropdownProps) {
   const { t } = useTranslation("common");
   const navigate = useNavigate();
+  const profile = useAuthStore((state) => state.profile);
 
   if (!user) {
     return (
@@ -33,7 +36,7 @@ export function UserProfileDropdown({ user, onLogout, compact = false }: UserPro
           aria-label={t("profile.menu.aria.open")}
         >
           <Group gap={8} wrap="nowrap" align="center">
-            <Avatar size={32} radius="xl" className="app-profile-avatar">
+            <Avatar size={32} radius="xl" className="app-profile-avatar" src={profile?.avatar_key ? resolveProfileMediaUrl(profile.avatar_key) : undefined}>
               <UserIcon size={18} />
             </Avatar>
             <div className="app-profile-meta">

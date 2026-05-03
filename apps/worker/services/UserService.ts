@@ -41,6 +41,7 @@ type ProfileRow = {
   titleHtml: string | null;
   bio: string | null;
   images: string;
+  avatarKey: string | null;
   audioKey: string | null;
   videoUrls: string;
   availability: string | null;
@@ -59,6 +60,7 @@ type ProfilePatch = {
   titleHtml?: string | null;
   bio?: string | null;
   images?: string;
+  avatarKey?: string | null;
   audioKey?: string | null;
   videoUrls?: string;
   availability?: string | null;
@@ -138,6 +140,7 @@ function toProfilePayload(profile: ProfileRow, options: { includeNotes: boolean;
     title_html: profile.titleHtml,
     bio: profile.bio,
     images: parseStringArray(profile.images),
+    avatar_key: profile.avatarKey ?? null,
     audio_key: profile.audioKey,
     video_urls: parseStringArray(profile.videoUrls),
     availability: options.includePrivate ? parseRecord(profile.availability) : null,
@@ -158,6 +161,7 @@ function buildProfilePatch(
   if (payload.title_html !== undefined) patch.titleHtml = payload.title_html === null ? null : sanitizeTitleHtml(payload.title_html);
   if (payload.bio !== undefined) patch.bio = payload.bio;
   if (payload.images !== undefined) patch.images = JSON.stringify(payload.images);
+  if (payload.avatar_key !== undefined) patch.avatarKey = payload.avatar_key;
   if (payload.audio_key !== undefined) patch.audioKey = payload.audio_key;
   if (payload.video_urls !== undefined) patch.videoUrls = JSON.stringify(payload.video_urls);
   if (payload.availability !== undefined) {
@@ -206,6 +210,7 @@ const userProfileSelect = {
   titleHtml: memberProfiles.titleHtml,
   bio: memberProfiles.bio,
   images: memberProfiles.images,
+  avatarKey: memberProfiles.avatarKey,
   audioKey: memberProfiles.audioKey,
   videoUrls: memberProfiles.videoUrls,
   availability: memberProfiles.availability,
@@ -235,6 +240,7 @@ function rowToUserWithProfile(row: Record<string, unknown>): UserWithProfileRow 
       titleHtml: (row.titleHtml as string | null) ?? null,
       bio: (row.bio as string | null) ?? null,
       images: (row.images as string) ?? "[]",
+      avatarKey: (row.avatarKey as string | null) ?? null,
       audioKey: (row.audioKey as string | null) ?? null,
       videoUrls: (row.videoUrls as string) ?? "[]",
       availability: (row.availability as string | null) ?? null,
@@ -377,7 +383,8 @@ export class UserService {
 
     const profile = await this.ensureProfile(targetUserId);
     const existing = parseStringArray(profile.images);
-    if (existing.length + files.length > IMAGE_QUOTAS.profile)
+    const avatarCount = profile.avatarKey ? 1 : 0;
+    if (existing.length + avatarCount + files.length > IMAGE_QUOTAS.profile)
       return err("CONFLICT", "Profile image quota exceeded");
 
     const keys: string[] = await Promise.all(files.map((file) => this.deps.storeProfileImage(targetUserId, file)));
@@ -399,6 +406,45 @@ export class UserService {
 
     await this.db.update(memberProfiles)
       .set({ images: JSON.stringify(images.filter((k) => k !== imageKey)), updatedAt: new Date().toISOString() })
+      .where(eq(memberProfiles.userId, targetUserId));
+    return ok({ ok: true });
+  }
+
+  async uploadAvatar(sessionUser: SessionUser, targetUserId: string, file: File): Promise<ServiceResult<{ key: string }>> {
+    const access = await this.canEditTarget(sessionUser, targetUserId);
+    if (access === "not_found") return err("NOT_FOUND", "User not found");
+    if (access === "forbidden") return err("FORBIDDEN", "You cannot upload media for this profile");
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number]))
+      return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
+    if (file.size > FILE_SIZE_LIMITS.profileImage)
+      return err("VALIDATION_ERROR", `Image exceeds ${FILE_SIZE_LIMITS.profileImage} bytes`);
+
+    const profile = await this.ensureProfile(targetUserId);
+    const existing = parseStringArray(profile.images);
+    const avatarCount = profile.avatarKey ? 1 : 0;
+    if (existing.length + avatarCount + 1 - avatarCount > IMAGE_QUOTAS.profile)
+      return err("CONFLICT", "Profile image quota exceeded");
+
+    const key = await this.deps.storeProfileImage(targetUserId, file);
+    if (profile.avatarKey) await this.deps.deleteMediaObject(profile.avatarKey);
+
+    await this.db.update(memberProfiles)
+      .set({ avatarKey: key, updatedAt: new Date().toISOString() })
+      .where(eq(memberProfiles.userId, targetUserId));
+    return ok({ key });
+  }
+
+  async deleteAvatar(sessionUser: SessionUser, targetUserId: string): Promise<ServiceResult<{ ok: true }>> {
+    const access = await this.canEditTarget(sessionUser, targetUserId);
+    if (access === "not_found") return err("NOT_FOUND", "User not found");
+    if (access === "forbidden") return err("FORBIDDEN", "You cannot delete media for this profile");
+
+    const profile = await this.ensureProfile(targetUserId);
+    if (profile.avatarKey) await this.deps.deleteMediaObject(profile.avatarKey);
+
+    await this.db.update(memberProfiles)
+      .set({ avatarKey: null, updatedAt: new Date().toISOString() })
       .where(eq(memberProfiles.userId, targetUserId));
     return ok({ ok: true });
   }

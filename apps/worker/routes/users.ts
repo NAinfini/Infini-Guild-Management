@@ -115,6 +115,26 @@ usersRoutes.delete("/:id/media/images/:key", async (c) => {
   return serviceResponse(c, await getUserService(c).deleteProfileImage(sessionUser, c.req.param("id"), key));
 });
 
+usersRoutes.post("/:id/media/avatar", async (c) => {
+  const sessionUser = await requireSession(c);
+  if (sessionUser instanceof Response) return sessionUser;
+
+  let form: FormData;
+  try { form = await c.req.formData(); } catch {
+    return buildError(c, "VALIDATION_ERROR", "Request must be multipart/form-data");
+  }
+  const file = form.get("file");
+  if (!(file instanceof File)) return buildError(c, "VALIDATION_ERROR", "Avatar file is required");
+
+  return serviceResponse(c, await getUserService(c).uploadAvatar(sessionUser, c.req.param("id"), file));
+});
+
+usersRoutes.delete("/:id/media/avatar", async (c) => {
+  const sessionUser = await requireSession(c);
+  if (sessionUser instanceof Response) return sessionUser;
+  return serviceResponse(c, await getUserService(c).deleteAvatar(sessionUser, c.req.param("id")));
+});
+
 usersRoutes.post("/:id/media/audio", async (c) => {
   const sessionUser = await requireSession(c);
   if (sessionUser instanceof Response) return sessionUser;

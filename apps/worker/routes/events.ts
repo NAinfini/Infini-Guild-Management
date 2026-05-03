@@ -5,12 +5,14 @@ import {
   updateTemplateSchema,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
+import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { runEventInstanceGenerationCron } from "../crons/event-instance-gen";
 import type { Bindings } from "../index";
 import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
+import { users } from "../db/schema";
 import {
   EventService,
   EventServiceValidationError,
@@ -32,6 +34,10 @@ function getEventService(c: Context) {
   const db = getDb(c);
   const svc: EventService = new EventService(db as never, env.DB as never, env.MEDIA as never, {
     getEventById: (eventId) => svc.getEventById(eventId),
+    getUsername: async (userId) => {
+      const row = (await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1))[0];
+      return row?.username ?? null;
+    },
     materializeRecurringSeries: (templateId) => materializeRecurringSeries(c, templateId),
     writeAuditLog: (input) => writeAuditLog(c, input),
     publishEntityChanged: (payload) => publishEntityChanged(c, payload),

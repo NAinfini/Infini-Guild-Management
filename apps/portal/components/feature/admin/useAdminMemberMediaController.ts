@@ -6,9 +6,11 @@ import { useMediaUpload } from "../../../hooks/useMediaUpload";
 import { notifySuccess } from "../../../utils/notifications";
 import { resolveProfileMediaUrl } from "../../../utils/media";
 import {
+  deleteAvatar,
   deleteProfileAudio,
   deleteProfileImage,
   updateMyProfile,
+  uploadAvatar,
   uploadProfileAudio,
   uploadProfileImages,
 } from "../../../api/mutations/users";
@@ -106,6 +108,24 @@ export function useAdminMemberMediaController({
     onError: (error) => onError(error, t("message.mediaAudioRemoveFailed")),
   });
 
+  const uploadAvatarMutation = useMutation({
+    mutationFn: (file: File) => uploadAvatar(requireMember(member).user.id, file),
+    onSuccess: async () => {
+      notifySuccess(t("message.mediaAvatarUploaded"));
+      await onRefresh();
+    },
+    onError: (error) => onError(error, t("message.mediaAvatarUploadFailed")),
+  });
+
+  const deleteAvatarMutation = useMutation({
+    mutationFn: () => deleteAvatar(requireMember(member).user.id),
+    onSuccess: async () => {
+      notifySuccess(t("message.mediaAvatarRemoved"));
+      await onRefresh();
+    },
+    onError: (error) => onError(error, t("message.mediaAvatarRemoveFailed")),
+  });
+
   const [videoUrls, setVideoUrls] = useState<string[]>(() => [...memberVideoUrls]);
 
   useEffect(() => {
@@ -198,6 +218,17 @@ export function useAdminMemberMediaController({
     deleteAudioMutation.mutate();
   }, [deleteAudioMutation]);
 
+  const handleUploadAvatar = useCallback(
+    (file: File) => {
+      uploadAvatarMutation.mutate(file);
+    },
+    [uploadAvatarMutation],
+  );
+
+  const handleDeleteAvatar = useCallback(() => {
+    deleteAvatarMutation.mutate();
+  }, [deleteAvatarMutation]);
+
   return {
     imageItems,
     imageUploader,
@@ -217,5 +248,9 @@ export function useAdminMemberMediaController({
     deleteAudioPending: deleteAudioMutation.isPending,
     uploadAudio,
     deleteAudio,
+    uploadAvatar: handleUploadAvatar,
+    deleteAvatar: handleDeleteAvatar,
+    avatarUploadPending: uploadAvatarMutation.isPending,
+    avatarDeletePending: deleteAvatarMutation.isPending,
   };
 }

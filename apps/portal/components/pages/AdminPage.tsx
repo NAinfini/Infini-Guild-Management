@@ -495,6 +495,10 @@ export function AdminPage() {
                   deleteAudioPending={memberMediaController.deleteAudioPending}
                   onUploadAudio={memberMediaController.uploadAudio}
                   onDeleteAudio={memberMediaController.deleteAudio}
+                  avatarUploadPending={memberMediaController.avatarUploadPending}
+                  avatarDeletePending={memberMediaController.avatarDeletePending}
+                  onUploadAvatar={memberMediaController.uploadAvatar}
+                  onDeleteAvatar={memberMediaController.deleteAvatar}
                 />
               </Suspense>
             ) : null

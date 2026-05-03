@@ -3,9 +3,9 @@ import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import type { ImageGridEditorItem } from "@guild/shared/types/media";
 import { PortalCard } from "../../shared/PortalCard";
 import { FloatingSaveBar } from "../../shared/FloatingSaveBar";
-import { Button, Divider, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
+import { Avatar, Button, Divider, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { PlusIcon, TrashIcon, UploadIcon } from "@portal/components/icons";
+import { PlusIcon, TrashIcon, UploadIcon, UserIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { resolveProfileMediaUrl } from "../../../utils/media";
 
@@ -24,15 +24,19 @@ type ProfileMediaTabProps = {
   videoDraft: string;
   videoList: string[];
   imageList: string[];
+  avatarKey: string | null;
   profileAudioKey: string | null;
   imageUploader: UploaderState;
   audioUploader: UploaderState;
+  avatarUploading: boolean;
   onVideoDraftChange: (value: string) => void;
   onAddVideoUrl: () => void;
   onMoveVideo: (index: number, delta: number) => void;
   onRemoveVideo: (index: number) => void;
   onUploadImages: () => void;
   onUploadAudio: () => void;
+  onUploadAvatar: (file: File) => void;
+  onRemoveAvatar: () => void;
   onReorderImages: (nextImages: string[]) => void;
   onRemoveImage: (key: string) => void;
   onRemoveAudio: () => void;
@@ -45,15 +49,19 @@ export function ProfileMediaTab({
   videoDraft,
   videoList,
   imageList,
+  avatarKey,
   profileAudioKey,
   imageUploader,
   audioUploader,
+  avatarUploading,
   onVideoDraftChange,
   onAddVideoUrl,
   onMoveVideo,
   onRemoveVideo,
   onUploadImages,
   onUploadAudio,
+  onUploadAvatar,
+  onRemoveAvatar,
   onReorderImages,
   onRemoveImage,
   onRemoveAudio,
@@ -70,6 +78,56 @@ export function ProfileMediaTab({
 
   return (
     <Stack gap={16}>
+      {/* ── Avatar ── */}
+      <PortalCard interactive={false}>
+        <Stack gap={12} p="1.2rem">
+          <Text fw={700} size="md">{t("media.avatar")}</Text>
+          <Group gap={16} align="center">
+            <Avatar size={72} radius="xl" src={avatarKey ? resolveProfileMediaUrl(avatarKey) : undefined}>
+              <UserIcon size={32} />
+            </Avatar>
+            <Stack gap={6}>
+              <FileButton
+                onChange={(file) => { if (file) onUploadAvatar(file); }}
+                accept="image/jpeg,image/png,image/gif,image/webp,image/avif"
+              >
+                {(props) => (
+                  <Button
+                    variant="default"
+                    size="compact-sm"
+                    loading={avatarUploading}
+                    leftSection={<UploadIcon size={16} />}
+                    {...props}
+                  >
+                    {t("media.uploadAvatar")}
+                  </Button>
+                )}
+              </FileButton>
+              {avatarKey ? (
+                <Button
+                  variant="subtle"
+                  color="red"
+                  size="compact-xs"
+                  leftSection={<TrashIcon size={14} />}
+                  onClick={() => {
+                    modals.openConfirmModal({
+                      title: t("confirm.removeAvatar.title"),
+                      children: t("confirm.removeAvatar.description"),
+                      centered: true,
+                      confirmProps: { color: "red" },
+                      labels: { cancel: t("common:action.cancel"), confirm: t("common:action.delete") },
+                      onConfirm: onRemoveAvatar,
+                    });
+                  }}
+                >
+                  {t("media.removeAvatar")}
+                </Button>
+              ) : null}
+            </Stack>
+          </Group>
+        </Stack>
+      </PortalCard>
+
       {/* ── Images ── */}
       <PortalCard interactive={false}>
         <Stack gap={12} p="1.2rem">
@@ -91,16 +149,6 @@ export function ProfileMediaTab({
                 onConfirm: () => onRemoveImage(item.id),
               });
             }}
-            onSetAsFirst={(item) => {
-              const idx = imageList.indexOf(item.id);
-              if (idx > 0) {
-                const next = [...imageList];
-                next.splice(idx, 1);
-                next.unshift(item.id);
-                onReorderImages(next);
-              }
-            }}
-            avatarLabel={t("media.avatar")}
             onFilesSelected={(files) => imageUploader.selectFiles(files)}
             maxImages={10}
             imageSize={80}

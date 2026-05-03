@@ -216,6 +216,61 @@ html[data-locale="zh"] {
   100% { transform: translateX(200%) skewX(-15deg); }
 }
 
+/* ── Menu / Dropdown spacing ── */
+.infini-menu-dropdown {
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.dark .infini-menu-dropdown {
+  background: color-mix(in srgb, var(--color-surface, #1e293b) 92%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+}
+
+.infini-menu-item {
+  margin: 2px 0;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+/* ── Context menu spacing ── */
+.infini-context-menu-root {
+  padding: 6px !important;
+  min-width: 200px;
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.dark .infini-context-menu-root {
+  background: color-mix(in srgb, var(--color-surface, #1e293b) 92%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+}
+
+.infini-context-menu-item {
+  padding: 10px 14px !important;
+  border-radius: var(--radius-sm, 8px) !important;
+  font-size: 0.875rem !important;
+  font-weight: 500;
+  gap: 10px;
+  margin: 2px 0;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.infini-context-menu-divider {
+  margin: 6px 8px !important;
+}
+
+.infini-menu-item--label {
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mantine-color-dimmed, #868e96);
+  pointer-events: none;
+  padding: 8px 14px 4px !important;
+}
+
 /* ── Menu item helpers ── */
 .infini-menu-item--danger {
   color: var(--mantine-color-red-6, #e03131);
@@ -237,15 +292,6 @@ html[data-locale="zh"] {
 .dark .infini-menu-item--active {
   background: color-mix(in srgb, var(--mantine-color-blue-9, #1864ab) 25%, transparent);
   color: var(--mantine-color-blue-4, #4dabf7);
-}
-
-.infini-menu-item--label {
-  font-weight: 600;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--mantine-color-dimmed, #868e96);
-  pointer-events: none;
 }
 
 @keyframes spin {

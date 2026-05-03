@@ -7,7 +7,9 @@ import { TrashIcon } from "@portal/components/icons";
 import { IconGripVertical, IconUserCircle } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { uploadProfileAudio, uploadProfileImages } from "../../api/mutations/users";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { uploadProfileAudio, uploadProfileImages, uploadAvatar, deleteAvatar } from "../../api/mutations/users";
+import { queryKeys } from "../../api/query-keys";
 import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
 import { useProfileData } from "../../hooks/data/useProfileData";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
@@ -15,6 +17,8 @@ import { useMediaUpload } from "../../hooks/useMediaUpload";
 import { useProfileFormState } from "../../hooks/useProfileFormState";
 import { useProfileMutations } from "../../hooks/useProfileMutations";
 import { useAuthStore } from "../../stores/auth";
+import { useAppError } from "../../hooks/useAppError";
+import { notifySuccess } from "../../utils/notifications";
 import { ProfileAccountTab } from "../feature/profile/ProfileAccountTab";
 import { ProfileAvailabilityTab } from "../feature/profile/ProfileAvailabilityTab";
 import { ProfileMediaTab } from "../feature/profile/ProfileMediaTab";
@@ -129,6 +133,35 @@ export function MyProfilePage() {
     audioUploader,
   });
 
+  const queryClient = useQueryClient();
+  const { showError } = useAppError();
+
+  const avatarUploadMutation = useMutation({
+    mutationFn: (file: File) => {
+      if (!user) throw new Error("Missing user session");
+      return uploadAvatar(user.id, file);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+      notifySuccess(t("message.avatarUploaded"));
+    },
+    onError: (error) => showError(error, t("message.avatarUploadFailed")),
+  });
+
+  const avatarDeleteMutation = useMutation({
+    mutationFn: () => {
+      if (!user) throw new Error("Missing user session");
+      return deleteAvatar(user.id);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+      notifySuccess(t("message.avatarRemoved"));
+    },
+    onError: (error) => showError(error, t("message.avatarRemoveFailed")),
+  });
+
   const profile = profileQuery.data?.profile;
 
   return (
@@ -215,9 +248,11 @@ export function MyProfilePage() {
                 videoDraft={form.videoDraft}
                 videoList={form.videoList}
                 imageList={form.imageList}
+                avatarKey={profile?.avatar_key ?? null}
                 profileAudioKey={profile?.audio_key ?? null}
                 imageUploader={imageUploader}
                 audioUploader={audioUploader}
+                avatarUploading={avatarUploadMutation.isPending}
                 onVideoDraftChange={form.setVideoDraft}
                 onAddVideoUrl={form.addVideoUrl}
                 onMoveVideo={(index, delta) =>
@@ -232,6 +267,8 @@ export function MyProfilePage() {
                 onUploadAudio={() => {
                   void mutations.uploadAudio();
                 }}
+                onUploadAvatar={(file) => avatarUploadMutation.mutate(file)}
+                onRemoveAvatar={() => avatarDeleteMutation.mutate()}
                 onReorderImages={form.setImageList}
                 onRemoveImage={mutations.removeImage}
                 onRemoveAudio={mutations.removeAudio}

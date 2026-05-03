@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS member_profiles (
   classes TEXT NOT NULL DEFAULT '[]',
   title_html TEXT,
   bio TEXT,
+  avatar_key TEXT,
   images TEXT NOT NULL DEFAULT '[]',
   audio_key TEXT,
   video_urls TEXT NOT NULL DEFAULT '[]',

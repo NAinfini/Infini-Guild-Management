@@ -110,7 +110,7 @@ export function RosterPage() {
   const [sortMode, setSortMode] = useState<RosterSortMode>(() => readStoredSortMode());
   const [visibleCount, setVisibleCount] = useState(20);
   const [audioMuted, setAudioMutedState] = useLocalStorage<boolean>({ key: "roster.audio.muted", defaultValue: false });
-  const [audioVolume, setAudioVolumeState] = useLocalStorage<number>({ key: "roster.audio.volume", defaultValue: 70 });
+  const [audioVolume, setAudioVolumeState] = useLocalStorage<number>({ key: "roster.audio.volume", defaultValue: 20 });
   const hoverAudioDebounceRef = useRef<number | null>(null);
   const hoverAudioStopDebounceRef = useRef<number | null>(null);
   const [selected, setSelected] = useState<{ user: User; profile: MemberProfile } | null>(null);

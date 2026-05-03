@@ -51,6 +51,7 @@ describe("worker EventService", () => {
     const writeAuditLog = vi.fn().mockResolvedValue(undefined);
     const service = new EventService(db as never, {} as never, media as never, {
       getEventById,
+      getUsername: vi.fn().mockResolvedValue("TestUser"),
       materializeRecurringSeries,
       writeAuditLog,
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),
@@ -108,6 +109,7 @@ describe("worker EventService", () => {
       { put: vi.fn() } as never,
       {
         getEventById: vi.fn(),
+        getUsername: vi.fn().mockResolvedValue(null),
         materializeRecurringSeries: vi.fn(),
         writeAuditLog: vi.fn(),
         publishEntityChanged: vi.fn(),
@@ -133,6 +135,7 @@ describe("worker EventService", () => {
     const writeAuditLog = vi.fn().mockResolvedValue(undefined);
     const service = new EventService(db as never, {} as never, media as never, {
       getEventById: vi.fn(),
+      getUsername: vi.fn().mockResolvedValue(null),
       materializeRecurringSeries: vi.fn(),
       writeAuditLog,
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),

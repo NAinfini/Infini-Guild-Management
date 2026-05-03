@@ -10,5 +10,3 @@ export { ScrollProgress } from "./ScrollProgress";
 export { ShinyText } from "./ShinyText";
 export { ErrorBoundary } from "./ErrorBoundary";
 export { ProgressButton } from "./ProgressButton";
-export { ClickSpark } from "./ClickSpark";
-export { StarBorder } from "./StarBorder";

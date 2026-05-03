@@ -45,7 +45,7 @@ export function ProfileModal({
       }),
     [profile?.title_html],
   );
-  const avatarUrl = profile?.images[0] ? resolveMediaUrl(profile.images[0]) : null;
+  const avatarUrl = profile?.avatar_key ? resolveMediaUrl(profile.avatar_key) : null;
   const activeTime = user?.updated_at ? new Date(user.updated_at).toLocaleString(i18n.language) : "-";
 
   useEffect(() => {

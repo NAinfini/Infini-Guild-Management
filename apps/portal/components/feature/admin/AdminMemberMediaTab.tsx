@@ -1,9 +1,9 @@
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import type { ImageGridEditorItem } from "@guild/shared/types/media";
 import { PortalCard } from "../../shared/PortalCard";
-import { Button, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
+import { Avatar, Button, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { PlusIcon, TrashIcon, UploadIcon } from "@portal/components/icons";
+import { PlusIcon, TrashIcon, UploadIcon, UserIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import type { UseMediaUploadState } from "../../../hooks/useMediaUpload";
 import type { UsersListResponse } from "../../../api/queries/users";
@@ -35,6 +35,10 @@ type AdminMemberMediaTabProps = {
   deleteAudioPending: boolean;
   onUploadAudio: () => Promise<void>;
   onDeleteAudio: () => void;
+  avatarUploadPending: boolean;
+  avatarDeletePending: boolean;
+  onUploadAvatar: (file: File) => void;
+  onDeleteAvatar: () => void;
 };
 
 export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
@@ -60,11 +64,66 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
     deleteAudioPending,
     onUploadAudio,
     onDeleteAudio,
+    avatarUploadPending,
+    avatarDeletePending,
+    onUploadAvatar,
+    onDeleteAvatar,
   } = props;
   const { t } = useTranslation(["admin", "common"]);
 
   return (
     <Stack gap={16}>
+      <PortalCard interactive={false}>
+        <div style={{ padding: "1.2rem" }}>
+          <Text fw={600} size="sm" mb={12}>{t("media.avatar")}</Text>
+          <Group gap={16} align="center">
+            <Avatar size={72} radius="xl" src={member.profile.avatar_key ? resolveProfileMediaUrl(member.profile.avatar_key) : undefined}>
+              <UserIcon size={32} />
+            </Avatar>
+            {isModerator ? (
+              <Stack gap={6}>
+                <FileButton
+                  onChange={(file) => { if (file) onUploadAvatar(file); }}
+                  accept="image/jpeg,image/png,image/gif,image/webp,image/avif"
+                >
+                  {(props) => (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      loading={avatarUploadPending}
+                      leftSection={<UploadIcon size={16} />}
+                      {...props}
+                    >
+                      {t("media.uploadAvatar")}
+                    </Button>
+                  )}
+                </FileButton>
+                {member.profile.avatar_key && isAdmin ? (
+                  <Button
+                    variant="subtle"
+                    color="red"
+                    size="compact-xs"
+                    leftSection={<TrashIcon size={14} />}
+                    loading={avatarDeletePending}
+                    onClick={() =>
+                      modals.openConfirmModal({
+                        title: t("confirm.deleteAvatar.title"),
+                        children: <Text size="sm">{t("confirm.deleteAvatar.description")}</Text>,
+                        labels: { confirm: t("media.removeAvatar"), cancel: t("common:cancel") },
+                        confirmProps: { color: "red" },
+                        onConfirm: onDeleteAvatar,
+                      })
+                    }
+                  >
+                    {t("media.removeAvatar")}
+                  </Button>
+                ) : null}
+              </Stack>
+            ) : null}
+          </Group>
+        </div>
+      </PortalCard>
+
       <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Text fw={600} size="sm" mb={12}>{t("media.images")}</Text>
@@ -76,16 +135,6 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                 items={imageItems}
                 onReorder={onImageReorder}
                 onDelete={isAdmin ? onImageDelete : undefined}
-                onSetAsFirst={isModerator ? (item) => {
-                  const idx = imageItems.findIndex((i) => i.id === item.id);
-                  if (idx > 0) {
-                    const next = [...imageItems];
-                    next.splice(idx, 1);
-                    next.unshift(item);
-                    onImageReorder(next);
-                  }
-                } : undefined}
-                avatarLabel={t("media.avatar")}
                 onFilesSelected={isModerator ? imageUploader.selectFiles : undefined}
                 maxImages={PROFILE_IMAGE_MAX}
                 imageSize={80}

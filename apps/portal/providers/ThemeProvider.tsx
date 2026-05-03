@@ -6,6 +6,7 @@ import {
   Card,
   createTheme,
   MantineProvider,
+  Menu,
   Modal,
   NumberInput,
   Select,
@@ -120,6 +121,21 @@ const portalTheme = createTheme({
     }),
     Tabs: Tabs.extend({
       defaultProps: { radius: "md" },
+    }),
+    Menu: Menu.extend({
+      defaultProps: { radius: "md", shadow: "lg" },
+      classNames: {
+        dropdown: "infini-menu-dropdown",
+        item: "infini-menu-item",
+        divider: "infini-menu-divider",
+        label: "infini-menu-label",
+      },
+      styles: {
+        dropdown: { padding: "6px", minWidth: "200px" },
+        item: { padding: "10px 14px", borderRadius: "8px", fontSize: "0.875rem", fontWeight: 500, gap: "10px" },
+        divider: { margin: "6px 8px" },
+        label: { padding: "8px 14px 4px", fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" as const },
+      },
     }),
   },
 });

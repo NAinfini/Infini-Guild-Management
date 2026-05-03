@@ -3,6 +3,7 @@ import { CLASS_COLOR_GROUP, CLASS_NAMES } from "@guild/shared";
 import DOMPurify from "dompurify";
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { parseAvailabilityRanges } from "../../utils/availability";
 import "./MemberCard.css";
 
 type MemberCardProps = {
@@ -33,20 +34,28 @@ function getMemberStatus(user: User, profile: MemberProfile): MemberStatus {
     return "inactive";
   }
 
-  if (!profile.vacation_start || !profile.vacation_end) {
-    return "active";
+  if (profile.vacation_start && profile.vacation_end) {
+    const now = Date.now();
+    const start = Date.parse(profile.vacation_start);
+    const end = Date.parse(profile.vacation_end);
+    if (!Number.isNaN(start) && !Number.isNaN(end) && now >= start && now <= end) {
+      return "vacation";
+    }
   }
 
-  const now = Date.now();
-  const start = Date.parse(profile.vacation_start);
-  const end = Date.parse(profile.vacation_end);
-  if (Number.isNaN(start) || Number.isNaN(end)) {
-    return "active";
+  const rangesByDay = parseAvailabilityRanges(profile.availability);
+  const nowUtc = new Date();
+  const dayIndex = nowUtc.getUTCDay();
+  const currentMinutes = nowUtc.getUTCHours() * 60 + nowUtc.getUTCMinutes();
+  const ranges = rangesByDay.get(dayIndex) ?? [];
+
+  for (const range of ranges) {
+    if (currentMinutes >= range.startMinutes && currentMinutes < range.endMinutes) {
+      return "active";
+    }
   }
-  if (now >= start && now <= end) {
-    return "vacation";
-  }
-  return "active";
+
+  return "inactive";
 }
 
 function defaultMediaResolver(value: string): string {
@@ -66,7 +75,7 @@ export const MemberCard = memo(function MemberCard({
   const primaryClass = profile.classes[0] ?? null;
   const classGroup = resolveClassGroup(primaryClass);
   const status = getMemberStatus(user, profile);
-  const avatarKey = profile.images[0] ?? null;
+  const avatarKey = profile.avatar_key ?? null;
   const avatarSrc = avatarKey ? resolveMediaUrl(avatarKey) : null;
 
   const titleHtml = useMemo(

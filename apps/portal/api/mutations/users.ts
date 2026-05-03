@@ -41,6 +41,22 @@ export function uploadProfileAudio(userId: string, file: File): Promise<{ key: s
   });
 }
 
+export function uploadAvatar(userId: string, file: File): Promise<{ key: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return apiRequest<{ key: string }>(`/api/users/${userId}/media/avatar`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function deleteAvatar(userId: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/users/${userId}/media/avatar`, {
+    method: "DELETE",
+  });
+}
+
 export function deleteProfileImage(userId: string, key: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/users/${userId}/media/images/${encodeURIComponent(key)}`, {
     method: "DELETE",

@@ -12,6 +12,7 @@ export const memberProfiles = sqliteTable("member_profiles", {
   classes: text("classes").notNull().default("[]"),
   titleHtml: text("title_html"),
   bio: text("bio"),
+  avatarKey: text("avatar_key"),
   images: text("images").notNull().default("[]"),
   audioKey: text("audio_key"),
   videoUrls: text("video_urls").notNull().default("[]"),
