@@ -1,7 +1,8 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { Avatar, Grid, Group, Modal, Select, Stack, Text } from "@mantine/core";
+import { Grid, Group, Modal, Select, Stack, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { DepthButton } from "@portal/components/shared/DepthButton";
+import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
 import {
   IconCalendarEvent,
@@ -12,13 +13,6 @@ import {
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { useMemo } from "react";
-
-const EVENT_TYPE_COLORS: Record<string, string> = {
-  weekly_mission: "blue",
-  guild_war: "red",
-  social: "grape",
-  other: "gray",
-};
 
 export type MemberEntry = { user: User; profile: MemberProfile };
 
@@ -184,9 +178,7 @@ export function EventDetailModal({
                     <Stack gap={10}>
                       {members.map((entry) => (
                         <Group key={entry.user.id} gap={10} style={{ padding: "8px", borderRadius: "6px", background: "color-mix(in srgb, var(--color-text) 8%, transparent)" }}>
-                          <Avatar size="md" color={EVENT_TYPE_COLORS[event.type] ?? "gray"} radius="xl">
-                            {entry.user.username.slice(0, 1).toUpperCase()}
-                          </Avatar>
+                          <MemberRoleAvatar user={entry.user} profile={entry.profile} size={38} withTooltip={false} />
                           <div style={{ flex: 1 }}>
                             <Text size="md" fw={600}>{entry.user.username}</Text>
                             <Group gap={6}>

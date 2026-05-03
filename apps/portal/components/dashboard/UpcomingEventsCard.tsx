@@ -1,7 +1,8 @@
 import type { Event } from "@guild/shared";
 import { NumberTicker } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
-import { Avatar, Badge, Button, Group, RingProgress, Stack, Text, Tooltip } from "@mantine/core";
+import { Badge, Button, Group, RingProgress, Stack, Text } from "@mantine/core";
+import { MemberRoleAvatar } from "../shared/MemberRoleAvatar";
 import { CalendarEventIcon, SwordsIcon } from "@portal/components/icons";
 import {
   IconArrowRight,
@@ -111,16 +112,12 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                       </Group>
                     </Stack>
                       <Group gap={4}>
-                        {item.members.slice(0, 5).map((member) => (
-                          <Tooltip key={member.user.id} label={member.user.username} withArrow>
-                            <Avatar size={40} radius="xl">
-                              {member.user.username.slice(0, 2).toUpperCase()}
-                            </Avatar>
-                          </Tooltip>
+                        {item.members.slice(0, 10).map((member) => (
+                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={36} />
                         ))}
-                      {item.members.length > 5 ? (
+                      {item.members.length > 10 ? (
                         <Text size="xs" c="dimmed" fw={600}>
-                          +{item.members.length - 5}
+                          +{item.members.length - 10}
                         </Text>
                       ) : null}
                     </Group>

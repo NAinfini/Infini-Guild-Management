@@ -1,5 +1,6 @@
 ﻿import type { Event, MemberProfile, User } from "@guild/shared";
-import { Avatar, Badge, Button, Group, Modal, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
+import { Badge, Button, Group, Modal, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
+import { MemberRoleAvatar } from "../../shared/MemberRoleAvatar";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
@@ -312,18 +313,14 @@ export function EventCardsView({
                   {/* ── Members & Capacity ── */}
                   <div className="event-card__members-bar">
                     <div className="event-card__members-left">
-                      <Avatar.Group spacing="sm">
-                        {members.slice(0, 3).map((member) => (
-                          <Tooltip key={member.user.id} label={member.user.username}>
-                            <Avatar size="md" color={typeColor} radius="xl">
-                              {member.user.username.slice(0, 1).toUpperCase()}
-                            </Avatar>
-                          </Tooltip>
+                      <Group gap={4} wrap="wrap">
+                        {members.slice(0, 10).map((member) => (
+                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={32} />
                         ))}
-                        {members.length > 3 ? (
-                          <Avatar size="md" color="gray" radius="xl">+{members.length - 3}</Avatar>
+                        {members.length > 10 ? (
+                          <Text size="xs" c="dimmed" fw={600}>+{members.length - 10}</Text>
                         ) : null}
-                      </Avatar.Group>
+                      </Group>
                       <div className="event-card__capacity">
                         <IconUsers
                           size={15}
