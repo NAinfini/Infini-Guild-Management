@@ -123,16 +123,14 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                     </Group>
                     <Stack gap={2} align="center">
                       <RingProgress
-                        size={44}
+                        size={36}
                         thickness={4}
                         roundCaps
                         sections={[{ value: percentage, color: "var(--color-primary, #3b82f6)" }]}
-                        label={
-                          <Text size="10px" ta="center" fw={600}>
-                            {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}
-                          </Text>
-                        }
                       />
+                      <Text size="10px" ta="center" fw={600} c="dimmed">
+                        {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}
+                      </Text>
                     </Stack>
                     <Button
                       size="xs"

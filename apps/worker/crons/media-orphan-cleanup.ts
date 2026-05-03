@@ -70,8 +70,8 @@ export async function runMediaOrphanCleanupCron(env: Bindings): Promise<void> {
           referencedEventKeys.add(item);
         }
       }
-    } catch {
-      // skip malformed attachments JSON
+    } catch (e) {
+      console.error("[media-orphan-cleanup] Malformed attachments JSON:", row.attachments, e);
     }
   }
   const eventObjects = await listAllKeys(env.MEDIA, "events/");

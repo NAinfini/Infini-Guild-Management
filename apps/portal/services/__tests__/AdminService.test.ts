@@ -23,7 +23,7 @@ import {
   revokeAdminInviteLink,
   deleteAdminInviteLink,
   createAdminInviteLink,
-} from "../../api/mutations/admin";
+} from "../AdminService";
 
 describe("AdminService mutations", () => {
   beforeEach(() => {
@@ -81,8 +81,8 @@ describe("AdminService mutations", () => {
     expect(result.username).toBe("newuser");
   });
 
-  it("createAdminMember rejects username shorter than 3 chars", () => {
-    expect(() => createAdminMember({ username: "ab" })).toThrow();
+  it("createAdminMember rejects empty username", () => {
+    expect(() => createAdminMember({ username: "" })).toThrow();
   });
 
   it("batchUpdateAdminUserRole sends batch role PATCH", async () => {

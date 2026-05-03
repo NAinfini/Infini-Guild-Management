@@ -12,7 +12,7 @@ import {
 } from "@guild/shared";
 import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import { inviteLinks, memberProfiles, rolePermissions, roles, sessions, userAuthPassword, users } from "../db/schema";
+import { inviteLinks, rolePermissions, roles, sessions, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import type { MediaLike } from "./AdminAuditService";
 
@@ -78,25 +78,16 @@ export async function insertRolePermissionRows(
 }
 
 export async function replaceRolePermissions(
-  db: DrizzleDb,
+  rawDb: D1Database,
   roleId: string,
   permissionRecord: Record<Permission, boolean>,
-  rawDb?: D1Database,
 ): Promise<void> {
-  if (rawDb) {
-    const stmts: D1PreparedStatement[] = [];
-    stmts.push(rawDb.prepare("DELETE FROM role_permissions WHERE role_id = ?1").bind(roleId));
-    for (const perm of PERMISSIONS) {
-      stmts.push(rawDb.prepare("INSERT INTO role_permissions (role_id, permission, granted) VALUES (?1, ?2, ?3)").bind(roleId, perm, permissionRecord[perm] ? 1 : 0));
-    }
-    await rawDb.batch(stmts);
-  } else {
-    await db.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
-    await insertRolePermissionRows(
-      db,
-      PERMISSIONS.map((p) => ({ roleId, permission: p, granted: permissionRecord[p] })),
-    );
+  const stmts: D1PreparedStatement[] = [];
+  stmts.push(rawDb.prepare("DELETE FROM role_permissions WHERE role_id = ?1").bind(roleId));
+  for (const perm of PERMISSIONS) {
+    stmts.push(rawDb.prepare("INSERT INTO role_permissions (role_id, permission, granted) VALUES (?1, ?2, ?3)").bind(roleId, perm, permissionRecord[perm] ? 1 : 0));
   }
+  await rawDb.batch(stmts);
 }
 
 export async function ensureBuiltinRolesAndPermissions(db: DrizzleDb): Promise<void> {
@@ -183,7 +174,7 @@ type AdminServiceDeps = {
   generateId: () => string;
   generateInviteCode: () => string;
   generateTemporaryPassword: () => string;
-  rawDb?: D1Database;
+  rawDb: D1Database;
   ws?: unknown;
   now?: () => Date;
 };
@@ -306,17 +297,11 @@ export class AdminService {
     const profileId = this.deps.generateId();
     const nowIso = this.now().toISOString();
     try {
-      if (this.deps.rawDb) {
-        await this.deps.rawDb.batch([
-          this.deps.rawDb.prepare("INSERT INTO users (id, username, role, is_active, deleted_at, created_at, updated_at) VALUES (?1, ?2, 'member', 1, NULL, ?3, ?3)").bind(userId, username, nowIso),
-          this.deps.rawDb.prepare("INSERT INTO user_auth_password (user_id, password_hash, salt) VALUES (?1, ?2, ?3)").bind(userId, passwordHash.passwordHash, passwordHash.salt),
-          this.deps.rawDb.prepare("INSERT INTO member_profiles (id, user_id, power, classes, images, video_urls) VALUES (?1, ?2, 0, '[]', '[]', '[]')").bind(profileId, userId),
-        ]);
-      } else {
-        await this.deps.db.insert(users).values({ id: userId, username, role: "member", isActive: true, deletedAt: null });
-        await this.deps.db.insert(userAuthPassword).values({ userId, passwordHash: passwordHash.passwordHash, salt: passwordHash.salt });
-        await this.deps.db.insert(memberProfiles).values({ id: profileId, userId, power: 0, classes: "[]", images: "[]", videoUrls: "[]" });
-      }
+      await this.deps.rawDb.batch([
+        this.deps.rawDb.prepare("INSERT INTO users (id, username, role, is_active, deleted_at, created_at, updated_at) VALUES (?1, ?2, 'member', 1, NULL, ?3, ?3)").bind(userId, username, nowIso),
+        this.deps.rawDb.prepare("INSERT INTO user_auth_password (user_id, password_hash, salt) VALUES (?1, ?2, ?3)").bind(userId, passwordHash.passwordHash, passwordHash.salt),
+        this.deps.rawDb.prepare("INSERT INTO member_profiles (id, user_id, power, classes, images, video_urls) VALUES (?1, ?2, 0, '[]', '[]', '[]')").bind(profileId, userId),
+      ]);
     } catch (error) {
       if (error instanceof Error && error.message.includes("UNIQUE constraint failed: users.username")) return err("CONFLICT", "Username already taken");
       throw error;
@@ -345,15 +330,10 @@ export class AdminService {
     if (!target || target.deletedAt !== null) return err("NOT_FOUND", "User not found");
     if (!target.isActive) return err("CONFLICT", "User already deactivated");
     const nowIso = this.now().toISOString();
-    if (this.deps.rawDb) {
-      await this.deps.rawDb.batch([
-        this.deps.rawDb.prepare("UPDATE users SET is_active = 0, updated_at = ?1 WHERE id = ?2").bind(nowIso, targetUserId),
-        this.deps.rawDb.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(targetUserId),
-      ]);
-    } else {
-      await this.deps.db.update(users).set({ isActive: false, updatedAt: nowIso }).where(eq(users.id, targetUserId));
-      await this.deps.db.delete(sessions).where(eq(sessions.userId, targetUserId));
-    }
+    await this.deps.rawDb.batch([
+      this.deps.rawDb.prepare("UPDATE users SET is_active = 0, updated_at = ?1 WHERE id = ?2").bind(nowIso, targetUserId),
+      this.deps.rawDb.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(targetUserId),
+    ]);
     await this.deps.writeAuditLog({ entityType: "user", action: "deactivate", actorId, entityId: targetUserId, detailText: JSON.stringify({ reason: reason ?? null }) });
     return ok(undefined);
   }
@@ -398,7 +378,7 @@ export class AdminService {
     await this.deps.db.insert(roles).values({ id: roleId, name: input.name.trim(), level: input.level, color: input.color ?? null, isBuiltin: false });
     const permissionRecord = emptyPermissionRecord();
     for (const perm of PERMISSIONS) permissionRecord[perm] = Boolean(input.permissions?.[perm]);
-    await replaceRolePermissions(this.deps.db, roleId, permissionRecord, this.deps.rawDb);
+    await replaceRolePermissions(this.deps.rawDb, roleId, permissionRecord);
     await this.deps.writeAuditLog({ entityType: "role", action: "create", actorId, entityId: roleId, detailText: JSON.stringify({ name: input.name.trim(), level: input.level, color: input.color ?? null, permissions: permissionRecord }) });
     const created = (await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (!created) return err("SERVER_ERROR", "Failed to create role");
@@ -416,12 +396,12 @@ export class AdminService {
     if (input.level !== undefined) roleUpdatePayload.level = input.level;
     if (input.color !== undefined) roleUpdatePayload.color = input.color ?? null;
     if (Object.keys(roleUpdatePayload).length > 1) await this.deps.db.update(roles).set(roleUpdatePayload).where(eq(roles.id, roleId));
-    if (roleId === "admin") await replaceRolePermissions(this.deps.db, roleId, fullAdminPermissionRecord(), this.deps.rawDb);
+    if (roleId === "admin") await replaceRolePermissions(this.deps.rawDb, roleId, fullAdminPermissionRecord());
     else if (input.permissions) {
       const currentPermissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
       const nextPermissionRecord = parsePermissionRecord(roleId, currentPermissionRows);
       for (const perm of PERMISSIONS) if (Object.prototype.hasOwnProperty.call(input.permissions, perm)) nextPermissionRecord[perm] = Boolean(input.permissions[perm]);
-      await replaceRolePermissions(this.deps.db, roleId, nextPermissionRecord, this.deps.rawDb);
+      await replaceRolePermissions(this.deps.rawDb, roleId, nextPermissionRecord);
     }
     const [updatedRole] = await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).where(eq(roles.id, roleId)).limit(1);
     if (!updatedRole) return err("SERVER_ERROR", "Failed to load updated role");
@@ -446,7 +426,6 @@ export class AdminService {
   }
 
   async getStatus(): Promise<ServiceResult<{ db: string; r2: string; ws: string; crons: string; db_checks: Record<string, string> }>> {
-    if (!this.deps.rawDb) return err("SERVER_ERROR", "Raw DB not available");
     let dbStatus = "ok";
     let r2Status = "ok";
     const dbChecks: Record<string, string> = {};

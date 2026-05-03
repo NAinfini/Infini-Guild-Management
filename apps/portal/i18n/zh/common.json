@@ -157,5 +157,7 @@
   "unsavedChanges.stay": "留下",
   "label.notificationsUnread": "通知（未读）",
   "action.clearNotifications": "清空所有通知",
-  "nav.skipToContent": "跳至内容"
+  "nav.skipToContent": "跳至内容",
+  "pagination.perPage": "每页",
+  "pagination.page": "页"
 }

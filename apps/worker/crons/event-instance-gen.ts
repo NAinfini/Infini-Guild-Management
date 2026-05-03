@@ -62,7 +62,8 @@ function parseRecurrenceRule(value: string | null): RecurrenceRule | null {
       endAfter,
       endDate,
     };
-  } catch {
+  } catch (e) {
+    console.error("[event-instance-gen] Failed to parse recurrence rule:", value, e);
     return null;
   }
 }
@@ -146,15 +147,9 @@ function computeNextOccurrence(anchor: Date, templateStart: Date, rule: Recurren
   return isValidDate(next) ? next : null;
 }
 
-/**
- * Compute the lookahead horizon based on frequency.
- * - daily: 1 day ahead
- * - weekly: 7 days ahead
- * - monthly: ~31 days ahead
- */
-function computeHorizon(now: Date): Date {
+export function computeHorizon(now: Date): Date {
   const horizon = new Date(now);
-  horizon.setUTCDate(horizon.getUTCDate() + 3);
+  horizon.setUTCDate(horizon.getUTCDate() + 56);
   return horizon;
 }
 
@@ -178,7 +173,7 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
       attachments: events.attachments,
       lastGeneratedDate: events.lastGeneratedDate,
       generationCount: events.generationCount,
-      visibilityOffsetHours: events.visibilityOffsetHours,
+      visibilityOffsetMinutes: events.visibilityOffsetMinutes,
       visibleAt: events.visibleAt,
     })
     .from(events)
@@ -261,8 +256,8 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
         let visibleAt: string | null = null;
         if (template.visibleAt) {
           visibleAt = template.visibleAt;
-        } else if (template.visibilityOffsetHours != null) {
-          visibleAt = new Date(nextOccurrence.getTime() - template.visibilityOffsetHours * 3_600_000).toISOString();
+        } else if (template.visibilityOffsetMinutes != null) {
+          visibleAt = new Date(nextOccurrence.getTime() - template.visibilityOffsetMinutes * 60_000).toISOString();
         }
 
         await db.insert(events).values({

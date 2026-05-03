@@ -9,12 +9,7 @@ export async function runSessionCleanupCron(env: Bindings): Promise<void> {
   const now = new Date().toISOString();
   const absoluteCutoff = new Date(Date.now() - MAX_ABSOLUTE_SESSION_MS).toISOString();
 
-  const result = await db.run(
+  await db.run(
     sql`DELETE FROM sessions WHERE expires_at <= ${now} OR created_at <= ${absoluteCutoff}`,
   );
-
-  const deleted = result.meta?.changes ?? 0;
-  if (deleted > 0) {
-    console.log(`[cron] session-cleanup: purged ${deleted} expired sessions`);
-  }
 }

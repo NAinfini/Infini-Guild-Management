@@ -5,7 +5,7 @@ import { queryKeys } from "../api/query-keys";
 import type { MemberDetailFormState } from "../components/feature/admin/AdminMemberDetailModal";
 import { useAdminMemberMediaController } from "../components/feature/admin/useAdminMemberMediaController";
 import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
-import type { UsersListResponse } from "../api/queries/users";
+import type { UsersListResponse } from "../services/UserService";
 
 type AdminUserRow = UsersListResponse["data"][number];
 

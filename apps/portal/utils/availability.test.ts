@@ -35,7 +35,9 @@ describe("availability utils", () => {
         },
         profile: {
           availability: {
-            monday: [{ start_utc: "10:30", end_utc: "12:00" }],
+            days: {
+              monday: [{ start_utc: "10:30", end_utc: "12:00" }],
+            },
           },
         },
       },

@@ -4,8 +4,14 @@ import { PortalCard } from "../../shared/PortalCard";
 import { CopyIcon, PlusIcon, TrashIcon } from "@portal/components/icons";
 import { IconBan } from "@tabler/icons-react";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@portal/components/shared/InfiniTable";
-import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
+import {
+  InfiniTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@portal/components/shared/InfiniTable";
+import type { ColumnDef, PaginationState, SortingState } from "@portal/components/shared/InfiniTable";
 import { useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
@@ -13,7 +19,8 @@ import { modals } from "@mantine/modals";
 import { useEffectivePermissions } from "../../../hooks/useEffectivePermissions";
 import { formatDateTime } from "../../../utils/admin";
 import { copyPlainText } from "../../../utils/copy";
-import type { InviteLinkStatsSummary } from "../../../api/queries/admin";
+import { TablePagination } from "../../shared/TablePagination";
+import type { InviteLinkStatsSummary } from "../../../services/AdminService";
 
 type InviteRow = InviteLink;
 type InviteStats = InviteLinkStatsSummary;
@@ -64,6 +71,7 @@ export function AdminInviteSection({
   const loadErrorMessage = tc("loadError");
   const [createModalOpen, createModalHandlers] = useDisclosure(false);
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
 
   const handleCopyInviteLink = (row: InviteRow) => {
     void copyPlainText(`${window.location.origin}/register/${row.code}`);
@@ -190,10 +198,12 @@ export function AdminInviteSection({
   const table = useReactTable({
     data: inviteRows,
     columns,
-    state: { sorting },
+    state: { sorting, pagination },
     onSortingChange: setSorting,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
     getRowId: (row) => row.id,
   });
 
@@ -256,6 +266,7 @@ export function AdminInviteSection({
         <PortalCard interactive={false}>
           <div style={{ padding: "1.2rem", overflowX: "auto" }}>
             <InfiniTable table={table} />
+            <TablePagination table={table} />
           </div>
         </PortalCard>
       ) : null}

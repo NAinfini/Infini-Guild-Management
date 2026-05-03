@@ -37,20 +37,17 @@ vi.mock("../../services/GuildWarService", () => ({
   fetchGuildWarHistoryDetail: serviceMocks.fetchGuildWarHistoryDetail,
 }));
 
-vi.mock("../../api/queries/users", () => ({
+vi.mock("../../services/UserService", () => ({
   fetchUserDetail: serviceMocks.fetchUserDetail,
   fetchUsersList: serviceMocks.fetchUsersList,
 }));
 
-vi.mock("../../api/queries/admin", () => ({
+vi.mock("../../services/AdminService", () => ({
   fetchAdminAuditArchiveMonths: serviceMocks.fetchAdminAuditArchiveMonths,
   fetchAdminAuditLog: serviceMocks.fetchAdminAuditLog,
   fetchAdminInviteLinks: serviceMocks.fetchAdminInviteLinks,
   fetchAdminInviteStats: serviceMocks.fetchAdminInviteStats,
   fetchAdminStatus: serviceMocks.fetchAdminStatus,
-}));
-
-vi.mock("../../api/queries/roles", () => ({
   fetchRoles: serviceMocks.fetchRoles,
 }));
 

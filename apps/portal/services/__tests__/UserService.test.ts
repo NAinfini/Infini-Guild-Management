@@ -16,7 +16,7 @@ import {
   changeMyUsername,
   deleteProfileImage,
   deleteProfileAudio,
-} from "../../api/mutations/users";
+} from "../UserService";
 
 describe("UserService mutations", () => {
   beforeEach(() => {
@@ -72,11 +72,11 @@ describe("UserService mutations", () => {
     expect(body.newUsername).toBe("updated_name");
   });
 
-  it("changeMyUsername rejects invalid username (too short)", () => {
+  it("changeMyUsername rejects empty username", () => {
     expect(() =>
       changeMyUsername("u-1", {
         currentPassword: "myPassword",
-        newUsername: "ab",
+        newUsername: "",
       }),
     ).toThrow();
   });

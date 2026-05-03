@@ -13,8 +13,8 @@ import {
   uploadAvatar,
   uploadProfileAudio,
   uploadProfileImages,
-} from "../../../api/mutations/users";
-import type { UsersListResponse } from "../../../api/queries/users";
+  type UsersListResponse,
+} from "../../../services/UserService";
 
 const PROFILE_IMAGE_MAX = 10;
 const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;

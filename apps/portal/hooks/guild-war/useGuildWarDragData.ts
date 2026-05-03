@@ -1,6 +1,6 @@
 import type { GuildWarActiveResponse } from "@guild/shared";
 import { useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
-import type { UsersListResponse } from "../../api/queries/users";
+import type { UsersListResponse } from "../../services/UserService";
 
 export type DragMemberItem = {
   itemId: string;

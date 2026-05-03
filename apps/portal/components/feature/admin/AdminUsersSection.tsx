@@ -16,14 +16,21 @@ import {
   IconKey,
   IconPlayerPause,
 } from "@tabler/icons-react";
-import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@portal/components/shared/InfiniTable";
-import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
+import {
+  InfiniTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@portal/components/shared/InfiniTable";
+import type { ColumnDef, PaginationState, SortingState } from "@portal/components/shared/InfiniTable";
 import { useMemo, useState } from "react";
 import { useClipboard } from "@mantine/hooks";
 import { type ContextMenuItemOptions, useContextMenu } from "mantine-contextmenu";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
-import type { UsersListResponse } from "../../../api/queries/users";
+import { TablePagination } from "../../shared/TablePagination";
+import type { UsersListResponse } from "../../../services/UserService";
 
 export type AdminUserRow = UsersListResponse["data"][number];
 
@@ -98,6 +105,7 @@ export function AdminUsersSection({
   const loadErrorMessage = tc("loadError");
   const heading = <Title order={3} m={0} fz={16}>{t("tab.member")}</Title>;
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
   const { showContextMenu } = useContextMenu();
 
@@ -107,10 +115,12 @@ export function AdminUsersSection({
   const table = useReactTable({
     data: userRows,
     columns: userColumns,
-    state: { sorting },
+    state: { sorting, pagination },
     onSortingChange: setSorting,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
     getRowId: (row) => row.user.id,
   });
 
@@ -371,6 +381,7 @@ export function AdminUsersSection({
                   selectedIdSet.has(row.original.user.id) ? "admin-member-row-selected" : undefined
                 }
               />
+              <TablePagination table={table} />
             </ScrollArea>
           </PortalCard>
         </>

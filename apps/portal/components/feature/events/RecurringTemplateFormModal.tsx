@@ -35,7 +35,7 @@ export type RecurringTemplateFormPayload = {
     endAfter?: number;
     endDate?: string;
   };
-  visible_at?: string;
+  visibility_offset_minutes?: number;
 };
 
 type RecurringTemplateFormState = {
@@ -46,7 +46,8 @@ type RecurringTemplateFormState = {
   durationValue: number;
   durationUnit: DurationUnit;
   capacity: string;
-  visibilityAt: string;
+  visibilityOffsetHours: number | "";
+  visibilityOffsetMinutes: number | "";
   recurrenceFreq: RecurrenceFreq;
   recurrenceInterval: string;
   recurrenceDays: number[];
@@ -109,20 +110,9 @@ type RecurringTemplateFormModalProps = {
   onSave: (payload: RecurringTemplateFormPayload) => void;
 };
 
-function isoToDatetimeLocal(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const h = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${y}-${mo}-${day}T${h}:${mi}`;
-}
-
 function buildFormState(template: RecurringTemplate | null): RecurringTemplateFormState {
   const duration = computeDurationFromIso(template?.start_at ?? null, template?.end_at ?? null);
+  const totalMinutes = template?.visibility_offset_minutes ?? null;
   return {
     title: template?.title ?? "",
     eventType: (template?.type as (typeof EVENT_TYPES)[number]) ?? ("" as (typeof EVENT_TYPES)[number]),
@@ -146,7 +136,8 @@ function buildFormState(template: RecurringTemplate | null): RecurringTemplateFo
     recurrenceEndCount: template?.recurrence_rule?.endAfter
       ? String(template.recurrence_rule.endAfter)
       : "13",
-    visibilityAt: isoToDatetimeLocal(template?.visible_at),
+    visibilityOffsetHours: totalMinutes != null ? Math.floor(totalMinutes / 60) : "",
+    visibilityOffsetMinutes: totalMinutes != null ? totalMinutes % 60 : "",
   };
 }
 
@@ -180,7 +171,8 @@ export function RecurringTemplateFormModal({
     recurrenceEndMode,
     recurrenceEndDate,
     recurrenceEndCount,
-    visibilityAt,
+    visibilityOffsetHours,
+    visibilityOffsetMinutes,
   } = formState;
 
   const handleSave = useCallback(() => {
@@ -191,6 +183,10 @@ export function RecurringTemplateFormModal({
     }
 
     const endIso = durationValue > 0 ? addDuration(startIso, durationValue, durationUnit) : undefined;
+
+    const offsetH = typeof visibilityOffsetHours === "number" ? visibilityOffsetHours : 0;
+    const offsetM = typeof visibilityOffsetMinutes === "number" ? visibilityOffsetMinutes : 0;
+    const totalOffsetMinutes = offsetH * 60 + offsetM;
 
     onSave({
       type: eventType,
@@ -207,12 +203,13 @@ export function RecurringTemplateFormModal({
         endAfter: recurrenceEndMode === "count" ? Math.max(1, Number.parseInt(recurrenceEndCount || "1", 10)) : undefined,
         endDate: recurrenceEndMode === "date" && recurrenceEndDate.trim() ? new Date(recurrenceEndDate).toISOString() : undefined,
       },
-      visible_at: visibilityAt.trim() ? new Date(visibilityAt).toISOString() : undefined,
+      visibility_offset_minutes: totalOffsetMinutes > 0 ? totalOffsetMinutes : undefined,
     });
   }, [
     startTime, durationValue, durationUnit, title, description, eventType, capacity,
     recurrenceFreq, recurrenceInterval, recurrenceDays, recurrenceMonthDay,
-    recurrenceEndMode, recurrenceEndDate, recurrenceEndCount, visibilityAt, onSave, t,
+    recurrenceEndMode, recurrenceEndDate, recurrenceEndCount,
+    visibilityOffsetHours, visibilityOffsetMinutes, onSave, t,
   ]);
 
   return (
@@ -304,17 +301,36 @@ export function RecurringTemplateFormModal({
           style={{ maxWidth: 200 }}
         />
 
-        {/* ── Visibility datetime ── */}
-        <TextInput
-          label={t("recurring.field.visibleAt")}
-          type="datetime-local"
-          value={visibilityAt}
-          onChange={(event) =>
-            setFormState((current) => ({ ...current, visibilityAt: event.currentTarget.value }))
-          }
-          description={t("recurring.field.visibleAtHint")}
-          style={{ maxWidth: 300 }}
-        />
+        {/* ── Visibility offset ── */}
+        <Group gap={8} align="flex-end" wrap="nowrap" style={{ maxWidth: 340 }}>
+          <NumberInput
+            label={t("recurring.field.visibilityOffset")}
+            value={visibilityOffsetHours}
+            onChange={(value) =>
+              setFormState((current) => ({
+                ...current,
+                visibilityOffsetHours: typeof value === "number" ? value : "",
+              }))
+            }
+            min={0}
+            suffix={` ${t("recurring.field.durationUnit.hours").toLowerCase()}`}
+            style={{ flex: 1 }}
+          />
+          <NumberInput
+            value={visibilityOffsetMinutes}
+            onChange={(value) =>
+              setFormState((current) => ({
+                ...current,
+                visibilityOffsetMinutes: typeof value === "number" ? value : "",
+              }))
+            }
+            min={0}
+            max={59}
+            suffix={` ${t("recurring.field.durationUnit.minutes").toLowerCase()}`}
+            style={{ flex: 1 }}
+          />
+        </Group>
+        <Text size="xs" c="dimmed" mt={-12}>{t("recurring.field.visibilityOffsetHint")}</Text>
 
         {/* ── Description ── */}
         <Textarea

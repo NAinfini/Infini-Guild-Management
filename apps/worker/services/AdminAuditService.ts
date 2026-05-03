@@ -180,16 +180,16 @@ function normalizeAuditArchiveRow(value: unknown): AuditArchiveRow | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
   const id = typeof row.id === "string" ? row.id : null;
-  const entityType = typeof row.entityType === "string" ? row.entityType : typeof row.entity_type === "string" ? row.entity_type : null;
+  const entityType = typeof row.entity_type === "string" ? row.entity_type : null;
   const action = typeof row.action === "string" ? row.action : null;
-  const actorId = typeof row.actorId === "string" ? row.actorId : typeof row.actor_id === "string" ? row.actor_id : null;
-  const entityId = typeof row.entityId === "string" ? row.entityId : typeof row.entity_id === "string" ? row.entity_id : null;
-  const createdAt = typeof row.createdAt === "string" ? row.createdAt : typeof row.created_at === "string" ? row.created_at : null;
+  const actorId = typeof row.actor_id === "string" ? row.actor_id : null;
+  const entityId = typeof row.entity_id === "string" ? row.entity_id : null;
+  const createdAt = typeof row.created_at === "string" ? row.created_at : null;
   if (!id || !entityType || !action || !actorId || !entityId || !createdAt) return null;
   return {
     id, entityType, action, actorId, entityId,
-    diffTitle: typeof row.diffTitle === "string" ? row.diffTitle : typeof row.diff_title === "string" ? row.diff_title : null,
-    detailText: typeof row.detailText === "string" ? row.detailText : typeof row.detail_text === "string" ? row.detail_text : null,
+    diffTitle: typeof row.diff_title === "string" ? row.diff_title : null,
+    detailText: typeof row.detail_text === "string" ? row.detail_text : null,
     createdAt,
   };
 }

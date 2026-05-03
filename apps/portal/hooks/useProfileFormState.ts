@@ -75,7 +75,7 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     const days =
       availabilityData && typeof availabilityData === "object" && "days" in availabilityData
         ? (availabilityData as Record<string, unknown>).days
-        : availabilityData;
+        : null;
     const raw = days && typeof days === "object" ? (days as Record<string, unknown>)[dayKey] : null;
     if (!Array.isArray(raw)) {
       return t("availability.none");

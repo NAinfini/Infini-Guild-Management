@@ -4,15 +4,15 @@ import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import type { UseMediaUploadState } from "./useMediaUpload";
 import type { ProfileFormStateController } from "./useProfileFormState";
-import { logout as requestLogout } from "../api/mutations/auth";
 import { queryKeys } from "../api/query-keys";
+import { logout as requestLogout } from "../services/AuthService";
 import {
   changeMyPassword,
   changeMyUsername,
   deleteProfileAudio,
   deleteProfileImage,
   updateMyProfile,
-} from "../api/mutations/users";
+} from "../services/UserService";
 import { useAuthStore } from "../stores/auth";
 import { notifySuccess } from "../utils/notifications";
 

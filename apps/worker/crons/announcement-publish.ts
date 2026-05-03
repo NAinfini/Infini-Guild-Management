@@ -64,7 +64,6 @@ export async function runAnnouncementExpiryCron(env: Bindings): Promise<void> {
       ),
     );
 
-  let archivedCount = 0;
   for (const item of expiredAnnouncements) {
     try {
       await db
@@ -75,12 +74,8 @@ export async function runAnnouncementExpiryCron(env: Bindings): Promise<void> {
           updatedAt: nowIso,
         })
         .where(eq(announcements.id, item.id));
-      archivedCount += 1;
     } catch (e) {
       console.error(`[announcement-expiry] failed to archive announcement ${item.id}`, e);
     }
-  }
-  if (archivedCount > 0) {
-    console.log(`[announcement-expiry] Auto-archived ${archivedCount} expired announcement(s).`);
   }
 }

@@ -12,7 +12,7 @@ import {
   type UpdateWikiArticlePayload,
   updateWikiArticle,
   uploadWikiArticleImages,
-} from "../api/mutations/wiki";
+} from "../services/WikiService";
 import { queryKeys } from "../api/query-keys";
 
 type UseWikiArticleEditorParams = {

@@ -11,7 +11,7 @@ import {
   deleteWikiCategory,
   type UpdateWikiCategoryPayload,
   updateWikiCategory,
-} from "../api/mutations/wiki";
+} from "../services/WikiService";
 import { queryKeys } from "../api/query-keys";
 
 function toCategoryDrafts(categories: WikiCategory[]): WikiCategoryDraft[] {

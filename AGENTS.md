@@ -113,10 +113,11 @@ apps/
 | `services/GalleryService.ts` | Gallery CRUD operations |
 | **crons/** | |
 | `crons/event-instance-gen.ts` | Generate recurring event instances 56 days ahead (daily 00:00 UTC) |
-| `crons/announcement-publish.ts` | Publish scheduled announcements (every 15 min) |
-| `crons/audit-archive.ts` | Archive audit logs >90 days to R2 (daily 02:00 UTC) |
-| `crons/media-orphan-cleanup.ts` | Delete R2 media for deleted users (daily 03:00 UTC) |
-| `crons/event-auto-archive.ts` | Auto-archive past events (every 15 min) |
+| `crons/maintenance.ts` | Daily and 15-minute cron job grouping |
+| `crons/announcement-publish.ts` | Publish scheduled announcements and expire old announcements (15-minute maintenance) |
+| `crons/audit-archive.ts` | Archive audit logs >90 days to R2 (daily 00:00 UTC maintenance) |
+| `crons/media-orphan-cleanup.ts` | Delete R2 media for deleted users (daily 00:00 UTC maintenance) |
+| `crons/event-auto-archive.ts` | Auto-archive past events (15-minute maintenance) |
 | **db/** | |
 | `db/schema/` | Modular Drizzle schema (see Database section below) |
 | `db/schema/index.ts` | Barrel export for all schema modules |

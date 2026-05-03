@@ -60,11 +60,10 @@ guildWarRoutes.post("/move", async (c) => {
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
-  const payload = body as { event_id?: unknown; user_id?: unknown; to?: unknown; etag?: unknown };
+  const payload = body as { event_id?: unknown; user_id?: unknown; to?: unknown };
   if (typeof payload.event_id !== "string" || typeof payload.user_id !== "string" || typeof payload.to !== "string") return buildError(c, "VALIDATION_ERROR", "event_id, user_id and to are required");
-  if (payload.etag !== undefined && typeof payload.etag !== "string") return buildError(c, "VALIDATION_ERROR", "etag must be a string when provided");
   const etagFromHeader = c.req.header("If-Match");
-  const conditionalEtag = etagFromHeader && etagFromHeader !== "*" ? etagFromHeader : typeof payload.etag === "string" ? payload.etag : undefined;
+  const conditionalEtag = etagFromHeader && etagFromHeader !== "*" ? etagFromHeader : undefined;
   const result = await getService(c).moveMember(user.id, payload.event_id, payload.user_id, payload.to, conditionalEtag);
   return handleResult(c, result);
 });

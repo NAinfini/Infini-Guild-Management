@@ -61,7 +61,7 @@
   background: transparent;
 }
 
-.audit-log-row__left {
+.audit-log-row__badges {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -79,41 +79,32 @@
   text-transform: none !important;
 }
 
-.audit-log-row__center {
+/* ── Summary column ── */
+
+.audit-log-row__summary {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.audit-log-row__diff-primary {
+.audit-log-row__summary-text {
   word-break: break-word;
 }
 
-.audit-log-row__diff-hint {
+.audit-log-row__entity-name {
   word-break: break-word;
-  font-style: italic;
 }
 
-.audit-log-row__meta {
+/* ── Time column ── */
+
+.audit-log-row__time-col {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 2px;
-  min-width: 120px;
+  min-width: 80px;
   flex-shrink: 0;
-}
-
-.audit-log-row__actors {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.audit-log-row__actor-label {
-  font-weight: 500;
 }
 
 .audit-log-row__time {
@@ -145,20 +136,72 @@
   flex-shrink: 0;
 }
 
-/* ── Diff Detail Panel (expanded) ── */
+/* ── Detail Panel (expanded) ── */
 
-.audit-log-row__diff-panel {
+.audit-log-row__detail-panel {
+  padding: 0 16px 14px 132px;
+  animation: auditDiffSlideIn 150ms ease-out;
+}
+
+.audit-detail__header {
+  padding: 4px 0 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  margin-bottom: 6px;
+}
+
+.dark .audit-detail__header {
+  border-bottom-color: color-mix(in srgb, var(--color-text, #e2e8f0) 8%, transparent);
+}
+
+.audit-detail__title {
+  letter-spacing: 0.05em;
+  font-size: 10px !important;
+}
+
+.audit-detail__table {
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 0 16px 12px 132px;
-  animation: auditDiffSlideIn 150ms ease-out;
+}
+
+.audit-detail__table-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: color-mix(in srgb, var(--color-text, #111827) 40%, transparent);
+}
+
+.audit-detail__col-field {
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.audit-detail__col-from {
+  min-width: 120px;
+  flex: 1;
+}
+
+.audit-detail__col-arrow {
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.audit-detail__col-to {
+  min-width: 120px;
+  flex: 1;
 }
 
 @keyframes auditDiffSlideIn {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ── Diff entries (from → to) ── */
 
 .audit-diff-entry {
   display: flex;
@@ -175,7 +218,7 @@
 }
 
 .audit-diff-entry__field {
-  min-width: 80px;
+  min-width: 100px;
   flex-shrink: 0;
   font-weight: 600;
   font-size: 11px;
@@ -192,10 +235,12 @@
   font-weight: 500;
   text-decoration: line-through;
   text-decoration-color: color-mix(in srgb, #ef4444 40%, transparent);
-  max-width: 200px;
+  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 .dark .audit-diff-entry__from {
@@ -214,10 +259,12 @@
   background: color-mix(in srgb, #10b981 10%, transparent);
   color: #059669;
   font-weight: 600;
-  max-width: 200px;
+  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 .dark .audit-diff-entry__to {
@@ -225,7 +272,7 @@
   color: #6ee7b7;
 }
 
-/* ── Info Detail Panel (non-diff key:value) ── */
+/* ── Info entries (key: value) ── */
 
 .audit-info-entry {
   display: flex;
@@ -242,7 +289,7 @@
 }
 
 .audit-info-entry__field {
-  min-width: 80px;
+  min-width: 100px;
   flex-shrink: 0;
   font-weight: 600;
   font-size: 11px;
@@ -268,6 +315,8 @@
   color: color-mix(in srgb, var(--color-text, #e2e8f0) 90%, transparent);
 }
 
+/* ── Responsive ── */
+
 @media (max-width: 767px) {
   .audit-log-row__header {
     grid-template-columns: 1fr 20px;
@@ -275,18 +324,18 @@
     padding: 10px 12px;
   }
 
-  .audit-log-row__left {
+  .audit-log-row__badges {
     flex-direction: row;
     gap: 6px;
     min-width: 0;
     grid-column: 1;
   }
 
-  .audit-log-row__center {
+  .audit-log-row__summary {
     grid-column: 1;
   }
 
-  .audit-log-row__meta {
+  .audit-log-row__time-col {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
@@ -301,7 +350,7 @@
     align-self: center;
   }
 
-  .audit-log-row__diff-panel {
+  .audit-log-row__detail-panel {
     padding-left: 12px;
     padding-right: 12px;
   }
@@ -316,7 +365,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .audit-log-row__diff-panel {
+  .audit-log-row__detail-panel {
     animation: none;
   }
 }

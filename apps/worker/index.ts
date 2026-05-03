@@ -4,12 +4,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
 import { users } from "./db/schema/auth";
-import { runAnnouncementPublishCron, runAnnouncementExpiryCron } from "./crons/announcement-publish";
-import { runAuditArchiveCron } from "./crons/audit-archive";
-import { runEventAutoArchiveCron } from "./crons/event-auto-archive";
-import { runEventInstanceGenerationCron } from "./crons/event-instance-gen";
-import { runMediaOrphanCleanupCron } from "./crons/media-orphan-cleanup";
-import { runSessionCleanupCron } from "./crons/session-cleanup";
+import { runDailyMaintenanceCron, runQuarterHourlyMaintenanceCron } from "./crons/maintenance";
 import { WebSocketDO } from "./durable-objects/WebSocketDO";
 import { etagMiddleware } from "./middleware/etag";
 import { handleAppError } from "./middleware/error-handler";
@@ -276,40 +271,14 @@ export default {
     return assetResponse;
   },
   scheduled: async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
-    const safe = async (fn: () => Promise<void>, name: string): Promise<void> => {
-      const start = Date.now();
-      try {
-        await fn();
-        console.log(`[cron] ${name} completed in ${Date.now() - start}ms`);
-      } catch (e) {
-        const elapsed = Date.now() - start;
-        const message = e instanceof Error ? e.message : String(e);
-        const stack = e instanceof Error ? e.stack : undefined;
-        console.error(JSON.stringify({
-          level: "error",
-          source: "cron",
-          job: name,
-          cron: event.cron,
-          elapsed_ms: elapsed,
-          error: message,
-          stack,
-          timestamp: new Date().toISOString(),
-        }));
-      }
-    };
     const tasks: Promise<void>[] = [];
 
     switch (event.cron) {
       case "0 0 * * *":
-        tasks.push(safe(() => runEventInstanceGenerationCron(env), "event-instance-gen"));
-        tasks.push(safe(() => runSessionCleanupCron(env), "session-cleanup"));
-        tasks.push(safe(() => runAuditArchiveCron(env), "audit-archive"));
-        tasks.push(safe(() => runMediaOrphanCleanupCron(env), "media-orphan-cleanup"));
+        tasks.push(runDailyMaintenanceCron(env, event.cron));
         break;
       case "*/15 * * * *":
-        tasks.push(safe(() => runEventAutoArchiveCron(env), "event-auto-archive"));
-        tasks.push(safe(() => runAnnouncementPublishCron(env), "announcement-publish"));
-        tasks.push(safe(() => runAnnouncementExpiryCron(env), "announcement-expiry"));
+        tasks.push(runQuarterHourlyMaintenanceCron(env, event.cron));
         break;
     }
 

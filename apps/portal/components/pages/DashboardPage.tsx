@@ -11,7 +11,7 @@ import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { fetchEventDetailBatch, fetchEventsList, type EventDetailResponse } from "../../services/EventService";
 import { fetchGuildWarHistory, fetchGuildWarHistoryBatch } from "../../services/GuildWarService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersList } from "../../api/queries/users";
+import { fetchUsersList } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import { PageLayout } from "../layout/PageLayout";

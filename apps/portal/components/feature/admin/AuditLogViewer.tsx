@@ -23,38 +23,6 @@ type AuditLogViewerProps = {
   userMap?: Map<string, string>;
 };
 
-function formatEntityId(
-  entityId: string,
-  entityType: string,
-  userMap?: Map<string, string>,
-  diffTitle?: string | null,
-): string {
-  if (entityType === "event_participant") {
-    const parts = diffTitle?.split(" | ");
-    if (parts && parts.length >= 2) {
-      return `${parts[0]} · ${parts[1]}`;
-    }
-    const [eventPart, userId] = entityId.split(":");
-    const userName = userId ? userMap?.get(userId) : undefined;
-    if (userName) return userName;
-    if (userId) {
-      return userMap?.get(userId) ?? `${userId.slice(0, 6)}…`;
-    }
-    return eventPart?.slice(0, 8) + "…";
-  }
-  if (diffTitle) return diffTitle;
-  if (userMap?.has(entityId)) {
-    return userMap.get(entityId)!;
-  }
-  if (entityId === "batch" || entityId === "default" || entityId === "audit-log") {
-    return "";
-  }
-  if (entityId.length > 12) {
-    return `${entityId.slice(0, 8)}…`;
-  }
-  return entityId;
-}
-
 type DiffEntry = { field: string; from: string; to: string };
 type InfoEntry = { field: string; value: string };
 type DetailData =
@@ -67,7 +35,7 @@ function formatDiffValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "✓" : "✗";
   if (typeof value === "number") return String(value);
   const str = String(value);
-  if (str.length > 60) return `${str.slice(0, 57)}…`;
+  if (str.length > 80) return `${str.slice(0, 77)}…`;
   return str;
 }
 
@@ -85,12 +53,12 @@ function formatInfoValue(value: unknown, userMap?: Map<string, string>): string 
   }
   if (typeof value === "object") {
     const json = JSON.stringify(value);
-    if (json.length > 60) return `${json.slice(0, 57)}…`;
+    if (json.length > 80) return `${json.slice(0, 77)}…`;
     return json;
   }
   const str = String(value);
   if (userMap?.has(str)) return userMap.get(str)!;
-  if (str.length > 60) return `${str.slice(0, 57)}…`;
+  if (str.length > 80) return `${str.slice(0, 77)}…`;
   return str;
 }
 
@@ -135,39 +103,6 @@ function parseDetailData(
     }
   }
   return null;
-}
-
-function formatPrimaryText(
-  diffTitle: string | null,
-  detailData: DetailData,
-  entityType: string,
-  userMap?: Map<string, string>,
-): string {
-  const header = diffTitle?.trim() || null;
-
-  if (entityType === "event_participant" && header) {
-    const parts = header.split(" | ");
-    if (parts.length >= 2) return `${parts[0]} · ${parts[1]}`;
-    return header;
-  }
-
-  if (entityType === "event_participant" && !header && detailData?.kind === "info") {
-    const userIdEntry = detailData.entries.find((e) => e.field === "user_id" || e.field === "User");
-    if (userIdEntry) {
-      const resolved = userMap?.get(userIdEntry.value) ?? userIdEntry.value;
-      return resolved;
-    }
-  }
-
-  if (header) return header;
-
-  if (detailData) {
-    const fields = detailData.entries.map((e) => e.field);
-    if (fields.length > 0 && fields.length <= 3) return fields.join(", ");
-    if (fields.length > 3) return `${fields.slice(0, 3).join(", ")} +${fields.length - 3}`;
-  }
-
-  return "—";
 }
 
 type ActionColor = "blue" | "green" | "red" | "yellow" | "grape" | "cyan" | "orange" | "gray";
@@ -215,6 +150,44 @@ function formatRelativeTime(iso: string): string {
   return "";
 }
 
+function buildSummaryParts(
+  row: AuditRow,
+  resolvedAction: string,
+  resolvedEntityType: string,
+  resolvedActor: string,
+  detailData: DetailData,
+): { summary: string; entityName: string | null; targetName: string | null } {
+  const entityName = row.diff_title ?? null;
+
+  let targetName: string | null = null;
+  if (row.entity_type === "event_participant" && entityName) {
+    const parts = entityName.split(" | ");
+    if (parts.length >= 2) {
+      targetName = parts[1]!;
+      const eventName = parts[0]!;
+      return {
+        summary: `${resolvedActor} ${resolvedAction} ${resolvedEntityType}`,
+        entityName: eventName,
+        targetName,
+      };
+    }
+  }
+
+  let changedFieldsHint = "";
+  if (detailData?.kind === "diff" && detailData.entries.length > 0) {
+    const fields = detailData.entries.map((e) => e.field);
+    changedFieldsHint = fields.length <= 3
+      ? ` — ${fields.join(", ")}`
+      : ` — ${fields.slice(0, 3).join(", ")} +${fields.length - 3}`;
+  }
+
+  return {
+    summary: `${resolvedActor} ${resolvedAction} ${resolvedEntityType}${changedFieldsHint}`,
+    entityName,
+    targetName,
+  };
+}
+
 export function AuditLogViewer({
   auditLoading,
   auditError,
@@ -247,14 +220,22 @@ export function AuditLogViewer({
 
   const rows = useMemo(() => auditRows.map((row) => {
     const detailData = parseDetailData(row.detail_text, t, userMap);
-    const primary = formatPrimaryText(row.diff_title, detailData, row.entity_type, userMap);
+    const resolvedAction = resolveAction(row.action);
+    const resolvedEntityType = resolveEntityType(row.entity_type);
+    const resolvedActor = resolveActor(String(row.actor_id ?? ""));
+
+    const { summary, entityName, targetName } = buildSummaryParts(
+      row, resolvedAction, resolvedEntityType, resolvedActor, detailData,
+    );
+
     return {
       ...row,
-      resolvedEntityType: resolveEntityType(row.entity_type),
-      resolvedAction: resolveAction(row.action),
-      resolvedActor: resolveActor(String(row.actor_id ?? "")),
-      resolvedTarget: formatEntityId(String(row.entity_id ?? ""), row.entity_type, userMap, row.diff_title),
-      diffPrimary: primary,
+      resolvedEntityType,
+      resolvedAction,
+      resolvedActor,
+      summary,
+      entityName,
+      targetName,
       detailData,
       formattedTime: formatDateTime(row.created_at),
       relativeTime: formatRelativeTime(row.created_at),
@@ -295,7 +276,7 @@ export function AuditLogViewer({
                     onClick={() => setExpandedId(isExpanded ? null : row.id)}
                     aria-expanded={isExpanded}
                   >
-                    <div className="audit-log-row__left">
+                    <div className="audit-log-row__badges">
                       <Badge
                         size="sm"
                         variant="light"
@@ -314,28 +295,23 @@ export function AuditLogViewer({
                       </Badge>
                     </div>
 
-                    <div className="audit-log-row__center">
-                      <Text size="sm" fw={500} lineClamp={1} className="audit-log-row__diff-primary">
-                        {row.diffPrimary}
+                    <div className="audit-log-row__summary">
+                      <Text size="sm" fw={500} lineClamp={1} className="audit-log-row__summary-text">
+                        {row.summary}
                       </Text>
-                      {hasDetail && !isExpanded ? (
-                        <Text size="xs" c="dimmed" lineClamp={1} className="audit-log-row__diff-hint">
-                          {row.detailData!.entries.map((d) => d.field).join(", ")}
+                      {row.entityName ? (
+                        <Text size="xs" fw={600} c="var(--color-primary, #3b82f6)" lineClamp={1} className="audit-log-row__entity-name">
+                          {row.entityName}
+                        </Text>
+                      ) : null}
+                      {row.targetName ? (
+                        <Text size="xs" c="dimmed" lineClamp={1}>
+                          → {row.targetName}
                         </Text>
                       ) : null}
                     </div>
 
-                    <div className="audit-log-row__meta">
-                      <div className="audit-log-row__actors">
-                        <Text size="xs" c="dimmed" className="audit-log-row__actor-label">
-                          {row.resolvedActor}
-                        </Text>
-                        {row.resolvedTarget && row.resolvedTarget !== row.resolvedActor ? (
-                          <Text size="xs" c="dimmed" className="audit-log-row__target-label">
-                            → {row.resolvedTarget}
-                          </Text>
-                        ) : null}
-                      </div>
+                    <div className="audit-log-row__time-col">
                       <Tooltip label={row.formattedTime} position="left" withArrow>
                         <Text size="xs" c="dimmed" className="audit-log-row__time">
                           {row.relativeTime || row.formattedTime}
@@ -354,23 +330,38 @@ export function AuditLogViewer({
                   </button>
 
                   {isExpanded && hasDetail ? (
-                    <div className="audit-log-row__diff-panel">
+                    <div className="audit-log-row__detail-panel">
+                      <div className="audit-detail__header">
+                        <Text size="xs" fw={600} tt="uppercase" c="dimmed" className="audit-detail__title">
+                          {row.detailData!.kind === "diff" ? t("audit.detail.changes") : t("audit.detail.info")}
+                        </Text>
+                      </div>
                       {row.detailData!.kind === "diff" ? (
-                        row.detailData!.entries.map((entry) => (
-                          <div key={entry.field} className="audit-diff-entry">
-                            <span className="audit-diff-entry__field">{entry.field}</span>
-                            <span className="audit-diff-entry__from">{(entry as DiffEntry).from}</span>
-                            <IconArrowRight size={12} className="audit-diff-entry__arrow" />
-                            <span className="audit-diff-entry__to">{(entry as DiffEntry).to}</span>
+                        <div className="audit-detail__table">
+                          <div className="audit-detail__table-head">
+                            <span className="audit-detail__col-field">{t("audit.detail.field")}</span>
+                            <span className="audit-detail__col-from">{t("audit.detail.before")}</span>
+                            <span className="audit-detail__col-arrow" />
+                            <span className="audit-detail__col-to">{t("audit.detail.after")}</span>
                           </div>
-                        ))
+                          {row.detailData!.entries.map((entry) => (
+                            <div key={entry.field} className="audit-diff-entry">
+                              <span className="audit-diff-entry__field">{entry.field}</span>
+                              <span className="audit-diff-entry__from">{(entry as DiffEntry).from}</span>
+                              <IconArrowRight size={12} className="audit-diff-entry__arrow" />
+                              <span className="audit-diff-entry__to">{(entry as DiffEntry).to}</span>
+                            </div>
+                          ))}
+                        </div>
                       ) : (
-                        row.detailData!.entries.map((entry) => (
-                          <div key={entry.field} className="audit-info-entry">
-                            <span className="audit-info-entry__field">{entry.field}</span>
-                            <span className="audit-info-entry__value">{(entry as InfoEntry).value}</span>
-                          </div>
-                        ))
+                        <div className="audit-detail__table">
+                          {row.detailData!.entries.map((entry) => (
+                            <div key={entry.field} className="audit-info-entry">
+                              <span className="audit-info-entry__field">{entry.field}</span>
+                              <span className="audit-info-entry__value">{(entry as InfoEntry).value}</span>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   ) : null}

@@ -16,11 +16,9 @@ import {
   type UpdateAnnouncementPayload,
   updateAnnouncement,
   uploadAnnouncementImages,
-} from "../api/mutations/announcements";
-import {
   fetchAnnouncement,
   fetchAnnouncements,
-} from "../api/queries/announcements";
+} from "../services/AnnouncementService";
 import { queryKeys } from "../api/query-keys";
 import { useEffectivePermissions } from "./useEffectivePermissions";
 

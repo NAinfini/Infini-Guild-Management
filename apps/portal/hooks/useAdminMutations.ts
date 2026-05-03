@@ -19,10 +19,12 @@ import {
   resetAdminUserPassword,
   revokeAdminInviteLink,
   updateAdminUserRole,
-} from "../api/mutations/admin";
-import { downloadAdminAuditLogExport } from "../api/queries/admin";
+  downloadAdminAuditLogExport,
+  createRole,
+  deleteRole,
+  updateRole,
+} from "../services/AdminService";
 import { queryKeys } from "../api/query-keys";
-import { createRole, deleteRole, updateRole } from "../api/mutations/roles";
 import { copyPlainText } from "../utils/copy";
 import { auditExportDatePart, downloadFileBlob, toIsoOrUndefined } from "../utils/admin";
 import type { InviteState } from "./useAdminInviteController";

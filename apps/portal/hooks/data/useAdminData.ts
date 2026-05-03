@@ -5,10 +5,10 @@ import {
   fetchAdminInviteLinks,
   fetchAdminInviteStats,
   fetchAdminStatus,
-} from "../../api/queries/admin";
+  fetchRoles,
+} from "../../services/AdminService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchRoles } from "../../api/queries/roles";
-import { fetchUsersList } from "../../api/queries/users";
+import { fetchUsersList } from "../../services/UserService";
 import { canViewStatus, canExportAudit } from "../../utils/permissions";
 
 type UseAdminDataOptions = {

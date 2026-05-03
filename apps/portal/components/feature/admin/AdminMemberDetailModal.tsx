@@ -19,7 +19,7 @@ import {
 import { SaveIcon } from "@portal/components/icons";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { UsersListResponse } from "../../../api/queries/users";
+import type { UsersListResponse } from "../../../services/UserService";
 import styles from "./AdminMemberDetailModal.module.css";
 
 type AdminUserRow = UsersListResponse["data"][number];

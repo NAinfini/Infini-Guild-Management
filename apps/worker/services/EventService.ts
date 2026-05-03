@@ -77,7 +77,7 @@ export type EventRow = {
   instanceDate: string | null;
   lastGeneratedDate: string | null;
   generationCount: number;
-  visibilityOffsetHours: number | null;
+  visibilityOffsetMinutes: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -184,7 +184,7 @@ export function toTemplatePayload(row: EventRow) {
     end_at: row.endAt,
     capacity: row.capacity,
     recurrence_rule: parseRecurrenceRule(row.recurrenceRule),
-    visibility_offset_hours: row.visibilityOffsetHours ?? null,
+    visibility_offset_minutes: row.visibilityOffsetMinutes ?? null,
     visible_at: row.visibleAt ?? null,
     archived_at: row.archivedAt,
     created_by: row.createdBy,
@@ -656,7 +656,7 @@ export class EventService {
     end_at?: string | null;
     capacity?: number | null;
     recurrence_rule: unknown;
-    visible_at?: string | null;
+    visibility_offset_minutes?: number | null;
   }): Promise<EventRow> {
     this.validateDateRange(data.start_at, data.end_at);
 
@@ -682,7 +682,7 @@ export class EventService {
       instanceDate: null,
       lastGeneratedDate: null,
       generationCount: 0,
-      visibleAt: data.visible_at ?? null,
+      visibilityOffsetMinutes: data.visibility_offset_minutes ?? null,
     });
 
     const created = await this.deps.getEventById(templateId);
@@ -708,7 +708,7 @@ export class EventService {
     end_at?: string | null;
     capacity?: number | null;
     recurrence_rule?: unknown;
-    visible_at?: string | null;
+    visibility_offset_minutes?: number | null;
   }): Promise<EventRow> {
     const effectiveStartAt = data.start_at ?? existing.startAt;
     const effectiveEndAt = data.end_at !== undefined ? data.end_at : existing.endAt;
@@ -724,8 +724,8 @@ export class EventService {
     if (data.recurrence_rule !== undefined) {
       patch.recurrenceRule = JSON.stringify(data.recurrence_rule);
     }
-    if (data.visible_at !== undefined) {
-      patch.visibleAt = data.visible_at;
+    if (data.visibility_offset_minutes !== undefined) {
+      patch.visibilityOffsetMinutes = data.visibility_offset_minutes;
     }
 
     await this.db.update(events).set(patch).where(eq(events.id, templateId));
@@ -823,7 +823,7 @@ export class EventService {
 
   private buildTemplateUpdateDiff(existing: EventRow, data: {
     type?: string; title?: string; description?: string | null; start_at?: string;
-    end_at?: string | null; capacity?: number | null; recurrence_rule?: unknown; visible_at?: string | null;
+    end_at?: string | null; capacity?: number | null; recurrence_rule?: unknown; visibility_offset_minutes?: number | null;
   }): Record<string, { from: unknown; to: unknown }> {
     const diff: Record<string, { from: unknown; to: unknown }> = {};
     if (data.type !== undefined && data.type !== existing.type)
@@ -840,8 +840,8 @@ export class EventService {
       diff.capacity = { from: existing.capacity, to: data.capacity ?? null };
     if (data.recurrence_rule !== undefined)
       diff.recurrence_rule = { from: "changed", to: "changed" };
-    if (data.visible_at !== undefined && (data.visible_at ?? null) !== (existing.visibleAt ?? null))
-      diff.visible_at = { from: existing.visibleAt, to: data.visible_at ?? null };
+    if (data.visibility_offset_minutes !== undefined && (data.visibility_offset_minutes ?? null) !== (existing.visibilityOffsetMinutes ?? null))
+      diff.visibility_offset_minutes = { from: existing.visibilityOffsetMinutes, to: data.visibility_offset_minutes ?? null };
     return diff;
   }
 
@@ -928,7 +928,7 @@ export class EventService {
     instanceDate: events.instanceDate,
     lastGeneratedDate: events.lastGeneratedDate,
     generationCount: events.generationCount,
-    visibilityOffsetHours: events.visibilityOffsetHours,
+    visibilityOffsetMinutes: events.visibilityOffsetMinutes,
     createdAt: events.createdAt,
     updatedAt: events.updatedAt,
   } as const;

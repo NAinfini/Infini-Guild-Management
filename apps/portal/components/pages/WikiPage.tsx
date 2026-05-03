@@ -16,7 +16,7 @@ import {
   fetchWikiArticleBySlug,
   fetchWikiArticles,
   fetchWikiCategories,
-} from "../../api/queries/wiki";
+} from "../../services/WikiService";
 import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";

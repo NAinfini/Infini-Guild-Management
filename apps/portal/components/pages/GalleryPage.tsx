@@ -14,8 +14,8 @@ import {
   createGalleryVideo,
   deleteGalleryItem,
   uploadGalleryImages,
-} from "../../api/mutations/gallery";
-import { fetchGallery } from "../../api/queries/gallery";
+  fetchGallery,
+} from "../../services/GalleryService";
 import { useAppError } from "../../hooks/useAppError";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";

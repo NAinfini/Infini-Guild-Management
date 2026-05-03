@@ -98,7 +98,7 @@ export type GuildWarServiceDeps = {
   media: { get(key: string): Promise<{ text(): Promise<string> } | null> };
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
   publishEntityChanged: (input: { entityType: string; entityId: string; hint: string }) => Promise<void>;
-  rawDb?: D1Database;
+  rawDb: D1Database;
 };
 
 // --- Constants ---
@@ -265,59 +265,36 @@ export class GuildWarService {
   }
 
   async replaceHistoryTeams(warHistoryId: string, snapshot: WarTemplateSnapshot): Promise<void> {
-    const rawDb = this.deps.rawDb;
-    if (rawDb) {
-      // --- Atomic path via D1 batch ---
-      const existingTeams = await this.getTeamsForHistory(warHistoryId);
-      const stmts: D1PreparedStatement[] = [];
+    const { rawDb } = this.deps;
+    const existingTeams = await this.getTeamsForHistory(warHistoryId);
+    const stmts: D1PreparedStatement[] = [];
 
-      // 1. Delete existing members for each team
-      for (const team of existingTeams) {
-        stmts.push(rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id = ?1").bind(team.id));
-      }
-      // 2. Delete existing teams and pool members
-      stmts.push(rawDb.prepare("DELETE FROM war_teams WHERE war_history_id = ?1").bind(warHistoryId));
-      stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE war_history_id = ?1").bind(warHistoryId));
-
-      // 3. Insert new teams and members
-      for (const team of snapshot.teams) {
-        const teamId = nanoid();
-        stmts.push(rawDb.prepare("INSERT INTO war_teams (id, war_history_id, team_name, sort_order, notes, is_locked) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(teamId, warHistoryId, team.team_name, team.sort_order, team.notes ?? null, team.is_locked ? 1 : 0));
-        for (const member of team.members) {
-          stmts.push(rawDb.prepare("INSERT INTO war_team_members (id, war_team_id, user_id, role_tag, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)").bind(nanoid(), teamId, member.user_id, member.role_tag ?? null, member.sort_order));
-        }
-      }
-
-      // 4. Insert new pool members
-      for (const poolMember of snapshot.pool_members) {
-        stmts.push(rawDb.prepare("INSERT INTO war_pool_members (id, war_history_id, user_id) VALUES (?1, ?2, ?3)").bind(nanoid(), warHistoryId, poolMember.user_id));
-      }
-
-      // 5. Update timestamp
-      stmts.push(rawDb.prepare("UPDATE war_history SET updated_at = ?1 WHERE id = ?2").bind(new Date().toISOString(), warHistoryId));
-
-      await rawDb.batch(stmts);
-    } else {
-      // --- Fallback: sequential Drizzle calls (non-atomic) ---
-      const existingTeams = await this.getTeamsForHistory(warHistoryId);
-      const existingTeamIds = existingTeams.map((team) => team.id);
-      if (existingTeamIds.length > 0) {
-        await this.db.delete(warTeamMembers).where(inArray(warTeamMembers.warTeamId, existingTeamIds));
-      }
-      await this.db.delete(warTeams).where(eq(warTeams.warHistoryId, warHistoryId));
-      await this.db.delete(warPoolMembers).where(eq(warPoolMembers.warHistoryId, warHistoryId));
-      for (const team of snapshot.teams) {
-        const teamId = nanoid();
-        await this.db.insert(warTeams).values({ id: teamId, warHistoryId, teamName: team.team_name, sortOrder: team.sort_order, notes: team.notes ?? null, isLocked: team.is_locked ?? false });
-        for (const member of team.members) {
-          await this.db.insert(warTeamMembers).values({ id: nanoid(), warTeamId: teamId, userId: member.user_id, roleTag: member.role_tag ?? null, sortOrder: member.sort_order });
-        }
-      }
-      for (const poolMember of snapshot.pool_members) {
-        await this.db.insert(warPoolMembers).values({ id: nanoid(), warHistoryId, userId: poolMember.user_id });
-      }
-      await this.db.update(warHistory).set({ updatedAt: new Date().toISOString() }).where(eq(warHistory.id, warHistoryId));
+    // 1. Delete existing members for each team
+    for (const team of existingTeams) {
+      stmts.push(rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id = ?1").bind(team.id));
     }
+    // 2. Delete existing teams and pool members
+    stmts.push(rawDb.prepare("DELETE FROM war_teams WHERE war_history_id = ?1").bind(warHistoryId));
+    stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE war_history_id = ?1").bind(warHistoryId));
+
+    // 3. Insert new teams and members
+    for (const team of snapshot.teams) {
+      const teamId = nanoid();
+      stmts.push(rawDb.prepare("INSERT INTO war_teams (id, war_history_id, team_name, sort_order, notes, is_locked) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(teamId, warHistoryId, team.team_name, team.sort_order, team.notes ?? null, team.is_locked ? 1 : 0));
+      for (const member of team.members) {
+        stmts.push(rawDb.prepare("INSERT INTO war_team_members (id, war_team_id, user_id, role_tag, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)").bind(nanoid(), teamId, member.user_id, member.role_tag ?? null, member.sort_order));
+      }
+    }
+
+    // 4. Insert new pool members
+    for (const poolMember of snapshot.pool_members) {
+      stmts.push(rawDb.prepare("INSERT INTO war_pool_members (id, war_history_id, user_id) VALUES (?1, ?2, ?3)").bind(nanoid(), warHistoryId, poolMember.user_id));
+    }
+
+    // 5. Update timestamp
+    stmts.push(rawDb.prepare("UPDATE war_history SET updated_at = ?1 WHERE id = ?2").bind(new Date().toISOString(), warHistoryId));
+
+    await rawDb.batch(stmts);
   }
 
   // --- Public: business logic methods ---
@@ -370,39 +347,22 @@ export class GuildWarService {
     const teams = await this.getTeamsForHistory(activeHistory.id);
     const teamIds = teams.map((t) => t.id);
     const nowIso = new Date().toISOString();
-    const rawDb = this.deps.rawDb;
+    const { rawDb } = this.deps;
 
-    if (rawDb) {
-      const stmts: D1PreparedStatement[] = [];
-      for (const tid of teamIds) stmts.push(rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id = ?1 AND user_id = ?2").bind(tid, userId));
-      stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE war_history_id = ?1 AND user_id = ?2").bind(activeHistory.id, userId));
-      if (to === "pool") {
-        stmts.push(rawDb.prepare("INSERT INTO war_pool_members (id, war_history_id, user_id) VALUES (?1, ?2, ?3)").bind(nanoid(), activeHistory.id, userId));
-      } else {
-        const targetTeam = teams.find((t) => t.id === to);
-        if (!targetTeam) return err("NOT_FOUND", "Target team not found");
-        const maxRow = (await this.db.select({ maxSort: sql<number>`coalesce(max(${warTeamMembers.sortOrder}), -1)` }).from(warTeamMembers).where(eq(warTeamMembers.warTeamId, targetTeam.id)))[0];
-        const nextSort = Number(maxRow?.maxSort ?? -1) + 1;
-        stmts.push(rawDb.prepare("INSERT INTO war_team_members (id, war_team_id, user_id, sort_order) VALUES (?1, ?2, ?3, ?4)").bind(nanoid(), targetTeam.id, userId, nextSort));
-      }
-      stmts.push(rawDb.prepare("UPDATE war_history SET updated_at = ?1 WHERE id = ?2").bind(nowIso, activeHistory.id));
-      await rawDb.batch(stmts);
+    const stmts: D1PreparedStatement[] = [];
+    for (const tid of teamIds) stmts.push(rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id = ?1 AND user_id = ?2").bind(tid, userId));
+    stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE war_history_id = ?1 AND user_id = ?2").bind(activeHistory.id, userId));
+    if (to === "pool") {
+      stmts.push(rawDb.prepare("INSERT INTO war_pool_members (id, war_history_id, user_id) VALUES (?1, ?2, ?3)").bind(nanoid(), activeHistory.id, userId));
     } else {
-      if (teamIds.length > 0) {
-        await this.db.delete(warTeamMembers).where(and(inArray(warTeamMembers.warTeamId, teamIds), eq(warTeamMembers.userId, userId)));
-      }
-      await this.db.delete(warPoolMembers).where(and(eq(warPoolMembers.warHistoryId, activeHistory.id), eq(warPoolMembers.userId, userId)));
-      if (to === "pool") {
-        await this.db.insert(warPoolMembers).values({ id: nanoid(), warHistoryId: activeHistory.id, userId });
-      } else {
-        const targetTeam = teams.find((t) => t.id === to);
-        if (!targetTeam) return err("NOT_FOUND", "Target team not found");
-        const maxRow = (await this.db.select({ maxSort: sql<number>`coalesce(max(${warTeamMembers.sortOrder}), -1)` }).from(warTeamMembers).where(eq(warTeamMembers.warTeamId, targetTeam.id)))[0];
-        const nextSort = Number(maxRow?.maxSort ?? -1) + 1;
-        await this.db.insert(warTeamMembers).values({ id: nanoid(), warTeamId: targetTeam.id, userId, sortOrder: nextSort });
-      }
-      await this.db.update(warHistory).set({ updatedAt: nowIso }).where(eq(warHistory.id, activeHistory.id));
+      const targetTeam = teams.find((t) => t.id === to);
+      if (!targetTeam) return err("NOT_FOUND", "Target team not found");
+      const maxRow = (await this.db.select({ maxSort: sql<number>`coalesce(max(${warTeamMembers.sortOrder}), -1)` }).from(warTeamMembers).where(eq(warTeamMembers.warTeamId, targetTeam.id)))[0];
+      const nextSort = Number(maxRow?.maxSort ?? -1) + 1;
+      stmts.push(rawDb.prepare("INSERT INTO war_team_members (id, war_team_id, user_id, sort_order) VALUES (?1, ?2, ?3, ?4)").bind(nanoid(), targetTeam.id, userId, nextSort));
     }
+    stmts.push(rawDb.prepare("UPDATE war_history SET updated_at = ?1 WHERE id = ?2").bind(nowIso, activeHistory.id));
+    await rawDb.batch(stmts);
     await this.deps.writeAuditLog({ entityType: "guild_war", action: "move_member", actorId, entityId: activeHistory.id, detailText: JSON.stringify({ user_id: userId, to }) });
     return ok({ ok: true });
   }
@@ -544,67 +504,52 @@ export class GuildWarService {
   async deleteHistory(actorId: string, warId: string): Promise<ServiceResult<{ ok: true }>> {
     const existing = await this.getWarHistoryById(warId);
     if (!existing) return err("NOT_FOUND", "War history not found");
-    const rawDb = this.deps.rawDb;
-    if (rawDb) {
-      const teamIds = (await this.db.select({ id: warTeams.id }).from(warTeams).where(eq(warTeams.warHistoryId, warId))).map((r) => r.id);
-      const stmts: D1PreparedStatement[] = [];
-      for (const teamId of teamIds) stmts.push(rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id = ?1").bind(teamId));
-      stmts.push(rawDb.prepare("DELETE FROM war_teams WHERE war_history_id = ?1").bind(warId));
-      stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE war_history_id = ?1").bind(warId));
-      stmts.push(rawDb.prepare("DELETE FROM war_history WHERE id = ?1").bind(warId));
-      await rawDb.batch(stmts);
-    } else {
-      const teamIds = (await this.db.select({ id: warTeams.id }).from(warTeams).where(eq(warTeams.warHistoryId, warId))).map((r) => r.id);
-      if (teamIds.length > 0) await this.db.delete(warTeamMembers).where(inArray(warTeamMembers.warTeamId, teamIds));
-      await this.db.delete(warTeams).where(eq(warTeams.warHistoryId, warId));
-      await this.db.delete(warPoolMembers).where(eq(warPoolMembers.warHistoryId, warId));
-      await this.db.delete(warHistory).where(eq(warHistory.id, warId));
-    }
+    const { rawDb } = this.deps;
+    const teamIds = (await this.db.select({ id: warTeams.id }).from(warTeams).where(eq(warTeams.warHistoryId, warId))).map((r) => r.id);
+    const stmts: D1PreparedStatement[] = [];
+    for (const teamId of teamIds) stmts.push(rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id = ?1").bind(teamId));
+    stmts.push(rawDb.prepare("DELETE FROM war_teams WHERE war_history_id = ?1").bind(warId));
+    stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE war_history_id = ?1").bind(warId));
+    stmts.push(rawDb.prepare("DELETE FROM war_history WHERE id = ?1").bind(warId));
+    await rawDb.batch(stmts);
     await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "delete", actorId, entityId: warId, diffTitle: existing.warName });
     await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: warId, hint: "history_deleted" });
     return ok({ ok: true });
   }
 
   async batchDeleteHistory(actorId: string, warIds: string[]): Promise<ServiceResult<{ ok: true; deleted: number }>> {
-    const rawDb = this.deps.rawDb;
-    if (rawDb && warIds.length > 0) {
-      const existingRows = await this.db
-        .select({ id: warHistory.id, warName: warHistory.warName })
-        .from(warHistory)
-        .where(inArray(warHistory.id, warIds));
-      const existingIds = existingRows.map((r) => r.id);
-      if (existingIds.length === 0) return ok({ ok: true, deleted: 0 });
+    if (warIds.length === 0) return ok({ ok: true, deleted: 0 });
+    const { rawDb } = this.deps;
 
-      const allTeamRows = await this.db
-        .select({ id: warTeams.id })
-        .from(warTeams)
-        .where(inArray(warTeams.warHistoryId, existingIds));
-      const allTeamIds = allTeamRows.map((r) => r.id);
+    const existingRows = await this.db
+      .select({ id: warHistory.id, warName: warHistory.warName })
+      .from(warHistory)
+      .where(inArray(warHistory.id, warIds));
+    const existingIds = existingRows.map((r) => r.id);
+    if (existingIds.length === 0) return ok({ ok: true, deleted: 0 });
 
-      const stmts: D1PreparedStatement[] = [];
-      for (const teamId of allTeamIds) {
-        stmts.push(rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id = ?1").bind(teamId));
-      }
-      for (const warId of existingIds) {
-        stmts.push(rawDb.prepare("DELETE FROM war_teams WHERE war_history_id = ?1").bind(warId));
-        stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE war_history_id = ?1").bind(warId));
-        stmts.push(rawDb.prepare("DELETE FROM war_history WHERE id = ?1").bind(warId));
-      }
-      await rawDb.batch(stmts);
+    const allTeamRows = await this.db
+      .select({ id: warTeams.id })
+      .from(warTeams)
+      .where(inArray(warTeams.warHistoryId, existingIds));
+    const allTeamIds = allTeamRows.map((r) => r.id);
 
-      for (const row of existingRows) {
-        await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "delete", actorId, entityId: row.id, diffTitle: row.warName });
-        await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: row.id, hint: "history_deleted" });
-      }
-      return ok({ ok: true, deleted: existingIds.length });
+    const stmts: D1PreparedStatement[] = [];
+    for (const teamId of allTeamIds) {
+      stmts.push(rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id = ?1").bind(teamId));
     }
-
-    let deleted = 0;
-    for (const warId of warIds) {
-      const result = await this.deleteHistory(actorId, warId);
-      if (result.ok) deleted += 1;
+    for (const warId of existingIds) {
+      stmts.push(rawDb.prepare("DELETE FROM war_teams WHERE war_history_id = ?1").bind(warId));
+      stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE war_history_id = ?1").bind(warId));
+      stmts.push(rawDb.prepare("DELETE FROM war_history WHERE id = ?1").bind(warId));
     }
-    return ok({ ok: true, deleted });
+    await rawDb.batch(stmts);
+
+    for (const row of existingRows) {
+      await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "delete", actorId, entityId: row.id, diffTitle: row.warName });
+      await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: row.id, hint: "history_deleted" });
+    }
+    return ok({ ok: true, deleted: existingIds.length });
   }
 
   async updateMemberStats(actorId: string, warId: string, targetUserId: string, input: z.infer<typeof updateMemberStatsSchema>): Promise<ServiceResult<unknown>> {
@@ -662,8 +607,8 @@ export class GuildWarService {
       }
     }
 
-    if (pendingPatches.length > 0 && this.deps.rawDb) {
-      const rawDb = this.deps.rawDb;
+    if (pendingPatches.length > 0) {
+      const { rawDb } = this.deps;
       const stmts: D1PreparedStatement[] = pendingPatches.map(({ memberRow, patch }) => {
         const setClauses: string[] = [];
         const bindings: unknown[] = [];
@@ -682,12 +627,6 @@ export class GuildWarService {
       });
       await rawDb.batch(stmts);
       for (const { memberRow, patch } of pendingPatches) {
-        const merged: WarTeamMemberRow = { ...memberRow, ...patch as Partial<WarTeamMemberRow> };
-        results.push(toMemberPayload(merged));
-      }
-    } else {
-      for (const { memberRow, patch } of pendingPatches) {
-        await this.db.update(warTeamMembers).set(patch).where(eq(warTeamMembers.id, memberRow.id));
         const merged: WarTeamMemberRow = { ...memberRow, ...patch as Partial<WarTeamMemberRow> };
         results.push(toMemberPayload(merged));
       }

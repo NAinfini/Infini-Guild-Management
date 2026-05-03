@@ -2,7 +2,7 @@ import type { AuditLogEntry } from "@guild/shared";
 import {
   downloadAdminAuditArchiveFile,
   requestAdminAuditArchiveDownload,
-} from "../../../api/queries/admin";
+} from "../../../services/AdminService";
 import { downloadFileBlob, formatAuditDiffHeader, formatDateTime } from "../../../utils/admin";
 import {
   Alert,

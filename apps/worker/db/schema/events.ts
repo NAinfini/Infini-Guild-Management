@@ -27,7 +27,7 @@ export const events = sqliteTable(
     instanceDate: text("instance_date"),
     lastGeneratedDate: text("last_generated_date"),
     generationCount: integer("generation_count").notNull().default(0),
-    visibilityOffsetHours: integer("visibility_offset_hours"),
+    visibilityOffsetMinutes: integer("visibility_offset_minutes"),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },

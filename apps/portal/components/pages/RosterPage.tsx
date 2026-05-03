@@ -24,7 +24,7 @@ import { useTranslation } from "react-i18next";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersListWithOptions } from "../../api/queries/users";
+import { fetchUsersListWithOptions } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { resolveProfileMediaUrl } from "../../utils/media";

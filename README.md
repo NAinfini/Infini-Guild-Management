@@ -254,11 +254,8 @@ All endpoints are under `/api/`.
 
 | Job | Schedule | Description |
 |---|---|---|
-| Event instance generation | Daily 00:00 UTC | Generate recurring event instances for next 8 weeks |
-| Event auto-archive | Every 15 min | Auto-archive past events |
-| Announcement publish/expiry | Every 15 min | Flip scheduled → published; auto-archive expired |
-| Audit archive + cleanup | Daily 02:00 UTC | Export 90+ day rows to R2, delete from D1 |
-| Media orphan cleanup | Daily 03:00 UTC | Delete unreferenced R2 files older than 7 days |
+| Daily maintenance | Daily 00:00 UTC | Generate event instances for next 8 weeks, clean expired sessions, archive audit rows, delete orphaned media |
+| 15-minute maintenance | Every 15 min | Auto-archive past events, publish scheduled announcements, archive expired announcements |
 
 ---
 

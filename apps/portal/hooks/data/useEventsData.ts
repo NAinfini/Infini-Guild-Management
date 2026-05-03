@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { fetchEventsList } from "../../services/EventService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersList } from "../../api/queries/users";
+import { fetchUsersList } from "../../services/UserService";
 import { useEffect, useRef, useState } from "react";
 import type { Event } from "@guild/shared";
 import { useAuthStore } from "../../stores/auth";

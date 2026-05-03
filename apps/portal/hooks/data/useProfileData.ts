@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUserDetail } from "../../api/queries/users";
+import { fetchUserDetail } from "../../services/UserService";
 
 type UseProfileDataOptions = {
   userId?: string;

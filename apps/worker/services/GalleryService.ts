@@ -33,7 +33,7 @@ export type GalleryServiceDeps = {
   media: R2Bucket;
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
   publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
-  rawDb?: D1Database;
+  rawDb: D1Database;
 };
 
 // --- Helpers ---
@@ -154,18 +154,12 @@ export class GalleryService {
     const items = await this.db.select({ id: galleryItems.id, type: galleryItems.type, url: galleryItems.url, caption: galleryItems.caption }).from(galleryItems).where(inArray(galleryItems.id, ids));
     if (items.length === 0) return ok({ ok: true, deleted: 0 });
     const itemIds = items.map((item) => item.id);
-    if (this.deps.rawDb) {
-      const placeholders = itemIds.map(() => "?").join(",");
-      await this.deps.rawDb.batch([
-        this.deps.rawDb.prepare(`DELETE FROM gallery_comments WHERE gallery_item_id IN (${placeholders})`).bind(...itemIds),
-        this.deps.rawDb.prepare(`DELETE FROM gallery_likes WHERE gallery_item_id IN (${placeholders})`).bind(...itemIds),
-        this.deps.rawDb.prepare(`DELETE FROM gallery_items WHERE id IN (${placeholders})`).bind(...itemIds),
-      ]);
-    } else {
-      await this.db.delete(galleryComments).where(inArray(galleryComments.galleryItemId, itemIds));
-      await this.db.delete(galleryLikes).where(inArray(galleryLikes.galleryItemId, itemIds));
-      await this.db.delete(galleryItems).where(inArray(galleryItems.id, itemIds));
-    }
+    const placeholders = itemIds.map(() => "?").join(",");
+    await this.deps.rawDb.batch([
+      this.deps.rawDb.prepare(`DELETE FROM gallery_comments WHERE gallery_item_id IN (${placeholders})`).bind(...itemIds),
+      this.deps.rawDb.prepare(`DELETE FROM gallery_likes WHERE gallery_item_id IN (${placeholders})`).bind(...itemIds),
+      this.deps.rawDb.prepare(`DELETE FROM gallery_items WHERE id IN (${placeholders})`).bind(...itemIds),
+    ]);
     for (const item of items) {
       if (item.type === "image") await this.deps.media.delete(item.url);
     }

@@ -550,15 +550,13 @@ All cron jobs run as Cloudflare Worker scheduled triggers. Single registry to av
 
 | Job | Schedule | Source Doc | Description |
 |-----|----------|-----------|-------------|
-| Event instance generation | Daily, 00:00 UTC | `events.md` | Generate recurring event instances for next 8 weeks |
-| Announcement publish/expiry | Every 15 min | `announcements.md` | Flip scheduled announcements to published; auto-archive expired ones |
-| Audit archive + cleanup | Daily, 02:00 UTC | `admin-console.md` | Export 90+ day audit rows to R2 archive, update manifest, delete from D1 |
-| Media orphan cleanup | Daily, 03:00 UTC | `my-profile.md` | Scan R2 for unreferenced files, delete orphans older than 7 days |
+| Daily maintenance | Daily, 00:00 UTC | `events.md`, `admin-console.md`, `my-profile.md` | Generate recurring event instances for next 8 weeks, clean expired sessions, archive audit rows, delete orphaned media |
+| 15-minute maintenance | Every 15 min | `events.md`, `announcements.md` | Auto-archive past events, publish scheduled announcements, archive expired announcements |
 
 Rules:
-- Stagger daily jobs by at least 1 hour to avoid resource contention
+- Keep daily maintenance idempotent because multiple jobs share the 00:00 UTC trigger
 - All jobs must be idempotent (safe to re-run)
-- Log job start/end + summary stats (items processed, errors)
+- Log failures with job context; use audit tables or admin status for business summaries
 - No job should run longer than 60 seconds (Worker CPU limit)
 
 ## API Client Rules

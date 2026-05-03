@@ -26,7 +26,7 @@ import { useGuildWarMutations } from "../../hooks/guild-war/useGuildWarMutations
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { GuildWarService, moveGuildWarMember } from "../../services/GuildWarService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersList } from "../../api/queries/users";
+import { fetchUsersList } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { useGuildWarStore } from "../../stores/guildWar";

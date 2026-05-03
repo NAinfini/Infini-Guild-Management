@@ -157,5 +157,7 @@
   "unsavedChanges.stay": "Stay",
   "label.notificationsUnread": "Notifications (unread)",
   "action.clearNotifications": "Clear all notifications",
-  "nav.skipToContent": "Skip to content"
+  "nav.skipToContent": "Skip to content",
+  "pagination.perPage": "Per page",
+  "pagination.page": "Page"
 }

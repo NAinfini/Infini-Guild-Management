@@ -10,7 +10,7 @@ import {
   type SetStateAction,
 } from "react";
 import { useTranslation } from "react-i18next";
-import type { UsersListResponse } from "../../api/queries/users";
+import type { UsersListResponse } from "../../services/UserService";
 import { GuildWarService } from "../../services/GuildWarService";
 import { copyPlainText } from "../../utils/copy";
 import { notifySuccess, notifyWarning } from "../../utils/notifications";

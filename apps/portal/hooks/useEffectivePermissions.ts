@@ -1,8 +1,8 @@
 import type { AdminRole, Permission } from "@guild/shared";
 import { useQuery } from "@tanstack/react-query";
-import { fetchRoles } from "../api/queries/roles";
 import { queryKeys } from "../api/query-keys";
 import { useViewingAs } from "../context/ViewingAsContext";
+import { fetchRoles } from "../services/AdminService";
 import { useAuthStore } from "../stores/auth";
 
 export function useEffectiveRole(): string {

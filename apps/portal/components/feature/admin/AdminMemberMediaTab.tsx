@@ -6,7 +6,7 @@ import { modals } from "@mantine/modals";
 import { PlusIcon, TrashIcon, UploadIcon, UserIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import type { UseMediaUploadState } from "../../../hooks/useMediaUpload";
-import type { UsersListResponse } from "../../../api/queries/users";
+import type { UsersListResponse } from "../../../services/UserService";
 import { resolveProfileMediaUrl } from "../../../utils/media";
 
 const PROFILE_IMAGE_MAX = 10;
