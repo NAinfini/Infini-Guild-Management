@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const usernameSchema = z.string().min(3).max(50).regex(/^[a-zA-Z0-9_]+$/);
+const usernameSchema = z.string().min(1).max(50).regex(/^[a-zA-Z0-9_一-鿿]+$/);
 
 export const loginSchema = z.object({
   username: usernameSchema,

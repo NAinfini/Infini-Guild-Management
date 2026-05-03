@@ -2,10 +2,12 @@ import { DepthButton } from "@portal/components/shared/DepthButton";
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import type { ImageGridEditorItem } from "@guild/shared/types/media";
 import { PortalCard } from "../../shared/PortalCard";
-import { Badge, Button, Divider, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
+import { FloatingSaveBar } from "../../shared/FloatingSaveBar";
+import { Button, Divider, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { IconDeviceFloppy, IconUpload, IconTrash, IconPlus } from "@tabler/icons-react";
+import { IconUpload, IconTrash, IconPlus } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
+import { resolveProfileMediaUrl } from "../../../utils/media";
 
 type UploaderState = {
   files: File[];
@@ -39,10 +41,6 @@ type ProfileMediaTabProps = {
   isDirty: boolean;
 };
 
-function isHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
-}
-
 export function ProfileMediaTab({
   videoDraft,
   videoList,
@@ -66,23 +64,12 @@ export function ProfileMediaTab({
   const { t } = useTranslation("profile");
   const imageItems: ImageGridEditorItem[] = imageList.map((key) => ({
     id: key,
-    src: isHttpUrl(key) ? key : undefined,
+    src: resolveProfileMediaUrl(key),
     alt: key,
   }));
 
   return (
     <Stack gap={16}>
-      <PortalCard interactive={false}>
-        <Group justify="flex-end" gap={8} p="1.2rem">
-          <Badge color={isDirty ? "yellow" : "green"}>
-            {isDirty ? t("status.unsavedChanges") : t("status.saved")}
-          </Badge>
-          <Button onClick={onSaveProfile} loading={savePending} leftSection={<IconDeviceFloppy size={16} />}>
-            {t("action.saveProfile")}
-          </Button>
-        </Group>
-      </PortalCard>
-
       {/* ── Images ── */}
       <PortalCard interactive={false}>
         <Stack gap={12} p="1.2rem">
@@ -176,9 +163,7 @@ export function ProfileMediaTab({
                       <Button size="compact-xs" variant="default" onClick={() => onMoveVideo(index, 1)} disabled={index === videoList.length - 1}>
                         {t("action.down")}
                       </Button>
-                      <DepthButton size="sm" type="danger" before={<IconTrash size={16} />} onClick={() => onRemoveVideo(index)}>
-                        {t("action.delete")}
-                      </DepthButton>
+                      <DepthButton size="sm" type="danger" iconOnly before={<IconTrash size={16} />} onClick={() => onRemoveVideo(index)} tooltip={{ label: t("action.delete"), withArrow: true }} />
                     </Group>
                   </Group>
                 ))}
@@ -209,7 +194,7 @@ export function ProfileMediaTab({
             >
               {(props) => (
                 <Button
-                  variant="light"
+                  variant="default"
                   size="compact-sm"
                   disabled={Boolean(audioUploader.supportError)}
                   {...props}
@@ -245,7 +230,7 @@ export function ProfileMediaTab({
               <Divider />
               <Group gap={8} align="center">
                 <Text size="sm" style={{ flex: 1 }} truncate="end">{profileAudioKey}</Text>
-                <DepthButton size="sm" type="danger" before={<IconTrash size={16} />} onClick={() => {
+                <DepthButton size="sm" type="danger" iconOnly before={<IconTrash size={16} />} onClick={() => {
                   modals.openConfirmModal({
                     title: t("confirm.removeAudio.title"),
                     children: t("confirm.removeAudio.description"),
@@ -254,15 +239,13 @@ export function ProfileMediaTab({
                     labels: { cancel: t("common:action.cancel"), confirm: t("common:action.delete") },
                     onConfirm: onRemoveAudio,
                   });
-                }}>
-                  {t("action.delete")}
-                </DepthButton>
+                }} tooltip={{ label: t("action.delete"), withArrow: true }} />
               </Group>
             </>
           ) : null}
         </Stack>
       </PortalCard>
+      <FloatingSaveBar isDirty={isDirty} saving={savePending} onSave={onSaveProfile} />
     </Stack>
   );
 }
-

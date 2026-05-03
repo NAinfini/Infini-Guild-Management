@@ -1,6 +1,7 @@
 ﻿import { notifications } from "@mantine/notifications";
 import type { PushMessage } from "@guild/shared";
 import { useEffect, useRef, type MutableRefObject } from "react";
+import { useTranslation } from "react-i18next";
 import { useNotificationStore } from "../stores/notifications";
 
 type UseNotificationPresentationOptions = {
@@ -11,7 +12,7 @@ type UseNotificationPresentationOptions = {
 
 type PushSignalPayload = {
   key: string;
-  title: string;
+  titleKey: string;
   message: string;
   color: "blue" | "yellow";
   frequencyHz: number;
@@ -28,20 +29,10 @@ function resolveSignalPayload(message: PushMessage): PushSignalPayload | null {
   if (message.type === "announcement_published") {
     return {
       key: `announcement:${message.announcement_id}`,
-      title: "Announcement Published",
+      titleKey: "notification.type.announcement",
       message: message.title,
       color: "blue",
       frequencyHz: 880,
-    };
-  }
-
-  if (message.type === "event_reminder") {
-    return {
-      key: `event-reminder:${message.event_id}`,
-      title: "Event Reminder",
-      message: `${message.title} (${message.starts_at.slice(0, 16).replace("T", " ")})`,
-      color: "yellow",
-      frequencyHz: 740,
     };
   }
 
@@ -92,6 +83,7 @@ export function useNotificationPresentation(options: UseNotificationPresentation
   const enabled = options.enabled ?? true;
   const showToast = options.showToast ?? true;
   const playSound = options.playSound ?? false;
+  const { t } = useTranslation("common");
   const signalSequence = useNotificationStore((state) => state.signalSequence);
   const lastSignalMessage = useNotificationStore((state) => state.lastSignalMessage);
   const lastSignalRef = useRef<Map<string, number>>(new Map());
@@ -117,7 +109,7 @@ export function useNotificationPresentation(options: UseNotificationPresentation
     if (showToast) {
       notifications.show({
         color: payload.color,
-        title: payload.title,
+        title: t(payload.titleKey),
         message: payload.message,
       });
     }
@@ -128,7 +120,7 @@ export function useNotificationPresentation(options: UseNotificationPresentation
         console.warn(`[push-sound] ${message}`);
       });
     }
-  }, [enabled, lastSignalMessage, playSound, showToast, signalSequence]);
+  }, [enabled, lastSignalMessage, playSound, showToast, signalSequence, t]);
 
   useEffect(() => {
     if (playSound) {

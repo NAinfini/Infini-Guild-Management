@@ -2,12 +2,12 @@ import { type WikiArticle } from "@guild/shared";
 import { Button, Drawer, Group, Skeleton, Stack, Text, TextInput, VisuallyHidden } from "@mantine/core";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
-import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
+import { TipTapEditor, buildTipTapEditorLabels } from "@portal/components/shared/TipTapEditor";
 import { PortalCard } from "../shared/PortalCard";
 import { modals } from "@mantine/modals";
 import { IconArchive, IconEdit, IconPinned } from "@tabler/icons-react";
 import { useDebouncedValue, useDisclosure, useMediaQuery } from "@mantine/hooks";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { format } from "date-fns";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -16,15 +16,14 @@ import {
   fetchWikiArticleBySlug,
   fetchWikiArticles,
   fetchWikiCategories,
-} from "../../services/WikiService";
+} from "../../api/queries/wiki";
 import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useWikiArticleEditor } from "../../hooks/useWikiArticleEditor";
 import { useWikiCategoryEditor } from "../../hooks/useWikiCategoryEditor";
 import { queryKeys } from "../../api/query-keys";
-import { useAuthStore } from "../../stores/auth";
-import { userHasAnyPermission } from "../../utils/permissions";
+import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { WikiArticleEditorCard } from "../feature/wiki/WikiArticleEditorCard";
 import { WikiArticleListCard } from "../feature/wiki/WikiArticleListCard";
 import { WikiCategoryEditorCard } from "../feature/wiki/WikiCategoryEditorCard";
@@ -42,14 +41,16 @@ function formatDateTime(iso: string): string {
 
 export function WikiPage() {
   const { t } = useTranslation("wiki");
+  const { t: te } = useTranslation("editor");
+  const editorLabels = useMemo(() => buildTipTapEditorLabels(te), [te]);
   const navigate = useNavigate();
   const params = useParams({ strict: false });
   const routeSlug = (params as { slug?: string }).slug ?? null;
   const isDesktop = useMediaQuery("(min-width: 1200px)", true);
   const isMobile = !isDesktop;
-  const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
-  const isModerator = userHasAnyPermission(user, ["wiki.articles.create", "wiki.articles.edit", "wiki.articles.archive", "wiki.categories.manage"]);
+  const { canManage: canManagePermission } = useEffectivePermissions();
+  const isModerator = canManagePermission(["wiki.articles.create", "wiki.articles.edit", "wiki.articles.archive", "wiki.categories.manage"]);
   const canEdit = isModerator && !isExternalView;
 
   const [search, setSearch] = useState("");
@@ -73,6 +74,7 @@ export function WikiPage() {
   const categoriesQuery = useQuery({
     queryKey: queryKeys.wiki.categories(),
     queryFn: fetchWikiCategories,
+    staleTime: Infinity,
   });
 
   const selectedCategoryFilterKey =
@@ -89,12 +91,15 @@ export function WikiPage() {
         search: debouncedSearch || undefined,
         archived: archivedOnly,
       }),
+    staleTime: 10 * 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const detailQuery = useQuery({
     queryKey: queryKeys.wiki.article(selectedSlug),
     enabled: Boolean(selectedSlug),
     queryFn: () => fetchWikiArticleBySlug(selectedSlug as string),
+    staleTime: 10 * 60_000,
   });
 
   const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
@@ -411,6 +416,7 @@ export function WikiPage() {
                     // Read-only pane intentionally ignores editor updates.
                   }}
                   editable={false}
+                  labels={editorLabels}
                 />
               </>
             )}

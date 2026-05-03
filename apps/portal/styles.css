@@ -29,6 +29,33 @@
   --z-modal: 200;
   --z-toast: 300;
 
+  /* ── Design tokens: radius ── */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* ── Design tokens: shadow ── */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.04);
+  --shadow-primary-sm: 0 2px 8px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+  --shadow-primary-md: 0 4px 16px color-mix(in srgb, var(--color-primary, #3b82f6) 18%, transparent);
+
+  /* ── Design tokens: spacing ── */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+
+  /* ── Design tokens: transition ── */
+  --transition-fast: 120ms ease;
+  --transition-normal: 160ms ease;
+  --transition-smooth: 180ms ease;
+
   /* Semantic colors — light mode */
   --color-text: #111827;
   --color-text-muted: #6B7280;
@@ -47,6 +74,11 @@
   --color-border: #334155;
   --color-surface-elevated: #263347;
   --color-primary-alpha: rgba(59,130,246,0.12);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.12);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.10);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.20), 0 1px 3px rgba(0, 0, 0, 0.10);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.24), 0 2px 6px rgba(0, 0, 0, 0.10);
 }
 
 /* ── Base resets ── */
@@ -146,4 +178,117 @@ html[data-locale="zh"] {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ── EmptyState ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl) var(--space-lg);
+  text-align: center;
+}
+
+.empty-state__icon {
+  margin-bottom: var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-state__icon--info { color: var(--color-primary, #3b82f6); }
+.empty-state__icon--success { color: var(--color-success, #22c55e); }
+.empty-state__icon--error { color: var(--color-danger, #ef4444); }
+.empty-state__icon--warning { color: var(--color-warning, #f59e0b); }
+
+.empty-state__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.empty-state__description {
+  margin: var(--space-xs) 0 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.empty-state__actions {
+  margin-top: var(--space-lg);
+}
+
+/* ── FloatingSaveBar ── */
+.floating-save-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky, 10);
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border, #e5e7eb);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
+  backdrop-filter: saturate(180%) blur(16px);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+  transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
+}
+
+.floating-save-bar[data-dirty] {
+  border-color: color-mix(in srgb, var(--color-warning, #f59e0b) 40%, transparent);
+  box-shadow: 0 -2px 12px color-mix(in srgb, var(--color-warning, #f59e0b) 10%, transparent);
+}
+
+/* ── Skeleton shimmer enhancement ── */
+.mantine-Skeleton-root::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent) 50%,
+    transparent 100%
+  ) !important;
+  animation: shimmer 1.8s ease-in-out infinite !important;
+  background-size: 200% 100% !important;
+}
+
+/* ── Suspense content fade-in ── */
+.mantine-Card-root,
+.mantine-Tabs-panel {
+  animation: contentFadeIn 0.2s ease both;
+}
+
+@keyframes contentFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mantine-Skeleton-root::after {
+    animation: none !important;
+  }
+
+  .mantine-Card-root,
+  .mantine-Tabs-panel {
+    animation: none;
+  }
+}
+
+/* ── Mobile tab scrollability ── */
+@media (max-width: 767px) {
+  .mantine-Tabs-list {
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mantine-Tabs-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mantine-Tabs-tab {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
 }

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUserDetail } from "../../services/UserService";
+import { fetchUserDetail } from "../../api/queries/users";
 
 type UseProfileDataOptions = {
   userId?: string;
@@ -18,6 +18,7 @@ export function useProfileData(options: UseProfileDataOptions) {
       }
       return fetchUserDetail(userId);
     },
+    staleTime: Infinity,
   });
 
   return {

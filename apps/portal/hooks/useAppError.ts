@@ -16,7 +16,7 @@ function showErrorToast(text: string) {
   }
 }
 
-export function presentAppError(error: unknown, fallbackMessage = "Operation failed"): void {
+export function presentAppError(error: unknown, fallbackMessage = i18n.t("common:errors.generic", { defaultValue: "Something went wrong" })): void {
   if (isApiRequestError(error)) {
     if (error.status === 0) {
       return;
@@ -52,7 +52,7 @@ export function presentAppError(error: unknown, fallbackMessage = "Operation fai
 }
 
 export function useAppError() {
-  const showError = useCallback((error: unknown, fallbackMessage = "Operation failed") => {
+  const showError = useCallback((error: unknown, fallbackMessage = i18n.t("common:errors.generic", { defaultValue: "Something went wrong" })) => {
     presentAppError(error, fallbackMessage);
   }, []);
 

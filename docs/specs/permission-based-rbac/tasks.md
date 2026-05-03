@@ -7,11 +7,11 @@
 - [x] 1.2 Add `BuiltinRole` type alias (`"admin" | "moderator" | "member"`)
 - [x] 1.3 Add `RoleId = string` type alias
 - [x] 1.4 Add `isBuiltinRole(roleId: string): roleId is BuiltinRole` type guard
-- [x] 1.5 Add `roleFromLevel(level: number): BuiltinRole` helper
+- [x] 1.5 ~~Add `roleFromLevel(level: number): BuiltinRole` helper~~ (removed — legacy compat, no longer needed)
 - [x] 1.6 Add `hasPermission(granted: ReadonlySet<Permission>, required: Permission): boolean`
 - [x] 1.7 Add `hasAnyPermission(granted: ReadonlySet<Permission>, required: Permission[]): boolean` (Set-based overload)
 - [x] 1.8 Add `MODERATOR_DEFAULT_PERMISSIONS` and `MEMBER_DEFAULT_PERMISSIONS` constant Sets
-- [x] 1.9 Keep existing `hasRoleAtLeast` for backward compat
+- [x] 1.9 ~~Keep existing `hasRoleAtLeast` for backward compat~~ (removed — replaced by permission checks)
 
 ## Group 2: Schema Widening (R5)
 > File: `apps/worker/db/schema/auth.ts`, `apps/shared/schemas/admin.ts`
@@ -23,13 +23,13 @@
 ## Group 3: Auth Service — Session Hydration (R1, R6)
 > File: `apps/worker/services/auth.ts`
 
-- [x] 3.1 Define `SessionUser` type with `{ id, roleId, roleLevel, role, permissions }`
+- [x] 3.1 Define `SessionUser` type with `{ id, roleId, role, permissions }`
 - [x] 3.2 Add Symbol-based per-request memoization (`RESOLVED_SESSION_PROMISE`)
 - [x] 3.3 Refactor `resolveSession` to `resolveSession` (memoized) + `resolveSessionUncached`
-- [x] 3.4 Add `LEFT JOIN roles ON users.role = roles.id` to session query
-- [x] 3.5 Add `role_permissions` query: `SELECT permission, granted FROM role_permissions WHERE roleId = ?`
+- [x] 3.4 ~~Add `LEFT JOIN roles ON users.role = roles.id` to session query~~ (removed — roleLevel no longer needed)
+- [x] 3.5 Add `role_permissions` subquery via json_group_array in session query
 - [x] 3.6 Implement `buildPermissionSet(roleId, permissionRows)` — builtin defaults + overlay
-- [x] 3.7 Implement `resolveCompatibilityRole(roleId, roleLevel)` — BuiltinRole derivation
+- [x] 3.7 ~~Implement `resolveCompatibilityRole(roleId, roleLevel)` — BuiltinRole derivation~~ (removed — role derived directly from roleId)
 - [x] 3.8 Duplicate `MODERATOR_DEFAULT_PERMISSIONS` / `MEMBER_DEFAULT_PERMISSIONS` in auth.ts (avoid circular dep)
 - [x] 3.9 Update `ResolvedSession` return type to include `SessionUser`
 

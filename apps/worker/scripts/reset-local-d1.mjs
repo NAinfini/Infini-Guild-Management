@@ -2,10 +2,7 @@ import { rmSync } from "node:fs";
 import { resolve } from "node:path";
 
 const candidates = [
-  // Current worker-local wrangler persistence location.
   resolve(process.cwd(), "apps/worker/.wrangler/state/v3/d1"),
-  // Legacy root-level location kept for backwards cleanup.
-  resolve(process.cwd(), ".wrangler/state/v3/d1"),
 ];
 
 const lockFailures = [];

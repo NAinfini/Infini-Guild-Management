@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { PERMISSIONS } from "../constants/roles";
 
-const usernameSchema = z.string().min(3).max(50).regex(/^[a-zA-Z0-9_]+$/);
+const usernameSchema = z.string().min(1).max(50).regex(/^[a-zA-Z0-9_一-鿿]+$/);
 const permissionKeySchema = z.enum(PERMISSIONS);
 
 export const inviteLinkSchema = z.object({
@@ -39,19 +39,6 @@ export const auditLogSchema = z.object({
   created_at: z.string(),
 });
 
-export const auditLogQuerySchema = z.object({
-  page: z.number().int().positive().default(1),
-  limit: z.number().int().min(1).max(100).default(20),
-  filters: z.object({
-    date_range: z.object({
-      start_at: z.string().datetime(),
-      end_at: z.string().datetime(),
-    }),
-    entity_type: z.string().optional(),
-    actor_id: z.string().optional(),
-    search: z.string().optional(),
-  }),
-});
 
 export const batchRoleChangeSchema = z.object({
   user_ids: z.array(z.string()).min(1).max(50),
@@ -103,10 +90,6 @@ export const updateRoleSchema = z
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one role field is required",
   });
-
-export const deleteRoleSchema = z.object({
-  id: z.string().min(1),
-});
 
 export const analyticsSettingsSchema = z.object({
   reference_duration_minutes: z.number().positive().optional(),

@@ -1,6 +1,5 @@
-import { PortalCard } from "../../shared/PortalCard";
-import { Badge, Button, Group, Stack } from "@mantine/core";
-import { IconDeviceFloppy } from "@tabler/icons-react";
+import { FloatingSaveBar } from "../../shared/FloatingSaveBar";
+import { Stack } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { AvailabilityGridEditor } from "@portal/components/shared/AvailabilityGridEditor";
 
@@ -30,16 +29,6 @@ export function ProfileAvailabilityTab({
   const { t } = useTranslation("profile");
   return (
     <Stack gap={16}>
-      <PortalCard interactive={false}>
-        <Group justify="flex-end" gap={8} p="1.2rem">
-          <Badge color={isDirty ? "yellow" : "green"}>
-            {isDirty ? t("status.unsavedChanges") : t("status.saved")}
-          </Badge>
-          <Button onClick={onSaveAvailability} loading={savePending} leftSection={<IconDeviceFloppy size={16} />}>
-            {t("action.saveProfile")}
-          </Button>
-        </Group>
-      </PortalCard>
       <AvailabilityGridEditor
         value={availabilityData}
         vacationStart={vacationStart}
@@ -65,6 +54,7 @@ export function ProfileAvailabilityTab({
           onVacationEndChange(nextVacationEnd);
         }}
       />
+      <FloatingSaveBar isDirty={isDirty} saving={savePending} onSave={onSaveAvailability} />
     </Stack>
   );
 }

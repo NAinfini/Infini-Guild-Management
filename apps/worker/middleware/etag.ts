@@ -53,5 +53,9 @@ export async function etagMiddleware(c: Context, next: Next): Promise<void> {
     return;
   }
 
+  if (currentResponse.status === 200 && c.req.method === "GET") {
+    currentResponse.headers.set("Cache-Control", "private, no-cache, must-revalidate");
+  }
+
   c.header("ETag", etag);
 }

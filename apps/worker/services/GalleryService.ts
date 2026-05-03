@@ -7,6 +7,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { galleryComments, galleryItems, galleryLikes, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
+import { escapeLikePattern } from "./helpers";
 
 // --- Types ---
 
@@ -32,13 +33,10 @@ export type GalleryServiceDeps = {
   media: R2Bucket;
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
   publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
+  rawDb?: D1Database;
 };
 
 // --- Helpers ---
-
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, "\\$&");
-}
 
 export function toGalleryPayload(row: GalleryRow) {
   const isLiked = row.isLiked === null || row.isLiked === undefined ? false : Boolean(row.isLiked);
@@ -76,14 +74,12 @@ export class GalleryService {
       uploadedBy: galleryItems.uploadedBy, uploadedByName: users.username, createdAt: galleryItems.createdAt,
       likeCount: sql<number>`(SELECT COUNT(*) FROM gallery_likes WHERE gallery_item_id = ${galleryItems.id})`,
       commentCount: sql<number>`(SELECT COUNT(*) FROM gallery_comments WHERE gallery_item_id = ${galleryItems.id})`,
+      isLiked: currentUserId
+        ? sql<number>`(SELECT COUNT(*) FROM gallery_likes WHERE gallery_item_id = ${galleryItems.id} AND user_id = ${currentUserId})`
+        : sql<number>`0`,
     }).from(galleryItems).leftJoin(users, eq(users.id, galleryItems.uploadedBy)).where(eq(galleryItems.id, itemId)).limit(1))[0];
     if (!row) return null;
-    let isLiked = false;
-    if (currentUserId) {
-      const like = await this.db.select({ id: galleryLikes.id }).from(galleryLikes).where(and(eq(galleryLikes.galleryItemId, itemId), eq(galleryLikes.userId, currentUserId))).limit(1);
-      isLiked = like.length > 0;
-    }
-    return { ...row, isLiked };
+    return { ...row, isLiked: Boolean(row.isLiked) };
   }
 
   private async getCommentById(commentId: string) {
@@ -158,9 +154,18 @@ export class GalleryService {
     const items = await this.db.select({ id: galleryItems.id, type: galleryItems.type, url: galleryItems.url, caption: galleryItems.caption }).from(galleryItems).where(inArray(galleryItems.id, ids));
     if (items.length === 0) return ok({ ok: true, deleted: 0 });
     const itemIds = items.map((item) => item.id);
-    await this.db.delete(galleryComments).where(inArray(galleryComments.galleryItemId, itemIds));
-    await this.db.delete(galleryLikes).where(inArray(galleryLikes.galleryItemId, itemIds));
-    await this.db.delete(galleryItems).where(inArray(galleryItems.id, itemIds));
+    if (this.deps.rawDb) {
+      const placeholders = itemIds.map(() => "?").join(",");
+      await this.deps.rawDb.batch([
+        this.deps.rawDb.prepare(`DELETE FROM gallery_comments WHERE gallery_item_id IN (${placeholders})`).bind(...itemIds),
+        this.deps.rawDb.prepare(`DELETE FROM gallery_likes WHERE gallery_item_id IN (${placeholders})`).bind(...itemIds),
+        this.deps.rawDb.prepare(`DELETE FROM gallery_items WHERE id IN (${placeholders})`).bind(...itemIds),
+      ]);
+    } else {
+      await this.db.delete(galleryComments).where(inArray(galleryComments.galleryItemId, itemIds));
+      await this.db.delete(galleryLikes).where(inArray(galleryLikes.galleryItemId, itemIds));
+      await this.db.delete(galleryItems).where(inArray(galleryItems.id, itemIds));
+    }
     for (const item of items) {
       if (item.type === "image") await this.deps.media.delete(item.url);
     }

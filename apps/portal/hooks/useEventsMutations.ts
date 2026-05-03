@@ -1,29 +1,22 @@
 import type { Event, User } from "@guild/shared";
 import type { ImageGridEditorItem } from "@guild/shared/types/media";
-import { notifications } from "@mantine/notifications";
 import { modals } from "@mantine/modals";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
+import { notifySuccess, notifyError } from "../utils/notifications";
 import type { AttachmentService } from "../services/AttachmentService";
 import {
-  addEventParticipant,
   archiveEvent,
   createEvent,
   deleteEvent,
   EventService,
   EventValidationError,
-  type EventDetailResponse,
   type EventSaveInput,
-  joinEvent,
-  leaveEvent,
-  removeEventParticipant,
   updateEvent,
 } from "../services/EventService";
 import { queryKeys } from "../api/query-keys";
-
-type EventDetailPayload = EventDetailResponse;
+import { useEventsParticipantMutations } from "./useEventsParticipantMutations";
 
 type UseEventsMutationsParams = {
   canInteract: boolean;
@@ -53,8 +46,12 @@ export function useEventsMutations({
   showError,
 }: UseEventsMutationsParams) {
   const { t } = useTranslation("events");
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const invalidateEventsAndDashboard = async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+  };
 
   const resetAttachmentItems = useCallback(() => {
     setAttachmentItems((current) => {
@@ -77,6 +74,7 @@ export function useEventsMutations({
                   ? "yellow"
                   : "blue",
           },
+          labels: { confirm: t("common:action.confirm"), cancel: t("common:action.cancel") },
           onConfirm: () => resolve(true),
           onCancel: () => resolve(false),
           closeOnConfirm: true,
@@ -87,152 +85,26 @@ export function useEventsMutations({
     [],
   );
 
-  const joinMutation = useMutation({
-    mutationFn: (eventId: string) => joinEvent(eventId),
-    onMutate: async (eventId) => {
-      if (!user) {
-        return undefined;
-      }
-      await queryClient.cancelQueries({ queryKey: queryKeys.events.previewDetails() });
-      await queryClient.cancelQueries({ queryKey: queryKeys.event.detail(eventId) });
-
-      const previousPreview = queryClient.getQueriesData<EventDetailPayload[]>({
-        queryKey: queryKeys.events.previewDetails(),
-      });
-      const previousDetail = queryClient.getQueryData<EventDetailPayload>(queryKeys.event.detail(eventId));
-      const optimisticParticipant = {
-        id: `optimistic-${eventId}-${user.id}`,
-        event_id: eventId,
-        user_id: user.id,
-        joined_at: new Date().toISOString(),
-      };
-
-      for (const [key] of previousPreview) {
-        queryClient.setQueryData<EventDetailPayload[]>(key, (current) =>
-          current?.map((detail) => {
-            if (detail.id !== eventId) {
-              return detail;
-            }
-            if (detail.participants.some((participant) => participant.user_id === user.id)) {
-              return detail;
-            }
-            return {
-              ...detail,
-              participants: [...detail.participants, optimisticParticipant],
-            };
-          }) ?? current,
-        );
-      }
-
-      queryClient.setQueryData<EventDetailPayload>(queryKeys.event.detail(eventId), (current) => {
-        if (!current) {
-          return current;
-        }
-        if (current.participants.some((participant) => participant.user_id === user.id)) {
-          return current;
-        }
-        return {
-          ...current,
-          participants: [...current.participants, optimisticParticipant],
-        };
-      });
-
-      return { previousPreview, previousDetail };
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-      notifications.show({ color: "green", message: t("message.joined") });
-    },
-    onError: (error, eventId, context) => {
-      if (context) {
-        for (const [key, previous] of context.previousPreview) {
-          queryClient.setQueryData(key, previous);
-        }
-        queryClient.setQueryData(queryKeys.event.detail(eventId), context.previousDetail);
-      }
-      showError(error, t("message.joinFailed"));
-    },
-    onSettled: async (_, __, eventId) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.event.detail(eventId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.previewDetails() });
-    },
-  });
-
-  const leaveMutation = useMutation({
-    mutationFn: (eventId: string) => leaveEvent(eventId),
-    onMutate: async (eventId) => {
-      if (!user) {
-        return undefined;
-      }
-      await queryClient.cancelQueries({ queryKey: queryKeys.events.previewDetails() });
-      await queryClient.cancelQueries({ queryKey: queryKeys.event.detail(eventId) });
-
-      const previousPreview = queryClient.getQueriesData<EventDetailPayload[]>({
-        queryKey: queryKeys.events.previewDetails(),
-      });
-      const previousDetail = queryClient.getQueryData<EventDetailPayload>(queryKeys.event.detail(eventId));
-
-      for (const [key] of previousPreview) {
-        queryClient.setQueryData<EventDetailPayload[]>(key, (current) =>
-          current?.map((detail) =>
-            detail.id === eventId
-              ? {
-                  ...detail,
-                  participants: detail.participants.filter((participant) => participant.user_id !== user.id),
-                }
-              : detail,
-          ) ?? current,
-        );
-      }
-
-      queryClient.setQueryData<EventDetailPayload>(queryKeys.event.detail(eventId), (current) => {
-        if (!current) {
-          return current;
-        }
-        return {
-          ...current,
-          participants: current.participants.filter((participant) => participant.user_id !== user.id),
-        };
-      });
-
-      return { previousPreview, previousDetail };
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-      notifications.show({ color: "green", message: t("message.left") });
-    },
-    onError: (error, eventId, context) => {
-      if (context) {
-        for (const [key, previous] of context.previousPreview) {
-          queryClient.setQueryData(key, previous);
-        }
-        queryClient.setQueryData(queryKeys.event.detail(eventId), context.previousDetail);
-      }
-      showError(error, t("message.leaveFailed"));
-    },
-    onSettled: async (_, __, eventId) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.event.detail(eventId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.previewDetails() });
-    },
+  const participantMutations = useEventsParticipantMutations({
+    canInteract,
+    user,
+    eventById,
+    joinedEventRanges,
+    showError,
   });
 
   const saveEventMutation = useMutation({
     mutationFn: (input: EventSaveInput) => eventService.saveEvent(input),
     onSuccess: async (_, variables) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-      notifications.show({
-        color: "green",
-        message: variables.mode === "create" ? t("message.created") : t("message.updated"),
-      });
+      await invalidateEventsAndDashboard();
+      notifySuccess(variables.mode === "create" ? t("message.created") : t("message.updated"));
       resetAttachmentItems();
       closeEditorAfterSave();
     },
     onError: (error, variables) => {
       if (error instanceof EventValidationError) {
         if (error.reason === "invalid_capacity") {
-          notifications.show({ color: "red", message: t("message.capacityInvalid") });
+          notifyError(t("message.capacityInvalid"));
           return;
         }
         const messageText = error.reason === "missing_start"
@@ -252,9 +124,8 @@ export function useEventsMutations({
     mutationFn: ({ payload, files }: { payload: Parameters<typeof createEvent>[0]; files?: File[] }) =>
       createEvent(payload, files),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-      notifications.show({ color: "green", message: t("message.created") });
+      await invalidateEventsAndDashboard();
+      notifySuccess(t("message.created"));
     },
     onError: (error) => {
       showError(error, t("message.createFailed"));
@@ -265,9 +136,8 @@ export function useEventsMutations({
     mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof updateEvent>[1] }) =>
       updateEvent(id, payload),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-      notifications.show({ color: "green", message: t("message.updated") });
+      await invalidateEventsAndDashboard();
+      notifySuccess(t("message.updated"));
     },
     onError: (error) => {
       showError(error, t("message.updateFailed"));
@@ -277,9 +147,8 @@ export function useEventsMutations({
   const archiveEventMutation = useMutation({
     mutationFn: (eventId: string) => archiveEvent(eventId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-      notifications.show({ color: "green", message: t("message.archived") });
+      await invalidateEventsAndDashboard();
+      notifySuccess(t("message.archived"));
     },
     onError: (error) => {
       showError(error, t("message.archiveFailed"));
@@ -289,9 +158,8 @@ export function useEventsMutations({
   const unarchiveEventMutation = useMutation({
     mutationFn: (eventId: string) => updateEvent(eventId, { archived_at: null }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-      notifications.show({ color: "green", message: t("message.unarchived") });
+      await invalidateEventsAndDashboard();
+      notifySuccess(t("message.unarchived"));
     },
     onError: (error) => {
       showError(error, t("message.unarchiveFailed"));
@@ -301,103 +169,16 @@ export function useEventsMutations({
   const deleteEventMutation = useMutation({
     mutationFn: (eventId: string) => deleteEvent(eventId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-      notifications.show({ color: "green", message: t("message.deleted") });
+      await invalidateEventsAndDashboard();
+      notifySuccess(t("message.deleted"));
     },
     onError: (error) => {
       showError(error, t("message.deleteFailed"));
     },
   });
 
-  const addParticipantMutation = useMutation({
-    mutationFn: ({ eventId, userId }: { eventId: string; userId: string }) =>
-      addEventParticipant(eventId, userId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "green", message: t("message.memberAdded") });
-    },
-    onError: (error) => {
-      showError(error, t("message.memberAddFailed"));
-    },
-  });
-
-  const removeParticipantMutation = useMutation({
-    mutationFn: ({ eventId, userId }: { eventId: string; userId: string }) =>
-      removeEventParticipant(eventId, userId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-      notifications.show({ color: "green", message: t("message.memberRemoved") });
-    },
-    onError: (error) => {
-      showError(error, t("message.memberRemoveFailed"));
-    },
-  });
-
-  const handleJoin = async (eventId: string) => {
-    if (!canInteract) {
-      if (!user) {
-        void navigate({
-          to: "/login",
-          search: { returnTo: "/events", reason: "required" },
-        });
-      }
-      return;
-    }
-    if (!user) {
-      void navigate({
-        to: "/login",
-        search: { returnTo: "/events", reason: "required" },
-      });
-      return;
-    }
-
-    const target = eventById.get(eventId);
-    if (!target) {
-      joinMutation.mutate(eventId);
-      return;
-    }
-    const targetStart = Date.parse(target.start_at);
-    const targetEnd = Date.parse(target.end_at ?? target.start_at);
-    if (!Number.isFinite(targetStart) || !Number.isFinite(targetEnd)) {
-      joinMutation.mutate(eventId);
-      return;
-    }
-
-    const conflicts = joinedEventRanges.filter(
-      (item) => item.eventId !== eventId && targetStart < item.endMs && item.startMs < targetEnd,
-    );
-    if (conflicts.length > 0) {
-      const shouldJoin = await openConfirm({
-        title: t("confirm.timeConflict.title"),
-        description: t("confirm.timeConflict.description", {
-          titles: conflicts.slice(0, 3).map((item) => item.title).join(", "),
-        }),
-        intent: "warning",
-      });
-      if (shouldJoin) {
-        joinMutation.mutate(eventId);
-      }
-      return;
-    }
-
-    joinMutation.mutate(eventId);
-  };
-
-  const handleLeave = async (eventId: string) => {
-    if (!user || !canInteract) {
-      return;
-    }
-    const event = eventById.get(eventId);
-    const confirmed = await openConfirm({
-      title: t("confirm.leave.title"),
-      description: t("confirm.leave.description", { title: event?.title ?? "" }),
-      intent: "warning",
-    });
-    if (confirmed) {
-      leaveMutation.mutate(eventId);
-    }
-  };
+  const handleJoin = participantMutations.handleJoin;
+  const handleLeave = participantMutations.handleLeave;
 
   const handleFilesSelected = useCallback(
     async (files: File[]) => {
@@ -475,21 +256,13 @@ export function useEventsMutations({
     }
   };
 
-  const addParticipant = (eventId: string, userId: string) => {
-    addParticipantMutation.mutate({ eventId, userId });
-  };
-
-  const removeParticipant = (eventId: string, userId: string) => {
-    removeParticipantMutation.mutate({ eventId, userId });
-  };
-
   return {
     createPending: saveEventMutation.isPending || duplicateEventMutation.isPending,
     updatePending: saveEventMutation.isPending || patchEventMutation.isPending,
     archivePending: archiveEventMutation.isPending,
     savePending: saveEventMutation.isPending,
-    joinPending: joinMutation.isPending,
-    leavePending: leaveMutation.isPending,
+    joinPending: participantMutations.joinPending,
+    leavePending: participantMutations.leavePending,
     resetAttachmentItems,
     handleJoin,
     handleLeave,
@@ -502,7 +275,7 @@ export function useEventsMutations({
     archiveEventById,
     unarchiveEventById,
     deleteEventWithConfirm,
-    addParticipant,
-    removeParticipant,
+    addParticipant: participantMutations.addParticipant,
+    removeParticipant: participantMutations.removeParticipant,
   };
 }

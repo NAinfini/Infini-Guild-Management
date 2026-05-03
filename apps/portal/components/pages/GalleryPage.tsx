@@ -3,7 +3,6 @@ import { DepthButton } from "@portal/components/shared/DepthButton";
 import { Button, Group, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
 import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -13,15 +12,16 @@ import {
   batchDeleteGalleryItems,
   createGalleryVideo,
   deleteGalleryItem,
-  fetchGallery,
   uploadGalleryImages,
-} from "../../services/GalleryService";
+} from "../../api/mutations/gallery";
+import { fetchGallery } from "../../api/queries/gallery";
 import { useAppError } from "../../hooks/useAppError";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { queryKeys } from "../../api/query-keys";
+import { notifySuccess, notifyError } from "../../utils/notifications";
 import { useAuthStore } from "../../stores/auth";
-import { userHasPermission } from "../../utils/permissions";
+import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { DEFAULT_IMAGE_WEBP_QUALITY, convertImageToWebP } from "@guild/shared/utils/media";
 import { isAllowedGalleryVideoUrl, toEmbedVideoUrl } from "@guild/shared/utils/video";
 import { GalleryFiltersCard } from "../feature/gallery/GalleryFiltersCard";
@@ -30,6 +30,7 @@ import { GalleryLightboxModal } from "../feature/gallery/GalleryLightboxModal";
 import { GalleryUploadQueueCard } from "../feature/gallery/GalleryUploadQueueCard";
 import type { UploadStatus, UploadTask } from "../feature/gallery/shared";
 import { PageLayout } from "../layout/PageLayout";
+import { resolveGalleryMediaUrl } from "../../utils/media";
 import "./GalleryPage.css";
 const MAX_GALLERY_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 
@@ -39,17 +40,14 @@ function formatDateTime(iso: string): string {
   return format(date, "yyyy-MM-dd HH:mm");
 }
 
-function isHttpUrl(value: string): boolean {
-  return /^(https?:\/\/|\/(?!\/)|\.\.?\/|data:image\/|blob:)/i.test(value);
-}
-
 export function GalleryPage() {
   const { t } = useTranslation("gallery");
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
-  const isModerator = userHasPermission(user, "gallery.manage");
-  const canUpload = userHasPermission(user, "gallery.upload") && !isExternalView;
+  const { canManage: canManagePermission } = useEffectivePermissions();
+  const isModerator = canManagePermission(["gallery.manage"]);
+  const canUpload = canManagePermission(["gallery.upload"]) && !isExternalView;
   const canModerate = isModerator && !isExternalView;
   const { showError } = useAppError();
 
@@ -91,6 +89,7 @@ export function GalleryPage() {
       }),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     initialPageParam: undefined as string | undefined,
+    staleTime: 5 * 60_000,
   });
 
   useEffect(() => {
@@ -102,7 +101,7 @@ export function GalleryPage() {
   const createVideoMutation = useMutation({
     mutationFn: createGalleryVideo,
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.videoCreated") });
+      notifySuccess(t("message.videoCreated"));
       setVideoUrl("");
       setVideoCaption("");
       addMediaModalHandlers.close();
@@ -129,7 +128,7 @@ export function GalleryPage() {
       return res.deleted;
     },
     onSuccess: async (count) => {
-      notifications.show({ color: "green", message: t("message.bulkDeleted", { count }) });
+      notifySuccess(t("message.bulkDeleted", { count }));
       setSelectedIds([]);
       await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
     },
@@ -232,7 +231,7 @@ export function GalleryPage() {
 
     await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
     if (failedCount === 0) {
-      notifications.show({ color: "green", message: t("message.uploaded") });
+      notifySuccess(t("message.uploaded"));
     }
   }, [queuedCount, queryClient, t, uploadQueue]);
 
@@ -366,7 +365,7 @@ export function GalleryPage() {
                 <DepthButton
                   onClick={() => {
                     if (!isAllowedGalleryVideoUrl(videoUrl.trim())) {
-                      notifications.show({ color: "red", message: t("message.videoHostUnsupported") });
+                      notifyError(t("message.videoHostUnsupported"));
                       return;
                     }
                     createVideoMutation.mutate({
@@ -459,10 +458,9 @@ export function GalleryPage() {
           })
         }
         onOpenLightbox={setLightboxId}
-        isHttpUrl={isHttpUrl}
+        resolveImageUrl={resolveGalleryMediaUrl}
         formatDateTime={formatDateTime}
         actionDeleteLabel={t("action.delete")}
-        fieldR2ObjectLabel={t("field.r2Object")}
       />
 
       <div ref={loadMoreRef} style={{ height: 1 }} />
@@ -488,11 +486,10 @@ export function GalleryPage() {
         onPrev={openLightboxPrev}
         onNext={openLightboxNext}
         setZoom={setLightboxZoom}
-        isHttpUrl={isHttpUrl}
+        resolveImageUrl={resolveGalleryMediaUrl}
         toEmbedVideoUrl={toEmbedVideoUrl}
         formatDateTime={formatDateTime}
         isExternalView={isExternalView}
-        fieldR2ObjectLabel={t("field.r2Object")}
       />
     </PageLayout>
   );

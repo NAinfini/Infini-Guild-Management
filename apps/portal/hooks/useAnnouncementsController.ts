@@ -12,17 +12,24 @@ import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
 import { useExternalView } from "./useExternalView";
 import {
   archiveAnnouncement,
-  buildAnnouncementImageUrl,
   createAnnouncement,
-  fetchAnnouncement,
-  fetchAnnouncements,
   type UpdateAnnouncementPayload,
   updateAnnouncement,
   uploadAnnouncementImages,
-} from "../services/AnnouncementService";
+} from "../api/mutations/announcements";
+import {
+  fetchAnnouncement,
+  fetchAnnouncements,
+} from "../api/queries/announcements";
 import { queryKeys } from "../api/query-keys";
-import { useAuthStore } from "../stores/auth";
-import { userHasAnyPermission } from "../utils/permissions";
+import { useEffectivePermissions } from "./useEffectivePermissions";
+
+function buildAnnouncementImageUrl(key: string): string {
+  if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:")) return key;
+  const path = `/api/announcements/image?key=${encodeURIComponent(key)}`;
+  if (typeof window === "undefined") return path;
+  return new URL(path, window.location.origin).toString();
+}
 
 const message = {
   success: (text: string) => notifications.show({ color: "green", message: text, autoClose: 3000 }),
@@ -59,11 +66,12 @@ function readAnnouncementsLastSeenAt(): string | null {
 export function useAnnouncementsController() {
   const { t } = useTranslation("announcements");
   const queryClient = useQueryClient();
-  const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
   const { showError } = useAppError();
 
-  const isModerator = userHasAnyPermission(user, ["announcements.create", "announcements.edit", "announcements.archive"]);
+  const { canManage: canManagePermission } = useEffectivePermissions();
+
+  const isModerator = canManagePermission(["announcements.create", "announcements.edit", "announcements.archive"]);
   const canEdit = isModerator && !isExternalView;
 
   const [pinnedFilter, setPinnedFilter] = useState(false);
@@ -82,8 +90,6 @@ export function useAnnouncementsController() {
   const [publishAt, setPublishAt] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
-  const [notifyDiscord, setNotifyDiscord] = useState(true);
-  const [notifyWechat, setNotifyWechat] = useState(false);
   const [announcementsLastSeenAt, setAnnouncementsLastSeenAt] = useState<string | null>(null);
 
   const [listPage, setListPage] = useState(1);
@@ -102,6 +108,7 @@ export function useAnnouncementsController() {
         search: debouncedSearch || undefined,
         archived: statusFilter === "archived",
       }),
+    staleTime: 10 * 60_000,
     placeholderData: keepPreviousData,
   });
 
@@ -109,6 +116,7 @@ export function useAnnouncementsController() {
     queryKey: queryKeys.announcements.detail(selectedId),
     enabled: Boolean(selectedId),
     queryFn: () => fetchAnnouncement(selectedId as string),
+    staleTime: 10 * 60_000,
     placeholderData: keepPreviousData,
   });
 
@@ -232,7 +240,7 @@ export function useAnnouncementsController() {
     }
     if (statusFilter) {
       raw = raw.filter((item) => item.status === statusFilter);
-    } else {
+    } else if (!canEdit) {
       raw = raw.filter((item) => item.status === "published");
     }
     if (pinnedFilter) {
@@ -302,8 +310,6 @@ export function useAnnouncementsController() {
       setPublishAt("");
       setExpiresAt("");
       setScheduleEnabled(false);
-      setNotifyDiscord(true);
-      setNotifyWechat(false);
     } else if (selected) {
       setTitle(selected.title);
       setBodyJson(selected.body_json);
@@ -313,8 +319,6 @@ export function useAnnouncementsController() {
       setPublishAt(toDateTimePickerValue(selected.publish_at));
       setExpiresAt(toDateTimePickerValue(selected.expires_at));
       setScheduleEnabled(selected.status === "scheduled");
-      setNotifyDiscord(false);
-      setNotifyWechat(false);
     }
   }, [isCreating, selected]);
 
@@ -399,8 +403,6 @@ export function useAnnouncementsController() {
             status,
             publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
             expires_at: toIsoOrUndefined(expiresAt),
-            notify_discord: notifyDiscord,
-            notify_wechat: notifyWechat,
           },
         });
         isCreatingHandlers.close();
@@ -416,8 +418,6 @@ export function useAnnouncementsController() {
         status,
         publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
         expires_at: toIsoOrUndefined(expiresAt),
-        notify_discord: notifyDiscord,
-        notify_wechat: notifyWechat,
       });
       return;
     }
@@ -430,7 +430,7 @@ export function useAnnouncementsController() {
     }
 
     const statusMap: Record<string, Announcement["status"]> = {
-      none: selected.status === "draft" ? "published" : selected.status,
+      none: "published",
       draft: "draft",
       scheduled: "scheduled",
     };
@@ -445,8 +445,6 @@ export function useAnnouncementsController() {
         status,
         publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
         expires_at: toIsoOrUndefined(expiresAt),
-        notify_discord: notifyDiscord,
-        notify_wechat: notifyWechat,
       },
       ifMatch: `"announcement-${selected.id}-${selected.updated_at}"`,
     });
@@ -474,8 +472,6 @@ export function useAnnouncementsController() {
     setPublishAt(toDateTimePickerValue(selected.publish_at));
     setExpiresAt(toDateTimePickerValue(selected.expires_at));
     setScheduleEnabled(selected.status === "scheduled");
-    setNotifyDiscord(false);
-    setNotifyWechat(false);
   };
 
   const handleDelete = () => {
@@ -495,8 +491,6 @@ export function useAnnouncementsController() {
           body_json: bodyJson || TIPTAP_DEFAULT_JSON,
           pinned: false,
           status: "draft",
-          notify_discord: false,
-          notify_wechat: false,
         });
         setDraftAnnouncementId(created.id);
         announcementId = created.id;
@@ -539,10 +533,6 @@ export function useAnnouncementsController() {
     setExpiresAt,
     scheduleEnabled,
     setScheduleEnabled,
-    notifyDiscord,
-    setNotifyDiscord,
-    notifyWechat,
-    setNotifyWechat,
     announcementsLastSeenAt,
     listQuery,
     detailQuery,

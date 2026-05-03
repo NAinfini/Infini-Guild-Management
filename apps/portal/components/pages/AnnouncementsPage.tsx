@@ -90,10 +90,6 @@ export function AnnouncementsPage() {
             onPinnedChange={controller.setPinned}
             scheduleEnabled={controller.scheduleEnabled}
             onScheduleEnabledChange={controller.setScheduleEnabled}
-            notifyDiscord={controller.notifyDiscord}
-            onNotifyDiscordChange={controller.setNotifyDiscord}
-            notifyWechat={controller.notifyWechat}
-            onNotifyWechatChange={controller.setNotifyWechat}
             publishAt={controller.publishAt}
             onPublishAtChange={controller.setPublishAt}
             expiresAt={controller.expiresAt}

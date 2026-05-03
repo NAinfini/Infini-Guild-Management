@@ -1,5 +1,5 @@
 /** Toast status levels supported by the overlay service. */
-export type ToastStatus = "info" | "success" | "warning" | "error";
+type ToastStatus = "info" | "success" | "warning" | "error";
 
 /** Payload accepted by the overlay toast API. */
 export interface ToastPayload {
@@ -9,7 +9,7 @@ export interface ToastPayload {
   autoClose?: number | boolean;
 }
 
-/** Minimal overlay service contract (replaces @infini-dev-kit/frontend/overlays). */
+/** Overlay service contract. */
 export interface OverlayService {
   toast(payload: ToastPayload): { delivered: boolean };
 }

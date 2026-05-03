@@ -1,0 +1,134 @@
+/* ── Settings Page ── */
+
+.settings-section {
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 80%, transparent);
+  background: var(--color-surface, #ffffff);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-section__title {
+  margin: 0 0 16px;
+}
+
+/* ── Option card (shared by theme, locale, motion selectors) ── */
+
+.settings-option-card {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 80%, transparent);
+  background: var(--color-surface, #ffffff);
+  transition:
+    border-color var(--transition-normal),
+    background var(--transition-normal),
+    box-shadow var(--transition-normal);
+}
+
+.settings-option-card:hover {
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 35%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 4%, var(--color-surface, #ffffff));
+}
+
+.settings-option-card--active {
+  border-width: 2px;
+  border-color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 6%, var(--color-surface, #ffffff));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+}
+
+.settings-option-card--active:hover {
+  border-color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, var(--color-surface, #ffffff));
+}
+
+/* ── Option card with icon (theme & locale) ── */
+
+.settings-option-card--with-icon {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.settings-option-card__icon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, var(--color-surface, #ffffff));
+  color: var(--color-primary, #3b82f6);
+  transition: background var(--transition-normal);
+}
+
+.settings-option-card--active .settings-option-card__icon {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 16%, var(--color-surface, #ffffff));
+}
+
+.settings-option-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* ── Switch row (fancy effects, notification sound) ── */
+
+.settings-switch-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 12px 0;
+}
+
+.settings-switch-row + .settings-switch-row {
+  border-top: 1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 60%, transparent);
+}
+
+.settings-switch-row__content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ── Backup & Reset section ── */
+
+.settings-backup-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-reset-zone {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 60%, transparent);
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 767px) {
+  .settings-section {
+    padding: 16px;
+    border-radius: var(--radius-md);
+  }
+
+  .settings-option-card--with-icon {
+    padding: 12px 14px;
+  }
+
+  .settings-option-card__icon {
+    width: 34px;
+    height: 34px;
+  }
+}

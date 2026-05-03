@@ -4,8 +4,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { ActionIcon, Badge, Card, Group, Stack, Text, Tooltip } from "@mantine/core";
 import { IconUser, IconShield, IconBolt, IconCopy } from "@tabler/icons-react";
 import { PortalCard } from "../../shared/PortalCard";
+import { memo, useState, useMemo } from "react";
 import type { ComponentProps, CSSProperties, MouseEvent, ReactNode } from "react";
-import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
 
@@ -57,7 +57,7 @@ type GuildWarDragBoardProps = {
 };
 
 
-function SortableMemberCard(props: {
+const SortableMemberCard = memo(function SortableMemberCard(props: {
   itemId: string;
   domId: string;
   username: string;
@@ -75,6 +75,7 @@ function SortableMemberCard(props: {
     id: props.itemId,
     disabled: props.disabled,
   });
+  const { t } = useTranslation("guild-war");
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -105,7 +106,7 @@ function SortableMemberCard(props: {
           props.onContextMenu(props.userId, e);
         }
       }}
-      aria-label={`Select member ${props.username}`}
+      aria-label={t("active.aria.selectMember", { username: props.username })}
       disabled={props.disabled}
       {...attributes}
       {...listeners}
@@ -119,7 +120,7 @@ function SortableMemberCard(props: {
       </Stack>
     </button>
   );
-}
+});
 
 function DroppableMemberColumn(props: {
   column: DragMemberColumn;
@@ -176,7 +177,7 @@ function DroppableMemberColumn(props: {
         <Group gap={8} justify="space-between" wrap="nowrap">
           <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
             <Text size="sm" fw={600} truncate>{props.column.title}</Text>
-            <Badge size="sm" variant="light">{props.column.members.length}</Badge>
+            <Badge size="sm" variant="default">{props.column.members.length}</Badge>
             {props.column.locked ? <Badge color="red" size="sm">{t("active.locked")}</Badge> : null}
           </Group>
           <Group gap={4} wrap="nowrap">

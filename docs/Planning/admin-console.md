@@ -5,7 +5,7 @@
 
 ## Summary
 
-Centralized Admin/Moderator operations: member management, invite links, audit logs, bot settings, role management, and system health. 6 tabs: Member Management, Invite Links, Audit Log, Bot Settings, Roles, and Status/Health.
+Centralized Admin/Moderator operations: member management, invite links, audit logs, role management, and system health. 5 tabs: Member Management, Invite Links, Audit Log, Roles, and Status/Health.
 
 ## Access
 
@@ -17,13 +17,12 @@ Centralized Admin/Moderator operations: member management, invite links, audit l
 ## Layout
 
 - Uses global app shell: left sidebar + top-right profile dropdown
-- 6 tabs:
+- 5 tabs:
   1. Member Management
   2. Invite Links
   3. Audit Log
-  4. Bot Settings
-  5. Roles
-  6. Status / Health
+  4. Roles
+  5. Status / Health
 
 ---
 
@@ -36,9 +35,9 @@ Centralized Admin/Moderator operations: member management, invite links, audit l
 
 ### Desktop UI
 
-- Top controls: search (username / wechat_name), filter chips (role, class, active/inactive)
-- Main area: Ant Design Table (dense mode via dev-kit)
-  - Columns: username, wechat_name, role, class(es), power, notes
+- Top controls: search (username), filter chips (role, class, active/inactive)
+- Main area: Mantine DataTable (dense mode)
+  - Columns: username, role, class(es), power, notes
   - Row selection: multi-select with checkboxes
   - Row click selects; double click opens details modal
   - Detail modal is a shared component (reused in Guild War member view)
@@ -63,7 +62,7 @@ Centralized Admin/Moderator operations: member management, invite links, audit l
 ### Member Details modal
 
 Tabs:
-1. **Overview** — username, wechat_name, role, class, power, note, vacation, active time ranges
+1. **Overview** — username, role, class, power, note, vacation, active time ranges
 2. **Profile** — title_html preview + safe rendering, bio edit
 3. **Media** — image/video url gallery, audio, upload/replace
 4. **Admin actions** — role change, deactivate/reactivate, reset password
@@ -269,36 +268,7 @@ GET /api/admin/audit-archive/download?month=YYYY-MM
 - This list will be very long in the future, dig into cloudflare D1 price calculation to improve efficiency for this part, only query by index, and query only visible row by batch.
 ---
 
-## Tab 4: Bot Settings (Admin only)
-
-@FEATURE: BOT_SETTINGS
-
-> Full bot feature details in `bot-integrations.md`. This tab is configuration only.
-
-### Discord Settings
-
-- Bot status indicator (connected / disconnected)
-- Guild ID input
-- Notification channel selector (dropdown of guild channels)
-- Team comp channel selector
-- Default notification toggles per event type (guild_war default on, others off)
-- "Test notification" button — sends a test embed to the selected channel
-
-### WeChat Settings
-
-- Webhook URL (masked input, stored as Worker secret)
-- Target group/room IDs (multi-input)
-- Default notification toggles per event type
-- "Test message" button — sends a test message to configured group
-
-### Permissions
-
-- Only Admin can view/edit bot settings
-- Moderator: no access to this tab
-
----
-
-## Tab 5: Roles (Admin only)
+## Tab 4: Roles (Admin only)
 
 @FEATURE: ROLES_MANAGEMENT
 
@@ -320,7 +290,7 @@ Manage portal roles and their permissions. View current role assignments at a gl
 
 ---
 
-## Tab 6: Status / Health
+## Tab 5: Status / Health
 
 @FEATURE: STATUS_HEALTH
 

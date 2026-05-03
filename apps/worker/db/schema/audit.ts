@@ -19,7 +19,7 @@ export const auditLog = sqliteTable(
   },
   (table) => ({
     idxCreatedAt: index("idx_audit_log_created_at").on(table.createdAt),
-    idxEntityType: index("idx_audit_log_entity_type").on(table.entityType),
+    idxEntityActorCreated: index("idx_audit_log_entity_actor_created").on(table.entityType, table.actorId, table.createdAt),
     idxActorId: index("idx_audit_log_actor_id").on(table.actorId),
   }),
 );

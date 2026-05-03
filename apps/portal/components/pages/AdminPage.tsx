@@ -2,7 +2,6 @@ import { type AdminRole } from "@guild/shared";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { IconSettings } from "@tabler/icons-react";
 import { useSearch } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
 import {
   Alert,
   Badge,
@@ -12,11 +11,10 @@ import {
   Stack,
   Tabs,
 } from "@mantine/core";
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAdminData } from "../../hooks/data/useAdminData";
 import { useAdminAuditFilter } from "../../hooks/useAdminAuditFilter";
-import { useAdminBotController } from "../../hooks/useAdminBotController";
 import { useAdminInviteController } from "../../hooks/useAdminInviteController";
 import { useAdminMemberDetail } from "../../hooks/useAdminMemberDetail";
 import { useAdminMutations } from "../../hooks/useAdminMutations";
@@ -24,10 +22,9 @@ import { useAdminStatusController } from "../../hooks/useAdminStatusController";
 import { usePageHeaderActions } from "../../context/PageHeaderContext";
 import { useAppError } from "../../hooks/useAppError";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
-import { fetchAdminAuditArchiveMonth } from "../../services/AdminService";
-import { queryKeys } from "../../api/query-keys";
+import { copyPlainText } from "../../utils/copy";
 import { useAuthStore } from "../../stores/auth";
-import { canManageRoles, canManageBot, canViewStatus, canExportAudit, userCanAccessAdmin } from "../../utils/permissions";
+import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { PageLayout } from "../layout/PageLayout";
 import { ErrorBoundary } from "@portal/components/effects";
 import "./AdminPage.css";
@@ -43,9 +40,6 @@ const LazyAdminAuditSection = lazy(() =>
 );
 const LazyAdminInviteSection = lazy(() =>
   import("../feature/admin/AdminInviteSection").then((mod) => ({ default: mod.AdminInviteSection })),
-);
-const LazyAdminBotSection = lazy(() =>
-  import("../feature/admin/AdminBotSection").then((mod) => ({ default: mod.AdminBotSection })),
 );
 const LazyAdminRolesSection = lazy(() =>
   import("../feature/admin/AdminRolesSection").then((mod) => ({ default: mod.AdminRolesSection })),
@@ -67,15 +61,12 @@ import type { ColumnDef as TanStackColumnDef } from "@tanstack/react-table";
 export function AdminPage() {
   const { t } = useTranslation("admin");
   const user = useAuthStore((state) => state.user);
-  const isModerator = userCanAccessAdmin(user);
+  const { isModerator, canManage: canManagePermission } = useEffectivePermissions();
   const { showError } = useAppError();
   const { member: memberSearchParam } = useSearch({ strict: false }) as { member?: string };
 
   const [activeTab, setActiveTab] = useState("member");
-  const [queryDiscordGuildId, setQueryDiscordGuildId] = useState("");
   const [memberSearch, setMemberSearch] = useState("");
-  const [selectedArchiveMonth, setSelectedArchiveMonth] = useState<string | null>(null);
-  const [archivePage, setArchivePage] = useState(1);
 
   const {
     auditFilter,
@@ -92,9 +83,7 @@ export function AdminPage() {
     inviteStatsQuery,
     auditLogQuery,
     auditMonthsQuery,
-    botSettingsQuery,
     rolesQuery,
-    discordChannelsQuery,
     statusQuery,
   } = useAdminData({
     isModerator,
@@ -103,20 +92,13 @@ export function AdminPage() {
     auditSearch: auditFilter.search,
     auditDateFrom: auditFilter.dateFrom,
     auditDateTo: auditFilter.dateTo,
-    discordGuildId: queryDiscordGuildId,
   });
   const inviteController = useAdminInviteController({
     inviteLinks: inviteLinksQuery.data ?? [],
   });
-  const botController = useAdminBotController({
-    botSettingsData: botSettingsQuery.data,
-    discordChannelsData: discordChannelsQuery.data,
-    statusData: statusQuery.data,
-  });
   const adminMutations = useAdminMutations({
     invite: inviteController.invite,
     auditFilter,
-    botSettings: botController.botSettings,
     batchSelectionLimit: BATCH_SELECTION_LIMIT,
     showError,
   });
@@ -129,19 +111,6 @@ export function AdminPage() {
     setInviteExpiresAt,
     setInviteSearch,
   } = inviteController;
-  const {
-    botSettings,
-    botToggleKeys,
-    discordChannelOptions,
-    copyConfigSummary,
-    setBotSettingsJson,
-    setDiscordGuildId,
-    setDiscordNotificationChannelId,
-    setDiscordTeamCompChannelId,
-    setDiscordDefaultToggle,
-    setWechatRoomIdsText,
-    setWechatDefaultToggle,
-  } = botController;
   const {
     selectedUserIds,
     batchProgress,
@@ -159,8 +128,6 @@ export function AdminPage() {
     exportAuditLogMutation,
     revokeInviteMutation,
     deleteInviteMutation,
-    updateBotSettingsMutation,
-    testBotDispatchMutation,
     updateMemberProfileMutation,
     createRoleMutation,
     updateRoleConfigMutation,
@@ -175,21 +142,7 @@ export function AdminPage() {
     deleteRoleConfig,
   } = adminMutations;
 
-  const roles = rolesQuery.data ?? [];
-  const userRole = user?.role ?? "member";
-  const isAdmin = canManageRoles(roles, userRole) || canManageBot(roles, userRole) || canViewStatus(roles, userRole);
-  const showArchiveExplorer = canExportAudit(roles, userRole);
-  const archiveMonths = auditMonthsQuery.data?.months ?? [];
-
-  const auditArchiveQuery = useQuery({
-    queryKey: queryKeys.admin.auditArchive(selectedArchiveMonth, archivePage),
-    queryFn: () => fetchAdminAuditArchiveMonth(selectedArchiveMonth!, { page: archivePage, limit: 50 }),
-    enabled: activeTab === "audit" && showArchiveExplorer && Boolean(selectedArchiveMonth),
-  });
-
-  useEffect(() => {
-    setQueryDiscordGuildId(botController.botSettings.discordGuildId);
-  }, [botController.botSettings.discordGuildId]);
+  const isAdmin = canManagePermission(["admin.roles.manage"]) || canManagePermission(["admin.status.view"]);
 
   const {
     setMemberDetailId,
@@ -218,14 +171,20 @@ export function AdminPage() {
     return userRowsRaw.filter((row) => {
       return (
         row.user.username.toLowerCase().includes(q) ||
-        (row.profile.wechat_name ?? "").toLowerCase().includes(q) ||
-        (row.profile.discord_id ?? "").toLowerCase().includes(q) ||
         (row.profile.notes ?? "").toLowerCase().includes(q) ||
         row.user.role.toLowerCase().includes(q) ||
         row.profile.classes.some((cls) => cls.toLowerCase().includes(q))
       );
     });
   }, [userRowsRaw, memberSearch]);
+
+  const userMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of userRowsRaw) {
+      map.set(row.user.id, row.user.username);
+    }
+    return map;
+  }, [userRowsRaw]);
 
   const rolesWithExternal = useMemo((): AdminRole[] => {
     const apiRoles = rolesQuery.data ?? [];
@@ -257,25 +216,13 @@ export function AdminPage() {
       accessorFn: (row) => row.user.username,
     },
     {
-      header: "WeChat",
-      id: "wechat",
-      accessorFn: (row) => row.profile.wechat_name ?? "",
-      cell: ({ row }) => row.original.profile.wechat_name ?? "-",
-    },
-    {
-      header: t("member.table.discord"),
-      id: "discord",
-      accessorFn: (row) => row.profile.discord_id ?? "",
-      cell: ({ row }) => row.original.profile.discord_id ?? "-",
-    },
-    {
-      header: "Class",
+      header: t("member.table.class"),
       id: "class",
       accessorFn: (row) => row.profile.classes[0] ?? "",
       cell: ({ row }) => row.original.profile.classes[0] ?? "-",
     },
     {
-      header: "Power",
+      header: t("member.table.power"),
       id: "power",
       accessorFn: (row) => row.profile.power,
     },
@@ -330,9 +277,7 @@ export function AdminPage() {
       inviteStatsQuery.isError ||
       auditLogQuery.isError ||
       auditMonthsQuery.isError ||
-      botSettingsQuery.isError ||
       rolesQuery.isError ||
-      discordChannelsQuery.isError ||
       statusQuery.isError,
     t("common:loadErrorRetry"),
   );
@@ -356,7 +301,6 @@ export function AdminPage() {
           <Tabs.Tab value="member">{t("tab.member")}</Tabs.Tab>
           <Tabs.Tab value="invite">{t("tab.invite")}</Tabs.Tab>
           <Tabs.Tab value="audit">{t("tab.audit")}</Tabs.Tab>
-          <Tabs.Tab value="bot">{t("tab.bot")}</Tabs.Tab>
           <Tabs.Tab value="roles">{t("tab.roles")}</Tabs.Tab>
           <Tabs.Tab value="status">{t("tab.status")}</Tabs.Tab>
         </Tabs.List>
@@ -459,63 +403,8 @@ export function AdminPage() {
               auditPageSize={auditLogQuery.data?.limit ?? 50}
               auditTotal={auditLogQuery.data?.total ?? 0}
               onAuditPageChange={setAuditPage}
-              showArchiveExplorer={showArchiveExplorer}
-              archiveMonths={archiveMonths}
-              archiveMonthsLoading={auditMonthsQuery.isLoading}
-              archiveMonthsError={auditMonthsQuery.isError}
-              selectedArchiveMonth={selectedArchiveMonth}
-              onArchiveMonthChange={(month) => {
-                setSelectedArchiveMonth(month);
-                setArchivePage(1);
-              }}
-              archiveLoading={auditArchiveQuery.isLoading}
-              archiveError={auditArchiveQuery.isError}
-              archiveRows={auditArchiveQuery.data?.data ?? []}
-              archivePageCurrent={auditArchiveQuery.data?.page ?? archivePage}
-              archivePageSize={auditArchiveQuery.data?.limit ?? 50}
-              archiveTotal={auditArchiveQuery.data?.total ?? 0}
-              onArchivePageChange={setArchivePage}
               rolesData={rolesQuery.data ?? []}
-            />
-          </Suspense>
-          </ErrorBoundary>
-        </Tabs.Panel>
-
-        <Tabs.Panel value="bot" pt="sm">
-          <ErrorBoundary>
-          <Suspense fallback={suspenseFallback}>
-            <LazyAdminBotSection
-              botSettingsLoading={botSettingsQuery.isLoading}
-              botSettingsError={botSettingsQuery.isError}
-              runtimeStatus={statusQuery.data?.ws ?? null}
-              onTestDispatch={(platform) => testBotDispatchMutation.mutate({ platform })}
-              testDispatchPending={testBotDispatchMutation.isPending}
-              discordGuildId={botSettings.discordGuildId}
-              onDiscordGuildIdChange={setDiscordGuildId}
-              onRefreshChannels={() => {
-                void discordChannelsQuery.refetch();
-              }}
-              discordChannelsFetching={discordChannelsQuery.isFetching}
-              canRefreshChannels={Boolean(botSettings.discordGuildId.trim())}
-              discordChannelCount={discordChannelsQuery.data?.channels.length ?? 0}
-              discordChannelsError={discordChannelsQuery.isError}
-              discordNotificationChannelId={botSettings.discordNotificationChannelId}
-              onDiscordNotificationChannelIdChange={setDiscordNotificationChannelId}
-              discordTeamCompChannelId={botSettings.discordTeamCompChannelId}
-              onDiscordTeamCompChannelIdChange={setDiscordTeamCompChannelId}
-              discordChannelOptions={discordChannelOptions}
-              discordChannelsLoading={discordChannelsQuery.isLoading}
-              botToggleKeys={botToggleKeys}
-              discordDefaultToggles={botSettings.discordDefaultToggles}
-              onDiscordDefaultToggleChange={setDiscordDefaultToggle}
-              wechatRoomIdsText={botSettings.wechatRoomIdsText}
-              onWechatRoomIdsTextChange={setWechatRoomIdsText}
-              wechatDefaultToggles={botSettings.wechatDefaultToggles}
-              onWechatDefaultToggleChange={setWechatDefaultToggle}
-              botSettingsJson={botSettings.json}
-              onBotSettingsJsonChange={setBotSettingsJson}
-              onSaveBotSettings={() => updateBotSettingsMutation.mutate()}
-              savePending={updateBotSettingsMutation.isPending}
+              userMap={userMap}
             />
           </Suspense>
           </ErrorBoundary>
@@ -544,9 +433,19 @@ export function AdminPage() {
           <Suspense fallback={suspenseFallback}>
             <LazyAdminStatusTab
               onCopyConfigSummary={() => {
-                void copyConfigSummary();
+                const data = statusQuery.data;
+                if (!data) return;
+                const lines = [
+                  `DB: ${data.db}`,
+                  `R2: ${data.r2}`,
+                  `WS: ${data.ws}`,
+                  `Crons: ${data.crons}`,
+                  statusLatencyMs !== null ? `Latency: ${statusLatencyMs}ms` : null,
+                  `Checked: ${new Date().toISOString()}`,
+                ].filter(Boolean);
+                void copyPlainText(lines.join("\n"));
               }}
-              canCopyConfigSummary={Boolean(statusQuery.data || botSettingsQuery.data)}
+              canCopyConfigSummary={Boolean(statusQuery.data)}
               statusLatencyMs={statusLatencyMs}
               statusLoading={statusQuery.isLoading}
               statusError={statusQuery.isError}

@@ -36,7 +36,6 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 550,
       rollupOptions: {
         output: {
-          experimentalMinChunkSize: 8_000,
           manualChunks(id) {
             const normalizedId = id.replace(/\\/g, "/");
 
@@ -55,8 +54,11 @@ export default defineConfig(({ mode }) => {
             if (normalizedId.includes("/node_modules/react/") || normalizedId.includes("/node_modules/react-dom/")) {
               return "react-core";
             }
+            if (normalizedId.includes("/node_modules/@mantine/core") || normalizedId.includes("/node_modules/@mantine/hooks") || normalizedId.includes("/node_modules/@mantine/notifications")) {
+              return "mantine-core";
+            }
             if (normalizedId.includes("/node_modules/@mantine/")) {
-              return "mantine";
+              return "mantine-optional";
             }
             if (normalizedId.includes("/node_modules/@tanstack/")) {
               return "tanstack";
@@ -85,9 +87,6 @@ export default defineConfig(({ mode }) => {
             if (normalizedId.includes("/node_modules/@dnd-kit/")) {
               return "dnd-kit";
             }
-            if (normalizedId.includes("/node_modules/swiper/")) {
-              return "swiper";
-            }
             if (normalizedId.includes("/node_modules/date-fns/")) {
               return "date-fns";
             }
@@ -97,11 +96,13 @@ export default defineConfig(({ mode }) => {
       },
     },
     resolve: {
-      dedupe: ["react", "react-dom"],
+      dedupe: ["react", "react-dom", "@mantine/core", "@mantine/hooks"],
       alias: [
         // Peer dep deduplication
         { find: "react", replacement: resolve(repoRoot, "node_modules/react") },
         { find: "react-dom", replacement: resolve(repoRoot, "node_modules/react-dom") },
+        { find: /^@mantine\/core$/, replacement: resolve(repoRoot, "node_modules/@mantine/core") },
+        { find: /^@mantine\/hooks$/, replacement: resolve(repoRoot, "node_modules/@mantine/hooks") },
         { find: "motion", replacement: resolve(repoRoot, "node_modules/motion") },
         { find: /^@tanstack\/react-table$/, replacement: resolve(repoRoot, "node_modules/@tanstack/react-table") },
         { find: /^@tiptap\/(.*)$/, replacement: resolve(repoRoot, "node_modules/@tiptap/$1") },
@@ -127,15 +128,45 @@ export default defineConfig(({ mode }) => {
         },
       ],
     },
+    optimizeDeps: {
+      include: [
+        "react",
+        "react-dom",
+        "@mantine/core",
+        "@mantine/hooks",
+        "@gfazioli/mantine-split-pane",
+        "mantine-contextmenu",
+      ],
+    },
     server: {
       proxy: {
         "^/api/(?!.*\\.[^/]+(?:\\?.*)?$).*": {
           target: workerHttpTarget,
           changeOrigin: true,
+          configure(proxy) {
+            // Prevent ECONNREFUSED from bubbling into viteErrorMiddleware,
+            // where JSON.stringify on the DevEnvironment error object causes a
+            // "Converting circular structure to JSON" crash (Vite 8 regression).
+            proxy.on("error", (err, _req, res) => {
+              if (!("headersSent" in res) || (res as import("node:http").ServerResponse).headersSent) return;
+              (res as import("node:http").ServerResponse).writeHead(503, { "Content-Type": "application/json" });
+              (res as import("node:http").ServerResponse).end(
+                JSON.stringify({ error: "Worker backend unavailable", detail: (err as NodeJS.ErrnoException).code }),
+              );
+            });
+          },
         },
         "/ws": {
           target: workerWsTarget,
           ws: true,
+          configure(proxy) {
+            proxy.on("error", (_err, _req, socket) => {
+              // Swallow WebSocket proxy errors when the backend isn't running.
+              if (socket && typeof (socket as import("node:net").Socket).destroy === "function") {
+                (socket as import("node:net").Socket).destroy();
+              }
+            });
+          },
         },
       },
     },

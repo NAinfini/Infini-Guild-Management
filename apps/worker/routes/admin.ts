@@ -1,15 +1,11 @@
 import {
-  ERROR_STATUS,
   analyticsSettingsSchema,
   batchDeactivateSchema,
   batchRoleChangeSchema,
-  botSettingsSchema,
   createAdminMemberSchema,
   createInviteLinkSchema,
   createRoleSchema,
   updateRoleSchema,
-  type ErrorCode,
-  type StandardErrorResponse,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
@@ -18,11 +14,10 @@ import { customAlphabet, nanoid } from "nanoid";
 import type { Bindings } from "../index";
 import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
-import { AdminService, AuditLogQueryError, type MediaLike } from "../services/AdminService";
+import { AdminService, type MediaLike } from "../services/AdminService";
+import { AdminAuditService, AuditLogQueryError } from "../services/AdminAuditService";
 import { createPasswordHash } from "../services/auth";
-import { createBotTask, fetchDiscordChannelsFromBotRuntime } from "../services/bot-dispatch";
-
-type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
+import { buildError, parseBoolean, parseJsonBody, parsePage } from "./_shared";
 
 const generateInviteCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 8);
 const generateTemporaryPassword = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", 12);
@@ -42,48 +37,24 @@ function getAdminService(c: Context) {
     media: env.MEDIA as unknown as MediaLike,
     writeAuditLog: (input) => writeAuditLog(c, input),
     createPasswordHash,
-    createBotTask: (input) => createBotTask(env, input as Parameters<typeof createBotTask>[1]),
-    fetchDiscordChannels: async (guildId) => {
-      const channels = await fetchDiscordChannelsFromBotRuntime(env, guildId);
-      return channels as unknown as Array<{ id: string; name: string; type: number }>;
-    },
     generateId: () => nanoid(),
     generateInviteCode: () => generateInviteCode(),
     generateTemporaryPassword: () => generateTemporaryPassword(),
-    signingSecret: env.BOT_SHARED_SECRET?.trim() ?? "",
     rawDb: env.DB,
     ws: env.WS,
   });
 }
 
-function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {
-  const requestId = (c.get("requestId") as string | undefined) ?? crypto.randomUUID();
-  const body: StandardErrorResponse = {
-    error_code: code,
-    message,
-    request_id: requestId,
-    ...(details ? { details } : {}),
-  };
-  return c.json(body, ERROR_STATUS[code] as ErrorStatusCode);
-}
-
-async function parseJsonBody(c: Context): Promise<unknown | Response> {
-  try {
-    return await c.req.json();
-  } catch {
-    return buildError(c, "VALIDATION_ERROR", "Invalid JSON body");
-  }
-}
-
-function parseBoolean(value: string | undefined): boolean | undefined {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  return undefined;
-}
-
-function parsePage(value: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+function getAdminAuditService(c: Context) {
+  const env = c.env as Bindings;
+  const db = getDb(c);
+  return new AdminAuditService({
+    db,
+    media: env.MEDIA as unknown as MediaLike,
+    writeAuditLog: (input) => writeAuditLog(c, input),
+    generateId: () => nanoid(),
+    signingSecret: env.SIGNING_SECRET ?? "",
+  });
 }
 
 function buildArchiveDownloadUrl(c: Context, token: string): string {
@@ -270,45 +241,6 @@ adminRoutes.delete("/roles/:id", async (c) => {
   return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
 });
 
-// Bot Settings
-adminRoutes.get("/bot-settings", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.bot.view");
-  if (sessionUser instanceof Response) return sessionUser;
-  const result = await getAdminService(c).getBotSettings();
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
-});
-
-adminRoutes.get("/bot-settings/discord/channels", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.bot.view");
-  if (sessionUser instanceof Response) return sessionUser;
-  const guildId = c.req.query("guild_id");
-  if (!guildId) return buildError(c, "VALIDATION_ERROR", "guild_id query parameter required");
-  const result = await getAdminService(c).getDiscordChannels(guildId);
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
-});
-
-adminRoutes.patch("/bot-settings", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.bot.manage");
-  if (sessionUser instanceof Response) return sessionUser;
-  const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
-  const parsed = botSettingsSchema.safeParse(body);
-  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid bot settings payload", parsed.error.flatten());
-  const result = await getAdminService(c).updateBotSettings(sessionUser.id, parsed.data);
-  return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
-});
-
-adminRoutes.post("/bot-settings/test", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.bot.manage");
-  if (sessionUser instanceof Response) return sessionUser;
-  const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
-  const platform = (body as { platform?: unknown }).platform;
-  if (platform !== "discord" && platform !== "wechat") return buildError(c, "VALIDATION_ERROR", "platform must be discord or wechat");
-  const result = await getAdminService(c).testBotDispatch(sessionUser.id, platform);
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
-});
-
 // Status
 adminRoutes.get("/status", async (c) => {
   const sessionUser = await requirePermission(c, "admin.status.view");
@@ -340,7 +272,7 @@ adminRoutes.patch("/analytics-settings", async (c) => {
 adminRoutes.get("/audit-archive/months", async (c) => {
   const sessionUser = await requirePermission(c, "admin.audit.view");
   if (sessionUser instanceof Response) return sessionUser;
-  const result = await getAdminService(c).listArchiveMonths();
+  const result = await getAdminAuditService(c).listArchiveMonths();
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
 
@@ -349,7 +281,7 @@ adminRoutes.get("/audit-archive/:month", async (c) => {
   if (sessionUser instanceof Response) return sessionUser;
   const page = parsePage(c.req.query("page"), 1);
   const limit = Math.min(100, parsePage(c.req.query("limit"), 100));
-  const result = await getAdminService(c).getArchiveMonth(c.req.param("month"), page, limit);
+  const result = await getAdminAuditService(c).getArchiveMonth(c.req.param("month"), page, limit);
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
 
@@ -359,7 +291,7 @@ adminRoutes.get("/audit-archive/download", async (c) => {
   const month = c.req.query("month");
   if (!month) return buildError(c, "VALIDATION_ERROR", "month query parameter required");
   const format = c.req.query("format") ?? "raw_ndjson_gz";
-  const result = await getAdminService(c).getArchiveDownloadLinks(sessionUser.id, month, format, (token) => buildArchiveDownloadUrl(c, token));
+  const result = await getAdminAuditService(c).getArchiveDownloadLinks(sessionUser.id, month, format, (token) => buildArchiveDownloadUrl(c, token));
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
 
@@ -368,7 +300,7 @@ adminRoutes.get("/audit-archive/download/file", async (c) => {
   if (sessionUser instanceof Response) return sessionUser;
   const token = c.req.query("token");
   if (!token) return buildError(c, "VALIDATION_ERROR", "token query parameter required");
-  const result = await getAdminService(c).verifyAndGetArchiveFile(token);
+  const result = await getAdminAuditService(c).verifyAndGetArchiveFile(token);
   if (!result.ok) return buildError(c, result.code, result.message, result.details);
   return new Response(result.data.body, { headers: { "Content-Type": "application/gzip", "Content-Disposition": `attachment; filename="${result.data.filename}"` } });
 });
@@ -378,7 +310,7 @@ adminRoutes.get("/audit-log", async (c) => {
   const sessionUser = await requirePermission(c, "admin.audit.view");
   if (sessionUser instanceof Response) return sessionUser;
   try {
-    const result = await getAdminService(c).listAuditLogs({
+    const result = await getAdminAuditService(c).listAuditLogs({
       entity_type: c.req.query("entity_type"),
       actor_id: c.req.query("actor_id"),
       search: c.req.query("search"),
@@ -398,7 +330,7 @@ adminRoutes.get("/audit-log/export", async (c) => {
   const sessionUser = await requirePermission(c, "admin.audit.export");
   if (sessionUser instanceof Response) return sessionUser;
   try {
-    const result = await getAdminService(c).exportAuditLogs(sessionUser.id, {
+    const result = await getAdminAuditService(c).exportAuditLogs(sessionUser.id, {
       entity_type: c.req.query("entity_type"),
       actor_id: c.req.query("actor_id"),
       search: c.req.query("search"),

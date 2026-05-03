@@ -30,7 +30,13 @@ async function waitForWorker() {
 }
 
 async function reseed() {
-  const response = await fetch(RESEED_ENDPOINT, { method: "POST" });
+  const response = await fetch(RESEED_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "X-Requested-With": "XMLHttpRequest",
+      "Origin": "http://localhost:5173",
+    },
+  });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(`reseed failed with ${response.status}${body ? `: ${body}` : ""}`);

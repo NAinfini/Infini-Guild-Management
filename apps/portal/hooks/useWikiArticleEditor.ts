@@ -1,18 +1,18 @@
 import type { WikiArticle, WikiCategory } from "@guild/shared";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/TipTapEditor";
-import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
+import { notifySuccess } from "../utils/notifications";
 import {
   createWikiArticle,
   type CreateWikiArticlePayload,
   type UpdateWikiArticlePayload,
   updateWikiArticle,
   uploadWikiArticleImages,
-} from "../services/WikiService";
+} from "../api/mutations/wiki";
 import { queryKeys } from "../api/query-keys";
 
 type UseWikiArticleEditorParams = {
@@ -75,7 +75,7 @@ export function useWikiArticleEditor({
   const createArticleMutation = useMutation({
     mutationFn: createWikiArticle,
     onSuccess: async (created) => {
-      notifications.show({ color: "green", message: t("message.articleCreated") });
+      notifySuccess(t("message.articleCreated"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
       isCreatingArticleHandlers.close();
       onArticleCreated(created.slug);
@@ -88,7 +88,7 @@ export function useWikiArticleEditor({
   const updateArticleMutation = useMutation({
     mutationFn: ({ id, payload, ifMatch }: { id: string; payload: UpdateWikiArticlePayload; ifMatch?: string }) => updateWikiArticle(id, payload, ifMatch),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.articleSaved") });
+      notifySuccess(t("message.articleSaved"));
       setPinnedIntent("none");
       setArchiveIntent("none");
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });

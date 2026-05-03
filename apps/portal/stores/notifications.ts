@@ -11,9 +11,9 @@ type FeatureState = {
 
 type FeatureMap = Record<NotificationFeature, FeatureState>;
 
-export type PushNotificationEntryType = "announcement_published" | "event_reminder" | "member_online";
+type PushNotificationEntryType = "announcement_published" | "member_online";
 
-export type PushNotificationEntry = {
+type PushNotificationEntry = {
   id: string;
   type: PushNotificationEntryType;
   title: string;
@@ -26,7 +26,7 @@ const FEATURE_STORAGE_KEY = "portal:last_seen";
 const PUSH_STORAGE_KEY = "portal:push-notification-center";
 const MAX_PUSH_ENTRIES = 80;
 const FEATURES: NotificationFeature[] = ["announcements", "members"];
-const ENTRY_TYPES: PushNotificationEntryType[] = ["announcement_published", "event_reminder", "member_online"];
+const ENTRY_TYPES: PushNotificationEntryType[] = ["announcement_published", "member_online"];
 
 function isIsoDate(value: string): boolean {
   return Number.isFinite(Date.parse(value));
@@ -183,17 +183,6 @@ function createEntryFromPush(message: PushMessage): PushNotificationEntry | null
       title: "Announcement Published",
       message: message.title,
       occurredAt: toIsoOrNow(message.published_at),
-      readAt: null,
-    };
-  }
-
-  if (message.type === "event_reminder") {
-    return {
-      id: `event-reminder:${message.event_id}:${message.starts_at}`,
-      type: "event_reminder",
-      title: "Event Reminder",
-      message: `${message.title} (${message.starts_at.slice(0, 16).replace("T", " ")})`,
-      occurredAt: toIsoOrNow(message.generated_at),
       readAt: null,
     };
   }

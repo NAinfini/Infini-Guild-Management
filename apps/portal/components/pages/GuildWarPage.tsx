@@ -9,17 +9,13 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { buildEChartsTheme } from "../../theme/echarts";
 import { useTheme } from "../../providers/ThemeProvider";
 import { Alert, Button, Card, Group, Modal, MultiSelect, Skeleton, Stack, Tabs, Text } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
 import { useDisclosure } from "@mantine/hooks";
 import { type ContextMenuItemOptions, useContextMenu } from "mantine-contextmenu";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
-import { BarChart, LineChart } from "echarts/charts";
-import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
-import * as echarts from "echarts/core";
-import { CanvasRenderer } from "echarts/renderers";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 import { useAppError } from "../../hooks/useAppError";
 import { useGuildWarData } from "../../hooks/data/useGuildWarData";
 import { useExternalView } from "../../hooks/useExternalView";
@@ -30,10 +26,11 @@ import { useGuildWarMutations } from "../../hooks/guild-war/useGuildWarMutations
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { GuildWarService, moveGuildWarMember } from "../../services/GuildWarService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersList } from "../../services/UserService";
+import { fetchUsersList } from "../../api/queries/users";
 import { useAuthStore } from "../../stores/auth";
-import { userHasAnyPermission } from "../../utils/permissions";
+import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { useGuildWarStore } from "../../stores/guildWar";
+import { notifySuccess } from "../../utils/notifications";
 import { PageLayout } from "../layout/PageLayout";
 import { useGuildWarActiveController } from "../feature/guild-war/useGuildWarActiveController";
 import "./GuildWarPage.css";
@@ -67,7 +64,7 @@ type PageTabsProps = {
 };
 
 const message = {
-  success: (content: string) => notifications.show({ color: "green", message: content }),
+  success: (content: string) => notifySuccess(content),
 };
 
 function PageTabs({ items, destroyInactiveTabPane = false, initialActiveKey }: PageTabsProps) {
@@ -120,15 +117,6 @@ function sectionHeading(text: string) {
   );
 }
 
-echarts.use([
-  BarChart,
-  LineChart,
-  GridComponent,
-  LegendComponent,
-  TooltipComponent,
-  CanvasRenderer,
-]);
-
 export function GuildWarPage() {
   const { t } = useTranslation("guild-war");
   const guildWarSearch = useSearch({ strict: false }) as {
@@ -137,9 +125,19 @@ export function GuildWarPage() {
   };
   const queryClient = useQueryClient();
   const { theme: currentTheme } = useTheme();
+
+  useEffect(() => {
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(() => {
+        import("../feature/guild-war/GuildWarAnalyticsTab");
+        import("../feature/guild-war/WarHistoryTab");
+      });
+    }
+  }, []);
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
-  const isModerator = userHasAnyPermission(user, ["guildwar.teams.edit", "guildwar.teams.post"]);
+  const { canManage: canManagePermission } = useEffectivePermissions();
+  const isModerator = canManagePermission(["guildwar.teams.edit"]);
   const canManageActive = isModerator && !isExternalView;
   const { showError } = useAppError();
   const chartThemeName = useMemo(() => `guild-${currentTheme}`, [currentTheme]);
@@ -170,7 +168,26 @@ export function GuildWarPage() {
     setHistoryPage,
     historyPerPage,
     setHistoryPerPage,
-  } = useGuildWarStore();
+  } = useGuildWarStore(
+    useShallow((s) => ({
+      selectedEventId: s.selectedEventId,
+      setSelectedEventId: s.setSelectedEventId,
+      selectedHistoryId: s.selectedHistoryId,
+      setSelectedHistoryId: s.setSelectedHistoryId,
+      historyViewMode: s.historyViewMode,
+      setHistoryViewMode: s.setHistoryViewMode,
+      historyChartMetric: s.historyChartMetric,
+      setHistoryChartMetric: s.setHistoryChartMetric,
+      historyDateFrom: s.historyDateFrom,
+      setHistoryDateFrom: s.setHistoryDateFrom,
+      historyDateTo: s.historyDateTo,
+      setHistoryDateTo: s.setHistoryDateTo,
+      historyPage: s.historyPage,
+      setHistoryPage: s.setHistoryPage,
+      historyPerPage: s.historyPerPage,
+      setHistoryPerPage: s.setHistoryPerPage,
+    })),
+  );
 
   const initialTabKey = useMemo(() => {
     if (guildWarSearch.tab) {
@@ -192,10 +209,6 @@ export function GuildWarPage() {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-
-  useEffect(() => {
-    echarts.registerTheme(chartThemeName, chartThemeConfig);
-  }, [chartThemeConfig, chartThemeName]);
 
   const {
     warEventsQuery,
@@ -223,8 +236,9 @@ export function GuildWarPage() {
   const { showContextMenu } = useContextMenu();
 
   const usersQuery = useQuery({
-    queryKey: ["users"],
+    queryKey: queryKeys.users.all,
     queryFn: fetchUsersList,
+    staleTime: 10 * 60_000,
   });
 
   useEffect(() => {
@@ -306,7 +320,7 @@ export function GuildWarPage() {
         });
       }
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.guildWar.active(selectedEventId),
+        queryKey: queryKeys.guildWar.active(selectedEventId ?? null),
       });
       message.success(t("message.membersAddedToPool", { count: addToPoolSelection.length }));
       setAddToPoolSelection([]);
@@ -436,7 +450,7 @@ export function GuildWarPage() {
           });
         }
         await queryClient.invalidateQueries({
-          queryKey: queryKeys.guildWar.active(selectedEventId ?? "none"),
+          queryKey: queryKeys.guildWar.active(selectedEventId ?? null),
         });
         message.success(
           pendingMove.moves.length === 1
@@ -533,7 +547,7 @@ export function GuildWarPage() {
                             </Text>
                             <Button
                               size="xs"
-                              variant="light"
+                              variant="default"
                               leftSection={<IconX size={16} />}
                               onClick={() => {
                                 activeController.setUndoMove(null);
@@ -663,16 +677,6 @@ export function GuildWarPage() {
                   historyDetail={historyDetailQuery.data ?? null}
                   historyMvp={guildWarHistory.historyMvp}
                   historyMissingSlotsByUserId={guildWarHistory.historyMissingSlotsByUserId}
-                  onPostResults={(platform) => {
-                    if (!historyDetailQuery.data) {
-                      return;
-                    }
-                    guildWarMutations.postResultsMutation.mutate({
-                      war_history_id: historyDetailQuery.data.id,
-                      platform,
-                    });
-                  }}
-                  postResultsPending={guildWarMutations.postResultsMutation.isPending}
                   onSaveMemberStats={guildWarMutations.saveHistoryMemberStats}
                   saveMemberStatsPending={guildWarMutations.updateMemberStatsMutation.isPending}
                   onDeleteHistory={(id) => guildWarMutations.deleteHistoryMutation.mutate(id)}
@@ -684,11 +688,11 @@ export function GuildWarPage() {
                   historyResultLabel={t("history.result")}
                   loadErrorMessage={t("common:loadError")}
                   chartThemeName={chartThemeName}
+                  chartThemeConfig={chartThemeConfig}
                   chartPalette={chartPalette}
                   hashToPaletteColor={guildWarAnalytics.hashToPaletteColor}
                   getMetricLabel={(metric) => t(guildWarAnalytics.getMetricLabelKey(metric))}
                   metricValueOrNullFromWarMember={guildWarAnalytics.metricValueOrNullFromWarMember}
-                  echarts={echarts}
                   initialSearch={guildWarSearch.warName}
                 />
               </Suspense>
@@ -751,8 +755,8 @@ export function GuildWarPage() {
                   analyticsDetailsError={guildWarAnalytics.analyticsDetailsQuery.isError}
                   loadErrorMessage={t("common:loadError")}
                   metricLabel={guildWarAnalytics.analyticsMetricLabel}
-                  echarts={echarts}
                   chartThemeName={chartThemeName}
+                  chartThemeConfig={chartThemeConfig}
                   chartOption={guildWarAnalytics.analyticsChartOption}
                   normEnabled={guildWarAnalytics.analyticsNormEnabled}
                   onNormEnabledChange={guildWarAnalytics.setAnalyticsNormEnabled}

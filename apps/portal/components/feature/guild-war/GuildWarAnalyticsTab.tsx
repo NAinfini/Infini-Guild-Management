@@ -16,8 +16,23 @@
 } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
 import { Split } from "@gfazioli/mantine-split-pane";
+import { BarChart, LineChart } from "echarts/charts";
+import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
+import * as echarts from "echarts/core";
+import { CanvasRenderer } from "echarts/renderers";
 import ReactEChartsCore from "echarts-for-react/lib/core";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import type { EChartsThemeConfig } from "../../../theme/echarts";
+
+echarts.use([
+  BarChart,
+  LineChart,
+  GridComponent,
+  LegendComponent,
+  TooltipComponent,
+  CanvasRenderer,
+]);
 
 type AnalyticsMode = "player" | "rankings" | "teams";
 type AnalyticsMetricKey =
@@ -75,8 +90,8 @@ type GuildWarAnalyticsTabProps = {
   analyticsDetailsError: boolean;
   loadErrorMessage: string;
   metricLabel: string;
-  echarts: unknown;
   chartThemeName: string;
+  chartThemeConfig: EChartsThemeConfig;
   chartOption: unknown;
   normEnabled: boolean;
   onNormEnabledChange: (value: boolean) => void;
@@ -135,8 +150,8 @@ export function GuildWarAnalyticsTab({
   analyticsDetailsError,
   loadErrorMessage,
   metricLabel: _metricLabel,
-  echarts,
   chartThemeName,
+  chartThemeConfig,
   chartOption,
   normEnabled,
   onNormEnabledChange,
@@ -146,6 +161,10 @@ export function GuildWarAnalyticsTab({
 }: GuildWarAnalyticsTabProps) {
   const { t } = useTranslation("guild-war");
   const metricOptions = ANALYTICS_METRIC_OPTIONS.map((opt) => ({ ...opt, label: t(opt.labelKey) }));
+
+  useEffect(() => {
+    echarts.registerTheme(chartThemeName, chartThemeConfig);
+  }, [chartThemeConfig, chartThemeName]);
 
   return (
     <Stack gap={12} className="guild-war-analytics-layout">
@@ -186,7 +205,7 @@ export function GuildWarAnalyticsTab({
                 clearable
                 style={{ minWidth: 280 }}
                 placeholder={t("analytics.toolbar.selectWars")}
-                aria-label="Select wars for analytics"
+                aria-label={t("analytics.aria.selectWars")}
                 value={selectedWarIds}
                 onChange={onSelectedWarIdsChange}
                 data={warOptions}
@@ -216,7 +235,7 @@ export function GuildWarAnalyticsTab({
                   clearable
                   searchable
                   placeholder={t("analytics.metrics.placeholder")}
-                  aria-label="Select analytics metrics"
+                  aria-label={t("analytics.aria.selectMetrics")}
                   value={selectedMetrics}
                   onChange={(values) => onSelectedMetricsChange(values.slice(0, 5) as AnalyticsMetricKey[])}
                   data={metricOptions}
@@ -237,7 +256,7 @@ export function GuildWarAnalyticsTab({
                   <>
                     <Select
                       value={aggregation}
-                      aria-label="Select rankings aggregation"
+                      aria-label={t("analytics.aria.selectAggregation")}
                       onChange={(value) => value && onAggregationChange(value as AnalyticsAggregation)}
                       data={[
                         { value: "total", label: t("analytics.aggregation.total") },
@@ -251,7 +270,7 @@ export function GuildWarAnalyticsTab({
                       max={20}
                       value={topN}
                       onChange={(value) => onTopNChange(typeof value === "number" ? value : 10)}
-                      aria-label="Select rankings top N"
+                      aria-label={t("analytics.aria.topN")}
                       label={t("analytics.topN")}
                     />
                     <NumberInput
@@ -259,7 +278,7 @@ export function GuildWarAnalyticsTab({
                       max={200}
                       value={minParticipation}
                       onChange={(value) => onMinParticipationChange(typeof value === "number" ? value : 1)}
-                      aria-label="Select minimum wars participation"
+                      aria-label={t("analytics.aria.minParticipation")}
                       label={t("analytics.minParticipation")}
                     />
                   </>
@@ -313,7 +332,7 @@ export function GuildWarAnalyticsTab({
                     clearable
                     searchable
                     placeholder={t("analytics.selectMembers")}
-                    aria-label="Select player analytics members"
+                    aria-label={t("analytics.aria.selectMembers")}
                     value={selectedUsers}
                     onChange={(values) => onSelectedUsersChange(values.slice(0, 5))}
                     data={selectableUserIds.map((userId) => ({ value: userId, label: userIdToUsername.get(userId) ?? userId }))}
@@ -345,7 +364,7 @@ export function GuildWarAnalyticsTab({
                   clearable
                   searchable
                   placeholder={t("analytics.selectTeams")}
-                  aria-label="Select team analytics teams"
+                  aria-label={t("analytics.aria.selectTeams")}
                   value={selectedTeams}
                   onChange={(values) => onSelectedTeamsChange(values)}
                   data={teamOptions.map((team) => ({ value: team, label: team }))}

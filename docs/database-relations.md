@@ -1,6 +1,6 @@
 # Database Entity-Relationship Diagram
 
-25 tables across 9 domains. Primary keys are `TEXT` in all tables; most are nanoid IDs, and `role_permissions` uses a composite key (`role_id`, `permission`). All timestamps are UTC ISO-8601.
+21 tables across 7 domains. Primary keys are `TEXT` in all tables; most are nanoid IDs, and `role_permissions` uses a composite key (`role_id`, `permission`). All timestamps are UTC ISO-8601.
 
 ```mermaid
 erDiagram
@@ -59,16 +59,6 @@ erDiagram
         text revoked_at "nullable"
     }
 
-    discord_link_codes {
-        text id PK
-        text user_id FK
-        text discord_id
-        text code
-        text expires_at
-        int used "boolean"
-        text created_at
-    }
-
     %% ═══════════════════════════════════════
     %% Domain: Member Profiles
     %% ═══════════════════════════════════════
@@ -76,7 +66,6 @@ erDiagram
     member_profiles {
         text id PK
         text user_id FK,UK "unique"
-        text wechat_name "nullable"
         int power "default 0"
         text classes "JSON array"
         text title_html "nullable"
@@ -87,8 +76,6 @@ erDiagram
         text availability "nullable"
         text vacation_start "nullable"
         text vacation_end "nullable"
-        text discord_id UK "unique, nullable"
-        int discord_reminder_opt_out "boolean"
         text notes "nullable"
         text created_at
         text updated_at
@@ -290,43 +277,6 @@ erDiagram
     }
 
     %% ═══════════════════════════════════════
-    %% Domain: Bot Delivery & Platform Integration
-    %% ═══════════════════════════════════════
-
-    bot_delivery_log {
-        text id PK
-        text idempotency_key UK "unique"
-        text platform "discord | wechat"
-        text task_type "event_notify | team_comp | reminder | war_result"
-        text event_id FK "nullable"
-        text target_id
-        text payload_json "JSON"
-        text status "queued | sending | sent | failed"
-        int attempt_count "default 0"
-        text last_error "nullable"
-        text next_attempt_at "nullable"
-        text created_at
-        text sent_at "nullable"
-        text message_id "nullable"
-    }
-
-    bot_discord_event_messages {
-        text id PK
-        text event_id FK
-        text channel_id
-        text message_id
-        text created_at
-    }
-
-    bot_wechat_event_messages {
-        text id PK
-        text event_id FK
-        text room_id
-        text message_id
-        text created_at
-    }
-
-    %% ═══════════════════════════════════════
     %% Relationships
     %% ═══════════════════════════════════════
 
@@ -335,7 +285,6 @@ erDiagram
     users ||--o| user_auth_password : "credentials"
     users ||--o{ sessions : "active sessions (CASCADE)"
     users ||--o{ invite_links : "created by"
-    users ||--o{ discord_link_codes : "links discord"
 
     %% Member domain
     users ||--o| member_profiles : "profile (1:1)"
@@ -372,11 +321,6 @@ erDiagram
 
     %% Audit
     users ||--o{ audit_log : "actor"
-
-    %% Bot
-    events ||--o{ bot_delivery_log : "triggers"
-    events ||--o{ bot_discord_event_messages : "posted to discord"
-    events ||--o{ bot_wechat_event_messages : "posted to wechat"
 ```
 
 ## Cascade Delete Chain
@@ -407,7 +351,7 @@ gallery_items
 
 | Domain | Tables | Root FK |
 |--------|--------|---------|
-| Auth & Identity | roles, role_permissions, users, user_auth_password, sessions, invite_links, discord_link_codes | — (root) |
+| Auth & Identity | roles, role_permissions, users, user_auth_password, sessions, invite_links | — (root) |
 | Member Profiles | member_profiles | users |
 | Events & Signups | events, event_participants | users |
 | Announcements | announcements | users |
@@ -415,4 +359,3 @@ gallery_items
 | Wiki | wiki_categories, wiki_articles | users |
 | Gallery | gallery_items, gallery_likes, gallery_comments | users |
 | Audit Log | audit_log | users |
-| Bot Delivery | bot_delivery_log, bot_discord_event_messages, bot_wechat_event_messages | events |

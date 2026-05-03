@@ -99,6 +99,7 @@ export function RecurringTemplatesTab({
           <Text size="sm">{t("recurring.confirm.delete.description")}</Text>
         ),
         confirmProps: { color: "red" },
+        labels: { confirm: t("common:action.confirm"), cancel: t("common:action.cancel") },
         onConfirm: () => {
           void onDeleteTemplate(template.id);
         },
@@ -172,13 +173,13 @@ export function RecurringTemplatesTab({
                           {template.title}
                         </Text>
                         {typeDef && (
-                          <Badge size="xs" variant="light">
+                          <Badge size="xs" variant="default">
                             {t(`common:eventType.${typeDef}`)}
                           </Badge>
                         )}
                         <Badge
                           size="xs"
-                          variant="light"
+                          variant={isPaused ? "default" : "light"}
                           color={isPaused ? "gray" : "green"}
                         >
                           {isPaused ? t("recurring.status.paused") : t("recurring.status.active")}

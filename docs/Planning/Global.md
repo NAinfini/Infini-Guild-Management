@@ -8,7 +8,7 @@
 - **Product:** Infini Guild Management Portal — a game-agnostic guild/organization management portal (classes and vocabulary are configurable per instance)
 - **Repo structure:** Monorepo (portal + worker + shared contract)
 - **Branch conventions:** `main` is the primary branch
-- **Design system:** Infini-Dev-Kit (custom design system wrapping Ant Design)
+- **Design system:** Mantine + Tailwind CSS
 
 ## Architecture & Platform
 
@@ -16,10 +16,8 @@
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React SPA (Vite) + Infini-Dev-Kit (Ant Design underneath) |
-| Design system | `@infini-dev-kit/frontend` (theme, motion, components) |
-| Utilities | `@infini-dev-kit/utils` (color, animation helpers) |
-| API client | `@infini-dev-kit/backend` (`createApiClient()`) |
+| Frontend | React SPA (Vite) + Mantine + Tailwind CSS |
+| Design system | Mantine 7 (theme, components) |
 | Routing | TanStack Router |
 | Server state | TanStack Query (ETag-friendly caching) |
 | Forms | react-hook-form + zod |
@@ -31,42 +29,18 @@
 | Sanitization | DOMPurify |
 | Global state | zustand (auth session, local preferences) |
 | Backend API | Cloudflare Worker + Hono |
-| Bot Runtime | Node long-running service using `@infini-dev-kit/bots-core` + `bots-discord` + `bots-wechat` |
 | Database | Cloudflare D1 (SQLite) |
 | Object storage | Cloudflare R2 |
 | Realtime | Durable Objects (WebSocket push) |
 | Validation | zod (shared between portal and worker) |
 | IDs | nanoid or ulid |
 
-### Infini-Dev-Kit Integration Rules
-
-- Wrap app root with `<KitApp>` for theme context
-- Use `useThemeSnapshot()` for accessing theme palette, typography, foundation, depth, motion
-- Use dev-kit motion components (`RevealOnScroll`, `StaggerList`, `MotionButton`, etc.) instead of raw framer-motion
-- Use `useThemeTransition()` for theme-aware transition timing
-- Use `@infini-dev-kit/utils/color` for contrast checks and readable text color derivation
-- Use `@infini-dev-kit/backend/createApiClient()` as the base HTTP client layer
-- Theme switching via `useBridge().setTheme()` with optional view transitions
-- All themes come from the dev-kit's built-in theme profiles (neu-brutalism, cyberpunk, etc.)
-- Components MUST use dev-kit theme tokens — never hardcode colors, spacing, or shadows
-
 ### Deployment
 
 - Frontend: Cloudflare Pages (static SPA)
 - Backend: Cloudflare Worker (one worker per project instance)
-- Bot Runtime: separate long-running Node service for Discord/WeChat platform integration
 - Each project instance has its own D1 database and R2 bucket (data isolation via bindings)
 - No cross-project reads/writes
-
-### Bot Integration Runtime Rules
-
-- Cloudflare Worker is the source of truth for guild business state and bot configuration
-- Bot Runtime is the execution layer for platform delivery and platform event intake
-- Worker MUST dispatch bot tasks via authenticated internal APIs; Worker MUST NOT directly call Discord/WeChat SDK clients
-- Bot Runtime MUST call Worker internal endpoints for business mutations (`signup`, `leave`, `link`)
-- Worker <-> Bot Runtime calls MUST use HMAC signature + timestamp; replay window <= 5 minutes
-- Bot delivery MUST be idempotent via unique `idempotency_key`
-- Discord react-to-join in v1 uses dev-kit Discord raw escape hatch to handle reaction events
 
 ### Member Onboarding (Invite Link System)
 
@@ -80,7 +54,7 @@
 ### Global Search (Cmd+K)
 
 - Global search bar accessible via `Cmd+K` / `Ctrl+K` from anywhere
-- Searches across: members (username, wechat_name), events (title), announcements (title, body), wiki articles (title, body), war history (war name)
+- Searches across: members (username), events (title), announcements (title, body), wiki articles (title, body), war history (war name)
 - Results grouped by type with icons
 - Keyboard navigation: arrow keys to select, Enter to navigate, Escape to close
 - Recent searches stored in localStorage
@@ -128,7 +102,7 @@ Use these terms consistently in UI, API, DB, code, and documentation:
 - `/gallery` Gallery (guild screenshots/clips)
 - `/tools` Tools
 - `/wiki` Wiki / Tutorials
-- `/admin` Admin Console (tabs: Member Management / Invite Links / Audit / Bot Settings / Status-Health) — Admin/Mod only
+- `/admin` Admin Console (tabs: Member Management / Invite Links / Audit / Roles / Status-Health) — Admin/Mod only
 
 ### Top right avatar hover routes
 
@@ -144,7 +118,7 @@ Use these terms consistently in UI, API, DB, code, and documentation:
 ### Tabs are NOT separate routes
 
 - Guild War tabs: Active / History / Analytics
-- Admin Console tabs: Member Management / Invite Links / Audit / Bot Settings / Status-Health
+- Admin Console tabs: Member Management / Invite Links / Audit / Roles / Status-Health
 - My Profile tabs (v1): Profile / Availability / Account (3 tabs only; no Progression tab)
 
 ## Data Rules
@@ -216,7 +190,6 @@ CREATE TABLE users (
 CREATE TABLE member_profiles (
   id TEXT PRIMARY KEY,              -- nanoid
   user_id TEXT NOT NULL UNIQUE REFERENCES users(id),
-  wechat_name TEXT,                 -- WeChat display name (privacy: hidden from External)
   power INTEGER DEFAULT 0,          -- 造诣
   classes TEXT,                     -- JSON array of class names, ordered (first = primary)
   title_html TEXT,                  -- sanitized HTML title (strict allowlist)
@@ -229,9 +202,6 @@ CREATE TABLE member_profiles (
   availability TEXT,                -- JSON: weekly time blocks in UTC
   vacation_start TEXT,              -- ISO date (nullable)
   vacation_end TEXT,                -- ISO date (nullable)
-  -- Discord integration
-  discord_id TEXT UNIQUE,           -- Discord user ID snowflake (nullable)
-  discord_reminder_opt_out BOOLEAN DEFAULT FALSE,
   -- Admin notes (not visible to members/external)
   notes TEXT,
   -- Timestamps
@@ -276,57 +246,6 @@ CREATE TABLE audit_log (
 CREATE INDEX idx_audit_log_created_at ON audit_log(created_at);
 CREATE INDEX idx_audit_log_entity_type ON audit_log(entity_type);
 CREATE INDEX idx_audit_log_actor_id ON audit_log(actor_id);
-```
-
-#### `discord_link_codes`
-
-```sql
-CREATE TABLE discord_link_codes (
-  id TEXT PRIMARY KEY,              -- nanoid
-  user_id TEXT NOT NULL REFERENCES users(id),
-  discord_id TEXT NOT NULL,
-  code TEXT NOT NULL,               -- 6-digit code
-  expires_at TEXT NOT NULL,         -- ISO UTC timestamp
-  used BOOLEAN DEFAULT FALSE,
-  created_at TEXT NOT NULL
-);
-```
-
-#### `bot_delivery_log`
-
-```sql
-CREATE TABLE bot_delivery_log (
-  id TEXT PRIMARY KEY,              -- nanoid
-  idempotency_key TEXT NOT NULL UNIQUE,
-  platform TEXT NOT NULL CHECK(platform IN ('discord', 'wechat')),
-  task_type TEXT NOT NULL CHECK(task_type IN ('event_notify', 'team_comp', 'reminder', 'war_result')),
-  event_id TEXT REFERENCES events(id),
-  target_id TEXT NOT NULL,          -- channel_id / room_id / user_id
-  payload_json TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued', 'sending', 'sent', 'failed')),
-  attempt_count INTEGER NOT NULL DEFAULT 0,
-  last_error TEXT,
-  next_attempt_at TEXT,             -- ISO UTC timestamp (nullable)
-  created_at TEXT NOT NULL,
-  sent_at TEXT,                     -- ISO UTC timestamp (nullable)
-  message_id TEXT                   -- platform message id (nullable)
-);
-
-CREATE INDEX idx_bot_delivery_status_next_attempt
-ON bot_delivery_log(status, next_attempt_at);
-```
-
-#### `bot_discord_event_messages`
-
-```sql
-CREATE TABLE bot_discord_event_messages (
-  id TEXT PRIMARY KEY,              -- nanoid
-  event_id TEXT NOT NULL REFERENCES events(id),
-  channel_id TEXT NOT NULL,
-  message_id TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  UNIQUE(event_id, channel_id)
-);
 ```
 
 #### `war_history` / `war_teams` / `war_team_members` / `war_pool_members`
@@ -442,21 +361,18 @@ CREATE INDEX idx_war_pool_members_history_id ON war_pool_members(war_history_id)
 - Never leak secrets in error responses
 - `title_html` allowlist: `span`, `b`, `strong`, `i`, `em`, `u`, `br` tags only
 - Style allowlist for `title_html`: `color`, `font-weight`, `font-style`, `text-decoration`
-- Bot platform secrets MUST stay in Bot Runtime environment only
-- Bot internal endpoints MUST NOT be publicly accessible
 
 ## UI/UX Invariants
 
 ### Theming
 
-- No component may hardcode colors or spacing — always use Infini-Dev-Kit theme tokens
-- `<KitApp>` at root provides theme context via `useThemeSnapshot()`
-- Theme switching via `useBridge().setTheme()` with view transitions
-- Use dev-kit's built-in theme profiles (neu-brutalism, cyberpunk, etc.)
+- No component may hardcode colors or spacing — always use Mantine theme tokens
+- Mantine ThemeProvider at root provides theme context
+- Theme switching with view transitions
+- Built-in theme profiles: dark, light
 - Themes stored in `localStorage` (no D1 persistence)
-- Support `prefers-reduced-motion` via dev-kit's motion effective modes (off/minimum/reduced/full)
+- Support `prefers-reduced-motion` via motion effective modes (off/minimum/reduced/full)
 - Support `prefers-color-scheme` for initial theme selection
-- Use `@infini-dev-kit/utils/color` for contrast ratio checks and readable text derivation
 
 ### Localization
 
@@ -488,8 +404,8 @@ CREATE INDEX idx_war_pool_members_history_id ON war_pool_members(war_history_id)
 
 ### Copy UX
 
-- Copy outputs are plain text only (no Markdown) — optimized for Discord + WeChat
-- Default format: `@wechat_name` (wechat_name, fallback to `username`)
+- Copy outputs are plain text only (no Markdown) — optimized for pasting into chat apps
+- Default format: `@username`
 - One-click copy with tooltip + toast feedback
 
 ### Responsive Breakpoints
@@ -537,19 +453,8 @@ Additional message types:
 {
   "type": "member_online",
   "user_id": "string",
-  "source": "portal|discord|wechat",
+  "source": "portal",
   "online_at": "UTC string"
-}
-```
-
-```json
-{
-  "type": "event_reminder",
-  "event_id": "string",
-  "title": "string",
-  "starts_at": "UTC string",
-  "platforms": ["discord", "wechat"],
-  "generated_at": "UTC string"
 }
 ```
 
@@ -647,7 +552,6 @@ All cron jobs run as Cloudflare Worker scheduled triggers. Single registry to av
 |-----|----------|-----------|-------------|
 | Event instance generation | Daily, 00:00 UTC | `events.md` | Generate recurring event instances for next 8 weeks |
 | Announcement publish/expiry | Every 15 min | `announcements.md` | Flip scheduled announcements to published; auto-archive expired ones |
-| Bot reminder dispatch | Every 15 min | `bot-integrations.md` | Compute upcoming reminders and dispatch bot delivery tasks to Bot Runtime |
 | Audit archive + cleanup | Daily, 02:00 UTC | `admin-console.md` | Export 90+ day audit rows to R2 archive, update manifest, delete from D1 |
 | Media orphan cleanup | Daily, 03:00 UTC | `my-profile.md` | Scan R2 for unreferenced files, delete orphans older than 7 days |
 
@@ -706,7 +610,7 @@ Rules:
 
 **Member Visibility:**
 - ✅ Show: username, power, primary class
-- ❌ Hide: wechat_name (privacy), contact info, notes
+- ❌ Hide: contact info, notes
 
 
 ## Notifications

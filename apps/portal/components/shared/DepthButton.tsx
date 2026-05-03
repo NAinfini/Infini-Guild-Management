@@ -1,5 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { Button, Tooltip } from "@mantine/core";
+import { ActionIcon, Button, Tooltip } from "@mantine/core";
 
 type ButtonVariant = "primary" | "secondary" | "danger" | "success" | "warning" | "info";
 type ButtonSize = "xs" | "sm" | "md" | "lg";
@@ -19,7 +19,7 @@ export interface DepthButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEl
 
 const variantToMantine: Record<ButtonVariant, { color: string; variant: string }> = {
   primary: { color: "blue", variant: "filled" },
-  secondary: { color: "gray", variant: "light" },
+  secondary: { color: "gray", variant: "default" },
   danger: { color: "red", variant: "filled" },
   success: { color: "green", variant: "filled" },
   warning: { color: "yellow", variant: "filled" },
@@ -47,7 +47,21 @@ export const DepthButton = forwardRef<HTMLButtonElement, DepthButtonProps>(
     const { color, variant } = variantToMantine[type];
     const tooltipLabel = typeof tooltip === "string" ? tooltip : tooltip?.label;
 
-    const btn = (
+    const btn = iconOnly ? (
+      <ActionIcon
+        ref={ref}
+        color={color}
+        variant={variant}
+        size={size}
+        disabled={disabled}
+        loading={loading}
+        className={className}
+        aria-label={typeof tooltipLabel === "string" ? tooltipLabel : undefined}
+        {...rest}
+      >
+        {before}
+      </ActionIcon>
+    ) : (
       <Button
         ref={ref}
         type={htmlType}
@@ -61,7 +75,7 @@ export const DepthButton = forwardRef<HTMLButtonElement, DepthButtonProps>(
         className={className}
         {...rest}
       >
-        {iconOnly ? null : children}
+        {children}
       </Button>
     );
 

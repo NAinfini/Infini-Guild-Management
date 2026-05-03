@@ -26,10 +26,9 @@ type GalleryGridProps = {
   onToggleSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onOpenLightbox: (id: string) => void;
-  isHttpUrl: (value: string) => boolean;
+  resolveImageUrl: (key: string) => string;
   formatDateTime: (iso: string) => string;
   actionDeleteLabel: string;
-  fieldR2ObjectLabel: string;
 };
 
 export function GalleryGrid({
@@ -49,10 +48,9 @@ export function GalleryGrid({
   onToggleSelect,
   onDelete,
   onOpenLightbox,
-  isHttpUrl,
+  resolveImageUrl,
   formatDateTime,
   actionDeleteLabel,
-  fieldR2ObjectLabel,
 }: GalleryGridProps) {
   const { t } = useTranslation("gallery");
   if (isLoading && rows.length === 0) {
@@ -124,40 +122,29 @@ export function GalleryGrid({
                         onChange={() => onToggleSelect(item.id)}
                         aria-label={t("aria.selectItem", { id: item.id })}
                       />
-                      <DepthButton type="danger" size="sm" before={<IconTrash size={16} />} onClick={() => onDelete(item.id)} loading={deletePending}>
-                        {actionDeleteLabel}
-                      </DepthButton>
+                      <DepthButton type="danger" size="sm" iconOnly before={<IconTrash size={16} />} onClick={() => onDelete(item.id)} loading={deletePending} tooltip={{ label: actionDeleteLabel, withArrow: true }} />
                     </Group>
                   ) : null}
                   {item.type === "image" ? (
-                    isHttpUrl(item.url) ? (
-                      <button
-                        type="button"
-                        onClick={() => onOpenLightbox(item.id)}
-                        className="gallery-preview-button"
-                        aria-label={t("aria.openImage", { name: item.caption ?? item.id })}
-                      >
-                        <div className="gallery-preview-media">
-                          <img
-                            src={item.url}
-                            alt={item.caption ?? item.id}
-                            loading="lazy"
-                            decoding="async"
-                            style={{ width: "100%", maxHeight: 280, objectFit: "cover", borderRadius: 8 }}
-                          />
-                          {!isExternalView ? (
-                            <span className="gallery-preview-uploader">{item.uploaded_by_name ?? item.uploaded_by}</span>
-                          ) : null}
-                        </div>
-                      </button>
-                    ) : (
-                      <div className="gallery-object-placeholder">
-                        <Text c="dimmed">{fieldR2ObjectLabel}</Text>
-                        <Text c="dimmed" style={{ wordBreak: "break-all" }}>
-                          {item.url}
-                        </Text>
+                    <button
+                      type="button"
+                      onClick={() => onOpenLightbox(item.id)}
+                      className="gallery-preview-button"
+                      aria-label={t("aria.openImage", { name: item.caption ?? item.id })}
+                    >
+                      <div className="gallery-preview-media">
+                        <img
+                          src={resolveImageUrl(item.url)}
+                          alt={item.caption ?? item.id}
+                          loading="lazy"
+                          decoding="async"
+                          style={{ width: "100%", maxHeight: 280, objectFit: "cover", borderRadius: 8 }}
+                        />
+                        {!isExternalView ? (
+                          <span className="gallery-preview-uploader">{item.uploaded_by_name ?? item.uploaded_by}</span>
+                        ) : null}
                       </div>
-                    )
+                    </button>
                   ) : (
                     <button
                       type="button"

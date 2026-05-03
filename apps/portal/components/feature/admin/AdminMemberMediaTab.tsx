@@ -6,7 +6,8 @@ import { modals } from "@mantine/modals";
 import { IconPlus, IconTrash, IconUpload } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import type { UseMediaUploadState } from "../../../hooks/useMediaUpload";
-import type { UsersListResponse } from "../../../services/UserService";
+import type { UsersListResponse } from "../../../api/queries/users";
+import { resolveProfileMediaUrl } from "../../../utils/media";
 
 const PROFILE_IMAGE_MAX = 10;
 
@@ -127,7 +128,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                   <Button
                     size="sm"
                     color="red"
-                    variant="light"
+                    variant="default"
                     px={8}
                     onClick={() => {
                       onRemoveVideoUrl(index);
@@ -145,7 +146,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
               <Group gap={8}>
                 <Button
                   size="sm"
-                  variant="light"
+                  variant="default"
                   leftSection={<IconPlus size={16} />}
                   onClick={onAddVideoUrl}
                   disabled={videoUrls.length >= 10}
@@ -178,7 +179,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
           <Text fw={600} size="sm" mb={12}>{t("media.audio")}</Text>
           {member.profile.audio_key ? (
             <Stack gap={6}>
-              <audio controls src={member.profile.audio_key} style={{ width: "100%" }} />
+              <audio controls src={resolveProfileMediaUrl(member.profile.audio_key)} style={{ width: "100%" }} />
               <Text c="dimmed" size="sm" style={{ wordBreak: "break-all" }}>
                 {member.profile.audio_key}
               </Text>

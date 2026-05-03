@@ -1,13 +1,10 @@
 import {
   ALLOWED_IMAGE_TYPES,
-  ERROR_STATUS,
   FILE_SIZE_LIMITS,
   createWikiArticleSchema,
   createWikiCategorySchema,
   updateWikiCategorySchema,
   updateWikiArticleSchema,
-  type ErrorCode,
-  type StandardErrorResponse,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
@@ -17,8 +14,7 @@ import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { WikiService } from "../services/WikiService";
-
-type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
+import { buildError, handleResult, parseBoolean, parsePage } from "./_shared";
 
 export const wikiRoutes = new Hono();
 
@@ -27,36 +23,14 @@ function getService(c: Context): WikiService {
   return new WikiService(drizzle(env.DB), {
     media: env.MEDIA,
     writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(env, payload),
+    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
   });
-}
-
-function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {
-  const requestId = (c.get("requestId") as string | undefined) ?? crypto.randomUUID();
-  const body: StandardErrorResponse = { error_code: code, message, request_id: requestId, ...(details ? { details } : {}) };
-  return c.json(body, ERROR_STATUS[code] as ErrorStatusCode);
-}
-
-function handleResult(c: Context, result: { ok: true; data: unknown } | { ok: false; code: ErrorCode; message: string; details?: unknown }, status?: number): Response {
-  if (!result.ok) return buildError(c, result.code, result.message, result.details);
-  return c.json(result.data, status as never);
 }
 
 async function requireWikiArticlesCreate(c: Context) { return requirePermission(c, "wiki.articles.create"); }
 async function requireWikiArticlesEdit(c: Context) { return requirePermission(c, "wiki.articles.edit"); }
 async function requireWikiArticlesArchive(c: Context) { return requirePermission(c, "wiki.articles.archive"); }
 async function requireWikiCategoriesManage(c: Context) { return requirePermission(c, "wiki.categories.manage"); }
-
-function parsePage(value: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function parseBoolean(value: string | undefined): boolean | undefined {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  return undefined;
-}
 
 // --- Category routes ---
 

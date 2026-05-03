@@ -1,5 +1,4 @@
-﻿import { DepthButton } from "@portal/components/shared/DepthButton";
-import { PortalCard } from "../shared/PortalCard";
+﻿import { PortalCard } from "../shared/PortalCard";
 import {
   Alert,
   ColorPicker,
@@ -11,7 +10,6 @@ import {
   Textarea,
   Title,
 } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
 import { useLocalStorage } from "@mantine/hooks";
 import {
   IconBold,
@@ -26,6 +24,7 @@ import {
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { useDisclosure } from "@mantine/hooks";
+import { notifySuccess } from "../../utils/notifications";
 import { useExternalView } from "../../hooks/useExternalView";
 import { copyPlainText } from "../../utils/copy";
 import { FormatPainterOutlined } from "../../utils/icons";
@@ -56,9 +55,14 @@ export function ToolsPage() {
   const applyColor = (value: string) => {
     if (isExternalView) return;
     setColor(value);
+  };
+
+  const commitColor = (value: string) => {
+    if (isExternalView) return;
+    setColor(value);
     setRecentColors((current) => {
       const next = [value.toLowerCase(), ...current.filter((item) => item.toLowerCase() !== value.toLowerCase())];
-      return next.slice(0, 8);
+      return next.slice(0, 5);
     });
   };
 
@@ -179,6 +183,7 @@ export function ToolsPage() {
                 <ColorPicker
                   value={color}
                   onChange={applyColor}
+                  onChangeEnd={commitColor}
                   format="hex"
                   swatches={PRESET_COLORS}
                   style={{ width: "100%", pointerEvents: isExternalView ? "none" : "auto", opacity: isExternalView ? 0.5 : 1 }}
@@ -200,7 +205,7 @@ export function ToolsPage() {
                           key={c}
                           type="button"
                           className="sandbox__recent-btn"
-                          onClick={() => applyColor(c)}
+                          onClick={() => commitColor(c)}
                           aria-label={t("sandbox.aria.useRecentColor", { color: c })}
                           disabled={isExternalView}
                         >
@@ -294,19 +299,24 @@ export function ToolsPage() {
                 </div>
               </div>
 
-              {/* HTML output */}
+              {/* HTML source */}
               <div className="sandbox__section">
-                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.generatedHtml")}</Text>
-                <div className="sandbox__code-block">
-                  <code className="sandbox__code-text">{generatedHtml}</code>
-                </div>
-              </div>
-
-              {/* Manual override */}
-              <div className="sandbox__section">
-                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.customHtmlOverride")}</Text>
+                <Group gap={6} align="center" className="sandbox__section-label">
+                  <Text size="xs" fw={600} c="dimmed">{t("sandbox.section.htmlSource")}</Text>
+                  <button
+                    type="button"
+                    className="sandbox__copy-icon-btn"
+                    onClick={() => {
+                      void copyPlainText(safeHtml);
+                      notifySuccess(t("message.generatedHtmlCopied"));
+                    }}
+                    aria-label={t("sandbox.aria.copyGeneratedHtml")}
+                  >
+                    <IconCopy size={14} />
+                  </button>
+                </Group>
                 <Textarea
-                  value={manualHtml}
+                  value={manualHtml || generatedHtml}
                   minRows={3}
                   onChange={(event) => setManualHtml(event.currentTarget.value)}
                   placeholder={t("sandbox.manualOverridePlaceholder")}
@@ -315,21 +325,6 @@ export function ToolsPage() {
                   className="sandbox__override-textarea"
                 />
               </div>
-
-              {/* Action buttons */}
-              <Group gap={8}>
-                <DepthButton
-                  onClick={() => {
-                    void copyPlainText(safeHtml);
-                    notifications.show({ color: "green", message: t("message.generatedHtmlCopied") });
-                  }}
-                  type="secondary"
-                  size="sm"
-                  before={<IconCopy size={14} />}
-                >
-                  {t("sandbox.copyHtml")}
-                </DepthButton>
-              </Group>
             </div>
           </div>
         </div>

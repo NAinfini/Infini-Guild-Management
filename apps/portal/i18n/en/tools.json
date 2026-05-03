@@ -10,6 +10,7 @@
   "sandbox.section.typography": "TYPOGRAPHY",
   "sandbox.section.livePreview": "LIVE PREVIEW",
   "sandbox.section.generatedHtml": "GENERATED HTML",
+  "sandbox.section.htmlSource": "HTML SOURCE",
   "sandbox.section.customHtmlOverride": "CUSTOM HTML OVERRIDE",
   "sandbox.label.opacity": "Opacity",
   "sandbox.label.recent": "Recent",

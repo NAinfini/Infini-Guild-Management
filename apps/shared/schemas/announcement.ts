@@ -22,8 +22,6 @@ export const createAnnouncementSchema = z.object({
   publish_at: z.string().datetime().optional(),
   expires_at: z.string().datetime().optional(),
   status: z.enum(["draft", "scheduled", "published", "archived"]).default("draft"),
-  notify_discord: z.boolean().optional().default(false),
-  notify_wechat: z.boolean().optional().default(false),
 });
 
 export const updateAnnouncementSchema = createAnnouncementSchema.partial().extend({

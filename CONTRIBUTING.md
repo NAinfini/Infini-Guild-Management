@@ -34,7 +34,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/) strictly:
 
 **Allowed types:** `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `test`, `perf`, `ci`
 
-**Scope** must be one of: `worker`, `portal`, `shared`, `bot`, `db`, `build`, `deps`, `docs`
+**Scope** must be one of: `worker`, `portal`, `shared`, `db`, `build`, `deps`, `docs`
 
 Examples:
 ```
@@ -85,20 +85,19 @@ apps/
 ├── shared/        # Zod schemas, types, constants (shared contract)
 ├── worker/        # Cloudflare Worker (Hono API + D1 + R2)
 │   ├── routes/    # API route handlers
-│   ├── services/  # Business logic (16 services)
-│   ├── middleware/ # Auth, RBAC, rate-limit, HMAC, ETag, request-id, security-headers
-│   ├── crons/     # Scheduled jobs (6 jobs)
+│   ├── services/  # Business logic (15 services)
+│   ├── middleware/ # Auth, RBAC, rate-limit, ETag, security-headers
+│   ├── crons/     # Scheduled jobs (5 jobs)
 │   ├── tests/     # Integration and contract tests
 │   └── db/        # Drizzle schema + SQL migrations
-├── portal/        # React SPA (TanStack Router + Query + Mantine)
-│   ├── api/       # HTTP client, queries, mutations
-│   ├── components/ # Pages, layout, shared, feature, dashboard
-│   ├── services/  # Portal service layer (11 services)
-│   ├── stores/    # Zustand stores (auth, preferences, notifications, guildWar)
-│   ├── hooks/     # Custom hooks (data, guild-war, feature-specific)
-│   ├── utils/     # Utility functions
-│   └── i18n/      # Translations (en, zh — 14 namespaces each)
-└── bot-runtime/   # Node.js service (Discord.js + Wechaty)
+└── portal/        # React SPA (TanStack Router + Query + Mantine)
+    ├── api/       # HTTP client, queries, mutations
+    ├── components/ # Pages, layout, shared, feature, dashboard
+    ├── services/  # Portal service layer (3 services)
+    ├── stores/    # Zustand stores (auth, preferences, notifications, guildWar)
+    ├── hooks/     # Custom hooks (data, guild-war, feature-specific)
+    ├── utils/     # Utility functions
+    └── i18n/      # Translations (en, zh — 14 namespaces each)
 ```
 
 ## Adding a new feature

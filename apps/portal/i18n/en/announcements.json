@@ -47,11 +47,8 @@
   "status.saved": "Saved",
   "status.unsaved": "Unsaved",
   "section.publishing": "Publishing",
-  "section.notifications": "Notifications",
   "section.schedule": "Schedule",
   "section.actions": "Actions",
-  "notify.discord": "Discord",
-  "notify.wechat": "WeChat",
   "meta.scheduled": "Scheduled: {{datetime}}",
   "meta.expires": "Expires: {{datetime}}",
   "meta.updated": "Updated: {{datetime}}",
@@ -81,5 +78,10 @@
   "confirm.discardUnsaved.description": "Your current announcement edits will be lost.",
   "validation.schedulePast": "Scheduled publish time must be in the future.",
   "validation.expiresBeforePublish": "Expiry time must be after the publish time.",
-  "action.loadMore": "Load More"
+  "action.loadMore": "Load More",
+  "aria.title": "Announcement title",
+  "aria.publishTime": "Announcement publish time",
+  "aria.expireTime": "Announcement expire time",
+  "aria.searchAnnouncements": "Search announcements",
+  "aria.openAnnouncement": "Open announcement {{title}}"
 }

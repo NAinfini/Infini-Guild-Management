@@ -1,16 +1,11 @@
 import { createEventSchema, eventParticipantSchema, eventSchema, recurringTemplateSchema, updateEventSchema } from "@guild/shared";
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
 import {
-  botDeliveryLog,
-  botDiscordEventMessages,
-  botWechatEventMessages,
   eventParticipants,
   events,
   users,
-  warHistory,
-  warTemplates,
 } from "../db/schema";
 
 type QueryChain = Promise<unknown[]> & {
@@ -38,12 +33,15 @@ type DatabaseLike = {
   };
 };
 
+type BoundStatement = {
+  run: () => Promise<{ meta?: { changes?: number } }>;
+};
+
 type RawDbLike = {
   prepare: (sql: string) => {
-    bind: (...args: unknown[]) => {
-      run: () => Promise<{ meta?: { changes?: number } }>;
-    };
+    bind: (...args: unknown[]) => BoundStatement;
   };
+  batch: (statements: BoundStatement[]) => Promise<unknown[]>;
 };
 
 type MediaLike = {
@@ -69,6 +67,7 @@ export type EventRow = {
   capacity: number | null;
   pinned: boolean;
   signupLocked: boolean;
+  visibleAt: string | null;
   archivedAt: string | null;
   createdBy: string;
   recurrenceRule: string | null;
@@ -78,19 +77,20 @@ export type EventRow = {
   instanceDate: string | null;
   lastGeneratedDate: string | null;
   generationCount: number;
+  visibilityOffsetHours: number | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export type EventParticipantRow = {
+type EventParticipantRow = {
   id: string;
   eventId: string;
   userId: string;
   joinedAt: string;
 };
 
-export const MAX_EVENT_ATTACHMENTS = 5;
-export const MAX_EVENT_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_EVENT_ATTACHMENTS = 5;
+const MAX_EVENT_IMAGE_BYTES = 5 * 1024 * 1024;
 
 export class EventServiceValidationError extends Error {
   constructor(message: string) {
@@ -151,6 +151,7 @@ export function toEventPayload(row: EventRow) {
     capacity: row.capacity,
     pinned: row.pinned,
     signup_locked: row.signupLocked,
+    visible_at: row.visibleAt,
     archived_at: row.archivedAt,
     created_by: row.createdBy,
     recurrence_rule: parseRecurrenceRule(row.recurrenceRule),
@@ -182,6 +183,7 @@ export function toTemplatePayload(row: EventRow) {
     end_at: row.endAt,
     capacity: row.capacity,
     recurrence_rule: parseRecurrenceRule(row.recurrenceRule),
+    visibility_offset_hours: row.visibilityOffsetHours ?? null,
     archived_at: row.archivedAt,
     created_by: row.createdBy,
     last_generated_date: row.lastGeneratedDate,
@@ -330,19 +332,12 @@ export class EventService {
 
   async destroyEvent(actorId: string, eventId: string, existing: EventRow) {
     const now = this.now();
-    await this.db.delete(botDiscordEventMessages).where(eq(botDiscordEventMessages.eventId, eventId));
-    await this.db.delete(botWechatEventMessages).where(eq(botWechatEventMessages.eventId, eventId));
-    await this.db.delete(botDeliveryLog).where(eq(botDeliveryLog.eventId, eventId));
-    await this.db.update(warTemplates).set({ sourceEventId: null }).where(eq(warTemplates.sourceEventId, eventId));
-    await this.db
-      .update(warHistory)
-      .set({
-        eventId: null,
-        updatedAt: now,
-      })
-      .where(eq(warHistory.eventId, eventId));
-    await this.db.delete(eventParticipants).where(eq(eventParticipants.eventId, eventId));
-    await this.db.delete(events).where(eq(events.id, eventId));
+    await this.rawDb.batch([
+      this.rawDb.prepare("UPDATE war_templates SET source_event_id = NULL WHERE source_event_id = ?1").bind(eventId),
+      this.rawDb.prepare("UPDATE war_history SET event_id = NULL, updated_at = ?1 WHERE event_id = ?2").bind(now, eventId),
+      this.rawDb.prepare("DELETE FROM event_participants WHERE event_id = ?1").bind(eventId),
+      this.rawDb.prepare("DELETE FROM events WHERE id = ?1").bind(eventId),
+    ]);
 
     await this.deps.writeAuditLog({
       entityType: "event",
@@ -399,6 +394,7 @@ export class EventService {
            WHERE e.id = ?2
              AND e.archived_at IS NULL
              AND e.signup_locked = 0
+             AND (e.visible_at IS NULL OR e.visible_at <= datetime('now'))
              AND (e.end_at IS NULL OR e.end_at > datetime('now'))
              AND (e.capacity IS NULL OR (SELECT COUNT(*) FROM event_participants ep WHERE ep.event_id = e.id) < e.capacity)
          )
@@ -507,45 +503,65 @@ export class EventService {
     | { ok: true; participant: EventParticipantRow }
     | { ok: false; code: "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR" | "SERVER_ERROR"; message: string }
   > {
-    const eventRow = await this.deps.getEventById(eventId);
-    if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
-
-    const targetUser = (
-      await (this.db as any)
-        .select({ id: users.id })
-        .from(users)
-        .where(and(eq(users.id, targetUserId), eq(users.isActive, true), isNull(users.deletedAt)))
-        .limit(1)
-    )[0];
-    if (!targetUser) return { ok: false, code: "NOT_FOUND", message: "User not found" };
-
-    const existing = (
-      await (this.db as any)
-        .select({ id: eventParticipants.id })
-        .from(eventParticipants)
-        .where(and(eq(eventParticipants.eventId, eventId), eq(eventParticipants.userId, targetUserId)))
-        .limit(1)
-    )[0];
-    if (existing) return { ok: false, code: "CONFLICT", message: "Participant already exists" };
-
-    if (eventRow.capacity !== null && eventRow.capacity > 0) {
-      const countRow = (
-        await (this.db as any)
-          .select({ count: sql<number>`count(*)` })
-          .from(eventParticipants)
-          .where(eq(eventParticipants.eventId, eventId))
-      )[0];
-      if (Number(countRow?.count ?? 0) >= eventRow.capacity) {
-        return { ok: false, code: "CONFLICT", message: "Event has reached maximum capacity" };
-      }
-    }
-
     const participantId = this.deps.createId?.() ?? nanoid();
-    await this.db.insert(eventParticipants).values({
-      id: participantId,
-      eventId,
-      userId: targetUserId,
-    });
+
+    const insertResult = await this.rawDb
+      .prepare(
+        `INSERT INTO event_participants (id, event_id, user_id)
+         SELECT ?1, ?2, ?3
+         WHERE EXISTS (
+           SELECT 1 FROM events e WHERE e.id = ?2
+         )
+         AND EXISTS (
+           SELECT 1 FROM users u WHERE u.id = ?3 AND u.is_active = 1 AND u.deleted_at IS NULL
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM event_participants p WHERE p.event_id = ?2 AND p.user_id = ?3
+         )
+         AND (
+           (SELECT capacity FROM events WHERE id = ?2) IS NULL
+           OR (SELECT COUNT(*) FROM event_participants WHERE event_id = ?2) < (SELECT capacity FROM events WHERE id = ?2)
+         )`,
+      )
+      .bind(participantId, eventId, targetUserId)
+      .run();
+
+    if ((insertResult.meta?.changes ?? 0) !== 1) {
+      const eventRow = await this.deps.getEventById(eventId);
+      if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
+
+      const targetUser = (
+        await (this.db as any)
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.id, targetUserId), eq(users.isActive, true), isNull(users.deletedAt)))
+          .limit(1)
+      )[0];
+      if (!targetUser) return { ok: false, code: "NOT_FOUND", message: "User not found" };
+
+      const existing = (
+        await (this.db as any)
+          .select({ id: eventParticipants.id })
+          .from(eventParticipants)
+          .where(and(eq(eventParticipants.eventId, eventId), eq(eventParticipants.userId, targetUserId)))
+          .limit(1)
+      )[0];
+      if (existing) return { ok: false, code: "CONFLICT", message: "Participant already exists" };
+
+      if (eventRow.capacity !== null && eventRow.capacity > 0) {
+        const countRow = (
+          await (this.db as any)
+            .select({ count: sql<number>`count(*)` })
+            .from(eventParticipants)
+            .where(eq(eventParticipants.eventId, eventId))
+        )[0];
+        if (Number(countRow?.count ?? 0) >= eventRow.capacity) {
+          return { ok: false, code: "CONFLICT", message: "Event has reached maximum capacity" };
+        }
+      }
+
+      return { ok: false, code: "SERVER_ERROR", message: "Failed to add participant" };
+    }
 
     const created = (
       await (this.db as any)
@@ -618,6 +634,7 @@ export class EventService {
     end_at?: string | null;
     capacity?: number | null;
     recurrence_rule: unknown;
+    visibility_offset_hours?: number | null;
   }): Promise<EventRow> {
     this.validateDateRange(data.start_at, data.end_at);
 
@@ -643,6 +660,7 @@ export class EventService {
       instanceDate: null,
       lastGeneratedDate: null,
       generationCount: 0,
+      visibilityOffsetHours: data.visibility_offset_hours ?? null,
     });
 
     const created = await this.deps.getEventById(templateId);
@@ -668,6 +686,7 @@ export class EventService {
     end_at?: string | null;
     capacity?: number | null;
     recurrence_rule?: unknown;
+    visibility_offset_hours?: number | null;
   }): Promise<EventRow> {
     const effectiveStartAt = data.start_at ?? existing.startAt;
     const effectiveEndAt = data.end_at !== undefined ? data.end_at : existing.endAt;
@@ -682,6 +701,9 @@ export class EventService {
     if (data.capacity !== undefined) patch.capacity = data.capacity;
     if (data.recurrence_rule !== undefined) {
       patch.recurrenceRule = JSON.stringify(data.recurrence_rule);
+    }
+    if (data.visibility_offset_hours !== undefined) {
+      patch.visibilityOffsetHours = data.visibility_offset_hours;
     }
 
     await this.db.update(events).set(patch).where(eq(events.id, templateId));
@@ -728,8 +750,10 @@ export class EventService {
   }
 
   async deleteTemplate(actorId: string, templateId: string, existing: EventRow): Promise<void> {
-    await this.db.update(events).set({ seriesId: null }).where(eq(events.seriesId, templateId));
-    await this.db.delete(events).where(eq(events.id, templateId));
+    await this.rawDb.batch([
+      this.rawDb.prepare("UPDATE events SET series_id = NULL WHERE series_id = ?1").bind(templateId),
+      this.rawDb.prepare("DELETE FROM events WHERE id = ?1").bind(templateId),
+    ]);
 
     await this.deps.writeAuditLog({
       entityType: "recurring_template",
@@ -778,6 +802,29 @@ export class EventService {
     return this.deps.now?.() ?? new Date().toISOString();
   }
 
+  // --- On-demand auto-maintenance ---
+
+  private async autoArchivePastEvents(): Promise<void> {
+    const now = this.now();
+    try {
+      await this.rawDb
+        .prepare(
+          `UPDATE events
+           SET archived_at = ?1, updated_at = ?1
+           WHERE archived_at IS NULL
+             AND is_series_parent = 0
+             AND (
+               (end_at IS NOT NULL AND end_at < ?1)
+               OR (end_at IS NULL AND start_at < ?1)
+             )`,
+        )
+        .bind(now)
+        .run();
+    } catch {
+      // best-effort
+    }
+  }
+
   // --- Query methods moved from route ---
 
   private static readonly eventSelectFields = {
@@ -790,6 +837,7 @@ export class EventService {
     capacity: events.capacity,
     pinned: events.pinned,
     signupLocked: events.signupLocked,
+    visibleAt: events.visibleAt,
     archivedAt: events.archivedAt,
     createdBy: events.createdBy,
     recurrenceRule: events.recurrenceRule,
@@ -799,6 +847,7 @@ export class EventService {
     instanceDate: events.instanceDate,
     lastGeneratedDate: events.lastGeneratedDate,
     generationCount: events.generationCount,
+    visibilityOffsetHours: events.visibilityOffsetHours,
     createdAt: events.createdAt,
     updatedAt: events.updatedAt,
   } as const;
@@ -808,6 +857,7 @@ export class EventService {
     archivedFilter?: boolean;
     startAfter?: string;
     startBefore?: string;
+    includeHidden?: boolean;
   }): SQL<unknown>[] {
     const filters: SQL<unknown>[] = [eq(events.isSeriesParent, false)];
     if (params.typeFilter) {
@@ -820,6 +870,11 @@ export class EventService {
     }
     if (params.startAfter) filters.push(gte(events.startAt, params.startAfter));
     if (params.startBefore) filters.push(lte(events.startAt, params.startBefore));
+    if (!params.includeHidden) {
+      filters.push(
+        or(isNull(events.visibleAt), lte(events.visibleAt, new Date().toISOString()))!,
+      );
+    }
     return filters;
   }
 
@@ -830,6 +885,8 @@ export class EventService {
   async listEvents(params: {
     page: number; limit: number; typeFilter?: string; archivedFilter?: boolean; startAfter?: string; startBefore?: string;
   }) {
+    await this.autoArchivePastEvents();
+
     const offset = (params.page - 1) * params.limit;
     const whereClause = and(...EventService.buildEventsWhereFilters(params));
 
@@ -854,6 +911,8 @@ export class EventService {
   }
 
   async getEventDetail(eventId: string) {
+    await this.autoArchivePastEvents();
+
     const eventRow = await this.getEventById(eventId);
     if (!eventRow) return null;
 

@@ -1,7 +1,6 @@
 import {
   changePasswordSchema,
   changeUsernameSchema,
-  discordLinkVerifySchema,
   updateProfileSchema,
   type MemberProfile,
 } from "@guild/shared";
@@ -11,7 +10,6 @@ import { apiRequest } from "../client";
 export type UpdateMyProfilePayload = z.input<typeof updateProfileSchema>;
 export type ChangeMyPasswordPayload = z.input<typeof changePasswordSchema>;
 export type ChangeMyUsernamePayload = z.input<typeof changeUsernameSchema>;
-export type VerifyMyDiscordLinkPayload = z.input<typeof discordLinkVerifySchema>;
 
 export function updateMyProfile(userId: string, payload: UpdateMyProfilePayload): Promise<MemberProfile> {
   const bodyJson = updateProfileSchema.parse(payload);
@@ -74,22 +72,5 @@ export function changeMyUsername(
   return apiRequest<{ ok: true }>(`/api/users/${userId}/change-username`, {
     method: "POST",
     bodyJson,
-  });
-}
-
-export function verifyMyDiscordLink(
-  userId: string,
-  payload: VerifyMyDiscordLinkPayload,
-): Promise<{ ok: true; discord_id: string }> {
-  const bodyJson = discordLinkVerifySchema.parse(payload);
-  return apiRequest<{ ok: true; discord_id: string }>(`/api/users/${userId}/discord-link/verify`, {
-    method: "POST",
-    bodyJson,
-  });
-}
-
-export function unlinkMyDiscord(userId: string): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>(`/api/users/${userId}/discord-link`, {
-    method: "DELETE",
   });
 }

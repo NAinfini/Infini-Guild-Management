@@ -10,15 +10,16 @@ import {
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { memberProfiles, rolePermissions, roles, userAuthPassword, users } from "../db/schema";
+import { memberProfiles, rolePermissions, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
+import { parseStringArray, parseRecord } from "./helpers";
 
 // --- Types ---
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 
 type UserRow = { id: string; username: string; role: string; isActive: boolean; deletedAt: string | null; createdAt: string; updatedAt: string };
-type ProfileRow = { id: string; userId: string; wechatName: string | null; power: number; classes: string; titleHtml: string | null; bio: string | null; images: string; audioKey: string | null; videoUrls: string; availability: string | null; vacationStart: string | null; vacationEnd: string | null; discordId: string | null; discordReminderOptOut: boolean; notes: string | null; createdAt: string; updatedAt: string };
+type ProfileRow = { id: string; userId: string; power: number; classes: string; titleHtml: string | null; bio: string | null; images: string; audioKey: string | null; videoUrls: string; availability: string | null; vacationStart: string | null; vacationEnd: string | null; notes: string | null; createdAt: string; updatedAt: string };
 
 export type AuthServiceDeps = {
   rawDb: D1Database;
@@ -30,27 +31,11 @@ export type AuthServiceDeps = {
 
 // --- Helpers ---
 
-function parseStringArray(jsonValue: string): string[] {
-  try {
-    const parsed = JSON.parse(jsonValue) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
-  } catch { return []; }
-}
-
-function parseRecord(jsonValue: string | null): Record<string, unknown> | null {
-  if (!jsonValue) return null;
-  try {
-    const parsed = JSON.parse(jsonValue) as unknown;
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
-  } catch { return null; }
-}
-
-export function toUserPayload(user: UserRow, extra?: { permissions: Record<Permission, boolean>; roleLevel: number }) {
+function toUserPayload(user: UserRow, extra?: { permissions: Record<Permission, boolean> }) {
   return userSchema.parse({
     id: user.id,
     username: user.username,
     role: user.role,
-    role_level: extra?.roleLevel ?? 1,
     permissions: extra?.permissions ?? Object.fromEntries(PERMISSIONS.map((p) => [p, false])),
     is_active: user.isActive,
     deleted_at: user.deletedAt,
@@ -59,19 +44,19 @@ export function toUserPayload(user: UserRow, extra?: { permissions: Record<Permi
   });
 }
 
-export function toProfilePayload(profile: ProfileRow) {
+function toProfilePayload(profile: ProfileRow) {
   return memberProfileSchema.parse({
-    id: profile.id, user_id: profile.userId, wechat_name: profile.wechatName, power: profile.power,
+    id: profile.id, user_id: profile.userId, power: profile.power,
     classes: parseStringArray(profile.classes), title_html: profile.titleHtml, bio: profile.bio,
     images: parseStringArray(profile.images), audio_key: profile.audioKey, video_urls: parseStringArray(profile.videoUrls),
     availability: parseRecord(profile.availability), vacation_start: profile.vacationStart, vacation_end: profile.vacationEnd,
-    discord_id: profile.discordId, discord_reminder_opt_out: profile.discordReminderOptOut, notes: profile.notes,
+    notes: profile.notes,
     created_at: profile.createdAt, updated_at: profile.updatedAt,
   });
 }
 
 const USER_COLS = { id: users.id, username: users.username, role: users.role, isActive: users.isActive, deletedAt: users.deletedAt, createdAt: users.createdAt, updatedAt: users.updatedAt } as const;
-const PROFILE_COLS = { id: memberProfiles.id, userId: memberProfiles.userId, wechatName: memberProfiles.wechatName, power: memberProfiles.power, classes: memberProfiles.classes, titleHtml: memberProfiles.titleHtml, bio: memberProfiles.bio, images: memberProfiles.images, audioKey: memberProfiles.audioKey, videoUrls: memberProfiles.videoUrls, availability: memberProfiles.availability, vacationStart: memberProfiles.vacationStart, vacationEnd: memberProfiles.vacationEnd, discordId: memberProfiles.discordId, discordReminderOptOut: memberProfiles.discordReminderOptOut, notes: memberProfiles.notes, createdAt: memberProfiles.createdAt, updatedAt: memberProfiles.updatedAt } as const;
+const PROFILE_COLS = { id: memberProfiles.id, userId: memberProfiles.userId, power: memberProfiles.power, classes: memberProfiles.classes, titleHtml: memberProfiles.titleHtml, bio: memberProfiles.bio, images: memberProfiles.images, audioKey: memberProfiles.audioKey, videoUrls: memberProfiles.videoUrls, availability: memberProfiles.availability, vacationStart: memberProfiles.vacationStart, vacationEnd: memberProfiles.vacationEnd, notes: memberProfiles.notes, createdAt: memberProfiles.createdAt, updatedAt: memberProfiles.updatedAt } as const;
 
 // --- Service ---
 
@@ -84,12 +69,9 @@ export class AuthService {
     this.deps = deps;
   }
 
-  private async resolveUserPermissions(roleId: string): Promise<{ permissions: Record<Permission, boolean>; roleLevel: number }> {
-    const roleRow = (await this.db.select({ level: roles.level }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
-    const roleLevel = roleRow?.level ?? 1;
-
+  private async resolveUserPermissions(roleId: string): Promise<{ permissions: Record<Permission, boolean> }> {
     if (roleId === "admin") {
-      return { permissions: Object.fromEntries(PERMISSIONS.map((p) => [p, true])) as Record<Permission, boolean>, roleLevel };
+      return { permissions: Object.fromEntries(PERMISSIONS.map((p) => [p, true])) as Record<Permission, boolean> };
     }
 
     const defaults: ReadonlySet<Permission> = roleId === "moderator" ? MODERATOR_DEFAULT_PERMISSIONS : roleId === "member" ? MEMBER_DEFAULT_PERMISSIONS : new Set();
@@ -102,7 +84,7 @@ export class AuthService {
       else perms.delete(p);
     }
 
-    return { permissions: permissionSetToRecord(perms), roleLevel };
+    return { permissions: permissionSetToRecord(perms) };
   }
 
   private async getProfileByUserId(userId: string): Promise<ProfileRow | null> {
@@ -112,7 +94,7 @@ export class AuthService {
   private async ensureProfile(userId: string): Promise<ProfileRow> {
     const existing = await this.getProfileByUserId(userId);
     if (existing) return existing;
-    await this.db.insert(memberProfiles).values({ id: nanoid(), userId, power: 0, classes: "[]", images: "[]", videoUrls: "[]", discordReminderOptOut: false });
+    await this.db.insert(memberProfiles).values({ id: nanoid(), userId, power: 0, classes: "[]", images: "[]", videoUrls: "[]" });
     const created = await this.getProfileByUserId(userId);
     if (!created) throw new Error("Failed to create member profile");
     return created;
@@ -135,7 +117,7 @@ export class AuthService {
   }
 
   async checkUsername(username: string): Promise<ServiceResult<{ available: boolean; reason?: string }>> {
-    if (!/^[a-zA-Z0-9_]{3,50}$/.test(username)) return ok({ available: false, reason: "invalid_format" });
+    if (!/^[a-zA-Z0-9_一-鿿]{1,50}$/.test(username)) return ok({ available: false, reason: "invalid_format" });
     const existing = (await this.db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1))[0];
     return ok({ available: !existing });
   }
@@ -168,7 +150,7 @@ export class AuthService {
       await rawDb.batch([
         rawDb.prepare(`INSERT INTO users (id, username, role, is_active) VALUES (?, ?, 'member', 1)`).bind(userId, username),
         rawDb.prepare(`INSERT INTO user_auth_password (user_id, password_hash, salt) VALUES (?, ?, ?)`).bind(userId, passwordRecord.passwordHash, passwordRecord.salt),
-        rawDb.prepare(`INSERT INTO member_profiles (id, user_id, power, classes, images, video_urls, discord_reminder_opt_out) VALUES (?, ?, 0, '[]', '[]', '[]', 0)`).bind(profileId, userId),
+        rawDb.prepare(`INSERT INTO member_profiles (id, user_id, power, classes, images, video_urls) VALUES (?, ?, 0, '[]', '[]', '[]')`).bind(profileId, userId),
       ]);
     } catch (error) {
       await rawDb.prepare(`UPDATE invite_links SET used_count = used_count - 1 WHERE code = ? AND used_count > 0`).bind(inviteCode).run();

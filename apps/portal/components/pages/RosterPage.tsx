@@ -11,6 +11,7 @@ import {
   Group,
   MultiSelect,
   Select,
+  Skeleton,
   Slider,
   Text,
   TextInput,
@@ -23,9 +24,10 @@ import { useTranslation } from "react-i18next";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersListWithOptions } from "../../services/UserService";
+import { fetchUsersListWithOptions } from "../../api/queries/users";
 import { useAuthStore } from "../../stores/auth";
-import { userHasPermission } from "../../utils/permissions";
+import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
+import { resolveProfileMediaUrl } from "../../utils/media";
 import { VolumeOutlined, VolumeMutedOutlined } from "../../utils/icons";
 import { PageLayout } from "../layout/PageLayout";
 import { EmptyState } from "../shared/EmptyState";
@@ -35,18 +37,6 @@ import "./RosterPage.css";
 const LazyProfileModal = lazy(() =>
   import("../shared/ProfileModal").then((mod) => ({ default: mod.ProfileModal })),
 );
-
-function resolveProfileMediaUrl(key: string): string {
-  if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:") || key.startsWith("blob:")) {
-    return key;
-  }
-  if (typeof window === "undefined") {
-    return `/api/users/image?key=${encodeURIComponent(key)}`;
-  }
-  const url = new URL("/api/users/image", window.location.origin);
-  url.searchParams.set("key", key);
-  return url.toString();
-}
 
 const rosterCardVariants = {
   hidden: { opacity: 0, y: 8 },
@@ -116,6 +106,7 @@ export function RosterPage() {
   const navigate = useNavigate();
   const isExternalView = useExternalView();
   const sessionUser = useAuthStore((state) => state.user);
+  const { canManage: canManagePermission } = useEffectivePermissions();
   const [search, setSearch] = useState("");
   const [debouncedSearchRaw] = useDebouncedValue(search, 300);
   const debouncedSearch = debouncedSearchRaw.trim().toLowerCase();
@@ -129,6 +120,7 @@ export function RosterPage() {
   const hoverAudioStopDebounceRef = useRef<number | null>(null);
   const [hoverPreview, setHoverPreview] = useState<HoverPreviewState | null>(null);
   const [selected, setSelected] = useState<{ user: User; profile: MemberProfile } | null>(null);
+  const selectedRef = useRef(selected);
   const [windowWidth, setWindowWidth] = useState(() => typeof window === "undefined" ? 1920 : window.innerWidth);
   const virtualScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -141,6 +133,7 @@ export function RosterPage() {
   const usersQuery = useQuery({
     queryKey: queryKeys.users.roster(isExternalView ? "external" : "default"),
     queryFn: () => fetchUsersListWithOptions({ externalView: isExternalView }),
+    staleTime: 10 * 60_000,
   });
   useLoadWarningToast(usersQuery.isError, t("common:loadErrorRetry"));
 
@@ -172,7 +165,7 @@ export function RosterPage() {
   useEffect(() => {
     setVisibleCount(20);
     if (selected) {
-      setSelected(null);
+      closeMemberProfile();
     }
   }, [debouncedSearch, classFilter]);
 
@@ -192,7 +185,7 @@ export function RosterPage() {
   const displayRows = isExternalView
     ? rows.map((entry) => ({
         ...entry,
-        profile: { ...entry.profile, wechat_name: null, notes: null, discord_id: null },
+        profile: { ...entry.profile, notes: null },
       }))
     : rows;
 
@@ -200,8 +193,7 @@ export function RosterPage() {
     .filter((entry) => {
       const q = debouncedSearch;
       if (!q) return true;
-      const wechatKeyword = isExternalView ? "" : entry.profile.wechat_name ?? "";
-      return entry.user.username.toLowerCase().includes(q) || wechatKeyword.toLowerCase().includes(q);
+      return entry.user.username.toLowerCase().includes(q);
     })
     .filter((entry) => {
       if (classFilter.length === 0) return true;
@@ -274,15 +266,29 @@ export function RosterPage() {
       window.clearTimeout(hoverAudioDebounceRef.current);
       hoverAudioDebounceRef.current = null;
     }
+    if (selectedRef.current) return;
     if (hoverAudioStopDebounceRef.current !== null) {
       window.clearTimeout(hoverAudioStopDebounceRef.current);
     }
     hoverAudioStopDebounceRef.current = window.setTimeout(() => {
-      if (hoverAudioRef.current) {
+      if (hoverAudioRef.current && !selectedRef.current) {
         hoverAudioRef.current.pause();
       }
       hoverAudioStopDebounceRef.current = null;
     }, 140);
+  };
+
+  const openMemberProfile = (entry: { user: User; profile: MemberProfile }) => {
+    selectedRef.current = entry;
+    setSelected(entry);
+  };
+
+  const closeMemberProfile = () => {
+    selectedRef.current = null;
+    setSelected(null);
+    if (hoverAudioRef.current) {
+      hoverAudioRef.current.pause();
+    }
   };
 
   const handleCardFocus = (entry: { user: User; profile: MemberProfile }) => {
@@ -329,8 +335,8 @@ export function RosterPage() {
           <TextInput
             className="roster-search-input"
             value={search}
-            placeholder={isExternalView ? t("search.placeholder.usernameOnly") : t("search.placeholder.usernameWechat")}
-            aria-label={isExternalView ? t("search.aria.usernameOnly") : t("search.aria.usernameWechat")}
+            placeholder={t("search.placeholder.usernameOnly")}
+            aria-label={t("search.aria.usernameOnly")}
             onChange={(event) => setSearch(event.currentTarget.value)}
             leftSection={<IconSearch size={14} />}
           />
@@ -363,7 +369,9 @@ export function RosterPage() {
         </div>
       </PortalCard>
 
-      {sortedRows.length === 0 ? (
+      {usersQuery.isLoading ? (
+        <Skeleton height={200} radius={8} />
+      ) : sortedRows.length === 0 ? (
         <PortalCard className="roster-empty-card" interactive={false}>
           <EmptyState
             title={debouncedSearch || classFilter.length > 0 ? t("empty.filtered") : t("empty.default")}
@@ -403,7 +411,7 @@ export function RosterPage() {
                           onFocus={() => handleCardFocus(entry)}
                           onBlur={handleCardBlur}
                         >
-                          <MemberCard user={entry.user} profile={entry.profile} resolveMediaUrl={resolveProfileMediaUrl} onClick={() => setSelected(entry)} />
+                          <MemberCard user={entry.user} profile={entry.profile} resolveMediaUrl={resolveProfileMediaUrl} onClick={() => openMemberProfile(entry)} />
                         </div>
                       </div>
                     ))}
@@ -443,11 +451,11 @@ export function RosterPage() {
           open={selected !== null}
           user={selected?.user ?? null}
           profile={selected?.profile ?? null}
-          onClose={() => setSelected(null)}
+          onClose={closeMemberProfile}
           resolveMediaUrl={resolveProfileMediaUrl}
           canEdit={Boolean(
             selected && sessionUser && (
-              userHasPermission(sessionUser, "admin.users.edit") ||
+              canManagePermission(["admin.users.edit"]) ||
               selected.user.id === sessionUser.id
             ),
           )}

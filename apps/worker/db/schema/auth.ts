@@ -1,5 +1,5 @@
 // Domain: Auth & Identity
-// Tables: roles, role_permissions, users, user_auth_password, invite_links, discord_link_codes, sessions
+// Tables: roles, role_permissions, users, user_auth_password, invite_links, sessions
 // Dependencies: none (root domain)
 import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { nowUtc } from "./shared";
@@ -79,34 +79,6 @@ export const inviteLinks = sqliteTable(
   (table) => ({
     idxCreatedAt: index("idx_invite_links_created").on(table.createdAt),
     idxStatus: index("idx_invite_links_status").on(table.revokedAt, table.expiresAt, table.createdAt),
-  }),
-);
-
-export const discordLinkCodes = sqliteTable(
-  "discord_link_codes",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id").notNull().references(() => users.id),
-    discordId: text("discord_id").notNull(),
-    code: text("code").notNull(),
-    expiresAt: text("expires_at").notNull(),
-    used: integer("used", { mode: "boolean" }).notNull().default(false),
-    createdAt: text("created_at").notNull().default(nowUtc),
-  },
-  (table) => ({
-    idxUserLookup: index("idx_discord_link_codes_user_lookup").on(
-      table.userId,
-      table.code,
-      table.used,
-      table.expiresAt,
-      table.createdAt,
-    ),
-    idxDiscordLookup: index("idx_discord_link_codes_discord_lookup").on(
-      table.discordId,
-      table.used,
-      table.expiresAt,
-      table.createdAt,
-    ),
   }),
 );
 

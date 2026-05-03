@@ -21,6 +21,8 @@ function createEventRow(overrides: Partial<Record<string, unknown>> = {}) {
     instanceDate: null,
     lastGeneratedDate: null,
     generationCount: 0,
+    visibleAt: null,
+    visibilityOffsetHours: null,
     createdAt: "2026-03-08T12:00:00.000Z",
     updatedAt: "2026-03-08T12:00:00.000Z",
     ...overrides,

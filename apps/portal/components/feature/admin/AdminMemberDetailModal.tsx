@@ -19,22 +19,19 @@ import {
 import { IconDeviceFloppy } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { UsersListResponse } from "../../../services/UserService";
+import type { UsersListResponse } from "../../../api/queries/users";
 import styles from "./AdminMemberDetailModal.module.css";
 
 type AdminUserRow = UsersListResponse["data"][number];
 
 type MemberDetailFormState = {
-  wechatName: string;
   power: number;
   classes: string[];
   titleHtml: string;
   bio: string;
   notes: string;
-  discordId: string;
   vacationStart: string;
   vacationEnd: string;
-  discordReminderOptOut: boolean;
   role: string;
   isActive: boolean;
 };
@@ -125,7 +122,7 @@ export function AdminMemberDetailModal({
                           />
                           <Badge
                             color={form.isActive ? "green" : "gray"}
-                            variant="light"
+                            variant={form.isActive ? "light" : "default"}
                           >
                             {form.isActive ? t("member.status.active") : t("member.status.inactive")}
                           </Badge>
@@ -145,6 +142,7 @@ export function AdminMemberDetailModal({
                         value={form.power}
                         onChange={(value) => onFormChange({ power: typeof value === "number" ? value : 0 })}
                         min={0}
+                        decimalScale={2}
                         thousandSeparator=","
                       />
                       <MultiSelect
@@ -162,7 +160,7 @@ export function AdminMemberDetailModal({
               </Stack>
             </Tabs.Panel>
 
-            {/* Profile: Title, Bio, Contact */}
+            {/* Profile: Title, Bio */}
             <Tabs.Panel value="profile">
               <Stack gap={16}>
                 <PortalCard interactive={false}>
@@ -186,33 +184,6 @@ export function AdminMemberDetailModal({
                         autosize
                       />
                     </Stack>
-                  </div>
-                </PortalCard>
-
-                <PortalCard interactive={false}>
-                  <div className={styles.sectionBody}>
-                    <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.contact")}</Text>
-                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                      <TextInput
-                        label={t("detail.field.wechat")}
-                        placeholder={t("detail.placeholder.wechat")}
-                        value={form.wechatName}
-                        onChange={(event) => onFormChange({ wechatName: event.currentTarget.value })}
-                      />
-                      <TextInput
-                        label={t("detail.field.discordId")}
-                        placeholder={t("detail.placeholder.discordId")}
-                        value={form.discordId}
-                        onChange={(event) => onFormChange({ discordId: event.currentTarget.value })}
-                      />
-                    </SimpleGrid>
-                    <Switch
-                      label={t("detail.field.discordReminderOptOut")}
-                      checked={form.discordReminderOptOut}
-                      onChange={(event) => onFormChange({ discordReminderOptOut: event.currentTarget.checked })}
-                      size="sm"
-                      mt="sm"
-                    />
                   </div>
                 </PortalCard>
               </Stack>

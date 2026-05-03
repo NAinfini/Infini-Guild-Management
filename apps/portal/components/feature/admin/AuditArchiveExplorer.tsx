@@ -2,7 +2,7 @@ import type { AuditLogEntry } from "@guild/shared";
 import {
   downloadAdminAuditArchiveFile,
   requestAdminAuditArchiveDownload,
-} from "../../../services/AdminService";
+} from "../../../api/queries/admin";
 import { downloadFileBlob, formatAuditDiffHeader, formatDateTime } from "../../../utils/admin";
 import {
   Alert,
@@ -16,7 +16,6 @@ import {
   Stack,
   Text,
 } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
 import { PortalCard } from "../../shared/PortalCard";
 import {
   InfiniTable,
@@ -28,6 +27,7 @@ import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTa
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { IconArchive } from "@tabler/icons-react";
+import { notifySuccess, notifyError, notifyWarning } from "../../../utils/notifications";
 
 type AuditRow = AuditLogEntry;
 
@@ -168,9 +168,9 @@ export function AuditArchiveExplorer({
         const segments = file.key.split("/").filter(Boolean);
         downloadFileBlob(segments[segments.length - 1] ?? `guild-audit-${selectedMonth}.ndjson.gz`, blob);
       }
-      notifications.show({ color: "green", message: t("message.archiveRawDownloaded") });
+      notifySuccess(t("message.archiveRawDownloaded"));
     } catch {
-      notifications.show({ color: "red", message: t("message.archiveRawDownloadFailed") });
+      notifyError(t("message.archiveRawDownloadFailed"));
     } finally {
       setDownloadingFormat(null);
     }
@@ -183,7 +183,7 @@ export function AuditArchiveExplorer({
       const response = await requestAdminAuditArchiveDownload(selectedMonth, "raw_ndjson_gz");
       const totalBytes = response.files.reduce((sum, f) => sum + f.size_bytes, 0);
       if (totalBytes > CSV_SIZE_LIMIT_BYTES) {
-        notifications.show({ color: "yellow", message: t("auditArchive.rawOnlyMessage") });
+        notifyWarning(t("auditArchive.rawOnlyMessage"));
         setDownloadingFormat(null);
         return;
       }
@@ -197,7 +197,7 @@ export function AuditArchiveExplorer({
 
       const csvBlob = buildCsvBlob(allRows);
       downloadFileBlob(`guild-audit-${selectedMonth}-localtime.csv`, csvBlob);
-      notifications.show({ color: "green", message: t("message.archiveCsvExported") });
+      notifySuccess(t("message.archiveCsvExported"));
     } catch (error) {
       const key =
         error instanceof Error && error.message === "decompress_failed"
@@ -207,7 +207,7 @@ export function AuditArchiveExplorer({
             : error instanceof Error && error.message === "encode_failed"
               ? "message.archiveCsvExportFailedEncode"
               : "message.archiveCsvExportFailed";
-      notifications.show({ color: "red", message: t(key) });
+      notifyError(t(key));
     } finally {
       setDownloadingFormat(null);
     }
@@ -247,7 +247,7 @@ export function AuditArchiveExplorer({
                     style={{ width: 220 }}
                   />
                   <Button
-                    variant="light"
+                    variant="default"
                     size="compact-sm"
                     onClick={() => void handleDownloadRaw()}
                     loading={downloadingFormat === "raw"}
@@ -256,7 +256,7 @@ export function AuditArchiveExplorer({
                     {t("auditArchive.downloadRaw")}
                   </Button>
                   <Button
-                    variant="light"
+                    variant="default"
                     size="compact-sm"
                     onClick={() => void handleDownloadCsv()}
                     loading={downloadingFormat === "csv"}

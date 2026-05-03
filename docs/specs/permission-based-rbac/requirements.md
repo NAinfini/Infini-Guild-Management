@@ -20,10 +20,10 @@ Make the backend respect the permission system that already exists in the data m
 ## Requirements
 
 ### R1: Session Hydration
-- `resolveSession` must return `{ id, roleId, roleLevel, role, permissions: Set<Permission> }`
-- Join `users` → `roles` → `role_permissions` in one query path
+- `resolveSession` must return `{ id, roleId, role, permissions: Set<Permission> }`
+- Query `users` → `role_permissions` in one query path
 - Per-request memoization (not persisted cache) to avoid N+1
-- `role` field (BuiltinRole) derived from `roleId` for legacy compat: builtin stays as-is, custom maps via level
+- `role` field (BuiltinRole) derived from `roleId`: builtin stays as-is, custom defaults to `"member"`
 
 ### R2: Permission Middleware
 - New `requirePermission(c, "events.manage")` → resolves session, checks permission set
@@ -53,8 +53,6 @@ Every protected route switches from role-level check to permission check. Full m
 | POST /users/:id/reset-password | admin | `admin.users.password` |
 | GET /roles | moderator | `admin.roles.view` |
 | POST /roles, PATCH /roles/:id, DELETE /roles/:id | admin | `admin.roles.manage` |
-| GET /bot-settings, /bot-settings/discord/channels | moderator | `admin.bot.view` |
-| PATCH /bot-settings, POST /bot-settings/test | admin | `admin.bot.manage` |
 | GET /status | moderator | `admin.status.view` |
 | GET /analytics-settings | moderator | `admin.analytics.view` |
 | PATCH /analytics-settings | admin | `admin.analytics.manage` |
@@ -145,5 +143,4 @@ Every protected route switches from role-level check to permission check. Full m
 - SQLite has no real enum constraint — the Drizzle enum is TypeScript-only
 - `resolveSession` already does a JOIN; adding `roles` + `role_permissions` queries is 1 extra query per request
 - The `role` field on `SessionUser` is kept for backward compat but derived from `roleId`
-- `internal-bot` routes use HMAC (M2M), not session auth — unaffected
 - Dev seed endpoints use env gate — unaffected

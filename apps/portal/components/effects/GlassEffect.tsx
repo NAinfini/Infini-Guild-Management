@@ -19,8 +19,8 @@ export function GlassEffect({
   const style: CSSProperties = {
     backdropFilter: `blur(${blur}px)`,
     WebkitBackdropFilter: `blur(${blur}px)`,
-    background: `rgba(255,255,255,${opacity})`,
-    border: `1px solid rgba(255,255,255,${borderOpacity})`,
+    background: `color-mix(in srgb, var(--color-surface, #ffffff) ${Math.round(opacity * 100)}%, transparent)`,
+    border: `1px solid color-mix(in srgb, var(--color-surface, #ffffff) ${Math.round(borderOpacity * 100)}%, transparent)`,
   };
 
   return (

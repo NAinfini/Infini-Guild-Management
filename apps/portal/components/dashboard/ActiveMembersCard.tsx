@@ -2,6 +2,7 @@ import { NumberTicker } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
 import { Group, RingProgress, Stack, Text } from "@mantine/core";
 import type { ReactNode } from "react";
+import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { TeamOutlined } from "../../utils/icons";
 import { cardHeading } from "./shared";
@@ -31,7 +32,7 @@ function renderRing(
   );
 }
 
-export function ActiveMembersCard({
+export const ActiveMembersCard = memo(function ActiveMembersCard({
   activeMemberCount,
   totalMembersCount,
   allWarWinRate,
@@ -92,4 +93,4 @@ export function ActiveMembersCard({
       </Group>
     </PortalCard>
   );
-}
+});

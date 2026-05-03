@@ -1,6 +1,5 @@
-﻿export type MentionInput = {
+﻿type MentionInput = {
   username: string;
-  wechatName?: string | null;
 };
 
 export async function copyPlainText(value: string): Promise<void> {
@@ -24,12 +23,12 @@ export async function copyPlainText(value: string): Promise<void> {
   }
 }
 
-export function mentionText(wechatName: string | null | undefined, username: string): string {
-  return `@${wechatName && wechatName.trim() ? wechatName.trim() : username}`;
+function mentionText(username: string): string {
+  return `@${username}`;
 }
 
 export function buildMentionList(items: MentionInput[], teamName?: string): string {
-  const mentions = items.map((item) => mentionText(item.wechatName, item.username));
+  const mentions = items.map((item) => mentionText(item.username));
   if (teamName && teamName.trim()) {
     return `${teamName.trim()}: ${mentions.join(", ")}`;
   }

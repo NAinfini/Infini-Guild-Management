@@ -1,17 +1,17 @@
 import type { WikiCategory } from "@guild/shared";
 import { arrayMove } from "@dnd-kit/sortable";
-import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { WikiCategoryDraft } from "../components/feature/wiki/WikiCategoryEditorCard";
 import { useAppError } from "./useAppError";
+import { notifySuccess } from "../utils/notifications";
 import {
   createWikiCategory,
   deleteWikiCategory,
   type UpdateWikiCategoryPayload,
   updateWikiCategory,
-} from "../services/WikiService";
+} from "../api/mutations/wiki";
 import { queryKeys } from "../api/query-keys";
 
 function toCategoryDrafts(categories: WikiCategory[]): WikiCategoryDraft[] {
@@ -75,7 +75,7 @@ export function useWikiCategoryEditor({ categories }: UseWikiCategoryEditorParam
   const createCategoryMutation = useMutation({
     mutationFn: createWikiCategory,
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.categoryCreated") });
+      notifySuccess(t("message.categoryCreated"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.categories() });
       setCategoryName("");
     },
@@ -118,7 +118,7 @@ export function useWikiCategoryEditor({ categories }: UseWikiCategoryEditorParam
     },
     onSuccess: async (changedCount) => {
       if (changedCount > 0) {
-        notifications.show({ color: "green", message: t("message.categorySaved") });
+        notifySuccess(t("message.categorySaved"));
       }
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.categories() });
     },
@@ -133,7 +133,7 @@ export function useWikiCategoryEditor({ categories }: UseWikiCategoryEditorParam
       setDeletingCategoryId(categoryId);
     },
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.categoryDeleted") });
+      notifySuccess(t("message.categoryDeleted"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.categories() });
     },
     onError: (error) => {

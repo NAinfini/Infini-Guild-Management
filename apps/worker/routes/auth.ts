@@ -1,9 +1,6 @@
 import {
-  ERROR_STATUS,
   loginSchema,
   registerSchema,
-  type ErrorCode,
-  type StandardErrorResponse,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
@@ -11,8 +8,7 @@ import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { createPasswordHash, createSession, destroySession, resolveSession, verifyPassword } from "../services/auth";
 import { AuthService } from "../services/AuthService";
-
-type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
+import { buildError, handleResult } from "./_shared";
 
 export const authRoutes = new Hono();
 
@@ -27,17 +23,6 @@ function getService(c: Context): AuthService {
   });
 }
 
-function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {
-  const requestId = (c.get("requestId") as string | undefined) ?? crypto.randomUUID();
-  const body: StandardErrorResponse = { error_code: code, message, request_id: requestId, ...(details ? { details } : {}) };
-  return c.json(body, ERROR_STATUS[code] as ErrorStatusCode);
-}
-
-function handleResult(c: Context, result: { ok: true; data: unknown } | { ok: false; code: ErrorCode; message: string; details?: unknown }, status?: number): Response {
-  if (!result.ok) return buildError(c, result.code, result.message, result.details);
-  return c.json(result.data, status as never);
-}
-
 // --- Routes ---
 
 authRoutes.post("/login", async (c) => {
@@ -46,8 +31,7 @@ authRoutes.post("/login", async (c) => {
   const parsed = loginSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid login payload", parsed.error.flatten());
   const bodyRecord = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
-  const stayLoggedInRaw = bodyRecord.stay_logged_in ?? bodyRecord.stayLoggedIn;
-  const stayLoggedIn = typeof stayLoggedInRaw === "boolean" ? stayLoggedInRaw : false;
+  const stayLoggedIn = typeof bodyRecord.stay_logged_in === "boolean" ? bodyRecord.stay_logged_in : false;
   const result = await getService(c).login(parsed.data.username, parsed.data.password, stayLoggedIn);
   return handleResult(c, result);
 });

@@ -79,5 +79,9 @@
   "confirm.discardArticle.description": "当前文章编辑内容将丢失。",
   "welcome.title": "欢迎来到 Wiki",
   "welcome.description": "从侧边栏选择一篇文章开始阅读。",
-  "action.loadMore": "加载更多"
+  "action.loadMore": "加载更多",
+  "aria.articleTitle": "Wiki 文章标题",
+  "aria.articleCategory": "Wiki 文章分类",
+  "aria.categoryName": "Wiki 分类名称",
+  "aria.openArticle": "打开 Wiki 文章 {{title}}"
 }

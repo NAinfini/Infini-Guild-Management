@@ -1,107 +1,94 @@
-import type { ReactNode } from "react";
-import { useMemo } from "react";
-
-import { SimpleGrid, Stack, Switch, Text, UnstyledButton } from "@mantine/core";
-import { ShinyText } from "@portal/components/effects";
-import { IconSettings } from "@tabler/icons-react";
+import { useCallback } from "react";
+import { Button, Group, SimpleGrid, Stack, Switch, Text, Title } from "@mantine/core";
+import { modals } from "@mantine/modals";
+import { notifications } from "@mantine/notifications";
+import {
+  IconDeviceFloppy,
+  IconFileImport,
+  IconLanguage,
+  IconMoon,
+  IconRefresh,
+  IconSettings,
+  IconSun,
+} from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
+import { ShinyText } from "@portal/components/effects";
 
 import { PageLayout } from "../layout/PageLayout";
 import { usePreferencesStore } from "../../stores/preferences";
 import { useTheme } from "../../providers/ThemeProvider";
-
-// NOTE: Theme system is simplified to dark/light via Dev Kit bridge.
-// This page only surfaces settings that are currently wired in the app store.
+import { notifySuccess } from "../../utils/notifications";
+import "./SettingsPage.css";
 
 type MotionMode = "off" | "minimum" | "reduced" | "full";
 
-type MotionModeOption = {
-  value: MotionMode;
-  labelKey: string;
-  descriptionKey: string;
+type OptionCardProps = {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  description?: string;
+  icon?: React.ReactNode;
 };
 
-const MOTION_OPTIONS: MotionModeOption[] = [
-  { value: "off", labelKey: "motion.off", descriptionKey: "motion.off.desc" },
-  { value: "minimum", labelKey: "motion.minimum", descriptionKey: "motion.minimum.desc" },
-  { value: "reduced", labelKey: "motion.reduced", descriptionKey: "motion.reduced.desc" },
-  { value: "full", labelKey: "motion.full", descriptionKey: "motion.full.desc" },
-];
+function OptionCard({ active, onClick, label, description, icon }: OptionCardProps) {
+  const cls = [
+    "settings-option-card",
+    icon ? "settings-option-card--with-icon" : "",
+    active ? "settings-option-card--active" : "",
+  ].filter(Boolean).join(" ");
 
-const sectionStyle: React.CSSProperties = {
-  borderRadius: 14,
-  border: "1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 80%, transparent)",
-  background: "var(--color-surface, #ffffff)",
-  padding: "24px",
-  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
-};
-
-function Section({ title, children }: { title: ReactNode; children: ReactNode }) {
   return (
-    <div style={sectionStyle}>
-      <Stack gap="md">
-        {typeof title === "string" ? (
-          <Text size="lg" fw={600}>
-            {title}
-          </Text>
-        ) : (
-          title
-        )}
-        {children}
-      </Stack>
-    </div>
+    <button type="button" className={cls} onClick={onClick}>
+      {icon ? <div className="settings-option-card__icon">{icon}</div> : null}
+      <div className="settings-option-card__content">
+        <Text size="sm" fw={active ? 600 : 400}>{label}</Text>
+        {description ? <Text size="xs" c="dimmed">{description}</Text> : null}
+      </div>
+    </button>
   );
 }
 
-function MotionModeSelector({
-  value,
-  onChange,
-}: {
-  value: MotionMode;
-  onChange: (mode: MotionMode) => void;
-}) {
-  const { t } = useTranslation("settings");
+const MOTION_OPTIONS: { value: MotionMode; labelKey: string; descKey: string }[] = [
+  { value: "off", labelKey: "motion.off", descKey: "motion.off.desc" },
+  { value: "minimum", labelKey: "motion.minimum", descKey: "motion.minimum.desc" },
+  { value: "reduced", labelKey: "motion.reduced", descKey: "motion.reduced.desc" },
+  { value: "full", labelKey: "motion.full", descKey: "motion.full.desc" },
+];
 
-  return (
-    <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
-      {MOTION_OPTIONS.map((option) => {
-        const isActive = option.value === value;
+function exportSettings(prefs: { locale: string; motionMode: string; fancyEffects: boolean; pushNotificationSound: boolean }, theme: string) {
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    theme,
+    locale: prefs.locale,
+    motionMode: prefs.motionMode,
+    fancyEffects: prefs.fancyEffects,
+    pushNotificationSound: prefs.pushNotificationSound,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `infini-settings-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
-        return (
-          <UnstyledButton
-            key={option.value}
-            onClick={() => onChange(option.value)}
-            style={{
-              padding: "14px 18px",
-              borderRadius: 12,
-              border: isActive
-                ? "2px solid var(--color-primary, #3b82f6)"
-                : "1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 80%, transparent)",
-              background: isActive
-                ? "color-mix(in srgb, var(--color-primary, #3b82f6) 6%, var(--color-surface, #ffffff))"
-                : "var(--color-surface, #ffffff)",
-              transition: "all 160ms ease",
-              boxShadow: isActive
-                ? "0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)"
-                : "none",
-            }}
-          >
-            <Text size="sm" fw={isActive ? 600 : 400}>
-              {t(option.labelKey)}
-            </Text>
-            <Text size="xs" c="dimmed" mt={2}>
-              {t(option.descriptionKey)}
-            </Text>
-          </UnstyledButton>
-        );
-      })}
-    </SimpleGrid>
-  );
+function isValidSettingsFile(data: unknown): data is {
+  version: number;
+  theme?: string;
+  locale?: string;
+  motionMode?: string;
+  fancyEffects?: boolean;
+  pushNotificationSound?: boolean;
+} {
+  if (typeof data !== "object" || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  return typeof obj.version === "number" && obj.version === 1;
 }
 
 export function SettingsPage() {
-  const { t: tSettings, i18n } = useTranslation("settings");
-  const { t: tCommon } = useTranslation("common");
+  const { t, i18n } = useTranslation("settings");
 
   const {
     locale,
@@ -112,155 +99,208 @@ export function SettingsPage() {
     setFancyEffects,
     pushNotificationSound,
     setPushNotificationSound,
+    resetPreferences,
   } = usePreferencesStore();
 
   const { theme: currentTheme, setTheme } = useTheme();
 
-  const onMotionChange = (nextMode: MotionMode) => {
-    if (nextMode === motionMode) return;
-    setMotionMode(nextMode);
-  };
-
-  const onLocaleChange = (nextLocale: "en" | "zh") => {
+  const handleLocaleChange = useCallback((nextLocale: "en" | "zh") => {
     if (nextLocale === locale) return;
     setLocale(nextLocale);
     void i18n.changeLanguage(nextLocale);
-  };
+  }, [locale, setLocale, i18n]);
 
-  const appearanceContent = useMemo(
-    () => (
-      <Stack gap="lg">
-        <Section title={tCommon("settings.theme")}>
-          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-            {([
-              { value: "light" as const, label: tCommon("settings.theme.light") },
-              { value: "dark" as const, label: tCommon("settings.theme.dark") },
-            ]).map((opt) => {
-              const isActive = currentTheme === opt.value;
+  const handleExport = useCallback(() => {
+    exportSettings({ locale, motionMode, fancyEffects, pushNotificationSound }, currentTheme);
+    notifySuccess(t("backup.exported"));
+  }, [locale, motionMode, fancyEffects, pushNotificationSound, currentTheme, t]);
 
-              return (
-                <UnstyledButton
-                  key={opt.value}
-                  onClick={() => setTheme(opt.value)}
-                  style={{
-                    padding: "16px 20px",
-                    borderRadius: 12,
-                    border: isActive
-                      ? "2px solid var(--color-primary, #3b82f6)"
-                      : "1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 80%, transparent)",
-                    background: isActive
-                      ? "color-mix(in srgb, var(--color-primary, #3b82f6) 6%, var(--color-surface, #ffffff))"
-                      : "var(--color-surface, #ffffff)",
-                    transition: "all 160ms ease",
-                    boxShadow: isActive
-                      ? "0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)"
-                      : "none",
-                  }}
-                >
-                  <Text size="sm" fw={isActive ? 600 : 400}>
-                    {opt.label}
-                  </Text>
-                </UnstyledButton>
-              );
-            })}
-          </SimpleGrid>
-        </Section>
+  const handleImport = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data: unknown = JSON.parse(text);
+        if (!isValidSettingsFile(data)) throw new Error("invalid");
 
-        <Section title={tSettings("field.motion")}>
-          <MotionModeSelector value={motionMode} onChange={onMotionChange} />
-        </Section>
-      </Stack>
-    ),
-    [currentTheme, setTheme, motionMode, onMotionChange, tSettings, tCommon],
-  );
+        if (data.theme === "light" || data.theme === "dark") setTheme(data.theme);
+        if (data.locale === "en" || data.locale === "zh") {
+          setLocale(data.locale);
+          void i18n.changeLanguage(data.locale);
+        }
+        if (data.motionMode === "off" || data.motionMode === "minimum" || data.motionMode === "reduced" || data.motionMode === "full") {
+          setMotionMode(data.motionMode as MotionMode);
+        }
+        if (typeof data.fancyEffects === "boolean") setFancyEffects(data.fancyEffects);
+        if (typeof data.pushNotificationSound === "boolean") setPushNotificationSound(data.pushNotificationSound);
 
-  const preferencesContent = useMemo(
-    () => (
-      <Stack gap="lg">
-        <Section title={tSettings("field.locale")}>
-          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-            {([
-              { value: "en" as const, label: "English", sub: "Default language" },
-              { value: "zh" as const, label: "中文", sub: "Chinese (Simplified)" },
-            ] as const).map((opt) => {
-              const isActive = locale === opt.value;
+        notifySuccess(t("backup.imported"));
+      } catch {
+        notifications.show({ color: "red", title: t("backup.importFailedTitle"), message: t("backup.importFailed") });
+      }
+    };
+    input.click();
+  }, [setTheme, setLocale, setMotionMode, setFancyEffects, setPushNotificationSound, i18n, t]);
 
-              return (
-                <UnstyledButton
-                  key={opt.value}
-                  onClick={() => onLocaleChange(opt.value)}
-                  style={{
-                    padding: "16px 20px",
-                    borderRadius: 12,
-                    border: isActive
-                      ? "2px solid var(--color-primary, #3b82f6)"
-                      : "1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 80%, transparent)",
-                    background: isActive
-                      ? "color-mix(in srgb, var(--color-primary, #3b82f6) 6%, var(--color-surface, #ffffff))"
-                      : "var(--color-surface, #ffffff)",
-                    transition: "all 160ms ease",
-                    boxShadow: isActive
-                      ? "0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)"
-                      : "none",
-                  }}
-                >
-                  <Text size="sm" fw={isActive ? 600 : 400}>
-                    {opt.label}
-                  </Text>
-                  <Text size="xs" c="dimmed" mt={2}>
-                    {opt.sub}
-                  </Text>
-                </UnstyledButton>
-              );
-            })}
-          </SimpleGrid>
-        </Section>
-
-        <Section title={tSettings("description")}>
-          <Stack gap="xs">
-            <Switch
-              checked={fancyEffects}
-              onChange={(event) => setFancyEffects(event.currentTarget.checked)}
-              label={tSettings("field.fancyEffects")}
-            />
-            <Text size="xs" c="dimmed">
-              {tSettings("fancyEffects.description")}
-            </Text>
-            <Switch
-              checked={pushNotificationSound}
-              onChange={(event) => setPushNotificationSound(event.currentTarget.checked)}
-              label={tSettings("field.pushNotificationSound")}
-            />
-            <Text size="xs" c="dimmed">
-              {tSettings("pushNotificationSound.description")}
-            </Text>
-          </Stack>
-        </Section>
-      </Stack>
-    ),
-    [
-      fancyEffects,
-      locale,
-      pushNotificationSound,
-      setFancyEffects,
-      setPushNotificationSound,
-      tSettings,
-    ],
-  );
+  const handleReset = useCallback(() => {
+    modals.openConfirmModal({
+      title: t("reset.confirmTitle"),
+      children: <Text size="sm">{t("reset.confirm")}</Text>,
+      confirmProps: { color: "red" },
+      labels: { confirm: t("reset.button"), cancel: "" },
+      onConfirm: () => {
+        resetPreferences();
+        setTheme("light");
+        void i18n.changeLanguage("en");
+        notifySuccess(t("reset.success"));
+      },
+      centered: true,
+    });
+  }, [resetPreferences, setTheme, i18n, t]);
 
   return (
     <PageLayout
-      title={tSettings("title")}
+      title={t("title")}
       subtitle={
         <ShinyText duration={4} style={{ fontSize: 14, opacity: 0.8 }}>
-          {tSettings("subtitle")}
+          {t("subtitle")}
         </ShinyText>
       }
       icon={<IconSettings size={22} />}
     >
       <Stack gap="xl">
-        {appearanceContent}
-        {preferencesContent}
+        {/* ── Appearance ── */}
+        <div className="settings-section">
+          <Title order={4} className="settings-section__title">{t("section.appearance")}</Title>
+          <Stack gap="lg">
+            {/* Theme */}
+            <div>
+              <Text size="sm" fw={600} mb={8}>{t("field.theme")}</Text>
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                <OptionCard
+                  active={currentTheme === "light"}
+                  onClick={() => setTheme("light")}
+                  label={t("theme.light")}
+                  description={t("theme.light.desc")}
+                  icon={<IconSun size={20} />}
+                />
+                <OptionCard
+                  active={currentTheme === "dark"}
+                  onClick={() => setTheme("dark")}
+                  label={t("theme.dark")}
+                  description={t("theme.dark.desc")}
+                  icon={<IconMoon size={20} />}
+                />
+              </SimpleGrid>
+            </div>
+
+            {/* Motion */}
+            <div>
+              <Text size="sm" fw={600} mb={8}>{t("field.motion")}</Text>
+              <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
+                {MOTION_OPTIONS.map((opt) => (
+                  <OptionCard
+                    key={opt.value}
+                    active={motionMode === opt.value}
+                    onClick={() => setMotionMode(opt.value)}
+                    label={t(opt.labelKey)}
+                    description={t(opt.descKey)}
+                  />
+                ))}
+              </SimpleGrid>
+            </div>
+          </Stack>
+        </div>
+
+        {/* ── Preferences ── */}
+        <div className="settings-section">
+          <Title order={4} className="settings-section__title">{t("section.preferences")}</Title>
+          <Stack gap="lg">
+            {/* Language */}
+            <div>
+              <Text size="sm" fw={600} mb={8}>{t("field.locale")}</Text>
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                <OptionCard
+                  active={locale === "en"}
+                  onClick={() => handleLocaleChange("en")}
+                  label={t("locale.en")}
+                  description={t("locale.en.desc")}
+                  icon={<IconLanguage size={20} />}
+                />
+                <OptionCard
+                  active={locale === "zh"}
+                  onClick={() => handleLocaleChange("zh")}
+                  label={t("locale.zh")}
+                  description={t("locale.zh.desc")}
+                  icon={<IconLanguage size={20} />}
+                />
+              </SimpleGrid>
+            </div>
+
+            {/* Toggles */}
+            <div>
+              <div className="settings-switch-row">
+                <Switch
+                  checked={fancyEffects}
+                  onChange={(e) => setFancyEffects(e.currentTarget.checked)}
+                />
+                <div className="settings-switch-row__content">
+                  <Text size="sm" fw={500}>{t("field.fancyEffects")}</Text>
+                  <Text size="xs" c="dimmed">{t("fancyEffects.description")}</Text>
+                </div>
+              </div>
+              <div className="settings-switch-row">
+                <Switch
+                  checked={pushNotificationSound}
+                  onChange={(e) => setPushNotificationSound(e.currentTarget.checked)}
+                />
+                <div className="settings-switch-row__content">
+                  <Text size="sm" fw={500}>{t("field.pushNotificationSound")}</Text>
+                  <Text size="xs" c="dimmed">{t("pushNotificationSound.description")}</Text>
+                </div>
+              </div>
+            </div>
+          </Stack>
+        </div>
+
+        {/* ── Backup & Reset ── */}
+        <div className="settings-section">
+          <Title order={4} className="settings-section__title">{t("field.backup")}</Title>
+          <Text size="sm" c="dimmed" mb={12}>{t("backup.description")}</Text>
+          <div className="settings-backup-actions">
+            <Button
+              variant="default"
+              leftSection={<IconDeviceFloppy size={16} />}
+              onClick={handleExport}
+            >
+              {t("backup.export")}
+            </Button>
+            <Button
+              variant="default"
+              leftSection={<IconFileImport size={16} />}
+              onClick={handleImport}
+            >
+              {t("backup.import")}
+            </Button>
+          </div>
+          <div className="settings-reset-zone">
+            <Group justify="space-between" align="center">
+              <Text size="sm" c="dimmed">{t("reset.confirm")}</Text>
+              <Button
+                variant="default"
+                color="red"
+                leftSection={<IconRefresh size={16} />}
+                onClick={handleReset}
+              >
+                {t("reset.button")}
+              </Button>
+            </Group>
+          </div>
+        </div>
       </Stack>
     </PageLayout>
   );

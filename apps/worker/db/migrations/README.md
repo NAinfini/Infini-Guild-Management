@@ -29,16 +29,11 @@ Drizzle schema has been split into modules under:
 - `apps/worker/db/schema/wiki.ts`
 - `apps/worker/db/schema/gallery.ts`
 - `apps/worker/db/schema/audit.ts`
-- `apps/worker/db/schema/bot.ts`
 
-`apps/worker/db/schema.ts` is a compatibility barrel export for existing imports and Drizzle config.
+`apps/worker/db/schema.ts` re-exports `schema/index.ts` for module resolution (imports use `../db/schema`).
 
 ## Existing Files
 
 - `0000_core_schema.sql` = active v1 baseline schema (all tables consolidated here).
 
 ## Snapshot + Between-Version Migration Rules
-
-See:
-
-- `apps/worker/db/versions/README.md`

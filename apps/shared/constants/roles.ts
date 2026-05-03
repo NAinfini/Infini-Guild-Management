@@ -15,15 +15,12 @@ export const PERMISSIONS = [
   "admin.invite.manage",
   "admin.audit.view",
   "admin.audit.export",
-  "admin.bot.view",
-  "admin.bot.manage",
   "admin.status.view",
   "admin.analytics.view",
   "admin.analytics.manage",
   "admin.roles.view",
   "admin.roles.manage",
   "guildwar.teams.edit",
-  "guildwar.teams.post",
   "guildwar.history.edit",
   "events.create",
   "events.edit",
@@ -43,23 +40,15 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
-export const ROLE_LEVEL: Record<BuiltinRole, number> = {
-  admin: 3,
-  moderator: 2,
-  member: 1,
-};
-
 export const MODERATOR_DEFAULT_PERMISSIONS: ReadonlySet<Permission> = new Set<Permission>([
   "admin.users.view",
   "admin.users.edit",
   "admin.invite.view",
   "admin.audit.view",
-  "admin.bot.view",
   "admin.status.view",
   "admin.analytics.view",
   "admin.roles.view",
   "guildwar.teams.edit",
-  "guildwar.teams.post",
   "guildwar.history.edit",
   "events.create",
   "events.edit",
@@ -83,27 +72,8 @@ export function isBuiltinRole(roleId: string): roleId is BuiltinRole {
   return (ROLES as readonly string[]).includes(roleId);
 }
 
-export function roleFromLevel(level: number): BuiltinRole {
-  if (level >= ROLE_LEVEL.admin) return "admin";
-  if (level >= ROLE_LEVEL.moderator) return "moderator";
-  return "member";
-}
-
-export function hasPermission(granted: ReadonlySet<Permission>, required: Permission): boolean {
-  return granted.has(required);
-}
-
 export function hasAnyPermission(granted: ReadonlySet<Permission>, required: readonly Permission[]): boolean {
   return required.some((p) => granted.has(p));
-}
-
-export function hasRoleAtLeast(current: string, required: BuiltinRole): boolean {
-  const level = isBuiltinRole(current) ? ROLE_LEVEL[current] : 0;
-  return level >= ROLE_LEVEL[required];
-}
-
-export function hasLevelAtLeast(currentLevel: number, required: BuiltinRole): boolean {
-  return currentLevel >= ROLE_LEVEL[required];
 }
 
 export function permissionSetToRecord(permissions: ReadonlySet<Permission>): Record<Permission, boolean> {

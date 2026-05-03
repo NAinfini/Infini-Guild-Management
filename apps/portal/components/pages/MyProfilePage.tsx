@@ -6,7 +6,7 @@ import { DepthButton } from "@portal/components/shared/DepthButton";
 import { IconGripVertical, IconTrash, IconUserCircle } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { uploadProfileAudio, uploadProfileImages } from "../../services/UserService";
+import { uploadProfileAudio, uploadProfileImages } from "../../api/mutations/users";
 import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
 import { useProfileData } from "../../hooks/data/useProfileData";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
@@ -48,9 +48,9 @@ function SortableClassRow(props: SortableClassRowProps) {
         <IconGripVertical size={18} />
       </div>
       <Badge color={isPrimary ? "yellow" : "gray"}>{value}</Badge>
-      <DepthButton size="sm" type="danger" before={<IconTrash size={16} />} onClick={onRemove}>
-        {t("classRow.remove")}
-      </DepthButton>
+      <DepthButton size="sm" type="danger" iconOnly before={<IconTrash size={16} />} onClick={onRemove}
+        tooltip={{ label: t("classRow.remove"), withArrow: true }}
+      />
       <Text c="dimmed" size="sm" style={{ fontSize: 12 }}>
         #{index + 1}
       </Text>
@@ -158,13 +158,11 @@ export function MyProfilePage() {
           <div style={{ position: "sticky", top: 16 }}>
             <ProfilePreviewCard
               username={user?.username ?? "-"}
-              wechatName={form.wechatName}
               power={form.power}
               primaryClass={form.classList[0] ?? "-"}
               imageCount={form.imageList.length}
               videoCount={form.videoList.length}
               hasAudio={Boolean(profile?.audio_key)}
-              discordId={profile?.discord_id ?? null}
               activeNowEstimate={form.activeNowEstimate}
               bio={form.bio}
             />
@@ -181,17 +179,14 @@ export function MyProfilePage() {
 
             <Tabs.Panel value="profile" pt="sm">
               <ProfileProfileTab
-                wechatName={form.wechatName}
                 power={form.power}
                 classDraft={form.classDraft}
                 classOptions={form.classOptions}
                 classList={form.classList}
-                discordId={profile?.discord_id ?? null}
                 titleHtml={form.titleHtml}
                 onTitleHtmlChange={form.setTitleHtml}
                 bio={form.bio}
                 classSensors={classSensors}
-                onWechatNameChange={form.setWechatName}
                 onPowerChange={form.setPower}
                 onClassDraftChange={form.setClassDraft}
                 onAddClass={form.addClass}
@@ -267,29 +262,18 @@ export function MyProfilePage() {
                 confirmNewPassword={form.confirmNewPassword}
                 currentPasswordForUsername={form.currentPasswordForUsername}
                 newUsername={form.newUsername}
-                discordCode={form.discordCode}
-                isDiscordLinking={form.isDiscordLinking}
-                discordId={profile?.discord_id ?? null}
-                discordReminderOptOut={form.discordReminderOptOut}
                 onCurrentPasswordChange={form.setCurrentPassword}
                 onNewPasswordChange={form.setNewPassword}
                 onConfirmNewPasswordChange={form.setConfirmNewPassword}
                 onCurrentPasswordForUsernameChange={form.setCurrentPasswordForUsername}
                 onNewUsernameChange={form.setNewUsername}
-                onDiscordCodeChange={form.setDiscordCode}
-                onToggleDiscordReminder={(checked) => form.setDiscordReminderOptOut(!checked)}
                 onChangePassword={mutations.changePassword}
                 onChangeUsername={mutations.changeUsername}
-                onVerifyDiscordLink={mutations.verifyDiscordLink}
-                onUnlinkDiscord={mutations.unlinkDiscord}
-                onSaveDiscordPreference={mutations.saveProfile}
                 onLogout={mutations.logout}
                 changePasswordLabel={t("button.changePassword")}
                 changeUsernameLabel={t("button.changeUsername")}
                 changePasswordPending={mutations.changePasswordMutation.isPending}
                 changeUsernamePending={mutations.changeUsernameMutation.isPending}
-                saveDiscordPreferencePending={mutations.saveProfileMutation.isPending}
-                isDirty={form.isDirty}
               />
             </Tabs.Panel>
           </Tabs>

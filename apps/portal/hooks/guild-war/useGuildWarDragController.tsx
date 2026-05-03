@@ -10,9 +10,10 @@ import {
   type SetStateAction,
 } from "react";
 import { useTranslation } from "react-i18next";
-import type { UsersListResponse } from "../../services/UserService";
+import type { UsersListResponse } from "../../api/queries/users";
 import { GuildWarService } from "../../services/GuildWarService";
 import { copyPlainText } from "../../utils/copy";
+import { notifySuccess, notifyWarning } from "../../utils/notifications";
 import { useGuildWarDragData, type DragMemberColumn } from "./useGuildWarDragData";
 import { useGuildWarSearch } from "./useGuildWarSearch";
 import { TeamStatusPanel } from "../../components/feature/guild-war/TeamStatusPanel";
@@ -74,8 +75,8 @@ type UseGuildWarDragControllerParams = {
 };
 
 const message = {
-  success: (content: string) => notifications.show({ color: "green", message: content }),
-  warning: (content: string) => notifications.show({ color: "yellow", message: content }),
+  success: (content: string) => notifySuccess(content),
+  warning: (content: string) => notifyWarning(content),
   info: (content: string) => notifications.show({ color: "blue", message: content }),
 };
 

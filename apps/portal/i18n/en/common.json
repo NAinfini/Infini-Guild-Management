@@ -1,5 +1,5 @@
 {
-  "app.title": "Infini Guild Management",
+  "app.title": "Guild Portal",
   "nav.dashboard": "Dashboard",
   "nav.events": "Events",
   "nav.announcements": "Announcements",
@@ -16,6 +16,7 @@
   "nav.group.content": "Content",
   "nav.group.system": "System",
   "action.save": "Save",
+  "action.confirm": "Confirm",
   "action.cancel": "Cancel",
   "action.delete": "Delete",
   "action.logout": "Logout",
@@ -142,5 +143,19 @@
   "nav.externalViewBanner": "External view is enabled. Editing and private fields are hidden.",
   "nav.offlineBanner": "You are offline. Some actions may fail until connection is restored.",
   "nav.permissionDenied": "You do not have permission for this action.",
-  "nav.collapseSidebar": "Collapse sidebar"
+  "nav.collapseSidebar": "Collapse sidebar",
+  "nav.bottomNav": "Bottom navigation",
+  "nav.openMoreLinks": "Open more navigation links",
+  "errors.somethingWentWrong": "Something went wrong",
+  "errors.unexpectedError": "An unexpected error occurred",
+  "action.reloadPage": "Reload page",
+  "errors.operationFailed": "Operation failed",
+  "members.showMore": "Show {{count}} more members",
+  "unsavedChanges.title": "Unsaved changes",
+  "unsavedChanges.message": "You have unsaved changes. Are you sure you want to leave?",
+  "unsavedChanges.leave": "Leave",
+  "unsavedChanges.stay": "Stay",
+  "label.notificationsUnread": "Notifications (unread)",
+  "action.clearNotifications": "Clear all notifications",
+  "nav.skipToContent": "Skip to content"
 }

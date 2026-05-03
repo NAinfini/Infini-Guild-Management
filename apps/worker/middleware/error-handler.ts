@@ -1,6 +1,6 @@
 import type { ErrorCode, StandardErrorResponse } from "@guild/shared";
 import { HTTPException } from "hono/http-exception";
-import type { Context, Next } from "hono";
+import type { Context } from "hono";
 
 type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
 
@@ -50,12 +50,4 @@ export function handleAppError(error: unknown, c: Context): Response {
 
   console.error(`[handleAppError] ${c.req.method} ${c.req.path}: non-Error thrown:`, error);
   return c.json(buildErrorBody(c, 500, "Internal server error"), 500);
-}
-
-export async function errorHandlerMiddleware(c: Context, next: Next): Promise<void> {
-  try {
-    await next();
-  } catch (error) {
-    c.res = handleAppError(error, c);
-  }
 }

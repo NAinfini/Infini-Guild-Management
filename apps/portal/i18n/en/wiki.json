@@ -79,5 +79,9 @@
   "confirm.discardArticle.description": "Your current article edits will be lost.",
   "welcome.title": "Welcome to the Wiki",
   "welcome.description": "Select an article from the sidebar to start reading.",
-  "action.loadMore": "Load More"
+  "action.loadMore": "Load More",
+  "aria.articleTitle": "Wiki article title",
+  "aria.articleCategory": "Wiki article category",
+  "aria.categoryName": "Wiki category name",
+  "aria.openArticle": "Open wiki article {{title}}"
 }

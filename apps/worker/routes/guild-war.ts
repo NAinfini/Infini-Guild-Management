@@ -1,23 +1,18 @@
 import {
-  ERROR_STATUS,
   createWarHistorySchema,
   saveTeamsPayloadSchema,
   updateMemberStatsSchema,
   updateWarHistorySchema,
-  type ErrorCode,
-  type StandardErrorResponse,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { getRequestUser, requirePermission } from "../middleware/rbac";
+import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
-import { createBotTask } from "../services/bot-dispatch";
 import { GuildWarService, toWarHistoryPayload } from "../services/GuildWarService";
-
-type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
+import { buildError, handleResult, parsePage, requireSessionUser } from "./_shared";
 
 export const guildWarRoutes = new Hono();
 
@@ -31,38 +26,13 @@ function getService(c: Context): GuildWarService {
   return new GuildWarService(getDb(c), {
     media: env.MEDIA,
     writeAuditLog: (input) => writeAuditLog(c, input),
-    createBotTask: (input) => createBotTask(env, input),
-    botRuntimeUrl: env.BOT_RUNTIME_URL ?? "",
-    botSharedSecret: env.BOT_SHARED_SECRET ?? "",
-    publishEntityChanged: (payload) => publishEntityChanged(env, payload),
+    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
     rawDb: env.DB,
   });
 }
 
-function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {
-  const requestId = (c.get("requestId") as string | undefined) ?? crypto.randomUUID();
-  const body: StandardErrorResponse = { error_code: code, message, request_id: requestId, ...(details ? { details } : {}) };
-  return c.json(body, ERROR_STATUS[code] as ErrorStatusCode);
-}
-
-async function requireSessionUser(c: Context) {
-  const user = await getRequestUser(c);
-  return user ?? buildError(c, "UNAUTHORIZED", "Authentication required");
-}
-
 async function requireGuildWarTeamsEdit(c: Context) { return requirePermission(c, "guildwar.teams.edit"); }
-async function requireGuildWarTeamsPost(c: Context) { return requirePermission(c, "guildwar.teams.post"); }
 async function requireGuildWarHistoryEditor(c: Context) { return requirePermission(c, "guildwar.history.edit"); }
-
-function parsePage(value: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function handleResult(c: Context, result: { ok: true; data: unknown } | { ok: false; code: ErrorCode; message: string; details?: unknown }, status?: number): Response {
-  if (!result.ok) return buildError(c, result.code, result.message, result.details);
-  return c.json(result.data, status as never);
-}
 
 // --- Routes ---
 
@@ -111,30 +81,6 @@ guildWarRoutes.patch("/role-tag", async (c) => {
   if (payload.role_tag !== undefined && payload.role_tag !== null && typeof payload.role_tag !== "string") return buildError(c, "VALIDATION_ERROR", "role_tag must be string or null");
   const roleTag = typeof payload.role_tag === "string" ? payload.role_tag : null;
   const result = await getService(c).setRoleTag(user.id, payload.event_id, payload.user_id, roleTag);
-  return handleResult(c, result);
-});
-
-guildWarRoutes.post("/post-teams", async (c) => {
-  const user = await requireGuildWarTeamsPost(c);
-  if (user instanceof Response) return user;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
-  const payload = body as { event_id?: unknown; platform?: unknown };
-  if (typeof payload.event_id !== "string") return buildError(c, "VALIDATION_ERROR", "event_id is required");
-  if (payload.platform !== "discord" && payload.platform !== "wechat") return buildError(c, "VALIDATION_ERROR", "platform must be discord or wechat");
-  const result = await getService(c).postTeams(user.id, payload.event_id, payload.platform);
-  return handleResult(c, result);
-});
-
-guildWarRoutes.post("/post-results", async (c) => {
-  const user = await requireGuildWarTeamsPost(c);
-  if (user instanceof Response) return user;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
-  const payload = body as { war_history_id?: unknown; platform?: unknown };
-  if (typeof payload.war_history_id !== "string") return buildError(c, "VALIDATION_ERROR", "war_history_id is required");
-  if (payload.platform !== "discord" && payload.platform !== "wechat") return buildError(c, "VALIDATION_ERROR", "platform must be discord or wechat");
-  const result = await getService(c).postResults(user.id, payload.war_history_id, payload.platform);
   return handleResult(c, result);
 });
 

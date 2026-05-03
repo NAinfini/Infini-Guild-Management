@@ -13,7 +13,7 @@ Community screenshot and video clip gallery. Members upload freely; Admin/Mod ca
 ### Gallery Grid
 
 - Masonry grid layout (responsive: 2 col mobile, 3 sm, 4 lg, 5 xl)
-- Staggered entrance animation via dev-kit `StaggerList`
+- Staggered entrance animation
 - Each item: thumbnail + uploader username overlay (bottom-left) + type badge (photo/video)
 - Infinite scroll pagination (load 20 items per batch)
 - Sort: newest first (default), oldest first

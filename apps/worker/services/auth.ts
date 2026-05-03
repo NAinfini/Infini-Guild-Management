@@ -3,17 +3,16 @@ import {
   MEMBER_DEFAULT_PERMISSIONS,
   PERMISSIONS,
   isBuiltinRole,
-  roleFromLevel,
   type BuiltinRole,
   type Permission,
   type RoleId,
 } from "@guild/shared";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { nanoid } from "nanoid";
-import { rolePermissions, roles, sessions, users } from "../db/schema";
+import { sessions, users } from "../db/schema";
 import type { Bindings } from "../index";
 
 const RESOLVED_SESSION_PROMISE = Symbol("resolved_session_promise");
@@ -22,12 +21,10 @@ type ContextWithSessionCache = Context & {
   [RESOLVED_SESSION_PROMISE]?: Promise<ResolvedSession | null>;
 };
 
-export type SessionUserRole = BuiltinRole;
 export type SessionUser = {
   id: string;
   roleId: RoleId;
-  roleLevel: number;
-  role: SessionUserRole;
+  role: BuiltinRole;
   permissions: ReadonlySet<Permission>;
 };
 
@@ -37,7 +34,7 @@ type ResolvedSession = {
   user: SessionUser;
 };
 
-const PBKDF2_ITERATIONS = 210_000;
+const PBKDF2_ITERATIONS = 10_000;
 const PBKDF2_KEY_LENGTH_BITS = 256;
 const PBKDF2_SALT_BYTES = 16;
 const PBKDF2_HASH = "SHA-256";
@@ -62,7 +59,7 @@ function isSecureRequest(c: Context): boolean {
 
 function buildPermissionSet(
   roleId: RoleId,
-  permissionRows: Array<{ permission: string; granted: boolean }>,
+  permissionRows: Array<{ permission: string; granted: boolean } | null>,
 ): ReadonlySet<Permission> {
   const perms = new Set<Permission>();
 
@@ -77,6 +74,7 @@ function buildPermissionSet(
   }
 
   for (const row of permissionRows) {
+    if (row === null) continue;
     if (!(PERMISSIONS as readonly string[]).includes(row.permission)) continue;
     const p = row.permission as Permission;
     if (row.granted) perms.add(p);
@@ -84,11 +82,6 @@ function buildPermissionSet(
   }
 
   return perms;
-}
-
-function resolveCompatibilityRole(roleId: RoleId, roleLevel: number | null): SessionUserRole {
-  if (isBuiltinRole(roleId)) return roleId;
-  return roleFromLevel(roleLevel ?? 1);
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -245,13 +238,16 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
         sessionCreatedAt: sessions.createdAt,
         userId: users.id,
         roleId: users.role,
-        roleLevel: roles.level,
         isActive: users.isActive,
         deletedAt: users.deletedAt,
+        permissionsJson: sql<string>`(
+          SELECT json_group_array(json_object('permission', rp.permission, 'granted', rp.granted))
+          FROM role_permissions rp
+          WHERE rp.role_id = ${users.role}
+        )`.as("permissions_json"),
       })
       .from(sessions)
       .innerJoin(users, eq(sessions.userId, users.id))
-      .leftJoin(roles, eq(users.role, roles.id))
       .where(eq(sessions.id, sessionId))
       .limit(1)
   )[0];
@@ -273,19 +269,21 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
     return null;
   }
 
-  const permissionRows = await db
-    .select({
-      permission: rolePermissions.permission,
-      granted: rolePermissions.granted,
-    })
-    .from(rolePermissions)
-    .where(eq(rolePermissions.roleId, row.roleId));
+  type PermRow = { permission: string; granted: boolean } | null;
+  let permissionRows: PermRow[] = [];
+  try {
+    const parsed = JSON.parse(row.permissionsJson ?? "[]") as unknown;
+    if (Array.isArray(parsed)) {
+      permissionRows = parsed as PermRow[];
+    }
+  } catch {
+    permissionRows = [];
+  }
 
   const user: SessionUser = {
     id: row.userId,
     roleId: row.roleId,
-    roleLevel: row.roleLevel ?? 1,
-    role: resolveCompatibilityRole(row.roleId, row.roleLevel),
+    role: isBuiltinRole(row.roleId) ? row.roleId : "member",
     permissions: buildPermissionSet(row.roleId, permissionRows),
   };
 

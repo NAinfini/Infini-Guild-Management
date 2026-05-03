@@ -3,13 +3,14 @@ import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { PortalCard } from "../../shared/PortalCard";
 import { Alert, Group, Select, Skeleton, Stack, Text, TextInput } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
 import { IconArchive, IconDeviceFloppy, IconPinned, IconPlus, IconX } from "@tabler/icons-react";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
-import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
+import { notifyError } from "../../../utils/notifications";
+import { TipTapEditor, buildTipTapEditorLabels } from "@portal/components/shared/TipTapEditor";
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
@@ -80,6 +81,8 @@ export function WikiArticleEditorCard({
   emptyTitle,
 }: WikiArticleEditorCardProps) {
   const { t } = useTranslation("wiki");
+  const { t: te } = useTranslation("editor");
+  const editorLabels = useMemo(() => buildTipTapEditorLabels(te), [te]);
   const pinLabel = selectedArticle?.pinned
     ? (pinnedIntent === "unpin" ? t("articleEditor.unpinQueued") : t("articleEditor.unpin"))
     : (pinnedIntent === "pin" ? t("articleEditor.pinQueued") : t("articleEditor.pin"));
@@ -118,11 +121,12 @@ export function WikiArticleEditorCard({
                         type="primary"
                         size="sm"
                         iconOnly
-                        before={<IconPinned size={16} />}
                         disabled={isSaving}
                         aria-label={pinLabel}
                         tooltip={{ label: pinLabel, withArrow: true }}
-                      />
+                      >
+                        <IconPinned size={16} />
+                      </DepthToggle>
                     <DepthButton
                       type={archiveIntent === "none" ? "danger" : "secondary"}
                       size="sm"
@@ -138,7 +142,7 @@ export function WikiArticleEditorCard({
                       before={<IconDeviceFloppy size={16} />}
                       onClick={() => {
                         if (!articleTitle.trim()) {
-                          notifications.show({ color: "red", message: t("validation.titleRequired") });
+                          notifyError(t("validation.titleRequired"));
                           return;
                         }
                         onSaveArticle();
@@ -190,7 +194,7 @@ export function WikiArticleEditorCard({
                 disabled={!canEdit}
                 onChange={(event) => onArticleTitleChange(event.currentTarget.value)}
                 placeholder={t("articleEditor.titleField")}
-                aria-label="Wiki article title"
+                aria-label={t("aria.articleTitle")}
               />
               <Group gap={8} wrap="wrap">
                 <Select
@@ -200,7 +204,7 @@ export function WikiArticleEditorCard({
                   disabled={!canEdit}
                   data={categoryOptions}
                   placeholder={t("articleEditor.category")}
-                  aria-label="Wiki article category"
+                  aria-label={t("aria.articleCategory")}
                   onChange={(value) => onArticleCategoryChange(value ?? "")}
                 />
               </Group>
@@ -213,6 +217,7 @@ export function WikiArticleEditorCard({
                 placeholder={t("articleEditor.body")}
                 editable={canEdit}
                 onImageUpload={onImageUpload}
+                labels={editorLabels}
               />
               {selectedArticle ? (
                 <Stack gap={2}>

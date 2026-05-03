@@ -1,5 +1,4 @@
 import {
-  botSettingsSchema,
   createWarHistorySchema,
   eventSchema,
   saveTeamsPayloadSchema,
@@ -22,8 +21,8 @@ import {
   warTeams,
 } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
-
-// --- Types (single source of truth) ---
+import { type AnalyticsSettings, defaultAnalyticsSettings } from "./AdminService";
+import { parseRecurrenceRule } from "./EventService";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 
@@ -87,26 +86,9 @@ export type WarTemplateSnapshot = {
   pool_members: Array<{ user_id: string }>;
 };
 
-type BotSettings = {
-  discord: { guild_id: string; notification_channel_id: string; team_comp_channel_id: string; default_toggles: Record<string, boolean> };
-  wechat: { room_ids: string[]; default_toggles: Record<string, boolean> };
-};
-
-export type AnalyticsSettings = {
-  reference_duration_minutes: number;
-  modifier_weight_kda: number;
-  modifier_weight_towers: number;
-  modifier_weight_credits: number;
-  modifier_weight_distance: number;
-  modifier_weight_basehp: number;
-};
-
 type ModifierBreakdown = { factor: string; ratio: number; weight: number; contribution: number };
 
 type AuditLogInput = { entityType: string; action: string; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
-type BotPlatform = "discord" | "wechat";
-type BotTaskType = "event_notify" | "team_comp" | "reminder" | "war_result";
-type BotTaskInput = { platform: BotPlatform; taskType: BotTaskType; targetId: string; eventId: string | null; payload: Record<string, unknown>; idempotencyKey: string; dispatchNow: boolean };
 type SaveTeamsInput = z.infer<typeof saveTeamsPayloadSchema>;
 type EventPayload = z.infer<typeof eventSchema> | null;
 type CreateWarHistoryInput = z.infer<typeof createWarHistorySchema>;
@@ -115,18 +97,13 @@ type UpdateWarHistoryInput = z.infer<typeof updateWarHistorySchema>;
 export type GuildWarServiceDeps = {
   media: { get(key: string): Promise<{ text(): Promise<string> } | null> };
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
-  createBotTask: (input: BotTaskInput) => Promise<{ task_id: string }>;
-  botRuntimeUrl: string;
-  botSharedSecret: string;
   publishEntityChanged: (input: { entityType: string; entityId: string; hint: string }) => Promise<void>;
   rawDb?: D1Database;
 };
 
 // --- Constants ---
 
-const BOT_SETTINGS_KEY = "config/bot-settings.json";
 const ANALYTICS_SETTINGS_KEY = "config/analytics-settings.json";
-const TEAM_COMP_DEBOUNCE_BUCKET_MS = 30_000;
 
 // --- Pure helpers ---
 
@@ -168,23 +145,6 @@ export function toMemberPayload(row: WarTeamMemberRow) {
 
 export function buildWarEtag(warId: string, updatedAt: string): string {
   return `"war-${warId}-${updatedAt}"`;
-}
-
-export function parseRecurrenceRule(value: string | null): unknown {
-  if (!value) return null;
-  try { return JSON.parse(value) as unknown; } catch { return null; }
-}
-
-function defaultBotSettings(): BotSettings {
-  return { discord: { guild_id: "", notification_channel_id: "", team_comp_channel_id: "", default_toggles: {} }, wechat: { room_ids: [], default_toggles: {} } };
-}
-
-export function defaultAnalyticsSettings(): AnalyticsSettings {
-  return { reference_duration_minutes: 30, modifier_weight_kda: 0.30, modifier_weight_towers: 0.10, modifier_weight_credits: 0.30, modifier_weight_distance: 0.15, modifier_weight_basehp: 0.15 };
-}
-
-function normalizeRoomIds(settings: BotSettings): string[] {
-  return Array.from(new Set(settings.wechat.room_ids.map((r) => r.trim()).filter(Boolean)));
 }
 
 function toCsvCell(value: unknown): string {
@@ -235,25 +195,6 @@ function computeWarModifier(
   return { value: Number(modifier.toFixed(4)), breakdown };
 }
 
-function buildTeamCompTaskPayload(history: WarHistoryRow, teams: WarTeamRow[], members: WarTeamMemberRow[], poolMembers: Array<{ userId: string }>): Record<string, unknown> {
-  return {
-    war_history_id: history.id, war_name: history.warName, enemy_name: history.enemyName, event_id: history.eventId,
-    teams: teams.map((team) => ({ team_id: team.id, team_name: team.teamName, is_locked: team.isLocked, members: members.filter((m) => m.warTeamId === team.id).map((m) => ({ user_id: m.userId, role_tag: m.roleTag })) })),
-    pool: poolMembers.map((item) => ({ user_id: item.userId })),
-  };
-}
-
-function buildWarResultTaskPayload(history: WarHistoryRow, members: WarTeamMemberRow[]): Record<string, unknown> {
-  const topDamage = [...members].sort((a, b) => (b.damage ?? 0) - (a.damage ?? 0)).slice(0, 3).map((m) => ({ user_id: m.userId, damage: m.damage ?? 0 }));
-  const topHealing = [...members].sort((a, b) => (b.healing ?? 0) - (a.healing ?? 0)).slice(0, 3).map((m) => ({ user_id: m.userId, healing: m.healing ?? 0 }));
-  return {
-    war_history_id: history.id, war_name: history.warName, enemy_name: history.enemyName, result: history.result,
-    own_kills: history.ownKills, enemy_kills: history.enemyKills, own_towers: history.ownTowers, enemy_towers: history.enemyTowers,
-    own_base_hp: history.ownBaseHp, enemy_base_hp: history.enemyBaseHp, own_credits: history.ownCredits, enemy_credits: history.enemyCredits,
-    top_damage: topDamage, top_healing: topHealing,
-  };
-}
-
 // --- Service class ---
 
 export class GuildWarService {
@@ -263,21 +204,6 @@ export class GuildWarService {
   constructor(db: DrizzleDb, deps: GuildWarServiceDeps) {
     this.db = db;
     this.deps = deps;
-  }
-
-  // --- Private: bot settings ---
-
-  private async readBotSettings(): Promise<BotSettings> {
-    const object = await this.deps.media.get(BOT_SETTINGS_KEY);
-    if (!object) return defaultBotSettings();
-    try {
-      const parsed = JSON.parse(await object.text()) as unknown;
-      return botSettingsSchema.parse(parsed);
-    } catch { return defaultBotSettings(); }
-  }
-
-  private shouldDispatchNow(): boolean {
-    return Boolean(this.deps.botRuntimeUrl.trim() && this.deps.botSharedSecret.trim());
   }
 
   private async readAnalyticsSettings(): Promise<AnalyticsSettings> {
@@ -297,41 +223,6 @@ export class GuildWarService {
         modifier_weight_basehp: typeof record.modifier_weight_basehp === "number" ? record.modifier_weight_basehp : defaults.modifier_weight_basehp,
       };
     } catch { return defaultAnalyticsSettings(); }
-  }
-
-  // --- Private: bot dispatch ---
-
-  private async dispatchAutoTeamComp(history: WarHistoryRow, teams: WarTeamRow[], members: WarTeamMemberRow[], poolMembers: Array<{ userId: string }>): Promise<void> {
-    const settings = await this.readBotSettings();
-    const payload = buildTeamCompTaskPayload(history, teams, members, poolMembers);
-    const dispatchNow = this.shouldDispatchNow();
-    const debounceBucket = Math.floor(Date.now() / TEAM_COMP_DEBOUNCE_BUCKET_MS);
-    const tasks: Promise<unknown>[] = [];
-    const discordChannelId = settings.discord.team_comp_channel_id.trim();
-    if (discordChannelId) {
-      tasks.push(this.deps.createBotTask({ platform: "discord", taskType: "team_comp", targetId: discordChannelId, eventId: history.eventId, payload, idempotencyKey: `guild-war-team-comp:auto:discord:${history.id}:${debounceBucket}`, dispatchNow }));
-    }
-    for (const roomId of normalizeRoomIds(settings)) {
-      tasks.push(this.deps.createBotTask({ platform: "wechat", taskType: "team_comp", targetId: roomId, eventId: history.eventId, payload, idempotencyKey: `guild-war-team-comp:auto:wechat:${history.id}:${roomId}:${debounceBucket}`, dispatchNow }));
-    }
-    await Promise.all(tasks);
-  }
-
-  private async dispatchAutoWarResult(history: WarHistoryRow, members: WarTeamMemberRow[]): Promise<void> {
-    if (!history.result || history.result.trim().length === 0) return;
-    const settings = await this.readBotSettings();
-    const payload = buildWarResultTaskPayload(history, members);
-    const dispatchNow = this.shouldDispatchNow();
-    const dispatchKey = history.updatedAt || new Date().toISOString();
-    const tasks: Promise<unknown>[] = [];
-    const discordChannelId = settings.discord.notification_channel_id.trim() || settings.discord.team_comp_channel_id.trim();
-    if (discordChannelId) {
-      tasks.push(this.deps.createBotTask({ platform: "discord", taskType: "war_result", targetId: discordChannelId, eventId: history.eventId, payload, idempotencyKey: `guild-war-result:auto:discord:${history.id}:${dispatchKey}`, dispatchNow }));
-    }
-    for (const roomId of normalizeRoomIds(settings)) {
-      tasks.push(this.deps.createBotTask({ platform: "wechat", taskType: "war_result", targetId: roomId, eventId: history.eventId, payload, idempotencyKey: `guild-war-result:auto:wechat:${history.id}:${roomId}:${dispatchKey}`, dispatchNow }));
-    }
-    await Promise.all(tasks);
   }
 
   // --- DB query methods ---
@@ -464,10 +355,6 @@ export class GuildWarService {
     await this.replaceHistoryTeams(activeHistory.id, snapshot);
     const refreshed = await this.getWarHistoryById(activeHistory.id);
     if (!refreshed) return err("SERVER_ERROR", "Failed to refresh war history");
-    const teams = await this.getTeamsForHistory(refreshed.id);
-    const members = await this.getMembersForTeams(teams.map((t) => t.id));
-    const poolMembers = await this.db.select({ userId: warPoolMembers.userId }).from(warPoolMembers).where(eq(warPoolMembers.warHistoryId, refreshed.id));
-    await this.dispatchAutoTeamComp(refreshed, teams, members, poolMembers);
     await this.deps.writeAuditLog({ entityType: "guild_war", action: "save_teams", actorId, entityId: refreshed.id, detailText: JSON.stringify({ event_id: payload.event_id }) });
     await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: refreshed.id, hint: "teams_saved" });
     return ok(refreshed);
@@ -482,20 +369,40 @@ export class GuildWarService {
     }
     const teams = await this.getTeamsForHistory(activeHistory.id);
     const teamIds = teams.map((t) => t.id);
-    if (teamIds.length > 0) {
-      await this.db.delete(warTeamMembers).where(and(inArray(warTeamMembers.warTeamId, teamIds), eq(warTeamMembers.userId, userId)));
-    }
-    await this.db.delete(warPoolMembers).where(and(eq(warPoolMembers.warHistoryId, activeHistory.id), eq(warPoolMembers.userId, userId)));
-    if (to === "pool") {
-      await this.db.insert(warPoolMembers).values({ id: nanoid(), warHistoryId: activeHistory.id, userId });
+    const nowIso = new Date().toISOString();
+    const rawDb = this.deps.rawDb;
+
+    if (rawDb) {
+      const stmts: D1PreparedStatement[] = [];
+      for (const tid of teamIds) stmts.push(rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id = ?1 AND user_id = ?2").bind(tid, userId));
+      stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE war_history_id = ?1 AND user_id = ?2").bind(activeHistory.id, userId));
+      if (to === "pool") {
+        stmts.push(rawDb.prepare("INSERT INTO war_pool_members (id, war_history_id, user_id) VALUES (?1, ?2, ?3)").bind(nanoid(), activeHistory.id, userId));
+      } else {
+        const targetTeam = teams.find((t) => t.id === to);
+        if (!targetTeam) return err("NOT_FOUND", "Target team not found");
+        const maxRow = (await this.db.select({ maxSort: sql<number>`coalesce(max(${warTeamMembers.sortOrder}), -1)` }).from(warTeamMembers).where(eq(warTeamMembers.warTeamId, targetTeam.id)))[0];
+        const nextSort = Number(maxRow?.maxSort ?? -1) + 1;
+        stmts.push(rawDb.prepare("INSERT INTO war_team_members (id, war_team_id, user_id, sort_order) VALUES (?1, ?2, ?3, ?4)").bind(nanoid(), targetTeam.id, userId, nextSort));
+      }
+      stmts.push(rawDb.prepare("UPDATE war_history SET updated_at = ?1 WHERE id = ?2").bind(nowIso, activeHistory.id));
+      await rawDb.batch(stmts);
     } else {
-      const targetTeam = teams.find((t) => t.id === to);
-      if (!targetTeam) return err("NOT_FOUND", "Target team not found");
-      const maxRow = (await this.db.select({ maxSort: sql<number>`coalesce(max(${warTeamMembers.sortOrder}), -1)` }).from(warTeamMembers).where(eq(warTeamMembers.warTeamId, targetTeam.id)))[0];
-      const nextSort = Number(maxRow?.maxSort ?? -1) + 1;
-      await this.db.insert(warTeamMembers).values({ id: nanoid(), warTeamId: targetTeam.id, userId, sortOrder: nextSort });
+      if (teamIds.length > 0) {
+        await this.db.delete(warTeamMembers).where(and(inArray(warTeamMembers.warTeamId, teamIds), eq(warTeamMembers.userId, userId)));
+      }
+      await this.db.delete(warPoolMembers).where(and(eq(warPoolMembers.warHistoryId, activeHistory.id), eq(warPoolMembers.userId, userId)));
+      if (to === "pool") {
+        await this.db.insert(warPoolMembers).values({ id: nanoid(), warHistoryId: activeHistory.id, userId });
+      } else {
+        const targetTeam = teams.find((t) => t.id === to);
+        if (!targetTeam) return err("NOT_FOUND", "Target team not found");
+        const maxRow = (await this.db.select({ maxSort: sql<number>`coalesce(max(${warTeamMembers.sortOrder}), -1)` }).from(warTeamMembers).where(eq(warTeamMembers.warTeamId, targetTeam.id)))[0];
+        const nextSort = Number(maxRow?.maxSort ?? -1) + 1;
+        await this.db.insert(warTeamMembers).values({ id: nanoid(), warTeamId: targetTeam.id, userId, sortOrder: nextSort });
+      }
+      await this.db.update(warHistory).set({ updatedAt: nowIso }).where(eq(warHistory.id, activeHistory.id));
     }
-    await this.db.update(warHistory).set({ updatedAt: new Date().toISOString() }).where(eq(warHistory.id, activeHistory.id));
     await this.deps.writeAuditLog({ entityType: "guild_war", action: "move_member", actorId, entityId: activeHistory.id, detailText: JSON.stringify({ user_id: userId, to }) });
     return ok({ ok: true });
   }
@@ -510,33 +417,6 @@ export class GuildWarService {
     await this.db.update(warHistory).set({ updatedAt: new Date().toISOString() }).where(eq(warHistory.id, activeHistory.id));
     await this.deps.writeAuditLog({ entityType: "guild_war", action: "set_role_tag", actorId, entityId: activeHistory.id, detailText: JSON.stringify({ user_id: userId, role_tag: nextTag }) });
     return ok({ ok: true });
-  }
-
-  async postTeams(actorId: string, eventId: string, platform: "discord" | "wechat"): Promise<ServiceResult<{ ok: true; task_id: string }>> {
-    const activeHistory = await this.getLatestWarHistory(eventId);
-    if (!activeHistory) return err("NOT_FOUND", "Active war history not found");
-    const teams = await this.getTeamsForHistory(activeHistory.id);
-    const members = await this.getMembersForTeams(teams.map((t) => t.id));
-    const poolMembers = await this.db.select({ userId: warPoolMembers.userId }).from(warPoolMembers).where(eq(warPoolMembers.warHistoryId, activeHistory.id));
-    const settings = await this.readBotSettings();
-    const targetId = platform === "discord" ? settings.discord.team_comp_channel_id.trim() : normalizeRoomIds(settings)[0] ?? "";
-    if (!targetId) return err("VALIDATION_ERROR", `Missing ${platform} target for team composition dispatch`);
-    const task = await this.deps.createBotTask({ platform, taskType: "team_comp", targetId, eventId: activeHistory.eventId, payload: buildTeamCompTaskPayload(activeHistory, teams, members, poolMembers), idempotencyKey: `guild-war-team-comp:${platform}:${activeHistory.id}:${Date.now()}`, dispatchNow: this.shouldDispatchNow() });
-    await this.deps.writeAuditLog({ entityType: "guild_war", action: "post_team_comp", actorId, entityId: activeHistory.id, detailText: JSON.stringify({ platform, task_id: task.task_id }) });
-    return ok({ ok: true, task_id: task.task_id });
-  }
-
-  async postResults(actorId: string, warHistoryId: string, platform: "discord" | "wechat"): Promise<ServiceResult<{ ok: true; task_id: string }>> {
-    const history = await this.getWarHistoryById(warHistoryId);
-    if (!history) return err("NOT_FOUND", "War history not found");
-    const teams = await this.getTeamsForHistory(history.id);
-    const members = await this.getMembersForTeams(teams.map((t) => t.id));
-    const settings = await this.readBotSettings();
-    const targetId = platform === "discord" ? settings.discord.notification_channel_id.trim() || settings.discord.team_comp_channel_id.trim() : normalizeRoomIds(settings)[0] ?? "";
-    if (!targetId) return err("VALIDATION_ERROR", `Missing ${platform} target for war result dispatch`);
-    const task = await this.deps.createBotTask({ platform, taskType: "war_result", targetId, eventId: history.eventId, payload: buildWarResultTaskPayload(history, members), idempotencyKey: `guild-war-result:${platform}:${history.id}:${Date.now()}`, dispatchNow: this.shouldDispatchNow() });
-    await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "post_results", actorId, entityId: history.id, detailText: JSON.stringify({ platform, task_id: task.task_id }) });
-    return ok({ ok: true, task_id: task.task_id });
   }
 
   async exportHistory(format: "csv" | "json", filters: { dateFrom?: string; dateTo?: string; eventId?: string }): Promise<ServiceResult<{ content: string; contentType: string; filename: string }>> {
@@ -631,9 +511,6 @@ export class GuildWarService {
     if (!created) return err("SERVER_ERROR", "Failed to create war history");
     await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "create", actorId, entityId: historyId, diffTitle: created.warName });
     await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: historyId, hint: "history_created" });
-    const createdTeams = await this.getTeamsForHistory(created.id);
-    const createdMembers = await this.getMembersForTeams(createdTeams.map((t) => t.id));
-    await this.dispatchAutoWarResult(created, createdMembers);
     return ok(toWarHistoryPayload(created));
   }
 
@@ -662,26 +539,67 @@ export class GuildWarService {
     if (!updated) return err("SERVER_ERROR", "Failed to load updated war history");
     await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "update", actorId, entityId: warId, diffTitle: updated.warName, detailText: JSON.stringify(input) });
     await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: warId, hint: "history_updated" });
-    const updatedTeams = await this.getTeamsForHistory(updated.id);
-    const updatedMembers = await this.getMembersForTeams(updatedTeams.map((t) => t.id));
-    await this.dispatchAutoWarResult(updated, updatedMembers);
     return ok(toWarHistoryPayload(updated));
   }
 
   async deleteHistory(actorId: string, warId: string): Promise<ServiceResult<{ ok: true }>> {
     const existing = await this.getWarHistoryById(warId);
     if (!existing) return err("NOT_FOUND", "War history not found");
-    const teamIds = (await this.db.select({ id: warTeams.id }).from(warTeams).where(eq(warTeams.warHistoryId, warId))).map((r) => r.id);
-    if (teamIds.length > 0) await this.db.delete(warTeamMembers).where(inArray(warTeamMembers.warTeamId, teamIds));
-    await this.db.delete(warTeams).where(eq(warTeams.warHistoryId, warId));
-    await this.db.delete(warPoolMembers).where(eq(warPoolMembers.warHistoryId, warId));
-    await this.db.delete(warHistory).where(eq(warHistory.id, warId));
+    const rawDb = this.deps.rawDb;
+    if (rawDb) {
+      const teamIds = (await this.db.select({ id: warTeams.id }).from(warTeams).where(eq(warTeams.warHistoryId, warId))).map((r) => r.id);
+      const stmts: D1PreparedStatement[] = [];
+      for (const teamId of teamIds) stmts.push(rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id = ?1").bind(teamId));
+      stmts.push(rawDb.prepare("DELETE FROM war_teams WHERE war_history_id = ?1").bind(warId));
+      stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE war_history_id = ?1").bind(warId));
+      stmts.push(rawDb.prepare("DELETE FROM war_history WHERE id = ?1").bind(warId));
+      await rawDb.batch(stmts);
+    } else {
+      const teamIds = (await this.db.select({ id: warTeams.id }).from(warTeams).where(eq(warTeams.warHistoryId, warId))).map((r) => r.id);
+      if (teamIds.length > 0) await this.db.delete(warTeamMembers).where(inArray(warTeamMembers.warTeamId, teamIds));
+      await this.db.delete(warTeams).where(eq(warTeams.warHistoryId, warId));
+      await this.db.delete(warPoolMembers).where(eq(warPoolMembers.warHistoryId, warId));
+      await this.db.delete(warHistory).where(eq(warHistory.id, warId));
+    }
     await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "delete", actorId, entityId: warId, diffTitle: existing.warName });
     await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: warId, hint: "history_deleted" });
     return ok({ ok: true });
   }
 
   async batchDeleteHistory(actorId: string, warIds: string[]): Promise<ServiceResult<{ ok: true; deleted: number }>> {
+    const rawDb = this.deps.rawDb;
+    if (rawDb && warIds.length > 0) {
+      const existingRows = await this.db
+        .select({ id: warHistory.id, warName: warHistory.warName })
+        .from(warHistory)
+        .where(inArray(warHistory.id, warIds));
+      const existingIds = existingRows.map((r) => r.id);
+      if (existingIds.length === 0) return ok({ ok: true, deleted: 0 });
+
+      const allTeamRows = await this.db
+        .select({ id: warTeams.id })
+        .from(warTeams)
+        .where(inArray(warTeams.warHistoryId, existingIds));
+      const allTeamIds = allTeamRows.map((r) => r.id);
+
+      const stmts: D1PreparedStatement[] = [];
+      for (const teamId of allTeamIds) {
+        stmts.push(rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id = ?1").bind(teamId));
+      }
+      for (const warId of existingIds) {
+        stmts.push(rawDb.prepare("DELETE FROM war_teams WHERE war_history_id = ?1").bind(warId));
+        stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE war_history_id = ?1").bind(warId));
+        stmts.push(rawDb.prepare("DELETE FROM war_history WHERE id = ?1").bind(warId));
+      }
+      await rawDb.batch(stmts);
+
+      for (const row of existingRows) {
+        await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "delete", actorId, entityId: row.id, diffTitle: row.warName });
+        await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: row.id, hint: "history_deleted" });
+      }
+      return ok({ ok: true, deleted: existingIds.length });
+    }
+
     let deleted = 0;
     for (const warId of warIds) {
       const result = await this.deleteHistory(actorId, warId);
@@ -719,6 +637,10 @@ export class GuildWarService {
     const memberRows = await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, kills: warTeamMembers.kills, deaths: warTeamMembers.deaths, assists: warTeamMembers.assists, damage: warTeamMembers.damage, healing: warTeamMembers.healing, buildingDamage: warTeamMembers.buildingDamage, credits: warTeamMembers.credits, damageTaken: warTeamMembers.damageTaken, note: warTeamMembers.note }).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(and(eq(warTeams.warHistoryId, warId), inArray(warTeamMembers.userId, userIds)));
     const memberByUserId = new Map(memberRows.map((m) => [m.userId, m]));
     const results: ReturnType<typeof toMemberPayload>[] = [];
+
+    type PatchEntry = { memberRow: WarTeamMemberRow; patch: Partial<typeof warTeamMembers.$inferInsert> };
+    const pendingPatches: PatchEntry[] = [];
+
     for (const update of updates) {
       const memberRow = memberByUserId.get(update.user_id);
       if (!memberRow) continue;
@@ -734,10 +656,44 @@ export class GuildWarService {
       if (parsed.data.credits !== undefined) patch.credits = parsed.data.credits;
       if (parsed.data.damage_taken !== undefined) patch.damageTaken = parsed.data.damage_taken;
       if (parsed.data.note !== undefined) patch.note = parsed.data.note;
-      if (Object.keys(patch).length > 0) await this.db.update(warTeamMembers).set(patch).where(eq(warTeamMembers.id, memberRow.id));
-      const refreshed = (await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, kills: warTeamMembers.kills, deaths: warTeamMembers.deaths, assists: warTeamMembers.assists, damage: warTeamMembers.damage, healing: warTeamMembers.healing, buildingDamage: warTeamMembers.buildingDamage, credits: warTeamMembers.credits, damageTaken: warTeamMembers.damageTaken, note: warTeamMembers.note }).from(warTeamMembers).where(eq(warTeamMembers.id, memberRow.id)).limit(1))[0];
-      if (refreshed) results.push(toMemberPayload(refreshed));
+      if (Object.keys(patch).length > 0) {
+        pendingPatches.push({ memberRow, patch });
+      } else {
+        results.push(toMemberPayload(memberRow));
+      }
     }
+
+    if (pendingPatches.length > 0 && this.deps.rawDb) {
+      const rawDb = this.deps.rawDb;
+      const stmts: D1PreparedStatement[] = pendingPatches.map(({ memberRow, patch }) => {
+        const setClauses: string[] = [];
+        const bindings: unknown[] = [];
+        let paramIdx = 1;
+        if (patch.kills !== undefined) { setClauses.push(`kills = ?${paramIdx++}`); bindings.push(patch.kills); }
+        if (patch.deaths !== undefined) { setClauses.push(`deaths = ?${paramIdx++}`); bindings.push(patch.deaths); }
+        if (patch.assists !== undefined) { setClauses.push(`assists = ?${paramIdx++}`); bindings.push(patch.assists); }
+        if (patch.damage !== undefined) { setClauses.push(`damage = ?${paramIdx++}`); bindings.push(patch.damage); }
+        if (patch.healing !== undefined) { setClauses.push(`healing = ?${paramIdx++}`); bindings.push(patch.healing); }
+        if (patch.buildingDamage !== undefined) { setClauses.push(`building_damage = ?${paramIdx++}`); bindings.push(patch.buildingDamage); }
+        if (patch.credits !== undefined) { setClauses.push(`credits = ?${paramIdx++}`); bindings.push(patch.credits); }
+        if (patch.damageTaken !== undefined) { setClauses.push(`damage_taken = ?${paramIdx++}`); bindings.push(patch.damageTaken); }
+        if (patch.note !== undefined) { setClauses.push(`note = ?${paramIdx++}`); bindings.push(patch.note); }
+        bindings.push(memberRow.id);
+        return (rawDb.prepare(`UPDATE war_team_members SET ${setClauses.join(", ")} WHERE id = ?${paramIdx}`) as D1PreparedStatement).bind(...(bindings as Parameters<D1PreparedStatement["bind"]>));
+      });
+      await rawDb.batch(stmts);
+      for (const { memberRow, patch } of pendingPatches) {
+        const merged: WarTeamMemberRow = { ...memberRow, ...patch as Partial<WarTeamMemberRow> };
+        results.push(toMemberPayload(merged));
+      }
+    } else {
+      for (const { memberRow, patch } of pendingPatches) {
+        await this.db.update(warTeamMembers).set(patch).where(eq(warTeamMembers.id, memberRow.id));
+        const merged: WarTeamMemberRow = { ...memberRow, ...patch as Partial<WarTeamMemberRow> };
+        results.push(toMemberPayload(merged));
+      }
+    }
+
     await this.deps.writeAuditLog({ entityType: "guild_war_member_stats", action: "batch_update", actorId, entityId: warId, detailText: JSON.stringify({ count: results.length, user_ids: userIds }) });
     return ok({ data: results });
   }

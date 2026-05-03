@@ -1,19 +1,14 @@
 import { forwardRef } from "react";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Image from "@tiptap/extension-image";
-import Link from "@tiptap/extension-link";
-import Placeholder from "@tiptap/extension-placeholder";
-import Table from "@tiptap/extension-table";
-import TableCell from "@tiptap/extension-table-cell";
-import TableHeader from "@tiptap/extension-table-header";
-import TableRow from "@tiptap/extension-table-row";
-import Underline from "@tiptap/extension-underline";
+import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
+import { Placeholder } from "@tiptap/extensions";
 import type { Content } from "@tiptap/core";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Alert, ActionIcon, Button, Card, Group, Modal, Progress, Stack, Text, Tooltip } from "@mantine/core";
 import DOMPurify from "dompurify";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   IconBold,
   IconItalic,
@@ -34,7 +29,9 @@ import {
   IconTableOff,
   IconPhoto,
 } from "@tabler/icons-react";
-import { lowlight } from "lowlight/lib/common";
+import { common, createLowlight } from "lowlight";
+
+const lowlight = createLowlight(common);
 import "./tiptap-editor.css";
 
 type EditorMode = "json" | "html";
@@ -92,6 +89,35 @@ const DEFAULT_LABELS: TipTapEditorLabels = {
   imageUploadFailed: "Image upload failed",
   uploading: "Uploading...",
 };
+
+export function buildTipTapEditorLabels(t: (key: string) => string): TipTapEditorLabels {
+  return {
+    bold: t("toolbar.bold"),
+    italic: t("toolbar.italic"),
+    underline: t("toolbar.underline"),
+    strike: t("toolbar.strike"),
+    link: t("toolbar.link"),
+    unlink: t("toolbar.unlink"),
+    h1: t("toolbar.h1"),
+    h2: t("toolbar.h2"),
+    h3: t("toolbar.h3"),
+    bullet: t("toolbar.bullet"),
+    number: t("toolbar.number"),
+    quote: t("toolbar.quote"),
+    code: t("toolbar.code"),
+    table: t("toolbar.table"),
+    addCol: t("toolbar.addCol"),
+    addRow: t("toolbar.addRow"),
+    delTable: t("toolbar.delTable"),
+    image: t("toolbar.image"),
+    close: t("toolbar.close"),
+    slashCommands: t("slashCommands"),
+    linkPrompt: t("toolbar.linkPrompt"),
+    imageInserted: t("message.imageInserted"),
+    imageUploadFailed: t("message.imageUploadFailed"),
+    uploading: t("upload.uploading"),
+  };
+}
 
 /**
  * Rich text editor built on TipTap.
@@ -206,7 +232,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
     labels: labelsProp,
     ...rest
   }, ref) {
-    const labels = { ...DEFAULT_LABELS, ...labelsProp };
+    const labels = useMemo(() => ({ ...DEFAULT_LABELS, ...labelsProp }), [labelsProp]);
     const effectiveReadOnly = editable === undefined ? readOnly : !editable;
     const [slashOpen, setSlashOpen] = useState(false);
     const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -215,7 +241,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
     const [lightboxZoom, setLightboxZoom] = useState(1);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-    const uploadImageAndInsert = async (editor: Editor, file: File): Promise<void> => {
+    const uploadImageAndInsert = useCallback(async (editor: Editor, file: File): Promise<void> => {
       try {
         setIsUploadingImage(true);
         setImageUploadProgress(5);
@@ -235,15 +261,16 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
           setImageUploadProgress(0);
         }, 300);
       }
-    };
+    }, [convertImage, onImageUpload, onNotify, onError, labels]);
 
     const editor = useEditor({
       extensions: [
-        StarterKit.configure({ codeBlock: false }),
-        Underline,
-        Link.configure({
-          openOnClick: false,
-          HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" },
+        StarterKit.configure({
+          codeBlock: false,
+          link: {
+            openOnClick: false,
+            HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" },
+          },
         }),
         CodeBlockLowlight.configure({ lowlight }),
         Table.configure({ resizable: true }),
@@ -305,11 +332,11 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
       if (mode === "json") {
         const current = JSON.stringify(editor.getJSON());
         const incoming = typeof nextContent === "string" ? nextContent : JSON.stringify(nextContent);
-        if (current !== incoming) editor.commands.setContent(nextContent, false);
+        if (current !== incoming) editor.commands.setContent(nextContent, { emitUpdate: false });
         return;
       }
       const incoming = typeof nextContent === "string" ? nextContent : "";
-      if (editor.getHTML() !== incoming) editor.commands.setContent(incoming, false);
+      if (editor.getHTML() !== incoming) editor.commands.setContent(incoming, { emitUpdate: false });
     }, [editor, mode, value]);
 
     const slashCommands = useMemo<SlashCommand[]>(

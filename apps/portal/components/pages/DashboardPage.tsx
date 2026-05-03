@@ -1,9 +1,9 @@
 import type { Event } from "@guild/shared";
 import { Grid, Skeleton, Stack } from "@mantine/core";
 import { IconLayoutDashboard } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { addDays, differenceInHours } from "date-fns";
+import { differenceInHours } from "date-fns";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useExternalView } from "../../hooks/useExternalView";
@@ -11,7 +11,7 @@ import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { fetchEventDetailBatch, fetchEventsList, type EventDetailResponse } from "../../services/EventService";
 import { fetchGuildWarHistory, fetchGuildWarHistoryBatch } from "../../services/GuildWarService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersList } from "../../services/UserService";
+import { fetchUsersList } from "../../api/queries/users";
 import { useAuthStore } from "../../stores/auth";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import { PageLayout } from "../layout/PageLayout";
@@ -93,26 +93,16 @@ export function DashboardPage() {
   const upcomingEventsQuery = useQuery({
     queryKey: queryKeys.dashboard.upcomingEvents(nowIso),
     queryFn: async () => {
-      // Fetch all non-archived events, then filter client-side
-      const all = await fetchEventsList({
+      const result = await fetchEventsList({
         page: 1,
-        limit: 100,
+        limit: 20,
         archived: false,
+        start_after: now.toISOString(),
       });
-      const nextWeek = addDays(now, 7);
-      const filtered = all.data.filter((event) => {
-        const startsAt = new Date(event.start_at);
-        // Upcoming: starts within next 7 days
-        if (startsAt >= now && startsAt <= nextWeek) return true;
-        // Ongoing: already started but not yet ended
-        if (startsAt < now) {
-          if (!event.end_at) return true; // no end_at means still active
-          return new Date(event.end_at) > now;
-        }
-        return false;
-      });
-      return { ...all, data: filtered };
+      return result;
     },
+    staleTime: 10 * 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const recentWarCount = 4;
@@ -122,14 +112,17 @@ export function DashboardPage() {
     queryFn: () =>
       fetchGuildWarHistory({
         page: 1,
-        limit: 100,
+        limit: 10,
       }),
     enabled: Boolean(user),
+    staleTime: 10 * 60_000,
   });
 
   const usersQuery = useQuery({
-    queryKey: queryKeys.dashboard.users(),
-    queryFn: () => fetchUsersList(),
+    queryKey: queryKeys.users.all,
+    queryFn: fetchUsersList,
+    enabled: Boolean(user),
+    staleTime: 10 * 60_000,
   });
 
   const recentWars = useMemo(
@@ -200,7 +193,7 @@ export function DashboardPage() {
     const details = recentWarDetailsQuery.data ?? [];
     const resolveName = (userId: string) => {
       const row = userRowById.get(userId);
-      return row?.profile.wechat_name ?? row?.user.username ?? userId;
+      return row?.user.username ?? userId;
     };
     const initials = (userId: string) => {
       const name = resolveName(userId);
@@ -322,46 +315,38 @@ export function DashboardPage() {
         <Grid.Col span={{ base: 12, xl: "auto" }}>
           <Stack gap={16}>
             {!isExternalView && (
-              isEventsLoading ? (
-                <Skeleton height={120} radius={8} />
-              ) : (
+              <Skeleton visible={isEventsLoading} radius={8}>
                 <MySignupsCard
                   mySignupEvents={mySignupEvents}
                   now={now}
                   onOpenEvent={openEventDetail}
                 />
-              )
+              </Skeleton>
             )}
 
-            {isEventsLoading ? (
-              <Skeleton height={200} radius={8} />
-            ) : (
+            <Skeleton visible={isEventsLoading} radius={8}>
               <UpcomingEventsCard
                 upcomingEventsCount={upcomingEvents.length}
                 featuredRows={featuredEventRows}
                 rows={upcomingEventRows}
                 onOpenEvent={openEventDetail}
               />
-            )}
+            </Skeleton>
           </Stack>
         </Grid.Col>
 
         <Grid.Col span={{ base: 12, xl: isExternalView ? 6 : 4 }}>
           <Stack gap={16}>
-            {isUsersLoading || isWarLoading ? (
-              <Skeleton height={160} radius={8} />
-            ) : (
+            <Skeleton visible={isUsersLoading || isWarLoading} radius={8}>
               <ActiveMembersCard
                 activeMemberCount={activeMemberCount}
                 totalMembersCount={totalMembersCount}
                 allWarWinRate={allWarWinRate}
                 activeEventsCount={activeEventsCount}
               />
-            )}
+            </Skeleton>
 
-            {isWarLoading ? (
-              <Skeleton height={200} radius={8} />
-            ) : (
+            <Skeleton visible={isWarLoading} radius={8}>
               <LastWarCard
                 recentWars={recentWars}
                 warMvps={recentWarMvps}
@@ -376,7 +361,7 @@ export function DashboardPage() {
                   });
                 }}
               />
-            )}
+            </Skeleton>
           </Stack>
         </Grid.Col>
       </Grid>

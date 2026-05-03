@@ -8,37 +8,34 @@ Analyzed all portal pages against the D1 database seed data to identify missing 
 ### 1. War Member Stats
 Added 8 stat fields to all war team members: kills, deaths, assists, damage, healing, buildingDamage, credits, damageTaken.
 
-### 2. Discord Link Codes
-Added 2 codes (1 active, 1 expired) for profile Discord linking.
-
-### 3. Sessions
+### 2. Sessions
 Added 2 active sessions (admin + mod_1).
 
-### 4. Moderator Profiles (was MISSING)
+### 3. Moderator Profiles (was MISSING)
 **Issue**: mod_1, mod_2, mod_3 had NO member_profiles rows, breaking roster display, war MVP name resolution, and user detail modals.
-**Fixed**: Added 3 moderator profiles with wechat_name, power, classes, discord IDs, and availability.
+**Fixed**: Added 3 moderator profiles with power, classes, and availability.
 
-### 5. Wiki Articles — TipTap Content
+### 4. Wiki Articles — TipTap Content
 **Issue**: Articles used `{content: "text"}` instead of proper TipTap `{type: "doc", content: [...]}` format.
 **Fixed**: All articles now use full TipTap JSON with headings, paragraphs, bullet lists, and bold/italic marks. Added 3 new articles for sub-categories (8 total).
 
-### 6. Wiki Sub-Categories
+### 5. Wiki Sub-Categories
 **Issue**: All 3 categories were top-level. Wiki tree component's nesting was never exercised.
 **Fixed**: Added 5 sub-categories: FAQ (under General), DPS Builds & Support Builds (under Builds), Offense & Defense (under War).
 
-### 7. Recurring Event Templates
+### 6. Recurring Event Templates
 **Issue**: Zero events had `isSeriesParent: true` or `recurrenceRule`. RecurringTemplatesTab showed empty.
 **Fixed**: Added 3 recurring templates — Weekly Raid Night (weekly, Wed+Fri), Bi-Weekly War Practice (biweekly, Sat), Monthly Guild Meeting (monthly, 1st).
 
-### 8. War History Duration
+### 7. War History Duration
 **Issue**: All 4 war records had null `durationMinutes`.
 **Fixed**: Added realistic durations: 42, 55, 38, 60 minutes.
 
-### 9. Event Attachments
+### 8. Event Attachments
 **Issue**: All events had empty `attachments: '[]'`.
 **Fixed**: Added mock attachment paths to 2 events (Weekly Mission Alpha, Guild War #1).
 
-### 10. Gallery Volume
+### 9. Gallery Volume
 **Issue**: Only 10 items (7 images + 3 videos). Pagination barely exercised.
 **Fixed**: Increased to 28 items (20 images + 8 videos) with varied uploaders including moderators.
 
@@ -62,11 +59,7 @@ Added 2 active sessions (admin + mod_1).
 | Gallery Likes | ~100+ | ✅ Good | Varied engagement |
 | Gallery Comments | ~40+ | ✅ Good | Realistic comments |
 | Invite Links | 3 | ✅ Excellent | Active, expired, revoked |
-| Discord Link Codes | 2 | ✅ Good | 1 active, 1 expired |
 | Sessions | 2 | ✅ Good | Admin + mod_1 |
-| Bot Delivery Log | 20 | ✅ Excellent | All statuses, platforms |
-| Bot Discord Messages | 8 | ✅ Good | Event notifications |
-| Bot WeChat Messages | 6 | ✅ Good | Event notifications |
 | Audit Log | 10 | ✅ Excellent | Varied actions |
 | Roles | 3 | ✅ Excellent | Admin, Moderator, Member |
 | Role Permissions | 60 | ✅ Excellent | Full RBAC matrix |

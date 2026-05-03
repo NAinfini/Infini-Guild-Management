@@ -3,6 +3,7 @@
   "鸣金影",
   "牵丝玉",
   "牵丝霖",
+  "牵丝翊",
   "破竹风",
   "破竹尘",
   "破竹鸢",
@@ -17,15 +18,10 @@ export const CLASS_COLOR_GROUP = {
   "鸣金影": "blue",
   "牵丝玉": "green",
   "牵丝霖": "green",
+  "牵丝翊": "green",
   "破竹风": "purple",
   "破竹尘": "purple",
   "破竹鸢": "purple",
   "裂石威": "dark-red",
   "裂石钧": "dark-red",
 } as const;
-
-export type ClassColorGroup = (typeof CLASS_COLOR_GROUP)[ClassName];
-
-export function getClassColorGroup(className: ClassName): ClassColorGroup {
-  return CLASS_COLOR_GROUP[className];
-}

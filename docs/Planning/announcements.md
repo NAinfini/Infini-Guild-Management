@@ -98,10 +98,6 @@ Modal on mobile, modal on desktop.
 Fields:
 - Title (plain text input)
 - Body: TipTap rich text editor (see Rich Text Editor section above)
-- Bot notification toggles:
-  - "Notify Discord" checkbox (default: off)
-  - "Notify WeChat" checkbox (default: off)
-  - Defaults are fixed in v1 (no role-based notification defaults)
 
 Publishing controls:
 - Save as Draft (not visible to members)
@@ -120,7 +116,6 @@ Publishing controls:
   - Same cron job checks for announcements past their `expires_at` and sets `archived_at`
   - Expired announcements move to Archived filter
   - Expiry is optional — if blank, announcement stays until manually archived
-- **Bot notifications:** Discord/WeChat notifications fire at actual publish time (not at creation time for scheduled posts)
 
 ### Image Handling
 

@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { cn } from "@portal/utils/cn";
+import { IconAlertTriangle, IconCircleCheck, IconCircleX, IconInfoCircle } from "@tabler/icons-react";
+import { memo, type ReactNode } from "react";
 
 type EmptyStateStatus = "info" | "success" | "error" | "warning";
 
@@ -8,19 +8,18 @@ type EmptyStateProps = {
   description?: ReactNode;
   actions?: ReactNode;
   status?: EmptyStateStatus;
-  /** Backward-compat aliases for Result component. */
   subTitle?: ReactNode;
   extra?: ReactNode;
 };
 
-const statusColor: Record<EmptyStateStatus, string> = {
-  info: "text-blue-500",
-  success: "text-green-500",
-  error: "text-red-500",
-  warning: "text-amber-500",
+const statusIcon: Record<EmptyStateStatus, ReactNode> = {
+  info: <IconInfoCircle size={40} stroke={1.5} />,
+  success: <IconCircleCheck size={40} stroke={1.5} />,
+  error: <IconCircleX size={40} stroke={1.5} />,
+  warning: <IconAlertTriangle size={40} stroke={1.5} />,
 };
 
-export function EmptyState({
+export const EmptyState = memo(function EmptyState({
   title,
   description,
   actions,
@@ -32,16 +31,13 @@ export function EmptyState({
   const act = actions ?? extra;
 
   return (
-    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-      <div className={cn("mb-3 text-4xl", statusColor[status])}>
-        {status === "success" && "✓"}
-        {status === "error" && "✗"}
-        {status === "warning" && "⚠"}
-        {status === "info" && "ℹ"}
+    <div aria-live="polite" className="empty-state">
+      <div className={`empty-state__icon empty-state__icon--${status}`}>
+        {statusIcon[status]}
       </div>
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
-      {desc && <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{desc}</p>}
-      {act && <div className="mt-4">{act}</div>}
+      <h3 className="empty-state__title">{title}</h3>
+      {desc && <p className="empty-state__description">{desc}</p>}
+      {act && <div className="empty-state__actions">{act}</div>}
     </div>
   );
-}
+});

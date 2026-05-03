@@ -2,7 +2,6 @@
 import type { ImageGridEditorItem } from "@guild/shared/types/media";
 import { IconCalendarEvent } from "@tabler/icons-react";
 import { useClipboard, useLocalStorage } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
@@ -14,6 +13,7 @@ import {
 } from "react";
 import { Card, Skeleton, Stack } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { notifySuccess, notifyWarning } from "../../utils/notifications";
 import {
   EventService,
 } from "../../services/EventService";
@@ -24,7 +24,7 @@ import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useAttachmentService } from "../../services/AttachmentService";
 import { useAuthStore } from "../../stores/auth";
-import { userHasAnyPermission } from "../../utils/permissions";
+import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { buildMentionList } from "../../utils/copy";
 import { sanitizeEventsRouteSearch, type EventWorkbenchViewMode, type EventsRouteSearch } from "../../utils/event-navigation";
 import { useEventsEditorController } from "../feature/events/useEventsEditorController";
@@ -73,7 +73,8 @@ export function EventsPage() {
   const { showError } = useAppError();
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
-  const isModerator = userHasAnyPermission(user, ["events.create", "events.edit", "events.archive", "events.delete", "events.templates"]);
+  const { canManage: canManagePermission } = useEffectivePermissions();
+  const isModerator = canManagePermission(["events.create", "events.edit", "events.archive", "events.delete", "events.templates"]);
   const canManage = isModerator && !isExternalView;
   const canInteract = Boolean(user) && !isExternalView;
 
@@ -220,16 +221,15 @@ export function EventsPage() {
     const value = buildMentionList(
       (filtering.eventMembersMap.get(event.id) ?? []).map((entry) => ({
         username: entry.user.username,
-        wechatName: entry.profile.wechat_name,
       })),
       event.title,
     );
     if (!value.trim()) {
-      notifications.show({ color: "yellow", message: t("message.nothingToCopy") });
+      notifyWarning(t("message.nothingToCopy"));
       return;
     }
     clipboard.copy(value);
-    notifications.show({ color: "green", message: t("message.mentionsCopied") });
+    notifySuccess(t("message.mentionsCopied"));
   };
 
   const hasLoadError = filtering.eventsQuery.isError || filtering.usersQuery.isError;

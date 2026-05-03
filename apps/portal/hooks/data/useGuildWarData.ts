@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   fetchEventDetail,
   fetchEventsList,
@@ -32,18 +32,21 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
         type: "guild_war",
         archived: false,
       }),
+    staleTime: 10 * 60_000,
   });
 
   const selectedEventDetailQuery = useQuery({
     queryKey: queryKeys.guildWar.eventDetail(selectedEventId ?? null),
     enabled: Boolean(selectedEventId),
     queryFn: () => fetchEventDetail(selectedEventId as string),
+    staleTime: 10 * 60_000,
   });
 
   const activeQuery = useQuery({
-    queryKey: queryKeys.guildWar.active(selectedEventId ?? "none"),
+    queryKey: queryKeys.guildWar.active(selectedEventId ?? null),
     queryFn: () => fetchGuildWarActive(selectedEventId),
     enabled: hasSession && Boolean(selectedEventId),
+    staleTime: 10 * 60_000,
   });
 
   const historyQuery = useQuery({
@@ -56,12 +59,15 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
         date_to: historyDateTo ? `${historyDateTo}T23:59:59.999Z` : undefined,
       }),
     enabled: hasSession,
+    staleTime: 10 * 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const historyDetailQuery = useQuery({
     queryKey: queryKeys.guildWar.historyDetail(selectedHistoryId),
     enabled: hasSession && Boolean(selectedHistoryId),
     queryFn: () => fetchGuildWarHistoryDetail(selectedHistoryId as string),
+    staleTime: 10 * 60_000,
   });
 
   return {

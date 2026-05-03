@@ -8,12 +8,12 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
 import { IconCheck, IconCopy, IconUserPlus } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { notifyError } from "../../../utils/notifications";
 
-const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
+const USERNAME_PATTERN = /^[a-zA-Z0-9_一-鿿]+$/;
 
 type CreateMemberResult = {
   user_id: string;
@@ -26,8 +26,6 @@ type CreateMemberModalProps = {
   onClose: () => void;
   onCreateMember: (data: {
     username: string;
-    discordName: string;
-    wechatName: string;
     notes: string;
   }) => Promise<CreateMemberResult>;
   creating: boolean;
@@ -41,15 +39,11 @@ export function CreateMemberModal({
 }: CreateMemberModalProps) {
   const { t } = useTranslation("admin");
   const [username, setUsername] = useState("");
-  const [discordName, setDiscordName] = useState("");
-  const [wechatName, setWechatName] = useState("");
   const [notes, setNotes] = useState("");
   const [result, setResult] = useState<CreateMemberResult | null>(null);
 
   const resetForm = () => {
     setUsername("");
-    setDiscordName("");
-    setWechatName("");
     setNotes("");
     setResult(null);
   };
@@ -63,15 +57,13 @@ export function CreateMemberModal({
     const trimmed = username.trim();
     if (!trimmed) return;
     if (trimmed.length < 3 || trimmed.length > 50 || !USERNAME_PATTERN.test(trimmed)) {
-      notifications.show({ color: "red", message: t("member.create.usernameInvalid") });
+      notifyError(t("member.create.usernameInvalid"));
       return;
     }
 
     try {
       const res = await onCreateMember({
         username: trimmed,
-        discordName: discordName.trim(),
-        wechatName: wechatName.trim(),
         notes: notes.trim(),
       });
       setResult(res);
@@ -131,18 +123,6 @@ export function CreateMemberModal({
             required
             data-autofocus
           />
-          <TextInput
-            label={t("member.create.discordLabel")}
-            placeholder={t("member.create.discordPlaceholder")}
-            value={discordName}
-            onChange={(event) => setDiscordName(event.currentTarget.value)}
-          />
-          <TextInput
-            label={t("member.create.wechatLabel")}
-            placeholder={t("member.create.wechatPlaceholder")}
-            value={wechatName}
-            onChange={(event) => setWechatName(event.currentTarget.value)}
-          />
           <Textarea
             label={t("member.create.notesLabel")}
             placeholder={t("member.create.notesPlaceholder")}
@@ -161,6 +141,7 @@ export function CreateMemberModal({
               size="sm"
               before={<IconUserPlus size={16} />}
               disabled={!username.trim() || creating}
+              loading={creating}
             >
               {t("member.create.submit")}
             </DepthButton>

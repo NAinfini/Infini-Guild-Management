@@ -110,7 +110,7 @@ export function AnnouncementListCard({
                     <button
                       type="button"
                       onClick={() => onSelect(item.id)}
-                      aria-label={`Open announcement ${item.title}`}
+                      aria-label={t("aria.openAnnouncement", { title: item.title })}
                       aria-pressed={item.id === selectedId}
                       className={`announcement-item ${item.id === selectedId ? "announcement-item--active" : ""}`.trim()}
                     >

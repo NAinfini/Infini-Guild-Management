@@ -17,6 +17,7 @@ export const events = sqliteTable(
     capacity: integer("capacity"),
     pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
     signupLocked: integer("signup_locked", { mode: "boolean" }).notNull().default(false),
+    visibleAt: text("visible_at"),
     archivedAt: text("archived_at"),
     createdBy: text("created_by").notNull().references(() => users.id),
     recurrenceRule: text("recurrence_rule"),
@@ -26,12 +27,13 @@ export const events = sqliteTable(
     instanceDate: text("instance_date"),
     lastGeneratedDate: text("last_generated_date"),
     generationCount: integer("generation_count").notNull().default(0),
+    visibilityOffsetHours: integer("visibility_offset_hours"),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
   (table) => ({
-    idxArchivedStartId: index("idx_events_archived_start_id").on(table.archivedAt, table.startAt, table.id),
-    idxSeriesStartId: index("idx_events_series_start_id").on(table.seriesId, table.startAt, table.id),
+    idxSeriesParentArchived: index("idx_events_series_parent_archived").on(table.isSeriesParent, table.archivedAt, table.startAt, table.id),
+    idxSeriesInstance: index("idx_events_series_instance").on(table.seriesId, table.instanceDate),
     idxCreatedBy: index("idx_events_created_by").on(table.createdBy),
   }),
 );

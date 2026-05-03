@@ -61,5 +61,7 @@
   "aria.selectItem": "Select gallery item {{id}}",
   "aria.openImage": "Open image {{name}}",
   "aria.openVideo": "Open video {{name}}",
-  "media.video": "VIDEO"
+  "media.video": "VIDEO",
+  "type.image": "Image",
+  "type.video": "Video"
 }

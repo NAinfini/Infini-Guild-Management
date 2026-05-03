@@ -1,17 +1,6 @@
-import fs from "node:fs";
-
 import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
-
-const portalExemptions = JSON.parse(
-  fs.readFileSync(new URL("./apps/portal/.eslintrc-exemptions.json", import.meta.url), "utf8"),
-);
-
-const legacyPortalFiles = [
-  ...(portalExemptions["legacy-pages"] ?? []),
-  ...(portalExemptions["legacy-components"] ?? []),
-].map((file) => `apps/portal/${file}`);
 
 export default [
   {
@@ -83,17 +72,6 @@ export default [
       "no-restricted-imports": "off",
     },
   },
-  ...(legacyPortalFiles.length > 0
-    ? [
-        {
-          files: legacyPortalFiles,
-          rules: {
-            "no-restricted-imports": "off",
-            "max-lines": "off",
-          },
-        },
-      ]
-    : []),
   {
     files: ["apps/worker/**/*.ts"],
     rules: {

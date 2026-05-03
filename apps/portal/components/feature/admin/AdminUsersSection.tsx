@@ -28,7 +28,7 @@ import { useClipboard } from "@mantine/hooks";
 import { type ContextMenuItemOptions, useContextMenu } from "mantine-contextmenu";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
-import type { UsersListResponse } from "../../../services/UserService";
+import type { UsersListResponse } from "../../../api/queries/users";
 
 export type AdminUserRow = UsersListResponse["data"][number];
 
@@ -254,8 +254,6 @@ export function AdminUsersSection({
           const lines = nextContextRows.map((row) =>
             [
               row.user.username,
-              row.profile.wechat_name ?? "",
-              row.profile.discord_id ?? "",
               row.profile.classes.join(", "),
               String(row.profile.power),
               row.user.role,

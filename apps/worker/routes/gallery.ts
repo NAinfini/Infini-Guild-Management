@@ -1,12 +1,9 @@
 import {
   ALLOWED_IMAGE_TYPES,
-  ERROR_STATUS,
   FILE_SIZE_LIMITS,
   createGalleryCommentSchema,
   createGalleryItemSchema,
   updateGalleryCommentSchema,
-  type ErrorCode,
-  type StandardErrorResponse,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
@@ -16,8 +13,7 @@ import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { GalleryService } from "../services/GalleryService";
-
-type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
+import { buildError, handleResult, requireSessionUser } from "./_shared";
 
 export const galleryRoutes = new Hono();
 
@@ -31,24 +27,9 @@ function getService(c: Context): GalleryService {
   return new GalleryService(getDb(c), {
     media: env.MEDIA,
     writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(env, payload),
+    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
+    rawDb: env.DB,
   });
-}
-
-function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {
-  const requestId = (c.get("requestId") as string | undefined) ?? crypto.randomUUID();
-  const body: StandardErrorResponse = { error_code: code, message, request_id: requestId, ...(details ? { details } : {}) };
-  return c.json(body, ERROR_STATUS[code] as ErrorStatusCode);
-}
-
-function handleResult(c: Context, result: { ok: true; data: unknown } | { ok: false; code: ErrorCode; message: string; details?: unknown }, status?: number): Response {
-  if (!result.ok) return buildError(c, result.code, result.message, result.details);
-  return c.json(result.data, status as never);
-}
-
-async function requireSessionUser(c: Context) {
-  const user = await getRequestUser(c);
-  return user ?? buildError(c, "UNAUTHORIZED", "Authentication required");
 }
 
 async function requireGalleryUploader(c: Context) { return requirePermission(c, "gallery.upload"); }
@@ -72,6 +53,23 @@ function parseDayEndIso(value: string | undefined): string | undefined {
 }
 
 // --- Routes ---
+
+galleryRoutes.get("/image", async (c) => {
+  const key = c.req.query("key");
+  if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
+  if (!key.startsWith("gallery/")) return buildError(c, "FORBIDDEN", "Invalid gallery media key");
+
+  const object = await (c.env as Bindings).MEDIA.get(key);
+  if (!object?.body) return buildError(c, "NOT_FOUND", "Gallery media not found");
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
+  headers.set("Cache-Control", "private, max-age=300");
+  headers.set("ETag", object.httpEtag);
+
+  return new Response(object.body, { headers });
+});
 
 galleryRoutes.get("/", async (c) => {
   const cursor = parsePositiveInt(c.req.query("cursor"), 0);

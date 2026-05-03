@@ -181,7 +181,8 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
         return;
       }
 
-      socket = new WebSocket(`${window.location.origin.replace("http", "ws")}/ws`);
+      const wsBase = window.location.origin;
+      socket = new WebSocket(`${wsBase.replace("http", "ws")}/ws`);
 
       socket.onopen = () => {
         retryCount = 0;

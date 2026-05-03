@@ -34,7 +34,6 @@ const STATIC_PAGE_API_CHECKS = [
   { page: "Admin", path: "/api/admin/invite-links?include_expired=true&include_revoked=true" },
   { page: "Admin", path: "/api/admin/invite-links/stats" },
   { page: "Admin", path: "/api/admin/audit-log?page=1&limit=20" },
-  { page: "Admin", path: "/api/admin/bot-settings" },
   { page: "Admin", path: "/api/admin/roles" },
   { page: "Admin", path: "/api/admin/status" },
   { page: "Profile", path: "/api/auth/me" },
@@ -200,7 +199,6 @@ async function checkMemberAdminAccessDenied(cookie) {
     "/api/admin/status",
     "/api/admin/invite-links",
     "/api/admin/audit-log?page=1&limit=5",
-    "/api/admin/bot-settings",
     "/api/admin/roles",
   ];
 

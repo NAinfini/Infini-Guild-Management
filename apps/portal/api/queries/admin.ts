@@ -1,6 +1,5 @@
 import type {
   AuditLogEntry,
-  BotSettings,
   InviteLink,
   InviteLinkStats,
   PaginatedResponse,
@@ -20,12 +19,6 @@ export type AdminStatus = {
   r2: string;
   ws: string;
   crons: string;
-};
-
-export type AdminDiscordChannel = {
-  id: string;
-  name: string;
-  type: string;
 };
 
 export type AdminAuditArchiveDownloadFile = {
@@ -152,17 +145,6 @@ export function requestAdminAuditArchiveDownload(
 export async function downloadAdminAuditArchiveFile(url: string): Promise<Blob> {
   const { blob } = await apiDownload(url);
   return blob;
-}
-
-export function fetchAdminBotSettings(): Promise<BotSettings> {
-  return apiRequest<BotSettings>("/api/admin/bot-settings");
-}
-
-export function fetchAdminDiscordChannels(guildId: string): Promise<{ guild_id: string; channels: AdminDiscordChannel[] }> {
-  const query = new URLSearchParams({ guild_id: guildId.trim() });
-  return apiRequest<{ guild_id: string; channels: AdminDiscordChannel[] }>(
-    `/api/admin/bot-settings/discord/channels?${query.toString()}`,
-  );
 }
 
 export function fetchAdminStatus(): Promise<AdminStatus> {

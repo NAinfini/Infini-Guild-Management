@@ -17,6 +17,9 @@ coverage/
 *.temp
 .cache/
 
+# Database backups
+backups/
+
 # OS / editor noise
 .DS_Store
 Thumbs.db

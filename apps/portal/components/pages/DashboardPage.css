@@ -8,11 +8,6 @@
   padding: 20px;
 }
 
-.dashboard-slot {
-  min-width: 0;
-  overflow: visible;
-}
-
 .dashboard-card-title {
   margin: 0;
   font-size: 16px;
@@ -26,61 +21,6 @@
   justify-content: center;
   color: var(--color-primary, #3b82f6);
   opacity: 0.85;
-}
-
-.dashboard-featured-strip {
-  margin-top: 12px;
-}
-
-.dashboard-featured-list {
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
-
-.dashboard-featured-list--overflow {
-  scroll-snap-type: x mandatory;
-}
-
-.dashboard-featured-item {
-  flex: 0 0 240px;
-  border: 1px solid color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent);
-  border-radius: 12px;
-  padding: 12px;
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 5%, var(--color-surface, #ffffff));
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-
-.dashboard-featured-item:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 35%, transparent);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
-}
-
-.dashboard-featured-list--overflow .dashboard-featured-item {
-  scroll-snap-align: start;
-}
-
-.dashboard-event-item {
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
-  border-radius: 12px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 96%, transparent);
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-}
-
-.dashboard-event-item:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 24%, transparent);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
-}
-
-.dashboard-event-content {
-  width: 100%;
-}
-
-.dashboard-event-actions {
-  width: 100%;
 }
 
 .dashboard-stats-circle {
@@ -131,10 +71,10 @@
   gap: 4px;
   padding: 8px 6px;
   border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 96%, transparent);
   min-width: 0;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
 }
 
 .signup-box:hover {
@@ -203,11 +143,11 @@
   width: 100%;
   padding: 3px 4px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   cursor: pointer;
   text-align: left;
-  transition: background 120ms ease;
+  transition: background var(--transition-fast);
   min-width: 0;
 }
 
@@ -264,20 +204,20 @@
   flex-shrink: 0;
 }
 
-.war-nav-btn {
-  min-width: 28px !important;
-  min-height: 28px !important;
-  width: 28px !important;
-  height: 28px !important;
-  padding: 0 !important;
-  display: inline-flex !important;
+.war-nav-btn.war-nav-btn {
+  min-width: 28px;
+  min-height: 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 12px;
-  color: var(--color-text, #111827) !important;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, var(--color-text, #111827) 14%) !important;
-  border-color: color-mix(in srgb, var(--color-text, #111827) 24%, transparent) !important;
-  box-shadow: none !important;
+  color: var(--color-text, #111827);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, var(--color-text, #111827) 14%);
+  border-color: color-mix(in srgb, var(--color-text, #111827) 24%, transparent);
+  box-shadow: none;
 }
 
 .war-nav-btn svg {
@@ -286,12 +226,12 @@
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.35));
 }
 
-.war-nav-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 78%, var(--color-text, #111827) 22%) !important;
+.war-nav-btn.war-nav-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 78%, var(--color-text, #111827) 22%);
 }
 
-.war-nav-btn:disabled {
-  opacity: 0.5 !important;
+.war-nav-btn.war-nav-btn:disabled {
+  opacity: 0.5;
 }
 
 .war-nav-counter {
@@ -332,22 +272,22 @@
   min-width: 0;
 }
 
-.war-share-btn {
-  min-width: 26px !important;
-  min-height: 26px !important;
-  width: 26px !important;
-  height: 26px !important;
-  padding: 0 !important;
-  display: inline-flex !important;
+.war-share-btn.war-share-btn {
+  min-width: 26px;
+  min-height: 26px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--color-text, #111827) !important;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, var(--color-text, #111827) 14%) !important;
-  border-color: color-mix(in srgb, var(--color-text, #111827) 24%, transparent) !important;
-  box-shadow: none !important;
+  color: var(--color-text, #111827);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, var(--color-text, #111827) 14%);
+  border-color: color-mix(in srgb, var(--color-text, #111827) 24%, transparent);
+  box-shadow: none;
   opacity: 0.85;
-  transition: opacity 150ms ease;
+  transition: opacity var(--transition-normal);
 }
 
 .war-share-btn svg {
@@ -356,8 +296,8 @@
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.35));
 }
 
-.war-share-btn:hover {
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 78%, var(--color-text, #111827) 22%) !important;
+.war-share-btn.war-share-btn:hover {
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 78%, var(--color-text, #111827) 22%);
   opacity: 1;
 }
 
@@ -368,7 +308,7 @@
   align-items: center;
   gap: 5px;
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -472,7 +412,7 @@
   flex: 1;
   display: flex;
   height: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   background: color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
 }
@@ -549,9 +489,9 @@
   line-height: 1.2;
 }
 
-.war-mvp-chip-label {
+.war-mvp-chip-label.war-mvp-chip-label {
   line-height: 1.2;
-  font-size: 10px !important;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }

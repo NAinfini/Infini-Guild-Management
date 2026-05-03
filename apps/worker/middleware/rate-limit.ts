@@ -116,5 +116,3 @@ export function createRateLimitMiddleware(options: RateLimitOptions = {}) {
     await next();
   };
 }
-
-export const rateLimitMiddleware = createRateLimitMiddleware();

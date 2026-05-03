@@ -18,7 +18,7 @@ import {
   GlassEffect,
   GradientText,
   LampHeading,
-  MagneticElement,
+
 } from "@portal/components/effects";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { IconArrowLeft, IconEye, IconEyeOff, IconKeyboard } from "@tabler/icons-react";
@@ -29,7 +29,7 @@ import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { apiRequest, isApiRequestError } from "../../api/client";
 import { useAuthStore } from "../../stores/auth";
-import { FireOutlined } from "../../utils/icons";
+import { useSiteConfigStore } from "../../stores/site-config";
 import "./AuthPages.css";
 
 type AuthSessionResponse = { user: User; profile: MemberProfile };
@@ -88,6 +88,8 @@ export function LoginPage() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/login" });
   const setSession = useAuthStore((state) => state.setSession);
+  const siteName = useSiteConfigStore((s) => s.siteName);
+  const siteLogoUrl = useSiteConfigStore((s) => s.siteLogoUrl);
 
   const {
     register,
@@ -95,7 +97,7 @@ export function LoginPage() {
     watch,
     setValue,
     formState: { errors },
-  } = useForm<LoginFormValues>({
+  } = useForm<z.input<typeof LOGIN_FORM_SCHEMA>, any, LoginFormValues>({
     resolver: zodResolver(LOGIN_FORM_SCHEMA),
     defaultValues: {
       username: "",
@@ -167,11 +169,11 @@ export function LoginPage() {
         <div className="login-page__heading">
           <LampHeading coneWidth={320} coneHeight={140} animated>
             <div className="login-page__brand">
-              <span className="login-page__brand-icon" aria-hidden>
-                <FireOutlined />
-              </span>
+              {siteLogoUrl ? (
+                <img src={siteLogoUrl} alt="" aria-hidden className="login-page__brand-logo" />
+              ) : null}
               <GradientText animated duration={4} className="login-page__brand-text">
-                {t("brand.name")}
+                {siteName}
               </GradientText>
             </div>
           </LampHeading>
@@ -237,7 +239,7 @@ export function LoginPage() {
                 {t("button.login")}
               </DepthButton>
 
-              <MagneticElement strength={0.3} className="login-page__back-link">
+              <div className="login-page__back-link">
                 <Anchor
                   underline="hover"
                   onClick={() => void navigate({ to: "/" })}
@@ -246,7 +248,7 @@ export function LoginPage() {
                   <IconArrowLeft size={14} />
                   {t("button.backToPortal")}
                 </Anchor>
-              </MagneticElement>
+              </div>
 
               <div style={{ textAlign: "center" }}>
                 {inviteCodeInput === null ? (
@@ -282,7 +284,7 @@ export function LoginPage() {
                     />
                     <Button
                       size="xs"
-                      variant="light"
+                      variant="default"
                       onClick={() => {
                         if (inviteCodeInput.trim()) {
                           void navigate({ to: "/register/$inviteCode", params: { inviteCode: inviteCodeInput.trim() } });

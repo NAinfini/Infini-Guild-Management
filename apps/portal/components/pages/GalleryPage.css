@@ -2,7 +2,7 @@
   min-width: 260px;
   min-height: 92px;
   border: 1px dashed color-mix(in srgb, var(--color-text, #111827) 22%, transparent);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
   display: grid;
   place-items: center;
@@ -30,11 +30,6 @@
 .mantine-Modal-body .gallery-video-url-input,
 .mantine-Modal-body .gallery-video-caption-input { width: 100%; }
 
-.gallery-dropzone--active {
-  border-color: var(--color-primary, #3b82f6);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, var(--color-surface, #ffffff));
-}
-
 .gallery-dropzone input[type="file"] { width: 100%; }
 
 .gallery-masonry { column-count: 2; column-gap: 12px; }
@@ -48,14 +43,14 @@
 
 .gallery-preview-button {
   display: block; width: 100%; padding: 0;
-  border: none; background: transparent; cursor: zoom-in; border-radius: 8px;
+  border: none; background: transparent; cursor: zoom-in; border-radius: var(--radius-sm);
 }
 
 .gallery-preview-media { position: relative; }
 
 .gallery-type-badge {
   position: absolute; top: 8px; right: 8px; z-index: 1;
-  border-radius: 999px; padding: 2px 8px; font-size: 11px; line-height: 1.4;
+  border-radius: var(--radius-pill); padding: 2px 8px; font-size: 11px; line-height: 1.4;
   color: #ffffff;
   background: color-mix(in srgb, var(--color-primary, #3b82f6) 72%, transparent);
   backdrop-filter: blur(4px);
@@ -64,14 +59,14 @@
 
 .gallery-preview-uploader {
   position: absolute; top: 8px; left: 8px; z-index: 1;
-  max-width: calc(100% - 16px); border-radius: 999px; padding: 2px 8px;
+  max-width: calc(100% - 16px); border-radius: var(--radius-pill); padding: 2px 8px;
   font-size: 12px; line-height: 1.4; color: #ffffff;
   background: color-mix(in srgb, black 58%, transparent);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 .gallery-object-placeholder {
-  width: 100%; min-height: 140px; border-radius: 8px;
+  width: 100%; min-height: 140px; border-radius: var(--radius-sm);
   border: 1px dashed color-mix(in srgb, var(--color-text, #111827) 22%, transparent);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
   display: grid; gap: 8px; place-items: center; padding: 12px; text-align: center;
@@ -81,7 +76,11 @@
 .gallery-lightbox__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 
 @media (min-width: 576px) { .gallery-masonry { column-count: 3; } }
-@media (max-width: 767px) { .gallery-video-url-input, .gallery-video-caption-input { width: 100%; } }
+@media (max-width: 767px) {
+  .gallery-video-url-input, .gallery-video-caption-input { width: 100%; }
+  .gallery-dropzone { min-width: 0; width: 100%; }
+  .gallery-masonry { column-count: 2; }
+}
 @media (min-width: 992px) { .gallery-masonry { column-count: 4; } }
 @media (min-width: 1200px) { .gallery-masonry { column-count: 5; } }
 @media (max-width: 960px) {

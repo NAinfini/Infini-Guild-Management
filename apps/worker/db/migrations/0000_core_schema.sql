@@ -38,8 +38,7 @@ CREATE TABLE IF NOT EXISTS user_auth_password (
 CREATE TABLE IF NOT EXISTS member_profiles (
   id TEXT PRIMARY KEY NOT NULL,
   user_id TEXT NOT NULL UNIQUE REFERENCES users(id),
-  wechat_name TEXT,
-  power INTEGER NOT NULL DEFAULT 0 CHECK (power >= 0),
+  power REAL NOT NULL DEFAULT 0 CHECK (power >= 0),
   classes TEXT NOT NULL DEFAULT '[]',
   title_html TEXT,
   bio TEXT,
@@ -49,8 +48,6 @@ CREATE TABLE IF NOT EXISTS member_profiles (
   availability TEXT,
   vacation_start TEXT,
   vacation_end TEXT,
-  discord_id TEXT UNIQUE,
-  discord_reminder_opt_out INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -66,6 +63,7 @@ CREATE TABLE IF NOT EXISTS events (
   capacity INTEGER,
   pinned INTEGER NOT NULL DEFAULT 0,
   signup_locked INTEGER NOT NULL DEFAULT 0,
+  visible_at TEXT,
   archived_at TEXT,
   created_by TEXT NOT NULL REFERENCES users(id),
   recurrence_rule TEXT,
@@ -75,6 +73,7 @@ CREATE TABLE IF NOT EXISTS events (
   instance_date TEXT,
   last_generated_date TEXT,
   generation_count INTEGER NOT NULL DEFAULT 0,
+  visibility_offset_hours INTEGER,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -244,51 +243,6 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE TABLE IF NOT EXISTS discord_link_codes (
-  id TEXT PRIMARY KEY NOT NULL,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  discord_id TEXT NOT NULL,
-  code TEXT NOT NULL CHECK (length(code) = 6 AND code NOT GLOB '*[^0-9]*'),
-  expires_at TEXT NOT NULL,
-  used INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
-
-CREATE TABLE IF NOT EXISTS bot_delivery_log (
-  id TEXT PRIMARY KEY NOT NULL,
-  idempotency_key TEXT NOT NULL UNIQUE,
-  platform TEXT NOT NULL CHECK (platform IN ('discord', 'wechat')),
-  task_type TEXT NOT NULL CHECK (task_type IN ('event_notify', 'team_comp', 'reminder', 'war_result')),
-  event_id TEXT REFERENCES events(id),
-  target_id TEXT NOT NULL,
-  payload_json TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'sending', 'sent', 'failed')),
-  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
-  last_error TEXT,
-  next_attempt_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  sent_at TEXT,
-  message_id TEXT
-);
-
-CREATE TABLE IF NOT EXISTS bot_discord_event_messages (
-  id TEXT PRIMARY KEY NOT NULL,
-  event_id TEXT NOT NULL REFERENCES events(id),
-  channel_id TEXT NOT NULL,
-  message_id TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  UNIQUE(event_id, channel_id)
-);
-
-CREATE TABLE IF NOT EXISTS bot_wechat_event_messages (
-  id TEXT PRIMARY KEY NOT NULL,
-  event_id TEXT NOT NULL REFERENCES events(id),
-  room_id TEXT NOT NULL,
-  message_id TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  UNIQUE(event_id, room_id)
-);
-
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY NOT NULL,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -315,10 +269,10 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_expires
   ON sessions(user_id, expires_at);
 
 -- events
-CREATE INDEX IF NOT EXISTS idx_events_archived_start_id
-  ON events(archived_at, start_at, id);
-CREATE INDEX IF NOT EXISTS idx_events_series_start_id
-  ON events(series_id, start_at, id);
+CREATE INDEX IF NOT EXISTS idx_events_series_parent_archived
+  ON events(is_series_parent, archived_at, start_at, id);
+CREATE INDEX IF NOT EXISTS idx_events_series_instance
+  ON events(series_id, instance_date);
 CREATE INDEX IF NOT EXISTS idx_events_created_by
   ON events(created_by);
 
@@ -329,8 +283,8 @@ CREATE INDEX IF NOT EXISTS idx_event_participants_user_event
   ON event_participants(user_id, event_id);
 
 -- announcements
-CREATE INDEX IF NOT EXISTS idx_announcements_feed
-  ON announcements(archived_at, pinned, pinned_at, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_announcements_status_pinned_created
+  ON announcements(status, pinned, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_announcements_schedule
   ON announcements(status, publish_at, expires_at);
 
@@ -393,22 +347,10 @@ CREATE INDEX IF NOT EXISTS idx_invite_links_status
 -- audit_log
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at
   ON audit_log(created_at);
-CREATE INDEX IF NOT EXISTS idx_audit_log_entity_type
-  ON audit_log(entity_type);
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity_actor_created
+  ON audit_log(entity_type, actor_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_log_actor_id
   ON audit_log(actor_id);
-
--- discord_link_codes
-CREATE INDEX IF NOT EXISTS idx_discord_link_codes_user_lookup
-  ON discord_link_codes(user_id, code, used, expires_at, created_at);
-CREATE INDEX IF NOT EXISTS idx_discord_link_codes_discord_lookup
-  ON discord_link_codes(discord_id, used, expires_at, created_at);
-
--- bot_delivery_log
-CREATE INDEX IF NOT EXISTS idx_bot_delivery_status_next_attempt
-  ON bot_delivery_log(status, next_attempt_at);
-CREATE INDEX IF NOT EXISTS idx_bot_delivery_event_platform_task
-  ON bot_delivery_log(event_id, platform, task_type, status);
 
 -- ===== ROLE BASELINE DATA =====
 
@@ -429,15 +371,12 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('admin', 'admin.invite.manage', 1),
   ('admin', 'admin.audit.view', 1),
   ('admin', 'admin.audit.export', 1),
-  ('admin', 'admin.bot.view', 1),
-  ('admin', 'admin.bot.manage', 1),
   ('admin', 'admin.status.view', 1),
   ('admin', 'admin.roles.view', 1),
   ('admin', 'admin.roles.manage', 1),
   ('admin', 'admin.analytics.view', 1),
   ('admin', 'admin.analytics.manage', 1),
   ('admin', 'guildwar.teams.edit', 1),
-  ('admin', 'guildwar.teams.post', 1),
   ('admin', 'guildwar.templates', 1),
   ('admin', 'guildwar.history.edit', 1),
   ('admin', 'events.create', 1),
@@ -466,15 +405,12 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('moderator', 'admin.invite.manage', 0),
   ('moderator', 'admin.audit.view', 1),
   ('moderator', 'admin.audit.export', 0),
-  ('moderator', 'admin.bot.view', 1),
-  ('moderator', 'admin.bot.manage', 0),
   ('moderator', 'admin.status.view', 1),
   ('moderator', 'admin.roles.view', 1),
   ('moderator', 'admin.roles.manage', 0),
   ('moderator', 'admin.analytics.view', 1),
   ('moderator', 'admin.analytics.manage', 0),
   ('moderator', 'guildwar.teams.edit', 1),
-  ('moderator', 'guildwar.teams.post', 1),
   ('moderator', 'guildwar.templates', 1),
   ('moderator', 'guildwar.history.edit', 1),
   ('moderator', 'events.create', 1),
@@ -503,15 +439,12 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('member', 'admin.invite.manage', 0),
   ('member', 'admin.audit.view', 0),
   ('member', 'admin.audit.export', 0),
-  ('member', 'admin.bot.view', 0),
-  ('member', 'admin.bot.manage', 0),
   ('member', 'admin.status.view', 0),
   ('member', 'admin.roles.view', 0),
   ('member', 'admin.roles.manage', 0),
   ('member', 'admin.analytics.view', 0),
   ('member', 'admin.analytics.manage', 0),
   ('member', 'guildwar.teams.edit', 0),
-  ('member', 'guildwar.teams.post', 0),
   ('member', 'guildwar.templates', 0),
   ('member', 'guildwar.history.edit', 0),
   ('member', 'events.create', 0),

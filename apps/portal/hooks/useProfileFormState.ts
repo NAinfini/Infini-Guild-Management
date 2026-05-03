@@ -1,10 +1,10 @@
 import { CLASS_NAMES, type MemberProfile } from "@guild/shared";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
-import { notifications } from "@mantine/notifications";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
+import { notifyWarning } from "../utils/notifications";
 
 function isAllowedVideoUrl(value: string): boolean {
   try {
@@ -35,7 +35,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
 
   const [bio, setBio] = useState("");
   const [titleHtml, setTitleHtml] = useState("");
-  const [wechatName, setWechatName] = useState("");
   const [power, setPower] = useState(0);
   const [classDraft, setClassDraft] = useState("");
   const [classList, setClassList] = useState<Array<(typeof CLASS_NAMES)[number]>>([]);
@@ -45,14 +44,11 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
   const [vacationStart, setVacationStart] = useState("");
   const [vacationEnd, setVacationEnd] = useState("");
   const [availabilityData, setAvailabilityData] = useState<Record<string, unknown> | null>(null);
-  const [discordReminderOptOut, setDiscordReminderOptOut] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [currentPasswordForUsername, setCurrentPasswordForUsername] = useState("");
   const [newUsername, setNewUsername] = useState("");
-  const [discordCode, setDiscordCode] = useState("");
-  const [isDiscordLinking, setIsDiscordLinking] = useState(false);
 
   useEffect(() => {
     if (!profile) {
@@ -61,7 +57,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
 
     setBio(profile.bio ?? "");
     setTitleHtml(profile.title_html ?? "");
-    setWechatName(profile.wechat_name ?? "");
     setPower(profile.power);
     setClassList(profile.classes);
     setVideoList(profile.video_urls);
@@ -69,7 +64,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     setVacationStart(profile.vacation_start ?? "");
     setVacationEnd(profile.vacation_end ?? "");
     setAvailabilityData((profile.availability ?? null) as Record<string, unknown> | null);
-    setDiscordReminderOptOut(profile.discord_reminder_opt_out);
   }, [profile]);
 
   const classOptions = useMemo(() => CLASS_NAMES.map((className) => ({ value: className, label: className })), []);
@@ -126,11 +120,11 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
 
     const normalized = CLASS_NAMES.find((className) => className.toLowerCase() === next);
     if (!normalized) {
-      notifications.show({ color: "yellow", message: t("message.classInvalid") });
+      notifyWarning(t("message.classInvalid"));
       return;
     }
     if (classList.includes(normalized)) {
-      notifications.show({ color: "yellow", message: t("message.classDuplicate") });
+      notifyWarning(t("message.classDuplicate"));
       return;
     }
 
@@ -148,11 +142,11 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
       return;
     }
     if (videoList.includes(next)) {
-      notifications.show({ color: "yellow", message: t("message.videoUrlDuplicate") });
+      notifyWarning(t("message.videoUrlDuplicate"));
       return;
     }
     if (videoList.length >= 10) {
-      notifications.show({ color: "yellow", message: t("message.videoUrlLimit") });
+      notifyWarning(t("message.videoUrlLimit"));
       return;
     }
 
@@ -183,21 +177,18 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     return (
       bio !== (profile.bio ?? "") ||
       titleHtml !== (profile.title_html ?? "") ||
-      wechatName !== (profile.wechat_name ?? "") ||
       power !== profile.power ||
       JSON.stringify(classList) !== JSON.stringify(profile.classes) ||
       JSON.stringify(videoList) !== JSON.stringify(profile.video_urls) ||
       JSON.stringify(imageList) !== JSON.stringify(profile.images) ||
       vacationStart !== (profile.vacation_start ?? "") ||
       vacationEnd !== (profile.vacation_end ?? "") ||
-      JSON.stringify(availabilityData ?? null) !== JSON.stringify(profile.availability ?? null) ||
-      discordReminderOptOut !== profile.discord_reminder_opt_out
+      JSON.stringify(availabilityData ?? null) !== JSON.stringify(profile.availability ?? null)
     );
   }, [
     availabilityData,
     bio,
     classList,
-    discordReminderOptOut,
     imageList,
     power,
     profile,
@@ -205,7 +196,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     vacationEnd,
     vacationStart,
     videoList,
-    wechatName,
   ]);
 
   return {
@@ -213,8 +203,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     setBio,
     titleHtml,
     setTitleHtml,
-    wechatName,
-    setWechatName,
     power,
     setPower,
     classDraft,
@@ -233,8 +221,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     setVacationEnd,
     availabilityData,
     setAvailabilityData,
-    discordReminderOptOut,
-    setDiscordReminderOptOut,
     currentPassword,
     setCurrentPassword,
     newPassword,
@@ -245,10 +231,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     setCurrentPasswordForUsername,
     newUsername,
     setNewUsername,
-    discordCode,
-    setDiscordCode,
-    isDiscordLinking,
-    setIsDiscordLinking,
     classOptions,
     activeNowEstimate,
     isDirty,

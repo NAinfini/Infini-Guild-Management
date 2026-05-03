@@ -3,11 +3,9 @@ import {
   FILE_SIZE_LIMITS,
   IMAGE_QUOTAS,
   PERMISSIONS,
-  ROLE_LEVEL,
   adminUpdateProfileSchema,
   changePasswordSchema,
   changeUsernameSchema,
-  isBuiltinRole,
   memberProfileSchema,
   updateProfileSchema,
   userSchema,
@@ -17,12 +15,13 @@ import {
 import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { discordLinkCodes, memberProfiles, sessions, userAuthPassword, users } from "../db/schema";
+import { memberProfiles, sessions, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
+import { escapeLikePattern, parseStringArray, parseRecord } from "./helpers";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
 
-export type SessionUser = { id: string; role: Role; permissions: ReadonlySet<string> };
+type SessionUser = { id: string; role: Role; permissions: ReadonlySet<string> };
 
 type UserRow = {
   id: string;
@@ -37,7 +36,6 @@ type UserRow = {
 type ProfileRow = {
   id: string;
   userId: string;
-  wechatName: string | null;
   power: number;
   classes: string;
   titleHtml: string | null;
@@ -48,8 +46,6 @@ type ProfileRow = {
   availability: string | null;
   vacationStart: string | null;
   vacationEnd: string | null;
-  discordId: string | null;
-  discordReminderOptOut: boolean;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -58,7 +54,6 @@ type ProfileRow = {
 type UserWithProfileRow = { user: UserRow; profile: ProfileRow };
 
 type ProfilePatch = {
-  wechatName?: string | null;
   power?: number;
   classes?: string;
   titleHtml?: string | null;
@@ -69,7 +64,6 @@ type ProfilePatch = {
   availability?: string | null;
   vacationStart?: string | null;
   vacationEnd?: string | null;
-  discordReminderOptOut?: boolean;
   notes?: string | null;
   updatedAt?: string;
 };
@@ -81,7 +75,6 @@ export type ListUsersParams = {
   roleFilter?: Role;
   classFilter?: string;
   activeFilter?: boolean;
-  externalView: boolean;
   sessionUser: SessionUser | null;
 };
 
@@ -107,27 +100,6 @@ export type UserServiceDeps = {
 
 // --- Helpers ---
 
-function parseStringArray(value: string): string[] {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function parseRecord(value: string | null): Record<string, unknown> | null {
-  if (!value) return null;
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 const TITLE_HTML_ALLOWED_TAGS = new Set(["span", "b", "strong", "i", "em", "u", "br"]);
 
 function sanitizeTitleHtml(html: string): string {
@@ -140,12 +112,10 @@ function sanitizeTitleHtml(html: string): string {
 }
 
 function toUserPayload(user: UserRow) {
-  const roleLevel = isBuiltinRole(user.role) ? ROLE_LEVEL[user.role] : 1;
   return userSchema.parse({
     id: user.id,
     username: user.username,
     role: user.role,
-    role_level: roleLevel,
     permissions: Object.fromEntries(PERMISSIONS.map((p) => [p, false])) as Record<Permission, boolean>,
     is_active: user.isActive,
     deleted_at: user.deletedAt,
@@ -154,11 +124,10 @@ function toUserPayload(user: UserRow) {
   });
 }
 
-function toProfilePayload(profile: ProfileRow, options: { includeNotes: boolean; includeWechat: boolean; includePrivate: boolean }) {
+function toProfilePayload(profile: ProfileRow, options: { includeNotes: boolean; includePrivate: boolean }) {
   return memberProfileSchema.parse({
     id: profile.id,
     user_id: profile.userId,
-    wechat_name: options.includeWechat ? profile.wechatName : null,
     power: profile.power,
     classes: parseStringArray(profile.classes),
     title_html: profile.titleHtml,
@@ -169,8 +138,6 @@ function toProfilePayload(profile: ProfileRow, options: { includeNotes: boolean;
     availability: options.includePrivate ? parseRecord(profile.availability) : null,
     vacation_start: profile.vacationStart,
     vacation_end: profile.vacationEnd,
-    discord_id: options.includePrivate ? profile.discordId : null,
-    discord_reminder_opt_out: profile.discordReminderOptOut,
     notes: options.includeNotes ? profile.notes : null,
     created_at: profile.createdAt,
     updated_at: profile.updatedAt,
@@ -181,7 +148,6 @@ function buildProfilePatch(
   payload: ReturnType<typeof updateProfileSchema.parse> | ReturnType<typeof adminUpdateProfileSchema.parse>,
 ): ProfilePatch {
   const patch: ProfilePatch = {};
-  if (payload.wechat_name !== undefined) patch.wechatName = payload.wechat_name;
   if (payload.power !== undefined) patch.power = payload.power;
   if (payload.classes !== undefined) patch.classes = JSON.stringify(payload.classes);
   if (payload.title_html !== undefined) patch.titleHtml = payload.title_html === null ? null : sanitizeTitleHtml(payload.title_html);
@@ -194,14 +160,9 @@ function buildProfilePatch(
   }
   if (payload.vacation_start !== undefined) patch.vacationStart = payload.vacation_start;
   if (payload.vacation_end !== undefined) patch.vacationEnd = payload.vacation_end;
-  if (payload.discord_reminder_opt_out !== undefined) patch.discordReminderOptOut = payload.discord_reminder_opt_out;
   if ("notes" in payload && payload.notes !== undefined) patch.notes = payload.notes;
   patch.updatedAt = new Date().toISOString();
   return patch;
-}
-
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, "\\$&");
 }
 
 function buildUsersWhereFilters(params: {
@@ -209,18 +170,11 @@ function buildUsersWhereFilters(params: {
   roleFilter: Role | undefined;
   classFilter: string | undefined;
   activeFilter: boolean | undefined;
-  includeWechatInSearch: boolean;
 }): SQL<unknown>[] {
   const filters: SQL<unknown>[] = [isNull(users.deletedAt)];
   if (params.search) {
     const pattern = `%${escapeLikePattern(params.search.toLowerCase())}%`;
-    if (params.includeWechatInSearch) {
-      filters.push(
-        sql`(lower(${users.username}) LIKE ${pattern} ESCAPE '\\' OR lower(coalesce(${memberProfiles.wechatName}, '')) LIKE ${pattern} ESCAPE '\\')`,
-      );
-    } else {
-      filters.push(sql`lower(${users.username}) LIKE ${pattern} ESCAPE '\\'`);
-    }
+    filters.push(sql`lower(${users.username}) LIKE ${pattern} ESCAPE '\\'`);
   }
   if (params.roleFilter) filters.push(eq(users.role, params.roleFilter));
   if (params.activeFilter !== undefined) filters.push(eq(users.isActive, params.activeFilter));
@@ -242,7 +196,6 @@ const userProfileSelect = {
   userUpdatedAt: users.updatedAt,
   profileId: memberProfiles.id,
   profileUserId: memberProfiles.userId,
-  wechatName: memberProfiles.wechatName,
   power: memberProfiles.power,
   classes: memberProfiles.classes,
   titleHtml: memberProfiles.titleHtml,
@@ -253,8 +206,6 @@ const userProfileSelect = {
   availability: memberProfiles.availability,
   vacationStart: memberProfiles.vacationStart,
   vacationEnd: memberProfiles.vacationEnd,
-  discordId: memberProfiles.discordId,
-  discordReminderOptOut: memberProfiles.discordReminderOptOut,
   notes: memberProfiles.notes,
   profileCreatedAt: memberProfiles.createdAt,
   profileUpdatedAt: memberProfiles.updatedAt,
@@ -274,7 +225,6 @@ function rowToUserWithProfile(row: Record<string, unknown>): UserWithProfileRow 
     profile: {
       id: (row.profileId as string) ?? nanoid(),
       userId: (row.profileUserId as string) ?? (row.userId as string),
-      wechatName: (row.wechatName as string | null) ?? null,
       power: (row.power as number) ?? 0,
       classes: (row.classes as string) ?? "[]",
       titleHtml: (row.titleHtml as string | null) ?? null,
@@ -285,8 +235,6 @@ function rowToUserWithProfile(row: Record<string, unknown>): UserWithProfileRow 
       availability: (row.availability as string | null) ?? null,
       vacationStart: (row.vacationStart as string | null) ?? null,
       vacationEnd: (row.vacationEnd as string | null) ?? null,
-      discordId: (row.discordId as string | null) ?? null,
-      discordReminderOptOut: (row.discordReminderOptOut as boolean) ?? false,
       notes: (row.notes as string | null) ?? null,
       createdAt: (row.profileCreatedAt as string) ?? (row.userCreatedAt as string),
       updatedAt: (row.profileUpdatedAt as string) ?? (row.userUpdatedAt as string),
@@ -324,7 +272,7 @@ export class UserService {
       if (present) return existing.profile;
     }
     await this.db.insert(memberProfiles).values({
-      id: nanoid(), userId, power: 0, classes: "[]", images: "[]", videoUrls: "[]", discordReminderOptOut: false,
+      id: nanoid(), userId, power: 0, classes: "[]", images: "[]", videoUrls: "[]",
     });
     const refreshed = await this.loadUserWithProfile(userId);
     if (!refreshed) throw new Error("Failed to create profile");
@@ -348,7 +296,7 @@ export class UserService {
     const offset = (params.page - 1) * params.limit;
     const whereClause = and(...buildUsersWhereFilters({
       search: params.search, roleFilter: params.roleFilter, classFilter: params.classFilter,
-      activeFilter: params.activeFilter, includeWechatInSearch: !params.externalView,
+      activeFilter: params.activeFilter,
     }));
 
     const totalRow = (
@@ -368,7 +316,6 @@ export class UserService {
         user: toUserPayload(normalized.user),
         profile: toProfilePayload(normalized.profile, {
           includeNotes: params.sessionUser?.permissions.has("admin.users.view") === true,
-          includeWechat: Boolean(params.sessionUser) && !params.externalView,
           includePrivate: Boolean(params.sessionUser),
         }),
       };
@@ -383,7 +330,7 @@ export class UserService {
     const profile = await this.ensureProfile(targetUserId);
     return ok({
       user: toUserPayload(loaded.user),
-      profile: toProfilePayload(profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includeWechat: true, includePrivate: true }),
+      profile: toProfilePayload(profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includePrivate: true }),
     });
   }
 
@@ -407,7 +354,7 @@ export class UserService {
       entityId: targetUserId, diffTitle: updated.user.username,
     });
     await this.deps.publishEntityChanged({ entityType: "member_profile", entityId: targetUserId, hint: "profile_updated" });
-    return ok(toProfilePayload(updated.profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includeWechat: true, includePrivate: true }));
+    return ok(toProfilePayload(updated.profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includePrivate: true }));
   }
 
   async uploadProfileImages(sessionUser: SessionUser, targetUserId: string, files: File[]): Promise<ServiceResult<{ keys: string[] }>> {
@@ -428,8 +375,7 @@ export class UserService {
     if (existing.length + files.length > IMAGE_QUOTAS.profile)
       return err("CONFLICT", "Profile image quota exceeded");
 
-    const keys: string[] = [];
-    for (const file of files) keys.push(await this.deps.storeProfileImage(targetUserId, file));
+    const keys: string[] = await Promise.all(files.map((file) => this.deps.storeProfileImage(targetUserId, file)));
 
     await this.db.update(memberProfiles)
       .set({ images: JSON.stringify([...existing, ...keys]), updatedAt: new Date().toISOString() })
@@ -484,47 +430,6 @@ export class UserService {
     await this.db.update(memberProfiles)
       .set({ audioKey: null, updatedAt: new Date().toISOString() })
       .where(eq(memberProfiles.userId, targetUserId));
-    return ok({ ok: true });
-  }
-
-  async verifyDiscordLink(sessionUser: SessionUser, targetUserId: string, code: string): Promise<ServiceResult<{ ok: true; discord_id: string }>> {
-    if (sessionUser.id !== targetUserId) return err("FORBIDDEN", "Discord link verification is allowed for self only");
-    if (!/^\d{6}$/.test(code)) return err("VALIDATION_ERROR", "code must be 6 digits");
-
-    const nowIso = new Date().toISOString();
-    const linkCode = (
-      await this.db.select({ id: discordLinkCodes.id, discordId: discordLinkCodes.discordId, expiresAt: discordLinkCodes.expiresAt })
-        .from(discordLinkCodes)
-        .where(and(eq(discordLinkCodes.userId, targetUserId), eq(discordLinkCodes.code, code), eq(discordLinkCodes.used, false)))
-        .orderBy(discordLinkCodes.createdAt).limit(1)
-    )[0];
-    if (!linkCode || linkCode.expiresAt <= nowIso) return err("UNAUTHORIZED", "Invalid or expired code");
-
-    await this.db.update(memberProfiles).set({ discordId: linkCode.discordId, updatedAt: nowIso }).where(eq(memberProfiles.userId, targetUserId));
-    await this.db.update(discordLinkCodes).set({ used: true }).where(eq(discordLinkCodes.id, linkCode.id));
-
-    await this.deps.writeAuditLog({
-      entityType: "member_profile", action: "link_discord", actorId: sessionUser.id,
-      entityId: targetUserId, detailText: JSON.stringify({ discord_id: linkCode.discordId }),
-    });
-    await this.deps.publishEntityChanged({ entityType: "member_profile", entityId: targetUserId, hint: "discord_linked" });
-    return ok({ ok: true, discord_id: linkCode.discordId });
-  }
-
-  async unlinkDiscord(sessionUser: SessionUser, targetUserId: string): Promise<ServiceResult<{ ok: true }>> {
-    if (sessionUser.id !== targetUserId) {
-      if (!sessionUser.permissions.has("admin.users.edit"))
-        return err("FORBIDDEN", "Discord unlink is allowed for self or users with admin.users.edit");
-      const target = (
-        await this.db.select({ role: users.role }).from(users).where(eq(users.id, targetUserId)).limit(1)
-      )[0];
-      if (target?.role === "admin" && sessionUser.role !== "admin")
-        return err("FORBIDDEN", "Cannot unlink Discord for admin users");
-    }
-
-    await this.db.update(memberProfiles).set({ discordId: null, updatedAt: new Date().toISOString() }).where(eq(memberProfiles.userId, targetUserId));
-    await this.deps.writeAuditLog({ entityType: "member_profile", action: "unlink_discord", actorId: sessionUser.id, entityId: targetUserId });
-    await this.deps.publishEntityChanged({ entityType: "member_profile", entityId: targetUserId, hint: "discord_unlinked" });
     return ok({ ok: true });
   }
 

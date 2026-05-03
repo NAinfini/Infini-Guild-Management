@@ -5,21 +5,18 @@ import { queryKeys } from "../api/query-keys";
 import type { MemberDetailFormState } from "../components/feature/admin/AdminMemberDetailModal";
 import { useAdminMemberMediaController } from "../components/feature/admin/useAdminMemberMediaController";
 import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
-import type { UsersListResponse } from "../services/UserService";
+import type { UsersListResponse } from "../api/queries/users";
 
 type AdminUserRow = UsersListResponse["data"][number];
 
 const DEFAULT_FORM: MemberDetailFormState = {
-  wechatName: "",
   power: 0,
   classes: [],
   titleHtml: "",
   bio: "",
   notes: "",
-  discordId: "",
   vacationStart: "",
   vacationEnd: "",
-  discordReminderOptOut: false,
   role: "member",
   isActive: true,
 };
@@ -56,16 +53,13 @@ export function useAdminMemberDetail({
       return;
     }
     const synced: MemberDetailFormState = {
-      wechatName: target.profile.wechat_name ?? "",
       power: target.profile.power,
       classes: [...target.profile.classes],
       titleHtml: target.profile.title_html ?? "",
       bio: target.profile.bio ?? "",
       notes: target.profile.notes ?? "",
-      discordId: target.profile.discord_id ?? "",
       vacationStart: target.profile.vacation_start ? target.profile.vacation_start.slice(0, 10) : "",
       vacationEnd: target.profile.vacation_end ? target.profile.vacation_end.slice(0, 10) : "",
-      discordReminderOptOut: target.profile.discord_reminder_opt_out,
       role: target.user.role,
       isActive: target.user.is_active,
     };
@@ -98,7 +92,6 @@ export function useAdminMemberDetail({
     : null;
 
   const refreshMemberData = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.admin.users() });
     await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
     await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.all });
   }, [queryClient]);

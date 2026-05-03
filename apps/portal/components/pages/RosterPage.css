@@ -1,9 +1,9 @@
-.roster-filter-card {
+.roster-filter-card.roster-filter-card {
   position: sticky;
   top: 8px;
   z-index: var(--z-sticky);
   margin-bottom: 12px;
-  overflow: visible !important;
+  overflow: visible;
 }
 
 .roster-filter-controls {
@@ -87,5 +87,16 @@
   .roster-count-text {
     margin-inline-start: 0;
     width: 100%;
+  }
+}
+
+@media (max-width: 767px) {
+  .roster-card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+
+  .roster-virtual-scroll {
+    max-height: 80vh;
   }
 }

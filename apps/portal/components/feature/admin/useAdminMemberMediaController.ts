@@ -1,17 +1,18 @@
 import type { ImageGridEditorItem } from "@guild/shared/types/media";
-import { notifications } from "@mantine/notifications";
 import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMediaUpload } from "../../../hooks/useMediaUpload";
+import { notifySuccess } from "../../../utils/notifications";
+import { resolveProfileMediaUrl } from "../../../utils/media";
 import {
   deleteProfileAudio,
   deleteProfileImage,
-  type UsersListResponse,
   updateMyProfile,
   uploadProfileAudio,
   uploadProfileImages,
-} from "../../../services/UserService";
+} from "../../../api/mutations/users";
+import type { UsersListResponse } from "../../../api/queries/users";
 
 const PROFILE_IMAGE_MAX = 10;
 const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
@@ -24,10 +25,6 @@ type UseAdminMemberMediaControllerParams = {
   onRefresh: () => Promise<void>;
   onError: (error: unknown, fallbackMessage: string) => void;
 };
-
-function isHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
-}
 
 function requireMember(member: AdminUserRow | null): AdminUserRow {
   if (!member) {
@@ -49,7 +46,7 @@ export function useAdminMemberMediaController({
     () =>
       (member?.profile.images ?? []).map((key) => ({
         id: key,
-        src: isHttpUrl(key) ? key : undefined,
+        src: resolveProfileMediaUrl(key),
         alt: key,
       })),
     [member?.profile.images],
@@ -85,7 +82,7 @@ export function useAdminMemberMediaController({
   const deleteImageMutation = useMutation({
     mutationFn: (key: string) => deleteProfileImage(requireMember(member).user.id, key),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.mediaImageRemoved") });
+      notifySuccess(t("message.mediaImageRemoved"));
       await onRefresh();
     },
     onError: (error) => onError(error, t("message.mediaImageRemoveFailed")),
@@ -103,7 +100,7 @@ export function useAdminMemberMediaController({
   const deleteAudioMutation = useMutation({
     mutationFn: () => deleteProfileAudio(requireMember(member).user.id),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.mediaAudioRemoved") });
+      notifySuccess(t("message.mediaAudioRemoved"));
       await onRefresh();
     },
     onError: (error) => onError(error, t("message.mediaAudioRemoveFailed")),
@@ -121,7 +118,7 @@ export function useAdminMemberMediaController({
         video_urls: urls.filter((url) => url.trim() !== ""),
       }),
     onSuccess: async () => {
-      notifications.show({ color: "green", message: t("message.mediaVideosSaved") });
+      notifySuccess(t("message.mediaVideosSaved"));
       await onRefresh();
     },
     onError: (error) => onError(error, t("message.mediaVideosSaveFailed")),
@@ -175,7 +172,7 @@ export function useAdminMemberMediaController({
       if (!result) {
         return;
       }
-      notifications.show({ color: "green", message: t("message.mediaImagesUploaded") });
+      notifySuccess(t("message.mediaImagesUploaded"));
       await onRefresh();
       imageUploader.reset();
     } catch (error) {
@@ -189,7 +186,7 @@ export function useAdminMemberMediaController({
       if (!result) {
         return;
       }
-      notifications.show({ color: "green", message: t("message.mediaAudioUploaded") });
+      notifySuccess(t("message.mediaAudioUploaded"));
       await onRefresh();
       audioUploader.reset();
     } catch (error) {

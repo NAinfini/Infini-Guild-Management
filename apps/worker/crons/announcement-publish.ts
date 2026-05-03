@@ -2,7 +2,6 @@ import { and, eq, isNotNull, isNull, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { announcements } from "../db/schema";
 import type { Bindings } from "../index";
-import { createBotTask } from "../services/bot-dispatch";
 import { publishAnnouncementPublished, publishEntityChanged } from "../services/push";
 
 export async function runAnnouncementPublishCron(env: Bindings): Promise<void> {
@@ -13,7 +12,6 @@ export async function runAnnouncementPublishCron(env: Bindings): Promise<void> {
     .select({
       id: announcements.id,
       title: announcements.title,
-      bodyJson: announcements.bodyJson,
       publishAt: announcements.publishAt,
     })
     .from(announcements)
@@ -44,31 +42,6 @@ export async function runAnnouncementPublishCron(env: Bindings): Promise<void> {
         title: item.title,
         publishedAt: item.publishAt ?? nowIso,
       });
-
-      const payload = {
-        announcement_id: item.id,
-        title: item.title,
-        body_json: item.bodyJson,
-        publish_at: item.publishAt,
-      };
-
-      await createBotTask(env, {
-        platform: "discord",
-        taskType: "event_notify",
-        targetId: "announcement:discord:broadcast",
-        idempotencyKey: `announcement-publish:discord:${item.id}`,
-        payload,
-        dispatchNow: true,
-      });
-
-      await createBotTask(env, {
-        platform: "wechat",
-        taskType: "event_notify",
-        targetId: "announcement:wechat:broadcast",
-        idempotencyKey: `announcement-publish:wechat:${item.id}`,
-        payload,
-        dispatchNow: true,
-      });
     } catch (e) {
       console.error(`[announcement-publish] failed to process announcement ${item.id}`, e);
     }
@@ -91,8 +64,9 @@ export async function runAnnouncementExpiryCron(env: Bindings): Promise<void> {
       ),
     );
 
-  if (expiredAnnouncements.length > 0) {
-    for (const item of expiredAnnouncements) {
+  let archivedCount = 0;
+  for (const item of expiredAnnouncements) {
+    try {
       await db
         .update(announcements)
         .set({
@@ -101,7 +75,12 @@ export async function runAnnouncementExpiryCron(env: Bindings): Promise<void> {
           updatedAt: nowIso,
         })
         .where(eq(announcements.id, item.id));
+      archivedCount += 1;
+    } catch (e) {
+      console.error(`[announcement-expiry] failed to archive announcement ${item.id}`, e);
     }
-    console.log(`[announcement-expiry] Auto-archived ${expiredAnnouncements.length} expired announcement(s).`);
+  }
+  if (archivedCount > 0) {
+    console.log(`[announcement-expiry] Auto-archived ${archivedCount} expired announcement(s).`);
   }
 }

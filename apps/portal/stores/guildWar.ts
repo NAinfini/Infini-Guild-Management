@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
-export type AnalyticsMode = "player" | "rankings" | "teams";
-export type AnalyticsMetricKey =
+type AnalyticsMode = "player" | "rankings" | "teams";
+type AnalyticsMetricKey =
   | "kills"
   | "deaths"
   | "assists"
@@ -11,11 +11,11 @@ export type AnalyticsMetricKey =
   | "credits"
   | "damage_taken"
   | "kda";
-export type AnalyticsAggregation = "total" | "average" | "best" | "median";
+type AnalyticsAggregation = "total" | "average" | "best" | "median";
 export type AnalyticsDatePreset = "5" | "10" | "20" | "all";
-export type HistoryViewMode = "table" | "chart";
-export type TeamAggregation = "total" | "average";
-export type ModifierWeights = {
+type HistoryViewMode = "table" | "chart";
+type TeamAggregation = "total" | "average";
+type ModifierWeights = {
   kda: number;
   towers: number;
   credits: number;
@@ -23,7 +23,7 @@ export type ModifierWeights = {
   basehp: number;
 };
 
-export const DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS: ModifierWeights = {
+const DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS: ModifierWeights = {
   kda: 0.30,
   towers: 0.10,
   credits: 0.30,

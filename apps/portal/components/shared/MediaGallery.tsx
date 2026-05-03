@@ -51,6 +51,30 @@ const DEFAULT_LABELS: MediaGalleryLabels = {
   openItemAria: "Open item",
 };
 
+export function buildMediaGalleryLabels(t: (key: string) => string): MediaGalleryLabels {
+  return {
+    noMedia: t("media.noMedia"),
+    noAudio: t("media.noAudio"),
+    pause: t("media.pause"),
+    resume: t("media.resume"),
+    restart: t("media.restart"),
+    fullscreen: t("media.fullscreen"),
+    stopVideo: t("media.stopVideo"),
+    playVideo: t("media.playVideo"),
+    externalLink: t("media.externalLink"),
+    openInDouyin: t("media.openInDouyin"),
+    open: t("media.open"),
+    hideThumbnails: t("media.hideThumbnails"),
+    showThumbnails: t("media.showThumbnails"),
+    thumbnailVideo: t("media.thumbnailVideo"),
+    thumbnailImage: t("media.thumbnailImage"),
+    seekVideo: t("media.aria.seekVideo"),
+    seekAudio: t("media.aria.seekAudio"),
+    playVideoAria: t("media.aria.playVideo"),
+    openItemAria: t("media.aria.openItem"),
+  };
+}
+
 export type MediaGalleryProps = {
   images: string[];
   videos?: string[];
@@ -75,8 +99,8 @@ function defaultResolver(value: string): string {
   return value;
 }
 
-function isHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
+function isRenderableUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value) || value.startsWith("/");
 }
 
 function formatMediaTime(totalSeconds: number): string {
@@ -101,7 +125,6 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
   const labels = { ...DEFAULT_LABELS, ...labelsProp };
   const isMobile = useMediaQuery("(max-width: 767px)") ?? false;
   const [activeIndex, setActiveIndex] = useState(0);
-  const [embedPlayingVideos, setEmbedPlayingVideos] = useState<Record<number, boolean>>({});
   const [directVideoPlaying, setDirectVideoPlaying] = useState<Record<number, boolean>>({});
   const [directVideoProgress, setDirectVideoProgress] = useState<Record<number, VideoProgressState>>({});
   const [audioPlaying, setAudioPlaying] = useState(false);
@@ -130,7 +153,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
     ],
     [images, resolveMediaUrl, videos],
   );
-  const thumbnails = items.slice(0, 60);
+  const thumbnails = items.slice(0, 20);
   const audioResolved = audioKey ? resolveMediaUrl(audioKey) : null;
 
   useEffect(() => {
@@ -157,14 +180,6 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
         video.pause();
         setDirectVideoPlaying((prev) => ({ ...prev, [index]: false }));
       }
-    });
-    setEmbedPlayingVideos((prev) => {
-      const next: Record<number, boolean> = {};
-      for (const [indexKey, value] of Object.entries(prev)) {
-        const index = Number.parseInt(indexKey, 10);
-        if (Number.isFinite(index) && index === activeIndex && value) next[index] = true;
-      }
-      return next;
     });
   }, [activeIndex]);
 
@@ -222,7 +237,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
             {items.map((item, index) => (
               <Carousel.Slide key={item.key}>
                 {item.type === "image" ? (
-                  isHttpUrl(item.source) ? (
+                  isRenderableUrl(item.source) ? (
                     <div className="infini-media-gallery-slide">
                       <img src={item.source} alt={`Media image ${index + 1}`} loading="lazy" decoding="async" />
                     </div>
@@ -287,7 +302,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                         <Text>{labels.openInDouyin}</Text>
                         <Button component="a" href={item.source} target="_blank" rel="noreferrer">{labels.open}</Button>
                       </Stack>
-                    ) : embedPlayingVideos[index] ? (
+                    ) : (
                       <>
                         <iframe
                           src={toEmbedVideoUrl(item.source)}
@@ -296,21 +311,12 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                           allowFullScreen
                         />
-                        <Group justify="center">
-                          <Button size="xs" variant="default" onClick={() => setEmbedPlayingVideos((prev) => ({ ...prev, [index]: false }))}>
-                            {labels.stopVideo}
+                        <Group justify="center" gap={8}>
+                          <Button size="xs" variant="default" component="a" href={item.source} target="_blank" rel="noreferrer">
+                            {labels.externalLink}
                           </Button>
                         </Group>
                       </>
-                    ) : (
-                      <Stack gap={8}>
-                        <Button onClick={() => setEmbedPlayingVideos((prev) => ({ ...prev, [index]: true }))} aria-label={labels.playVideoAria}>
-                          {labels.playVideo}
-                        </Button>
-                        <Button component="a" href={item.source} target="_blank" rel="noreferrer" variant="default">
-                          {labels.externalLink}
-                        </Button>
-                      </Stack>
                     )}
                   </div>
                 )}
@@ -336,7 +342,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                   aria-label={`${labels.openItemAria} ${index + 1}`}
                   aria-pressed={index === activeIndex}
                 >
-                  {item.type === "image" && isHttpUrl(item.source) ? (
+                  {item.type === "image" && isRenderableUrl(item.source) ? (
                     <img src={item.source} alt={`Media thumbnail ${index + 1}`} loading="lazy" decoding="async" />
                   ) : (
                     <span>{item.type === "video" ? labels.thumbnailVideo : labels.thumbnailImage}</span>
@@ -349,7 +355,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
       ) : null}
 
       {audioResolved ? (
-        isHttpUrl(audioResolved) ? (
+        isRenderableUrl(audioResolved) ? (
           <InfiniCard className="infini-media-gallery-audio-section" interactive={false}>
             <div style={{ padding: "1.2rem" }}>
               <Stack gap={8}>

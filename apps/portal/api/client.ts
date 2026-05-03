@@ -33,10 +33,13 @@ export function isApiRequestError(error: unknown): error is ApiRequestError {
 
 const INTERNAL_SERVER_MESSAGE_PATTERN = /D1_ERROR|SQLITE_ERROR|no such table|no such column/i;
 
-function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 30000): Promise<Response> {
+function fetchWithTimeout(url: string, init: RequestInit, externalSignal?: AbortSignal, timeoutMs = 30000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(id));
+  const combinedSignal = externalSignal
+    ? AbortSignal.any([controller.signal, externalSignal])
+    : controller.signal;
+  return fetch(url, { ...init, signal: combinedSignal }).finally(() => clearTimeout(id));
 }
 
 function tCommon(key: string, fallback: string): string {
@@ -66,10 +69,87 @@ function resolveErrorMessage(message: string | null | undefined, status: number)
   return fallbackMessageForStatus(status);
 }
 
+function handleFetchError(err: unknown): never {
+  if (err instanceof DOMException && err.name === "AbortError") {
+    throw new ApiRequestError(tCommon("errors.requestTimeout", "Request timed out. Please try again."), {
+      status: 0,
+    });
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("guild-api-network", {
+        detail: {
+          message: tCommon("errors.connectionIssue", "Unable to reach server. Check your network and retry."),
+        },
+      }),
+    );
+  }
+  throw new ApiRequestError("Network request failed", {
+    status: 0,
+  });
+}
+
+async function handleErrorResponse(response: Response, requestPath: string): Promise<never> {
+  let errorPayload: StandardErrorResponse | null = null;
+  try {
+    errorPayload = (await response.json()) as StandardErrorResponse;
+  } catch {
+    errorPayload = null;
+  }
+
+  const isAuthLoginRequest =
+    requestPath.includes("/api/auth/login") || requestPath.includes("/api/auth/register");
+
+  if (response.status === 401 && typeof window !== "undefined" && !isAuthLoginRequest) {
+    window.dispatchEvent(
+      new CustomEvent("guild-api-unauthorized", {
+        detail: {
+          message: resolveErrorMessage(errorPayload?.message, 401),
+          requestId: errorPayload?.request_id,
+          errorCode: errorPayload?.error_code,
+          returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+        },
+      }),
+    );
+  }
+
+  if (response.status === 403 && typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("guild-api-forbidden", {
+        detail: {
+          message: resolveErrorMessage(errorPayload?.message, 403),
+          requestId: errorPayload?.request_id,
+          errorCode: errorPayload?.error_code,
+        },
+      }),
+    );
+  }
+
+  if (response.status === 409 && typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("guild-api-conflict", {
+        detail: {
+          message: resolveErrorMessage(errorPayload?.message, 409),
+          requestId: errorPayload?.request_id,
+          errorCode: errorPayload?.error_code,
+        },
+      }),
+    );
+  }
+
+  throw new ApiRequestError(resolveErrorMessage(errorPayload?.message, response.status), {
+    status: response.status,
+    errorCode: errorPayload?.error_code,
+    requestId: errorPayload?.request_id,
+    details: errorPayload?.details,
+  });
+}
+
 export async function apiRequest<TResponse>(
   input: string,
-  init: RequestInit & { bodyJson?: JsonValue; ifMatch?: string } = {},
+  init: RequestInit & { bodyJson?: JsonValue; ifMatch?: string; signal?: AbortSignal } = {},
 ): Promise<TResponse> {
+  const url = input;
   const headers = new Headers(init.headers);
   headers.set("X-Request-Id", nanoid());
 
@@ -88,88 +168,19 @@ export async function apiRequest<TResponse>(
 
   let response: Response;
   try {
-    response = await fetchWithTimeout(input, {
+    response = await fetchWithTimeout(url, {
       ...init,
       credentials: "include",
       body: init.bodyJson ? JSON.stringify(init.bodyJson) : init.body,
       headers,
-    });
+    }, init.signal ?? undefined);
   } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw new ApiRequestError(tCommon("errors.requestTimeout", "Request timed out. Please try again."), {
-        status: 0,
-      });
-    }
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("guild-api-network", {
-          detail: {
-            message: tCommon("errors.connectionIssue", "Unable to reach server. Check your network and retry."),
-          },
-        }),
-      );
-    }
-    throw new ApiRequestError("Network request failed", {
-      status: 0,
-    });
+    handleFetchError(err);
   }
 
 
   if (!response.ok) {
-    let errorPayload: StandardErrorResponse | null = null;
-    try {
-      errorPayload = (await response.json()) as StandardErrorResponse;
-    } catch {
-      errorPayload = null;
-    }
-
-    const requestPath = typeof input === "string" ? input : "";
-    const isAuthLoginRequest =
-      requestPath.includes("/api/auth/login") || requestPath.includes("/api/auth/register");
-
-    if (response.status === 401 && typeof window !== "undefined" && !isAuthLoginRequest) {
-      window.dispatchEvent(
-        new CustomEvent("guild-api-unauthorized", {
-          detail: {
-            message: resolveErrorMessage(errorPayload?.message, 401),
-            requestId: errorPayload?.request_id,
-            errorCode: errorPayload?.error_code,
-            returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
-          },
-        }),
-      );
-    }
-
-    if (response.status === 403 && typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("guild-api-forbidden", {
-          detail: {
-            message: resolveErrorMessage(errorPayload?.message, 403),
-            requestId: errorPayload?.request_id,
-            errorCode: errorPayload?.error_code,
-          },
-        }),
-      );
-    }
-
-    if (response.status === 409 && typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("guild-api-conflict", {
-          detail: {
-            message: resolveErrorMessage(errorPayload?.message, 409),
-            requestId: errorPayload?.request_id,
-            errorCode: errorPayload?.error_code,
-          },
-        }),
-      );
-    }
-
-    throw new ApiRequestError(resolveErrorMessage(errorPayload?.message, response.status), {
-      status: response.status,
-      errorCode: errorPayload?.error_code,
-      requestId: errorPayload?.request_id,
-      details: errorPayload?.details,
-    });
+    await handleErrorResponse(response, url);
   }
 
   if (response.status === 204) {
@@ -192,6 +203,7 @@ export async function apiDownload(
   input: string,
   init: RequestInit = {},
 ): Promise<{ blob: Blob; headers: Headers }> {
+  const url = input;
   const headers = new Headers(init.headers);
   headers.set("X-Request-Id", nanoid());
 
@@ -202,83 +214,18 @@ export async function apiDownload(
 
   let response: Response;
   try {
-    response = await fetchWithTimeout(input, {
+    response = await fetchWithTimeout(url, {
       ...init,
       method: init.method ?? "GET",
       credentials: "include",
       headers,
     });
   } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw new ApiRequestError(tCommon("errors.requestTimeout", "Request timed out. Please try again."), {
-        status: 0,
-      });
-    }
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("guild-api-network", {
-          detail: {
-            message: tCommon("errors.connectionIssue", "Unable to reach server. Check your network and retry."),
-          },
-        }),
-      );
-    }
-    throw new ApiRequestError("Network request failed", {
-      status: 0,
-    });
+    handleFetchError(err);
   }
 
   if (!response.ok) {
-    let errorPayload: StandardErrorResponse | null = null;
-    try {
-      errorPayload = (await response.json()) as StandardErrorResponse;
-    } catch {
-      errorPayload = null;
-    }
-
-    if (response.status === 401 && typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("guild-api-unauthorized", {
-          detail: {
-            message: resolveErrorMessage(errorPayload?.message, 401),
-            requestId: errorPayload?.request_id,
-            errorCode: errorPayload?.error_code,
-            returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
-          },
-        }),
-      );
-    }
-
-    if (response.status === 403 && typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("guild-api-forbidden", {
-          detail: {
-            message: resolveErrorMessage(errorPayload?.message, 403),
-            requestId: errorPayload?.request_id,
-            errorCode: errorPayload?.error_code,
-          },
-        }),
-      );
-    }
-
-    if (response.status === 409 && typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("guild-api-conflict", {
-          detail: {
-            message: resolveErrorMessage(errorPayload?.message, 409),
-            requestId: errorPayload?.request_id,
-            errorCode: errorPayload?.error_code,
-          },
-        }),
-      );
-    }
-
-    throw new ApiRequestError(resolveErrorMessage(errorPayload?.message, response.status), {
-      status: response.status,
-      errorCode: errorPayload?.error_code,
-      requestId: errorPayload?.request_id,
-      details: errorPayload?.details,
-    });
+    await handleErrorResponse(response, url);
   }
 
   const blob = await response.blob();

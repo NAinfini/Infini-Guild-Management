@@ -27,14 +27,14 @@ Centralized place for user preferences. The only place for Theme and Localizatio
 
 ### 1. Appearance
 
-- Theme selector (card grid showing all dev-kit built-in theme profiles):
+- Theme selector (card grid showing all built-in theme profiles):
   - Each card: theme name + preview swatch + glow preview
-  - Built-in profiles: neu-brutalism, cyberpunk, etc. (from `@infini-dev-kit/frontend`)
-  - Switching via `useBridge().setTheme()` with optional view transitions
+  - Built-in profiles: dark, light
+  - Switching themes with optional view transitions
 - Motion mode selector:
   - Off / Minimum / Reduced / Full
   - Respects OS `prefers-reduced-motion` as initial default
-  - Controls dev-kit motion components (`RevealOnScroll`, `StaggerList`, etc.)
+  - Controls motion components (`RevealOnScroll`, `StaggerList`, etc.)
 - "Fancy effects" toggle:
   - Glows on/off
   - 3D card tilt on/off (roster cards)
@@ -50,16 +50,14 @@ Centralized place for user preferences. The only place for Theme and Localizatio
 - String keys MUST be centralized (no hardcoded UI strings)
 
 
-## Theme Integration (Infini-Dev-Kit)
+## Theme Integration
 
-- App root wrapped with `<KitApp>` for theme context
-- Access theme via `useThemeSnapshot()` — palette, typography, foundation, depth, motion
-- Theme switching via `useBridge().setTheme()` with optional view transitions
-- All themes come from dev-kit's built-in theme profiles
-- Components MUST use dev-kit theme tokens — never hardcode colors, spacing, or shadows
+- Mantine ThemeProvider at app root for theme context
+- Theme switching with optional view transitions
+- Built-in theme profiles: dark, light
+- Components use Mantine theme tokens — never hardcode colors, spacing, or shadows
 - Persistence: localStorage (no D1 persistence for theme)
 - Runtime switching (no reload)
-- Use `@infini-dev-kit/utils/color` for contrast ratio checks and readable text derivation
 
 
 ## Localization Controller Requirements

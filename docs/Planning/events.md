@@ -49,7 +49,7 @@ Unified events system for weekly missions, guild wars, social events, and other 
 ### Card Actions (Icon Buttons)
 
 - Join/Leave: single toggle icon (state-based, with tooltip)
-- Copy All Members: `@wechat_name` default, fallback `@username`
+- Copy All Members: `@username` format
 - Admin/Mod only: Edit, Duplicate, Pin toggle, lock toggle, archive.
 
 ### Signup Rules
@@ -66,8 +66,8 @@ Unified events system for weekly missions, guild wars, social events, and other 
 
 ### Copy Formats
 
-- Copy All Members: comma-separated `wechat_name` (fallback `username`)
-- With label: `<event_name>: @wechat1, @wechat2, ...`
+- Copy All Members: comma-separated `@username`
+- With label: `<event_name>: @user1, @user2, ...`
 
 ### Archived Events
 

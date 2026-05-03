@@ -1,4 +1,4 @@
-export interface EChartsAxisStyle {
+interface EChartsAxisStyle {
   axisLine: { lineStyle: { color: string } };
   axisTick: { lineStyle: { color: string } };
   axisLabel: { color: string };

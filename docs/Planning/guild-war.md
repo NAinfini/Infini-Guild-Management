@@ -71,7 +71,7 @@ Guild war management with three tabs: Active (setup + team assignment), History 
 
 - Inline rename + team reorder handle
 - Sort (Power / Username / Class)
-- Copy (members / label + members wechat name, fallback to username @name)
+- Copy (members / label + members username @name)
 - Lock toggle (prevents drops, role assignment, rename)
 
 #### Team Notes (Admin/Mod)
@@ -88,7 +88,7 @@ Guild war management with three tabs: Active (setup + team assignment), History 
 
 #### Copy Tools
 
-- Uses wechat_name default; fallback username
+- Uses username for @mentions
 - Label + members: `Team A: @a, @b, ...`
 
 #### Save Teams to History (Admin/Mod)
@@ -98,13 +98,6 @@ Guild war management with three tabs: Active (setup + team assignment), History 
 - If no history entry exists for this event, create a new `war_history` row.
 - One event → one history entry (1:1 relationship via `event_id`).
 - Results/stats can be filled later in History tab
-
-#### Bot Integration (Active Tab)
-
-- "Post to Discord" button: posts formatted team comp to Discord team-comp channel (see `bot-integrations.md`)
-- "Post to WeChat" button: posts team comp with @mentions to configured WeChat group
-- Both buttons only visible if bot is configured in Admin Console → Bot Settings
-- Buttons appear after teams are assigned (not on empty pool)
 
 ---
 
@@ -156,11 +149,6 @@ Sections:
 1. Overview (result + notes)
 2. Member stats (cards; sortable/filterable)
 3. Team snapshot (teams + role_tag + team notes)
-
-#### Bot Integration (History Tab)
-
-- "Post Results to Discord" button on war detail: posts war results summary embed (see `bot-integrations.md`)
-- Only visible if Discord bot is configured
 
 #### Member Stats data table
 
@@ -238,7 +226,7 @@ Default mode: **Player**
 ##### C) Left Panel: Subjects (mode-dependent)
 
 **Player mode**
-- Search + select **one member** (username / wechat_name)
+- Search + select **one member** (username)
 - Selected member header:
   - username, class
   - participated wars / selected wars count
@@ -355,12 +343,12 @@ Rankings mode:
 
 #### Shareable Analysis Snapshot
 - One-click "Copy analysis snapshot"
-- Generates Discord-friendly text:
+- Generates plain-text summary:
   - wars range
   - mode + primary metric + aggregation
   - top 5 (if Rankings or Compare)
   - focused member summary (if Player/Compare)
-- Uses wechat_name default, fallback username
+- Uses username for @mentions
 - Local-only formatting; no DB writes
 
 ---

@@ -1,4 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Button } from "@mantine/core";
+import i18n from "i18next";
+
+const INTERNAL_ERROR_PATTERN = /D1_ERROR|SQLITE|no such table|no such column|ECONNREFUSED|chunk|module|import|Cannot read prop/i;
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -25,36 +29,33 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   private handleReload = () => {
-    this.setState({ hasError: false, error: null });
     window.location.reload();
   };
+
+  private getSafeMessage(): string {
+    const message = this.state.error?.message;
+    if (!message || INTERNAL_ERROR_PATTERN.test(message)) {
+      return i18n.t("common:errors.unexpectedError", { defaultValue: "An unexpected error occurred." });
+    }
+    return message;
+  }
 
   render(): ReactNode {
     if (this.state.hasError) {
       if (this.props.fallback) return this.props.fallback;
       return (
-        <div className="flex flex-col items-center justify-center p-8 text-center">
-          <h2 className="text-lg font-semibold text-red-600 dark:text-red-400">Something went wrong</h2>
+        <div role="alert" className="flex flex-col items-center justify-center p-8 text-center">
+          <h2 className="text-lg font-semibold text-red-600 dark:text-red-400">{i18n.t("common:errors.somethingWentWrong", { defaultValue: "Something went wrong" })}</h2>
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            {this.state.error?.message ?? "An unexpected error occurred."}
+            {this.getSafeMessage()}
           </p>
-          <button
+          <Button
             type="button"
             onClick={this.handleReload}
-            style={{
-              marginTop: 16,
-              padding: "8px 20px",
-              borderRadius: 8,
-              border: "none",
-              background: "var(--color-primary, #3b82f6)",
-              color: "#fff",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+            mt="md"
           >
-            Reload page
-          </button>
+            {i18n.t("common:action.reloadPage", { defaultValue: "Reload page" })}
+          </Button>
         </div>
       );
     }

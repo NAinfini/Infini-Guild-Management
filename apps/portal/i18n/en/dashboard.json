@@ -41,5 +41,8 @@
   "eventType.social": "Social",
   "eventType.other": "Other",
   "guest.banner": "You are browsing as a guest. Log in to access all features.",
-  "guest.login": "Log in"
+  "guest.login": "Log in",
+  "card.lastWar.aria.prevWar": "Previous war",
+  "card.lastWar.aria.nextWar": "Next war",
+  "card.lastWar.aria.openHistory": "Open war history"
 }

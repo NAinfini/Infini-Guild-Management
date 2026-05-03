@@ -1,6 +1,7 @@
 ﻿import { ActionIcon, Badge, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
 import { IconChevronLeft, IconChevronRight, IconDeviceFloppy } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
 
 type GuildWarActiveTopCardProps = {
   selectedEventId: string | undefined;
@@ -41,6 +42,7 @@ export function GuildWarActiveTopCard({
   saveTeamsLabel,
   unsavedLabel,
 }: GuildWarActiveTopCardProps) {
+  const { t } = useTranslation("guild-war");
   return (
     <PortalCard interactive={false} className="guild-war-active-top-card">
       <div style={{ padding: "1.2rem" }}>
@@ -52,15 +54,15 @@ export function GuildWarActiveTopCard({
               value={activeSearch}
               onChange={(event) => onActiveSearchChange(event.currentTarget.value)}
               placeholder={searchPlaceholder}
-              aria-label="Search active guild war members"
+              aria-label={t("active.aria.searchMembers")}
             />
             {activeSearch && hasMatches ? (
               <Group gap={4} wrap="nowrap">
-                <ActionIcon variant="subtle" size="sm" onClick={onPrevMatch} disabled={!onPrevMatch} aria-label="Previous match">
+                <ActionIcon variant="subtle" size="sm" onClick={onPrevMatch} disabled={!onPrevMatch} aria-label={t("active.aria.prevMatch")}>
                   <IconChevronLeft size={14} />
                 </ActionIcon>
                 <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>{matchLabel}</Text>
-                <ActionIcon variant="subtle" size="sm" onClick={onNextMatch} disabled={!onNextMatch} aria-label="Next match">
+                <ActionIcon variant="subtle" size="sm" onClick={onNextMatch} disabled={!onNextMatch} aria-label={t("active.aria.nextMatch")}>
                   <IconChevronRight size={14} />
                 </ActionIcon>
               </Group>
@@ -69,7 +71,7 @@ export function GuildWarActiveTopCard({
               style={{ flex: "0 1 320px", marginInlineStart: "auto" }}
               value={selectedEventId ?? null}
               placeholder={eventPlaceholder}
-              aria-label="Select guild war event"
+              aria-label={t("active.aria.selectEvent")}
               onChange={(value) => onSelectedEventIdChange(value ?? "")}
               data={eventOptions}
             />
@@ -78,16 +80,16 @@ export function GuildWarActiveTopCard({
           {/* Save teams row (dirty indicator + save button) */}
           {canManage && onSaveTeams ? (
             <Group gap={8} wrap="wrap" align="center">
-              {isTeamsDirty ? <Badge color="yellow">{unsavedLabel ?? "Unsaved"}</Badge> : null}
+              {isTeamsDirty ? <Badge color="yellow">{unsavedLabel ?? t("active.unsaved")}</Badge> : null}
               <Button
                 size="xs"
-                variant="light"
+                variant="default"
                 leftSection={<IconDeviceFloppy size={16} />}
                 onClick={onSaveTeams}
                 loading={saveTeamsPending}
                 disabled={!isTeamsDirty}
               >
-                {saveTeamsLabel ?? "Save Teams"}
+                {saveTeamsLabel ?? t("active.saveTeams")}
               </Button>
             </Group>
           ) : null}

@@ -56,13 +56,18 @@
 
 .wiki-article-item {
   width: 100%; cursor: pointer; text-align: left;
-  border-radius: 8px; border: 1px solid transparent;
+  border-radius: var(--radius-sm); border: 1px solid transparent;
   padding: 8px; background: transparent;
-  transition: background 140ms ease, border-color 140ms ease;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .wiki-article-item:hover {
   border-color: color-mix(in srgb, var(--color-text, #111827) 16%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent);
+}
+
+.wiki-article-item:focus-visible {
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 28%, transparent);
   background: color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent);
 }
 
@@ -89,7 +94,7 @@
   font-size: 14px;
   font-weight: 500;
   color: color-mix(in srgb, var(--color-text, #e2e8f0) 50%, transparent);
-  transition: top 180ms ease, transform 180ms ease, font-size 180ms ease, color 180ms ease;
+  transition: top var(--transition-smooth), transform var(--transition-smooth), font-size var(--transition-smooth), color var(--transition-smooth);
   line-height: 1;
   padding: 0 4px;
   background: transparent;
@@ -102,7 +107,7 @@
   font-size: 11px;
   color: var(--color-primary, #3b82f6);
   background: color-mix(in srgb, var(--color-surface, #1a1a2e) 90%, transparent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .wiki-floating-input {
@@ -112,7 +117,7 @@
 
 .wiki-category-diagram-panel {
   border: 1px solid color-mix(in srgb, var(--color-text, #e2e8f0) 14%, transparent);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 10px 12px;
   background: color-mix(in srgb, var(--color-surface, #111827) 92%, transparent);
 }
@@ -168,4 +173,31 @@
   min-height: 1.5rem;
   display: flex;
   align-items: center;
+}
+
+@media (max-width: 1199px) {
+  .wiki-page-grid {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: auto;
+  }
+
+  .wiki-page-column {
+    min-height: auto;
+  }
+
+  .wiki-category-tree-card {
+    max-height: 240px;
+  }
+}
+
+@media (max-width: 767px) {
+  .wiki-category-tree-card {
+    max-height: 200px;
+  }
+
+  .wiki-article-list-card,
+  .wiki-article-editor-card,
+  .wiki-article-reader-card {
+    min-height: 200px;
+  }
 }

@@ -50,7 +50,7 @@ export {
 };
 export type { CreateEventPayload, EventDetailResponse };
 
-export type EventValidationReason =
+type EventValidationReason =
   | "missing_start"
   | "missing_title"
   | "invalid_capacity"
@@ -190,9 +190,6 @@ export class EventService {
   private async invalidateEvents() {
     await this.queryClient?.invalidateQueries({
       queryKey: queryKeys.events.all,
-    });
-    await this.queryClient?.invalidateQueries({
-      queryKey: queryKeys.event.all,
     });
   }
 }

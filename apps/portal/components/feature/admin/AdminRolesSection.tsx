@@ -34,14 +34,14 @@ type RolePayload = {
   name: string;
   level: number;
   color?: string | null;
-  permissions?: Partial<Record<Permission, boolean>>;
+  permissions?: Record<Permission, boolean>;
 };
 
 type RoleUpdatePayload = {
   name?: string;
   level?: number;
   color?: string | null;
-  permissions?: Partial<Record<Permission, boolean>>;
+  permissions?: Record<Permission, boolean>;
 };
 
 type AdminRolesSectionProps = {
@@ -82,10 +82,6 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
     permissions: ["admin.audit.view", "admin.audit.export"],
   },
   {
-    labelKey: "roles.category.adminBot",
-    permissions: ["admin.bot.view", "admin.bot.manage"],
-  },
-  {
     labelKey: "roles.category.adminSystem",
     permissions: ["admin.status.view", "admin.roles.view", "admin.roles.manage"],
   },
@@ -95,7 +91,7 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
   },
   {
     labelKey: "roles.category.guildWar",
-    permissions: ["guildwar.teams.edit", "guildwar.teams.post", "guildwar.history.edit"],
+    permissions: ["guildwar.teams.edit", "guildwar.history.edit"],
   },
   {
     labelKey: "roles.category.events",
@@ -398,7 +394,7 @@ export function AdminRolesSection({
                       {!selectedRole.is_builtin ? (
                         <ActionIcon
                           color="red"
-                          variant="light"
+                          variant="default"
                           size="lg"
                           onClick={() => { void handleDeleteRole(selectedRole); }}
                           loading={deleteRolePending}

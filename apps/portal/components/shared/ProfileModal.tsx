@@ -5,7 +5,7 @@ import { IconPencil } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import DOMPurify from "dompurify";
-import { MediaGallery } from "@portal/components/shared/MediaGallery";
+import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
 import styles from "./ProfileModal.module.css";
 
 type ProfileModalProps = {
@@ -34,13 +34,14 @@ export function ProfileModal({
   resolveMediaUrl = defaultMediaResolver,
 }: ProfileModalProps) {
   const { t, i18n } = useTranslation("common");
+  const mediaLabels = useMemo(() => buildMediaGalleryLabels(t), [t]);
   const [avatarLoaded, setAvatarLoaded] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const safeTitleHtml = useMemo(
     () =>
       DOMPurify.sanitize(profile?.title_html ?? "", {
         ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
-        ALLOWED_ATTR: [],
+        ALLOWED_ATTR: ["style"],
       }),
     [profile?.title_html],
   );
@@ -183,6 +184,7 @@ export function ProfileModal({
               videos={profile.video_urls}
               audioKey={profile.audio_key}
               resolveMediaUrl={resolveMediaUrl}
+              labels={mediaLabels}
             />
           </Stack>
         </div>

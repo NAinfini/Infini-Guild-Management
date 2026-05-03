@@ -109,7 +109,7 @@ export const updateMemberStatsSchema = warTeamMemberSchema
   })
   .partial();
 
-export const guildWarActivePoolMemberSchema = z.object({
+const guildWarActivePoolMemberSchema = z.object({
   id: z.string(),
   warHistoryId: z.string(),
   userId: z.string(),

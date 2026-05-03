@@ -1,4 +1,4 @@
-import { ERROR_STATUS, type ErrorCode, type Role, type StandardErrorResponse } from "@guild/shared";
+import { type ErrorCode, type Role } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -8,8 +8,7 @@ import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { deleteMediaObject, storeProfileAudio, storeProfileImage } from "../services/media";
 import { UserService } from "../services/UserService";
-
-type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
+import { buildError, parseBoolean, parseJsonBody, parsePage } from "./_shared";
 
 export const usersRoutes = new Hono();
 
@@ -20,7 +19,7 @@ function getDb(c: Context) {
 function getUserService(c: Context) {
   return new UserService(getDb(c), {
     writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(c.env as Bindings, payload),
+    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
     storeProfileImage: (userId, file) => storeProfileImage(c, userId, file),
     storeProfileAudio: (userId, file) => storeProfileAudio(c, userId, file),
     deleteMediaObject: (key) => deleteMediaObject(c, key),
@@ -28,17 +27,6 @@ function getUserService(c: Context) {
     createPasswordHash,
     destroySession: () => destroySession(c),
   });
-}
-
-function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {
-  const requestId = (c.get("requestId") as string | undefined) ?? crypto.randomUUID();
-  const body: StandardErrorResponse = {
-    error_code: code,
-    message,
-    request_id: requestId,
-    ...(details ? { details } : {}),
-  };
-  return c.json(body, ERROR_STATUS[code] as ErrorStatusCode);
 }
 
 async function requireSession(c: Context): Promise<SessionUser | Response> {
@@ -52,31 +40,12 @@ function serviceResponse(c: Context, result: { ok: true; data: unknown } | { ok:
   return buildError(c, result.code, result.message, result.details);
 }
 
-function parseBoolean(value: string | undefined): boolean | undefined {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  return undefined;
-}
-
-function parsePage(value: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-async function parseJsonBody(c: Context): Promise<unknown | Response> {
-  try {
-    return await c.req.json();
-  } catch {
-    return buildError(c, "VALIDATION_ERROR", "Invalid JSON body");
-  }
-}
-
 // --- Routes ---
 
 usersRoutes.get("/image", async (c) => {
   const key = c.req.query("key");
   if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  if (!key.startsWith("profile/")) return buildError(c, "FORBIDDEN", "Invalid profile media key");
+  if (!key.startsWith("profile/") && !key.startsWith("members/")) return buildError(c, "FORBIDDEN", "Invalid profile media key");
 
   const object = await (c.env as Bindings).MEDIA.get(key);
   if (!object?.body) return buildError(c, "NOT_FOUND", "Profile media not found");
@@ -97,12 +66,11 @@ usersRoutes.get("/", async (c) => {
 
   const result = await getUserService(c).listUsers({
     page: parsePage(query.page, 1),
-    limit: Math.min(100, parsePage(query.limit, 20)),
+    limit: Math.min(500, parsePage(query.limit, 20)),
     search: (query.search ?? "").trim().toLowerCase(),
     roleFilter: query.role as Role | undefined,
     classFilter: query.class,
     activeFilter: parseBoolean(query.active),
-    externalView: parseBoolean(query.external_view) ?? false,
     sessionUser,
   });
   return serviceResponse(c, result);
@@ -165,21 +133,6 @@ usersRoutes.delete("/:id/media/audio", async (c) => {
   const sessionUser = await requireSession(c);
   if (sessionUser instanceof Response) return sessionUser;
   return serviceResponse(c, await getUserService(c).deleteProfileAudio(sessionUser, c.req.param("id")));
-});
-
-usersRoutes.post("/:id/discord-link/verify", async (c) => {
-  const sessionUser = await requireSession(c);
-  if (sessionUser instanceof Response) return sessionUser;
-  const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
-  const code = typeof (body as { code?: unknown }).code === "string" ? (body as { code: string }).code : "";
-  return serviceResponse(c, await getUserService(c).verifyDiscordLink(sessionUser, c.req.param("id"), code));
-});
-
-usersRoutes.delete("/:id/discord-link", async (c) => {
-  const sessionUser = await requireSession(c);
-  if (sessionUser instanceof Response) return sessionUser;
-  return serviceResponse(c, await getUserService(c).unlinkDiscord(sessionUser, c.req.param("id")));
 });
 
 usersRoutes.post("/:id/change-password", async (c) => {

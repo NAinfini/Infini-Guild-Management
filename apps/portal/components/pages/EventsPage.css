@@ -1,9 +1,9 @@
-.events-filter-card {
+.events-filter-card.events-filter-card {
   position: sticky;
   top: 8px;
   z-index: var(--z-sticky);
   margin-bottom: 12px;
-  overflow: visible !important;
+  overflow: visible;
 }
 
 .events-filter-type {

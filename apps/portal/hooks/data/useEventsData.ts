@@ -1,9 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { fetchEventsList } from "../../services/EventService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersList } from "../../services/UserService";
+import { fetchUsersList } from "../../api/queries/users";
 import { useEffect, useRef, useState } from "react";
 import type { Event } from "@guild/shared";
+import { useAuthStore } from "../../stores/auth";
 
 const PAGE_LIMIT = 50;
 
@@ -14,6 +15,7 @@ type UseEventsDataOptions = {
 
 export function useEventsData(options: UseEventsDataOptions) {
   const { eventType, archivedOnly } = options;
+  const user = useAuthStore((s) => s.user);
 
   const [eventsPage, setEventsPage] = useState(1);
   const accumulatedEventsRef = useRef<Event[]>([]);
@@ -38,6 +40,8 @@ export function useEventsData(options: UseEventsDataOptions) {
         type: eventType,
         archived: archivedOnly,
       }),
+    staleTime: 10 * 60_000,
+    placeholderData: keepPreviousData,
   });
 
   // Accumulate events across pages
@@ -58,8 +62,10 @@ export function useEventsData(options: UseEventsDataOptions) {
   const eventsHasMore = accumulatedEvents.length < eventsTotal;
 
   const usersQuery = useQuery({
-    queryKey: queryKeys.events.memberPreviewUsers(),
+    queryKey: queryKeys.users.all,
     queryFn: fetchUsersList,
+    enabled: Boolean(user),
+    staleTime: 10 * 60_000,
   });
 
   return {

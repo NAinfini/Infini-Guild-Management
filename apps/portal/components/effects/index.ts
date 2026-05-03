@@ -1,5 +1,4 @@
 export { GradientText } from "./GradientText";
-export { GrainyBackground } from "./GrainyBackground";
 export { LampHeading } from "./LampHeading";
 export { BubbleBackground } from "./BubbleBackground";
 export { GlassEffect } from "./GlassEffect";

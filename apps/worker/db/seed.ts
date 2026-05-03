@@ -4,10 +4,6 @@ import { nanoid } from "nanoid";
 import {
   announcements,
   auditLog,
-  botDeliveryLog,
-  botDiscordEventMessages,
-  botWechatEventMessages,
-  discordLinkCodes,
   eventParticipants,
   events,
   galleryComments,
@@ -32,9 +28,6 @@ import { createPasswordHash } from "../services/auth";
 
 const ALL_TABLES = [
   "audit_log",
-  "bot_wechat_event_messages",
-  "bot_discord_event_messages",
-  "bot_delivery_log",
   "gallery_comments",
   "gallery_likes",
   "gallery_items",
@@ -51,7 +44,6 @@ const ALL_TABLES = [
   "announcements",
   "member_profiles",
   "sessions",
-  "discord_link_codes",
   "role_permissions",
   "roles",
   "user_auth_password",
@@ -88,15 +80,12 @@ const ROLE_PERMISSION_KEYS = [
   "admin.invite.manage",
   "admin.audit.view",
   "admin.audit.export",
-  "admin.bot.view",
-  "admin.bot.manage",
   "admin.status.view",
   "admin.roles.view",
   "admin.roles.manage",
   "admin.analytics.view",
   "admin.analytics.manage",
   "guildwar.teams.edit",
-  "guildwar.teams.post",
   "guildwar.templates",
   "guildwar.history.edit",
   "events.create",
@@ -120,12 +109,10 @@ const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
   "admin.users.edit",
   "admin.invite.view",
   "admin.audit.view",
-  "admin.bot.view",
   "admin.status.view",
   "admin.roles.view",
   "admin.analytics.view",
   "guildwar.teams.edit",
-  "guildwar.teams.post",
   "guildwar.templates",
   "guildwar.history.edit",
   "events.create",
@@ -292,7 +279,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     profileRows.push({
       id: nanoid(),
       userId,
-      wechatName: `成员${String(index + 1).padStart(2, "0")}`,
       power: 3000 + index * 120,
       classes: JSON.stringify(pickClasses(index)),
       titleHtml: `<p>Seed Title ${index + 1}</p>`,
@@ -307,8 +293,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       }),
       vacationStart,
       vacationEnd,
-      discordId: `discord_user_${index + 1}`,
-      discordReminderOptOut: index % 6 === 0,
       notes: index % 5 === 0 ? "High priority member" : vacationStart ? "Vacation scheduled" : null,
     });
   }
@@ -316,7 +300,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   const moderatorProfileRows: Array<typeof memberProfiles.$inferInsert> = moderatorIds.map((id, index) => ({
     id: nanoid(),
     userId: id,
-    wechatName: `管理${String(index + 1).padStart(2, "0")}`,
     power: 6000 + index * 500,
     classes: JSON.stringify(pickClasses(index + 5)),
     titleHtml: `<p>Moderator ${index + 1}</p>`,
@@ -327,8 +310,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     availability: JSON.stringify({ weekdayEvening: true, weekendAfternoon: true, guildWarNight: true }),
     vacationStart: null,
     vacationEnd: null,
-    discordId: `discord_mod_${index + 1}`,
-    discordReminderOptOut: false,
     notes: index === 0 ? "Lead moderator" : null,
   }));
 
@@ -336,7 +317,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     {
       id: nanoid(),
       userId: adminId,
-      wechatName: "会长",
       power: 9999,
       classes: JSON.stringify(["鸣金虹"]),
       titleHtml: "<p>Guild Leader</p>",
@@ -347,8 +327,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       availability: JSON.stringify({ all_day: true }),
       vacationStart: null,
       vacationEnd: null,
-      discordId: "discord_admin",
-      discordReminderOptOut: false,
       notes: "seed-admin",
     },
     ...moderatorProfileRows,
@@ -914,7 +892,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
         heading(1, "Welcome to Infini Guild"),
         para(txt("This guide covers everything you need to know as a new member. Read through each section carefully.")),
         heading(2, "First Steps"),
-        bulletList("Set up your profile with your in-game name and class", "Join the Discord server and link your account", "Check the events page for upcoming activities", "Review the war rotation schedule"),
+        bulletList("Set up your profile with your in-game name and class", "Check the events page for upcoming activities", "Review the war rotation schedule", "Set your availability so officers can plan events"),
         para(bold("Important:"), txt(" Make sure to set your availability in your profile so officers can plan events.")),
       ),
       sortOrder: 0,
@@ -1169,82 +1147,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   );
   await batchInsert(db, galleryComments, galleryCommentRows);
 
-  // ── Bot delivery log ──
-  const deliveryStatuses = ["queued", "sending", "sent", "failed"] as const;
-  const deliveryLogRows: Array<typeof botDeliveryLog.$inferInsert> = [];
-  for (let i = 0; i < 20; i++) {
-    const platform = i % 3 === 0 ? "wechat" : "discord";
-    const taskTypes = ["event_notify", "team_comp", "reminder", "war_result"] as const;
-    const taskType = taskTypes[i % taskTypes.length];
-    const status = deliveryStatuses[Math.min(i % 4, 3)];
-    deliveryLogRows.push({
-      id: nanoid(),
-      idempotencyKey: `seed-delivery-${platform}-${taskType}-${i}`,
-      platform,
-      taskType,
-      eventId: eventRows[i % eventRows.length].id,
-      targetId: platform === "discord" ? `discord-channel-${(i % 3) + 1}` : `wechat-room-${(i % 2) + 1}`,
-      payloadJson: JSON.stringify({
-        type: taskType,
-        eventTitle: eventRows[i % eventRows.length].title,
-        message: `Seed delivery ${i + 1}`,
-      }),
-      status,
-      attemptCount: status === "failed" ? 3 : status === "sent" ? 1 : 0,
-      lastError: status === "failed" ? "Connection timeout after 10s" : null,
-      nextAttemptAt: status === "queued" ? addMinutes(now, i * 5) : null,
-      sentAt: status === "sent" ? addMinutes(now, -(i * 2)) : null,
-      messageId: status === "sent" ? `msg-${nanoid()}` : null,
-    });
-  }
-  await batchInsert(db, botDeliveryLog, deliveryLogRows, 5);
-
-  // ── Bot Discord event messages ──
-  const discordMsgRows: Array<typeof botDiscordEventMessages.$inferInsert> = [];
-  const discordChannels = ["discord-channel-1", "discord-channel-2", "discord-channel-3"];
-  for (let i = 0; i < Math.min(eventRows.length, 8); i++) {
-    discordMsgRows.push({
-      id: nanoid(),
-      eventId: eventRows[i].id,
-      channelId: discordChannels[i % discordChannels.length],
-      messageId: `discord-msg-${nanoid()}`,
-    });
-  }
-  await db.insert(botDiscordEventMessages).values(discordMsgRows);
-
-  // ── Bot WeChat event messages ──
-  const wechatMsgRows: Array<typeof botWechatEventMessages.$inferInsert> = [];
-  const wechatRooms = ["wechat-room-1", "wechat-room-2"];
-  for (let i = 0; i < Math.min(eventRows.length, 6); i++) {
-    wechatMsgRows.push({
-      id: nanoid(),
-      eventId: eventRows[i].id,
-      roomId: wechatRooms[i % wechatRooms.length],
-      messageId: `wechat-msg-${nanoid()}`,
-    });
-  }
-  await db.insert(botWechatEventMessages).values(wechatMsgRows);
-
-  // ── Discord link codes ──
-  await db.insert(discordLinkCodes).values([
-    {
-      id: nanoid(),
-      userId: memberIds[0],
-      discordId: "discord_pending_123",
-      code: "123456",
-      expiresAt: addDays(now, 1),
-      used: false,
-    },
-    {
-      id: nanoid(),
-      userId: memberIds[1],
-      discordId: "discord_expired_456",
-      code: "654321",
-      expiresAt: addDays(now, -1),
-      used: false,
-    },
-  ]);
-
   // ── Sessions ──
   await db.insert(sessions).values([
     {
@@ -1342,16 +1244,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     },
     {
       id: nanoid(),
-      entityType: "bot",
-      action: "settings.sync",
-      actorId: moderatorIds[1],
-      entityId: "discord-notify-defaults",
-      diffTitle: "Updated Discord notification defaults",
-      detailText: JSON.stringify({ channels: ["discord-channel-1", "discord-channel-2"] }),
-      createdAt: addHours(now, -3),
-    },
-    {
-      id: nanoid(),
       entityType: "seed",
       action: "complete",
       actorId: adminId,
@@ -1370,9 +1262,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
           galleryLikes: galleryLikeRows.length,
           galleryComments: galleryCommentRows.length,
           warHistory: warHistoryRows.length,
-          botDeliveryLog: deliveryLogRows.length,
-          botDiscordMessages: discordMsgRows.length,
-          botWechatMessages: wechatMsgRows.length,
         },
       }),
       createdAt: addHours(now, -1),

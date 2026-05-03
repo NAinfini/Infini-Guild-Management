@@ -5,9 +5,9 @@
 ```
 Request → sessionMiddleware (admin only) or direct resolveSession()
         → resolveSession() [memoized per-request via Symbol on Context]
-            → sessions JOIN users LEFT JOIN roles → get roleId, roleLevel
+            → sessions JOIN users → get roleId
             → role_permissions WHERE roleId → build Set<Permission>
-            → return SessionUser { id, roleId, roleLevel, role, permissions }
+            → return SessionUser { id, roleId, role, permissions }
         → requirePermission(c, "events.manage")
             → getRequestUser(c) → checks c.get("user") first, falls back to resolveSession()
             → user.permissions.has("events.manage") → allow or 403
@@ -20,15 +20,13 @@ Request → sessionMiddleware (admin only) or direct resolveSession()
 - Add `RoleId = string` for custom role references
 - Add 4 new permissions: `admin.roles.view`, `admin.analytics.view`, `admin.analytics.manage`, `gallery.manage`
 - Add `isBuiltinRole(roleId: string): roleId is BuiltinRole`
-- Add `roleFromLevel(level: number): BuiltinRole` — maps custom role levels to compat BuiltinRole
-- Add `hasPermission(granted, required)` and `hasAnyPermission(granted, required[])` operating on `Set<Permission>`
-- Keep `hasRoleAtLeast` for backward compat (only operates on BuiltinRole)
+- Add `hasAnyPermission(granted, required[])` operating on `Set<Permission>`
 
-### New Permission Constants (24 total, up from 20)
+### New Permission Constants (22 total, up from 20)
 ```
 admin.users.view, admin.users.edit, admin.users.role, admin.users.activate,
 admin.users.delete, admin.users.password, admin.invite.view, admin.invite.manage,
-admin.audit.view, admin.audit.export, admin.bot.view, admin.bot.manage,
+admin.audit.view, admin.audit.export,
 admin.status.view, admin.analytics.view (NEW), admin.analytics.manage (NEW),
 admin.roles.view (NEW), admin.roles.manage,
 guildwar.manage, guildwar.history.edit, events.manage, announcements.manage,
@@ -72,27 +70,21 @@ export async function resolveSession(c: Context): Promise<ResolvedSession | null
 export type SessionUser = {
   id: string;
   roleId: string;        // actual role ID (builtin or custom)
-  roleLevel: number;     // from roles.level
-  role: SessionUserRole; // compat: derived BuiltinRole
+  role: BuiltinRole;     // derived BuiltinRole for display
   permissions: ReadonlySet<Permission>;
 };
 ```
 
 ### Query Changes
-1. Existing query: `sessions JOIN users` → add `LEFT JOIN roles ON users.role = roles.id` to get `roleLevel`
+1. Existing query: `sessions JOIN users` → get `roleId`
 2. New query: `SELECT permission, granted FROM role_permissions WHERE roleId = ?` — one extra query per request
 3. Build permissions via `buildPermissionSet(roleId, permissionRows)`:
    - Start with builtin defaults for known roles, empty for custom
    - Overlay stored `role_permissions` rows (granted=true adds, granted=false removes)
 
-### Compat Role Derivation
+### Role Derivation
 ```typescript
-function resolveCompatibilityRole(roleId: string, roleLevel: number | null): SessionUserRole {
-  if (isBuiltinRole(roleId)) return roleId;
-  if ((roleLevel ?? 1) >= 3) return "admin";
-  if ((roleLevel ?? 1) >= 2) return "moderator";
-  return "member";
-}
+role: isBuiltinRole(row.roleId) ? row.roleId : "member"
 ```
 
 ## 4. RBAC Middleware (`apps/worker/middleware/rbac.ts`)
@@ -191,7 +183,7 @@ Decision: **duplicate the sets in auth.ts** — they are small, stable, and avoi
 
 | Metric | Before | After |
 |---|---|---|
-| Queries per request (authed) | 1 (sessions JOIN users) | 2 (+ LEFT JOIN roles, + role_permissions WHERE) |
+| Queries per request (authed) | 1 (sessions JOIN users) | 2 (+ role_permissions WHERE) |
 | Queries per request (unauthed) | 0 | 0 |
 | Memory per request | ~50 bytes (id + role) | ~200 bytes (id + roleId + Set of 24 perms) |
 | Cache invalidation | N/A | Per-request only, no stale data risk |
@@ -201,9 +193,7 @@ The extra query is a simple index scan on `role_permissions.roleId` (composite P
 ## 10. Security Guards (Must-Fix)
 
 ### 10.1 createRole Level Guard
-`AdminService.updateRole` blocks `level > 2`, but `createRole` does NOT. An admin could create a custom role with `level=3`, which maps to `"admin"` via compat derivation.
-
-**Fix**: Add `level <= 2` validation in `createRole`, matching `updateRole`'s existing guard.
+`AdminService.updateRole` blocks `level > 2`, and `createRole` also validates. Custom roles cannot exceed moderator level.
 
 ### 10.2 Admin Role Assignment Guard
 When `batchRoleChangeSchema.new_role` is widened from `z.enum(["member", "moderator"])` to `z.string()`, it becomes possible to submit `new_role: "admin"`. The builtin `admin` role should never be assignable via API.
@@ -228,10 +218,10 @@ if (newRoleId === "admin") {
 | CSRF (Origin + X-Requested-With) | SECURE | Dual-layer protection |
 | Self-role-assignment | SECURE | Both batch and single-user methods block |
 | Frontend router guards | SECURE | Backend enforces independently |
-| createRole level guard | **FIX REQUIRED** | See 10.1 |
+| createRole level guard | SECURE | Level capped at 2 |
 | Admin role assignment | **FIX REQUIRED** | See 10.2 |
 | Archive download tokens | ACCEPTABLE | 15-min TTL, standard pre-signed URL |
-| Public data exposure (userId, username, discord_id) | BY DESIGN | Guild management requires visibility |
+| Public data exposure (userId, username) | BY DESIGN | Guild management requires visibility |
 
 ## 12. Residual Risk
 

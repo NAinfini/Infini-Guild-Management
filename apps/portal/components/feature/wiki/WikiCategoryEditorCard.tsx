@@ -168,7 +168,7 @@ function SortableCategoryRow({
           </div>
           <Button
             size="sm"
-            variant="light"
+            variant="default"
             color="red"
             leftSection={<IconTrash size={16} />}
             onClick={() => onDeleteCategory(draft.id)}
@@ -285,7 +285,7 @@ export function WikiCategoryEditorCard({
                 label={t("categoryEditor.name")}
                 value={categoryName}
                 onChange={(event) => onCategoryNameChange(event.currentTarget.value)}
-                aria-label="Wiki category name"
+                aria-label={t("aria.categoryName")}
               />
             </div>
             <DepthButton

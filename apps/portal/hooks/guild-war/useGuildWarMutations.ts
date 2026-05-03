@@ -1,4 +1,3 @@
-import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -6,16 +5,16 @@ import {
   downloadGuildWarExport,
   batchUpdateGuildWarMemberStats,
   batchDeleteGuildWarHistory,
-  postGuildWarResults,
   updateGuildWarRoleTag,
 } from "../../services/GuildWarService";
 import { useAppError } from "../useAppError";
 import { queryKeys } from "../../api/query-keys";
 import type { HistoryMemberStatsUpdate } from "../../components/feature/guild-war/WarHistoryTab";
+import { notifySuccess, notifyWarning } from "../../utils/notifications";
 
 const message = {
-  success: (content: string) => notifications.show({ color: "green", message: content }),
-  warning: (content: string) => notifications.show({ color: "yellow", message: content }),
+  success: (content: string) => notifySuccess(content),
+  warning: (content: string) => notifyWarning(content),
 };
 
 function downloadFileBlob(filename: string, blob: Blob) {
@@ -53,21 +52,11 @@ export function useGuildWarMutations({
     onSuccess: async () => {
       message.success(t("message.roleTagUpdated"));
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.guildWar.active(selectedEventId ?? "none"),
+        queryKey: queryKeys.guildWar.active(selectedEventId ?? null),
       });
     },
     onError: (error) => {
       showError(error, t("message.roleTagUpdateFailed"));
-    },
-  });
-
-  const postResultsMutation = useMutation({
-    mutationFn: postGuildWarResults,
-    onSuccess: (payload) => {
-      message.success(t("message.resultsPostSuccess", { taskId: payload.task_id }));
-    },
-    onError: (error) => {
-      showError(error, t("message.resultsPostFailed"));
     },
   });
 
@@ -160,7 +149,6 @@ export function useGuildWarMutations({
 
   return {
     roleTagMutation,
-    postResultsMutation,
     exportHistoryMutation,
     updateMemberStatsMutation,
     deleteHistoryMutation,

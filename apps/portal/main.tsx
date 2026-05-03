@@ -43,7 +43,7 @@ root.render(
           letterSpacing: "-0.03em",
         }}
       >
-        Infini Guild
+        Guild Portal
       </p>
       <p style={{ marginTop: 12, marginBottom: 0, opacity: 0.74, fontSize: "clamp(0.95rem, 2.2vw, 1.2rem)" }}>
         Loading workspace…

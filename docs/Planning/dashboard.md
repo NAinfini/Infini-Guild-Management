@@ -56,12 +56,7 @@ Quick "what's happening" overview on load. Two-column desktop layout; single-col
 
 ### Notifications Card
 
-**Status**: Component implemented but **not rendered** in v1 (feature disabled)
-
-- Component exists at `apps/portal/components/dashboard/NotificationsCard.tsx`
-- Shows announcements with "Mark All as Read" button
-- Click navigates to announcements page
-- Not included in DashboardPage layout (intentionally disabled for v1)
+**Status**: Removed — was implemented but never rendered. Can be re-created when notification feature is needed.
 
 ### Last Guild War Card
 

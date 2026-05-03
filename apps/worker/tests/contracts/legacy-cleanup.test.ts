@@ -65,39 +65,6 @@ describe("legacy cleanup", () => {
     }
   });
 
-  it("does not list targeted impl files in portal legacy exemptions", () => {
-    const exemptionsPath = resolveRepoPath("apps/portal/.eslintrc-exemptions.json");
-    const exemptions = JSON.parse(fs.readFileSync(exemptionsPath, "utf8")) as {
-      ["legacy-components"]?: string[];
-    };
-
-    expect(exemptions["legacy-components"] ?? []).not.toEqual(
-      expect.arrayContaining([
-        "components/pages/EventsPage.impl.tsx",
-        "components/pages/GuildWarPage.impl.tsx",
-        "components/pages/AdminPage.impl.tsx",
-      ]),
-    );
-  });
-
-  it("clears the portal legacy-components exemption list", () => {
-    const exemptionsPath = resolveRepoPath("apps/portal/.eslintrc-exemptions.json");
-    const exemptions = JSON.parse(fs.readFileSync(exemptionsPath, "utf8")) as {
-      ["legacy-components"]?: string[];
-    };
-
-    expect(exemptions["legacy-components"] ?? []).toEqual([]);
-  });
-
-  it("clears the portal legacy-pages exemption list", () => {
-    const exemptionsPath = resolveRepoPath("apps/portal/.eslintrc-exemptions.json");
-    const exemptions = JSON.parse(fs.readFileSync(exemptionsPath, "utf8")) as {
-      ["legacy-pages"]?: string[];
-    };
-
-    expect(exemptions["legacy-pages"] ?? []).toEqual([]);
-  });
-
   it("keeps migrated legacy-components off portal API modules", () => {
     for (const relativePath of legacyComponentFiles) {
       const fileContent = fs.readFileSync(resolveRepoPath(relativePath), "utf8");

@@ -2,7 +2,7 @@ import type { WarHistory } from "@guild/shared";
 import { NumberTicker } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
 import { ActionIcon, Avatar, Stack, Text } from "@mantine/core";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CrownOutlined,
@@ -64,7 +64,7 @@ function MvpChip({ entry, icon }: { entry: DashboardLastWarMvpEntry; icon: React
   );
 }
 
-export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory }: LastWarCardProps) {
+export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory }: LastWarCardProps) {
   const { t } = useTranslation("dashboard");
   const [index, setIndex] = useState(0);
 
@@ -84,7 +84,7 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
               disabled={!hasPrev}
               onClick={() => setIndex((i) => i - 1)}
               className="war-nav-btn"
-              aria-label="Previous war"
+              aria-label={t("card.lastWar.aria.prevWar")}
             >
               <LeftOutlined size={16} stroke={2.6} />
             </ActionIcon>
@@ -95,7 +95,7 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
               disabled={!hasNext}
               onClick={() => setIndex((i) => i + 1)}
               className="war-nav-btn"
-              aria-label="Next war"
+              aria-label={t("card.lastWar.aria.nextWar")}
             >
               <RightOutlined size={16} stroke={2.6} />
             </ActionIcon>
@@ -113,7 +113,7 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
                 <ActionIcon
                   onClick={() => onOpenHistory(war.war_name)}
                   className="war-share-btn"
-                  aria-label="Open war history"
+                  aria-label={t("card.lastWar.aria.openHistory")}
                 >
                   <GoToOutlined size={15} stroke={2.4} />
                 </ActionIcon>
@@ -192,4 +192,4 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
       )}
     </PortalCard>
   );
-}
+});

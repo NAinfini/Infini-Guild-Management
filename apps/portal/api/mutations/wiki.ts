@@ -53,12 +53,6 @@ export function updateWikiArticle(id: string, payload: UpdateWikiArticlePayload,
   });
 }
 
-export function archiveWikiArticle(id: string): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>(`/api/wiki/articles/${id}`, {
-    method: "DELETE",
-  });
-}
-
 export function uploadWikiArticleImages(
   articleId: string,
   files: File[],

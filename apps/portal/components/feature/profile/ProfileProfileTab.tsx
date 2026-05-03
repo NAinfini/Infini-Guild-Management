@@ -1,15 +1,15 @@
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { PortalCard } from "../../shared/PortalCard";
-import { Badge, Button, Group, NumberInput, Select, Stack, Text, TextInput, Textarea } from "@mantine/core";
-import { IconExternalLink, IconPlus, IconDeviceFloppy } from "@tabler/icons-react";
+import { FloatingSaveBar } from "../../shared/FloatingSaveBar";
+import { Button, Group, NumberInput, Select, Stack, Text, TextInput, Textarea } from "@mantine/core";
+import { IconExternalLink, IconPlus } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import DOMPurify from "dompurify";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 
 type ProfileProfileTabProps = {
-  wechatName: string;
   power: number;
   classDraft: string;
   classOptions: Array<{ value: string; label: string }>;
@@ -17,9 +17,7 @@ type ProfileProfileTabProps = {
   titleHtml: string;
   onTitleHtmlChange: (value: string) => void;
   bio: string;
-  discordId: string | null;
   classSensors: ReturnType<typeof import("@dnd-kit/core").useSensors>;
-  onWechatNameChange: (value: string) => void;
   onPowerChange: (value: number) => void;
   onClassDraftChange: (value: string) => void;
   onAddClass: () => void;
@@ -33,7 +31,6 @@ type ProfileProfileTabProps = {
 };
 
 export function ProfileProfileTab({
-  wechatName,
   power,
   classDraft,
   classOptions,
@@ -41,9 +38,7 @@ export function ProfileProfileTab({
   titleHtml,
   onTitleHtmlChange,
   bio,
-  discordId,
   classSensors,
-  onWechatNameChange,
   onPowerChange,
   onClassDraftChange,
   onAddClass,
@@ -59,36 +54,14 @@ export function ProfileProfileTab({
   return (
     <Stack gap={16}>
       <PortalCard interactive={false}>
-        <Group justify="flex-end" gap={8} p="1.2rem">
-          <Badge color={isDirty ? "yellow" : "green"}>
-            {isDirty ? t("status.unsavedChanges") : t("status.saved")}
-          </Badge>
-          <Button onClick={onSaveProfile} loading={savePending} leftSection={<IconDeviceFloppy size={16} />}>
-            {t("action.saveProfile")}
-          </Button>
-        </Group>
-      </PortalCard>
-
-      <PortalCard interactive={false}>
         <Stack gap={14} p="1.2rem">
           <Text fw={700} size="md">{t("section.basicInfo")}</Text>
 
-          <TextInput
-            label={t("field.wechat")}
-            value={wechatName}
-            onChange={(event) => onWechatNameChange(event.currentTarget.value)}
-            placeholder={t("field.wechatPlaceholder")}
-          />
           <NumberInput
             label={t("field.power")}
             value={power}
+            decimalScale={2}
             onChange={(value) => onPowerChange(typeof value === "number" ? value : 0)}
-          />
-          <TextInput
-            label={t("field.discordId")}
-            value={discordId ?? "-"}
-            readOnly
-            variant="filled"
           />
         </Stack>
       </PortalCard>
@@ -103,7 +76,7 @@ export function ProfileProfileTab({
               data={classOptions}
               style={{ flex: 1 }}
               placeholder={t("field.selectClass")}
-              aria-label="Select class"
+              aria-label={t("aria.selectClass")}
               onChange={(value) => onClassDraftChange(value ?? "")}
               onSearchChange={(value) => onClassDraftChange(value)}
             />
@@ -122,9 +95,9 @@ export function ProfileProfileTab({
           <Text fw={700} size="md">{t("section.about")}</Text>
           <TextInput
             label={
-              <Group gap={8} align="center">
+              <Group gap={8} align="center" wrap="nowrap">
                 <span>{t("field.titleHtml")}</span>
-                <Text component={Link} to="/tools" size="xs" c="dimmed" td="underline" style={{ cursor: "pointer" }}>
+                <Text component={Link} to="/tools" size="xs" c="dimmed" td="underline" style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
                   {t("action.titleGenerator")} <IconExternalLink size={12} style={{ verticalAlign: "middle" }} />
                 </Text>
               </Group>
@@ -148,6 +121,7 @@ export function ProfileProfileTab({
           />
         </Stack>
       </PortalCard>
+      <FloatingSaveBar isDirty={isDirty} saving={savePending} onSave={onSaveProfile} />
     </Stack>
   );
 }

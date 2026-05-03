@@ -47,11 +47,8 @@
   "status.saved": "已保存",
   "status.unsaved": "未保存",
   "section.publishing": "发布设置",
-  "section.notifications": "通知",
   "section.schedule": "定时",
   "section.actions": "操作",
-  "notify.discord": "Discord",
-  "notify.wechat": "微信",
   "meta.scheduled": "定时发布：{{datetime}}",
   "meta.expires": "过期时间：{{datetime}}",
   "meta.updated": "更新于：{{datetime}}",
@@ -81,5 +78,10 @@
   "confirm.discardUnsaved.description": "当前公告编辑内容将丢失。",
   "validation.schedulePast": "定时发布时间必须晚于当前时间。",
   "validation.expiresBeforePublish": "过期时间必须晚于发布时间。",
-  "action.loadMore": "加载更多"
+  "action.loadMore": "加载更多",
+  "aria.title": "公告标题",
+  "aria.publishTime": "公告发布时间",
+  "aria.expireTime": "公告过期时间",
+  "aria.searchAnnouncements": "搜索公告",
+  "aria.openAnnouncement": "打开公告 {{title}}"
 }

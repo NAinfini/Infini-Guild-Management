@@ -1,7 +1,7 @@
 import type { Event } from "@guild/shared";
 import { PortalCard } from "../shared/PortalCard";
 import { Badge, Group, Stack, Text, Tooltip } from "@mantine/core";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { UserCheckOutlined } from "../../utils/icons";
 import { cardHeading, eventTypeTagColor, formatDateTime, type DashboardMySignupEvent } from "./shared";
@@ -16,7 +16,7 @@ function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-export function MySignupsCard({ mySignupEvents, now, onOpenEvent }: MySignupsCardProps) {
+export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, onOpenEvent }: MySignupsCardProps) {
   const { t, i18n } = useTranslation("dashboard");
 
   const days = useMemo(() => {
@@ -127,4 +127,4 @@ export function MySignupsCard({ mySignupEvents, now, onOpenEvent }: MySignupsCar
       </Group>
     </PortalCard>
   );
-}
+});

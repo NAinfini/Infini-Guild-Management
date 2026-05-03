@@ -17,7 +17,6 @@ import type {
   adminRoleSchema,
   rolePermissionsSchema,
 } from "../schemas/admin";
-import type { botTaskSchema, botSettingsSchema } from "../schemas/bot";
 
 export type User = z.infer<typeof userSchema>;
 export type MemberProfile = z.infer<typeof memberProfileSchema>;
@@ -38,8 +37,6 @@ export type InviteLinkStats = z.infer<typeof inviteLinkStatsSchema>;
 export type AuditLogEntry = z.infer<typeof auditLogSchema>;
 export type AdminRole = z.infer<typeof adminRoleSchema>;
 export type RolePermissions = z.infer<typeof rolePermissionsSchema>;
-export type BotTask = z.infer<typeof botTaskSchema>;
-export type BotSettings = z.infer<typeof botSettingsSchema>;
 
 export type PaginatedResponse<T> = {
   data: T[];
@@ -54,13 +51,6 @@ export type CursorResponse<T> = {
   next_cursor: string | null;
 };
 
-export type ApiError = {
-  error_code: string;
-  message: string;
-  request_id: string;
-  details?: unknown;
-};
-
 export type EntityChangedPushMessage = {
   type: "entity_changed";
   entity_type: string;
@@ -72,17 +62,8 @@ export type EntityChangedPushMessage = {
 export type MemberOnlinePushMessage = {
   type: "member_online";
   user_id: string;
-  source: "portal" | "discord" | "wechat";
+  source: "portal";
   online_at: string;
-};
-
-export type EventReminderPushMessage = {
-  type: "event_reminder";
-  event_id: string;
-  title: string;
-  starts_at: string;
-  platforms: Array<"discord" | "wechat">;
-  generated_at: string;
 };
 
 export type AnnouncementPublishedPushMessage = {
@@ -110,8 +91,5 @@ export type HeartbeatAckMessage = {
 export type PushMessage =
   | EntityChangedPushMessage
   | MemberOnlinePushMessage
-  | EventReminderPushMessage
   | AnnouncementPublishedPushMessage
   | HeartbeatAckMessage;
-
-export type RoleLevel = { admin: 3; moderator: 2; member: 1 };

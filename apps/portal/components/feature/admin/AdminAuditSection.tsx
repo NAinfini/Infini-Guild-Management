@@ -4,8 +4,7 @@ import { PortalCard } from "../../shared/PortalCard";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
 import { formatAuditDiffHeader, formatDateTime, maskIdentifier } from "../../../utils/admin";
-import { canManageRoles, canManageBot, canViewStatus } from "../../../utils/permissions";
-import { AuditArchiveExplorer } from "./AuditArchiveExplorer";
+import { canManageRoles, canViewStatus } from "../../../utils/permissions";
 import { AuditLogViewer } from "./AuditLogViewer";
 
 type AuditRow = AuditLogEntry;
@@ -28,20 +27,8 @@ type AdminAuditSectionProps = {
   auditPageSize: number;
   auditTotal: number;
   onAuditPageChange: (nextPage: number) => void;
-  showArchiveExplorer: boolean;
-  archiveMonths: string[];
-  archiveMonthsLoading: boolean;
-  archiveMonthsError: boolean;
-  selectedArchiveMonth: string | null;
-  onArchiveMonthChange: (month: string) => void;
-  archiveLoading: boolean;
-  archiveError: boolean;
-  archiveRows: AuditRow[];
-  archivePageCurrent: number;
-  archivePageSize: number;
-  archiveTotal: number;
-  onArchivePageChange: (nextPage: number) => void;
   rolesData: import("@guild/shared").AdminRole[];
+  userMap?: Map<string, string>;
 };
 
 export function AdminAuditSection({
@@ -62,20 +49,8 @@ export function AdminAuditSection({
   auditPageSize,
   auditTotal,
   onAuditPageChange,
-  showArchiveExplorer,
-  archiveMonths,
-  archiveMonthsLoading,
-  archiveMonthsError,
-  selectedArchiveMonth,
-  onArchiveMonthChange,
-  archiveLoading,
-  archiveError,
-  archiveRows,
-  archivePageCurrent,
-  archivePageSize,
-  archiveTotal,
-  onArchivePageChange,
   rolesData,
+  userMap,
 }: AdminAuditSectionProps) {
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
@@ -83,7 +58,6 @@ export function AdminAuditSection({
   const isAdmin = Boolean(
     user &&
       (canManageRoles(rolesData, user.role) ||
-        canManageBot(rolesData, user.role) ||
         canViewStatus(rolesData, user.role)),
   );
   const loadErrorMessage = tc("loadError");
@@ -120,14 +94,14 @@ export function AdminAuditSection({
             <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("7d")}>{t("audit.last7Days")}</Button>
             <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("1m")}>{t("audit.lastMonth")}</Button>
             <Button
-              variant="light"
+              variant="default"
               onClick={onDownloadFilteredCsv}
               loading={exportAuditLogPending}
             >
               {t("audit.downloadFilteredCsv")}
             </Button>
             <Button
-              variant="light"
+              variant="default"
               onClick={onDownloadFilteredJson}
               loading={exportAuditLogPending}
             >
@@ -150,24 +124,8 @@ export function AdminAuditSection({
         maskIdentifier={maskIdentifier}
         formatAuditDiffHeader={formatAuditDiffHeader}
         formatDateTime={formatDateTime}
+        userMap={userMap}
       />
-
-      {showArchiveExplorer ? (
-        <AuditArchiveExplorer
-          months={archiveMonths}
-          monthsLoading={archiveMonthsLoading}
-          monthsError={archiveMonthsError}
-          selectedMonth={selectedArchiveMonth}
-          onSelectMonth={onArchiveMonthChange}
-          archiveLoading={archiveLoading}
-          archiveError={archiveError}
-          archiveRows={archiveRows}
-          archivePageCurrent={archivePageCurrent}
-          archivePageSize={archivePageSize}
-          archiveTotal={archiveTotal}
-          onArchivePageChange={onArchivePageChange}
-        />
-      ) : null}
     </Stack>
   );
 }

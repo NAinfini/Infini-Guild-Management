@@ -231,9 +231,37 @@ function NotFoundPage(): ReactNode {
   );
 }
 
+function RouteErrorFallback(): ReactNode {
+  const { t } = useTranslation("common");
+  return (
+    <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
+      <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.15, color: "#dc2626" }}>{t("errors.somethingWentWrong")}</span>
+      <span style={{ fontSize: 16, fontWeight: 600 }}>{t("errors.generic")}</span>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        style={{
+          marginTop: 8,
+          padding: "8px 20px",
+          borderRadius: 8,
+          border: "none",
+          background: "var(--color-primary, #3b82f6)",
+          color: "#fff",
+          fontSize: 14,
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        {t("action.reloadPage")}
+      </button>
+    </div>
+  );
+}
+
 const rootRoute = createRootRoute({
   component: AppShell,
   notFoundComponent: NotFoundPage,
+  errorComponent: RouteErrorFallback,
   beforeLoad: async () => {
     if (!useAuthStore.getState().user) {
       try {

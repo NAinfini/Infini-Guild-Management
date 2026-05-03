@@ -12,7 +12,5 @@ export * from "./schemas/guild-war";
 export * from "./schemas/wiki";
 export * from "./schemas/gallery";
 export * from "./schemas/admin";
-export * from "./schemas/bot";
 
 export * from "./types";
-export * from "./api/registry";

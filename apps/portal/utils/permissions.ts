@@ -1,7 +1,7 @@
 import type { Permission, User } from "@guild/shared";
 import type { AdminRole } from "@guild/shared";
 
-export function hasAnyPermission(
+function hasAnyPermission(
   roles: AdminRole[],
   roleId: string,
   permissions: Permission[]
@@ -16,7 +16,6 @@ export function canAccessAdmin(roles: AdminRole[], roleId: string): boolean {
     "admin.users.view",
     "admin.invite.view",
     "admin.audit.view",
-    "admin.bot.view",
     "admin.status.view",
     "admin.roles.manage",
   ]);
@@ -24,10 +23,6 @@ export function canAccessAdmin(roles: AdminRole[], roleId: string): boolean {
 
 export function canManageRoles(roles: AdminRole[], roleId: string): boolean {
   return hasAnyPermission(roles, roleId, ["admin.roles.manage"]);
-}
-
-export function canManageBot(roles: AdminRole[], roleId: string): boolean {
-  return hasAnyPermission(roles, roleId, ["admin.bot.manage"]);
 }
 
 export function canViewStatus(roles: AdminRole[], roleId: string): boolean {
@@ -52,7 +47,6 @@ export function userCanAccessAdmin(user: User | null): boolean {
     "admin.users.view",
     "admin.invite.view",
     "admin.audit.view",
-    "admin.bot.view",
     "admin.status.view",
     "admin.roles.manage",
   ]);
@@ -62,14 +56,6 @@ export function userCanManageRoles(user: User | null): boolean {
   return userHasPermission(user, "admin.roles.manage");
 }
 
-export function userCanManageBot(user: User | null): boolean {
-  return userHasPermission(user, "admin.bot.manage");
-}
-
 export function userCanViewStatus(user: User | null): boolean {
   return userHasPermission(user, "admin.status.view");
-}
-
-export function userCanExportAudit(user: User | null): boolean {
-  return userHasPermission(user, "admin.audit.export");
 }

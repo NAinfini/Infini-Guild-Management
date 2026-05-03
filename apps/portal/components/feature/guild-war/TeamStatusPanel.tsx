@@ -1,10 +1,10 @@
 import type { GuildWarActiveResponse } from "@guild/shared";
 import { Button, Group, Select, Stack, Switch, TagsInput, Text, TextInput } from "@mantine/core";
 import { IconCopy, IconDeviceFloppy, IconTrash } from "@tabler/icons-react";
-import { useState, useEffect } from "react";
+import { memo, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { copyPlainText } from "../../../utils/copy";
-import { notifications } from "@mantine/notifications";
+import { notifySuccess } from "../../../utils/notifications";
 
 const ROLE_TAG_PRESETS = ["tank", "dps", "heal", "lead", "support", "flex"] as const;
 
@@ -40,7 +40,7 @@ type TeamStatusPanelProps = {
   onMoveTeamOrder: (teamId: string, direction: "up" | "down") => void;
 };
 
-export function TeamStatusPanel({
+export const TeamStatusPanel = memo(function TeamStatusPanel({
   team,
   teamIndex,
   totalTeams,
@@ -86,7 +86,7 @@ export function TeamStatusPanel({
         />
         <Button
           size="xs"
-          variant="light"
+          variant="default"
           onClick={() => onMoveTeamOrder(team.id, "up")}
           disabled={draftLocked || teamIndex === 0}
         >
@@ -94,7 +94,7 @@ export function TeamStatusPanel({
         </Button>
         <Button
           size="xs"
-          variant="light"
+          variant="default"
           onClick={() => onMoveTeamOrder(team.id, "down")}
           disabled={draftLocked || teamIndex === totalTeams - 1}
         >
@@ -102,13 +102,13 @@ export function TeamStatusPanel({
         </Button>
         <Button
           size="xs"
-          variant="light"
+          variant="default"
           leftSection={<IconCopy size={16} />}
           onClick={() => {
             void copyPlainText(
               `${draftName.trim() || team.team_name}: ${team.members.map((m) => `@${m.user_id}`).join(", ")}`,
             );
-            notifications.show({ color: "green", message: t("active.teamCopied") });
+            notifySuccess(t("active.teamCopied"));
           }}
         >
           {t("active.teamSetup.copyLabel")}
@@ -119,7 +119,7 @@ export function TeamStatusPanel({
           value={draftName}
           onChange={(event) => onDraftNameChange(team.id, event.currentTarget.value)}
           disabled={draftLocked}
-          aria-label={`Team name for ${team.team_name}`}
+          aria-label={t("active.aria.teamName", { teamName: team.team_name })}
           placeholder={t("active.teamSetup.namePlaceholder")}
           style={{ flex: "1 1 180px" }}
         />
@@ -127,7 +127,7 @@ export function TeamStatusPanel({
           value={draftNotes}
           onChange={(event) => onDraftNotesChange(team.id, event.currentTarget.value)}
           disabled={draftLocked}
-          aria-label={`Team notes for ${team.team_name}`}
+          aria-label={t("active.aria.teamNotes", { teamName: team.team_name })}
           placeholder={t("active.teamSetup.notesPlaceholder")}
           style={{ flex: "2 1 220px" }}
         />
@@ -149,7 +149,7 @@ export function TeamStatusPanel({
         />
         <Button
           size="xs"
-          variant="light"
+          variant="default"
           color="red"
           leftSection={<IconTrash size={16} />}
           disabled={draftLocked || !selectedEventId || !roleEditor?.userId}
@@ -182,7 +182,7 @@ export function TeamStatusPanel({
         </Text>
         <Button
           size="xs"
-          variant="light"
+          variant="default"
           leftSection={<IconDeviceFloppy size={16} />}
           disabled={draftLocked || !selectedEventId || !roleEditor?.userId}
           loading={roleTagMutation.isPending}
@@ -200,4 +200,4 @@ export function TeamStatusPanel({
       </Group>
     </Stack>
   );
-}
+});

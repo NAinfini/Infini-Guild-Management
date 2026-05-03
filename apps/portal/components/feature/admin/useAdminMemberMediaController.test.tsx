@@ -48,7 +48,7 @@ vi.mock("@mantine/notifications", () => ({
   notifications: notificationMocks,
 }));
 
-vi.mock("../../../services/UserService", () => ({
+vi.mock("../../../api/mutations/users", () => ({
   deleteProfileAudio: serviceMocks.deleteProfileAudio,
   deleteProfileImage: serviceMocks.deleteProfileImage,
   updateMyProfile: serviceMocks.updateMyProfile,

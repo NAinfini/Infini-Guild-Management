@@ -32,6 +32,7 @@ vi.mock("@portal/components/shared/MediaGallery", () => ({
       ))}
     </div>
   ),
+  buildMediaGalleryLabels: () => ({}),
 }));
 
 describe("EventDetailModal", () => {

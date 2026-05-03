@@ -34,7 +34,7 @@
   grid-template-columns: 240px minmax(0, 1fr);
   gap: 0;
   border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   min-height: 520px;
 }
@@ -64,11 +64,11 @@
 .admin-roles-sidebar-item {
   width: 100%;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   position: relative;
   transition:
-    background 140ms ease,
-    color 140ms ease;
+    background var(--transition-normal),
+    color var(--transition-normal);
 }
 
 .admin-roles-sidebar-item:hover {
@@ -87,7 +87,7 @@
   top: 6px;
   bottom: 6px;
   width: 3px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-primary, #3b82f6);
 }
 

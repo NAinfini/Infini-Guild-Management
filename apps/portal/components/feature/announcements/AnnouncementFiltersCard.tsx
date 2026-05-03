@@ -36,14 +36,14 @@ export function AnnouncementFiltersCard({
           <TextInput
             className="announcements-filter-search"
             placeholder={t("filter.search")}
-            aria-label="Search announcements"
+            aria-label={t("aria.searchAnnouncements")}
             value={search}
             onChange={(event) => onSearchChange(event.currentTarget.value)}
           />
           <DepthToggle
             pressed={pinnedFilter}
             onToggle={onPinnedFilterChange}
-            type="secondary"
+            type="primary"
             size="sm"
             iconOnly
             aria-label={t("filter.pinned")}
@@ -54,7 +54,7 @@ export function AnnouncementFiltersCard({
           <DepthToggle
             pressed={statusFilter === "archived"}
             onToggle={(nextPressed) => handleStatusToggle("archived", nextPressed)}
-            type="secondary"
+            type="primary"
             size="sm"
             iconOnly
             aria-label={t("filter.archived")}
@@ -67,7 +67,7 @@ export function AnnouncementFiltersCard({
               <DepthToggle
                 pressed={statusFilter === "draft"}
                 onToggle={(nextPressed) => handleStatusToggle("draft", nextPressed)}
-                type="secondary"
+                type="primary"
                 size="sm"
                 iconOnly
                 aria-label={t("filter.draft")}
@@ -78,7 +78,7 @@ export function AnnouncementFiltersCard({
               <DepthToggle
                 pressed={statusFilter === "scheduled"}
                 onToggle={(nextPressed) => handleStatusToggle("scheduled", nextPressed)}
-                type="secondary"
+                type="primary"
                 size="sm"
                 iconOnly
                 aria-label={t("filter.scheduled")}

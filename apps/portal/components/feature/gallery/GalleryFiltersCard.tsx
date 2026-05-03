@@ -82,8 +82,8 @@ export function GalleryFiltersCard({
             aria-label={t("aria.filterByType")}
             onChange={(value) => onTypeFilterChange((value as "image" | "video" | null) ?? undefined)}
             data={[
-              { value: "image", label: "image" },
-              { value: "video", label: "video" },
+              { value: "image", label: t("type.image") },
+              { value: "video", label: t("type.video") },
             ]}
           />
           <SegmentedControl

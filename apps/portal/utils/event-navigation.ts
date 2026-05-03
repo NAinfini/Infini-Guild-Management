@@ -1,7 +1,7 @@
 import { EVENT_TYPES } from "@guild/shared";
 import { z } from "zod";
 
-export const EVENT_WORKBENCH_VIEW_MODES = ["cards", "month", "recurring"] as const;
+const EVENT_WORKBENCH_VIEW_MODES = ["cards", "month", "recurring"] as const;
 
 export type EventWorkbenchViewMode = (typeof EVENT_WORKBENCH_VIEW_MODES)[number];
 export type EventTypeFilter = (typeof EVENT_TYPES)[number];
@@ -37,7 +37,10 @@ export const EVENTS_ROUTE_SEARCH_SCHEMA = z.object({
   archived: z.preprocess(parseBooleanSearchValue, z.boolean().optional()),
   pinned: z.preprocess(parseBooleanSearchValue, z.boolean().optional()),
   locked: z.preprocess(parseBooleanSearchValue, z.boolean().optional()),
-  view: z.enum(EVENT_WORKBENCH_VIEW_MODES).optional(),
+  view: z.preprocess(
+    (val) => (typeof val === "string" && (EVENT_WORKBENCH_VIEW_MODES as readonly string[]).includes(val) ? val : undefined),
+    z.enum(EVENT_WORKBENCH_VIEW_MODES).optional(),
+  ),
   eventId: z.string().optional(),
 });
 

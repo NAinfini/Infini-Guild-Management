@@ -7,6 +7,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { wikiArticles, wikiCategories } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
+import { escapeLikePattern } from "./helpers";
 
 // --- Types ---
 
@@ -31,10 +32,6 @@ function slugify(value: string): string {
   return normalized || `wiki-${nanoid(6)}`;
 }
 
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, "\\$&");
-}
-
 function toCategoryPayload(row: CategoryRow) {
   return wikiCategorySchema.parse({ id: row.id, name: row.name, slug: row.slug, sort_order: row.sortOrder, parent_id: row.parentId, created_at: row.createdAt, updated_at: row.updatedAt });
 }
@@ -45,6 +42,18 @@ function toArticlePayload(row: ArticleRow) {
 
 const CATEGORY_COLS = { id: wikiCategories.id, name: wikiCategories.name, slug: wikiCategories.slug, sortOrder: wikiCategories.sortOrder, parentId: wikiCategories.parentId, createdAt: wikiCategories.createdAt, updatedAt: wikiCategories.updatedAt } as const;
 const ARTICLE_COLS = { id: wikiArticles.id, title: wikiArticles.title, slug: wikiArticles.slug, categoryId: wikiArticles.categoryId, bodyJson: wikiArticles.bodyJson, sortOrder: wikiArticles.sortOrder, pinned: wikiArticles.pinned, archivedAt: wikiArticles.archivedAt, createdBy: wikiArticles.createdBy, updatedBy: wikiArticles.updatedBy, createdAt: wikiArticles.createdAt, updatedAt: wikiArticles.updatedAt } as const;
+
+const LIST_ARTICLE_COLS = { id: wikiArticles.id, title: wikiArticles.title, slug: wikiArticles.slug, categoryId: wikiArticles.categoryId, sortOrder: wikiArticles.sortOrder, pinned: wikiArticles.pinned, archivedAt: wikiArticles.archivedAt, createdBy: wikiArticles.createdBy, updatedBy: wikiArticles.updatedBy, createdAt: wikiArticles.createdAt, updatedAt: wikiArticles.updatedAt } as const;
+
+type ArticleListRow = Omit<ArticleRow, "bodyJson">;
+
+function toArticleListPayload(row: ArticleListRow) {
+  return {
+    id: row.id, title: row.title, slug: row.slug, category_id: row.categoryId, body_json: "",
+    sort_order: row.sortOrder, pinned: row.pinned, archived_at: row.archivedAt,
+    created_by: row.createdBy, updated_by: row.updatedBy, created_at: row.createdAt, updated_at: row.updatedAt,
+  };
+}
 
 // --- Service ---
 
@@ -172,8 +181,8 @@ export class WikiService {
     const whereClause = and(...filters);
     const totalRow = (await this.db.select({ count: sql<number>`count(*)` }).from(wikiArticles).where(whereClause))[0];
     const total = Number(totalRow?.count ?? 0);
-    const rows = await this.db.select(ARTICLE_COLS).from(wikiArticles).where(whereClause).orderBy(desc(wikiArticles.pinned), asc(wikiArticles.sortOrder), desc(wikiArticles.updatedAt), asc(wikiArticles.id)).limit(opts.limit).offset(offset);
-    return ok({ data: rows.map(toArticlePayload), total, page: opts.page, limit: opts.limit, total_pages: Math.max(1, Math.ceil(total / opts.limit)) });
+    const rows = await this.db.select(LIST_ARTICLE_COLS).from(wikiArticles).where(whereClause).orderBy(desc(wikiArticles.pinned), asc(wikiArticles.sortOrder), desc(wikiArticles.updatedAt), asc(wikiArticles.id)).limit(opts.limit).offset(offset);
+    return ok({ data: rows.map(toArticleListPayload), total, page: opts.page, limit: opts.limit, total_pages: Math.max(1, Math.ceil(total / opts.limit)) });
   }
 
   async getArticleBySlug(slug: string): Promise<ServiceResult<unknown>> {

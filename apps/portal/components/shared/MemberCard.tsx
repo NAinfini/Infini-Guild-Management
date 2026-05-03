@@ -72,7 +72,7 @@ export const MemberCard = memo(function MemberCard({
     () =>
       DOMPurify.sanitize(profile.title_html ?? "", {
         ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
-        ALLOWED_ATTR: [],
+        ALLOWED_ATTR: ["style"],
       }),
     [profile.title_html],
   );

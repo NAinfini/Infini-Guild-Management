@@ -4,8 +4,8 @@ import {
   toTeamPayload,
   toMemberPayload,
   buildWarEtag,
-  parseRecurrenceRule,
 } from "../GuildWarService";
+import { parseRecurrenceRule } from "../EventService";
 
 const historyRow = {
   id: "war-1",

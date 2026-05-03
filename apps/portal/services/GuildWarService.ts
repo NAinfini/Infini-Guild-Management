@@ -4,7 +4,6 @@ import {
   batchDeleteGuildWarHistory,
   deleteGuildWarHistory,
   moveGuildWarMember,
-  postGuildWarResults,
   saveGuildWarTeams as saveGuildWarTeamsMutation,
   type SaveTeamsPayload,
   updateGuildWarRoleTag,
@@ -31,17 +30,16 @@ export {
   fetchGuildWarHistoryBatch,
   fetchGuildWarHistoryDetail,
   moveGuildWarMember,
-  postGuildWarResults,
   updateGuildWarRoleTag,
 };
 
 export const ANALYTICS_SELECTION_SOFT_CAP = 10;
-export const ANALYTICS_SELECTION_HARD_CAP = 20;
+const ANALYTICS_SELECTION_HARD_CAP = 20;
 
 type GuildWarTeam = GuildWarActiveResponse["teams"][number];
 type GuildWarPoolMember = GuildWarActiveResponse["pool"][number];
 
-export type PersistTeamSnapshotInput = {
+type PersistTeamSnapshotInput = {
   eventId: string;
   teams: GuildWarTeam[];
   pool: GuildWarPoolMember[];
@@ -51,7 +49,7 @@ export type PersistTeamSnapshotInput = {
   etag?: string;
 };
 
-export type AnalyticsSelectionResult =
+type AnalyticsSelectionResult =
   | { selection: string[]; warning: null }
   | { selection: string[]; warning: { type: "large"; count: number } }
   | { selection: string[]; warning: { type: "capped"; cap: number } };

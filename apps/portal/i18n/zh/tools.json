@@ -10,6 +10,7 @@
   "sandbox.section.typography": "排版",
   "sandbox.section.livePreview": "实时预览",
   "sandbox.section.generatedHtml": "生成的 HTML",
+  "sandbox.section.htmlSource": "HTML 源码",
   "sandbox.section.customHtmlOverride": "自定义 HTML 覆盖",
   "sandbox.label.opacity": "透明度",
   "sandbox.label.recent": "最近使用",

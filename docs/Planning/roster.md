@@ -13,7 +13,7 @@ Member directory with fancy, readable cards and a profile modal overlay. Externa
 ### Roster Card Grid
 
 - Responsive card grid (not a table): 1 col mobile, 2 sm, 3 lg, 4 xl, up to 8 on 2xl
-- Staggered entrance animation via dev-kit `StaggerList` (staggerChildren: 0.03)
+- Staggered entrance animation (staggerChildren: 0.03)
 - Clicking a card opens Profile Modal (overlay)
 
 #### Roster Card Design (from BaiYe Portal)
@@ -65,7 +65,7 @@ Audio rules:
 
 ### Filters & Sorting
 
-- Search: username + wechat_name
+- Search: username
 - Sort (client-side): Power desc (default), Username A-Z, Class
 - Saved views: per-user localStorage (no DB persistence)
 

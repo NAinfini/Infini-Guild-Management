@@ -9,11 +9,10 @@ import { useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { modals } from "@mantine/modals";
-import { useAuthStore } from "../../../stores/auth";
-import { userHasPermission } from "../../../utils/permissions";
+import { useEffectivePermissions } from "../../../hooks/useEffectivePermissions";
 import { formatDateTime } from "../../../utils/admin";
 import { copyPlainText } from "../../../utils/copy";
-import type { InviteLinkStatsSummary } from "../../../services/AdminService";
+import type { InviteLinkStatsSummary } from "../../../api/queries/admin";
 
 type InviteRow = InviteLink;
 type InviteStats = InviteLinkStatsSummary;
@@ -59,8 +58,8 @@ export function AdminInviteSection({
 }: AdminInviteSectionProps) {
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
-  const user = useAuthStore((state) => state.user);
-  const isAdmin = userHasPermission(user, "admin.invite.manage");
+  const { canManage: canManagePermission } = useEffectivePermissions();
+  const isAdmin = canManagePermission(["admin.invite.manage"]);
   const loadErrorMessage = tc("loadError");
   const [createModalOpen, createModalHandlers] = useDisclosure(false);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -175,12 +174,8 @@ export function AdminInviteSection({
               <Button size="xs" leftSection={<IconCopy size={16} />} onClick={() => handleCopyInviteLink(row.original)} disabled={inactive}>
                 {t("invite.copy")}
               </Button>
-              <DepthButton size="sm" type="danger" before={<IconBan size={16} />} disabled={inactive} onClick={() => handleRevokeInvite(row.original)}>
-                {t("invite.revoke")}
-              </DepthButton>
-              <DepthButton size="sm" type="danger" before={<IconTrash size={16} />} onClick={() => handleDeleteInvite(row.original)}>
-                {t("invite.delete")}
-              </DepthButton>
+              <DepthButton size="sm" type="danger" iconOnly before={<IconBan size={16} />} disabled={inactive} onClick={() => handleRevokeInvite(row.original)} tooltip={{ label: t("invite.revoke"), withArrow: true }} />
+              <DepthButton size="sm" type="danger" iconOnly before={<IconTrash size={16} />} onClick={() => handleDeleteInvite(row.original)} tooltip={{ label: t("invite.delete"), withArrow: true }} />
             </Group>
           );
         },

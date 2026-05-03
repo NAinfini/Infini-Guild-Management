@@ -106,7 +106,7 @@ export function WikiArticleListCard({
                   type="button"
                   className={`wiki-article-item ${item.slug === selectedSlug ? "wiki-article-item--active" : ""}`}
                   onClick={() => onSelectArticle(item.slug)}
-                  aria-label={`Open wiki article ${item.title}`}
+                  aria-label={t("aria.openArticle", { title: item.title })}
                   aria-pressed={item.slug === selectedSlug}
                 >
                   <Stack gap={0}>

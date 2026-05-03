@@ -1,5 +1,5 @@
 ﻿import { LeftOutlined, RightOutlined } from "@portal/utils/icons";
-import { Alert, Button, Group, Modal, Text } from "@mantine/core";
+import { Button, Group, Modal, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { GalleryItem } from "./shared";
 
@@ -13,11 +13,10 @@ type GalleryLightboxModalProps = {
   onPrev: () => void;
   onNext: () => void;
   setZoom: (next: number | ((value: number) => number)) => void;
-  isHttpUrl: (value: string) => boolean;
+  resolveImageUrl: (key: string) => string;
   toEmbedVideoUrl: (value: string) => string;
   formatDateTime: (iso: string) => string;
   isExternalView: boolean;
-  fieldR2ObjectLabel: string;
 };
 
 export function GalleryLightboxModal({
@@ -30,11 +29,10 @@ export function GalleryLightboxModal({
   onPrev,
   onNext,
   setZoom,
-  isHttpUrl,
+  resolveImageUrl,
   toEmbedVideoUrl,
   formatDateTime,
   isExternalView,
-  fieldR2ObjectLabel,
 }: GalleryLightboxModalProps) {
   const { t } = useTranslation("gallery");
   return (
@@ -58,7 +56,6 @@ export function GalleryLightboxModal({
             </Text>
           </div>
           {item.type === "image" ? (
-            isHttpUrl(item.url) ? (
               <div
                 style={{ overflow: "auto", maxHeight: "78vh", cursor: zoom > 1 ? "zoom-out" : "zoom-in" }}
                 onWheel={(event) => {
@@ -69,7 +66,7 @@ export function GalleryLightboxModal({
                 onDoubleClick={() => setZoom((value) => (value > 1 ? 1 : 2.2))}
               >
                 <img
-                  src={item.url}
+                  src={resolveImageUrl(item.url)}
                   alt={item.caption ?? item.id}
                   loading="lazy"
                   decoding="async"
@@ -83,11 +80,6 @@ export function GalleryLightboxModal({
                   }}
                 />
               </div>
-            ) : (
-              <Alert color="blue" title={fieldR2ObjectLabel}>
-                {item.url}
-              </Alert>
-            )
           ) : (
             <iframe
               src={toEmbedVideoUrl(item.url)}

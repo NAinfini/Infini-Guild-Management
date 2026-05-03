@@ -10,6 +10,7 @@ import {
   IconSwords,
   IconTargetArrow,
 } from "@tabler/icons-react";
+import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarEventOutlined } from "../../utils/icons";
 import { EmptyState } from "../shared/EmptyState";
@@ -37,7 +38,7 @@ type UpcomingEventsCardProps = {
   onOpenEvent: (event: Pick<Event, "id" | "title">) => void;
 };
 
-export function UpcomingEventsCard({
+export const UpcomingEventsCard = memo(function UpcomingEventsCard({
   upcomingEventsCount,
   featuredRows,
   rows,
@@ -154,4 +155,4 @@ export function UpcomingEventsCard({
         )}
     </PortalCard>
   );
-}
+});

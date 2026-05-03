@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { EVENT_TYPES } from "../constants/event-types";
 
-export const recurrenceRuleSchema = z.object({
+const recurrenceRuleSchema = z.object({
   frequency: z.enum(["daily", "weekly", "monthly"]),
   interval: z.number().int().positive(),
   daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
@@ -9,7 +9,7 @@ export const recurrenceRuleSchema = z.object({
   endAfter: z.number().int().positive().optional(),
   endDate: z.string().datetime().optional(),
 });
-export const eventAttachmentsSchema = z.array(z.string().min(1)).max(5);
+const eventAttachmentsSchema = z.array(z.string().min(1)).max(5);
 
 export const eventSchema = z.object({
   id: z.string(),
@@ -21,6 +21,7 @@ export const eventSchema = z.object({
   capacity: z.number().int().nullable(),
   pinned: z.boolean(),
   signup_locked: z.boolean(),
+  visible_at: z.string().nullable(),
   archived_at: z.string().nullable(),
   created_by: z.string(),
   recurrence_rule: recurrenceRuleSchema.nullable(),
@@ -68,6 +69,7 @@ export const recurringTemplateSchema = z.object({
   end_at: z.string().nullable(),
   capacity: z.number().int().nullable(),
   recurrence_rule: recurrenceRuleSchema,
+  visibility_offset_hours: z.number().nullable(),
   archived_at: z.string().nullable(),
   created_by: z.string(),
   last_generated_date: z.string().nullable(),
@@ -84,6 +86,7 @@ export const createTemplateSchema = z.object({
   end_at: z.string().datetime().optional(),
   capacity: z.number().int().positive().optional(),
   recurrence_rule: recurrenceRuleSchema,
+  visibility_offset_hours: z.number().min(0).max(168).optional(),
 });
 
 export const updateTemplateSchema = createTemplateSchema.partial();

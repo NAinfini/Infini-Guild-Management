@@ -138,21 +138,6 @@ Rules:
 - Change username: current password required, must be unique, invalidates all sessions (see `Global.md` Username Change section)
 - Logout button (also in top-right dropdown)
 
-#### Discord Account Linking
-
-- "Link Discord" section:
-  - If not linked: instructions + "Enter verification code" input (6-digit)
-  - Flow: member uses `/link <username>` in Discord → bot DMs a 6-digit code → member enters code here
-  - On success: shows linked Discord username + "Unlink" button
-  - Code expires after 5 minutes
-- "Unlink Discord" button with confirmation
-- See `bot-integrations.md` for full linking flow
-
-#### Notification Preferences
-
-- "Discord event reminders" toggle (opt out of DM reminders)
-- Only visible if Discord account is linked
-
 ## Saving & Audit
 
 - Each tab has own Save/Cancel (no global auto-save)

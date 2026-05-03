@@ -15,7 +15,7 @@ import { z } from "zod";
 import { apiRequest, isApiRequestError } from "../../api/client";
 import { queryKeys } from "../../api/query-keys";
 import { useAuthStore } from "../../stores/auth";
-import { FireOutlined } from "../../utils/icons";
+import { useSiteConfigStore } from "../../stores/site-config";
 import "./AuthPages.css";
 
 type AuthSessionResponse = { user: User; profile: MemberProfile };
@@ -64,6 +64,8 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const { inviteCode } = useParams({ from: "/register/$inviteCode" });
   const setSession = useAuthStore((state) => state.setSession);
+  const siteName = useSiteConfigStore((s) => s.siteName);
+  const siteLogoUrl = useSiteConfigStore((s) => s.siteLogoUrl);
 
   const inviteQuery = useQuery({
     queryKey: queryKeys.auth.verifyInvite(inviteCode),
@@ -168,11 +170,11 @@ export function RegisterPage() {
         <div className="login-page__heading">
           <LampHeading coneWidth={320} coneHeight={140} animated>
             <div className="login-page__brand">
-              <span className="login-page__brand-icon" aria-hidden>
-                <FireOutlined />
-              </span>
+              {siteLogoUrl ? (
+                <img src={siteLogoUrl} alt="" aria-hidden className="login-page__brand-logo" />
+              ) : null}
               <GradientText animated duration={4} className="login-page__brand-text">
-                {t("brand.name")}
+                {siteName}
               </GradientText>
             </div>
           </LampHeading>
@@ -189,7 +191,7 @@ export function RegisterPage() {
           ) : !inviteQuery.data?.valid ? (
             <Stack align="center" gap="md">
               <Alert color="red" title={t("inviteInvalid")} w="100%" />
-              <MagneticElement strength={0.3} className="login-page__back-link">
+              <div className="login-page__back-link">
                 <Anchor
                   underline="hover"
                   onClick={() => void navigate({ to: "/login" })}
@@ -198,7 +200,7 @@ export function RegisterPage() {
                   <IconArrowLeft size={14} />
                   {t("button.backToLogin")}
                 </Anchor>
-              </MagneticElement>
+              </div>
             </Stack>
           ) : (
             <>
@@ -218,7 +220,7 @@ export function RegisterPage() {
                     />
                   </div>
 
-                  {!usernameError && debouncedUsername.length >= 3 ? (
+                  {!usernameError && debouncedUsername.length >= 1 ? (
                     usernameAvailabilityQuery.isFetching ? (
                       <Text c="dimmed" size="sm">
                         {t("checkingUsername")}

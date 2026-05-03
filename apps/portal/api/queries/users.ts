@@ -1,7 +1,7 @@
 import type { MemberProfile, PaginatedResponse, User } from "@guild/shared";
 import { apiRequest } from "../client";
 
-export type UserDetailResponse = { user: User; profile: MemberProfile };
+type UserDetailResponse = { user: User; profile: MemberProfile };
 export type UsersListResponse = PaginatedResponse<{ user: User; profile: MemberProfile }>;
 
 function buildUsersListPath(options?: { externalView?: boolean; page?: number; limit?: number }): string {

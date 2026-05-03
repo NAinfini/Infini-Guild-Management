@@ -9,7 +9,7 @@ import type {
   WarHistory,
   WikiArticle,
 } from "@guild/shared";
-import { Badge, Button, Group, Highlight, Modal, Stack, Text } from "@mantine/core";
+import { ActionIcon, Badge, Button, Group, Highlight, Kbd, Modal, Stack, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { Command } from "cmdk";
 import { useMemo, useState } from "react";
@@ -17,6 +17,7 @@ import { useDebouncedValue, useDisclosure, useHotkeys, useLocalStorage } from "@
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { apiRequest } from "../../api/client";
+import { queryKeys } from "../../api/query-keys";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import {
   CalendarOutlined,
@@ -44,11 +45,13 @@ const RECENT_SEARCHES_KEY = "cmdk.recent.searches";
 const RECENT_LIMIT = 8;
 const RESULT_LIMIT = 24;
 
+const isMac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+
 function normalizeSearchText(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export function CmdKSearch() {
+export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
   const navigate = useNavigate();
   const { t } = useTranslation("common");
   const [open, openHandlers] = useDisclosure(false);
@@ -62,7 +65,7 @@ export function CmdKSearch() {
   useHotkeys([["mod+k", openHandlers.toggle]]);
 
   const searchDataQuery = useQuery({
-    queryKey: ["cmdk", "search-data"],
+    queryKey: queryKeys.cmdk.searchData(),
     enabled: open,
     staleTime: 5 * 60_000,
     queryFn: async () => {
@@ -80,9 +83,7 @@ export function CmdKSearch() {
         ? usersResponse.value.data.map((entry) => ({
             id: `user-${entry.user.id}`,
             title: entry.user.username,
-            subtitle: `${entry.user.role} · ${entry.profile.classes.join(", ") || t("noClass")} · ${
-              entry.profile.wechat_name ?? "-"
-            }`,
+            subtitle: `${entry.user.role} · ${entry.profile.classes.join(", ") || t("noClass")}`,
             category: "user",
             role: entry.user.role,
             to: "/roster",
@@ -255,9 +256,20 @@ export function CmdKSearch() {
 
   return (
     <>
-      <Button onClick={openHandlers.open} size="xs" aria-label={t("cmdk.aria.openSearch")}>
-        {t("cmdk.searchButton")}
-      </Button>
+      {asIcon ? (
+        <ActionIcon variant="subtle" onClick={openHandlers.open} aria-label={t("cmdk.aria.openSearch")}>
+          <SearchOutlined />
+        </ActionIcon>
+      ) : (
+        <Button onClick={openHandlers.open} size="xs" aria-label={t("cmdk.aria.openSearch")} rightSection={
+          <Group gap={2} wrap="nowrap">
+            <Kbd size="xs">{isMac ? "⌘" : "Ctrl"}</Kbd>
+            <Kbd size="xs">K</Kbd>
+          </Group>
+        }>
+          {t("cmdk.searchButton")}
+        </Button>
+      )}
 
       <Modal
         title={t("cmdk.searchTitle")}

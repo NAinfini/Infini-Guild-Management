@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAdminData } from "./useAdminData";
 import { useEventsData } from "./useEventsData";
 import { useGuildWarData } from "./useGuildWarData";
@@ -11,8 +11,6 @@ import { useProfileData } from "./useProfileData";
 const serviceMocks = vi.hoisted(() => ({
   fetchAdminAuditArchiveMonths: vi.fn(),
   fetchAdminAuditLog: vi.fn(),
-  fetchAdminBotSettings: vi.fn(),
-  fetchAdminDiscordChannels: vi.fn(),
   fetchAdminInviteLinks: vi.fn(),
   fetchAdminInviteStats: vi.fn(),
   fetchAdminStatus: vi.fn(),
@@ -39,29 +37,31 @@ vi.mock("../../services/GuildWarService", () => ({
   fetchGuildWarHistoryDetail: serviceMocks.fetchGuildWarHistoryDetail,
 }));
 
-vi.mock("../../services/UserService", () => ({
+vi.mock("../../api/queries/users", () => ({
   fetchUserDetail: serviceMocks.fetchUserDetail,
   fetchUsersList: serviceMocks.fetchUsersList,
 }));
 
-vi.mock("../../services/AdminService", () => ({
+vi.mock("../../api/queries/admin", () => ({
   fetchAdminAuditArchiveMonths: serviceMocks.fetchAdminAuditArchiveMonths,
   fetchAdminAuditLog: serviceMocks.fetchAdminAuditLog,
-  fetchAdminBotSettings: serviceMocks.fetchAdminBotSettings,
-  fetchAdminDiscordChannels: serviceMocks.fetchAdminDiscordChannels,
   fetchAdminInviteLinks: serviceMocks.fetchAdminInviteLinks,
   fetchAdminInviteStats: serviceMocks.fetchAdminInviteStats,
   fetchAdminStatus: serviceMocks.fetchAdminStatus,
 }));
 
-vi.mock("../../services/RoleService", () => ({
+vi.mock("../../api/queries/roles", () => ({
   fetchRoles: serviceMocks.fetchRoles,
 }));
 
 vi.mock("../../utils/permissions", () => ({
   canExportAudit: () => true,
-  canManageBot: () => true,
   canViewStatus: () => true,
+}));
+
+vi.mock("../../stores/auth", () => ({
+  useAuthStore: (selector: (s: { user: { id: string } }) => unknown) =>
+    selector({ user: { id: "user-1" } }),
 }));
 
 function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
@@ -79,6 +79,12 @@ function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
 }
 
 describe("portal data hooks", () => {
+  beforeEach(() => {
+    for (const fn of Object.values(serviceMocks)) {
+      fn.mockReset();
+    }
+  });
+
   it("loads events and users through the service layer", async () => {
     serviceMocks.fetchEventsList.mockResolvedValueOnce({ data: [] });
     serviceMocks.fetchUsersList.mockResolvedValueOnce({ data: [] });
@@ -169,8 +175,6 @@ describe("portal data hooks", () => {
     serviceMocks.fetchAdminInviteStats.mockResolvedValueOnce({});
     serviceMocks.fetchAdminAuditLog.mockResolvedValueOnce({ data: [] });
     serviceMocks.fetchAdminAuditArchiveMonths.mockResolvedValueOnce([]);
-    serviceMocks.fetchAdminBotSettings.mockResolvedValueOnce({});
-    serviceMocks.fetchAdminDiscordChannels.mockResolvedValueOnce({ channels: [] });
     serviceMocks.fetchAdminStatus.mockResolvedValueOnce({});
 
     const { result } = renderHook(
@@ -182,7 +186,6 @@ describe("portal data hooks", () => {
           auditSearch: "raid",
           auditDateFrom: "2026-03-01",
           auditDateTo: "2026-03-08",
-          discordGuildId: "guild-1",
         }),
       { wrapper: createWrapper() },
     );
@@ -194,8 +197,6 @@ describe("portal data hooks", () => {
       expect(result.current.inviteStatsQuery.isSuccess).toBe(true);
       expect(result.current.auditLogQuery.isSuccess).toBe(true);
       expect(result.current.auditMonthsQuery.isSuccess).toBe(true);
-      expect(result.current.botSettingsQuery.isSuccess).toBe(true);
-      expect(result.current.discordChannelsQuery.isSuccess).toBe(true);
       expect(result.current.statusQuery.isSuccess).toBe(true);
     });
 
@@ -212,7 +213,6 @@ describe("portal data hooks", () => {
       start_at: "2026-03-01T00:00:00.000Z",
       end_at: "2026-03-08T23:59:59.999Z",
     });
-    expect(serviceMocks.fetchAdminDiscordChannels).toHaveBeenCalledWith("guild-1");
     expect(serviceMocks.fetchAdminStatus).toHaveBeenCalled();
   });
 });

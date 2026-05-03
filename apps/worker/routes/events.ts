@@ -1,18 +1,15 @@
 import {
-  ERROR_STATUS,
   createEventSchema,
   createTemplateSchema,
   updateEventSchema,
   updateTemplateSchema,
-  type ErrorCode,
-  type StandardErrorResponse,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { runEventInstanceGenerationCron } from "../crons/event-instance-gen";
 import type { Bindings } from "../index";
-import { getRequestUser, requirePermission } from "../middleware/rbac";
+import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import {
   EventService,
@@ -22,8 +19,7 @@ import {
   toTemplatePayload,
 } from "../services/EventService";
 import { publishEntityChanged } from "../services/push";
-
-type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
+import { buildError, parseBoolean, parseJsonBody, parsePage, requireSessionUser } from "./_shared";
 
 export const eventsRoutes = new Hono();
 
@@ -38,26 +34,9 @@ function getEventService(c: Context) {
     getEventById: (eventId) => svc.getEventById(eventId),
     materializeRecurringSeries: (templateId) => materializeRecurringSeries(c, templateId),
     writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(env, payload),
+    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
   });
   return svc;
-}
-
-function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {
-  const requestId = (c.get("requestId") as string | undefined) ?? crypto.randomUUID();
-  const body: StandardErrorResponse = { error_code: code, message, request_id: requestId, ...(details ? { details } : {}) };
-  return c.json(body, ERROR_STATUS[code] as ErrorStatusCode);
-}
-
-function parseBoolean(v: string | undefined): boolean | undefined {
-  if (v === "true") return true;
-  if (v === "false") return false;
-  return undefined;
-}
-
-function parsePage(v: string | undefined, fallback: number): number {
-  const n = Number.parseInt(v ?? "", 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 async function requireEventCreate(c: Context) { return requirePermission(c, "events.create"); }
@@ -65,15 +44,6 @@ async function requireEventEdit(c: Context) { return requirePermission(c, "event
 async function requireEventArchive(c: Context) { return requirePermission(c, "events.archive"); }
 async function requireEventDelete(c: Context) { return requirePermission(c, "events.delete"); }
 async function requireEventTemplates(c: Context) { return requirePermission(c, "events.templates"); }
-
-async function requireSessionUser(c: Context) {
-  const user = await getRequestUser(c);
-  return user ?? buildError(c, "UNAUTHORIZED", "Authentication required");
-}
-
-async function parseJsonBody(c: Context): Promise<unknown | Response> {
-  try { return await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
-}
 
 function collectFiles(form: FormData): File[] {
   const files: File[] = [];

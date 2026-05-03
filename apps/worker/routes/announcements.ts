@@ -1,12 +1,9 @@
 import {
   ALLOWED_IMAGE_TYPES,
-  ERROR_STATUS,
   FILE_SIZE_LIMITS,
   createAnnouncementSchema,
   hasAnyPermission,
   updateAnnouncementSchema,
-  type ErrorCode,
-  type StandardErrorResponse,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
@@ -14,11 +11,9 @@ import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
-import { createBotTask } from "../services/bot-dispatch";
 import { publishAnnouncementPublished, publishEntityChanged } from "../services/push";
 import { AnnouncementService } from "../services/AnnouncementService";
-
-type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
+import { buildError, handleResult, parseBoolean, parsePage } from "./_shared";
 
 export const announcementsRoutes = new Hono();
 
@@ -27,37 +22,14 @@ function getService(c: Context): AnnouncementService {
   return new AnnouncementService(drizzle(env.DB), {
     media: env.MEDIA,
     writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (input) => publishEntityChanged(env, input),
-    publishAnnouncementPublished: (input) => publishAnnouncementPublished(env, input),
-    createBotTask: async (input) => { await createBotTask(env, input); },
+    publishEntityChanged: (input) => publishEntityChanged(c, input),
+    publishAnnouncementPublished: (input) => publishAnnouncementPublished(c, input),
   });
-}
-
-function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {
-  const requestId = (c.get("requestId") as string | undefined) ?? crypto.randomUUID();
-  const body: StandardErrorResponse = { error_code: code, message, request_id: requestId, ...(details ? { details } : {}) };
-  return c.json(body, ERROR_STATUS[code] as ErrorStatusCode);
-}
-
-function handleResult(c: Context, result: { ok: true; data: unknown } | { ok: false; code: ErrorCode; message: string; details?: unknown }, status?: number): Response {
-  if (!result.ok) return buildError(c, result.code, result.message, result.details);
-  return c.json(result.data, status as never);
 }
 
 async function requireAnnouncementCreate(c: Context) { return requirePermission(c, "announcements.create"); }
 async function requireAnnouncementEdit(c: Context) { return requirePermission(c, "announcements.edit"); }
 async function requireAnnouncementArchive(c: Context) { return requirePermission(c, "announcements.archive"); }
-
-function parsePage(value: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function parseBoolean(value: string | undefined): boolean | undefined {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  return undefined;
-}
 
 // --- Routes ---
 

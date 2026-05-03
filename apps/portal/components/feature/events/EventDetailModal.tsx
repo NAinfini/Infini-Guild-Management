@@ -2,7 +2,7 @@ import type { Event, MemberProfile, User } from "@guild/shared";
 import { Avatar, Grid, Group, Modal, Select, Stack, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { MediaGallery } from "@portal/components/shared/MediaGallery";
+import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
 import {
   IconCalendarEvent,
   IconClock,
@@ -11,6 +11,7 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
+import { useMemo } from "react";
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
   weekly_mission: "blue",
@@ -78,6 +79,8 @@ export function EventDetailModal({
   onRemoveParticipant,
 }: EventDetailModalProps) {
   const { t, i18n } = useTranslation("events");
+  const { t: tc } = useTranslation("common");
+  const mediaLabels = useMemo(() => buildMediaGalleryLabels(tc), [tc]);
   const isJoined = currentUserId ? members.some((entry) => entry.user.id === currentUserId) : false;
   const isFull = event?.capacity != null ? members.length >= event.capacity : false;
   const hasEnded = Boolean(event?.end_at && new Date(event.end_at) < new Date());
@@ -146,6 +149,7 @@ export function EventDetailModal({
                         onJoin?.(event.id);
                       }}
                       disabled={memberActionDisabled || joinPending || leavePending}
+                      loading={joinPending || leavePending}
                     >
                       {isJoined ? <IconUserMinus size={14} style={{ marginRight: 4 }} /> : <IconUserPlus size={14} style={{ marginRight: 4 }} />}
                       {memberActionLabel}
@@ -225,7 +229,7 @@ export function EventDetailModal({
 
           {event.attachments && event.attachments.length > 0 ? (
             <Grid.Col span={7}>
-              <MediaGallery images={event.attachments} resolveMediaUrl={resolveEventAttachmentUrl} />
+              <MediaGallery images={event.attachments} resolveMediaUrl={resolveEventAttachmentUrl} labels={mediaLabels} />
             </Grid.Col>
           ) : null}
         </Grid>

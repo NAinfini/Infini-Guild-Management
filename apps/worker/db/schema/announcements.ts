@@ -22,10 +22,9 @@ export const announcements = sqliteTable(
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
   (table) => ({
-    idxFeed: index("idx_announcements_feed").on(
-      table.archivedAt,
+    idxStatusPinnedCreated: index("idx_announcements_status_pinned_created").on(
+      table.status,
       table.pinned,
-      table.pinnedAt,
       table.createdAt,
       table.id,
     ),

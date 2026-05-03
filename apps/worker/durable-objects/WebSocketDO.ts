@@ -1,40 +1,36 @@
 import type { HeartbeatAckMessage, HeartbeatMessage, PushMessage } from "@guild/shared";
 
 const STALE_TIMEOUT_MS = 90_000;
-const SWEEP_INTERVAL_MS = 30_000;
+const SWEEP_INTERVAL_MS = 60_000;
 
 export class WebSocketDO {
-  private lastHeartbeat = new Map<WebSocket, number>();
-
   constructor(private readonly state: DurableObjectState) {}
 
+  private getLastHeartbeat(ws: WebSocket): number {
+    const attachment = ws.deserializeAttachment() as { ts?: number } | null;
+    return attachment?.ts ?? 0;
+  }
+
+  private setLastHeartbeat(ws: WebSocket, ts: number): void {
+    ws.serializeAttachment({ ts });
+  }
+
   private broadcast(payload: string): void {
-    const sockets = this.state.getWebSockets();
-    for (const socket of sockets) {
+    for (const socket of this.state.getWebSockets()) {
       try {
         socket.send(payload);
       } catch {
-        try {
-          socket.close(1011, "broadcast failed");
-        } catch {
-          // ignore close failures
-        }
+        try { socket.close(1011, "broadcast failed"); } catch { /* ignore */ }
       }
     }
   }
 
   private sweepStaleConnections(): void {
     const now = Date.now();
-    const sockets = this.state.getWebSockets();
-    for (const socket of sockets) {
-      const lastSeen = this.lastHeartbeat.get(socket);
-      if (lastSeen != null && now - lastSeen > STALE_TIMEOUT_MS) {
-        this.lastHeartbeat.delete(socket);
-        try {
-          socket.close(4001, "heartbeat timeout");
-        } catch {
-          // ignore close failures
-        }
+    for (const socket of this.state.getWebSockets()) {
+      const lastSeen = this.getLastHeartbeat(socket);
+      if (lastSeen > 0 && now - lastSeen > STALE_TIMEOUT_MS) {
+        try { socket.close(4001, "heartbeat timeout"); } catch { /* ignore */ }
       }
     }
   }
@@ -44,17 +40,12 @@ export class WebSocketDO {
 
     if (request.method === "POST" && url.pathname === "/publish") {
       let message: PushMessage;
-      try {
-        message = (await request.json()) as PushMessage;
-      } catch {
+      try { message = (await request.json()) as PushMessage; } catch {
         return new Response("Invalid JSON", { status: 400 });
       }
-
       this.broadcast(JSON.stringify(message));
       return new Response(JSON.stringify({ ok: true, delivered: this.state.getWebSockets().length }), {
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
       });
     }
 
@@ -62,42 +53,32 @@ export class WebSocketDO {
       return new Response("Expected websocket", { status: 426 });
     }
 
+    if (this.state.getWebSockets().length >= 500) {
+      return new Response("Too many connections", { status: 503 });
+    }
+
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.state.acceptWebSocket(server);
-    this.lastHeartbeat.set(server, Date.now());
+    this.setLastHeartbeat(server, Date.now());
 
-    // Schedule the sweep alarm if not already running
     const currentAlarm = await this.state.storage.getAlarm();
     if (currentAlarm == null) {
       await this.state.storage.setAlarm(Date.now() + SWEEP_INTERVAL_MS);
     }
 
-    return new Response(null, {
-      status: 101,
-      webSocket: client,
-    });
+    return new Response(null, { status: 101, webSocket: client });
   }
 
   webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): void {
-    if (typeof message !== "string") {
-      return;
-    }
+    if (typeof message !== "string") return;
 
     let parsed: { type?: string };
-    try {
-      parsed = JSON.parse(message) as { type?: string };
-    } catch {
-      // Legacy ping support
-      if (message.trim().toLowerCase() === "ping") {
-        ws.send("pong");
-      }
-      return;
-    }
+    try { parsed = JSON.parse(message) as { type?: string }; } catch { return; }
 
     if (parsed.type === "heartbeat") {
       const heartbeat = parsed as HeartbeatMessage;
-      this.lastHeartbeat.set(ws, Date.now());
+      this.setLastHeartbeat(ws, Date.now());
 
       const ack: HeartbeatAckMessage = {
         type: "heartbeat_ack",
@@ -110,14 +91,15 @@ export class WebSocketDO {
     }
   }
 
-  webSocketClose(ws: WebSocket): void {
-    this.lastHeartbeat.delete(ws);
+  webSocketClose(): void {}
+
+  webSocketError(ws: WebSocket): void {
+    try { ws.close(1011, "websocket error"); } catch { /* ignore */ }
   }
 
   async alarm(): Promise<void> {
     this.sweepStaleConnections();
 
-    // Reschedule if there are still active connections
     if (this.state.getWebSockets().length > 0) {
       await this.state.storage.setAlarm(Date.now() + SWEEP_INTERVAL_MS);
     }

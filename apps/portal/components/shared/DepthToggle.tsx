@@ -57,8 +57,8 @@ export const DepthToggle = forwardRef<HTMLButtonElement, DepthToggleProps>(
     const inner = iconOnly ? (
       <ActionIcon
         ref={ref}
-        variant={pressed ? "filled" : "light"}
-        color={color}
+        variant={pressed ? "filled" : "subtle"}
+        color={pressed ? color : "gray"}
         size={size}
         disabled={disabled}
         onClick={handleClick}
@@ -71,7 +71,7 @@ export const DepthToggle = forwardRef<HTMLButtonElement, DepthToggleProps>(
     ) : (
       <Button
         ref={ref}
-        variant={pressed ? "filled" : "light"}
+        variant={pressed ? "filled" : "default"}
         color={color}
         size={size}
         disabled={disabled}
