@@ -351,19 +351,13 @@ export function AdminStatusTab({
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
         <PortalCard interactive={false}>
           <div style={{ padding: "1.2rem" }}>
-            <Group justify="space-between" mb={12}>
-              <Text fw={600} size="sm">{t("status.section.health")}</Text>
-              <Group gap={6}>
-                {statusLatencyMs !== null ? (
-                  <Badge size="sm" variant="default">{statusLatencyMs}ms</Badge>
-                ) : null}
-              </Group>
-            </Group>
+            <Text fw={600} size="sm" mb={12}>{t("status.section.health")}</Text>
             <AdminSystemSection
               statusLoading={statusLoading}
               statusError={statusError}
               loadErrorMessage={loadErrorMessage}
               statusData={statusData}
+              statusLatencyMs={statusLatencyMs}
             />
           </div>
         </PortalCard>
@@ -382,40 +376,47 @@ export function AdminStatusTab({
                 {t("status.copyConfig")}
               </Button>
             </Group>
-            <ScrollArea.Autosize mah={180}>
-              <Stack gap={4}>
-                {statusHealthLogs.length === 0 ? (
-                  <Text c="dimmed" size="sm">{t("status.healthLogs.empty")}</Text>
-                ) : (
-                  statusHealthLogs.map((row, index) => (
-                    <Text key={`${row.at}-${index}`} size="xs" style={{ fontFamily: "monospace", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-                      <span>{formatDateTime(row.at)}</span>
-                      <span style={{ color: "var(--mantine-color-dimmed)" }}>|</span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: row.db === "ok" ? "var(--mantine-color-green-6)" : "var(--mantine-color-red-6)", display: "inline-block", flexShrink: 0 }} />
-                        DB {row.db}
-                      </span>
-                      <span style={{ color: "var(--mantine-color-dimmed)" }}>|</span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: row.r2 === "ok" ? "var(--mantine-color-green-6)" : "var(--mantine-color-red-6)", display: "inline-block", flexShrink: 0 }} />
-                        R2 {row.r2}
-                      </span>
-                      <span style={{ color: "var(--mantine-color-dimmed)" }}>|</span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: row.ws === "ok" ? "var(--mantine-color-green-6)" : "var(--mantine-color-yellow-6)", display: "inline-block", flexShrink: 0 }} />
-                        WS {row.ws}
-                      </span>
-                      <span style={{ color: "var(--mantine-color-dimmed)" }}>|</span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: row.crons === "ok" ? "var(--mantine-color-green-6)" : "var(--mantine-color-red-6)", display: "inline-block", flexShrink: 0 }} />
-                        Crons {row.crons}
-                      </span>
-                      <span style={{ color: "var(--mantine-color-dimmed)" }}>|</span>
-                      <span>{row.latencyMs ?? "-"}ms</span>
-                    </Text>
-                  ))
-                )}
-              </Stack>
+            <ScrollArea.Autosize mah={240}>
+              {statusHealthLogs.length === 0 ? (
+                <Text c="dimmed" size="sm">{t("status.healthLogs.empty")}</Text>
+              ) : (
+                <table className="health-log-table">
+                  <thead>
+                    <tr>
+                      <th>{t("audit.table.time")}</th>
+                      <th>DB</th>
+                      <th>R2</th>
+                      <th>WS</th>
+                      <th>Crons</th>
+                      <th>Latency</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {statusHealthLogs.map((row, index) => {
+                      const latency = row.latencyMs ?? 0;
+                      const barWidth = Math.min(100, (latency / 500) * 100);
+                      const barColor = latency < 200 ? "#10b981" : latency < 400 ? "#eab308" : "#ef4444";
+                      return (
+                        <tr key={`${row.at}-${index}`}>
+                          <td style={{ color: "color-mix(in srgb, var(--color-text, #111827) 65%, transparent)" }}>
+                            {formatDateTime(row.at)}
+                          </td>
+                          <td><span className={`health-log-dot health-log-dot--${row.db === "ok" ? "ok" : "error"}`} />{row.db}</td>
+                          <td><span className={`health-log-dot health-log-dot--${row.r2 === "ok" ? "ok" : "error"}`} />{row.r2}</td>
+                          <td><span className={`health-log-dot health-log-dot--${row.ws === "ok" ? "ok" : "warn"}`} />{row.ws}</td>
+                          <td><span className={`health-log-dot health-log-dot--${row.crons === "ok" ? "ok" : "error"}`} />{row.crons}</td>
+                          <td>
+                            <span className="health-log-latency">
+                              <span className="health-log-latency-bar" style={{ width: `${barWidth}%`, minWidth: 4, maxWidth: 40, background: barColor }} />
+                              <span style={{ color: barColor, fontWeight: 600 }}>{row.latencyMs ?? "—"}ms</span>
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
             </ScrollArea.Autosize>
           </div>
         </PortalCard>

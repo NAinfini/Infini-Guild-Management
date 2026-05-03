@@ -1,5 +1,4 @@
 import { type AdminRole } from "@guild/shared";
-import { DepthButton } from "@portal/components/shared/DepthButton";
 import { SettingsIcon } from "@portal/components/icons";
 import { useSearch } from "@tanstack/react-router";
 import {
@@ -207,7 +206,6 @@ export function AdminPage() {
     return [...apiRoles, externalRole];
   }, [rolesQuery.data, t]);
   const auditRows = auditLogQuery.data?.data ?? [];
-  const inviteCreateLabel = t("invite.create");
 
   const userColumns: TanStackColumnDef<(typeof userRows)[number], unknown>[] = [
     {
@@ -250,27 +248,7 @@ export function AdminPage() {
     },
   ];
 
-  const adminHeaderActions = useMemo(
-    () =>
-      isAdmin && isModerator ? (
-        <Group gap={8} wrap="wrap">
-          {activeTab === "invite" ? (
-            <DepthButton type="primary" onClick={() => createInviteMutation.mutate()} loading={createInviteMutation.isPending}>
-              {inviteCreateLabel}
-            </DepthButton>
-          ) : null}
-        </Group>
-      ) : null,
-    [
-      activeTab,
-      createInviteMutation.isPending,
-      createInviteMutation.mutate,
-      inviteCreateLabel,
-      isAdmin,
-      isModerator,
-    ],
-  );
-  usePageHeaderActions(adminHeaderActions);
+  usePageHeaderActions(null);
   useLoadWarningToast(
     usersQuery.isError ||
       inviteLinksQuery.isError ||
