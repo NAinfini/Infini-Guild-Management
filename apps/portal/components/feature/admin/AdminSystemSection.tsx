@@ -1,4 +1,4 @@
-import { Alert, Badge, Group, RingProgress, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
+import { Alert, Badge, RingProgress, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
 import { IconDatabase, IconCloud, IconWifi, IconClock } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import "./AdminSystemSection.css";
