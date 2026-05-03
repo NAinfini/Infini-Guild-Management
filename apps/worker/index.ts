@@ -296,17 +296,13 @@ export default {
       case "0 0 * * *":
         tasks.push(safe(() => runEventInstanceGenerationCron(env), "event-instance-gen"));
         tasks.push(safe(() => runSessionCleanupCron(env), "session-cleanup"));
+        tasks.push(safe(() => runAuditArchiveCron(env), "audit-archive"));
+        tasks.push(safe(() => runMediaOrphanCleanupCron(env), "media-orphan-cleanup"));
         break;
       case "*/15 * * * *":
         tasks.push(safe(() => runEventAutoArchiveCron(env), "event-auto-archive"));
         tasks.push(safe(() => runAnnouncementPublishCron(env), "announcement-publish"));
         tasks.push(safe(() => runAnnouncementExpiryCron(env), "announcement-expiry"));
-        break;
-      case "0 2 * * *":
-        tasks.push(safe(() => runAuditArchiveCron(env), "audit-archive"));
-        break;
-      case "0 3 * * *":
-        tasks.push(safe(() => runMediaOrphanCleanupCron(env), "media-orphan-cleanup"));
         break;
     }
 
