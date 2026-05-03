@@ -113,7 +113,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                     </Stack>
                       <Group gap={4}>
                         {item.members.slice(0, 10).map((member) => (
-                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={44} />
+                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={48} />
                         ))}
                       {item.members.length > 10 ? (
                         <Text size="xs" c="dimmed" fw={600}>

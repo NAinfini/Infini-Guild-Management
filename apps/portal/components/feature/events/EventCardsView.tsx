@@ -313,14 +313,14 @@ export function EventCardsView({
                   {/* ── Members & Capacity ── */}
                   <div className="event-card__members-bar">
                     <div className="event-card__members-left">
-                      <Group gap={4} wrap="wrap">
+                      <div className="event-card__avatar-grid">
                         {members.slice(0, 10).map((member) => (
-                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={40} />
+                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={48} />
                         ))}
                         {members.length > 10 ? (
                           <Text size="xs" c="dimmed" fw={600}>+{members.length - 10}</Text>
                         ) : null}
-                      </Group>
+                      </div>
                       <div className="event-card__capacity">
                         <IconUsers
                           size={15}
