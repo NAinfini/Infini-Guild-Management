@@ -384,9 +384,9 @@ export function EventCardsView({
                       size="sm"
                       disabled={members.length === 0}
                       tooltip={t("card.copyMentions")}
-                    >
-                      <IconCopy size={14} />
-                    </DepthButton>
+                      iconOnly
+                      before={<IconCopy size={14} />}
+                    />
                   </div>
                   ) : null}
                 </Stack>

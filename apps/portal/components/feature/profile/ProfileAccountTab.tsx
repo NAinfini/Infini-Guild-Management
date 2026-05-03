@@ -1,7 +1,7 @@
 import { PortalCard } from "../../shared/PortalCard";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { Button, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
-import { IconDeviceFloppy } from "@tabler/icons-react";
+import { Button, Grid, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
+import { IconDeviceFloppy, IconLogout } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
 
@@ -80,62 +80,69 @@ export function ProfileAccountTab({
   };
 
   return (
-    <Stack gap={16}>
-      <PortalCard interactive={false}>
-        <form onSubmit={(event) => { event.preventDefault(); handleChangePassword(); }}>
-        <div style={{ padding: "1.2rem" }}>
-          <Stack gap={8}>
-            <Text fw={600}>{changePasswordLabel}</Text>
-            <PasswordInput
-              value={currentPassword}
-              onChange={(event) => onCurrentPasswordChange(event.currentTarget.value)}
-              placeholder={t("account.field.currentPassword")}
-              autoComplete="current-password"
-              aria-label={t("account.aria.currentPassword")}
-            />
-            <PasswordInput
-              value={newPassword}
-              onChange={(event) => onNewPasswordChange(event.currentTarget.value)}
-              placeholder={t("account.field.newPassword")}
-              autoComplete="new-password"
-              aria-label={t("account.aria.newPassword")}
-            />
-            <PasswordInput
-              value={confirmNewPassword}
-              onChange={(event) => onConfirmNewPasswordChange(event.currentTarget.value)}
-              placeholder={t("account.field.confirmNewPassword")}
-              autoComplete="new-password"
-              aria-label={t("account.aria.confirmNewPassword")}
-            />
-            <Button type="submit" loading={changePasswordPending} leftSection={<IconDeviceFloppy size={16} />}>{changePasswordLabel}</Button>
-          </Stack>
-        </div>
-        </form>
-      </PortalCard>
+    <Stack gap={16} maw={720} mx="auto">
+      <Grid gutter={16}>
+        <Grid.Col span={{ base: 12, sm: 6 }}>
+          <PortalCard interactive={false} style={{ height: "100%" }}>
+            <form onSubmit={(event) => { event.preventDefault(); handleChangePassword(); }}>
+            <Stack gap={10} p="1.2rem">
+              <Text fw={600} size="sm">{changePasswordLabel}</Text>
+              <PasswordInput
+                size="sm"
+                value={currentPassword}
+                onChange={(event) => onCurrentPasswordChange(event.currentTarget.value)}
+                placeholder={t("account.field.currentPassword")}
+                autoComplete="current-password"
+                aria-label={t("account.aria.currentPassword")}
+              />
+              <PasswordInput
+                size="sm"
+                value={newPassword}
+                onChange={(event) => onNewPasswordChange(event.currentTarget.value)}
+                placeholder={t("account.field.newPassword")}
+                autoComplete="new-password"
+                aria-label={t("account.aria.newPassword")}
+              />
+              <PasswordInput
+                size="sm"
+                value={confirmNewPassword}
+                onChange={(event) => onConfirmNewPasswordChange(event.currentTarget.value)}
+                placeholder={t("account.field.confirmNewPassword")}
+                autoComplete="new-password"
+                aria-label={t("account.aria.confirmNewPassword")}
+              />
+              <Button type="submit" size="sm" loading={changePasswordPending} leftSection={<IconDeviceFloppy size={14} />}>{changePasswordLabel}</Button>
+            </Stack>
+            </form>
+          </PortalCard>
+        </Grid.Col>
 
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
-          <Stack gap={8}>
-            <Text fw={600}>{changeUsernameLabel}</Text>
-            <PasswordInput
-              value={currentPasswordForUsername}
-              onChange={(event) => onCurrentPasswordForUsernameChange(event.currentTarget.value)}
-              placeholder={t("account.field.currentPassword")}
-              aria-label={t("account.aria.currentPasswordUsername")}
-            />
-            <TextInput
-              value={newUsername}
-              onChange={(event) => onNewUsernameChange(event.currentTarget.value)}
-              placeholder={t("account.field.newUsername")}
-              aria-label={t("account.aria.newUsername")}
-              error={usernameError}
-            />
-            <Button onClick={handleChangeUsername} loading={changeUsernamePending} disabled={isUsernameInvalid} leftSection={<IconDeviceFloppy size={16} />}>{changeUsernameLabel}</Button>
-          </Stack>
-        </div>
-      </PortalCard>
+        <Grid.Col span={{ base: 12, sm: 6 }}>
+          <PortalCard interactive={false} style={{ height: "100%" }}>
+            <Stack gap={10} p="1.2rem">
+              <Text fw={600} size="sm">{changeUsernameLabel}</Text>
+              <PasswordInput
+                size="sm"
+                value={currentPasswordForUsername}
+                onChange={(event) => onCurrentPasswordForUsernameChange(event.currentTarget.value)}
+                placeholder={t("account.field.currentPassword")}
+                aria-label={t("account.aria.currentPasswordUsername")}
+              />
+              <TextInput
+                size="sm"
+                value={newUsername}
+                onChange={(event) => onNewUsernameChange(event.currentTarget.value)}
+                placeholder={t("account.field.newUsername")}
+                aria-label={t("account.aria.newUsername")}
+                error={usernameError}
+              />
+              <Button size="sm" onClick={handleChangeUsername} loading={changeUsernamePending} disabled={isUsernameInvalid} leftSection={<IconDeviceFloppy size={14} />}>{changeUsernameLabel}</Button>
+            </Stack>
+          </PortalCard>
+        </Grid.Col>
+      </Grid>
 
-      <DepthButton type="danger" onClick={onLogout}>
+      <DepthButton type="danger" size="sm" onClick={onLogout} before={<IconLogout size={14} />}>
         {t("action.logout")}
       </DepthButton>
     </Stack>

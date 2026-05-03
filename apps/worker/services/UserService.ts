@@ -103,11 +103,16 @@ export type UserServiceDeps = {
 const TITLE_HTML_ALLOWED_TAGS = new Set(["span", "b", "strong", "i", "em", "u", "br"]);
 
 function sanitizeTitleHtml(html: string): string {
-  return html.replace(/<(\/?)(\w+)(?:\s[^]*?)?(?:\/?)>/gi, (_match, slash: string, tagName: string) => {
+  return html.replace(/<(\/?)(\w+)(\s[^>]*)?(\/?)>/gi, (_match, slash: string, tagName: string, attrs: string | undefined) => {
     if (!TITLE_HTML_ALLOWED_TAGS.has(tagName.toLowerCase())) return "";
     const isSelfClosing = tagName.toLowerCase() === "br";
     if (isSelfClosing) return "<br>";
-    return `<${slash}${tagName.toLowerCase()}>`;
+    let styleAttr = "";
+    if (!slash && attrs) {
+      const styleMatch = attrs.match(/\sstyle\s*=\s*"([^"]*)"/i);
+      if (styleMatch) styleAttr = ` style="${styleMatch[1]}"`;
+    }
+    return `<${slash}${tagName.toLowerCase()}${styleAttr}>`;
   });
 }
 

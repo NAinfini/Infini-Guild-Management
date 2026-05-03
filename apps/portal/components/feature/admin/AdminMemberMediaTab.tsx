@@ -209,15 +209,10 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
 
           {isModerator ? (
             <Stack gap={8} mt="md">
-              <Text c="dimmed" size="sm">{t("media.uploadAudioHint")}</Text>
-              {audioUploader.supportError ? (
-                <Text c="yellow" size="sm">{audioUploader.supportError}</Text>
-              ) : null}
               <input
                 type="file"
                 accept="audio/*"
                 aria-label={t("media.aria.selectAudio")}
-                disabled={Boolean(audioUploader.supportError)}
                 onChange={(event) => audioUploader.selectFiles(event.target.files)}
               />
               {audioUploader.error ? <Text c="red" size="sm">{audioUploader.error}</Text> : null}
@@ -233,7 +228,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                   void onUploadAudio();
                 }}
                 loading={audioUploader.isUploading}
-                disabled={Boolean(audioUploader.supportError) || audioUploader.files.length === 0}
+                disabled={audioUploader.files.length === 0}
                 size="sm"
               >
                 {t("media.uploadAudio")}

@@ -51,7 +51,7 @@
 .member-card__avatar-wrap {
   position: relative;
   width: 100%; height: auto;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 1 / 1;
   margin-inline: auto; border-radius: var(--radius-lg); overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, var(--color-text, #111827) 12%);

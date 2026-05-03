@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { useTranslation } from "react-i18next";
 import DOMPurify from "dompurify";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
+import { playAudio, stopAudio } from "../../utils/audio-player";
 import styles from "./ProfileModal.module.css";
 
 type ProfileModalProps = {
@@ -66,6 +67,17 @@ export function ProfileModal({
     }, 0);
     return () => window.clearTimeout(timeoutId);
   }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      stopAudio();
+      return;
+    }
+    if (profile?.audio_key && resolveMediaUrl) {
+      playAudio(resolveMediaUrl(profile.audio_key));
+    }
+    return () => stopAudio();
+  }, [open, profile?.audio_key, resolveMediaUrl]);
 
   const handleTrapFocus = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Tab") {
@@ -182,7 +194,6 @@ export function ProfileModal({
             <MediaGallery
               images={profile.images}
               videos={profile.video_urls}
-              audioKey={profile.audio_key}
               resolveMediaUrl={resolveMediaUrl}
               labels={mediaLabels}
             />

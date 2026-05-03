@@ -75,7 +75,7 @@ export function useAdminMemberMediaController({
       maxFiles: 1,
       maxFileSizeBytes: PROFILE_AUDIO_MAX_BYTES,
       mediaType: "audio",
-      convertAudioToOpus: true,
+      convertAudioToOpus: false,
     },
   );
 

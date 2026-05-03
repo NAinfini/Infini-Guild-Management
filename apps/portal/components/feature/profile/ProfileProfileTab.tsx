@@ -95,10 +95,10 @@ export function ProfileProfileTab({
           <Text fw={700} size="md">{t("section.about")}</Text>
           <TextInput
             label={
-              <Group gap={8} align="center" wrap="nowrap">
+              <Group gap={8} align="center" wrap="nowrap" style={{ lineHeight: 1.4 }}>
                 <span>{t("field.titleHtml")}</span>
-                <Text component={Link} to="/tools" size="xs" c="dimmed" td="underline" style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
-                  {t("action.titleGenerator")} <IconExternalLink size={12} style={{ verticalAlign: "middle" }} />
+                <Text component={Link} to="/tools" size="xs" c="dimmed" td="underline" style={{ cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 2 }}>
+                  {t("action.titleGenerator")}<IconExternalLink size={12} />
                 </Text>
               </Group>
             }

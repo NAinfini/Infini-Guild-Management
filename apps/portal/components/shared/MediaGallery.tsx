@@ -4,12 +4,12 @@ import { PortalCard as InfiniCard } from "./PortalCard";
 import { useMediaQuery } from "@mantine/hooks";
 import { forwardRef, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import clsx from "clsx";
-import { isDirectPlayableVideoUrl, isEmbeddableVideoUrl, toEmbedVideoUrl } from "@guild/shared/utils/video";
+import { isDirectPlayableVideoUrl, isEmbeddableVideoUrl, toEmbedVideoUrl, getVideoThumbnailUrl } from "@guild/shared/utils/video";
+import { IconChevronUp, IconChevronDown, IconPlayerPlay } from "@tabler/icons-react";
 import "./media-gallery.css";
 
 export type MediaGalleryLabels = {
   noMedia: string;
-  noAudio: string;
   pause: string;
   resume: string;
   restart: string;
@@ -24,14 +24,12 @@ export type MediaGalleryLabels = {
   thumbnailVideo: string;
   thumbnailImage: string;
   seekVideo: string;
-  seekAudio: string;
   playVideoAria: string;
   openItemAria: string;
 };
 
 const DEFAULT_LABELS: MediaGalleryLabels = {
   noMedia: "No media",
-  noAudio: "No audio",
   pause: "Pause",
   resume: "Play",
   restart: "Restart",
@@ -46,7 +44,6 @@ const DEFAULT_LABELS: MediaGalleryLabels = {
   thumbnailVideo: "Video",
   thumbnailImage: "Image",
   seekVideo: "Seek video",
-  seekAudio: "Seek audio",
   playVideoAria: "Play video",
   openItemAria: "Open item",
 };
@@ -54,7 +51,6 @@ const DEFAULT_LABELS: MediaGalleryLabels = {
 export function buildMediaGalleryLabels(t: (key: string) => string): MediaGalleryLabels {
   return {
     noMedia: t("media.noMedia"),
-    noAudio: t("media.noAudio"),
     pause: t("media.pause"),
     resume: t("media.resume"),
     restart: t("media.restart"),
@@ -69,7 +65,6 @@ export function buildMediaGalleryLabels(t: (key: string) => string): MediaGaller
     thumbnailVideo: t("media.thumbnailVideo"),
     thumbnailImage: t("media.thumbnailImage"),
     seekVideo: t("media.aria.seekVideo"),
-    seekAudio: t("media.aria.seekAudio"),
     playVideoAria: t("media.aria.playVideo"),
     openItemAria: t("media.aria.openItem"),
   };
@@ -78,7 +73,6 @@ export function buildMediaGalleryLabels(t: (key: string) => string): MediaGaller
 export type MediaGalleryProps = {
   images: string[];
   videos?: string[];
-  audioKey?: string | null;
   resolveMediaUrl?: (key: string) => string;
   emptyContent?: ReactNode;
   labels?: Partial<MediaGalleryLabels>;
@@ -114,7 +108,6 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
   function MediaGallery({
     images,
     videos = [],
-    audioKey = null,
     resolveMediaUrl = defaultResolver,
     emptyContent,
     labels: labelsProp,
@@ -127,12 +120,9 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
   const [activeIndex, setActiveIndex] = useState(0);
   const [directVideoPlaying, setDirectVideoPlaying] = useState<Record<number, boolean>>({});
   const [directVideoProgress, setDirectVideoProgress] = useState<Record<number, VideoProgressState>>({});
-  const [audioPlaying, setAudioPlaying] = useState(false);
-  const [audioProgress, setAudioProgress] = useState<VideoProgressState>({ current: 0, duration: 0 });
   const [thumbnailExpanded, setThumbnailExpanded] = useState(true);
-   
+
   const [embla, setEmbla] = useState<any>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const directVideoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
 
   const items = useMemo(
@@ -149,12 +139,12 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
         label: item,
         source: item,
         isDirect: isDirectPlayableVideoUrl(item),
+        thumbnailUrl: getVideoThumbnailUrl(item),
       })),
     ],
     [images, resolveMediaUrl, videos],
   );
   const thumbnails = items.slice(0, 20);
-  const audioResolved = audioKey ? resolveMediaUrl(audioKey) : null;
 
   useEffect(() => {
     if (isMobile) setThumbnailExpanded(false);
@@ -162,10 +152,6 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
 
   useEffect(() => {
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = "";
-      }
       Object.values(directVideoRefs.current).forEach((video) => {
         if (video) video.pause();
       });
@@ -182,20 +168,6 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
       }
     });
   }, [activeIndex]);
-
-  const toggleAudioPlayback = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (audio.paused) { void audio.play().catch(() => {}); return; }
-    audio.pause();
-  };
-
-  const seekAudio = (nextValue: number) => {
-    const audio = audioRef.current;
-    if (!audio || !Number.isFinite(nextValue)) return;
-    audio.currentTime = nextValue;
-    setAudioProgress((prev) => ({ ...prev, current: nextValue }));
-  };
 
   const toggleDirectVideoPlayback = (index: number) => {
     const video = directVideoRefs.current[index];
@@ -219,7 +191,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
     void Promise.resolve(requestFullscreen.call(video)).catch(() => {});
   };
 
-  if (items.length === 0 && !audioResolved) {
+  if (items.length === 0) {
     return <>{emptyContent ?? <Text c="dimmed">{labels.noMedia}</Text>}</>;
   }
 
@@ -326,9 +298,14 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
 
           <div className="infini-media-gallery-thumbnails-header">
             <Text c="dimmed">{Math.min(activeIndex + 1, items.length)} / {items.length}</Text>
-            <Button size="xs" variant="default" onClick={() => setThumbnailExpanded((v) => !v)}>
-              {thumbnailExpanded ? labels.hideThumbnails : labels.showThumbnails}
-            </Button>
+            <button
+              type="button"
+              className="infini-media-gallery-toggle-thumb"
+              onClick={() => setThumbnailExpanded((v) => !v)}
+              aria-label={thumbnailExpanded ? labels.hideThumbnails : labels.showThumbnails}
+            >
+              {thumbnailExpanded ? <IconChevronUp size={18} /> : <IconChevronDown size={18} />}
+            </button>
           </div>
 
           {thumbnailExpanded ? (
@@ -344,8 +321,24 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                 >
                   {item.type === "image" && isRenderableUrl(item.source) ? (
                     <img src={item.source} alt={`Media thumbnail ${index + 1}`} loading="lazy" decoding="async" />
+                  ) : item.type === "video" ? (
+                    "thumbnailUrl" in item && item.thumbnailUrl ? (
+                      <div className="infini-media-gallery-thumb-video">
+                        <img src={item.thumbnailUrl} alt={`Video thumbnail ${index + 1}`} loading="lazy" decoding="async" />
+                        <IconPlayerPlay size={16} className="infini-media-gallery-thumb-play" />
+                      </div>
+                    ) : "isDirect" in item && item.isDirect ? (
+                      <div className="infini-media-gallery-thumb-video">
+                        <video src={item.source} preload="metadata" muted className="infini-media-gallery-thumb-vid" />
+                        <IconPlayerPlay size={16} className="infini-media-gallery-thumb-play" />
+                      </div>
+                    ) : (
+                      <div className="infini-media-gallery-thumb-video">
+                        <IconPlayerPlay size={20} className="infini-media-gallery-thumb-play-only" />
+                      </div>
+                    )
                   ) : (
-                    <span>{item.type === "video" ? labels.thumbnailVideo : labels.thumbnailImage}</span>
+                    <span>{labels.thumbnailImage}</span>
                   )}
                 </button>
               ))}
@@ -353,59 +346,6 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
           ) : null}
         </div>
       ) : null}
-
-      {audioResolved ? (
-        isRenderableUrl(audioResolved) ? (
-          <InfiniCard className="infini-media-gallery-audio-section" interactive={false}>
-            <div style={{ padding: "1.2rem" }}>
-              <Stack gap={8}>
-                <audio
-                  ref={audioRef}
-                  controls
-                  src={audioResolved}
-                  style={{ width: "100%" }}
-                  onLoadedMetadata={(e) => {
-                    const t = e.currentTarget;
-                    setAudioProgress({ current: t.currentTime, duration: Number.isFinite(t.duration) ? t.duration : 0 });
-                  }}
-                  onTimeUpdate={(e) => {
-                    const t = e.currentTarget;
-                    setAudioProgress((prev) => ({ current: t.currentTime, duration: Number.isFinite(t.duration) ? t.duration : prev.duration }));
-                  }}
-                  onPlay={() => setAudioPlaying(true)}
-                  onPause={() => setAudioPlaying(false)}
-                  onEnded={() => { setAudioPlaying(false); setAudioProgress((prev) => ({ ...prev, current: 0 })); }}
-                />
-                <Group className="infini-media-gallery-audio-controls" justify="space-between" gap={8}>
-                  <Button size="xs" variant="default" onClick={toggleAudioPlayback}>
-                    {audioPlaying ? labels.pause : labels.resume}
-                  </Button>
-                  <Text size="xs" c="dimmed">
-                    {formatMediaTime(audioProgress.current)} / {formatMediaTime(audioProgress.duration)}
-                  </Text>
-                </Group>
-                <Slider
-                  className="infini-media-gallery-audio-progress"
-                  min={0}
-                  max={Math.max(audioProgress.duration, 1)}
-                  value={Math.min(audioProgress.current, Math.max(audioProgress.duration, 1))}
-                  disabled={audioProgress.duration <= 0}
-                  onChange={seekAudio}
-                  aria-label={labels.seekAudio}
-                />
-              </Stack>
-            </div>
-          </InfiniCard>
-        ) : (
-          <InfiniCard interactive={false}>
-            <div style={{ padding: "1.2rem" }}>
-              <Text c="dimmed" style={{ wordBreak: "break-all" }}>{audioKey}</Text>
-            </div>
-          </InfiniCard>
-        )
-      ) : (
-        emptyContent ?? <Text c="dimmed">{labels.noAudio}</Text>
-      )}
     </Stack>
     </div>
   );

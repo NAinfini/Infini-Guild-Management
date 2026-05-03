@@ -406,6 +406,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: color-mix(in srgb, var(--color-text, #111827) 75%, transparent);
 }
 
 .app-profile-role {

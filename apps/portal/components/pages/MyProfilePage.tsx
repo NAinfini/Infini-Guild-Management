@@ -118,7 +118,7 @@ export function MyProfilePage() {
       maxFiles: 1,
       maxFileSizeBytes: 20 * 1024 * 1024,
       mediaType: "audio",
-      convertAudioToOpus: true,
+      convertAudioToOpus: false,
     },
   );
 
@@ -162,7 +162,6 @@ export function MyProfilePage() {
               primaryClass={form.classList[0] ?? "-"}
               imageCount={form.imageList.length}
               videoCount={form.videoList.length}
-              hasAudio={Boolean(profile?.audio_key)}
               activeNowEstimate={form.activeNowEstimate}
               bio={form.bio}
             />

@@ -181,12 +181,6 @@ export function ProfileMediaTab({
             <Text c="dimmed" size="sm">{profileAudioKey ? t("media.audioUploaded") : t("media.noAudio")}</Text>
           </Group>
 
-          <Text c="dimmed" size="xs">{t("media.audioHint")}</Text>
-
-          {audioUploader.supportError ? (
-            <Text c="yellow" size="sm">{audioUploader.supportError}</Text>
-          ) : null}
-
           <Group gap={8} align="flex-end">
             <FileButton
               onChange={(files) => audioUploader.selectFiles(files ? [files] : null)}
@@ -196,7 +190,6 @@ export function ProfileMediaTab({
                 <Button
                   variant="default"
                   size="compact-sm"
-                  disabled={Boolean(audioUploader.supportError)}
                   {...props}
                 >
                   {t("media.selectAudio")}
@@ -209,7 +202,7 @@ export function ProfileMediaTab({
             <Button
               size="compact-sm"
               onClick={onUploadAudio}
-              disabled={Boolean(audioUploader.supportError) || audioUploader.files.length === 0}
+              disabled={audioUploader.files.length === 0}
               loading={audioUploader.isUploading}
               leftSection={<IconUpload size={16} />}
             >

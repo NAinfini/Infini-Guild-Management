@@ -89,3 +89,26 @@ export function toEmbedVideoUrl(url: string): string {
 
   return url;
 }
+
+export function getVideoThumbnailUrl(url: string): string | null {
+  const parsed = safeUrl(url);
+  if (!parsed) return null;
+
+  const host = parsed.hostname.toLowerCase();
+
+  if (host.includes("youtu.be")) {
+    const id = parsed.pathname.slice(1).split("/")[0] ?? "";
+    return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : null;
+  }
+
+  if (host.includes("youtube.com")) {
+    const id = parsed.searchParams.get("v") ?? "";
+    return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : null;
+  }
+
+  if (host.includes("bilibili.com")) {
+    return null;
+  }
+
+  return null;
+}
