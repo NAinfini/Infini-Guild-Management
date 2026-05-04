@@ -77,38 +77,30 @@ export function ProfileMediaTab({
   }));
 
   return (
-    <Stack gap={16}>
-      {/* ── Avatar ── */}
+    <>
+      {/* ── Avatar + Images ── */}
       <PortalCard interactive={false}>
-        <Stack gap={12} p="1.2rem">
-          <Text fw={700} size="md">{t("media.avatar")}</Text>
+        <Stack gap={0} p="1.2rem">
+          <Text fw={700} size="sm" c="dimmed" tt="uppercase" lts={0.5} mb={10}>{t("media.avatar")}</Text>
           <Group gap={16} align="center">
-            <Avatar size={72} radius="xl" src={avatarKey ? resolveProfileMediaUrl(avatarKey) : undefined}>
-              <UserIcon size={32} />
+            <Avatar size={64} radius="xl" src={avatarKey ? resolveProfileMediaUrl(avatarKey) : undefined}
+              style={{ border: "2px solid var(--color-border, #e5e7eb)" }}
+            >
+              <UserIcon size={28} />
             </Avatar>
-            <Stack gap={6}>
+            <Stack gap={4}>
               <FileButton
                 onChange={(file) => { if (file) onUploadAvatar(file); }}
                 accept="image/jpeg,image/png,image/gif,image/webp,image/avif"
               >
                 {(props) => (
-                  <Button
-                    variant="default"
-                    size="compact-sm"
-                    loading={avatarUploading}
-                    leftSection={<UploadIcon size={16} />}
-                    {...props}
-                  >
+                  <Button variant="default" size="compact-sm" loading={avatarUploading} leftSection={<UploadIcon size={14} />} {...props}>
                     {t("media.uploadAvatar")}
                   </Button>
                 )}
               </FileButton>
               {avatarKey ? (
-                <Button
-                  variant="subtle"
-                  color="red"
-                  size="compact-xs"
-                  leftSection={<TrashIcon size={14} />}
+                <Button variant="subtle" color="red" size="compact-xs" leftSection={<TrashIcon size={12} />}
                   onClick={() => {
                     modals.openConfirmModal({
                       title: t("confirm.removeAvatar.title"),
@@ -125,15 +117,12 @@ export function ProfileMediaTab({
               ) : null}
             </Stack>
           </Group>
-        </Stack>
-      </PortalCard>
 
-      {/* ── Images ── */}
-      <PortalCard interactive={false}>
-        <Stack gap={12} p="1.2rem">
-          <Group justify="space-between" align="center">
-            <Text fw={700} size="md">{t("media.images")}</Text>
-            <Text c="dimmed" size="sm">{t("media.imageCount", { count: imageList.length })}</Text>
+          <Divider my={16} />
+
+          <Group justify="space-between" align="center" mb={10}>
+            <Text fw={700} size="sm" c="dimmed" tt="uppercase" lts={0.5}>{t("media.images")}</Text>
+            <Text c="dimmed" size="xs">{t("media.imageCount", { count: imageList.length })}</Text>
           </Group>
 
           <ImageGridEditor
@@ -157,39 +146,32 @@ export function ProfileMediaTab({
           />
 
           {imageUploader.files.length > 0 ? (
-            <Group gap={8} align="center">
-              <Text size="xs" c="dimmed">
-                {t("media.filesSelected", { count: imageUploader.files.length })}
-              </Text>
-              <Button
-                size="compact-sm"
-                onClick={onUploadImages}
-                disabled={imageUploader.files.length === 0}
-                loading={imageUploader.isUploading}
-                leftSection={<UploadIcon size={16} />}
+            <Group gap={8} align="center" mt={8}>
+              <Text size="xs" c="dimmed">{t("media.filesSelected", { count: imageUploader.files.length })}</Text>
+              <Button size="compact-sm" onClick={onUploadImages} disabled={imageUploader.files.length === 0}
+                loading={imageUploader.isUploading} leftSection={<UploadIcon size={14} />}
               >
                 {t("action.upload")}
               </Button>
             </Group>
           ) : null}
 
-          {imageUploader.error ? <Text c="red" size="sm">{imageUploader.error}</Text> : null}
+          {imageUploader.error ? <Text c="red" size="sm" mt={4}>{imageUploader.error}</Text> : null}
           {imageUploader.isConverting || imageUploader.isUploading ? (
-            <Stack gap={4}>
+            <Stack gap={4} mt={6}>
               <Progress value={imageUploader.conversionProgress} size="xs" animated />
               <Progress value={imageUploader.uploadProgress} size="xs" animated />
             </Stack>
           ) : null}
-
         </Stack>
       </PortalCard>
 
-      {/* ── Videos ── */}
-      <PortalCard interactive={false}>
-        <Stack gap={12} p="1.2rem">
-          <Group justify="space-between" align="center">
-            <Text fw={700} size="md">{t("media.videos")}</Text>
-            <Text c="dimmed" size="sm">{t("media.videoCount", { count: videoList.length })}</Text>
+      {/* ── Videos + Audio ── */}
+      <PortalCard interactive={false} style={{ marginTop: 12 }}>
+        <Stack gap={0} p="1.2rem">
+          <Group justify="space-between" align="center" mb={10}>
+            <Text fw={700} size="sm" c="dimmed" tt="uppercase" lts={0.5}>{t("media.videos")}</Text>
+            <Text c="dimmed" size="xs">{t("media.videoCount", { count: videoList.length })}</Text>
           </Group>
 
           <Group gap={8} wrap="nowrap">
@@ -198,105 +180,83 @@ export function ProfileMediaTab({
               value={videoDraft}
               onChange={(event) => onVideoDraftChange(event.currentTarget.value)}
               placeholder="https://youtube.com/..."
-              onKeyDown={(event) => {
-                if (event.key === "Enter") onAddVideoUrl();
-              }}
+              onKeyDown={(event) => { if (event.key === "Enter") onAddVideoUrl(); }}
             />
-            <Button size="compact-sm" onClick={onAddVideoUrl} leftSection={<PlusIcon size={16} />}>{t("action.add")}</Button>
+            <Button size="compact-sm" onClick={onAddVideoUrl} leftSection={<PlusIcon size={14} />}>{t("action.add")}</Button>
           </Group>
-
-          <Text c="dimmed" size="xs">{t("media.videoHostHint")}</Text>
+          <Text c="dimmed" size="xs" mt={4}>{t("media.videoHostHint")}</Text>
 
           {videoList.length > 0 ? (
-            <>
-              <Divider />
-              <Stack gap={6}>
-                {videoList.map((item, index) => (
-                  <Group key={`${item}-${index}`} gap={8} wrap="wrap" align="center">
-                    <Text size="sm" style={{ flex: 1, minWidth: 0 }} truncate="end">{item}</Text>
-                    <Group gap={4} wrap="nowrap">
-                      <Button size="compact-xs" variant="default" onClick={() => onMoveVideo(index, -1)} disabled={index === 0}>
-                        {t("action.up")}
-                      </Button>
-                      <Button size="compact-xs" variant="default" onClick={() => onMoveVideo(index, 1)} disabled={index === videoList.length - 1}>
-                        {t("action.down")}
-                      </Button>
-                      <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={16} />} onClick={() => onRemoveVideo(index)} tooltip={{ label: t("action.delete"), withArrow: true }} />
-                    </Group>
+            <Stack gap={6} mt={10}>
+              {videoList.map((item, index) => (
+                <Group key={`${item}-${index}`} gap={8} wrap="wrap" align="center"
+                  style={{ padding: "4px 8px", borderRadius: "var(--radius-sm, 8px)", background: "var(--color-primary-alpha, rgba(59,130,246,0.06))" }}
+                >
+                  <Text size="sm" style={{ flex: 1, minWidth: 0 }} truncate="end">{item}</Text>
+                  <Group gap={4} wrap="nowrap">
+                    <Button size="compact-xs" variant="default" onClick={() => onMoveVideo(index, -1)} disabled={index === 0}>{t("action.up")}</Button>
+                    <Button size="compact-xs" variant="default" onClick={() => onMoveVideo(index, 1)} disabled={index === videoList.length - 1}>{t("action.down")}</Button>
+                    <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={14} />} onClick={() => onRemoveVideo(index)} tooltip={{ label: t("action.delete"), withArrow: true }} />
                   </Group>
-                ))}
-              </Stack>
-            </>
+                </Group>
+              ))}
+            </Stack>
           ) : null}
-        </Stack>
-      </PortalCard>
 
-      {/* ── Audio ── */}
-      <PortalCard interactive={false}>
-        <Stack gap={12} p="1.2rem">
-          <Group justify="space-between" align="center">
-            <Text fw={700} size="md">{t("media.audio")}</Text>
-            <Text c="dimmed" size="sm">{profileAudioKey ? t("media.audioUploaded") : t("media.noAudio")}</Text>
+          <Divider my={16} />
+
+          <Group justify="space-between" align="center" mb={10}>
+            <Text fw={700} size="sm" c="dimmed" tt="uppercase" lts={0.5}>{t("media.audio")}</Text>
+            <Text c="dimmed" size="xs">{profileAudioKey ? t("media.audioUploaded") : t("media.noAudio")}</Text>
           </Group>
 
-          <Group gap={8} align="flex-end">
+          <Group gap={8} align="center">
             <FileButton
               onChange={(files) => audioUploader.selectFiles(files ? [files] : null)}
               accept="audio/ogg,audio/webm,audio/mp4,audio/mpeg,audio/wav"
             >
               {(props) => (
-                <Button
-                  variant="default"
-                  size="compact-sm"
-                  {...props}
-                >
-                  {t("media.selectAudio")}
-                </Button>
+                <Button variant="default" size="compact-sm" {...props}>{t("media.selectAudio")}</Button>
               )}
             </FileButton>
             {audioUploader.files.length > 0 ? (
               <Text size="xs" c="dimmed">{audioUploader.files[0]?.name}</Text>
             ) : null}
-            <Button
-              size="compact-sm"
-              onClick={onUploadAudio}
-              disabled={audioUploader.files.length === 0}
-              loading={audioUploader.isUploading}
-              leftSection={<UploadIcon size={16} />}
+            <Button size="compact-sm" onClick={onUploadAudio} disabled={audioUploader.files.length === 0}
+              loading={audioUploader.isUploading} leftSection={<UploadIcon size={14} />}
             >
               {t("action.upload")}
             </Button>
           </Group>
 
-          {audioUploader.error ? <Text c="red" size="sm">{audioUploader.error}</Text> : null}
+          {audioUploader.error ? <Text c="red" size="sm" mt={4}>{audioUploader.error}</Text> : null}
           {audioUploader.isConverting || audioUploader.isUploading ? (
-            <Stack gap={4}>
+            <Stack gap={4} mt={6}>
               <Progress value={audioUploader.conversionProgress} size="xs" animated />
               <Progress value={audioUploader.uploadProgress} size="xs" animated />
             </Stack>
           ) : null}
 
           {profileAudioKey ? (
-            <>
-              <Divider />
-              <Group gap={8} align="center">
-                <Text size="sm" style={{ flex: 1 }} truncate="end">{profileAudioKey.split("/").pop()}</Text>
-                <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={16} />} onClick={() => {
-                  modals.openConfirmModal({
-                    title: t("confirm.removeAudio.title"),
-                    children: t("confirm.removeAudio.description"),
-                    centered: true,
-                    confirmProps: { color: "red" },
-                    labels: { cancel: t("common:action.cancel"), confirm: t("common:action.delete") },
-                    onConfirm: onRemoveAudio,
-                  });
-                }} tooltip={{ label: t("action.delete"), withArrow: true }} />
-              </Group>
-            </>
+            <Group gap={8} align="center" mt={8}
+              style={{ padding: "4px 8px", borderRadius: "var(--radius-sm, 8px)", background: "var(--color-primary-alpha, rgba(59,130,246,0.06))" }}
+            >
+              <Text size="sm" style={{ flex: 1 }} truncate="end">{profileAudioKey.split("/").pop()}</Text>
+              <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={14} />} onClick={() => {
+                modals.openConfirmModal({
+                  title: t("confirm.removeAudio.title"),
+                  children: t("confirm.removeAudio.description"),
+                  centered: true,
+                  confirmProps: { color: "red" },
+                  labels: { cancel: t("common:action.cancel"), confirm: t("common:action.delete") },
+                  onConfirm: onRemoveAudio,
+                });
+              }} tooltip={{ label: t("action.delete"), withArrow: true }} />
+            </Group>
           ) : null}
         </Stack>
       </PortalCard>
       <FloatingSaveBar isDirty={isDirty} saving={savePending} onSave={onSaveProfile} />
-    </Stack>
+    </>
   );
 }

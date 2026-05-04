@@ -2,7 +2,7 @@ import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { PortalCard } from "../../shared/PortalCard";
 import { FloatingSaveBar } from "../../shared/FloatingSaveBar";
-import { Button, Group, NumberInput, Select, Stack, Text, TextInput, Textarea } from "@mantine/core";
+import { Button, Divider, Group, NumberInput, Select, Stack, Text, TextInput, Textarea } from "@mantine/core";
 import { ExternalLinkIcon, PlusIcon } from "@portal/components/icons";
 import type { ReactNode } from "react";
 import DOMPurify from "dompurify";
@@ -52,11 +52,11 @@ export function ProfileProfileTab({
 }: ProfileProfileTabProps) {
   const { t } = useTranslation("profile");
   return (
-    <Stack gap={16}>
+    <>
       <PortalCard interactive={false}>
-        <Stack gap={14} p="1.2rem">
-          <Text fw={700} size="md">{t("section.basicInfo")}</Text>
-
+        <Stack gap={0} p="1.2rem">
+          {/* ── Basic Info ── */}
+          <Text fw={700} size="sm" c="dimmed" tt="uppercase" lts={0.5} mb={10}>{t("section.basicInfo")}</Text>
           <NumberInput
             label={t("field.power")}
             value={power}
@@ -64,12 +64,11 @@ export function ProfileProfileTab({
             hideControls
             onChange={(value) => { if (typeof value === "number") onPowerChange(value); }}
           />
-        </Stack>
-      </PortalCard>
 
-      <PortalCard interactive={false}>
-        <Stack gap={12} p="1.2rem">
-          <Text fw={700} size="md">{t("section.classes")}</Text>
+          <Divider my={16} />
+
+          {/* ── Classes ── */}
+          <Text fw={700} size="sm" c="dimmed" tt="uppercase" lts={0.5} mb={10}>{t("section.classes")}</Text>
           <Group gap={8} wrap="nowrap">
             <Select
               searchable
@@ -83,17 +82,18 @@ export function ProfileProfileTab({
             />
             <Button onClick={onAddClass} leftSection={<PlusIcon size={16} />}>{t("action.add")}</Button>
           </Group>
-          <DndContext sensors={classSensors} collisionDetection={closestCenter} onDragEnd={onClassDragEnd}>
-            <SortableContext items={classList} strategy={verticalListSortingStrategy}>
-              <Stack gap={6}>{classList.map((item, index) => renderSortableClassRow(item, index))}</Stack>
-            </SortableContext>
-          </DndContext>
-        </Stack>
-      </PortalCard>
+          {classList.length > 0 && (
+            <DndContext sensors={classSensors} collisionDetection={closestCenter} onDragEnd={onClassDragEnd}>
+              <SortableContext items={classList} strategy={verticalListSortingStrategy}>
+                <Stack gap={6} mt={8}>{classList.map((item, index) => renderSortableClassRow(item, index))}</Stack>
+              </SortableContext>
+            </DndContext>
+          )}
 
-      <PortalCard interactive={false}>
-        <Stack gap={12} p="1.2rem">
-          <Text fw={700} size="md">{t("section.about")}</Text>
+          <Divider my={16} />
+
+          {/* ── About ── */}
+          <Text fw={700} size="sm" c="dimmed" tt="uppercase" lts={0.5} mb={10}>{t("section.about")}</Text>
           <TextInput
             label={
               <Group gap={8} align="center" wrap="nowrap" style={{ lineHeight: 1.4 }}>
@@ -108,7 +108,7 @@ export function ProfileProfileTab({
             placeholder={t("field.titleHtml")}
           />
           {titleHtml ? (
-            <div>
+            <div style={{ marginTop: 6 }}>
               <Text c="dimmed" size="xs" mb={4}>{t("field.titlePreview")}</Text>
               <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(titleHtml) }} />
             </div>
@@ -117,12 +117,15 @@ export function ProfileProfileTab({
             label={t("field.bio")}
             value={bio}
             onChange={(event) => onBioChange(event.currentTarget.value)}
-            minRows={4}
+            minRows={3}
+            autosize
+            maxRows={8}
             placeholder={fieldBioPlaceholder}
+            mt={12}
           />
         </Stack>
       </PortalCard>
       <FloatingSaveBar isDirty={isDirty} saving={savePending} onSave={onSaveProfile} />
-    </Stack>
+    </>
   );
 }

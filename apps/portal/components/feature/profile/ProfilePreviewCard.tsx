@@ -1,5 +1,5 @@
 import { PortalCard } from "../../shared/PortalCard";
-import { Avatar, Badge, Divider, Group, RingProgress, Spoiler, Stack, Text } from "@mantine/core";
+import { Avatar, Badge, Group, RingProgress, Spoiler, Stack, Text } from "@mantine/core";
 import { PhotoIcon, VideoIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { resolveProfileMediaUrl } from "../../../utils/media";
@@ -23,18 +23,6 @@ type ProfilePreviewCardProps = {
   bio: string;
 };
 
-function MediaStat({ icon, count, label }: { icon: React.ReactNode; count: number; label: string }) {
-  return (
-    <Stack gap={2} align="center" style={{ flex: 1 }}>
-      <Group gap={4} align="center" wrap="nowrap">
-        {icon}
-        <Text fw={700} size="lg">{count}</Text>
-      </Group>
-      <Text c="dimmed" size="xs">{label}</Text>
-    </Stack>
-  );
-}
-
 export function ProfilePreviewCard({
   username,
   avatarKey,
@@ -50,71 +38,83 @@ export function ProfilePreviewCard({
   const initials = (username || "?").slice(0, 2).toUpperCase();
   const maxPower = 100_000_000;
   const powerPercent = Math.min((power / maxPower) * 100, 100);
+  const powerLabel = power >= 1_000_000 ? `${(power / 1_000_000).toFixed(1)}M` : power >= 1_000 ? `${(power / 1_000).toFixed(0)}K` : String(power);
 
   return (
     <PortalCard interactive={false}>
-      <Stack gap={16} p="1.2rem">
-        {/* Header: Avatar + name + badges */}
-        <Group gap={14} align="center" wrap="nowrap">
+      <Stack gap={0} p="1rem">
+        {/* Avatar + name row */}
+        <Group gap={12} align="center" wrap="nowrap">
           <Avatar
-            size={52}
+            size={56}
             radius="xl"
             color="blue"
             src={avatarKey ? resolveProfileMediaUrl(avatarKey) : undefined}
-            style={{ flexShrink: 0 }}
+            style={{ flexShrink: 0, border: "2px solid var(--color-border, #e5e7eb)" }}
           >
             {initials}
           </Avatar>
-          <Stack gap={4} style={{ minWidth: 0 }}>
-            <Text fw={700} size="lg" truncate="end">{username || "-"}</Text>
-            <Group gap={6}>
+          <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
+            <Text fw={700} size="md" truncate="end" lh={1.3}>{username || "-"}</Text>
+            <Group gap={4} wrap="wrap">
               <Badge
-                size="sm"
+                size="xs"
                 color={isActive ? "green" : "gray"}
                 variant={isActive ? "light" : "default"}
               >
                 {activeNowEstimate}
               </Badge>
               {primaryClass && primaryClass !== "-" ? (
-                <Badge size="sm" variant="light" color={CLASS_BADGE_COLOR[(CLASS_COLOR_GROUP as Record<string, string>)[primaryClass] ?? ""] ?? "yellow"}>{primaryClass}</Badge>
+                <Badge size="xs" variant="light" color={CLASS_BADGE_COLOR[(CLASS_COLOR_GROUP as Record<string, string>)[primaryClass] ?? ""] ?? "yellow"}>{primaryClass}</Badge>
               ) : null}
             </Group>
           </Stack>
         </Group>
 
-        <Divider />
-
-        {/* Power ring */}
-        <Stack gap={4} align="center">
-          <RingProgress
-            size={72}
-            thickness={6}
-            roundCaps
-            sections={[{ value: powerPercent, color: "blue" }]}
-            label={
-              <Text ta="center" size="xs" fw={700}>
-                {power >= 1_000_000 ? `${(power / 1_000_000).toFixed(1)}M` : power >= 1_000 ? `${(power / 1_000).toFixed(0)}K` : String(power)}
-              </Text>
-            }
-          />
-          <Text c="dimmed" size="xs">{t("preview.power")}</Text>
-        </Stack>
-
-        <Divider />
-
-        {/* Media stats */}
-        <Group gap={8} justify="center">
-          <MediaStat icon={<PhotoIcon size={16} style={{ color: "var(--color-primary, #3b82f6)" }} />} count={imageCount} label={t("preview.images")} />
-          <MediaStat icon={<VideoIcon size={16} style={{ color: "var(--color-secondary, #8b5cf6)" }} />} count={videoCount} label={t("preview.videos")} />
+        {/* Power + media stats row */}
+        <Group gap={0} align="center" justify="center" mt={16} mb={bio ? 12 : 0}
+          style={{
+            background: "var(--color-primary-alpha, rgba(59,130,246,0.08))",
+            borderRadius: "var(--radius-sm, 8px)",
+            padding: "12px 8px",
+          }}
+        >
+          <Stack gap={2} align="center" style={{ flex: 1 }}>
+            <RingProgress
+              size={56}
+              thickness={5}
+              roundCaps
+              sections={[{ value: powerPercent, color: "blue" }]}
+              label={
+                <Text ta="center" size="xs" fw={700} lh={1}>{powerLabel}</Text>
+              }
+            />
+            <Text c="dimmed" size="xs" lh={1}>{t("preview.power")}</Text>
+          </Stack>
+          <div style={{ width: 1, height: 36, background: "var(--color-border, #e5e7eb)" }} />
+          <Stack gap={2} align="center" style={{ flex: 1 }}>
+            <Group gap={4} align="center" wrap="nowrap">
+              <PhotoIcon size={14} style={{ color: "var(--color-primary, #3b82f6)" }} />
+              <Text fw={700} size="sm">{imageCount}</Text>
+            </Group>
+            <Text c="dimmed" size="xs" lh={1}>{t("preview.images")}</Text>
+          </Stack>
+          <div style={{ width: 1, height: 36, background: "var(--color-border, #e5e7eb)" }} />
+          <Stack gap={2} align="center" style={{ flex: 1 }}>
+            <Group gap={4} align="center" wrap="nowrap">
+              <VideoIcon size={14} style={{ color: "var(--color-secondary, #8b5cf6)" }} />
+              <Text fw={700} size="sm">{videoCount}</Text>
+            </Group>
+            <Text c="dimmed" size="xs" lh={1}>{t("preview.videos")}</Text>
+          </Stack>
         </Group>
 
         {bio ? (
-          <>
-            <Divider />
-            <Spoiler maxHeight={84} showLabel={t("preview.showMore")} hideLabel={t("preview.showLess")}>
-              <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{bio}</Text>
-            </Spoiler>
-          </>
+          <Spoiler maxHeight={72} showLabel={t("preview.showMore")} hideLabel={t("preview.showLess")}
+            styles={{ control: { fontSize: 12 } }}
+          >
+            <Text size="sm" c="dimmed" style={{ whiteSpace: "pre-wrap" }} lh={1.5}>{bio}</Text>
+          </Spoiler>
         ) : null}
       </Stack>
     </PortalCard>

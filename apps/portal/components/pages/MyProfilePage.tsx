@@ -219,7 +219,7 @@ export function MyProfilePage() {
               <Tabs.Tab value="account">{t("tab.account")}</Tabs.Tab>
             </Tabs.List>
 
-            <Tabs.Panel value="profile" pt="sm">
+            <Tabs.Panel value="profile" pt="md">
               <ProfileProfileTab
                 power={form.power}
                 classDraft={form.classDraft}
@@ -252,7 +252,7 @@ export function MyProfilePage() {
               />
             </Tabs.Panel>
 
-            <Tabs.Panel value="media" pt="sm">
+            <Tabs.Panel value="media" pt="md">
               <ProfileMediaTab
                 videoDraft={form.videoDraft}
                 videoList={form.videoList}
@@ -287,7 +287,7 @@ export function MyProfilePage() {
               />
             </Tabs.Panel>
 
-            <Tabs.Panel value="availability" pt="sm">
+            <Tabs.Panel value="availability" pt="md">
               <ProfileAvailabilityTab
                 availabilityData={form.availabilityData}
                 vacationStart={form.vacationStart}
@@ -301,7 +301,7 @@ export function MyProfilePage() {
               />
             </Tabs.Panel>
 
-            <Tabs.Panel value="account" pt="sm">
+            <Tabs.Panel value="account" pt="md">
               <ProfileAccountTab
                 currentPassword={form.currentPassword}
                 newPassword={form.newPassword}
