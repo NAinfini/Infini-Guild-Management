@@ -5,7 +5,7 @@ import {
   downloadGuildWarExport,
   batchUpdateGuildWarMemberStats,
   batchDeleteGuildWarHistory,
-  updateGuildWarRoleTag,
+  updateGuildWarRoleTags,
 } from "../../services/GuildWarService";
 import { useAppError } from "../useAppError";
 import { queryKeys } from "../../api/query-keys";
@@ -48,7 +48,11 @@ export function useGuildWarMutations({
   const { showError } = useAppError();
 
   const roleTagMutation = useMutation({
-    mutationFn: updateGuildWarRoleTag,
+    mutationFn: (payload: { event_id: string; user_id: string; role_tag: string | null }) =>
+      updateGuildWarRoleTags({
+        event_id: payload.event_id,
+        updates: [{ user_id: payload.user_id, role_tag: payload.role_tag }],
+      }),
     onSuccess: async () => {
       message.success(t("message.roleTagUpdated"));
       await queryClient.invalidateQueries({

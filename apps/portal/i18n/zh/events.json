@@ -40,6 +40,8 @@
   "field.description": "描述",
   "field.pinned": "置顶",
   "field.signupLocked": "锁定报名",
+  "field.autoArchive": "自动归档",
+  "field.autoArchiveHint": "活动结束后自动归档一次。",
   "field.recurring": "周期重复",
   "field.frequency": "频率",
   "field.interval": "每",

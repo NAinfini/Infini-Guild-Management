@@ -91,6 +91,8 @@ type ModifierBreakdown = { factor: string; ratio: number; weight: number; contri
 
 type AuditLogInput = { entityType: string; action: string; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
 type SaveTeamsInput = z.infer<typeof saveTeamsPayloadSchema>;
+type MoveMembersInput = Array<{ user_id: string; to: string }>;
+type RoleTagUpdatesInput = Array<{ user_id: string; role_tag: string | null }>;
 type EventPayload = z.infer<typeof eventSchema> | null;
 type CreateWarHistoryInput = z.infer<typeof createWarHistorySchema>;
 type UpdateWarHistoryInput = z.infer<typeof updateWarHistorySchema>;
@@ -301,9 +303,9 @@ export class GuildWarService {
   // --- Public: business logic methods ---
 
   private async getEventPayload(eventId: string): Promise<EventPayload> {
-    const eventRow = (await this.db.select({ id: events.id, type: events.type, title: events.title, description: events.description, startAt: events.startAt, endAt: events.endAt, capacity: events.capacity, pinned: events.pinned, signupLocked: events.signupLocked, visibleAt: events.visibleAt, archivedAt: events.archivedAt, createdBy: events.createdBy, recurrenceRule: events.recurrenceRule, visibilityOffsetMinutes: events.visibilityOffsetMinutes, seriesId: events.seriesId, isSeriesParent: events.isSeriesParent, instanceDate: events.instanceDate, createdAt: events.createdAt, updatedAt: events.updatedAt }).from(events).where(eq(events.id, eventId)).limit(1))[0];
+    const eventRow = (await this.db.select({ id: events.id, type: events.type, title: events.title, description: events.description, startAt: events.startAt, endAt: events.endAt, capacity: events.capacity, pinned: events.pinned, signupLocked: events.signupLocked, autoArchive: events.autoArchive, autoArchived: events.autoArchived, visibleAt: events.visibleAt, archivedAt: events.archivedAt, createdBy: events.createdBy, recurrenceRule: events.recurrenceRule, visibilityOffsetMinutes: events.visibilityOffsetMinutes, seriesId: events.seriesId, isSeriesParent: events.isSeriesParent, instanceDate: events.instanceDate, createdAt: events.createdAt, updatedAt: events.updatedAt }).from(events).where(eq(events.id, eventId)).limit(1))[0];
     if (!eventRow) return null;
-    return eventSchema.parse({ id: eventRow.id, type: eventRow.type, title: eventRow.title, description: eventRow.description, start_at: eventRow.startAt, end_at: eventRow.endAt, capacity: eventRow.capacity, pinned: eventRow.pinned, signup_locked: eventRow.signupLocked, visible_at: eventRow.visibleAt, archived_at: eventRow.archivedAt, created_by: eventRow.createdBy, recurrence_rule: parseRecurrenceRule(eventRow.recurrenceRule), visibility_offset_minutes: eventRow.visibilityOffsetMinutes, series_id: eventRow.seriesId, is_series_parent: eventRow.isSeriesParent, instance_date: eventRow.instanceDate, created_at: eventRow.createdAt, updated_at: eventRow.updatedAt });
+    return eventSchema.parse({ id: eventRow.id, type: eventRow.type, title: eventRow.title, description: eventRow.description, start_at: eventRow.startAt, end_at: eventRow.endAt, capacity: eventRow.capacity, pinned: eventRow.pinned, signup_locked: eventRow.signupLocked, auto_archive: eventRow.autoArchive, auto_archived: eventRow.autoArchived, visible_at: eventRow.visibleAt, archived_at: eventRow.archivedAt, created_by: eventRow.createdBy, recurrence_rule: parseRecurrenceRule(eventRow.recurrenceRule), visibility_offset_minutes: eventRow.visibilityOffsetMinutes, series_id: eventRow.seriesId, is_series_parent: eventRow.isSeriesParent, instance_date: eventRow.instanceDate, created_at: eventRow.createdAt, updated_at: eventRow.updatedAt });
   }
 
   private async getEventParticipantUserIds(eventId: string): Promise<string[]> {
@@ -374,53 +376,134 @@ export class GuildWarService {
     return ok(refreshed);
   }
 
-  async moveMember(actorId: string, eventId: string, userId: string, to: string, conditionalEtag?: string): Promise<ServiceResult<{ ok: true }>> {
+  async moveMembers(actorId: string, eventId: string, moves: MoveMembersInput, conditionalEtag?: string): Promise<ServiceResult<{ ok: true }>> {
     const activeHistory = await this.ensureWarHistoryForEvent(eventId, actorId);
     if (!activeHistory) return err("NOT_FOUND", "Active war history not found");
+    if (moves.length === 0) return err("VALIDATION_ERROR", "At least one move is required");
     if (conditionalEtag) {
       const expectedEtag = buildWarEtag(activeHistory.id, activeHistory.updatedAt);
       if (conditionalEtag !== expectedEtag) return err("CONFLICT", "Guild war roster changed, refresh and retry", { expected_etag: expectedEtag });
     }
     const teams = await this.getTeamsForHistory(activeHistory.id);
     const teamIds = teams.map((t) => t.id);
+    const teamById = new Map(teams.map((team) => [team.id, team]));
+    const userIds = [...new Set(moves.map((move) => move.user_id))];
+    const missingTeam = moves.find((move) => move.to !== "pool" && move.to !== "remove" && !teamById.has(move.to));
+    if (missingTeam) return err("NOT_FOUND", "Target team not found");
+
     const nowIso = new Date().toISOString();
     const { rawDb } = this.deps;
-
     const stmts: D1PreparedStatement[] = [];
-    for (const tid of teamIds) stmts.push(rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id = ?1 AND user_id = ?2").bind(tid, userId));
-    stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE war_history_id = ?1 AND user_id = ?2").bind(activeHistory.id, userId));
-    if (to === "pool") {
-      stmts.push(rawDb.prepare("INSERT INTO war_pool_members (id, war_history_id, user_id) VALUES (?1, ?2, ?3)").bind(nanoid(), activeHistory.id, userId));
-    } else if (to === "remove") {
-      stmts.push(rawDb.prepare("DELETE FROM event_participants WHERE event_id = ?1 AND user_id = ?2").bind(eventId, userId));
-    } else {
-      const targetTeam = teams.find((t) => t.id === to);
-      if (!targetTeam) return err("NOT_FOUND", "Target team not found");
-      const maxRow = (await this.db.select({ maxSort: sql<number>`coalesce(max(${warTeamMembers.sortOrder}), -1)` }).from(warTeamMembers).where(eq(warTeamMembers.warTeamId, targetTeam.id)))[0];
-      const nextSort = Number(maxRow?.maxSort ?? -1) + 1;
-      stmts.push(rawDb.prepare("INSERT INTO war_team_members (id, war_team_id, user_id, sort_order) VALUES (?1, ?2, ?3, ?4)").bind(nanoid(), targetTeam.id, userId, nextSort));
+
+    if (userIds.length > 0) {
+      const userPlaceholders = userIds.map((_, index) => `?${index + 2}`).join(", ");
+      for (const teamId of teamIds) {
+        stmts.push(rawDb.prepare(`DELETE FROM war_team_members WHERE war_team_id = ?1 AND user_id IN (${userPlaceholders})`).bind(teamId, ...userIds));
+      }
+      stmts.push(rawDb.prepare(`DELETE FROM war_pool_members WHERE war_history_id = ?1 AND user_id IN (${userPlaceholders})`).bind(activeHistory.id, ...userIds));
     }
-    if (to !== "remove") {
-      stmts.push(rawDb.prepare("INSERT OR IGNORE INTO event_participants (id, event_id, user_id) VALUES (?1, ?2, ?3)").bind(nanoid(), eventId, userId));
+
+    const removeUserIds = moves.filter((move) => move.to === "remove").map((move) => move.user_id);
+    if (removeUserIds.length > 0) {
+      const removePlaceholders = removeUserIds.map((_, index) => `?${index + 2}`).join(", ");
+      stmts.push(rawDb.prepare(`DELETE FROM event_participants WHERE event_id = ?1 AND user_id IN (${removePlaceholders})`).bind(eventId, ...removeUserIds));
     }
+
+    for (const move of moves) {
+      if (move.to === "pool") {
+        stmts.push(rawDb.prepare("INSERT INTO war_pool_members (id, war_history_id, user_id) VALUES (?1, ?2, ?3)").bind(nanoid(), activeHistory.id, move.user_id));
+      }
+    }
+
+    const teamMoves = moves.filter((move) => move.to !== "pool" && move.to !== "remove");
+    const movesByTeam = new Map<string, typeof teamMoves>();
+    for (const move of teamMoves) {
+      movesByTeam.set(move.to, [...(movesByTeam.get(move.to) ?? []), move]);
+    }
+    for (const [teamId, teamGroup] of movesByTeam) {
+      const maxRow = (await this.db.select({ maxSort: sql<number>`coalesce(max(${warTeamMembers.sortOrder}), -1)` }).from(warTeamMembers).where(eq(warTeamMembers.warTeamId, teamId)))[0];
+      let nextSort = Number(maxRow?.maxSort ?? -1) + 1;
+      for (const move of teamGroup) {
+        stmts.push(rawDb.prepare("INSERT INTO war_team_members (id, war_team_id, user_id, sort_order) VALUES (?1, ?2, ?3, ?4)").bind(nanoid(), teamId, move.user_id, nextSort));
+        nextSort += 1;
+      }
+    }
+
+    for (const move of moves) {
+      if (move.to !== "remove") {
+        stmts.push(rawDb.prepare("INSERT OR IGNORE INTO event_participants (id, event_id, user_id) VALUES (?1, ?2, ?3)").bind(nanoid(), eventId, move.user_id));
+      }
+    }
+
     stmts.push(rawDb.prepare("UPDATE war_history SET updated_at = ?1 WHERE id = ?2").bind(nowIso, activeHistory.id));
     await rawDb.batch(stmts);
-    const targetUser = (await this.db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1))[0];
-    await this.deps.writeAuditLog({ entityType: "guild_war", action: "move_member", actorId, entityId: activeHistory.id, diffTitle: targetUser?.username ?? null, detailText: JSON.stringify({ user_id: userId, username: targetUser?.username ?? null, to }) });
+    const targetUsers = userIds.length > 0
+      ? await this.db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, userIds))
+      : [];
+    const usernamesById = new Map(targetUsers.map((user) => [user.id, user.username]));
+    await this.deps.writeAuditLog({
+      entityType: "guild_war",
+      action: "move_member",
+      actorId,
+      entityId: activeHistory.id,
+      diffTitle: targetUsers.map((user) => user.username).join(", ") || null,
+      detailText: JSON.stringify({
+        count: moves.length,
+        moves: moves.map((move) => ({ ...move, username: usernamesById.get(move.user_id) ?? null })),
+      }),
+    });
     return ok({ ok: true });
   }
 
   async setRoleTag(actorId: string, eventId: string, userId: string, roleTag: string | null): Promise<ServiceResult<{ ok: true }>> {
+    const result = await this.setRoleTags(actorId, eventId, [{ user_id: userId, role_tag: roleTag }]);
+    if (!result.ok) return result;
+    return ok({ ok: true });
+  }
+
+  async setRoleTags(actorId: string, eventId: string, updates: RoleTagUpdatesInput): Promise<ServiceResult<{ ok: true; updated: number }>> {
     const activeHistory = await this.getLatestWarHistory(eventId);
     if (!activeHistory) return err("NOT_FOUND", "Active war history not found");
-    const memberRow = (await this.db.select({ id: warTeamMembers.id }).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(and(eq(warTeams.warHistoryId, activeHistory.id), eq(warTeamMembers.userId, userId))).limit(1))[0];
-    if (!memberRow) return err("NOT_FOUND", "Member not found in active teams");
-    const nextTag = typeof roleTag === "string" && roleTag.trim().length > 0 ? roleTag.trim() : null;
-    await this.db.update(warTeamMembers).set({ roleTag: nextTag }).where(eq(warTeamMembers.id, memberRow.id));
-    await this.db.update(warHistory).set({ updatedAt: new Date().toISOString() }).where(eq(warHistory.id, activeHistory.id));
-    const targetUser = (await this.db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1))[0];
-    await this.deps.writeAuditLog({ entityType: "guild_war", action: "set_role_tag", actorId, entityId: activeHistory.id, diffTitle: targetUser?.username ?? null, detailText: JSON.stringify({ user_id: userId, username: targetUser?.username ?? null, role_tag: nextTag }) });
-    return ok({ ok: true });
+    if (updates.length === 0) return err("VALIDATION_ERROR", "At least one role tag update is required");
+    const userIds = [...new Set(updates.map((update) => update.user_id))];
+    const memberRows = await this.db
+      .select({ id: warTeamMembers.id, userId: warTeamMembers.userId })
+      .from(warTeamMembers)
+      .innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId))
+      .where(and(eq(warTeams.warHistoryId, activeHistory.id), inArray(warTeamMembers.userId, userIds)));
+    const memberByUserId = new Map(memberRows.map((row) => [row.userId, row.id]));
+    const missingUserId = userIds.find((userId) => !memberByUserId.has(userId));
+    if (missingUserId) return err("NOT_FOUND", "Member not found in active teams", { user_id: missingUserId });
+
+    const nowIso = new Date().toISOString();
+    const stmts: D1PreparedStatement[] = updates.map((update) => {
+      const nextTag = typeof update.role_tag === "string" && update.role_tag.trim().length > 0 ? update.role_tag.trim() : null;
+      return this.deps.rawDb
+        .prepare("UPDATE war_team_members SET role_tag = ?1 WHERE id = ?2")
+        .bind(nextTag, memberByUserId.get(update.user_id));
+    });
+    stmts.push(this.deps.rawDb.prepare("UPDATE war_history SET updated_at = ?1 WHERE id = ?2").bind(nowIso, activeHistory.id));
+    await this.deps.rawDb.batch(stmts);
+
+    const targetUsers = await this.db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, userIds));
+    const usernamesById = new Map(targetUsers.map((user) => [user.id, user.username]));
+    await this.deps.writeAuditLog({
+      entityType: "guild_war",
+      action: "set_role_tag",
+      actorId,
+      entityId: activeHistory.id,
+      diffTitle: targetUsers.map((user) => user.username).join(", ") || null,
+      detailText: JSON.stringify({
+        count: updates.length,
+        updates: updates.map((update) => ({
+          user_id: update.user_id,
+          username: usernamesById.get(update.user_id) ?? null,
+          role_tag: typeof update.role_tag === "string" && update.role_tag.trim().length > 0 ? update.role_tag.trim() : null,
+        })),
+      }),
+    });
+    await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: activeHistory.id, hint: "role_tags_updated" });
+    return ok({ ok: true, updated: updates.length });
   }
 
   async exportHistory(format: "csv" | "json", filters: { dateFrom?: string; dateTo?: string; eventId?: string }): Promise<ServiceResult<{ content: string; contentType: string; filename: string }>> {

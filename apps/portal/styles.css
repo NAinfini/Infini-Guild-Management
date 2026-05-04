@@ -606,28 +606,32 @@ html[data-locale="zh"] {
   }
 }
 
-/* ── Tabs active indicator glow ── */
+/* ── Tabs pill style ── */
+.mantine-Tabs-list {
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  padding-bottom: 8px;
+}
+
+.mantine-Tabs-tab {
+  font-weight: 500;
+  color: var(--color-text-secondary, #6b7280);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mantine-Tabs-tab:hover:not([data-active]) {
+  background: color-mix(in srgb, var(--color-text, #000) 5%, transparent);
+}
+
 .mantine-Tabs-tab[data-active] {
-  position: relative;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+  color: var(--color-primary, #3b82f6);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent);
 }
 
-.mantine-Tabs-tab[data-active]::after {
-  content: "";
-  position: absolute;
-  bottom: -1px;
-  left: 20%;
-  right: 20%;
-  height: 2px;
-  background: linear-gradient(90deg, var(--color-primary, #3b82f6), var(--color-secondary, #8b5cf6), var(--color-accent, #06b6d4));
-  background-size: 200% 100%;
-  border-radius: 2px 2px 0 0;
-  box-shadow: 0 0 8px color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
-  animation: tabIndicatorShimmer 3s ease-in-out infinite;
-}
-
-@keyframes tabIndicatorShimmer {
-  0%, 100% { background-position: 0% center; }
-  50% { background-position: 200% center; }
+.dark .mantine-Tabs-tab[data-active] {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 16%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -648,9 +652,6 @@ html[data-locale="zh"] {
   .mantine-Modal-content,
   .mantine-Notification-root {
     animation: none !important;
-  }
-  .mantine-Tabs-tab[data-active]::after {
-    animation: none;
   }
   .star-border__track::before {
     animation: none;

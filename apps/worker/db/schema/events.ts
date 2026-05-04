@@ -19,6 +19,8 @@ export const events = sqliteTable(
     signupLocked: integer("signup_locked", { mode: "boolean" }).notNull().default(false),
     visibleAt: text("visible_at"),
     archivedAt: text("archived_at"),
+    autoArchive: integer("auto_archive", { mode: "boolean" }).notNull().default(false),
+    autoArchived: integer("auto_archived", { mode: "boolean" }).notNull().default(false),
     createdBy: text("created_by").notNull().references(() => users.id),
     recurrenceRule: text("recurrence_rule"),
     attachments: text("attachments").notNull().default("[]"),
@@ -32,8 +34,9 @@ export const events = sqliteTable(
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
   (table) => ({
-    idxSeriesParentArchived: index("idx_events_series_parent_archived").on(table.isSeriesParent, table.archivedAt, table.startAt, table.id),
-    idxSeriesInstance: index("idx_events_series_instance").on(table.seriesId, table.instanceDate),
+    idxArchivedSeriesStart: index("idx_events_archived_series_start").on(table.archivedAt, table.isSeriesParent, table.startAt, table.id),
+    idxAutoArchiveDue: index("idx_events_auto_archive_due").on(table.autoArchive, table.autoArchived, table.archivedAt, table.isSeriesParent, table.endAt, table.startAt),
+    uxSeriesInstance: uniqueIndex("ux_events_series_instance").on(table.seriesId, table.instanceDate),
     idxCreatedBy: index("idx_events_created_by").on(table.createdBy),
   }),
 );

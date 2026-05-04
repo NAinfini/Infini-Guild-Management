@@ -11,7 +11,7 @@ import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { fetchEventDetailBatch, fetchEventsList, type EventDetailResponse } from "../../services/EventService";
 import { fetchGuildWarHistory, fetchGuildWarHistoryBatch } from "../../services/GuildWarService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersList } from "../../services/UserService";
+import { fetchUsersList, fetchUsersStats } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import { PageLayout } from "../layout/PageLayout";
@@ -123,6 +123,12 @@ export function DashboardPage() {
     staleTime: 10 * 60_000,
   });
 
+  const usersStatsQuery = useQuery({
+    queryKey: queryKeys.users.stats(),
+    queryFn: fetchUsersStats,
+    staleTime: 10 * 60_000,
+  });
+
   const recentWars = useMemo(
     () => (warQuery.data?.data ?? []).slice(0, recentWarCount),
     [warQuery.data?.data],
@@ -153,8 +159,8 @@ export function DashboardPage() {
 
   const upcomingEvents = upcomingEventsQuery.data?.data ?? [];
   const users = usersQuery.data?.data ?? [];
-  const activeMemberCount = users.filter((entry) => entry.user.is_active && entry.user.deleted_at === null).length;
-  const totalMembersCount = users.filter((entry) => entry.user.deleted_at === null).length;
+  const activeMemberCount = usersStatsQuery.data?.active_members ?? 0;
+  const totalMembersCount = usersStatsQuery.data?.total_members ?? 0;
   const activeEventsCount = upcomingEvents.length;
 
   const upcomingEventDetailById = useMemo(
@@ -290,7 +296,7 @@ export function DashboardPage() {
     });
   };
 
-  const isUsersLoading = usersQuery.isLoading;
+  const isUsersLoading = usersQuery.isLoading || usersStatsQuery.isLoading;
   const isWarLoading = warQuery.isLoading;
   const isEventsLoading = upcomingEventsQuery.isLoading;
 
@@ -298,6 +304,7 @@ export function DashboardPage() {
     upcomingEventsQuery.isError ||
     warQuery.isError ||
     usersQuery.isError ||
+    usersStatsQuery.isError ||
     upcomingEventDetailsQuery.isError ||
     recentWarDetailsQuery.isError;
   useLoadWarningToast(hasError, t("common:loadErrorRetry"));

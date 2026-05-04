@@ -6,10 +6,10 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { notifySuccess } from "../utils/notifications";
 import {
-  addEventParticipant,
+  addEventParticipants,
   joinEvent,
   leaveEvent,
-  removeEventParticipant,
+  removeEventParticipants,
   type EventDetailResponse,
 } from "../services/EventService";
 import { queryKeys } from "../api/query-keys";
@@ -191,7 +191,7 @@ export function useEventsParticipantMutations({
 
   const addParticipantMutation = useMutation({
     mutationFn: ({ eventId, userId }: { eventId: string; userId: string }) =>
-      addEventParticipant(eventId, userId),
+      addEventParticipants(eventId, [userId]),
     onSuccess: async (_, { eventId }) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.previewDetails() });
@@ -204,7 +204,7 @@ export function useEventsParticipantMutations({
 
   const removeParticipantMutation = useMutation({
     mutationFn: ({ eventId, userId }: { eventId: string; userId: string }) =>
-      removeEventParticipant(eventId, userId),
+      removeEventParticipants(eventId, [userId]),
     onSuccess: async (_, { eventId }) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.events.previewDetails() });

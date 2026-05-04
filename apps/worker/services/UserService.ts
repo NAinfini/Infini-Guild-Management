@@ -6,6 +6,7 @@ import {
   adminUpdateProfileSchema,
   changePasswordSchema,
   changeUsernameSchema,
+  deleteProfileImagesSchema,
   memberProfileSchema,
   updateProfileSchema,
   userSchema,
@@ -15,7 +16,7 @@ import {
 import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { memberProfiles, sessions, userAuthPassword, users } from "../db/schema";
+import { memberProfileClasses, memberProfiles, sessions, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, parseStringArray, parseRecord } from "./helpers";
 
@@ -78,6 +79,7 @@ export type ListUsersParams = {
   classFilter?: string;
   activeFilter?: boolean;
   sessionUser: SessionUser | null;
+  includeTotal?: boolean;
 };
 
 type EntityChangedInput = { entityType: string; entityId: string; hint: string };
@@ -215,7 +217,7 @@ function buildUsersWhereFilters(params: {
   if (params.activeFilter !== undefined) filters.push(eq(users.isActive, params.activeFilter));
   if (params.classFilter) {
     filters.push(
-      sql`EXISTS (SELECT 1 FROM json_each(coalesce(${memberProfiles.classes}, '[]')) WHERE json_each.value = ${params.classFilter})`,
+      sql`EXISTS (SELECT 1 FROM ${memberProfileClasses} WHERE ${memberProfileClasses.userId} = ${users.id} AND ${memberProfileClasses.className} = ${params.classFilter})`,
     );
   }
   return filters;
@@ -316,6 +318,17 @@ export class UserService {
     return refreshed.profile;
   }
 
+  private async syncProfileClassLookup(userId: string, classesJson: string): Promise<void> {
+    const classNames = [...new Set(parseStringArray(classesJson))];
+    await this.db.delete(memberProfileClasses).where(eq(memberProfileClasses.userId, userId));
+    if (classNames.length === 0) {
+      return;
+    }
+    await this.db.insert(memberProfileClasses).values(
+      classNames.map((className) => ({ userId, className })),
+    );
+  }
+
   private async canEditTarget(sessionUser: SessionUser, targetUserId: string): Promise<"allowed" | "forbidden" | "not_found"> {
     const target = (
       await this.db.select({ role: users.role, deletedAt: users.deletedAt }).from(users).where(eq(users.id, targetUserId)).limit(1)
@@ -336,12 +349,21 @@ export class UserService {
       activeFilter: params.activeFilter,
     }));
 
-    const rows = await this.db.select({ ...userProfileSelect, _total: sql<number>`count(*) over()` }).from(users)
+    const selectFields = params.includeTotal === false
+      ? userProfileSelect
+      : { ...userProfileSelect, _total: sql<number>`count(*) over()` };
+
+    const rows = await this.db.select(selectFields).from(users)
       .leftJoin(memberProfiles, eq(memberProfiles.userId, users.id))
       .where(whereClause).orderBy(users.createdAt, users.id)
       .limit(params.limit).offset(offset);
 
-    const total = Number((rows[0] as Record<string, unknown> | undefined)?._total ?? 0);
+    const total = params.includeTotal === false
+      ? offset + rows.length
+      : Number((rows[0] as Record<string, unknown> | undefined)?._total ?? 0);
+    const totalPages = params.includeTotal === false
+      ? (rows.length < params.limit ? params.page : params.page + 1)
+      : Math.max(1, Math.ceil(total / params.limit));
 
     const data = rows.map((row) => {
       const normalized = rowToUserWithProfile(row as unknown as Record<string, unknown>);
@@ -354,7 +376,22 @@ export class UserService {
       };
     });
 
-    return ok({ data, total, page: params.page, limit: params.limit, total_pages: Math.max(1, Math.ceil(total / params.limit)) });
+    return ok({ data, total, page: params.page, limit: params.limit, total_pages: totalPages });
+  }
+
+  async getUserStats(): Promise<ServiceResult<{ active_members: number; total_members: number }>> {
+    const row = (
+      await this.db
+        .select({
+          activeMembers: sql<number>`sum(case when ${users.deletedAt} is null and ${users.isActive} = 1 then 1 else 0 end)`,
+          totalMembers: sql<number>`sum(case when ${users.deletedAt} is null then 1 else 0 end)`,
+        })
+        .from(users)
+    )[0];
+    return ok({
+      active_members: Number(row?.activeMembers ?? 0),
+      total_members: Number(row?.totalMembers ?? 0),
+    });
   }
 
   async getUser(sessionUser: SessionUser, targetUserId: string): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
@@ -379,6 +416,9 @@ export class UserService {
     const oldProfile = await this.ensureProfile(targetUserId);
     const patch = buildProfilePatch(parsed.data);
     await this.db.update(memberProfiles).set(patch).where(eq(memberProfiles.userId, targetUserId));
+    if (patch.classes !== undefined) {
+      await this.syncProfileClassLookup(targetUserId, patch.classes);
+    }
 
     const updated = await this.loadUserWithProfile(targetUserId);
     if (!updated) return err("NOT_FOUND", "User not found");
@@ -420,19 +460,23 @@ export class UserService {
     return ok({ keys });
   }
 
-  async deleteProfileImage(sessionUser: SessionUser, targetUserId: string, imageKey: string): Promise<ServiceResult<{ ok: true }>> {
+  async deleteProfileImages(sessionUser: SessionUser, targetUserId: string, imageKeys: string[]): Promise<ServiceResult<{ ok: true; deleted: number }>> {
     const access = await this.canEditTarget(sessionUser, targetUserId);
     if (access === "not_found") return err("NOT_FOUND", "User not found");
     if (access === "forbidden") return err("FORBIDDEN", "You cannot delete media for this profile");
+    const parsed = deleteProfileImagesSchema.safeParse({ keys: imageKeys });
+    if (!parsed.success) return err("VALIDATION_ERROR", "Invalid image delete payload", parsed.error.flatten());
 
     const profile = await this.ensureProfile(targetUserId);
     const images = parseStringArray(profile.images);
-    if (images.includes(imageKey)) await this.deps.deleteMediaObject(imageKey);
+    const requested = new Set(parsed.data.keys);
+    const keysToDelete = images.filter((key) => requested.has(key));
+    await Promise.all(keysToDelete.map((key) => this.deps.deleteMediaObject(key)));
 
     await this.db.update(memberProfiles)
-      .set({ images: JSON.stringify(images.filter((k) => k !== imageKey)), updatedAt: new Date().toISOString() })
+      .set({ images: JSON.stringify(images.filter((key) => !requested.has(key))), updatedAt: new Date().toISOString() })
       .where(eq(memberProfiles.userId, targetUserId));
-    return ok({ ok: true });
+    return ok({ ok: true, deleted: keysToDelete.length });
   }
 
   async uploadAvatar(sessionUser: SessionUser, targetUserId: string, file: File): Promise<ServiceResult<{ key: string }>> {

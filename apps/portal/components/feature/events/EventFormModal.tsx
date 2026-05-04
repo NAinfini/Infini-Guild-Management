@@ -5,6 +5,7 @@ import {
   Modal,
   Select,
   Stack,
+  Switch,
   Text,
   TextInput,
   Textarea,
@@ -33,6 +34,8 @@ type EventFormModalProps = {
   onCapacityChange: (value: string) => void;
   description: string;
   onDescriptionChange: (value: string) => void;
+  autoArchive: boolean;
+  onAutoArchiveChange: (value: boolean) => void;
   attachmentItems: ImageGridEditorItem[];
   onAttachmentsChange: (items: ImageGridEditorItem[]) => void;
   onFilesSelected: (files: File[]) => void;
@@ -61,6 +64,8 @@ export function EventFormModal({
   onCapacityChange,
   description,
   onDescriptionChange,
+  autoArchive,
+  onAutoArchiveChange,
   attachmentItems,
   onAttachmentsChange,
   onFilesSelected,
@@ -148,6 +153,13 @@ export function EventFormModal({
           onChange={(event) => onDescriptionChange(event.currentTarget.value)}
           minRows={3}
           placeholder={t("field.description")}
+        />
+
+        <Switch
+          checked={autoArchive}
+          onChange={(event) => onAutoArchiveChange(event.currentTarget.checked)}
+          label={t("field.autoArchive")}
+          description={t("field.autoArchiveHint")}
         />
 
         {/* ── Attachments ── */}

@@ -559,7 +559,7 @@
   box-sizing: border-box;
   height: 100vh;
   height: 100dvh;
-  padding-top: 0;
+  padding-top: 8px;
   background: var(--color-bg, #f3f4f6);
   scrollbar-width: thin;
   scrollbar-color: var(--color-primary, #6b7280) transparent;

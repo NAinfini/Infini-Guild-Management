@@ -1,6 +1,7 @@
 import {
   createEventSchema,
   createTemplateSchema,
+  eventParticipantsBatchSchema,
   updateEventSchema,
   updateTemplateSchema,
 } from "@guild/shared";
@@ -203,18 +204,20 @@ eventsRoutes.post("/:id/participants", async (c) => {
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
-  const payload = body as { user_id?: unknown };
-  if (typeof payload.user_id !== "string" || payload.user_id.length === 0)
-    return buildError(c, "VALIDATION_ERROR", "user_id is required");
-  const result = await getEventService(c).addParticipant(sessionUser.id, c.req.param("id"), payload.user_id);
-  return result.ok ? c.json(toParticipantPayload(result.participant), 201) : buildError(c, result.code, result.message);
+  const parsed = eventParticipantsBatchSchema.safeParse(body);
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid participant payload", parsed.error.flatten());
+  const result = await getEventService(c).addParticipants(sessionUser.id, c.req.param("id"), parsed.data.user_ids);
+  return result.ok ? c.json({ data: result.participants.map(toParticipantPayload) }, 201) : buildError(c, result.code, result.message);
 });
 
-eventsRoutes.delete("/:id/participants/:userId", async (c) => {
+eventsRoutes.delete("/:id/participants", async (c) => {
   const sessionUser = await requireEventEdit(c);
   if (sessionUser instanceof Response) return sessionUser;
-  await getEventService(c).removeParticipant(sessionUser.id, c.req.param("id"), c.req.param("userId"));
-  return c.json({ ok: true });
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
+  const parsed = eventParticipantsBatchSchema.safeParse(body);
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid participant payload", parsed.error.flatten());
+  return c.json(await getEventService(c).removeParticipants(sessionUser.id, c.req.param("id"), parsed.data.user_ids));
 });
 
 // --- Templates ---

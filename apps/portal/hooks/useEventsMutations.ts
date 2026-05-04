@@ -219,6 +219,7 @@ export function useEventsMutations({
           : undefined,
         capacity: event.capacity ?? undefined,
         attachments: event.attachments ?? [],
+        auto_archive: event.auto_archive,
       },
     });
   };

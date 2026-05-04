@@ -1,5 +1,5 @@
 import type { Bindings } from "../index";
-import { runAnnouncementExpiryCron, runAnnouncementPublishCron } from "./announcement-publish";
+import { runAnnouncementPublishCron } from "./announcement-publish";
 import { runAuditArchiveCron } from "./audit-archive";
 import { runEventAutoArchiveCron } from "./event-auto-archive";
 import { runEventInstanceGenerationCron } from "./event-instance-gen";
@@ -21,7 +21,6 @@ export const DAILY_MAINTENANCE_JOBS: readonly MaintenanceJob[] = [
 export const QUARTER_HOURLY_MAINTENANCE_JOBS: readonly MaintenanceJob[] = [
   { name: "event-auto-archive", run: runEventAutoArchiveCron },
   { name: "announcement-publish", run: runAnnouncementPublishCron },
-  { name: "announcement-expiry", run: runAnnouncementExpiryCron },
 ];
 
 async function runMaintenanceJobs(env: Bindings, jobs: readonly MaintenanceJob[], cron: string): Promise<void> {

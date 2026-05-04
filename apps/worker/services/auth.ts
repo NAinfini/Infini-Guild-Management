@@ -7,18 +7,20 @@ import {
   type Permission,
   type RoleId,
 } from "@guild/shared";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { nanoid } from "nanoid";
-import { sessions, users } from "../db/schema";
+import { rolePermissions, sessions, users } from "../db/schema";
 import type { Bindings } from "../index";
 
 const RESOLVED_SESSION_PROMISE = Symbol("resolved_session_promise");
+const RESOLVED_FRESH_SESSION_PROMISE = Symbol("resolved_fresh_session_promise");
 
 type ContextWithSessionCache = Context & {
   [RESOLVED_SESSION_PROMISE]?: Promise<ResolvedSession | null>;
+  [RESOLVED_FRESH_SESSION_PROMISE]?: Promise<ResolvedSession | null>;
 };
 
 export type SessionUser = {
@@ -42,11 +44,21 @@ const PBKDF2_HASH = "SHA-256";
 const THIRTY_DAYS_IN_SECONDS = 30 * 24 * 60 * 60;
 const SESSION_TTL_MS = THIRTY_DAYS_IN_SECONDS * 1000;
 const MAX_ABSOLUTE_SESSION_MS = 90 * 24 * 60 * 60 * 1000;
+const PERMISSION_CACHE_TTL_MS = 60_000;
 
 export const SESSION_COOKIE_NAME = "ig_session";
 export const SESSION_MODE_COOKIE_NAME = "ig_session_mode";
 
 const textEncoder = new TextEncoder();
+const permissionRowsCache = new Map<RoleId, { expiresAtMs: number; rows: Array<{ permission: string; granted: boolean }> }>();
+
+export function clearPermissionCache(roleId?: RoleId): void {
+  if (roleId) {
+    permissionRowsCache.delete(roleId);
+    return;
+  }
+  permissionRowsCache.clear();
+}
 
 function getDb(c: Context) {
   const env = c.env as Bindings;
@@ -217,13 +229,43 @@ export async function createSession(
   return { sessionId, expiresAt };
 }
 
-export async function resolveSession(c: Context): Promise<ResolvedSession | null> {
+export async function resolveSession(c: Context, options: { freshPermissions?: boolean } = {}): Promise<ResolvedSession | null> {
   const carrier = c as ContextWithSessionCache;
-  carrier[RESOLVED_SESSION_PROMISE] ??= resolveSessionUncached(c);
-  return await carrier[RESOLVED_SESSION_PROMISE]!;
+  if (options.freshPermissions) {
+    carrier[RESOLVED_FRESH_SESSION_PROMISE] ??= resolveSessionUncached(c, { freshPermissions: true });
+    return await carrier[RESOLVED_FRESH_SESSION_PROMISE];
+  }
+  carrier[RESOLVED_SESSION_PROMISE] ??= resolveSessionUncached(c, { freshPermissions: false });
+  return await carrier[RESOLVED_SESSION_PROMISE];
 }
 
-async function resolveSessionUncached(c: Context): Promise<ResolvedSession | null> {
+async function loadPermissionRows(
+  db: ReturnType<typeof getDb>,
+  roleId: RoleId,
+  options: { freshPermissions: boolean },
+): Promise<Array<{ permission: string; granted: boolean }>> {
+  if (roleId === "admin") {
+    return [];
+  }
+  if (!options.freshPermissions) {
+    const cached = permissionRowsCache.get(roleId);
+    if (cached && cached.expiresAtMs > Date.now()) {
+      return cached.rows;
+    }
+  }
+
+  const rows = await db
+    .select({ permission: rolePermissions.permission, granted: rolePermissions.granted })
+    .from(rolePermissions)
+    .where(eq(rolePermissions.roleId, roleId));
+
+  if (!options.freshPermissions) {
+    permissionRowsCache.set(roleId, { expiresAtMs: Date.now() + PERMISSION_CACHE_TTL_MS, rows });
+  }
+  return rows;
+}
+
+async function resolveSessionUncached(c: Context, options: { freshPermissions: boolean }): Promise<ResolvedSession | null> {
   const sessionId = getCookie(c, SESSION_COOKIE_NAME);
   if (!sessionId) {
     return null;
@@ -240,11 +282,6 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
         roleId: users.role,
         isActive: users.isActive,
         deletedAt: users.deletedAt,
-        permissionsJson: sql<string>`(
-          SELECT json_group_array(json_object('permission', rp.permission, 'granted', rp.granted))
-          FROM role_permissions rp
-          WHERE rp.role_id = ${users.role}
-        )`.as("permissions_json"),
       })
       .from(sessions)
       .innerJoin(users, eq(sessions.userId, users.id))
@@ -269,16 +306,7 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
     return null;
   }
 
-  type PermRow = { permission: string; granted: boolean } | null;
-  let permissionRows: PermRow[] = [];
-  try {
-    const parsed = JSON.parse(row.permissionsJson ?? "[]") as unknown;
-    if (Array.isArray(parsed)) {
-      permissionRows = parsed as PermRow[];
-    }
-  } catch {
-    permissionRows = [];
-  }
+  const permissionRows = await loadPermissionRows(db, row.roleId, options);
 
   const user: SessionUser = {
     id: row.userId,

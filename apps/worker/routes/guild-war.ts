@@ -1,7 +1,9 @@
 import {
   createWarHistorySchema,
+  moveGuildWarMemberSchema,
   saveTeamsPayloadSchema,
   updateMemberStatsSchema,
+  updateGuildWarRoleTagsSchema,
   updateWarHistorySchema,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
@@ -60,11 +62,11 @@ guildWarRoutes.post("/move", async (c) => {
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
-  const payload = body as { event_id?: unknown; user_id?: unknown; to?: unknown };
-  if (typeof payload.event_id !== "string" || typeof payload.user_id !== "string" || typeof payload.to !== "string") return buildError(c, "VALIDATION_ERROR", "event_id, user_id and to are required");
+  const parsed = moveGuildWarMemberSchema.safeParse(body);
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid move payload", parsed.error.flatten());
   const etagFromHeader = c.req.header("If-Match");
   const conditionalEtag = etagFromHeader && etagFromHeader !== "*" ? etagFromHeader : undefined;
-  const result = await getService(c).moveMember(user.id, payload.event_id, payload.user_id, payload.to, conditionalEtag);
+  const result = await getService(c).moveMembers(user.id, parsed.data.event_id, parsed.data.moves, conditionalEtag);
   return handleResult(c, result);
 });
 
@@ -73,11 +75,9 @@ guildWarRoutes.patch("/role-tag", async (c) => {
   if (user instanceof Response) return user;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
-  const payload = body as { event_id?: unknown; user_id?: unknown; role_tag?: unknown };
-  if (typeof payload.event_id !== "string" || typeof payload.user_id !== "string") return buildError(c, "VALIDATION_ERROR", "event_id and user_id are required");
-  if (payload.role_tag !== undefined && payload.role_tag !== null && typeof payload.role_tag !== "string") return buildError(c, "VALIDATION_ERROR", "role_tag must be string or null");
-  const roleTag = typeof payload.role_tag === "string" ? payload.role_tag : null;
-  const result = await getService(c).setRoleTag(user.id, payload.event_id, payload.user_id, roleTag);
+  const parsed = updateGuildWarRoleTagsSchema.safeParse(body);
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role tag update payload", parsed.error.flatten());
+  const result = await getService(c).setRoleTags(user.id, parsed.data.event_id, parsed.data.updates);
   return handleResult(c, result);
 });
 

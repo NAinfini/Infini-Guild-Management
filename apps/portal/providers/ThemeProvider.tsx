@@ -120,7 +120,7 @@ const portalTheme = createTheme({
       defaultProps: { radius: "md" },
     }),
     Tabs: Tabs.extend({
-      defaultProps: { radius: "md" },
+      defaultProps: { radius: "md", variant: "pills" },
     }),
     Menu: Menu.extend({
       defaultProps: { radius: "md", shadow: "lg" },

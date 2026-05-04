@@ -260,7 +260,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.getUserById"), method: "GET", path: "/api/users/:id" },
         { label: t("status.api.ep.updateProfile"), method: "PATCH", path: "/api/users/:id/profile" },
         { label: t("status.api.ep.uploadImage"), method: "POST", path: "/api/users/:id/media/images" },
-        { label: t("status.api.ep.deleteImage"), method: "DELETE", path: "/api/users/:id/media/images/:key" },
+        { label: t("status.api.ep.deleteImage"), method: "DELETE", path: "/api/users/:id/media/images" },
         { label: t("status.api.ep.uploadAudio"), method: "POST", path: "/api/users/:id/media/audio" },
         { label: t("status.api.ep.deleteAudio"), method: "DELETE", path: "/api/users/:id/media/audio" },
         { label: t("status.api.ep.changePassword"), method: "POST", path: "/api/users/:id/change-password" },
@@ -278,7 +278,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.uploadEventImages"), method: "POST", path: "/api/events/:id/images" },
         { label: t("status.api.ep.joinEvent"), method: "POST", path: "/api/events/:id/join" },
         { label: t("status.api.ep.addParticipant"), method: "POST", path: "/api/events/:id/participants" },
-        { label: t("status.api.ep.removeParticipant"), method: "DELETE", path: "/api/events/:id/participants/:userId" },
+        { label: t("status.api.ep.removeParticipant"), method: "DELETE", path: "/api/events/:id/participants" },
         { label: t("status.api.ep.leaveEvent"), method: "DELETE", path: "/api/events/:id/leave" },
         { label: t("status.api.ep.listTemplates"), method: "GET", path: "/api/events/templates/list" },
         { label: t("status.api.ep.createTemplate"), method: "POST", path: "/api/events/templates" },
@@ -635,6 +635,14 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     case "POST /api/users/:id/media/images":
       return buildFormRequest(path, [["file", createTinyPngFile()]]);
 
+    case "DELETE /api/users/:id/media/images":
+      if (!context.userImageKey) {
+        return skipEndpoint(path, "Missing uploaded image key");
+      }
+      return buildJsonRequest(path, {
+        keys: [context.userImageKey],
+      });
+
     case "POST /api/users/:id/media/audio":
       return buildFormRequest(path, [["file", createTinyAudioFile()]]);
 
@@ -667,7 +675,15 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         return skipEndpoint(path, "Missing participant user id");
       }
       return buildJsonRequest(path, {
-        user_id: context.targetUserId ?? context.meId,
+        user_ids: [context.targetUserId ?? context.meId],
+      });
+
+    case "DELETE /api/events/:id/participants":
+      if (!context.eventParticipantUserId && !context.targetUserId && !context.meId) {
+        return skipEndpoint(path, "Missing participant user id");
+      }
+      return buildJsonRequest(path, {
+        user_ids: [context.eventParticipantUserId ?? context.targetUserId ?? context.meId],
       });
 
     case "POST /api/events/templates":
@@ -763,8 +779,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       }
       return buildJsonRequest(path, {
         event_id: context.warEventId ?? context.eventId ?? context.createdEventId,
-        user_id: context.warMemberUserId ?? context.targetUserId ?? context.meId,
-        to: "pool",
+        moves: [{ user_id: context.warMemberUserId ?? context.targetUserId ?? context.meId, to: "pool" }],
       });
 
     case "PATCH /api/guild-war/role-tag":
@@ -776,8 +791,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       }
       return buildJsonRequest(path, {
         event_id: context.warEventId ?? context.eventId ?? context.createdEventId,
-        user_id: context.warMemberUserId,
-        role_tag: "DPS",
+        updates: [{ user_id: context.warMemberUserId, role_tag: "DPS" }],
       });
 
     case "POST /api/guild-war/history":
@@ -1018,8 +1032,9 @@ export function captureContextFromResponse(
     return next;
   }
 
-  if (endpoint.path === "/api/events/:id/participants") {
-    next.eventParticipantUserId = readString(payload.user_id) ?? next.eventParticipantUserId;
+  if (endpoint.path === "/api/events/:id/participants" && endpoint.method === "POST") {
+    const firstParticipant = firstArrayItem(payload.data);
+    next.eventParticipantUserId = readString(firstParticipant?.user_id) ?? next.eventParticipantUserId;
     return next;
   }
 

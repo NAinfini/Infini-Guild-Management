@@ -18,7 +18,7 @@ type AnnouncementPublishedInput = { announcementId: string; title: string; publi
 type AnnouncementStatus = "draft" | "scheduled" | "published" | "archived";
 
 type AnnouncementRow = {
-  id: string; title: string; bodyJson: string; pinned: boolean; pinnedAt: string | null;
+  id: string; title: string; bodyJson: string; pinned: boolean;
   status: AnnouncementStatus; publishAt: string | null; expiresAt: string | null; archivedAt: string | null;
   createdBy: string; createdAt: string; updatedAt: string;
 };
@@ -34,7 +34,7 @@ export type AnnouncementServiceDeps = {
 
 function toPayload(row: AnnouncementRow) {
   return announcementSchema.parse({
-    id: row.id, title: row.title, body_json: row.bodyJson, pinned: row.pinned, pinned_at: row.pinnedAt,
+    id: row.id, title: row.title, body_json: row.bodyJson, pinned: row.pinned,
     status: row.status, publish_at: row.publishAt, expires_at: row.expiresAt, archived_at: row.archivedAt,
     created_by: row.createdBy, created_at: row.createdAt, updated_at: row.updatedAt,
   });
@@ -42,14 +42,14 @@ function toPayload(row: AnnouncementRow) {
 
 const COLS = {
   id: announcements.id, title: announcements.title, bodyJson: announcements.bodyJson,
-  pinned: announcements.pinned, pinnedAt: announcements.pinnedAt, status: announcements.status,
+  pinned: announcements.pinned, status: announcements.status,
   publishAt: announcements.publishAt, expiresAt: announcements.expiresAt, archivedAt: announcements.archivedAt,
   createdBy: announcements.createdBy, createdAt: announcements.createdAt, updatedAt: announcements.updatedAt,
 } as const;
 
 const LIST_COLS = {
   id: announcements.id, title: announcements.title,
-  pinned: announcements.pinned, pinnedAt: announcements.pinnedAt, status: announcements.status,
+  pinned: announcements.pinned, status: announcements.status,
   publishAt: announcements.publishAt, expiresAt: announcements.expiresAt, archivedAt: announcements.archivedAt,
   createdBy: announcements.createdBy, createdAt: announcements.createdAt, updatedAt: announcements.updatedAt,
 } as const;
@@ -58,7 +58,7 @@ type AnnouncementListRow = Omit<AnnouncementRow, "bodyJson">;
 
 function toListPayload(row: AnnouncementListRow) {
   return {
-    id: row.id, title: row.title, body_json: "", pinned: row.pinned, pinned_at: row.pinnedAt,
+    id: row.id, title: row.title, body_json: "", pinned: row.pinned,
     status: row.status, publish_at: row.publishAt, expires_at: row.expiresAt, archived_at: row.archivedAt,
     created_by: row.createdBy, created_at: row.createdAt, updated_at: row.updatedAt,
   };
@@ -79,25 +79,9 @@ export class AnnouncementService {
     return (await this.db.select(COLS).from(announcements).where(eq(announcements.id, id)).limit(1))[0] ?? null;
   }
 
-  private async autoPublishScheduled(): Promise<void> {
-    const nowIso = new Date().toISOString();
-    try {
-      await this.db.update(announcements)
-        .set({ status: "published", updatedAt: nowIso })
-        .where(and(eq(announcements.status, "scheduled"), sql`${announcements.publishAt} <= ${nowIso}`));
-      await this.db.update(announcements)
-        .set({ status: "archived", archivedAt: nowIso, updatedAt: nowIso })
-        .where(and(eq(announcements.status, "published"), sql`${announcements.expiresAt} IS NOT NULL AND ${announcements.expiresAt} <= ${nowIso}`));
-    } catch {
-      // best-effort
-    }
-  }
-
   // --- Public ---
 
   async list(opts: { canReadAll: boolean; page: number; limit: number; status?: string; pinned?: boolean; archived?: boolean; search?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
-    await this.autoPublishScheduled();
-
     const offset = (opts.page - 1) * opts.limit;
     const filters: SQL<unknown>[] = [];
 
@@ -106,6 +90,7 @@ export class AnnouncementService {
       filters.push(eq(announcements.status, opts.status as typeof announcements.status.enumValues[number]));
     } else if (!opts.canReadAll) {
       if (opts.archived === true) { filters.push(eq(announcements.status, "archived")); }
+      else if (opts.archived === false) { filters.push(eq(announcements.status, "published")); }
       else { filters.push(inArray(announcements.status, ["published", "archived"])); }
     }
     if (opts.pinned !== undefined) filters.push(eq(announcements.pinned, opts.pinned));
@@ -121,8 +106,6 @@ export class AnnouncementService {
   }
 
   async getOne(id: string, canReadAll: boolean): Promise<ServiceResult<unknown>> {
-    await this.autoPublishScheduled();
-
     const row = await this.getById(id);
     if (!row) return err("NOT_FOUND", "Announcement not found");
     if (!canReadAll && row.status !== "published" && row.status !== "archived") return err("NOT_FOUND", "Announcement not found");
@@ -139,7 +122,7 @@ export class AnnouncementService {
     }
     const nowIso = new Date().toISOString();
     const announcementId = nanoid();
-    await this.db.insert(announcements).values({ id: announcementId, title: data.title, bodyJson: data.body_json, pinned: data.pinned, pinnedAt: data.pinned ? nowIso : null, status: data.status, publishAt: data.publish_at ?? null, expiresAt: data.expires_at ?? null, archivedAt: null, createdBy: actorId, updatedAt: nowIso });
+    await this.db.insert(announcements).values({ id: announcementId, title: data.title, bodyJson: data.body_json, pinned: data.pinned, status: data.status, publishAt: data.publish_at ?? null, expiresAt: data.expires_at ?? null, archivedAt: null, createdBy: actorId, updatedAt: nowIso });
 
     const created = await this.getById(announcementId);
     if (!created) return err("SERVER_ERROR", "Failed to create announcement");
@@ -172,7 +155,7 @@ export class AnnouncementService {
     const patch: Partial<typeof announcements.$inferInsert> = { updatedAt: new Date().toISOString() };
     if (data.title !== undefined) patch.title = data.title;
     if (data.body_json !== undefined) patch.bodyJson = data.body_json;
-    if (data.pinned !== undefined) { patch.pinned = data.pinned; patch.pinnedAt = data.pinned ? patch.updatedAt : null; }
+    if (data.pinned !== undefined) patch.pinned = data.pinned;
     if (data.status !== undefined) patch.status = data.status;
     if (data.publish_at !== undefined) patch.publishAt = data.publish_at;
     if (data.expires_at !== undefined) patch.expiresAt = data.expires_at;

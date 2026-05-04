@@ -109,6 +109,26 @@ export const updateMemberStatsSchema = warTeamMemberSchema
   })
   .partial();
 
+export const moveGuildWarMemberSchema = z.object({
+  event_id: z.string(),
+  moves: z.array(
+    z.object({
+      user_id: z.string(),
+      to: z.string(),
+    }),
+  ).min(1).max(100),
+});
+
+export const updateGuildWarRoleTagsSchema = z.object({
+  event_id: z.string(),
+  updates: z.array(
+    z.object({
+      user_id: z.string(),
+      role_tag: z.string().nullable(),
+    }),
+  ).min(1).max(100),
+});
+
 const guildWarActivePoolMemberSchema = z.object({
   id: z.string(),
   warHistoryId: z.string(),

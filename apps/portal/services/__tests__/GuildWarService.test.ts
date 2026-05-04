@@ -1,7 +1,17 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "../../api/query-keys";
-import { GuildWarService } from "../GuildWarService";
+import { GuildWarService, updateGuildWarRoleTags } from "../GuildWarService";
+
+const mockFetch = vi.fn();
+vi.stubGlobal("fetch", mockFetch);
+
+function mockJsonResponse(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 const baseTeams = [
   {
@@ -18,6 +28,31 @@ const baseTeams = [
 ];
 
 describe("GuildWarService", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it("sends role tag updates as one batch request", async () => {
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, updated: 2 }));
+    await updateGuildWarRoleTags({
+      event_id: "event-1",
+      updates: [
+        { user_id: "u-1", role_tag: "tank" },
+        { user_id: "u-2", role_tag: null },
+      ],
+    });
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toContain("/api/guild-war/role-tag");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body)).toEqual({
+      event_id: "event-1",
+      updates: [
+        { user_id: "u-1", role_tag: "tank" },
+        { user_id: "u-2", role_tag: null },
+      ],
+    });
+  });
+
   it("builds save payloads from ordered teams, pool members, and draft overrides", () => {
     const service = new GuildWarService({
       queryClient: { invalidateQueries: vi.fn() } as unknown as QueryClient,

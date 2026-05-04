@@ -1,4 +1,4 @@
-import { type ErrorCode, type Role } from "@guild/shared";
+import { deleteProfileImagesSchema, type ErrorCode, type Role } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -72,8 +72,13 @@ usersRoutes.get("/", async (c) => {
     classFilter: query.class,
     activeFilter: parseBoolean(query.active),
     sessionUser,
+    includeTotal: parseBoolean(query.include_total) !== false,
   });
   return serviceResponse(c, result);
+});
+
+usersRoutes.get("/stats", async (c) => {
+  return serviceResponse(c, await getUserService(c).getUserStats());
 });
 
 usersRoutes.get("/:id", async (c) => {
@@ -108,11 +113,14 @@ usersRoutes.post("/:id/media/images", async (c) => {
   return serviceResponse(c, await getUserService(c).uploadProfileImages(sessionUser, c.req.param("id"), files));
 });
 
-usersRoutes.delete("/:id/media/images/:key", async (c) => {
+usersRoutes.delete("/:id/media/images", async (c) => {
   const sessionUser = await requireSession(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const key = decodeURIComponent(c.req.param("key"));
-  return serviceResponse(c, await getUserService(c).deleteProfileImage(sessionUser, c.req.param("id"), key));
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
+  const parsed = deleteProfileImagesSchema.safeParse(body);
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid image delete payload", parsed.error.flatten());
+  return serviceResponse(c, await getUserService(c).deleteProfileImages(sessionUser, c.req.param("id"), parsed.data.keys));
 });
 
 usersRoutes.post("/:id/media/avatar", async (c) => {

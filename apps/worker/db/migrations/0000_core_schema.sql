@@ -1,15 +1,5 @@
--- Infini Guild Management – Consolidated Schema (dev mode)
+-- Infini Guild Management – Consolidated Schema
 -- All tables, indexes, and constraints in a single file.
-
-CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY NOT NULL,
-  username TEXT NOT NULL UNIQUE,
-  role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'moderator', 'member')),
-  is_active INTEGER NOT NULL DEFAULT 1,
-  deleted_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
 
 CREATE TABLE IF NOT EXISTS roles (
   id TEXT PRIMARY KEY NOT NULL,
@@ -28,8 +18,18 @@ CREATE TABLE IF NOT EXISTS role_permissions (
   PRIMARY KEY (role_id, permission)
 );
 
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY NOT NULL,
+  username TEXT NOT NULL UNIQUE,
+  role TEXT NOT NULL DEFAULT 'member' REFERENCES roles(id) CHECK (role IN ('admin', 'moderator', 'member')),
+  is_active INTEGER NOT NULL DEFAULT 1,
+  deleted_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
 CREATE TABLE IF NOT EXISTS user_auth_password (
-  user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id),
+  user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   password_hash TEXT NOT NULL,
   salt TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS user_auth_password (
 
 CREATE TABLE IF NOT EXISTS member_profiles (
   id TEXT PRIMARY KEY NOT NULL,
-  user_id TEXT NOT NULL UNIQUE REFERENCES users(id),
+  user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
   power REAL NOT NULL DEFAULT 0 CHECK (power >= 0),
   classes TEXT NOT NULL DEFAULT '[]',
   title_html TEXT,
@@ -54,6 +54,12 @@ CREATE TABLE IF NOT EXISTS member_profiles (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS member_profile_classes (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  class TEXT NOT NULL,
+  PRIMARY KEY (user_id, class)
+);
+
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('weekly_mission', 'guild_war', 'social', 'other')),
@@ -66,6 +72,8 @@ CREATE TABLE IF NOT EXISTS events (
   signup_locked INTEGER NOT NULL DEFAULT 0,
   visible_at TEXT,
   archived_at TEXT,
+  auto_archive INTEGER NOT NULL DEFAULT 0,
+  auto_archived INTEGER NOT NULL DEFAULT 0,
   created_by TEXT NOT NULL REFERENCES users(id),
   recurrence_rule TEXT,
   attachments TEXT NOT NULL DEFAULT '[]',
@@ -74,7 +82,7 @@ CREATE TABLE IF NOT EXISTS events (
   instance_date TEXT,
   last_generated_date TEXT,
   generation_count INTEGER NOT NULL DEFAULT 0,
-  visibility_offset_hours INTEGER,
+  visibility_offset_minutes INTEGER,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -92,7 +100,6 @@ CREATE TABLE IF NOT EXISTS announcements (
   title TEXT NOT NULL,
   body_json TEXT NOT NULL,
   pinned INTEGER NOT NULL DEFAULT 0,
-  pinned_at TEXT,
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'scheduled', 'published', 'archived')),
   publish_at TEXT,
   expires_at TEXT,
@@ -258,34 +265,34 @@ CREATE INDEX IF NOT EXISTS idx_users_deleted_active_created
   ON users(deleted_at, is_active, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_users_role_active
   ON users(role, is_active, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_users_username
-  ON users(username);
 
--- member_profiles
-CREATE INDEX IF NOT EXISTS idx_member_profiles_user_id
-  ON member_profiles(user_id);
+-- member profile classes
+CREATE INDEX IF NOT EXISTS idx_member_profile_classes_class_user
+  ON member_profile_classes(class, user_id);
 
 -- roles
 CREATE INDEX IF NOT EXISTS idx_roles_level
   ON roles(level, id);
 CREATE INDEX IF NOT EXISTS idx_role_permissions_permission
   ON role_permissions(permission);
-CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id
-  ON role_permissions(role_id);
 
 -- sessions
 CREATE INDEX IF NOT EXISTS idx_sessions_user_expires
   ON sessions(user_id, expires_at);
 
 -- events
-CREATE INDEX IF NOT EXISTS idx_events_series_parent_archived
-  ON events(is_series_parent, archived_at, start_at, id);
-CREATE INDEX IF NOT EXISTS idx_events_series_instance
+CREATE INDEX IF NOT EXISTS idx_events_archived_series_start
+  ON events(archived_at, is_series_parent, start_at, id);
+CREATE INDEX IF NOT EXISTS idx_events_auto_archive_due
+  ON events(auto_archive, auto_archived, archived_at, is_series_parent, end_at, start_at);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_events_series_instance
   ON events(series_id, instance_date);
 CREATE INDEX IF NOT EXISTS idx_events_created_by
   ON events(created_by);
 
 -- event_participants
+CREATE UNIQUE INDEX IF NOT EXISTS ux_event_participants_event_user
+  ON event_participants(event_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_event_participants_event_joined
   ON event_participants(event_id, joined_at, id);
 CREATE INDEX IF NOT EXISTS idx_event_participants_user_event
@@ -295,7 +302,9 @@ CREATE INDEX IF NOT EXISTS idx_event_participants_user_event
 CREATE INDEX IF NOT EXISTS idx_announcements_status_pinned_created
   ON announcements(status, pinned, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_announcements_schedule
-  ON announcements(status, publish_at, expires_at);
+  ON announcements(status, publish_at);
+CREATE INDEX IF NOT EXISTS idx_announcements_expiry
+  ON announcements(status, expires_at);
 
 -- war_history
 CREATE INDEX IF NOT EXISTS idx_war_history_event_id
@@ -304,22 +313,20 @@ CREATE INDEX IF NOT EXISTS idx_war_history_created
   ON war_history(created_at, id);
 
 -- war_teams
-CREATE INDEX IF NOT EXISTS idx_war_teams_history_id
-  ON war_teams(war_history_id);
 CREATE INDEX IF NOT EXISTS idx_war_teams_history_sort
   ON war_teams(war_history_id, sort_order, id);
 
 -- war_team_members
-CREATE INDEX IF NOT EXISTS idx_war_team_members_team_id
-  ON war_team_members(war_team_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_war_team_members_team_user
+  ON war_team_members(war_team_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_war_team_members_team_sort
   ON war_team_members(war_team_id, sort_order, id);
 CREATE INDEX IF NOT EXISTS idx_war_team_members_user
   ON war_team_members(user_id);
 
 -- war_pool_members
-CREATE INDEX IF NOT EXISTS idx_war_pool_members_history_id
-  ON war_pool_members(war_history_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_war_pool_members_history_user
+  ON war_pool_members(war_history_id, user_id);
 
 -- war_templates
 CREATE INDEX IF NOT EXISTS idx_war_templates_source_event
@@ -340,8 +347,8 @@ CREATE INDEX IF NOT EXISTS idx_gallery_items_created
   ON gallery_items(created_at, id);
 CREATE INDEX IF NOT EXISTS idx_gallery_items_uploaded_by
   ON gallery_items(uploaded_by, created_at, id);
-CREATE INDEX IF NOT EXISTS idx_gallery_likes_item_id
-  ON gallery_likes(gallery_item_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_gallery_likes_item_user
+  ON gallery_likes(gallery_item_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_gallery_comments_item_created
   ON gallery_comments(gallery_item_id, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_gallery_comments_user_id

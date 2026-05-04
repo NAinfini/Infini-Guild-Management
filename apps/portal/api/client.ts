@@ -3,6 +3,10 @@ import i18n from "i18next";
 import { nanoid } from "nanoid";
 
 type JsonValue = Record<string, unknown>;
+type CachedJsonResponse = {
+  etag: string;
+  data: unknown;
+};
 
 type ApiRequestErrorOptions = {
   status: number;
@@ -32,6 +36,7 @@ export function isApiRequestError(error: unknown): error is ApiRequestError {
 }
 
 const INTERNAL_SERVER_MESSAGE_PATTERN = /D1_ERROR|SQLITE_ERROR|no such table|no such column/i;
+const jsonResponseCache = new Map<string, CachedJsonResponse>();
 
 function fetchWithTimeout(url: string, init: RequestInit, externalSignal?: AbortSignal, timeoutMs = 30000): Promise<Response> {
   const controller = new AbortController();
@@ -154,6 +159,12 @@ export async function apiRequest<TResponse>(
   headers.set("X-Request-Id", nanoid());
 
   const method = (init.method ?? "GET").toUpperCase();
+  const cacheKey = method === "GET" && !init.body && !init.bodyJson ? url : null;
+  const cachedResponse = cacheKey ? jsonResponseCache.get(cacheKey) : undefined;
+  if (cachedResponse) {
+    headers.set("If-None-Match", cachedResponse.etag);
+  }
+
   if (method === "POST" || method === "PATCH" || method === "DELETE") {
     headers.set("X-Requested-With", "XMLHttpRequest");
   }
@@ -178,9 +189,19 @@ export async function apiRequest<TResponse>(
     handleFetchError(err);
   }
 
+  if (response.status === 304) {
+    if (cachedResponse) {
+      return cachedResponse.data as TResponse;
+    }
+    throw new ApiRequestError("Cached response unavailable", { status: 304 });
+  }
 
   if (!response.ok) {
     await handleErrorResponse(response, url);
+  }
+
+  if (method !== "GET") {
+    jsonResponseCache.clear();
   }
 
   if (response.status === 204) {
@@ -194,6 +215,11 @@ export async function apiRequest<TResponse>(
     throw new ApiRequestError("Invalid response from server", {
       status: response.status,
     });
+  }
+
+  const etag = response.headers.get("ETag");
+  if (cacheKey && etag) {
+    jsonResponseCache.set(cacheKey, { etag, data });
   }
 
   return data;

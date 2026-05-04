@@ -1,9 +1,48 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "../../api/query-keys";
-import { EventService, EventValidationError } from "../EventService";
+import {
+  addEventParticipants,
+  EventService,
+  EventValidationError,
+  removeEventParticipants,
+} from "../EventService";
+
+const mockFetch = vi.fn();
+vi.stubGlobal("fetch", mockFetch);
+
+function mockJsonResponse(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 describe("EventService", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+  });
+
+  it("sends participant additions as one batch request", async () => {
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ data: [] }));
+    await addEventParticipants("evt-1", ["u-1", "u-2"]);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toContain("/api/events/evt-1/participants");
+    expect(url).not.toContain("/batch");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ user_ids: ["u-1", "u-2"] });
+  });
+
+  it("sends participant removals as one request", async () => {
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, removed: 2 }));
+    await removeEventParticipants("evt-1", ["u-1", "u-2"]);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toContain("/api/events/evt-1/participants");
+    expect(url).not.toContain("/batch");
+    expect(init.method).toBe("DELETE");
+    expect(JSON.parse(init.body)).toEqual({ user_ids: ["u-1", "u-2"] });
+  });
+
   it("creates events with trimmed payloads and extracted files", async () => {
     const file = new File(["image"], "poster.png", { type: "image/png" });
     const attachmentService = {
@@ -33,6 +72,7 @@ describe("EventService", () => {
       capacity: "25",
       pinned: false,
       signupLocked: false,
+      autoArchive: true,
       attachmentItems: [{ id: "blob-1", src: "blob:poster", file }],
     });
 
@@ -45,6 +85,7 @@ describe("EventService", () => {
         end_at: undefined,
         capacity: 25,
         attachments: [],
+        auto_archive: true,
       }),
       [file],
     );
@@ -84,6 +125,7 @@ describe("EventService", () => {
       capacity: "",
       pinned: true,
       signupLocked: true,
+      autoArchive: false,
       attachmentItems: [
         { id: "existing", src: "events/existing.png" },
         { id: "new", src: "blob:new", file: newFile },
@@ -97,6 +139,7 @@ describe("EventService", () => {
         title: "War Review",
         pinned: true,
         signup_locked: true,
+        auto_archive: false,
         attachments: ["events/existing.png", "events/new.png"],
       }),
     );
@@ -129,6 +172,7 @@ describe("EventService", () => {
         capacity: "0",
         pinned: false,
         signupLocked: false,
+        autoArchive: false,
         attachmentItems: [],
       }),
     ).rejects.toMatchObject({

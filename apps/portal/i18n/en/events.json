@@ -40,6 +40,8 @@
   "field.description": "Description",
   "field.pinned": "Pinned",
   "field.signupLocked": "Signup locked",
+  "field.autoArchive": "Auto archive",
+  "field.autoArchiveHint": "Archive once after the event ends.",
   "field.recurring": "Recurring",
   "field.frequency": "Frequency",
   "field.interval": "Repeat every",

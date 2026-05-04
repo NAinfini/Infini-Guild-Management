@@ -5,7 +5,6 @@ export const announcementSchema = z.object({
   title: z.string(),
   body_json: z.string(),
   pinned: z.boolean(),
-  pinned_at: z.string().nullable(),
   status: z.enum(["draft", "scheduled", "published", "archived"]),
   publish_at: z.string().nullable(),
   expires_at: z.string().nullable(),

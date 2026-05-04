@@ -82,6 +82,7 @@ function EventCreationHarness({
   const [endAt, setEndAt] = useState("");
   const [capacity, setCapacity] = useState("20");
   const [description, setDescription] = useState("Bring food");
+  const [autoArchive, setAutoArchive] = useState(false);
   const [attachmentItems, setAttachmentItems] = useState<Array<{ id: string; src?: string; alt?: string; file?: File }>>([]);
 
   return (
@@ -102,6 +103,8 @@ function EventCreationHarness({
         onCapacityChange={setCapacity}
         description={description}
         onDescriptionChange={setDescription}
+        autoArchive={autoArchive}
+        onAutoArchiveChange={setAutoArchive}
         attachmentItems={attachmentItems}
         onAttachmentsChange={setAttachmentItems}
         onFilesSelected={(files) => {
@@ -129,6 +132,7 @@ function EventCreationHarness({
             capacity,
             pinned: false,
             signupLocked: false,
+            autoArchive,
             attachmentItems,
           });
         }}

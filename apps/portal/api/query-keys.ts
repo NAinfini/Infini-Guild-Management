@@ -7,6 +7,7 @@ export const queryKeys = {
   users: {
     all: ["users"] as const,
     roster: (viewMode: "external" | "default") => [...queryKeys.users.all, "roster", viewMode] as const,
+    stats: () => [...queryKeys.users.all, "stats"] as const,
   },
   myProfile: {
     all: ["my-profile"] as const,

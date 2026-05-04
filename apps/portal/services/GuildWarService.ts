@@ -5,8 +5,10 @@ import {
   deleteGuildWarHistory,
   moveGuildWarMember,
   saveGuildWarTeams as saveGuildWarTeamsMutation,
+  updateGuildWarHistory,
   type SaveTeamsPayload,
   updateGuildWarRoleTag,
+  updateGuildWarRoleTags,
 } from "../api/mutations/guild-war";
 import { queryKeys } from "../api/query-keys";
 import type { GuildWarActiveResponse } from "@guild/shared";
@@ -30,7 +32,9 @@ export {
   fetchGuildWarHistoryBatch,
   fetchGuildWarHistoryDetail,
   moveGuildWarMember,
+  updateGuildWarHistory,
   updateGuildWarRoleTag,
+  updateGuildWarRoleTags,
 };
 
 export const ANALYTICS_SELECTION_SOFT_CAP = 10;

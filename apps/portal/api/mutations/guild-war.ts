@@ -1,5 +1,7 @@
 import {
+  moveGuildWarMemberSchema,
   saveTeamsPayloadSchema,
+  updateGuildWarRoleTagsSchema,
   updateMemberStatsSchema,
   updateWarHistorySchema,
   type WarHistory,
@@ -9,6 +11,8 @@ import type { z } from "zod";
 import { apiRequest } from "../client";
 
 export type SaveTeamsPayload = z.input<typeof saveTeamsPayloadSchema>;
+export type MoveGuildWarMemberPayload = z.input<typeof moveGuildWarMemberSchema>;
+export type UpdateGuildWarRoleTagsPayload = z.input<typeof updateGuildWarRoleTagsSchema>;
 export type UpdateGuildWarMemberStatsPayload = z.input<typeof updateMemberStatsSchema>;
 export type UpdateWarHistoryPayload = z.input<typeof updateWarHistorySchema>;
 
@@ -21,17 +25,12 @@ export function saveGuildWarTeams(payload: SaveTeamsPayload, etag?: string): Pro
   });
 }
 
-export function moveGuildWarMember(payload: {
-  event_id: string;
-  user_id: string;
-  to: string;
-  etag?: string;
-}): Promise<{ ok: true }> {
+export function moveGuildWarMember(payload: MoveGuildWarMemberPayload & { etag?: string }): Promise<{ ok: true }> {
   const { etag, ...body } = payload;
   return apiRequest<{ ok: true }>("/api/guild-war/move", {
     method: "POST",
     ifMatch: etag,
-    bodyJson: body,
+    bodyJson: moveGuildWarMemberSchema.parse(body),
   });
 }
 
@@ -40,9 +39,16 @@ export function updateGuildWarRoleTag(payload: {
   user_id: string;
   role_tag: string | null;
 }): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>("/api/guild-war/role-tag", {
+  return updateGuildWarRoleTags({
+    event_id: payload.event_id,
+    updates: [{ user_id: payload.user_id, role_tag: payload.role_tag }],
+  }).then(() => ({ ok: true as const }));
+}
+
+export function updateGuildWarRoleTags(payload: UpdateGuildWarRoleTagsPayload): Promise<{ ok: true; updated: number }> {
+  return apiRequest<{ ok: true; updated: number }>("/api/guild-war/role-tag", {
     method: "PATCH",
-    bodyJson: payload,
+    bodyJson: updateGuildWarRoleTagsSchema.parse(payload),
   });
 }
 

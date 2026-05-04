@@ -16,6 +16,7 @@ type EditorSnapshot = {
   capacity: string;
   pinned: boolean;
   signupLocked: boolean;
+  autoArchive: boolean;
   attachmentSnapshot: string;
 };
 
@@ -61,6 +62,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   const [editorCapacity, setEditorCapacity] = useState("");
   const [editorPinned, setEditorPinned] = useState(false);
   const [editorSignupLocked, setEditorSignupLocked] = useState(false);
+  const [editorAutoArchive, setEditorAutoArchive] = useState(false);
   const [editorBaseline, setEditorBaseline] = useState<string | null>(null);
 
   const editorStartIso = toIso(editorStartAt);
@@ -77,6 +79,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     capacity: editorCapacity,
     pinned: editorPinned,
     signupLocked: editorSignupLocked,
+    autoArchive: editorAutoArchive,
     attachmentSnapshot,
   });
   const isEditorDirty = editorOpen && editorBaseline !== null && editorTouched && editorCurrentSnapshot !== editorBaseline;
@@ -116,6 +119,11 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorCapacity(value);
   }, []);
 
+  const handleEditorAutoArchiveChange = useCallback((value: boolean) => {
+    setEditorTouched(true);
+    setEditorAutoArchive(value);
+  }, []);
+
   const openCreateEditor = useCallback((initialDateKey?: string) => {
     const now = new Date();
     const fallbackStart = new Date(now.getTime() + 60 * 60_000);
@@ -139,6 +147,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorCapacity("");
     setEditorPinned(false);
     setEditorSignupLocked(false);
+    setEditorAutoArchive(false);
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "create",
@@ -151,6 +160,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
         capacity: "",
         pinned: false,
         signupLocked: false,
+        autoArchive: false,
         attachmentSnapshot: "[]",
       }),
     );
@@ -173,6 +183,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorCapacity(capacity);
     setEditorPinned(event.pinned);
     setEditorSignupLocked(event.signup_locked);
+    setEditorAutoArchive(event.auto_archive);
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "edit",
@@ -185,6 +196,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
         capacity,
         pinned: event.pinned,
         signupLocked: event.signup_locked,
+        autoArchive: event.auto_archive,
         attachmentSnapshot: initialAttachmentSnapshot ?? "[]",
       }),
     );
@@ -233,6 +245,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     editorCapacity,
     editorPinned,
     editorSignupLocked,
+    editorAutoArchive,
     editorStartIso,
     editorEndIso,
     isEditorDirty,
@@ -245,6 +258,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     markEditorTouched,
     setEditorPinned,
     setEditorSignupLocked,
+    setEditorAutoArchive: handleEditorAutoArchiveChange,
     openCreateEditor,
     openEditEditor,
     closeEditor,

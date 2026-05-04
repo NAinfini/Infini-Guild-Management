@@ -3,6 +3,14 @@ import { Avatar, Badge, Divider, Group, RingProgress, Spoiler, Stack, Text } fro
 import { PhotoIcon, VideoIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { resolveProfileMediaUrl } from "../../../utils/media";
+import { CLASS_COLOR_GROUP } from "@guild/shared/constants/classes";
+
+const CLASS_BADGE_COLOR: Record<string, string> = {
+  blue: "blue",
+  green: "teal",
+  purple: "violet",
+  "dark-red": "red",
+};
 
 type ProfilePreviewCardProps = {
   username: string;
@@ -68,7 +76,7 @@ export function ProfilePreviewCard({
                 {activeNowEstimate}
               </Badge>
               {primaryClass && primaryClass !== "-" ? (
-                <Badge size="sm" variant="light" color="yellow">{primaryClass}</Badge>
+                <Badge size="sm" variant="light" color={CLASS_BADGE_COLOR[(CLASS_COLOR_GROUP as Record<string, string>)[primaryClass] ?? ""] ?? "yellow"}>{primaryClass}</Badge>
               ) : null}
             </Group>
           </Stack>
@@ -77,7 +85,7 @@ export function ProfilePreviewCard({
         <Divider />
 
         {/* Power ring */}
-        <Group justify="center" gap={12}>
+        <Stack gap={4} align="center">
           <RingProgress
             size={72}
             thickness={6}
@@ -89,11 +97,8 @@ export function ProfilePreviewCard({
               </Text>
             }
           />
-          <Stack gap={0}>
-            <Text fw={600} size="sm">{t("preview.power")}</Text>
-            <Text c="dimmed" size="xs">{power.toLocaleString()}</Text>
-          </Stack>
-        </Group>
+          <Text c="dimmed" size="xs">{t("preview.power")}</Text>
+        </Stack>
 
         <Divider />
 

@@ -15,6 +15,7 @@ import {
   changeMyPassword,
   changeMyUsername,
   deleteProfileImage,
+  deleteProfileImages,
   deleteProfileAudio,
 } from "../UserService";
 
@@ -81,13 +82,28 @@ describe("UserService mutations", () => {
     ).toThrow();
   });
 
-  it("deleteProfileImage sends DELETE with encoded key", async () => {
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
+  it("deleteProfileImage sends one-key delete request", async () => {
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, deleted: 1 }));
     await deleteProfileImage("u-1", "users/u-1/images/photo.webp");
     const [url, init] = mockFetch.mock.calls[0];
-    expect(url).toContain("/api/users/u-1/media/images/");
-    expect(url).toContain(encodeURIComponent("users/u-1/images/photo.webp"));
+    expect(url).toContain("/api/users/u-1/media/images");
+    expect(url).not.toContain("batch");
     expect(init.method).toBe("DELETE");
+    expect(JSON.parse(init.body)).toEqual({
+      keys: ["users/u-1/images/photo.webp"],
+    });
+  });
+
+  it("deleteProfileImages sends one delete request", async () => {
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, deleted: 2 }));
+    await deleteProfileImages("u-1", ["users/u-1/images/one.webp", "users/u-1/images/two.webp"]);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toContain("/api/users/u-1/media/images");
+    expect(url).not.toContain("batch");
+    expect(init.method).toBe("DELETE");
+    expect(JSON.parse(init.body)).toEqual({
+      keys: ["users/u-1/images/one.webp", "users/u-1/images/two.webp"],
+    });
   });
 
   it("deleteProfileAudio sends DELETE to audio endpoint", async () => {

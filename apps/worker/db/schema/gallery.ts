@@ -31,7 +31,6 @@ export const galleryLikes = sqliteTable(
   },
   (table) => ({
     uxItemUser: uniqueIndex("ux_gallery_likes_item_user").on(table.galleryItemId, table.userId),
-    idxItemId: index("idx_gallery_likes_item_id").on(table.galleryItemId),
   }),
 );
 

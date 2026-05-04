@@ -55,3 +55,7 @@ export const adminUpdateProfileSchema = updateProfileSchema.extend({
   is_active: z.boolean().optional(),
   notes: z.string().max(2000).nullable().optional(),
 });
+
+export const deleteProfileImagesSchema = z.object({
+  keys: z.array(z.string().min(1)).min(1).max(10),
+});

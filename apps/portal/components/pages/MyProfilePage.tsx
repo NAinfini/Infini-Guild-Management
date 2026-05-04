@@ -8,6 +8,7 @@ import { IconGripVertical, IconUserCircle } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { CLASS_COLOR_GROUP } from "@guild/shared/constants/classes";
 import { queryKeys } from "../../api/query-keys";
 import { deleteAvatar, uploadAvatar, uploadProfileAudio, uploadProfileImages } from "../../services/UserService";
 import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
@@ -26,6 +27,13 @@ import { ProfilePreviewCard } from "../feature/profile/ProfilePreviewCard";
 import { ProfileProfileTab } from "../feature/profile/ProfileProfileTab";
 import { PageLayout } from "../layout/PageLayout";
 import "./MyProfilePage.css";
+
+const CLASS_BADGE_COLOR: Record<string, string> = {
+  blue: "blue",
+  green: "teal",
+  purple: "violet",
+  "dark-red": "red",
+};
 
 type SortableClassRowProps = {
   value: string;
@@ -52,7 +60,7 @@ function SortableClassRow(props: SortableClassRowProps) {
       <div {...attributes} {...listeners} style={{ cursor: "grab", display: "flex", alignItems: "center" }} aria-label={t("classRow.aria.drag", { value })}>
         <IconGripVertical size={18} />
       </div>
-      <Badge color={isPrimary ? "yellow" : "gray"}>{value}</Badge>
+      <Badge color={CLASS_BADGE_COLOR[(CLASS_COLOR_GROUP as Record<string, string>)[value] ?? ""] ?? (isPrimary ? "yellow" : "gray")}>{value}</Badge>
       <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={16} />} onClick={onRemove}
         tooltip={{ label: t("classRow.remove"), withArrow: true }}
       />

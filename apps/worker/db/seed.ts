@@ -10,6 +10,7 @@ import {
   galleryItems,
   galleryLikes,
   inviteLinks,
+  memberProfileClasses,
   memberProfiles,
   rolePermissions,
   roles,
@@ -42,6 +43,7 @@ const ALL_TABLES = [
   "events",
   "invite_links",
   "announcements",
+  "member_profile_classes",
   "member_profiles",
   "sessions",
   "role_permissions",
@@ -333,6 +335,15 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     ...profileRows,
   ];
   await batchInsert(db, memberProfiles, allProfileRows, 5);
+  await batchInsert(
+    db,
+    memberProfileClasses,
+    allProfileRows.flatMap((profile) => {
+      const classNames = JSON.parse(profile.classes ?? "[]") as string[];
+      return [...new Set(classNames)].map((className) => ({ userId: profile.userId, className }));
+    }),
+    10,
+  );
 
   const eventRows: Array<typeof events.$inferInsert> = [
     {
@@ -670,7 +681,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       title: "Welcome to Infini Guild",
       bodyJson: JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Welcome!" }] }] }),
       pinned: true,
-      pinnedAt: now.toISOString(),
       status: "published",
       publishAt: now.toISOString(),
       expiresAt: null,
@@ -682,7 +692,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       title: "Next War Prep",
       bodyJson: JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Prepare your builds." }] }] }),
       pinned: false,
-      pinnedAt: null,
       status: "draft",
       publishAt: null,
       expiresAt: null,
@@ -694,7 +703,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       title: "Scheduled Announcement",
       bodyJson: JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Auto publish soon." }] }] }),
       pinned: false,
-      pinnedAt: null,
       status: "scheduled",
       publishAt: addHours(now, 3),
       expiresAt: null,
@@ -706,7 +714,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       title: "Retired Raid Rotation",
       bodyJson: JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Archived for historical reference." }] }] }),
       pinned: false,
-      pinnedAt: null,
       status: "archived",
       publishAt: addDays(now, -21),
       expiresAt: addDays(now, -7),

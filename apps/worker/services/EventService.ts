@@ -69,6 +69,8 @@ export type EventRow = {
   signupLocked: boolean;
   visibleAt: string | null;
   archivedAt: string | null;
+  autoArchive: boolean;
+  autoArchived: boolean;
   createdBy: string;
   recurrenceRule: string | null;
   attachments: string;
@@ -152,6 +154,8 @@ export function toEventPayload(row: EventRow) {
     capacity: row.capacity,
     pinned: row.pinned,
     signup_locked: row.signupLocked,
+    auto_archive: row.autoArchive,
+    auto_archived: row.autoArchived,
     visible_at: row.visibleAt,
     archived_at: row.archivedAt,
     created_by: row.createdBy,
@@ -184,6 +188,7 @@ export function toTemplatePayload(row: EventRow) {
     end_at: row.endAt,
     capacity: row.capacity,
     recurrence_rule: parseRecurrenceRule(row.recurrenceRule),
+    auto_archive: row.autoArchive,
     visibility_offset_minutes: row.visibilityOffsetMinutes ?? null,
     visible_at: row.visibleAt ?? null,
     archived_at: row.archivedAt,
@@ -234,6 +239,8 @@ export class EventService {
       capacity: data.capacity ?? null,
       pinned: false,
       signupLocked: false,
+      autoArchive: data.auto_archive ?? false,
+      autoArchived: false,
       archivedAt: null,
       createdBy: actorId,
       recurrenceRule: recurrenceRuleJson,
@@ -287,6 +294,7 @@ export class EventService {
     if (data.capacity !== undefined) patch.capacity = data.capacity ?? null;
     if (data.pinned !== undefined) patch.pinned = data.pinned;
     if (data.signup_locked !== undefined) patch.signupLocked = data.signup_locked;
+    if (data.auto_archive !== undefined) patch.autoArchive = data.auto_archive;
     if (data.archived_at !== undefined) patch.archivedAt = data.archived_at;
     if (data.attachments !== undefined) patch.attachments = JSON.stringify(data.attachments);
     if (data.recurrence_rule !== undefined) {
@@ -507,146 +515,113 @@ export class EventService {
     }
   }
 
-  async addParticipant(
+  async addParticipants(
     actorId: string,
     eventId: string,
-    targetUserId: string,
+    targetUserIds: string[],
   ): Promise<
-    | { ok: true; participant: EventParticipantRow }
+    | { ok: true; participants: EventParticipantRow[] }
     | { ok: false; code: "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR" | "SERVER_ERROR"; message: string }
   > {
-    const participantId = this.deps.createId?.() ?? nanoid();
+    const userIds = [...new Set(targetUserIds.filter((id) => id.trim().length > 0))];
+    if (userIds.length === 0) return { ok: false, code: "VALIDATION_ERROR", message: "At least one user_id is required" };
 
-    const insertResult = await this.rawDb
-      .prepare(
-        `INSERT INTO event_participants (id, event_id, user_id)
-         SELECT ?1, ?2, ?3
-         WHERE EXISTS (
-           SELECT 1 FROM events e WHERE e.id = ?2
-         )
-         AND EXISTS (
-           SELECT 1 FROM users u WHERE u.id = ?3 AND u.is_active = 1 AND u.deleted_at IS NULL
-         )
-         AND NOT EXISTS (
-           SELECT 1 FROM event_participants p WHERE p.event_id = ?2 AND p.user_id = ?3
-         )
-         AND (
-           (SELECT capacity FROM events WHERE id = ?2) IS NULL
-           OR (SELECT COUNT(*) FROM event_participants WHERE event_id = ?2) < (SELECT capacity FROM events WHERE id = ?2)
-         )`,
-      )
-      .bind(participantId, eventId, targetUserId)
-      .run();
+    const eventRow = await this.deps.getEventById(eventId);
+    if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
 
-    if ((insertResult.meta?.changes ?? 0) !== 1) {
-      const eventRow = await this.deps.getEventById(eventId);
-      if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
+    const activeUserRows = (await (this.db as any)
+      .select({ id: users.id })
+      .from(users)
+      .where(and(inArray(users.id, userIds), eq(users.isActive, true), isNull(users.deletedAt)))) as Array<{ id?: string; userId?: string }>;
+    const activeUserIds = new Set(activeUserRows.map((row) => row.id ?? row.userId).filter((id): id is string => typeof id === "string"));
+    const missingUserId = userIds.find((userId) => !activeUserIds.has(userId));
+    if (missingUserId) return { ok: false, code: "NOT_FOUND", message: `User not found: ${missingUserId}` };
 
-      const targetUser = (
+    const existingRows = (await (this.db as any)
+      .select({ userId: eventParticipants.userId })
+      .from(eventParticipants)
+      .where(and(eq(eventParticipants.eventId, eventId), inArray(eventParticipants.userId, userIds)))) as Array<{ userId: string }>;
+    const existingUserIds = new Set(existingRows.map((row) => row.userId));
+    const insertUserIds = userIds.filter((userId) => !existingUserIds.has(userId));
+    if (insertUserIds.length === 0) return { ok: true, participants: [] };
+
+    if (eventRow.capacity !== null && eventRow.capacity > 0) {
+      const countRow = (
         await (this.db as any)
-          .select({ id: users.id })
-          .from(users)
-          .where(and(eq(users.id, targetUserId), eq(users.isActive, true), isNull(users.deletedAt)))
-          .limit(1)
-      )[0];
-      if (!targetUser) return { ok: false, code: "NOT_FOUND", message: "User not found" };
-
-      const existing = (
-        await (this.db as any)
-          .select({ id: eventParticipants.id })
+          .select({ count: sql<number>`count(*)` })
           .from(eventParticipants)
-          .where(and(eq(eventParticipants.eventId, eventId), eq(eventParticipants.userId, targetUserId)))
-          .limit(1)
+          .where(eq(eventParticipants.eventId, eventId))
       )[0];
-      if (existing) return { ok: false, code: "CONFLICT", message: "Participant already exists" };
-
-      if (eventRow.capacity !== null && eventRow.capacity > 0) {
-        const countRow = (
-          await (this.db as any)
-            .select({ count: sql<number>`count(*)` })
-            .from(eventParticipants)
-            .where(eq(eventParticipants.eventId, eventId))
-        )[0];
-        if (Number(countRow?.count ?? 0) >= eventRow.capacity) {
-          return { ok: false, code: "CONFLICT", message: "Event has reached maximum capacity" };
-        }
+      if (Number(countRow?.count ?? 0) + insertUserIds.length > eventRow.capacity) {
+        return { ok: false, code: "CONFLICT", message: "Event has reached maximum capacity" };
       }
-
-      return { ok: false, code: "SERVER_ERROR", message: "Failed to add participant" };
     }
 
-    const created = (
-      await (this.db as any)
-        .select({
-          id: eventParticipants.id,
-          eventId: eventParticipants.eventId,
-          userId: eventParticipants.userId,
-          joinedAt: eventParticipants.joinedAt,
-        })
-        .from(eventParticipants)
-        .where(eq(eventParticipants.id, participantId))
-        .limit(1)
-    )[0] as EventParticipantRow | undefined;
+    const participantIds = insertUserIds.map(() => this.deps.createId?.() ?? nanoid());
+    const stmts = insertUserIds.map((userId, index) =>
+      this.rawDb
+        .prepare("INSERT INTO event_participants (id, event_id, user_id) VALUES (?1, ?2, ?3)")
+        .bind(participantIds[index], eventId, userId),
+    );
+    await this.rawDb.batch(stmts);
 
-    if (!created) return { ok: false, code: "SERVER_ERROR", message: "Failed to add participant" };
+    const createdRows = (await (this.db as any)
+      .select({
+        id: eventParticipants.id,
+        eventId: eventParticipants.eventId,
+        userId: eventParticipants.userId,
+        joinedAt: eventParticipants.joinedAt,
+      })
+      .from(eventParticipants)
+      .where(inArray(eventParticipants.id, participantIds))) as EventParticipantRow[];
 
-    const [eventTitle, targetName] = await Promise.all([
-      this.resolveEventTitle(eventId),
-      this.deps.getUsername(targetUserId),
-    ]);
-
+    const eventTitle = await this.resolveEventTitle(eventId);
     await this.deps.writeAuditLog({
       entityType: "event_participant",
-      action: "add_by_moderator",
+      action: "batch_add_by_moderator",
       actorId,
-      entityId: `${eventId}:${targetUserId}`,
-      diffTitle: `${eventTitle} | ${targetName ?? targetUserId}`,
+      entityId: eventId,
+      diffTitle: eventTitle,
+      detailText: JSON.stringify({ count: insertUserIds.length, user_ids: insertUserIds }),
     });
-
     await this.deps.publishEntityChanged({
       entityType: "event",
       entityId: eventId,
-      hint: "participant_added_by_moderator",
+      hint: "participants_added_by_moderator",
     });
 
-    return { ok: true, participant: created };
+    return { ok: true, participants: createdRows };
   }
 
-  async removeParticipant(actorId: string, eventId: string, targetUserId: string): Promise<void> {
-    const existing = (
-      await (this.db as any)
-        .select({ id: eventParticipants.id })
-        .from(eventParticipants)
-        .where(and(eq(eventParticipants.eventId, eventId), eq(eventParticipants.userId, targetUserId)))
-        .limit(1)
-    )[0];
+  // ── Template CRUD ──
 
-    await (this.db as any)
-      .delete(eventParticipants)
-      .where(and(eq(eventParticipants.eventId, eventId), eq(eventParticipants.userId, targetUserId)));
-
-    if (existing) {
-      const [eventTitle, targetName] = await Promise.all([
-        this.resolveEventTitle(eventId),
-        this.deps.getUsername(targetUserId),
-      ]);
-
+  async removeParticipants(actorId: string, eventId: string, targetUserIds: string[]): Promise<{ ok: true; removed: number }> {
+    const userIds = [...new Set(targetUserIds.filter((id) => id.trim().length > 0))];
+    if (userIds.length === 0) return { ok: true, removed: 0 };
+    const placeholders = userIds.map((_, index) => `?${index + 2}`).join(", ");
+    const result = await this.rawDb
+      .prepare(`DELETE FROM event_participants WHERE event_id = ?1 AND user_id IN (${placeholders})`)
+      .bind(eventId, ...userIds)
+      .run();
+    const removed = Number(result.meta?.changes ?? 0);
+    if (removed > 0) {
+      const eventTitle = await this.resolveEventTitle(eventId);
       await this.deps.writeAuditLog({
         entityType: "event_participant",
-        action: "remove_by_moderator",
+        action: "batch_remove_by_moderator",
         actorId,
-        entityId: `${eventId}:${targetUserId}`,
-        diffTitle: `${eventTitle} | ${targetName ?? targetUserId}`,
+        entityId: eventId,
+        diffTitle: eventTitle,
+        detailText: JSON.stringify({ count: removed, user_ids: userIds }),
       });
       await this.deps.publishEntityChanged({
         entityType: "event",
         entityId: eventId,
-        hint: "participant_removed_by_moderator",
+        hint: "participants_removed_by_moderator",
       });
     }
+    return { ok: true, removed };
   }
-
-  // ── Template CRUD ──
 
   async createTemplate(actorId: string, data: {
     type: string;
@@ -657,6 +632,7 @@ export class EventService {
     capacity?: number | null;
     recurrence_rule: unknown;
     visibility_offset_minutes?: number | null;
+    auto_archive?: boolean;
   }): Promise<EventRow> {
     this.validateDateRange(data.start_at, data.end_at);
 
@@ -673,6 +649,8 @@ export class EventService {
       capacity: data.capacity ?? null,
       pinned: false,
       signupLocked: false,
+      autoArchive: data.auto_archive ?? false,
+      autoArchived: false,
       archivedAt: null,
       createdBy: actorId,
       recurrenceRule: recurrenceRuleJson,
@@ -709,6 +687,7 @@ export class EventService {
     capacity?: number | null;
     recurrence_rule?: unknown;
     visibility_offset_minutes?: number | null;
+    auto_archive?: boolean;
   }): Promise<EventRow> {
     const effectiveStartAt = data.start_at ?? existing.startAt;
     const effectiveEndAt = data.end_at !== undefined ? data.end_at : existing.endAt;
@@ -726,6 +705,9 @@ export class EventService {
     }
     if (data.visibility_offset_minutes !== undefined) {
       patch.visibilityOffsetMinutes = data.visibility_offset_minutes;
+    }
+    if (data.auto_archive !== undefined) {
+      patch.autoArchive = data.auto_archive;
     }
 
     await this.db.update(events).set(patch).where(eq(events.id, templateId));
@@ -809,6 +791,8 @@ export class EventService {
       diff.pinned = { from: existing.pinned, to: data.pinned };
     if (data.signup_locked !== undefined && data.signup_locked !== existing.signupLocked)
       diff.signup_locked = { from: existing.signupLocked, to: data.signup_locked };
+    if (data.auto_archive !== undefined && data.auto_archive !== existing.autoArchive)
+      diff.auto_archive = { from: existing.autoArchive, to: data.auto_archive };
     if (data.archived_at !== undefined && (data.archived_at ?? null) !== existing.archivedAt)
       diff.archived_at = { from: existing.archivedAt, to: data.archived_at ?? null };
     if (data.attachments !== undefined) {
@@ -824,6 +808,7 @@ export class EventService {
   private buildTemplateUpdateDiff(existing: EventRow, data: {
     type?: string; title?: string; description?: string | null; start_at?: string;
     end_at?: string | null; capacity?: number | null; recurrence_rule?: unknown; visibility_offset_minutes?: number | null;
+    auto_archive?: boolean;
   }): Record<string, { from: unknown; to: unknown }> {
     const diff: Record<string, { from: unknown; to: unknown }> = {};
     if (data.type !== undefined && data.type !== existing.type)
@@ -842,6 +827,8 @@ export class EventService {
       diff.recurrence_rule = { from: "changed", to: "changed" };
     if (data.visibility_offset_minutes !== undefined && (data.visibility_offset_minutes ?? null) !== (existing.visibilityOffsetMinutes ?? null))
       diff.visibility_offset_minutes = { from: existing.visibilityOffsetMinutes, to: data.visibility_offset_minutes ?? null };
+    if (data.auto_archive !== undefined && data.auto_archive !== existing.autoArchive)
+      diff.auto_archive = { from: existing.autoArchive, to: data.auto_archive };
     return diff;
   }
 
@@ -883,29 +870,6 @@ export class EventService {
     return this.deps.now?.() ?? new Date().toISOString();
   }
 
-  // --- On-demand auto-maintenance ---
-
-  private async autoArchivePastEvents(): Promise<void> {
-    const now = this.now();
-    try {
-      await this.rawDb
-        .prepare(
-          `UPDATE events
-           SET archived_at = ?1, updated_at = ?1
-           WHERE archived_at IS NULL
-             AND is_series_parent = 0
-             AND (
-               (end_at IS NOT NULL AND end_at < ?1)
-               OR (end_at IS NULL AND start_at < ?1)
-             )`,
-        )
-        .bind(now)
-        .run();
-    } catch {
-      // best-effort
-    }
-  }
-
   // --- Query methods moved from route ---
 
   private static readonly eventSelectFields = {
@@ -920,6 +884,8 @@ export class EventService {
     signupLocked: events.signupLocked,
     visibleAt: events.visibleAt,
     archivedAt: events.archivedAt,
+    autoArchive: events.autoArchive,
+    autoArchived: events.autoArchived,
     createdBy: events.createdBy,
     recurrenceRule: events.recurrenceRule,
     attachments: events.attachments,
@@ -966,8 +932,6 @@ export class EventService {
   async listEvents(params: {
     page: number; limit: number; typeFilter?: string; archivedFilter?: boolean; startAfter?: string; startBefore?: string;
   }) {
-    await this.autoArchivePastEvents();
-
     const offset = (params.page - 1) * params.limit;
     const whereClause = and(...EventService.buildEventsWhereFilters(params));
 
@@ -991,8 +955,6 @@ export class EventService {
   }
 
   async getEventDetail(eventId: string) {
-    await this.autoArchivePastEvents();
-
     const eventRow = await this.getEventById(eventId);
     if (!eventRow) return null;
 

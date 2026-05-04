@@ -58,7 +58,7 @@ export const users = sqliteTable(
 );
 
 export const userAuthPassword = sqliteTable("user_auth_password", {
-  userId: text("user_id").primaryKey().references(() => users.id),
+  userId: text("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
   passwordHash: text("password_hash").notNull(),
   salt: text("salt").notNull(),
   updatedAt: text("updated_at").notNull().default(nowUtc),

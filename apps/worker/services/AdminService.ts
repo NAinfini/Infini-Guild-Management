@@ -15,6 +15,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { inviteLinks, rolePermissions, roles, sessions, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import type { MediaLike } from "./AdminAuditService";
+import { clearPermissionCache } from "./auth";
 
 export type { MediaLike } from "./AdminAuditService";
 
@@ -239,56 +240,56 @@ export class AdminService {
     await ensureBuiltinRolesAndPermissions(this.deps.db);
     const roleExists = (await this.deps.db.select({ id: roles.id }).from(roles).where(eq(roles.id, newRoleId)).limit(1))[0];
     if (!roleExists) return err("NOT_FOUND", "Role not found");
-    const existingUsers = await this.deps.db.select({ id: users.id }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
+    const existingUsers = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
       await this.deps.db.update(users).set({ role: newRoleId, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
       await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
     }
-    const targetNames = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, targetIds));
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_role_update", actorId, entityId: "batch", diffTitle: targetNames.map((r) => r.username).join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames: targetNames.map((r) => r.username), new_role: newRoleId, count: existingUsers.length }) });
+    const usernames = existingUsers.map((r) => r.username);
+    await this.deps.writeAuditLog({ entityType: "user", action: "batch_role_update", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, new_role: newRoleId, count: existingUsers.length }) });
     return ok({ updated: existingUsers.length });
   }
 
   async batchDeactivate(actorId: string, userIds: string[]): Promise<ServiceResult<{ updated: number }>> {
     const targetIds = userIds.filter((id) => id !== actorId);
     if (targetIds.length === 0) return ok({ updated: 0 });
-    const existingUsers = await this.deps.db.select({ id: users.id }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
+    const existingUsers = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
       await this.deps.db.update(users).set({ isActive: false, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
       await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
     }
-    const targetNames = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, targetIds));
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_deactivate", actorId, entityId: "batch", diffTitle: targetNames.map((r) => r.username).join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames: targetNames.map((r) => r.username), count: existingUsers.length }) });
+    const usernames = existingUsers.map((r) => r.username);
+    await this.deps.writeAuditLog({ entityType: "user", action: "batch_deactivate", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
     return ok({ updated: existingUsers.length });
   }
 
   async batchReactivate(actorId: string, userIds: string[]): Promise<ServiceResult<{ updated: number }>> {
     const targetIds = userIds.filter((id) => id !== actorId);
     if (targetIds.length === 0) return ok({ updated: 0 });
-    const existingUsers = await this.deps.db.select({ id: users.id }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
+    const existingUsers = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
       await this.deps.db.update(users).set({ isActive: true, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
     }
-    const targetNames = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, targetIds));
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_reactivate", actorId, entityId: "batch", diffTitle: targetNames.map((r) => r.username).join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames: targetNames.map((r) => r.username), count: existingUsers.length }) });
+    const usernames = existingUsers.map((r) => r.username);
+    await this.deps.writeAuditLog({ entityType: "user", action: "batch_reactivate", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
     return ok({ updated: existingUsers.length });
   }
 
   async batchDelete(actorId: string, userIds: string[]): Promise<ServiceResult<{ updated: number }>> {
     const targetIds = userIds.filter((id) => id !== actorId);
     if (targetIds.length === 0) return ok({ updated: 0 });
-    const existingUsers = await this.deps.db.select({ id: users.id }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
+    const existingUsers = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
       const now = this.now().toISOString();
       await this.deps.db.update(users).set({ isActive: false, deletedAt: now, updatedAt: now }).where(inArray(users.id, existingIds));
       await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
     }
-    const targetNames = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, targetIds));
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_delete", actorId, entityId: "batch", diffTitle: targetNames.map((r) => r.username).join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames: targetNames.map((r) => r.username), count: existingUsers.length }) });
+    const usernames = existingUsers.map((r) => r.username);
+    await this.deps.writeAuditLog({ entityType: "user", action: "batch_delete", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
     return ok({ updated: existingUsers.length });
   }
 
@@ -383,6 +384,7 @@ export class AdminService {
     const permissionRecord = emptyPermissionRecord();
     for (const perm of PERMISSIONS) permissionRecord[perm] = Boolean(input.permissions?.[perm]);
     await replaceRolePermissions(this.deps.rawDb, roleId, permissionRecord);
+    clearPermissionCache(roleId);
     await this.deps.writeAuditLog({ entityType: "role", action: "create", actorId, entityId: roleId, diffTitle: input.name.trim(), detailText: JSON.stringify({ name: input.name.trim(), level: input.level, color: input.color ?? null, permissions: permissionRecord }) });
     const created = (await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (!created) return err("SERVER_ERROR", "Failed to create role");
@@ -400,12 +402,16 @@ export class AdminService {
     if (input.level !== undefined) roleUpdatePayload.level = input.level;
     if (input.color !== undefined) roleUpdatePayload.color = input.color ?? null;
     if (Object.keys(roleUpdatePayload).length > 1) await this.deps.db.update(roles).set(roleUpdatePayload).where(eq(roles.id, roleId));
-    if (roleId === "admin") await replaceRolePermissions(this.deps.rawDb, roleId, fullAdminPermissionRecord());
+    if (roleId === "admin") {
+      await replaceRolePermissions(this.deps.rawDb, roleId, fullAdminPermissionRecord());
+      clearPermissionCache(roleId);
+    }
     else if (input.permissions) {
       const currentPermissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
       const nextPermissionRecord = parsePermissionRecord(roleId, currentPermissionRows);
       for (const perm of PERMISSIONS) if (Object.prototype.hasOwnProperty.call(input.permissions, perm)) nextPermissionRecord[perm] = Boolean(input.permissions[perm]);
       await replaceRolePermissions(this.deps.rawDb, roleId, nextPermissionRecord);
+      clearPermissionCache(roleId);
     }
     const [updatedRole] = await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).where(eq(roles.id, roleId)).limit(1);
     if (!updatedRole) return err("SERVER_ERROR", "Failed to load updated role");
@@ -425,6 +431,7 @@ export class AdminService {
     const assignedCount = Number(assignedCountRow?.count ?? 0);
     if (assignedCount > 0) return err("CONFLICT", "Role is assigned to users", { assigned_user_count: assignedCount });
     await this.deps.db.delete(roles).where(eq(roles.id, roleId));
+    clearPermissionCache(roleId);
     await this.deps.writeAuditLog({ entityType: "role", action: "delete", actorId, entityId: roleId, diffTitle: existing.name });
     return ok(undefined);
   }

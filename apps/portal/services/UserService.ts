@@ -4,6 +4,7 @@ export {
   deleteAvatar,
   deleteProfileAudio,
   deleteProfileImage,
+  deleteProfileImages,
   updateMyProfile,
   uploadAvatar,
   uploadProfileAudio,
@@ -16,7 +17,8 @@ export type {
 } from "../api/mutations/users";
 export {
   fetchUserDetail,
+  fetchUsersStats,
   fetchUsersList,
   fetchUsersListWithOptions,
 } from "../api/queries/users";
-export type { UsersListResponse } from "../api/queries/users";
+export type { UsersListResponse, UsersStatsResponse } from "../api/queries/users";

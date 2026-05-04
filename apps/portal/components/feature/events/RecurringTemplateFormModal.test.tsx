@@ -18,6 +18,8 @@ vi.mock("react-i18next", () => ({
         "field.capacity": "Capacity",
         "field.unlimited": "Unlimited",
         "field.description": "Description",
+        "field.autoArchive": "Auto archive",
+        "field.autoArchiveHint": "Archive after end",
         "field.interval": "Interval",
         "field.weekdays": "Weekdays",
         "field.monthDay": "Day of Month",
@@ -53,6 +55,7 @@ describe("RecurringTemplateFormModal", () => {
       },
       generation_count: 0,
       last_generated_date: null,
+      auto_archive: true,
     };
     const secondTemplate = {
       ...firstTemplate,
@@ -95,5 +98,32 @@ describe("RecurringTemplateFormModal", () => {
 
     expect(screen.getByDisplayValue("Second Template")).toBeInTheDocument();
     expect(screen.queryByDisplayValue("Mutated title")).not.toBeInTheDocument();
+  });
+
+  it("includes auto-archive setting in saved template payloads", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+
+    render(
+      <MantineProvider>
+        <RecurringTemplateFormModal
+          open
+          mode="create"
+          template={null}
+          confirmLoading={false}
+          onCancel={() => {}}
+          onSave={onSave}
+        />
+      </MantineProvider>,
+    );
+
+    await user.type(screen.getByLabelText("Title"), "Daily Run");
+    await user.click(screen.getAllByLabelText("Type")[0]!);
+    await user.click(await screen.findByText("common:eventType.social"));
+    await user.type(screen.getByLabelText("Start Time"), "10:00");
+    await user.click(screen.getByText("Auto archive"));
+    await user.click(screen.getByRole("button", { name: "Create recurring template" }));
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ auto_archive: true }));
   });
 });

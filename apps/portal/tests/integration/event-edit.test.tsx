@@ -104,6 +104,8 @@ function EventEditHarness({
         onCapacityChange={() => {}}
         description=""
         onDescriptionChange={() => {}}
+        autoArchive={false}
+        onAutoArchiveChange={() => {}}
         attachmentItems={attachmentItems}
         onAttachmentsChange={setAttachmentItems}
         onFilesSelected={(files) => {
@@ -134,6 +136,7 @@ function EventEditHarness({
             capacity: "",
             pinned: true,
             signupLocked: true,
+            autoArchive: false,
             attachmentItems,
           });
         }}

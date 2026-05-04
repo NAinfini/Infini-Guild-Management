@@ -24,9 +24,8 @@ import { useGuildWarDragController } from "../../hooks/guild-war/useGuildWarDrag
 import { useGuildWarHistory } from "../../hooks/guild-war/useGuildWarHistory";
 import { useGuildWarMutations } from "../../hooks/guild-war/useGuildWarMutations";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
-import { GuildWarService, moveGuildWarMember } from "../../services/GuildWarService";
-import { batchUpdateGuildWarMemberStats, updateGuildWarHistory } from "../../api/mutations/guild-war";
-import { archiveEvent } from "../../api/mutations/events";
+import { GuildWarService, batchUpdateGuildWarMemberStats, moveGuildWarMember, updateGuildWarHistory } from "../../services/GuildWarService";
+import { archiveEvent } from "../../services/EventService";
 import { queryKeys } from "../../api/query-keys";
 import { fetchUsersList } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
@@ -312,13 +311,10 @@ export function GuildWarPage() {
     if (!selectedEventId || addToPoolSelection.length === 0) return;
     setAddToPoolPending(true);
     try {
-      for (const userId of addToPoolSelection) {
-        await moveGuildWarMember({
-          event_id: selectedEventId,
-          user_id: userId,
-          to: "pool",
-        });
-      }
+      await moveGuildWarMember({
+        event_id: selectedEventId,
+        moves: addToPoolSelection.map((userId) => ({ user_id: userId, to: "pool" })),
+      });
       await queryClient.invalidateQueries({
         queryKey: queryKeys.guildWar.active(selectedEventId ?? null),
       });
@@ -535,14 +531,11 @@ export function GuildWarPage() {
     activeController.setUndoMove(null);
     const commitQueuedMoves = async () => {
       try {
-        for (const [index, move] of pendingMove.moves.entries()) {
-          await moveGuildWarMember({
-            event_id: pendingMove.eventId,
-            user_id: move.userId,
-            to: move.to,
-            etag: index === 0 ? pendingMove.etag ?? activeQuery.data?.etag ?? undefined : undefined,
-          });
-        }
+        await moveGuildWarMember({
+          event_id: pendingMove.eventId,
+          moves: pendingMove.moves.map((move) => ({ user_id: move.userId, to: move.to })),
+          etag: pendingMove.etag ?? activeQuery.data?.etag ?? undefined,
+        });
         await queryClient.invalidateQueries({
           queryKey: queryKeys.guildWar.active(selectedEventId ?? null),
         });

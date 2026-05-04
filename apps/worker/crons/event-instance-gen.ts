@@ -149,7 +149,7 @@ function computeNextOccurrence(anchor: Date, templateStart: Date, rule: Recurren
 
 export function computeHorizon(now: Date): Date {
   const horizon = new Date(now);
-  horizon.setUTCDate(horizon.getUTCDate() + 56);
+  horizon.setUTCDate(horizon.getUTCDate() + 3);
   return horizon;
 }
 
@@ -174,7 +174,7 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
       lastGeneratedDate: events.lastGeneratedDate,
       generationCount: events.generationCount,
       visibilityOffsetMinutes: events.visibilityOffsetMinutes,
-      visibleAt: events.visibleAt,
+      autoArchive: events.autoArchive,
     })
     .from(events)
     .where(
@@ -222,6 +222,7 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
     let currentAnchor = anchor;
     let generationCount = template.generationCount;
     let catchupCount = 0;
+    let lastDateKey: string | null = null;
 
     while (catchupCount < MAX_CATCHUP) {
       const nextOccurrence = computeNextOccurrence(currentAnchor, templateStart, rule);
@@ -245,55 +246,40 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
       const nextStartIso = nextOccurrence.toISOString();
       const nextDateKey = toDateKey(nextOccurrence);
 
-      // Check for duplicate: skip if an instance already exists with the same seriesId and instanceDate
-      const existing = await db
-        .select({ id: events.id })
-        .from(events)
-        .where(and(eq(events.seriesId, template.id), eq(events.instanceDate, nextDateKey)))
-        .limit(1);
+      let visibleAt: string | null = null;
+      if (template.visibilityOffsetMinutes != null) {
+        visibleAt = new Date(nextOccurrence.getTime() - template.visibilityOffsetMinutes * 60_000).toISOString();
+      }
 
-      if (existing.length === 0) {
-        let visibleAt: string | null = null;
-        if (template.visibleAt) {
-          visibleAt = template.visibleAt;
-        } else if (template.visibilityOffsetMinutes != null) {
-          visibleAt = new Date(nextOccurrence.getTime() - template.visibilityOffsetMinutes * 60_000).toISOString();
-        }
+      // INSERT OR IGNORE: the UNIQUE constraint on (series_id, instance_date) prevents duplicates
+      const result = await db.insert(events).values({
+        id: nanoid(),
+        type: template.type,
+        title: template.title,
+        description: template.description,
+        startAt: nextStartIso,
+        endAt: computeEndAt(template.startAt, template.endAt, nextStartIso),
+        capacity: template.capacity,
+        pinned: false,
+        signupLocked: false,
+        autoArchive: template.autoArchive,
+        autoArchived: false,
+        visibleAt,
+        archivedAt: null,
+        createdBy: template.createdBy,
+        recurrenceRule: null,
+        attachments: template.attachments,
+        seriesId: template.id,
+        isSeriesParent: false,
+        instanceDate: nextDateKey,
+        lastGeneratedDate: null,
+        generationCount: 0,
+        updatedAt: now.toISOString(),
+      }).onConflictDoNothing({ target: [events.seriesId, events.instanceDate] });
 
-        await db.insert(events).values({
-          id: nanoid(),
-          type: template.type,
-          title: template.title,
-          description: template.description,
-          startAt: nextStartIso,
-          endAt: computeEndAt(template.startAt, template.endAt, nextStartIso),
-          capacity: template.capacity,
-          pinned: false,
-          signupLocked: false,
-          visibleAt,
-          archivedAt: null,
-          createdBy: template.createdBy,
-          recurrenceRule: null,
-          attachments: template.attachments,
-          seriesId: template.id,
-          isSeriesParent: false,
-          instanceDate: nextDateKey,
-          lastGeneratedDate: null,
-          generationCount: 0,
-          updatedAt: now.toISOString(),
-        });
-
+      if (result.meta.changes > 0) {
         generationCount += 1;
-
-        // Update template tracking
-        await db
-          .update(events)
-          .set({
-            lastGeneratedDate: nextDateKey,
-            generationCount,
-            updatedAt: now.toISOString(),
-          })
-          .where(eq(events.id, template.id));
+        lastDateKey = nextDateKey;
       }
 
       currentAnchor = nextOccurrence;
@@ -303,6 +289,17 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
       if (rule.endAfter && generationCount >= rule.endAfter) {
         break;
       }
+    }
+
+    if (lastDateKey) {
+      await db
+        .update(events)
+        .set({
+          lastGeneratedDate: lastDateKey,
+          generationCount,
+          updatedAt: now.toISOString(),
+        })
+        .where(eq(events.id, template.id));
     }
   }
 }

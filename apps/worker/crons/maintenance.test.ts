@@ -15,7 +15,6 @@ describe("cron maintenance schedules", () => {
     expect(QUARTER_HOURLY_MAINTENANCE_JOBS.map((job) => job.name)).toEqual([
       "event-auto-archive",
       "announcement-publish",
-      "announcement-expiry",
     ]);
   });
 });

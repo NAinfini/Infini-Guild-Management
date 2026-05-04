@@ -286,26 +286,26 @@ export function EventCardsView({
 
               {/* ── Body ── */}
               <div className="event-card__body">
-                <Stack gap={12}>
+                <Stack gap={8}>
                   {/* Title */}
-                  <Text fw={700} size="lg" className="event-card__title">{event.title}</Text>
+                  <Text fw={700} size="md" className="event-card__title">{event.title}</Text>
 
                   {/* Description preview */}
                   {event.description ? (
-                    <Text size="sm" c="dimmed" lineClamp={2} className="event-card__description">
+                    <Text size="xs" c="dimmed" lineClamp={1} className="event-card__description">
                       {event.description}
                     </Text>
                   ) : null}
 
                   {/* Date & Time */}
                   <Group gap={6} align="center" wrap="nowrap">
-                    <CalendarEventIcon size={15} className="event-card__icon-muted" />
-                    <Text size="sm" className="event-card__date-text">
+                    <CalendarEventIcon size={14} className="event-card__icon-muted" />
+                    <Text size="xs" className="event-card__date-text">
                       {formatLocalDate(event.start_at, i18n.language)}
                     </Text>
-                    <Text size="sm" c="dimmed">·</Text>
-                    <IconClock size={15} className="event-card__icon-muted" />
-                    <Text size="sm" className="event-card__time-text">
+                    <Text size="xs" c="dimmed">·</Text>
+                    <IconClock size={14} className="event-card__icon-muted" />
+                    <Text size="xs" className="event-card__time-text">
                       {formatLocalTime(event.start_at, event.end_at, i18n.language)}
                     </Text>
                   </Group>
@@ -315,7 +315,7 @@ export function EventCardsView({
                     <div className="event-card__members-left">
                       <div className="event-card__avatar-grid">
                         {members.slice(0, 10).map((member) => (
-                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={48} />
+                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={36} />
                         ))}
                         {members.length > 10 ? (
                           <Text size="xs" c="dimmed" fw={600}>+{members.length - 10}</Text>

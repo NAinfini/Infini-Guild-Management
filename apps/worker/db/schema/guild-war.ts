@@ -47,7 +47,6 @@ export const warTeams = sqliteTable(
     isLocked: integer("is_locked", { mode: "boolean" }).notNull().default(false),
   },
   (table) => ({
-    idxHistoryId: index("idx_war_teams_history_id").on(table.warHistoryId),
     idxHistorySort: index("idx_war_teams_history_sort").on(table.warHistoryId, table.sortOrder, table.id),
   }),
 );
@@ -72,7 +71,6 @@ export const warTeamMembers = sqliteTable(
   },
   (table) => ({
     uxTeamUser: uniqueIndex("ux_war_team_members_team_user").on(table.warTeamId, table.userId),
-    idxTeamId: index("idx_war_team_members_team_id").on(table.warTeamId),
     idxTeamSort: index("idx_war_team_members_team_sort").on(table.warTeamId, table.sortOrder, table.id),
     idxUser: index("idx_war_team_members_user").on(table.userId),
   }),
@@ -87,7 +85,6 @@ export const warPoolMembers = sqliteTable(
   },
   (table) => ({
     uxHistoryUser: uniqueIndex("ux_war_pool_members_history_user").on(table.warHistoryId, table.userId),
-    idxHistoryId: index("idx_war_pool_members_history_id").on(table.warHistoryId),
   }),
 );
 

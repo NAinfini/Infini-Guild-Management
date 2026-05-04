@@ -3,12 +3,24 @@ import { apiRequest } from "../client";
 
 type UserDetailResponse = { user: User; profile: MemberProfile };
 export type UsersListResponse = PaginatedResponse<{ user: User; profile: MemberProfile }>;
+export type UsersStatsResponse = { active_members: number; total_members: number };
 
-function buildUsersListPath(options?: { externalView?: boolean; page?: number; limit?: number }): string {
+type UsersListOptions = {
+  externalView?: boolean;
+  page?: number;
+  limit?: number;
+  includeTotal?: boolean;
+};
+
+function buildUsersListPath(options?: UsersListOptions): string {
   const query = new URLSearchParams({
     page: String(options?.page ?? 1),
     limit: String(options?.limit ?? 500),
   });
+
+  if (options?.includeTotal === false) {
+    query.set("include_total", "false");
+  }
 
   if (options?.externalView) {
     query.set("external_view", "true");
@@ -18,11 +30,15 @@ function buildUsersListPath(options?: { externalView?: boolean; page?: number; l
 }
 
 export function fetchUsersList(): Promise<UsersListResponse> {
-  return apiRequest<UsersListResponse>(buildUsersListPath());
+  return apiRequest<UsersListResponse>(buildUsersListPath({ includeTotal: false }));
 }
 
-export function fetchUsersListWithOptions(options?: { externalView?: boolean; page?: number; limit?: number }): Promise<UsersListResponse> {
-  return apiRequest<UsersListResponse>(buildUsersListPath(options));
+export function fetchUsersListWithOptions(options?: UsersListOptions): Promise<UsersListResponse> {
+  return apiRequest<UsersListResponse>(buildUsersListPath({ includeTotal: false, ...options }));
+}
+
+export function fetchUsersStats(): Promise<UsersStatsResponse> {
+  return apiRequest<UsersStatsResponse>("/api/users/stats");
 }
 
 export function fetchUserDetail(userId: string): Promise<UserDetailResponse> {

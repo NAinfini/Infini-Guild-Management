@@ -2,6 +2,7 @@ import type { Event } from "@guild/shared";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   addEventParticipant,
+  addEventParticipants,
   archiveEvent,
   createEvent as createEventMutation,
   deleteEvent,
@@ -9,6 +10,7 @@ import {
   joinEvent,
   leaveEvent,
   removeEventParticipant,
+  removeEventParticipants,
   createTemplate,
   deleteTemplate,
   pauseTemplate,
@@ -29,6 +31,7 @@ import type { AttachmentItem, AttachmentService } from "./AttachmentService";
 
 export {
   addEventParticipant,
+  addEventParticipants,
   archiveEvent,
   createEventMutation as createEvent,
   createTemplate,
@@ -43,6 +46,7 @@ export {
   pauseTemplate,
   queryKeys,
   removeEventParticipant,
+  removeEventParticipants,
   resumeTemplate,
   updateEventMutation as updateEvent,
   updateTemplate,
@@ -79,6 +83,7 @@ export type EventSaveInput = {
   capacity: string;
   pinned: boolean;
   signupLocked: boolean;
+  autoArchive: boolean;
   attachmentItems: AttachmentItem[];
 };
 
@@ -149,6 +154,7 @@ export class EventService {
       ...payload,
       pinned: input.pinned,
       signup_locked: input.signupLocked,
+      auto_archive: input.autoArchive,
       attachments: nextAttachments,
     });
     await this.invalidateEvents();
@@ -184,6 +190,7 @@ export class EventService {
       end_at: input.endIso ?? undefined,
       capacity,
       attachments: [],
+      auto_archive: input.autoArchive,
     };
   }
 

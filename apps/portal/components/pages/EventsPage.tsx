@@ -132,6 +132,7 @@ export function EventsPage() {
     editorCapacity,
     editorPinned,
     editorSignupLocked,
+    editorAutoArchive,
     editorStartIso,
     editorEndIso,
     setEditorType,
@@ -140,6 +141,7 @@ export function EventsPage() {
     setEditorStartAt,
     setEditorEndAt,
     setEditorCapacity,
+    setEditorAutoArchive,
     markEditorTouched,
     openCreateEditor: openCreateEditorBase,
     openEditEditor: openEditEditorBase,
@@ -213,6 +215,7 @@ export function EventsPage() {
       capacity: editorCapacity,
       pinned: editorPinned,
       signupLocked: editorSignupLocked,
+      autoArchive: editorAutoArchive,
     });
   };
 
@@ -342,6 +345,8 @@ export function EventsPage() {
             onCapacityChange={setEditorCapacity}
             description={editorDescription}
             onDescriptionChange={setEditorDescription}
+            autoArchive={editorAutoArchive}
+            onAutoArchiveChange={setEditorAutoArchive}
             attachmentItems={attachmentItems}
             onAttachmentsChange={handleAttachmentItemsChange}
             onFilesSelected={handleFilesSelected}

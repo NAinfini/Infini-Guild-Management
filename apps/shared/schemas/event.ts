@@ -21,6 +21,8 @@ export const eventSchema = z.object({
   capacity: z.number().int().nullable(),
   pinned: z.boolean(),
   signup_locked: z.boolean(),
+  auto_archive: z.boolean(),
+  auto_archived: z.boolean(),
   visible_at: z.string().nullable(),
   archived_at: z.string().nullable(),
   created_by: z.string(),
@@ -42,6 +44,7 @@ export const createEventSchema = z.object({
   capacity: z.number().int().positive().optional(),
   attachments: eventAttachmentsSchema.optional(),
   recurrence_rule: recurrenceRuleSchema.optional(),
+  auto_archive: z.boolean().optional(),
 });
 
 export const updateEventSchema = createEventSchema.partial().extend({
@@ -58,6 +61,10 @@ export const eventParticipantSchema = z.object({
   joined_at: z.string(),
 });
 
+export const eventParticipantsBatchSchema = z.object({
+  user_ids: z.array(z.string().min(1)).min(1).max(100),
+});
+
 // ── Recurring Templates ──
 
 export const recurringTemplateSchema = z.object({
@@ -69,6 +76,7 @@ export const recurringTemplateSchema = z.object({
   end_at: z.string().nullable(),
   capacity: z.number().int().nullable(),
   recurrence_rule: recurrenceRuleSchema,
+  auto_archive: z.boolean(),
   visibility_offset_minutes: z.number().nullable(),
   visible_at: z.string().nullable(),
   archived_at: z.string().nullable(),
@@ -88,6 +96,7 @@ export const createTemplateSchema = z.object({
   capacity: z.number().int().positive().optional(),
   recurrence_rule: recurrenceRuleSchema,
   visibility_offset_minutes: z.number().int().min(0).optional(),
+  auto_archive: z.boolean().optional(),
 });
 
 export const updateTemplateSchema = createTemplateSchema.partial();

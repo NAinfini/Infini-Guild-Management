@@ -1,6 +1,7 @@
 import {
   changePasswordSchema,
   changeUsernameSchema,
+  deleteProfileImagesSchema,
   updateProfileSchema,
   type MemberProfile,
 } from "@guild/shared";
@@ -62,8 +63,14 @@ export function deleteAvatar(userId: string): Promise<{ ok: true }> {
 }
 
 export function deleteProfileImage(userId: string, key: string): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>(`/api/users/${userId}/media/images/${encodeURIComponent(key)}`, {
+  return deleteProfileImages(userId, [key]).then(() => ({ ok: true as const }));
+}
+
+export function deleteProfileImages(userId: string, keys: string[]): Promise<{ ok: true; deleted: number }> {
+  const bodyJson = deleteProfileImagesSchema.parse({ keys });
+  return apiRequest<{ ok: true; deleted: number }>(`/api/users/${userId}/media/images`, {
     method: "DELETE",
+    bodyJson,
   });
 }
 
