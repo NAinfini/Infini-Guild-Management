@@ -58,14 +58,13 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
         date_from: historyDateFrom ? `${historyDateFrom}T00:00:00.000Z` : undefined,
         date_to: historyDateTo ? `${historyDateTo}T23:59:59.999Z` : undefined,
       }),
-    enabled: hasSession,
     staleTime: 10 * 60_000,
     placeholderData: keepPreviousData,
   });
 
   const historyDetailQuery = useQuery({
     queryKey: queryKeys.guildWar.historyDetail(selectedHistoryId),
-    enabled: hasSession && Boolean(selectedHistoryId),
+    enabled: Boolean(selectedHistoryId),
     queryFn: () => fetchGuildWarHistoryDetail(selectedHistoryId as string),
     staleTime: 10 * 60_000,
   });

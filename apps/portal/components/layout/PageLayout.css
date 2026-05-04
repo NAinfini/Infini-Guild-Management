@@ -18,7 +18,7 @@
 }
 
 .page-layout__content {
-  padding: 12px var(--page-padding-x) var(--page-padding-y);
+  padding: 6px var(--page-padding-x) var(--page-padding-y);
   display: flex;
   flex-direction: column;
   gap: 20px;

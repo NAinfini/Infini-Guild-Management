@@ -103,6 +103,7 @@
   "media.hideThumbnails": "隐藏缩略图",
   "media.showThumbnails": "显示缩略图",
   "media.noMedia": "暂无媒体",
+  "media.imageLoadFailed": "图片加载失败",
   "media.noAudio": "暂无音频",
   "members.noOverflow": "无溢出成员",
   "members.overflow": "溢出 {{count}}",

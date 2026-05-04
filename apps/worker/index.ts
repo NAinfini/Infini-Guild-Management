@@ -1,9 +1,6 @@
-import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
-import { users } from "./db/schema/auth";
 import { runDailyMaintenanceCron, runQuarterHourlyMaintenanceCron } from "./crons/maintenance";
 import { WebSocketDO } from "./durable-objects/WebSocketDO";
 import { etagMiddleware } from "./middleware/etag";
@@ -199,16 +196,6 @@ function rejectNonDev(c: Context<{ Bindings: Bindings; Variables: Variables }>):
 app.post("/api/dev/seed", async (c) => {
   const blocked = rejectNonDev(c);
   if (blocked) return blocked;
-  const env = c.env as Bindings;
-  const db = drizzle(env.DB);
-  const [row] = await db.select({ count: sql<number>`count(*)` }).from(users);
-  const isEmpty = row.count === 0;
-  if (!isEmpty) {
-    const session = await resolveSession(c);
-    if (!session || !session.user.permissions.has("admin.roles.manage")) {
-      return c.json({ error_code: "FORBIDDEN", message: "Requires admin permissions", request_id: c.get("requestId") }, 403);
-    }
-  }
   const { seedDatabase } = await import("./db/seed");
   await seedDatabase(c.env);
   return c.json({ ok: true, message: "Database seeded" });
@@ -216,16 +203,6 @@ app.post("/api/dev/seed", async (c) => {
 app.post("/api/dev/reseed", async (c) => {
   const blocked = rejectNonDev(c);
   if (blocked) return blocked;
-  const env = c.env as Bindings;
-  const db = drizzle(env.DB);
-  const [row] = await db.select({ count: sql<number>`count(*)` }).from(users);
-  const isEmpty = row.count === 0;
-  if (!isEmpty) {
-    const session = await resolveSession(c);
-    if (!session || !session.user.permissions.has("admin.roles.manage")) {
-      return c.json({ error_code: "FORBIDDEN", message: "Requires admin permissions", request_id: c.get("requestId") }, 403);
-    }
-  }
   const { clearAllData, seedDatabase } = await import("./db/seed");
   await clearAllData(c.env);
   await seedDatabase(c.env);

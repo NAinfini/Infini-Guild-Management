@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-type AnalyticsMode = "player" | "rankings" | "teams";
+type AnalyticsMode = "player" | "rankings" | "teams" | "radar";
 type AnalyticsMetricKey =
   | "kills"
   | "deaths"
@@ -47,6 +47,9 @@ type GuildWarStoreState = {
   analyticsSelectedTeams: string[];
   analyticsTeamAggregation: TeamAggregation;
   analyticsNormEnabled: boolean;
+  analyticsShowDeviation: boolean;
+  analyticsShowContribution: boolean;
+  analyticsHeatmapEnabled: boolean;
   modifierWeights: ModifierWeights;
   modifierWeightsInitialized: boolean;
   historyViewMode: HistoryViewMode;
@@ -70,6 +73,9 @@ type GuildWarStoreState = {
   setAnalyticsSelectedTeams: (analyticsSelectedTeams: string[]) => void;
   setAnalyticsTeamAggregation: (analyticsTeamAggregation: TeamAggregation) => void;
   setAnalyticsNormEnabled: (analyticsNormEnabled: boolean) => void;
+  setAnalyticsShowDeviation: (analyticsShowDeviation: boolean) => void;
+  setAnalyticsShowContribution: (analyticsShowContribution: boolean) => void;
+  setAnalyticsHeatmapEnabled: (analyticsHeatmapEnabled: boolean) => void;
   setModifierWeights: (modifierWeights: ModifierWeights) => void;
   setModifierWeightsInitialized: (modifierWeightsInitialized: boolean) => void;
   setHistoryViewMode: (historyViewMode: HistoryViewMode) => void;
@@ -96,6 +102,9 @@ export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   analyticsSelectedTeams: [],
   analyticsTeamAggregation: "total",
   analyticsNormEnabled: true,
+  analyticsShowDeviation: false,
+  analyticsShowContribution: false,
+  analyticsHeatmapEnabled: false,
   modifierWeights: DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS,
   modifierWeightsInitialized: false,
   historyViewMode: "table",
@@ -119,6 +128,9 @@ export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   setAnalyticsSelectedTeams: (analyticsSelectedTeams) => set({ analyticsSelectedTeams }),
   setAnalyticsTeamAggregation: (analyticsTeamAggregation) => set({ analyticsTeamAggregation }),
   setAnalyticsNormEnabled: (analyticsNormEnabled) => set({ analyticsNormEnabled }),
+  setAnalyticsShowDeviation: (analyticsShowDeviation) => set({ analyticsShowDeviation }),
+  setAnalyticsShowContribution: (analyticsShowContribution) => set({ analyticsShowContribution }),
+  setAnalyticsHeatmapEnabled: (analyticsHeatmapEnabled) => set({ analyticsHeatmapEnabled }),
   setModifierWeights: (modifierWeights) => set({ modifierWeights }),
   setModifierWeightsInitialized: (modifierWeightsInitialized) => set({ modifierWeightsInitialized }),
   setHistoryViewMode: (historyViewMode) => set({ historyViewMode }),

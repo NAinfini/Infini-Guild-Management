@@ -19,6 +19,12 @@
   object-fit: contain;
 }
 
+.infini-media-gallery-slide--broken {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .infini-media-gallery-video-slide {
   padding: 12px;
   display: flex;

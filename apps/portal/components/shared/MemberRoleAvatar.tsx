@@ -1,6 +1,6 @@
 import type { MemberProfile, User } from "@guild/shared";
 import { Avatar, Group, HoverCard, Stack, Text } from "@mantine/core";
-import { IconShield, IconSword, IconHeartbeat } from "@tabler/icons-react";
+import { IconShield, IconSword, IconHeartbeat, IconBolt } from "@tabler/icons-react";
 import { resolveProfileMediaUrl } from "../../utils/media";
 
 type ClassRole = "healer" | "tank" | "dps";
@@ -116,7 +116,7 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
             );
           })}
           {profile.power > 0 ? (
-            <Text size="xs" c="dimmed">⚡ {profile.power.toLocaleString()}</Text>
+            <Text size="xs" c="dimmed"><IconBolt size={13} style={{ display: "inline-block", verticalAlign: "-2px" }} /> {profile.power.toLocaleString()}</Text>
           ) : null}
         </Group>
       </HoverCard.Dropdown>

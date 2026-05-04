@@ -103,6 +103,7 @@
   "media.hideThumbnails": "Hide thumbnails",
   "media.showThumbnails": "Show thumbnails",
   "media.noMedia": "No media",
+  "media.imageLoadFailed": "Image failed to load",
   "media.noAudio": "No audio",
   "members.noOverflow": "No overflow members",
   "members.overflow": "Overflow {{count}}",

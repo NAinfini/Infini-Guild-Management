@@ -471,6 +471,7 @@ export class AdminAuditService {
       action: query.format === "csv" ? "export_filtered_csv" : "export_filtered_json",
       actorId,
       entityId: "audit-log",
+      diffTitle: `${rangeStartLabel} ~ ${rangeEndLabel}`,
       detailText: JSON.stringify({
         format: query.format,
         start_at: query.startAt,
@@ -555,7 +556,7 @@ export class AdminAuditService {
       const token = await signArchiveDownloadToken(this.deps.signingSecret, { key: file.key, month, actor_id: actorId, exp: expiresAtEpochSeconds, nonce: this.deps.generateId().slice(0, 10) });
       return { key: file.key, row_count: file.row_count, size_bytes: file.size_bytes, expires_at: new Date(expiresAtEpochSeconds * 1000).toISOString(), url: buildDownloadUrl(token) };
     }));
-    await this.deps.writeAuditLog({ entityType: "audit_archive_export", action: format === "csv" ? "export_csv" : "export_raw_ndjson_gz", actorId, entityId: month, detailText: JSON.stringify({ format, file_count: downloadFiles.length, ttl_seconds: AUDIT_ARCHIVE_DOWNLOAD_TTL_SECONDS }) });
+    await this.deps.writeAuditLog({ entityType: "audit_archive_export", action: format === "csv" ? "export_csv" : "export_raw_ndjson_gz", actorId, entityId: month, diffTitle: month, detailText: JSON.stringify({ format, file_count: downloadFiles.length, ttl_seconds: AUDIT_ARCHIVE_DOWNLOAD_TTL_SECONDS }) });
     return ok({ month, format, expires_in_seconds: AUDIT_ARCHIVE_DOWNLOAD_TTL_SECONDS, files: downloadFiles });
   }
 
@@ -567,7 +568,7 @@ export class AdminAuditService {
     if (!payload.key.startsWith(`${AUDIT_ARCHIVE_PREFIX}/`)) return err("FORBIDDEN", "Invalid archive object key");
     const object = await this.deps.media.get(payload.key);
     if (!object || !object.body) return err("NOT_FOUND", "Archive file not found");
-    await this.deps.writeAuditLog({ entityType: "audit_archive_export", action: "download_raw_ndjson_gz", actorId: payload.actor_id, entityId: payload.month, detailText: JSON.stringify({ key: payload.key }) });
+    await this.deps.writeAuditLog({ entityType: "audit_archive_export", action: "download_raw_ndjson_gz", actorId: payload.actor_id, entityId: payload.month, diffTitle: payload.month, detailText: JSON.stringify({ key: payload.key }) });
     return ok({ body: object.body, contentType: object.httpMetadata?.contentType ?? "application/octet-stream", contentEncoding: object.httpMetadata?.contentEncoding, filename: payload.key.split("/").at(-1) ?? "archive.bin", actorId: payload.actor_id, month: payload.month, key: payload.key });
   }
 }

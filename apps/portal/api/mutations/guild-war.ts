@@ -1,6 +1,7 @@
 import {
   saveTeamsPayloadSchema,
   updateMemberStatsSchema,
+  updateWarHistorySchema,
   type WarHistory,
   type WarTeamMember,
 } from "@guild/shared";
@@ -9,6 +10,7 @@ import { apiRequest } from "../client";
 
 export type SaveTeamsPayload = z.input<typeof saveTeamsPayloadSchema>;
 export type UpdateGuildWarMemberStatsPayload = z.input<typeof updateMemberStatsSchema>;
+export type UpdateWarHistoryPayload = z.input<typeof updateWarHistorySchema>;
 
 export function saveGuildWarTeams(payload: SaveTeamsPayload, etag?: string): Promise<WarHistory> {
   const bodyJson = saveTeamsPayloadSchema.parse(payload);
@@ -69,5 +71,12 @@ export function batchDeleteGuildWarHistory(ids: string[]): Promise<{ ok: true; d
   return apiRequest<{ ok: true; deleted: number }>("/api/guild-war/history/batch-delete", {
     method: "POST",
     bodyJson: { ids },
+  });
+}
+
+export function updateGuildWarHistory(historyId: string, payload: UpdateWarHistoryPayload): Promise<WarHistory> {
+  return apiRequest<WarHistory>(`/api/guild-war/history/${historyId}`, {
+    method: "PATCH",
+    bodyJson: updateWarHistorySchema.parse(payload),
   });
 }

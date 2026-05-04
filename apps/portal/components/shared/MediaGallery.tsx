@@ -1,8 +1,7 @@
 import { Button, Group, Slider, Stack, Text } from "@mantine/core";
 import { Carousel } from "@mantine/carousel";
-import { PortalCard as InfiniCard } from "./PortalCard";
 import { useMediaQuery } from "@mantine/hooks";
-import { forwardRef, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import clsx from "clsx";
 import { isDirectPlayableVideoUrl, isEmbeddableVideoUrl, toEmbedVideoUrl, getVideoThumbnailUrl } from "@guild/shared/utils/video";
 import { ChevronUpIcon, ChevronDownIcon, PlayIcon } from "@portal/components/icons";
@@ -10,6 +9,7 @@ import "./media-gallery.css";
 
 export type MediaGalleryLabels = {
   noMedia: string;
+  imageLoadFailed: string;
   pause: string;
   resume: string;
   restart: string;
@@ -30,6 +30,7 @@ export type MediaGalleryLabels = {
 
 const DEFAULT_LABELS: MediaGalleryLabels = {
   noMedia: "No media",
+  imageLoadFailed: "Image failed to load",
   pause: "Pause",
   resume: "Play",
   restart: "Restart",
@@ -51,6 +52,7 @@ const DEFAULT_LABELS: MediaGalleryLabels = {
 export function buildMediaGalleryLabels(t: (key: string) => string): MediaGalleryLabels {
   return {
     noMedia: t("media.noMedia"),
+    imageLoadFailed: t("media.imageLoadFailed"),
     pause: t("media.pause"),
     resume: t("media.resume"),
     restart: t("media.restart"),
@@ -145,6 +147,19 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
     [images, resolveMediaUrl, videos],
   );
   const thumbnails = items.slice(0, 20);
+  const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
+
+  const handleImageError = useCallback((index: number) => {
+    setBrokenImages((prev) => {
+      const next = new Set(prev);
+      next.add(index);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    setBrokenImages(new Set());
+  }, [images, videos]);
 
   useEffect(() => {
     if (isMobile) setThumbnailExpanded(false);
@@ -209,16 +224,14 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
             {items.map((item, index) => (
               <Carousel.Slide key={item.key}>
                 {item.type === "image" ? (
-                  isRenderableUrl(item.source) ? (
+                  isRenderableUrl(item.source) && !brokenImages.has(index) ? (
                     <div className="infini-media-gallery-slide">
-                      <img src={item.source} alt={`Media image ${index + 1}`} loading="lazy" decoding="async" />
+                      <img src={item.source} alt={`Media image ${index + 1}`} loading="lazy" decoding="async" onError={() => handleImageError(index)} />
                     </div>
                   ) : (
-                    <InfiniCard interactive={false}>
-                      <div style={{ padding: "1.2rem" }}>
-                        <Text c="dimmed">{item.label}</Text>
-                      </div>
-                    </InfiniCard>
+                    <div className="infini-media-gallery-slide infini-media-gallery-slide--broken">
+                      <Text c="dimmed" ta="center">{brokenImages.has(index) ? labels.imageLoadFailed : item.label}</Text>
+                    </div>
                   )
                 ) : (
                   <div className="infini-media-gallery-slide infini-media-gallery-video-slide">
@@ -319,8 +332,8 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                   aria-label={`${labels.openItemAria} ${index + 1}`}
                   aria-pressed={index === activeIndex}
                 >
-                  {item.type === "image" && isRenderableUrl(item.source) ? (
-                    <img src={item.source} alt={`Media thumbnail ${index + 1}`} loading="lazy" decoding="async" />
+                  {item.type === "image" && isRenderableUrl(item.source) && !brokenImages.has(index) ? (
+                    <img src={item.source} alt={`Media thumbnail ${index + 1}`} loading="lazy" decoding="async" onError={() => handleImageError(index)} />
                   ) : item.type === "video" ? (
                     "thumbnailUrl" in item && item.thumbnailUrl ? (
                       <div className="infini-media-gallery-thumb-video">

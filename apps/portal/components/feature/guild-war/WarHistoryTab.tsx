@@ -174,9 +174,7 @@ type WarHistoryTabProps = {
   deleteHistoryPending: boolean;
   onBulkDeleteHistory: (ids: string[]) => void;
   bulkDeleteHistoryPending: boolean;
-  renderCounter: (value: number | null | undefined) => ReactNode;
   historyDetailTitle: string;
-  historyResultLabel: string;
   loadErrorMessage: string;
   chartThemeName: string;
   chartThemeConfig: EChartsThemeConfig;
@@ -224,9 +222,7 @@ export function WarHistoryTab({
   deleteHistoryPending,
   onBulkDeleteHistory,
   bulkDeleteHistoryPending,
-  renderCounter: _renderCounter,
   historyDetailTitle,
-  historyResultLabel,
   loadErrorMessage,
   chartThemeName,
   chartThemeConfig,
@@ -555,6 +551,7 @@ export function WarHistoryTab({
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
+            hideControls
             min={0}
             size="xs"
             value={row.original.kills ?? 0}
@@ -569,6 +566,7 @@ export function WarHistoryTab({
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
+            hideControls
             min={0}
             size="xs"
             value={row.original.deaths ?? 0}
@@ -583,6 +581,7 @@ export function WarHistoryTab({
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
+            hideControls
             min={0}
             size="xs"
             value={row.original.assists ?? 0}
@@ -614,6 +613,7 @@ export function WarHistoryTab({
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
+            hideControls
             min={0}
             size="xs"
             value={row.original.damage ?? 0}
@@ -629,6 +629,7 @@ export function WarHistoryTab({
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
+            hideControls
             min={0}
             size="xs"
             value={row.original.healing ?? 0}
@@ -644,6 +645,7 @@ export function WarHistoryTab({
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
+            hideControls
             min={0}
             size="xs"
             value={row.original.building_damage ?? 0}
@@ -659,6 +661,7 @@ export function WarHistoryTab({
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
+            hideControls
             min={0}
             size="xs"
             value={row.original.credits ?? 0}
@@ -673,6 +676,7 @@ export function WarHistoryTab({
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
+            hideControls
             min={0}
             size="xs"
             value={row.original.damage_taken ?? 0}
@@ -754,7 +758,6 @@ export function WarHistoryTab({
         historyDetailLoading={historyDetailLoading}
         historyDetailError={historyDetailError}
         loadErrorMessage={loadErrorMessage}
-        historyResultLabel={historyResultLabel}
         historyMvp={historyMvp}
         historyViewMode={historyViewMode}
         historyChartMetric={historyChartMetric}

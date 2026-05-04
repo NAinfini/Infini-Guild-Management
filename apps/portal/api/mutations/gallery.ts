@@ -1,19 +1,19 @@
 import { type GalleryItem, createGalleryItemSchema } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
+import { convertImageToWebP } from "../../utils/media-convert";
 
 export type CreateGalleryVideoPayload = z.input<typeof createGalleryItemSchema>;
 
-export function uploadGalleryImages(
+export async function uploadGalleryImages(
   files: File[],
   captions: Array<string | undefined> = [],
 ): Promise<{ data: GalleryItem[] }> {
+  const converted = await Promise.all(files.filter(Boolean).map(convertImageToWebP));
   const formData = new FormData();
-  for (let index = 0; index < files.length; index += 1) {
-    const file = files[index];
-    if (!file) {
-      continue;
-    }
+  for (let index = 0; index < converted.length; index += 1) {
+    const file = converted[index];
+    if (!file) continue;
     formData.append("files", file);
     formData.append("captions", captions[index] ?? "");
   }

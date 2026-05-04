@@ -4,7 +4,6 @@ import { queryKeys } from "../../api/query-keys";
 import { fetchUsersList } from "../../services/UserService";
 import { useEffect, useRef, useState } from "react";
 import type { Event } from "@guild/shared";
-import { useAuthStore } from "../../stores/auth";
 
 const PAGE_LIMIT = 50;
 
@@ -15,7 +14,6 @@ type UseEventsDataOptions = {
 
 export function useEventsData(options: UseEventsDataOptions) {
   const { eventType, archivedOnly } = options;
-  const user = useAuthStore((s) => s.user);
 
   const [eventsPage, setEventsPage] = useState(1);
   const accumulatedEventsRef = useRef<Event[]>([]);
@@ -64,7 +62,6 @@ export function useEventsData(options: UseEventsDataOptions) {
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
     queryFn: fetchUsersList,
-    enabled: Boolean(user),
     staleTime: 10 * 60_000,
   });
 

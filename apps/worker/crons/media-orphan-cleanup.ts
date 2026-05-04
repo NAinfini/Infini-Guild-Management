@@ -35,7 +35,7 @@ export async function runMediaOrphanCleanupCron(env: Bindings): Promise<void> {
     .filter((value): value is string => typeof value === "string" && value.length > 0);
 
   for (const userId of deletedUserIds) {
-    const profileKeys = await listAllKeys(env.MEDIA, `profile/${userId}/`);
+    const profileKeys = await listAllKeys(env.MEDIA, `members/${userId}/`);
     if (profileKeys.length > 0) {
       await env.MEDIA.delete(profileKeys);
     }

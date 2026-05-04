@@ -1,7 +1,7 @@
 ﻿import type { ClassName, MemberProfile, User } from "@guild/shared";
 import { CLASS_COLOR_GROUP, CLASS_NAMES } from "@guild/shared";
 import DOMPurify from "dompurify";
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { parseAvailabilityRanges } from "../../utils/availability";
 import "./MemberCard.css";
@@ -77,6 +77,7 @@ export const MemberCard = memo(function MemberCard({
   const status = getMemberStatus(user, profile);
   const avatarKey = profile.avatar_key ?? null;
   const avatarSrc = avatarKey ? resolveMediaUrl(avatarKey) : null;
+  const [avatarBroken, setAvatarBroken] = useState(false);
 
   const titleHtml = useMemo(
     () =>
@@ -112,13 +113,14 @@ export const MemberCard = memo(function MemberCard({
         aria-label={t("a11y.openProfile", { name: user.username })}
       >
         <div className="member-card__avatar-wrap">
-          {avatarSrc ? (
+          {avatarSrc && !avatarBroken ? (
             <img
               src={avatarSrc}
               alt={t("a11y.avatar", { name: user.username })}
               loading="lazy"
               decoding="async"
               className="member-card__avatar"
+              onError={() => setAvatarBroken(true)}
             />
           ) : (
             <div className="member-card__avatar-fallback" aria-hidden="true">

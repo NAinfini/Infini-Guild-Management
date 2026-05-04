@@ -15,7 +15,7 @@ function normalizeContentType(file: File, fallbackContentType: string): string {
 }
 
 export async function storeProfileImage(c: Context, userId: string, file: File): Promise<string> {
-  const key = `profile/${userId}/images/${Date.now()}_${nanoid()}`;
+  const key = `members/${userId}/images/${Date.now()}_${nanoid()}`;
   await getMediaBucket(c).put(key, await file.arrayBuffer(), {
     httpMetadata: { contentType: normalizeContentType(file, "application/octet-stream") },
   });
@@ -23,7 +23,7 @@ export async function storeProfileImage(c: Context, userId: string, file: File):
 }
 
 export async function storeProfileAudio(c: Context, userId: string, file: File): Promise<string> {
-  const key = `profile/${userId}/audio/${Date.now()}_${nanoid()}`;
+  const key = `members/${userId}/audio/${Date.now()}_${nanoid()}`;
   await getMediaBucket(c).put(key, await file.arrayBuffer(), {
     httpMetadata: { contentType: normalizeContentType(file, "audio/ogg") },
   });

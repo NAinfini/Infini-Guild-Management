@@ -125,7 +125,7 @@ export class GalleryService {
       await this.db.insert(galleryItems).values({ id: itemId, type: "image", url: key, caption, uploadedBy: actorId });
       created.push({ id: itemId, type: "image", url: key, caption, uploadedBy: actorId, uploadedByName: null, createdAt: new Date().toISOString() });
     }
-    await this.deps.writeAuditLog({ entityType: "gallery_item", action: "upload_images", actorId, entityId: "batch", detailText: JSON.stringify({ count: created.length, captioned_count: created.filter((item) => Boolean(item.caption)).length }) });
+    await this.deps.writeAuditLog({ entityType: "gallery_item", action: "upload_images", actorId, entityId: "batch", diffTitle: `${created.length} items`, detailText: JSON.stringify({ count: created.length, captioned_count: created.filter((item) => Boolean(item.caption)).length }) });
     await this.deps.publishEntityChanged({ entityType: "gallery", entityId: "batch", hint: "images_uploaded" });
     return ok(created.map(toGalleryPayload));
   }
@@ -163,7 +163,7 @@ export class GalleryService {
     for (const item of items) {
       if (item.type === "image") await this.deps.media.delete(item.url);
     }
-    await this.deps.writeAuditLog({ entityType: "gallery_item", action: "batch_delete", actorId, entityId: itemIds.join(","), detailText: JSON.stringify({ count: items.length, ids: itemIds }) });
+    await this.deps.writeAuditLog({ entityType: "gallery_item", action: "batch_delete", actorId, entityId: itemIds.join(","), diffTitle: `${items.length} items`, detailText: JSON.stringify({ count: items.length, ids: itemIds }) });
     await this.deps.publishEntityChanged({ entityType: "gallery", entityId: "batch", hint: "items_deleted" });
     return ok({ ok: true, deleted: items.length });
   }
@@ -196,7 +196,7 @@ export class GalleryService {
     await this.db.insert(galleryComments).values({ id: commentId, galleryItemId: itemId, userId: actorId, body });
     const comment = await this.getCommentById(commentId);
     if (!comment) return err("SERVER_ERROR", "Failed to create comment");
-    await this.deps.writeAuditLog({ entityType: "gallery_comment", action: "create", actorId, entityId: commentId, detailText: `on gallery item ${itemId}` });
+    await this.deps.writeAuditLog({ entityType: "gallery_comment", action: "create", actorId, entityId: commentId, detailText: JSON.stringify({ gallery_item_id: itemId }) });
     return ok(toCommentPayload(comment));
   }
 
@@ -215,7 +215,7 @@ export class GalleryService {
     if (!existing) return err("NOT_FOUND", "Comment not found");
     if (existing.userId !== actorId && !canManage) return err("FORBIDDEN", "Cannot delete this comment");
     await this.db.delete(galleryComments).where(eq(galleryComments.id, commentId));
-    await this.deps.writeAuditLog({ entityType: "gallery_comment", action: "delete", actorId, entityId: commentId, detailText: `on gallery item ${existing.galleryItemId}` });
+    await this.deps.writeAuditLog({ entityType: "gallery_comment", action: "delete", actorId, entityId: commentId, detailText: JSON.stringify({ gallery_item_id: existing.galleryItemId }) });
     return ok({ ok: true });
   }
 }

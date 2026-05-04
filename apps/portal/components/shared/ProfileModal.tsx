@@ -36,6 +36,7 @@ export function ProfileModal({
   const { t, i18n } = useTranslation("common");
   const mediaLabels = useMemo(() => buildMediaGalleryLabels(t), [t]);
   const [avatarLoaded, setAvatarLoaded] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const safeTitleHtml = useMemo(
     () =>
@@ -50,6 +51,7 @@ export function ProfileModal({
 
   useEffect(() => {
     setAvatarLoaded(false);
+    setAvatarError(false);
   }, [open, profile?.id]);
 
   useEffect(() => {
@@ -136,7 +138,7 @@ export function ProfileModal({
           <Stack gap={16} w="100%">
             <div className={styles.header}>
               <div className={styles.avatarWrap}>
-              {avatarUrl ? (
+              {avatarUrl && !avatarError ? (
                 <img
                   src={avatarUrl}
                   alt={t("a11y.avatar", { name: user.username })}
@@ -144,6 +146,7 @@ export function ProfileModal({
                   decoding="async"
                   className={`${styles.avatar}${avatarLoaded ? ` ${styles.avatarLoaded}` : ""}`}
                   onLoad={() => setAvatarLoaded(true)}
+                  onError={() => setAvatarError(true)}
                 />
               ) : (
                 <div className={styles.avatarFallback} aria-hidden="true">

@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
 import { Badge } from "@mantine/core";
-import { NumberTicker } from "@portal/components/effects";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { HistorySummaryRow } from "../../components/feature/guild-war/WarHistoryTab";
 
@@ -10,10 +9,6 @@ function formatDateTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "-";
   return format(date, "yyyy-MM-dd HH:mm");
-}
-
-function renderCounter(value: number | null | undefined) {
-  return <NumberTicker value={value ?? 0} />;
 }
 
 function resolveResultTagColor(result: string | null | undefined): string {
@@ -142,6 +137,5 @@ export function useGuildWarHistory({
     historyMvp,
     historyMissingSlotsByUserId,
     formatDateTime,
-    renderCounter,
   };
 }

@@ -1,7 +1,9 @@
-﻿import { ActionIcon, Badge, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
-import { ChevronLeftIcon, ChevronRightIcon, SaveIcon } from "@portal/components/icons";
+import { ChevronLeftIcon, ChevronRightIcon } from "@portal/components/icons";
+import { IconFlag } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
+import { DepthButton } from "../../shared/DepthButton";
 
 type GuildWarActiveTopCardProps = {
   selectedEventId: string | undefined;
@@ -16,11 +18,9 @@ type GuildWarActiveTopCardProps = {
   onPrevMatch?: () => void;
   onNextMatch?: () => void;
   hasMatches?: boolean;
-  isTeamsDirty?: boolean;
-  saveTeamsPending?: boolean;
-  onSaveTeams?: () => void;
-  saveTeamsLabel?: string;
-  unsavedLabel?: string;
+  onConcludeWar?: () => void;
+  concludeWarLabel?: string;
+  concludeWarDisabled?: boolean;
 };
 
 export function GuildWarActiveTopCard({
@@ -36,18 +36,15 @@ export function GuildWarActiveTopCard({
   onPrevMatch,
   onNextMatch,
   hasMatches,
-  isTeamsDirty,
-  saveTeamsPending,
-  onSaveTeams,
-  saveTeamsLabel,
-  unsavedLabel,
+  onConcludeWar,
+  concludeWarLabel,
+  concludeWarDisabled,
 }: GuildWarActiveTopCardProps) {
   const { t } = useTranslation("guild-war");
   return (
     <PortalCard interactive={false} className="guild-war-active-top-card">
       <div style={{ padding: "1.2rem" }}>
         <Stack gap={12}>
-          {/* Event selector + search + actions */}
           <Group gap={10} wrap="wrap" align="center">
             <TextInput
               style={{ flex: "1 1 200px", maxWidth: 320 }}
@@ -75,28 +72,20 @@ export function GuildWarActiveTopCard({
               onChange={(value) => onSelectedEventIdChange(value ?? "")}
               data={eventOptions}
             />
-          </Group>
-
-          {/* Save teams row (dirty indicator + save button) */}
-          {canManage && onSaveTeams ? (
-            <Group gap={8} wrap="wrap" align="center">
-              {isTeamsDirty ? <Badge color="yellow">{unsavedLabel ?? t("active.unsaved")}</Badge> : null}
-              <Button
+            {canManage && onConcludeWar ? (
+              <DepthButton
+                type="danger"
                 size="xs"
-                variant="default"
-                leftSection={<SaveIcon size={16} />}
-                onClick={onSaveTeams}
-                loading={saveTeamsPending}
-                disabled={!isTeamsDirty}
+                before={<IconFlag size={16} />}
+                onClick={onConcludeWar}
+                disabled={concludeWarDisabled}
               >
-                {saveTeamsLabel ?? t("active.saveTeams")}
-              </Button>
-            </Group>
-          ) : null}
-
+                {concludeWarLabel ?? t("active.concludeWar")}
+              </DepthButton>
+            ) : null}
+          </Group>
         </Stack>
       </div>
     </PortalCard>
   );
 }
-

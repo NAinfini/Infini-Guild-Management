@@ -1,8 +1,8 @@
-import { DndContext, DragOverlay, closestCenter, useDroppable, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
+import { DndContext, DragOverlay, closestCenter, useDroppable, type DragEndEvent, type DragStartEvent, type Modifier } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ActionIcon, Badge, Card, Group, Stack, Text, Tooltip } from "@mantine/core";
-import { UserIcon, ShieldIcon, BoltIcon, CopyIcon } from "@portal/components/icons";
+import { ActionIcon, Badge, Card, Group, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { UserIcon, ShieldIcon, BoltIcon, CopyIcon, ChevronUpIcon, ChevronDownIcon, LockIcon, UnlockIcon, UserPlusIcon } from "@portal/components/icons";
 import { PortalCard } from "../../shared/PortalCard";
 import { memo, useState, useMemo } from "react";
 import type { ComponentProps, CSSProperties, MouseEvent, ReactNode } from "react";
@@ -54,6 +54,13 @@ type GuildWarDragBoardProps = {
   onMemberContextMenu?: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
   onPoolContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
   onCopyTeamMentions?: (containerId: string) => void;
+  onToggleLock?: (containerId: string) => void;
+  onMoveTeam?: (containerId: string, direction: "up" | "down") => void;
+  lockedTeamIds?: Set<string>;
+  teamCount?: number;
+  teamIndexMap?: Map<string, number>;
+  onAddToPool?: () => void;
+  onDraftNameChange?: (containerId: string, value: string) => void;
 };
 
 
@@ -115,7 +122,7 @@ const SortableMemberCard = memo(function SortableMemberCard(props: {
         <Text size="sm" fw={500}>{props.username}</Text>
         <Group gap={8} wrap="nowrap">
           <Text c="dimmed" size="xs">{props.class}</Text>
-          <Text c="dimmed" size="xs">⚡{props.power}</Text>
+          <Text c="dimmed" size="xs"><BoltIcon size={12} style={{ display: "inline-block", verticalAlign: "-1px" }} /> {props.power}</Text>
         </Group>
       </Stack>
     </button>
@@ -136,12 +143,22 @@ function DroppableMemberColumn(props: {
   onMemberContextMenu?: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
   onPoolContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
   onCopyTeamMentions?: (containerId: string) => void;
+  onToggleLock?: (containerId: string) => void;
+  onMoveTeam?: (containerId: string, direction: "up" | "down") => void;
+  isLocked?: boolean;
+  teamIndex?: number;
+  teamCount?: number;
+  onAddToPool?: () => void;
+  onDraftNameChange?: (containerId: string, value: string) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `container:${props.column.containerId}`,
   });
   const { t } = useTranslation("guild-war");
+  const isPoolColumn = props.column.containerId === "pool";
+  const isTeamColumn = !isPoolColumn;
 
+  const [isEditingName, setIsEditingName] = useState(false);
   const [sortBy, setSortBy] = useState<"username" | "class" | "power" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
@@ -173,18 +190,79 @@ function DroppableMemberColumn(props: {
       className={`guild-war-column-card ${isOver ? "guild-war-column-card--over" : ""}`}
       style={{ overflow: "visible" }}
     >
+      <div
+        ref={setNodeRef}
+        onContextMenu={(e) => {
+          if (props.column.containerId === "pool" && props.onPoolContextMenu) {
+            e.preventDefault();
+            props.onPoolContextMenu(e);
+          } else if (props.column.containerId !== "pool" && props.onTeamContextMenu) {
+            e.preventDefault();
+            props.onTeamContextMenu(props.column.containerId, e);
+          }
+        }}
+      >
       <Stack gap={8} mb="sm" className="guild-war-column-header">
         <Group gap={8} justify="space-between" wrap="nowrap">
           <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-            <Text size="sm" fw={600} truncate>{props.column.title}</Text>
+            {isTeamColumn && isEditingName && props.onDraftNameChange ? (
+              <TextInput
+                value={String(props.column.title)}
+                onChange={(e) => props.onDraftNameChange?.(props.column.containerId, e.currentTarget.value)}
+                onBlur={() => setIsEditingName(false)}
+                onKeyDown={(e) => { if (e.key === "Enter") setIsEditingName(false); }}
+                size="xs"
+                autoFocus
+                aria-label={t("active.aria.teamName", { teamName: props.column.title })}
+                styles={{ input: { fontWeight: 600, fontSize: 14, padding: "0 6px", height: 24, minHeight: 24 } }}
+              />
+            ) : (
+              <Text
+                size="sm"
+                fw={600}
+                truncate
+                style={isTeamColumn && props.onDraftNameChange ? { cursor: "text" } : undefined}
+                onClick={isTeamColumn && props.onDraftNameChange ? () => setIsEditingName(true) : undefined}
+              >
+                {props.column.title}
+              </Text>
+            )}
             <Badge size="sm" variant="default">{props.column.members.length}</Badge>
             {props.column.locked ? <Badge color="red" size="sm">{t("active.locked")}</Badge> : null}
           </Group>
           <Group gap={4} wrap="nowrap">
-            {props.column.containerId !== "pool" && props.onCopyTeamMentions ? (
+            {isTeamColumn && props.onToggleLock ? (
+              <Tooltip label={props.isLocked ? t("active.teamSetup.locked") : t("active.teamSetup.open")}>
+                <ActionIcon size="sm" variant={props.isLocked ? "filled" : "subtle"} color={props.isLocked ? "red" : undefined} onClick={() => props.onToggleLock?.(props.column.containerId)} aria-label={props.isLocked ? t("active.teamSetup.locked") : t("active.teamSetup.open")}>
+                  {props.isLocked ? <LockIcon size={14} /> : <UnlockIcon size={14} />}
+                </ActionIcon>
+              </Tooltip>
+            ) : null}
+            {isTeamColumn && props.onMoveTeam ? (
+              <>
+                <Tooltip label={t("active.teamSetup.moveUp")}>
+                  <ActionIcon size="sm" variant="subtle" onClick={() => props.onMoveTeam?.(props.column.containerId, "up")} disabled={props.teamIndex === 0} aria-label={t("active.teamSetup.moveUp")}>
+                    <ChevronUpIcon size={14} />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label={t("active.teamSetup.moveDown")}>
+                  <ActionIcon size="sm" variant="subtle" onClick={() => props.onMoveTeam?.(props.column.containerId, "down")} disabled={props.teamIndex === (props.teamCount ?? 1) - 1} aria-label={t("active.teamSetup.moveDown")}>
+                    <ChevronDownIcon size={14} />
+                  </ActionIcon>
+                </Tooltip>
+              </>
+            ) : null}
+            {isTeamColumn && props.onCopyTeamMentions ? (
               <Tooltip label={t("active.teamCopied")}>
                 <ActionIcon size="sm" variant="subtle" onClick={() => props.onCopyTeamMentions?.(props.column.containerId)} aria-label={t("active.teamCopied")}>
                   <CopyIcon size={14} />
+                </ActionIcon>
+              </Tooltip>
+            ) : null}
+            {isPoolColumn && props.onAddToPool ? (
+              <Tooltip label={t("active.addToPool")}>
+                <ActionIcon size="sm" variant="subtle" onClick={props.onAddToPool} aria-label={t("active.addToPool")}>
+                  <UserPlusIcon size={14} />
                 </ActionIcon>
               </Tooltip>
             ) : null}
@@ -207,18 +285,6 @@ function DroppableMemberColumn(props: {
         </Group>
         {props.statusContent ? <div className="guild-war-column-header-status">{props.statusContent}</div> : null}
       </Stack>
-      <div
-        ref={setNodeRef}
-        onContextMenu={(e) => {
-          if (props.column.containerId === "pool" && props.onPoolContextMenu) {
-            e.preventDefault();
-            props.onPoolContextMenu(e);
-          } else if (props.column.containerId !== "pool" && props.onTeamContextMenu) {
-            e.preventDefault();
-            props.onTeamContextMenu(props.column.containerId, e);
-          }
-        }}
-      >
         <SortableContext items={sortedMembers.map((member) => member.itemId)} strategy={verticalListSortingStrategy}>
           <Stack className="guild-war-column-stack" gap={8}>
             {sortedMembers.length === 0 ? (
@@ -252,6 +318,20 @@ function DroppableMemberColumn(props: {
   );
 }
 
+const snapCenterToCursor: Modifier = ({ activatorEvent, draggingNodeRect, transform }) => {
+  if (activatorEvent && draggingNodeRect) {
+    const event = activatorEvent as PointerEvent;
+    const offsetX = event.clientX - draggingNodeRect.left;
+    const offsetY = event.clientY - draggingNodeRect.top;
+    return {
+      ...transform,
+      x: transform.x + offsetX - draggingNodeRect.width / 2,
+      y: transform.y + offsetY - draggingNodeRect.height / 2,
+    };
+  }
+  return transform;
+};
+
 export function GuildWarDragBoard({
   dragColumns,
   canDrag,
@@ -273,6 +353,13 @@ export function GuildWarDragBoard({
   onMemberContextMenu,
   onPoolContextMenu,
   onCopyTeamMentions,
+  onToggleLock,
+  onMoveTeam,
+  lockedTeamIds,
+  teamCount,
+  teamIndexMap,
+  onAddToPool,
+  onDraftNameChange,
 }: GuildWarDragBoardProps) {
   const { t } = useTranslation("guild-war");
   const poolColumn = dragColumns.find((col) => col.containerId === "pool");
@@ -306,6 +393,7 @@ export function GuildWarDragBoard({
                 onOpenMember={onOpenMember}
                 onPoolContextMenu={onPoolContextMenu}
                 onMemberContextMenu={onMemberContextMenu}
+                onAddToPool={onAddToPool}
               />
             ) : null}
           </div>
@@ -327,20 +415,26 @@ export function GuildWarDragBoard({
                   onTeamContextMenu={onTeamContextMenu}
                   onMemberContextMenu={onMemberContextMenu}
                   onCopyTeamMentions={onCopyTeamMentions}
+                  onToggleLock={onToggleLock}
+                  onMoveTeam={onMoveTeam}
+                  isLocked={lockedTeamIds?.has(column.containerId)}
+                  teamIndex={teamIndexMap?.get(column.containerId)}
+                  teamCount={teamCount}
+                  onDraftNameChange={onDraftNameChange}
                 />
               ))}
             </Stack>
           </div>
         </div>
 
-        <DragOverlay>
+        <DragOverlay modifiers={[snapCenterToCursor]}>
           {activeDragItem ? (
             <Card withBorder p="sm">
               <Stack gap={2}>
                 <Text size="sm" fw={500}>{activeDragItem.username}</Text>
                 <Group gap={8} wrap="nowrap">
                   <Text c="dimmed" size="xs">{activeDragItem.class}</Text>
-                  <Text c="dimmed" size="xs">⚡{activeDragItem.power}</Text>
+                  <Text c="dimmed" size="xs"><BoltIcon size={12} style={{ display: "inline-block", verticalAlign: "-1px" }} /> {activeDragItem.power}</Text>
                 </Group>
               </Stack>
             </Card>

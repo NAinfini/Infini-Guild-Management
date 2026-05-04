@@ -89,12 +89,20 @@ function parseDetailData(
         };
       }
 
+      const obj = parsed as Record<string, unknown>;
+      const hiddenFields = new Set<string>();
+      if ("usernames" in obj) hiddenFields.add("user_ids");
+      if ("event_name" in obj) hiddenFields.add("event_id");
+      if ("username" in obj) hiddenFields.add("user_id");
+
       return {
         kind: "info",
-        entries: entries.map(([field, val]) => {
-          const label = t?.(`audit.field.${field}`, { defaultValue: field }) ?? field;
-          return { field: label, value: formatInfoValue(val, userMap) };
-        }),
+        entries: entries
+          .filter(([field]) => !hiddenFields.has(field))
+          .map(([field, val]) => {
+            const label = t?.(`audit.field.${field}`, { defaultValue: field }) ?? field;
+            return { field: label, value: formatInfoValue(val, userMap) };
+          }),
       };
     }
   } catch {

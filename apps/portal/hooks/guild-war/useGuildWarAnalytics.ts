@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   ANALYTICS_SELECTION_SOFT_CAP,
@@ -185,6 +185,12 @@ export function useGuildWarAnalytics({
     setAnalyticsTeamAggregation,
     analyticsNormEnabled,
     setAnalyticsNormEnabled,
+    analyticsShowDeviation,
+    setAnalyticsShowDeviation,
+    analyticsShowContribution,
+    setAnalyticsShowContribution,
+    analyticsHeatmapEnabled,
+    setAnalyticsHeatmapEnabled,
     modifierWeights,
     setModifierWeights,
     modifierWeightsInitialized,
@@ -216,6 +222,7 @@ export function useGuildWarAnalytics({
       }),
     enabled: analyticsWarIds.length > 0,
     staleTime: Infinity,
+    placeholderData: keepPreviousData,
   });
 
   const analyticsDetailsQuery = useQuery({
@@ -226,6 +233,7 @@ export function useGuildWarAnalytics({
     },
     enabled: analyticsWarIds.length > 0 && (analyticsMode !== "player" || Boolean(analyticsFocusedUser)),
     staleTime: Infinity,
+    placeholderData: keepPreviousData,
   });
 
   const analyticsRows = analyticsQuery.data?.member_stats ?? [];
@@ -279,6 +287,8 @@ export function useGuildWarAnalytics({
     analyticsTeamAggregation,
     analyticsSelectedUsers,
     analyticsNormEnabled,
+    analyticsShowDeviation,
+    analyticsShowContribution,
     analyticsWarDetails,
     analyticsRows,
     warNormContext,
@@ -389,6 +399,12 @@ export function useGuildWarAnalytics({
     setAnalyticsTeamAggregation,
     analyticsNormEnabled,
     setAnalyticsNormEnabled,
+    analyticsShowDeviation,
+    setAnalyticsShowDeviation,
+    analyticsShowContribution,
+    setAnalyticsShowContribution,
+    analyticsHeatmapEnabled,
+    setAnalyticsHeatmapEnabled,
     modifierWeights,
     setModifierWeights,
     referenceDuration,
@@ -398,8 +414,10 @@ export function useGuildWarAnalytics({
     analyticsTeamOptions: computed.analyticsTeamOptions,
     analyticsMetricLabel: computed.analyticsMetricLabel,
     analyticsChartOption: computed.analyticsChartOption,
+    analyticsRadarOption: computed.analyticsRadarOption,
     analyticsTableRows: computed.analyticsTableRows,
     analyticsTableColumns: computed.analyticsTableColumns,
+    analyticsTableHeatmapRanges: computed.analyticsTableHeatmapRanges,
     analyticsFocusLabel,
     applyAnalyticsSelection,
     copyAnalyticsSnapshot,

@@ -45,7 +45,7 @@ function serviceResponse(c: Context, result: { ok: true; data: unknown } | { ok:
 usersRoutes.get("/image", async (c) => {
   const key = c.req.query("key");
   if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  if (!key.startsWith("profile/")) return buildError(c, "FORBIDDEN", "Invalid profile media key");
+  if (!key.startsWith("members/")) return buildError(c, "FORBIDDEN", "Invalid profile media key");
 
   const object = await (c.env as Bindings).MEDIA.get(key);
   if (!object?.body) return buildError(c, "NOT_FOUND", "Profile media not found");

@@ -1,4 +1,4 @@
-import { SwordsIcon, XIcon } from "@portal/components/icons";
+import { ArrowLeftIcon, SwordsIcon } from "@portal/components/icons";
 import {
   KeyboardSensor,
   PointerSensor,
@@ -19,12 +19,14 @@ import { useShallow } from "zustand/react/shallow";
 import { useAppError } from "../../hooks/useAppError";
 import { useGuildWarData } from "../../hooks/data/useGuildWarData";
 import { useExternalView } from "../../hooks/useExternalView";
-import { useGuildWarAnalytics } from "../../hooks/guild-war/useGuildWarAnalytics";
+import { hashToPaletteColor, getMetricLabelKey, metricValueOrNullFromWarMember } from "../../hooks/guild-war/useGuildWarAnalytics";
 import { useGuildWarDragController } from "../../hooks/guild-war/useGuildWarDragController";
 import { useGuildWarHistory } from "../../hooks/guild-war/useGuildWarHistory";
 import { useGuildWarMutations } from "../../hooks/guild-war/useGuildWarMutations";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { GuildWarService, moveGuildWarMember } from "../../services/GuildWarService";
+import { batchUpdateGuildWarMemberStats, updateGuildWarHistory } from "../../api/mutations/guild-war";
+import { archiveEvent } from "../../api/mutations/events";
 import { queryKeys } from "../../api/query-keys";
 import { fetchUsersList } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
@@ -33,6 +35,7 @@ import { useGuildWarStore } from "../../stores/guildWar";
 import { notifySuccess } from "../../utils/notifications";
 import { PageLayout } from "../layout/PageLayout";
 import { useGuildWarActiveController } from "../feature/guild-war/useGuildWarActiveController";
+import type { ConcludeWarMember, ConcludeWarSubmitData } from "../feature/guild-war/ConcludeWarModal";
 import "./GuildWarPage.css";
 
 const LazyGuildWarAnalyticsTab = lazy(() =>
@@ -49,6 +52,9 @@ const LazyGuildWarActiveTopCard = lazy(() =>
 );
 const LazyGuildWarDragBoard = lazy(() =>
   import("../feature/guild-war/GuildWarDragBoard").then((mod) => ({ default: mod.GuildWarDragBoard })),
+);
+const LazyConcludeWarModal = lazy(() =>
+  import("../feature/guild-war/ConcludeWarModal").then((mod) => ({ default: mod.ConcludeWarModal })),
 );
 
 type TabItem = {
@@ -273,12 +279,6 @@ export function GuildWarPage() {
     historyDetailData: historyDetailQuery.data ?? null,
   });
 
-  const guildWarAnalytics = useGuildWarAnalytics({
-    historyRows: historyQuery.data?.data ?? [],
-    chartPalette,
-    guildWarService,
-  });
-
   const guildWarDrag = useGuildWarDragController({
     activeData: activeQuery.data,
     usersData: usersQuery.data?.data,
@@ -331,6 +331,93 @@ export function GuildWarPage() {
       setAddToPoolPending(false);
     }
   }, [addToPoolHandlers, addToPoolSelection, queryClient, selectedEventId, showError, t]);
+
+  // --- Conclude War ---
+  const [concludeWarOpen, concludeWarHandlers] = useDisclosure(false);
+  const [concludeWarPending, setConcludeWarPending] = useState(false);
+
+  const concludeWarMembers = useMemo<ConcludeWarMember[]>(() => {
+    const activeData = activeQuery.data;
+    if (!activeData) return [];
+    const userMap = new Map(
+      (usersQuery.data?.data ?? []).map((u) => [u.user.id, u.user.username]),
+    );
+    const members: ConcludeWarMember[] = [];
+    for (const team of activeData.teams) {
+      for (const member of team.members) {
+        members.push({
+          userId: member.user_id,
+          username: userMap.get(member.user_id) ?? member.user_id,
+          teamName: team.team_name,
+          kills: member.kills ?? 0,
+          deaths: member.deaths ?? 0,
+          assists: member.assists ?? 0,
+          damage: member.damage ?? 0,
+          healing: member.healing ?? 0,
+          buildingDamage: member.building_damage ?? 0,
+          credits: member.credits ?? 0,
+          damageTaken: member.damage_taken ?? 0,
+        });
+      }
+    }
+    return members;
+  }, [activeQuery.data, usersQuery.data]);
+
+  const concludeWarDisabled = useMemo(() => {
+    const activeData = activeQuery.data;
+    if (!activeData) return true;
+    const hasTeamMembers = activeData.teams.some((team) => team.members.length > 0);
+    return !hasTeamMembers;
+  }, [activeQuery.data]);
+
+  const handleConcludeWar = useCallback(async (data: ConcludeWarSubmitData) => {
+    const activeData = activeQuery.data;
+    const warHistoryId = activeData?.war_history?.id;
+    if (!warHistoryId || !selectedEventId) return;
+
+    setConcludeWarPending(true);
+    try {
+      // Step 1: Update war-level stats
+      const warUpdate: Record<string, unknown> = {};
+      if (data.warInfo.enemyName) warUpdate.enemy_name = data.warInfo.enemyName;
+      if (data.warInfo.result) warUpdate.result = data.warInfo.result;
+      if (data.warInfo.durationMinutes !== null) warUpdate.duration_minutes = data.warInfo.durationMinutes;
+      if (data.warInfo.ownKills !== null) warUpdate.own_kills = data.warInfo.ownKills;
+      if (data.warInfo.ownTowers !== null) warUpdate.own_towers = data.warInfo.ownTowers;
+      if (data.warInfo.ownBaseHp !== null) warUpdate.own_base_hp = data.warInfo.ownBaseHp;
+      if (data.warInfo.ownCredits !== null) warUpdate.own_credits = data.warInfo.ownCredits;
+      if (data.warInfo.ownDistance !== null) warUpdate.own_distance = data.warInfo.ownDistance;
+      if (data.warInfo.enemyKills !== null) warUpdate.enemy_kills = data.warInfo.enemyKills;
+      if (data.warInfo.enemyTowers !== null) warUpdate.enemy_towers = data.warInfo.enemyTowers;
+      if (data.warInfo.enemyBaseHp !== null) warUpdate.enemy_base_hp = data.warInfo.enemyBaseHp;
+      if (data.warInfo.enemyCredits !== null) warUpdate.enemy_credits = data.warInfo.enemyCredits;
+      if (data.warInfo.enemyDistance !== null) warUpdate.enemy_distance = data.warInfo.enemyDistance;
+
+      if (Object.keys(warUpdate).length > 0) {
+        await updateGuildWarHistory(warHistoryId, warUpdate);
+      }
+
+      // Step 2: Batch update member stats
+      if (data.memberStats.length > 0) {
+        await batchUpdateGuildWarMemberStats(warHistoryId, data.memberStats);
+      }
+
+      // Step 3: Archive the event
+      await archiveEvent(selectedEventId);
+
+      // Invalidate queries and close modal
+      await queryClient.invalidateQueries({ queryKey: queryKeys.guildWar.active(selectedEventId ?? null) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.guildWar.events() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.guildWar.historyAll() });
+
+      message.success(t("message.warConcluded"));
+      concludeWarHandlers.close();
+    } catch (error) {
+      showError(error, t("message.concludeFailed"));
+    } finally {
+      setConcludeWarPending(false);
+    }
+  }, [activeQuery.data, concludeWarHandlers, queryClient, selectedEventId, showError, t]);
 
   const handleTeamContextMenu = useCallback((containerId: string, event: ReactMouseEvent<HTMLDivElement>) => {
     const items: ContextMenuItemOptions[] = [
@@ -418,6 +505,13 @@ export function GuildWarPage() {
         onClick: () => activeController.setActiveDetailUserId(userId),
         title: t("menu.member.viewDetails"),
       },
+      { key: "divider-member-remove" },
+      {
+        key: "member-remove-from-war",
+        color: "red",
+        onClick: () => guildWarDrag.handleRemoveFromWar(userId),
+        title: t("menu.member.removeFromWar"),
+      },
     ];
 
     showContextMenu(items)(event);
@@ -479,9 +573,7 @@ export function GuildWarPage() {
       selectedEventDetailQuery.isError ||
       activeQuery.isError ||
       historyQuery.isError ||
-      historyDetailQuery.isError ||
-      guildWarAnalytics.analyticsQuery.isError ||
-      guildWarAnalytics.analyticsDetailsQuery.isError,
+      historyDetailQuery.isError,
     t("common:loadErrorRetry"),
   );
 
@@ -522,11 +614,8 @@ export function GuildWarPage() {
                           onNextMatch={() => activeController.setSearchJumpIndex((current) => current + 1)}
                           hasMatches={guildWarDrag.matchedItemIds.length > 0}
                           searchPlaceholder={t("active.searchPlaceholder")}
-                          isTeamsDirty={activeController.isTeamsDirty}
-                          saveTeamsPending={activeController.saveTeamsPending}
-                          onSaveTeams={activeController.handleSaveTeams}
-                          saveTeamsLabel={t("active.saveTeams")}
-                          unsavedLabel={t("active.unsaved")}
+                          onConcludeWar={canManageActive && selectedEventId ? () => concludeWarHandlers.open() : undefined}
+                          concludeWarDisabled={concludeWarDisabled}
                         />
                       </Suspense>
 
@@ -536,8 +625,8 @@ export function GuildWarPage() {
                             <Text size="sm">
                               {activeController.undoMove.moves.length === 1
                                 ? t("active.undo.single", {
-                                    userId: activeController.undoMove.moves[0]?.userId ?? "-",
-                                    to: activeController.undoMove.moves[0]?.to ?? "-",
+                                    userId: guildWarDrag.resolveUsername(activeController.undoMove.moves[0]?.userId ?? "-"),
+                                    to: guildWarDrag.resolveTeamName(activeController.undoMove.moves[0]?.to ?? "-"),
                                     seconds: activeController.undoRemainingSec,
                                   })
                                 : t("active.undo.multi", {
@@ -547,8 +636,9 @@ export function GuildWarPage() {
                             </Text>
                             <Button
                               size="xs"
-                              variant="default"
-                              leftSection={<XIcon size={16} />}
+                              variant="light"
+                              color="red"
+                              leftSection={<ArrowLeftIcon size={16} />}
                               onClick={() => {
                                 activeController.setUndoMove(null);
                               }}
@@ -584,6 +674,13 @@ export function GuildWarPage() {
                           onMemberContextMenu={handleMemberContextMenu}
                           onPoolContextMenu={handlePoolContextMenu}
                           onCopyTeamMentions={guildWarDrag.handleCopyTeamMentions}
+                          onToggleLock={canManageActive ? guildWarDrag.handleToggleLock : undefined}
+                          onMoveTeam={canManageActive ? guildWarDrag.handleMoveTeamOrder : undefined}
+                          lockedTeamIds={guildWarDrag.lockedTeamIds}
+                          teamCount={guildWarDrag.teamCount}
+                          teamIndexMap={guildWarDrag.teamIndexMap}
+                          onAddToPool={canManageActive && selectedEventId ? () => addToPoolHandlers.open() : undefined}
+                          onDraftNameChange={canManageActive ? guildWarDrag.handleDraftNameChange : undefined}
                           disabled={!selectedEventId}
                         />
                       </Suspense>
@@ -624,6 +721,17 @@ export function GuildWarPage() {
                           </Group>
                         </Stack>
                       </Modal>
+
+                      <Suspense fallback={null}>
+                        <LazyConcludeWarModal
+                          opened={concludeWarOpen}
+                          onClose={concludeWarHandlers.close}
+                          onSubmit={handleConcludeWar}
+                          members={concludeWarMembers}
+                          pending={concludeWarPending}
+                          warName={activeQuery.data?.event?.title ?? t("conclude.defaultWarName")}
+                        />
+                      </Suspense>
                     </Stack>
                   ),
                 },
@@ -683,16 +791,14 @@ export function GuildWarPage() {
                   deleteHistoryPending={guildWarMutations.deleteHistoryMutation.isPending}
                   onBulkDeleteHistory={(ids) => guildWarMutations.batchDeleteHistoryMutation.mutate(ids)}
                   bulkDeleteHistoryPending={guildWarMutations.batchDeleteHistoryMutation.isPending}
-                  renderCounter={guildWarHistory.renderCounter}
                   historyDetailTitle={t("history.detail")}
-                  historyResultLabel={t("history.result")}
                   loadErrorMessage={t("common:loadError")}
                   chartThemeName={chartThemeName}
                   chartThemeConfig={chartThemeConfig}
                   chartPalette={chartPalette}
-                  hashToPaletteColor={guildWarAnalytics.hashToPaletteColor}
-                  getMetricLabel={(metric) => t(guildWarAnalytics.getMetricLabelKey(metric))}
-                  metricValueOrNullFromWarMember={guildWarAnalytics.metricValueOrNullFromWarMember}
+                  hashToPaletteColor={hashToPaletteColor}
+                  getMetricLabel={(metric) => t(getMetricLabelKey(metric))}
+                  metricValueOrNullFromWarMember={metricValueOrNullFromWarMember}
                   initialSearch={guildWarSearch.warName}
                 />
               </Suspense>
@@ -714,55 +820,12 @@ export function GuildWarPage() {
                 }
               >
                 <LazyGuildWarAnalyticsTab
-                  mode={guildWarAnalytics.analyticsMode}
-                  onModeChange={guildWarAnalytics.setAnalyticsMode}
-                  selectedMetrics={guildWarAnalytics.analyticsSelectedMetrics}
-                  onSelectedMetricsChange={guildWarAnalytics.setAnalyticsSelectedMetrics}
-                  selectedWarIds={guildWarAnalytics.analyticsSelectedWarIds}
-                  onSelectedWarIdsChange={guildWarAnalytics.setAnalyticsSelectedWarIds}
-                  warOptions={guildWarAnalytics.analyticsWarOptions}
-                  datePreset={guildWarAnalytics.analyticsDatePreset}
-                  onDatePresetChange={guildWarAnalytics.handleAnalyticsDatePresetChange}
-                  onCopySnapshot={guildWarAnalytics.copyAnalyticsSnapshot}
-                  onCopyCsv={guildWarAnalytics.copyAnalyticsCsv}
-                  isExternalView={isExternalView}
-                  tableRows={guildWarAnalytics.analyticsTableRows as Array<Record<string, unknown>>}
-                  focusedUser={guildWarAnalytics.analyticsFocusedUser}
-                  onFocusedUserChange={guildWarAnalytics.setAnalyticsFocusedUser}
-                  selectableUserIds={guildWarAnalytics.analyticsSelectableUserIds}
-                  userIdToUsername={guildWarAnalytics.analyticsUserIdToUsername}
-                  onlyParticipated={guildWarAnalytics.analyticsOnlyParticipated}
-                  onOnlyParticipatedChange={guildWarAnalytics.setAnalyticsOnlyParticipated}
-                  selectedUsers={guildWarAnalytics.analyticsSelectedUsers}
-                  onSelectedUsersChange={guildWarAnalytics.applyAnalyticsSelection}
-                  hashToPaletteColor={guildWarAnalytics.hashToPaletteColor}
+                  historyRows={historyQuery.data?.data ?? []}
                   chartPalette={chartPalette}
-                  aggregation={guildWarAnalytics.analyticsAggregation}
-                  onAggregationChange={guildWarAnalytics.setAnalyticsAggregation}
-                  topN={guildWarAnalytics.analyticsTopN}
-                  onTopNChange={guildWarAnalytics.setAnalyticsTopN}
-                  minParticipation={guildWarAnalytics.analyticsMinParticipation}
-                  onMinParticipationChange={guildWarAnalytics.setAnalyticsMinParticipation}
-                  selectedTeams={guildWarAnalytics.analyticsSelectedTeams}
-                  onSelectedTeamsChange={guildWarAnalytics.setAnalyticsSelectedTeams}
-                  teamOptions={guildWarAnalytics.analyticsTeamOptions}
-                  teamAggregation={guildWarAnalytics.analyticsTeamAggregation}
-                  onTeamAggregationChange={guildWarAnalytics.setAnalyticsTeamAggregation}
-                  selectionSoftCap={guildWarAnalytics.selectionSoftCap}
-                  analyticsQueryLoading={guildWarAnalytics.analyticsQuery.isLoading}
-                  analyticsQueryError={guildWarAnalytics.analyticsQuery.isError}
-                  analyticsDetailsLoading={guildWarAnalytics.analyticsDetailsQuery.isLoading}
-                  analyticsDetailsError={guildWarAnalytics.analyticsDetailsQuery.isError}
-                  loadErrorMessage={t("common:loadError")}
-                  metricLabel={guildWarAnalytics.analyticsMetricLabel}
+                  guildWarService={guildWarService}
                   chartThemeName={chartThemeName}
                   chartThemeConfig={chartThemeConfig}
-                  chartOption={guildWarAnalytics.analyticsChartOption}
-                  normEnabled={guildWarAnalytics.analyticsNormEnabled}
-                  onNormEnabledChange={guildWarAnalytics.setAnalyticsNormEnabled}
-                  modifierWeights={guildWarAnalytics.modifierWeights}
-                  onModifierWeightsChange={guildWarAnalytics.setModifierWeights}
-                  referenceDuration={guildWarAnalytics.referenceDuration}
+                  loadErrorMessage={t("common:loadError")}
                 />
               </Suspense>
             ),

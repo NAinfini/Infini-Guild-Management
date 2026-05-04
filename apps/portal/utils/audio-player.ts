@@ -16,7 +16,9 @@ export function playAudio(src: string): void {
     audio.src = src;
     currentSrc = src;
   }
-  void audio.play().catch(() => {});
+  void audio.play().catch((err: unknown) => {
+    console.warn("[audio-player] playback failed:", src, err);
+  });
 }
 
 export function stopAudio(): void {

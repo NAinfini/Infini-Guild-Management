@@ -114,14 +114,12 @@ export function DashboardPage() {
         page: 1,
         limit: 10,
       }),
-    enabled: Boolean(user),
     staleTime: 10 * 60_000,
   });
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
     queryFn: fetchUsersList,
-    enabled: Boolean(user),
     staleTime: 10 * 60_000,
   });
 
@@ -133,7 +131,7 @@ export function DashboardPage() {
 
   const recentWarDetailsQuery = useQuery({
     queryKey: queryKeys.dashboard.lastWarDetail(recentWarIds.join(",") || "none"),
-    enabled: Boolean(user) && recentWarIds.length > 0,
+    enabled: recentWarIds.length > 0,
     queryFn: async () => {
       const res = await fetchGuildWarHistoryBatch(recentWarIds);
       return res.data;

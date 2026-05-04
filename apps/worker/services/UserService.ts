@@ -531,7 +531,8 @@ export class UserService {
 
     await this.db.delete(sessions).where(eq(sessions.userId, targetUserId));
     await this.deps.destroySession();
-    await this.deps.writeAuditLog({ entityType: "user_auth", action: "change_password", actorId: sessionUser.id, entityId: targetUserId });
+    const targetUser = (await this.db.select({ username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
+    await this.deps.writeAuditLog({ entityType: "user_auth", action: "change_password", actorId: sessionUser.id, entityId: targetUserId, diffTitle: targetUser?.username ?? null });
     return ok({ ok: true });
   }
 
@@ -556,10 +557,12 @@ export class UserService {
     )[0];
     if (dup && dup.id !== targetUserId) return err("CONFLICT", "Username already taken");
 
+    const oldUser = (await this.db.select({ username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     await this.db.update(users).set({ username: parsed.data.newUsername, updatedAt: new Date().toISOString() }).where(eq(users.id, targetUserId));
     await this.deps.writeAuditLog({
       entityType: "user", action: "change_username", actorId: sessionUser.id,
-      entityId: targetUserId, detailText: JSON.stringify({ new_username: parsed.data.newUsername }),
+      entityId: targetUserId, diffTitle: parsed.data.newUsername,
+      detailText: JSON.stringify({ username: { from: oldUser?.username ?? null, to: parsed.data.newUsername } }),
     });
 
     await this.db.delete(sessions).where(eq(sessions.userId, targetUserId));

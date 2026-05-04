@@ -1,6 +1,6 @@
 .roster-filter-card.roster-filter-card {
   position: sticky;
-  top: 8px;
+  top: 0;
   z-index: var(--z-sticky);
   margin-bottom: 12px;
   overflow: visible;
@@ -30,8 +30,8 @@
 }
 
 .roster-volume-control {
-  flex: 1;
-  min-width: 120px;
+  flex: 0 1 160px;
+  min-width: 100px;
 }
 
 .roster-volume-label {
@@ -40,8 +40,8 @@
 }
 
 .roster-audio-popover {
-  min-width: 260px;
-  width: min(320px, 100%);
+  min-width: 200px;
+  width: min(280px, 100%);
 }
 
 .roster-count-text {

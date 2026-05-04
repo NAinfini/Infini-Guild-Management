@@ -68,9 +68,9 @@
 
 .dashboard-stats-circle-value {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: center;
-  gap: 2px;
+  gap: 1px;
   font-size: 15px;
   font-weight: 600;
 }

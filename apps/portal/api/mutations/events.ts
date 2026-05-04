@@ -1,6 +1,7 @@
 import { type Event, type RecurringTemplate, createEventSchema, createTemplateSchema, updateEventSchema, updateTemplateSchema } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
+import { convertImageToWebP } from "../../utils/media-convert";
 
 export type CreateEventPayload = z.input<typeof createEventSchema>;
 export type UpdateEventPayload = z.input<typeof updateEventSchema>;
@@ -19,7 +20,7 @@ export function leaveEvent(eventId: string): Promise<{ ok: true }> {
   });
 }
 
-export function createEvent(payload: CreateEventPayload, files?: File[]): Promise<Event> {
+export async function createEvent(payload: CreateEventPayload, files?: File[]): Promise<Event> {
   const bodyJson = createEventSchema.parse(payload);
   if (!files || files.length === 0) {
     return apiRequest<Event>("/api/events", {
@@ -27,9 +28,10 @@ export function createEvent(payload: CreateEventPayload, files?: File[]): Promis
       bodyJson,
     });
   }
+  const converted = await Promise.all(files.map(convertImageToWebP));
   const formData = new FormData();
   formData.append("data", JSON.stringify(bodyJson));
-  for (const file of files) {
+  for (const file of converted) {
     formData.append("files", file);
   }
   return apiRequest<Event>("/api/events", {
@@ -58,9 +60,10 @@ export function deleteEvent(eventId: string): Promise<{ ok: true }> {
   });
 }
 
-export function uploadEventImages(eventId: string, files: File[]): Promise<{ keys: string[]; attachments: string[] }> {
+export async function uploadEventImages(eventId: string, files: File[]): Promise<{ keys: string[]; attachments: string[] }> {
+  const converted = await Promise.all(files.map(convertImageToWebP));
   const formData = new FormData();
-  for (const file of files) {
+  for (const file of converted) {
     formData.append("files", file);
   }
   return apiRequest<{ keys: string[]; attachments: string[] }>(`/api/events/${eventId}/images`, {

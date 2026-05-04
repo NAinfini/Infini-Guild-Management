@@ -173,6 +173,16 @@ export function useGuildWarDragController({
 
   // --- Move / Undo ---
 
+  const resolveTeamName = useCallback((containerId: string) => {
+    if (containerId === "pool") return t("active.pool");
+    const team = teamById.get(containerId);
+    return (teamDraftNames[containerId] ?? team?.team_name ?? containerId).trim() || containerId;
+  }, [teamById, teamDraftNames, t]);
+
+  const resolveUsername = useCallback((userId: string) => {
+    return userDataMap.get(userId)?.username ?? userId;
+  }, [userDataMap]);
+
   const queueMoveWithUndo = useCallback((payloads: MovePayload[]) => {
     if (!canManageActive || payloads.length === 0) return;
     if (undoMove) {
@@ -193,11 +203,11 @@ export function useGuildWarDragController({
     });
     if (normalizedMoves.length === 1) {
       const m = normalizedMoves[0];
-      if (m) message.info(t("message.moveQueuedSingle", { userId: m.userId, from: m.from, to: m.to }));
+      if (m) message.info(t("message.moveQueuedSingle", { userId: resolveUsername(m.userId), from: resolveTeamName(m.from), to: resolveTeamName(m.to) }));
       return;
     }
     message.info(t("message.moveQueuedMulti", { count: normalizedMoves.length }));
-  }, [canManageActive, setUndoMove, t, undoMove]);
+  }, [canManageActive, resolveTeamName, resolveUsername, setUndoMove, t, undoMove]);
 
   const persistTeamSnapshot = useCallback(
     async (nextTeams: typeof orderedTeams) => {
@@ -232,10 +242,9 @@ export function useGuildWarDragController({
   );
 
   const handleCopyTeamMentions = (containerId: string) => {
-    const team = teamById.get(containerId);
-    if (!team) return;
-    const members = team.members.map((m) => userDataMap.get(m.user_id)?.username ?? m.user_id);
-    void copyPlainText(members.map((name) => `@${name}`).join(" "));
+    const column = dragColumns.find((c) => c.containerId === containerId);
+    if (!column) return;
+    void copyPlainText(column.members.map((m) => `@${m.username}`).join(" "));
     message.success(t("active.teamCopied"));
   };
 
@@ -412,35 +421,48 @@ export function useGuildWarDragController({
   const teamStatusContentByContainerId = useMemo<Record<string, ReactNode>>(() => {
     if (!canManageActive) return {};
     const result: Record<string, ReactNode> = {};
-    for (let i = 0; i < orderedTeams.length; i += 1) {
-      const team = orderedTeams[i];
-      if (!team) continue;
+    for (const team of orderedTeams) {
       result[team.id] = (
         <TeamStatusPanel
           key={team.id}
           team={team}
-          teamIndex={i}
-          totalTeams={orderedTeams.length}
-          draftName={teamDraftNames[team.id] ?? team.team_name}
           draftNotes={teamDraftNotes[team.id] ?? team.notes ?? ""}
           draftLocked={teamDraftLocks[team.id] ?? team.is_locked}
-          selectedEventId={selectedEventId}
-          roleTagMutation={roleTagMutation}
-          onDraftNameChange={(teamId, value) =>
-            setTeamDraftNames((cur) => ({ ...cur, [teamId]: value }))
-          }
           onDraftNotesChange={(teamId, value) =>
             setTeamDraftNotes((cur) => ({ ...cur, [teamId]: value }))
           }
-          onDraftLockChange={(teamId, locked) =>
-            setTeamDraftLocks((cur) => ({ ...cur, [teamId]: locked }))
-          }
-          onMoveTeamOrder={moveTeamOrder}
         />
       );
     }
     return result;
-  }, [canManageActive, moveTeamOrder, orderedTeams, roleTagMutation, selectedEventId, setTeamDraftLocks, setTeamDraftNames, setTeamDraftNotes, teamDraftLocks, teamDraftNames, teamDraftNotes]);
+  }, [canManageActive, orderedTeams, setTeamDraftNotes, teamDraftLocks, teamDraftNotes]);
+
+  const handleToggleLock = useCallback((containerId: string) => {
+    setTeamDraftLocks((cur) => ({ ...cur, [containerId]: !cur[containerId] }));
+  }, [setTeamDraftLocks]);
+
+  const handleDraftNameChange = useCallback((containerId: string, value: string) => {
+    setTeamDraftNames((cur) => ({ ...cur, [containerId]: value }));
+  }, [setTeamDraftNames]);
+
+  const teamIndexMap = useMemo(
+    () => new Map(orderedTeams.map((team, i) => [team.id, i])),
+    [orderedTeams],
+  );
+
+  const handleRemoveFromWar = useCallback(
+    (userId: string) => {
+      if (!selectedEventId || !canManageActive) return;
+      queueMoveWithUndo([{
+        event_id: selectedEventId,
+        user_id: userId,
+        to: "remove",
+        from: memberContainerMap.get(`member:${userId}`) ?? "pool",
+        etag: activeData?.etag ?? undefined,
+      }]);
+    },
+    [activeData?.etag, canManageActive, memberContainerMap, queueMoveWithUndo, selectedEventId],
+  );
 
   return {
     orderedTeams,
@@ -456,6 +478,7 @@ export function useGuildWarDragController({
     activePoolStatus: null as ReactNode,
     teamStatusContentByContainerId,
     toMemberDomId: search.toMemberDomId,
+    memberContainerMap,
     handleCopyTeamMentions,
     handleTeamSelectAll,
     handleTeamClear,
@@ -471,6 +494,15 @@ export function useGuildWarDragController({
     handleDragStart,
     handleDragCancel,
     handleDragEnd,
+    handleToggleLock,
+    handleDraftNameChange,
+    handleMoveTeamOrder: moveTeamOrder,
+    handleRemoveFromWar,
+    lockedTeamIds,
+    teamIndexMap,
+    teamCount: orderedTeams.length,
+    resolveTeamName,
+    resolveUsername,
   };
 }
 

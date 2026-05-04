@@ -116,6 +116,7 @@ const guildWarActivePoolMemberSchema = z.object({
 });
 
 export const guildWarActiveResponseSchema = z.object({
+  war_history: warHistorySchema.nullable().optional(),
   event: eventSchema.nullable(),
   teams: z.array(
     warTeamSchema.extend({
@@ -123,5 +124,6 @@ export const guildWarActiveResponseSchema = z.object({
     }),
   ),
   pool: z.array(guildWarActivePoolMemberSchema),
+  participants: z.array(z.object({ user_id: z.string() })).optional(),
   etag: z.string().nullable().optional(),
 });

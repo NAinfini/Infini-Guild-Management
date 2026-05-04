@@ -245,7 +245,8 @@ export class AdminService {
       await this.deps.db.update(users).set({ role: newRoleId, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
       await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
     }
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_role_update", actorId, entityId: "batch", detailText: JSON.stringify({ user_ids: targetIds, new_role: newRoleId }) });
+    const targetNames = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, targetIds));
+    await this.deps.writeAuditLog({ entityType: "user", action: "batch_role_update", actorId, entityId: "batch", diffTitle: targetNames.map((r) => r.username).join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames: targetNames.map((r) => r.username), new_role: newRoleId, count: existingUsers.length }) });
     return ok({ updated: existingUsers.length });
   }
 
@@ -258,7 +259,8 @@ export class AdminService {
       await this.deps.db.update(users).set({ isActive: false, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
       await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
     }
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_deactivate", actorId, entityId: "batch", detailText: JSON.stringify({ user_ids: targetIds }) });
+    const targetNames = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, targetIds));
+    await this.deps.writeAuditLog({ entityType: "user", action: "batch_deactivate", actorId, entityId: "batch", diffTitle: targetNames.map((r) => r.username).join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames: targetNames.map((r) => r.username), count: existingUsers.length }) });
     return ok({ updated: existingUsers.length });
   }
 
@@ -270,7 +272,8 @@ export class AdminService {
       const existingIds = existingUsers.map((r) => r.id);
       await this.deps.db.update(users).set({ isActive: true, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
     }
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_reactivate", actorId, entityId: "batch", detailText: JSON.stringify({ user_ids: targetIds }) });
+    const targetNames = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, targetIds));
+    await this.deps.writeAuditLog({ entityType: "user", action: "batch_reactivate", actorId, entityId: "batch", diffTitle: targetNames.map((r) => r.username).join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames: targetNames.map((r) => r.username), count: existingUsers.length }) });
     return ok({ updated: existingUsers.length });
   }
 
@@ -284,7 +287,8 @@ export class AdminService {
       await this.deps.db.update(users).set({ isActive: false, deletedAt: now, updatedAt: now }).where(inArray(users.id, existingIds));
       await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
     }
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_delete", actorId, entityId: "batch", detailText: JSON.stringify({ user_ids: targetIds }) });
+    const targetNames = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, targetIds));
+    await this.deps.writeAuditLog({ entityType: "user", action: "batch_delete", actorId, entityId: "batch", diffTitle: targetNames.map((r) => r.username).join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames: targetNames.map((r) => r.username), count: existingUsers.length }) });
     return ok({ updated: existingUsers.length });
   }
 
@@ -306,7 +310,7 @@ export class AdminService {
       if (error instanceof Error && error.message.includes("UNIQUE constraint failed: users.username")) return err("CONFLICT", "Username already taken");
       throw error;
     }
-    await this.deps.writeAuditLog({ entityType: "user", action: "admin_create_member", actorId, entityId: userId, detailText: JSON.stringify({ username }) });
+    await this.deps.writeAuditLog({ entityType: "user", action: "admin_create_member", actorId, entityId: userId, diffTitle: username, detailText: JSON.stringify({ username }) });
     return ok({ user_id: userId, username, temporary_password: temporaryPassword });
   }
 
@@ -316,17 +320,17 @@ export class AdminService {
     await ensureBuiltinRolesAndPermissions(this.deps.db);
     const roleExists = (await this.deps.db.select({ id: roles.id }).from(roles).where(eq(roles.id, newRoleId)).limit(1))[0];
     if (!roleExists) return err("NOT_FOUND", "Role not found");
-    const target = (await this.deps.db.select({ id: users.id, role: users.role, deletedAt: users.deletedAt }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
+    const target = (await this.deps.db.select({ id: users.id, role: users.role, deletedAt: users.deletedAt, username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     if (!target || target.deletedAt !== null) return err("NOT_FOUND", "User not found");
     await this.deps.db.update(users).set({ role: newRoleId, updatedAt: this.now().toISOString() }).where(eq(users.id, targetUserId));
     await this.deps.db.delete(sessions).where(eq(sessions.userId, targetUserId));
-    await this.deps.writeAuditLog({ entityType: "user", action: "update_role", actorId, entityId: targetUserId, detailText: JSON.stringify({ from: target.role, to: newRoleId }) });
+    await this.deps.writeAuditLog({ entityType: "user", action: "update_role", actorId, entityId: targetUserId, diffTitle: target.username, detailText: JSON.stringify({ role: { from: target.role, to: newRoleId } }) });
     return ok(undefined);
   }
 
   async deactivateUser(actorId: string, targetUserId: string, reason?: string): Promise<ServiceResult<void>> {
     if (targetUserId === actorId) return err("CONFLICT", "You cannot deactivate yourself");
-    const target = (await this.deps.db.select({ id: users.id, isActive: users.isActive, deletedAt: users.deletedAt }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
+    const target = (await this.deps.db.select({ id: users.id, isActive: users.isActive, deletedAt: users.deletedAt, username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     if (!target || target.deletedAt !== null) return err("NOT_FOUND", "User not found");
     if (!target.isActive) return err("CONFLICT", "User already deactivated");
     const nowIso = this.now().toISOString();
@@ -334,28 +338,28 @@ export class AdminService {
       this.deps.rawDb.prepare("UPDATE users SET is_active = 0, updated_at = ?1 WHERE id = ?2").bind(nowIso, targetUserId),
       this.deps.rawDb.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(targetUserId),
     ]);
-    await this.deps.writeAuditLog({ entityType: "user", action: "deactivate", actorId, entityId: targetUserId, detailText: JSON.stringify({ reason: reason ?? null }) });
+    await this.deps.writeAuditLog({ entityType: "user", action: "deactivate", actorId, entityId: targetUserId, diffTitle: target.username, detailText: JSON.stringify({ reason: reason ?? null }) });
     return ok(undefined);
   }
 
   async reactivateUser(actorId: string, targetUserId: string, reason?: string): Promise<ServiceResult<void>> {
-    const target = (await this.deps.db.select({ id: users.id, isActive: users.isActive, deletedAt: users.deletedAt }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
+    const target = (await this.deps.db.select({ id: users.id, isActive: users.isActive, deletedAt: users.deletedAt, username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     if (!target || target.deletedAt !== null) return err("NOT_FOUND", "User not found");
     if (target.isActive) return err("CONFLICT", "User is already active");
     await this.deps.db.update(users).set({ isActive: true, updatedAt: this.now().toISOString() }).where(eq(users.id, targetUserId));
-    await this.deps.writeAuditLog({ entityType: "user", action: "reactivate", actorId, entityId: targetUserId, detailText: JSON.stringify({ reason: reason ?? null }) });
+    await this.deps.writeAuditLog({ entityType: "user", action: "reactivate", actorId, entityId: targetUserId, diffTitle: target.username, detailText: JSON.stringify({ reason: reason ?? null }) });
     return ok(undefined);
   }
 
   async resetPassword(actorId: string, targetUserId: string, temporaryPasswordInput?: string): Promise<ServiceResult<{ temporary_password: string }>> {
     const temporaryPassword = temporaryPasswordInput ?? this.deps.generateTemporaryPassword();
     if (temporaryPassword.length < 8) return err("VALIDATION_ERROR", "temporary_password must be at least 8 characters");
-    const target = (await this.deps.db.select({ id: users.id, deletedAt: users.deletedAt }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
+    const target = (await this.deps.db.select({ id: users.id, deletedAt: users.deletedAt, username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     if (!target || target.deletedAt !== null) return err("NOT_FOUND", "User not found");
     const passwordHash = await this.deps.createPasswordHash(temporaryPassword);
     await this.deps.db.update(userAuthPassword).set({ passwordHash: passwordHash.passwordHash, salt: passwordHash.salt, updatedAt: this.now().toISOString() }).where(eq(userAuthPassword.userId, targetUserId));
     await this.deps.db.delete(sessions).where(eq(sessions.userId, targetUserId));
-    await this.deps.writeAuditLog({ entityType: "user_auth", action: "reset_password", actorId, entityId: targetUserId });
+    await this.deps.writeAuditLog({ entityType: "user_auth", action: "reset_password", actorId, entityId: targetUserId, diffTitle: target.username });
     return ok({ temporary_password: temporaryPassword });
   }
 
@@ -379,7 +383,7 @@ export class AdminService {
     const permissionRecord = emptyPermissionRecord();
     for (const perm of PERMISSIONS) permissionRecord[perm] = Boolean(input.permissions?.[perm]);
     await replaceRolePermissions(this.deps.rawDb, roleId, permissionRecord);
-    await this.deps.writeAuditLog({ entityType: "role", action: "create", actorId, entityId: roleId, detailText: JSON.stringify({ name: input.name.trim(), level: input.level, color: input.color ?? null, permissions: permissionRecord }) });
+    await this.deps.writeAuditLog({ entityType: "role", action: "create", actorId, entityId: roleId, diffTitle: input.name.trim(), detailText: JSON.stringify({ name: input.name.trim(), level: input.level, color: input.color ?? null, permissions: permissionRecord }) });
     const created = (await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (!created) return err("SERVER_ERROR", "Failed to create role");
     return ok(adminRoleSchema.parse({ id: created.id, name: created.name, level: created.level, color: created.color, is_builtin: created.isBuiltin, created_at: created.createdAt, updated_at: created.updatedAt, permissions: permissionRecord, assigned_user_count: 0 }));
@@ -408,20 +412,20 @@ export class AdminService {
     const permissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
     const assignedCountRow = (await this.deps.db.select({ count: sql<number>`count(*)` }).from(users).where(and(eq(users.role, roleId), isNull(users.deletedAt))).limit(1))[0];
     const assignedCount = Number(assignedCountRow?.count ?? 0);
-    await this.deps.writeAuditLog({ entityType: "role", action: "update", actorId, entityId: roleId, detailText: JSON.stringify({ fields: input, assigned_user_count: assignedCount }) });
+    await this.deps.writeAuditLog({ entityType: "role", action: "update", actorId, entityId: roleId, diffTitle: updatedRole.name, detailText: JSON.stringify({ fields: input, assigned_user_count: assignedCount }) });
     return ok(adminRoleSchema.parse({ id: updatedRole.id, name: updatedRole.name, level: updatedRole.level, color: updatedRole.color, is_builtin: updatedRole.isBuiltin, created_at: updatedRole.createdAt, updated_at: updatedRole.updatedAt, permissions: parsePermissionRecord(roleId, permissionRows), assigned_user_count: assignedCount }));
   }
 
   async deleteRole(actorId: string, roleId: string): Promise<ServiceResult<void>> {
     await ensureBuiltinRolesAndPermissions(this.deps.db);
-    const existing = (await this.deps.db.select({ id: roles.id, isBuiltin: roles.isBuiltin }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
+    const existing = (await this.deps.db.select({ id: roles.id, isBuiltin: roles.isBuiltin, name: roles.name }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (!existing) return err("NOT_FOUND", "Role not found");
     if (existing.isBuiltin) return err("CONFLICT", "Built-in roles cannot be deleted");
     const assignedCountRow = (await this.deps.db.select({ count: sql<number>`count(*)` }).from(users).where(and(eq(users.role, roleId), isNull(users.deletedAt))).limit(1))[0];
     const assignedCount = Number(assignedCountRow?.count ?? 0);
     if (assignedCount > 0) return err("CONFLICT", "Role is assigned to users", { assigned_user_count: assignedCount });
     await this.deps.db.delete(roles).where(eq(roles.id, roleId));
-    await this.deps.writeAuditLog({ entityType: "role", action: "delete", actorId, entityId: roleId });
+    await this.deps.writeAuditLog({ entityType: "role", action: "delete", actorId, entityId: roleId, diffTitle: existing.name });
     return ok(undefined);
   }
 
@@ -460,9 +464,19 @@ export class AdminService {
   }
 
   async updateAnalyticsSettings(actorId: string, input: Record<string, unknown>): Promise<ServiceResult<AnalyticsSettings>> {
+    const previous = await this.getAnalyticsSettings();
     const settings = normalizeAnalyticsWeights(parseAnalyticsInput(input));
     await this.deps.media.put(ANALYTICS_SETTINGS_KEY, JSON.stringify(settings), { httpMetadata: { contentType: "application/json" } });
-    await this.deps.writeAuditLog({ entityType: "analytics_settings", action: "update", actorId, entityId: "default" });
+    const oldSettings = previous.ok ? previous.data : null;
+    const diff: Record<string, { from: unknown; to: unknown }> = {};
+    if (oldSettings) {
+      for (const key of Object.keys(settings) as (keyof AnalyticsSettings)[]) {
+        const oldVal = oldSettings[key];
+        const newVal = settings[key];
+        if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) diff[key] = { from: oldVal, to: newVal };
+      }
+    }
+    await this.deps.writeAuditLog({ entityType: "analytics_settings", action: "update", actorId, entityId: "default", diffTitle: "Analytics", detailText: Object.keys(diff).length > 0 ? JSON.stringify(diff) : null });
     return ok(settings);
   }
 

@@ -6,6 +6,7 @@ import {
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
+import { convertAudioToOpus, convertImageToWebP } from "../../utils/media-convert";
 
 export type UpdateMyProfilePayload = z.input<typeof updateProfileSchema>;
 export type ChangeMyPasswordPayload = z.input<typeof changePasswordSchema>;
@@ -19,9 +20,10 @@ export function updateMyProfile(userId: string, payload: UpdateMyProfilePayload)
   });
 }
 
-export function uploadProfileImages(userId: string, files: File[]): Promise<{ keys: string[] }> {
+export async function uploadProfileImages(userId: string, files: File[]): Promise<{ keys: string[] }> {
+  const converted = await Promise.all(files.map(convertImageToWebP));
   const formData = new FormData();
-  for (const file of files) {
+  for (const file of converted) {
     formData.append("files", file);
   }
 
@@ -31,9 +33,10 @@ export function uploadProfileImages(userId: string, files: File[]): Promise<{ ke
   });
 }
 
-export function uploadProfileAudio(userId: string, file: File): Promise<{ key: string }> {
+export async function uploadProfileAudio(userId: string, file: File): Promise<{ key: string }> {
+  const converted = await convertAudioToOpus(file);
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", converted);
 
   return apiRequest<{ key: string }>(`/api/users/${userId}/media/audio`, {
     method: "POST",
@@ -41,9 +44,10 @@ export function uploadProfileAudio(userId: string, file: File): Promise<{ key: s
   });
 }
 
-export function uploadAvatar(userId: string, file: File): Promise<{ key: string }> {
+export async function uploadAvatar(userId: string, file: File): Promise<{ key: string }> {
+  const converted = await convertImageToWebP(file);
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", converted);
 
   return apiRequest<{ key: string }>(`/api/users/${userId}/media/avatar`, {
     method: "POST",
