@@ -280,7 +280,7 @@ export function ProfileMediaTab({
             <>
               <Divider />
               <Group gap={8} align="center">
-                <Text size="sm" style={{ flex: 1 }} truncate="end">{profileAudioKey}</Text>
+                <Text size="sm" style={{ flex: 1 }} truncate="end">{profileAudioKey.split("/").pop()}</Text>
                 <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={16} />} onClick={() => {
                   modals.openConfirmModal({
                     title: t("confirm.removeAudio.title"),
