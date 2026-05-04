@@ -1,5 +1,5 @@
 import { createEventSchema, eventParticipantSchema, eventSchema, recurringTemplateSchema, updateEventSchema } from "@guild/shared";
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
 import {
@@ -404,7 +404,6 @@ export class EventService {
            WHERE e.id = ?2
              AND e.archived_at IS NULL
              AND e.signup_locked = 0
-             AND (e.visible_at IS NULL OR e.visible_at <= datetime('now'))
              AND (e.end_at IS NULL OR e.end_at > datetime('now'))
              AND (e.capacity IS NULL OR (SELECT COUNT(*) FROM event_participants ep WHERE ep.event_id = e.id) < e.capacity)
          )
@@ -904,7 +903,6 @@ export class EventService {
     archivedFilter?: boolean;
     startAfter?: string;
     startBefore?: string;
-    includeHidden?: boolean;
   }): SQL<unknown>[] {
     const filters: SQL<unknown>[] = [eq(events.isSeriesParent, false)];
     if (params.typeFilter) {
@@ -917,11 +915,6 @@ export class EventService {
     }
     if (params.startAfter) filters.push(gte(events.startAt, params.startAfter));
     if (params.startBefore) filters.push(lte(events.startAt, params.startBefore));
-    if (!params.includeHidden) {
-      filters.push(
-        or(isNull(events.visibleAt), lte(events.visibleAt, new Date().toISOString()))!,
-      );
-    }
     return filters;
   }
 

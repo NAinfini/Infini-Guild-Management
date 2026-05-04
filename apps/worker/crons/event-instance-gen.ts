@@ -235,6 +235,16 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
         break;
       }
 
+      // Respect creation offset: only create the instance when now >= start - offset
+      if (template.visibilityOffsetMinutes != null && template.visibilityOffsetMinutes > 0) {
+        const createAt = new Date(nextOccurrence.getTime() - template.visibilityOffsetMinutes * 60_000);
+        if (now < createAt) {
+          currentAnchor = nextOccurrence;
+          catchupCount += 1;
+          continue;
+        }
+      }
+
       // Stop if beyond the rule's end date
       if (rule.endDate) {
         const endDate = new Date(rule.endDate);
@@ -245,11 +255,6 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
 
       const nextStartIso = nextOccurrence.toISOString();
       const nextDateKey = toDateKey(nextOccurrence);
-
-      let visibleAt: string | null = null;
-      if (template.visibilityOffsetMinutes != null) {
-        visibleAt = new Date(nextOccurrence.getTime() - template.visibilityOffsetMinutes * 60_000).toISOString();
-      }
 
       // INSERT OR IGNORE: the UNIQUE constraint on (series_id, instance_date) prevents duplicates
       const result = await db.insert(events).values({
@@ -264,7 +269,6 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
         signupLocked: false,
         autoArchive: template.autoArchive,
         autoArchived: false,
-        visibleAt,
         archivedAt: null,
         createdBy: template.createdBy,
         recurrenceRule: null,
