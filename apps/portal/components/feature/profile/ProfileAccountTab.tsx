@@ -1,6 +1,6 @@
 import { PortalCard } from "../../shared/PortalCard";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { Button, Grid, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
+import { Button, Grid, Group, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
 import { SaveIcon, LogOutIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
@@ -80,7 +80,7 @@ export function ProfileAccountTab({
   };
 
   return (
-    <Stack gap={16} maw={720} mx="auto">
+    <Stack gap={16}>
       <Grid gutter={16}>
         <Grid.Col span={{ base: 12, sm: 6 }}>
           <PortalCard interactive={false} style={{ height: "100%" }}>
@@ -142,9 +142,11 @@ export function ProfileAccountTab({
         </Grid.Col>
       </Grid>
 
-      <DepthButton type="danger" size="sm" onClick={onLogout} before={<LogOutIcon size={14} />}>
-        {t("action.logout")}
-      </DepthButton>
+      <Group>
+        <DepthButton type="danger" size="sm" onClick={onLogout} before={<LogOutIcon size={14} />}>
+          {t("action.logout")}
+        </DepthButton>
+      </Group>
     </Stack>
   );
 }

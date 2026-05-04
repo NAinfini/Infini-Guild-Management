@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@10.6.2",
   "scripts": {
-    "dev": "concurrently -k -n worker,portal \"pnpm dev:worker\" \"pnpm dev:portal\"",
+    "dev": "concurrently --kill-others-on-fail -n worker,portal,seed \"pnpm dev:worker\" \"pnpm dev:portal\" \"pnpm db:mock:seed\"",
     "dev:all": "concurrently -k -n worker,portal -c yellow,cyan \"pnpm dev:worker\" \"pnpm dev:portal\"",
     "dev:portal": "vite --config apps/portal/vite.config.ts",
     "preview": "vite preview --config apps/portal/vite.config.ts",
