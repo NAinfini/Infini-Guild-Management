@@ -30,7 +30,7 @@ export function AppErrorOverlay() {
         title: i18n.t("common:errors.conflictTitle"),
         message: extra ? `${messageText}\n${extra}` : messageText,
         color: "yellow",
-        autoClose: false,
+        autoClose: 5000,
         withCloseButton: true,
       });
     };
@@ -44,7 +44,7 @@ export function AppErrorOverlay() {
           defaultValue: "Unable to reach server. Check your network and retry.",
         }),
         color: "red",
-        autoClose: false,
+        autoClose: 5000,
         withCloseButton: true,
       });
     };

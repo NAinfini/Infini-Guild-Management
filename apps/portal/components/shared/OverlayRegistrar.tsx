@@ -22,7 +22,7 @@ const overlayService: OverlayService = {
       message: payload.message,
       color: mapToastColor(payload.status ?? "info"),
       withBorder: true,
-      autoClose: payload.status === "error" ? false : (payload.autoClose ?? 4000),
+      autoClose: payload.autoClose ?? 5000,
     });
     return { delivered: true };
   },
