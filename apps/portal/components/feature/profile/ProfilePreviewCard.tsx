@@ -1,5 +1,5 @@
 import { PortalCard } from "../../shared/PortalCard";
-import { Avatar, Badge, Group, RingProgress, Spoiler, Stack, Text } from "@mantine/core";
+import { Avatar, Badge, Group, Spoiler, Stack, Text } from "@mantine/core";
 import { PhotoIcon, VideoIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { resolveProfileMediaUrl } from "../../../utils/media";
@@ -36,8 +36,6 @@ export function ProfilePreviewCard({
   const { t } = useTranslation("profile");
   const isActive = activeNowEstimate === t("availability.activeNow");
   const initials = (username || "?").slice(0, 2).toUpperCase();
-  const maxPower = 100_000_000;
-  const powerPercent = Math.min((power / maxPower) * 100, 100);
   const powerLabel = power >= 1_000_000 ? `${(power / 1_000_000).toFixed(1)}M` : power >= 1_000 ? `${(power / 1_000).toFixed(0)}K` : String(power);
 
   return (
@@ -80,15 +78,7 @@ export function ProfilePreviewCard({
           }}
         >
           <Stack gap={2} align="center" style={{ flex: 1 }}>
-            <RingProgress
-              size={56}
-              thickness={5}
-              roundCaps
-              sections={[{ value: powerPercent, color: "blue" }]}
-              label={
-                <Text ta="center" size="xs" fw={700} lh={1}>{powerLabel}</Text>
-              }
-            />
+            <Text fw={700} size="sm">{powerLabel}</Text>
             <Text c="dimmed" size="xs" lh={1}>{t("preview.power")}</Text>
           </Stack>
           <div style={{ width: 1, height: 36, background: "var(--color-border, #e5e7eb)" }} />

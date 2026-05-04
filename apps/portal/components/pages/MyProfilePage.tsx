@@ -22,7 +22,6 @@ import { useAppError } from "../../hooks/useAppError";
 import { notifySuccess } from "../../utils/notifications";
 import { ProfileAccountTab } from "../feature/profile/ProfileAccountTab";
 import { ProfileAvailabilityTab } from "../feature/profile/ProfileAvailabilityTab";
-import { ProfileMediaTab } from "../feature/profile/ProfileMediaTab";
 import { ProfilePreviewCard } from "../feature/profile/ProfilePreviewCard";
 import { ProfileProfileTab } from "../feature/profile/ProfileProfileTab";
 import { PageLayout } from "../layout/PageLayout";
@@ -214,7 +213,6 @@ export function MyProfilePage() {
           <Tabs value={activeTab} onChange={(value) => value && setActiveTab(value)}>
             <Tabs.List>
               <Tabs.Tab value="profile">{t("tab.profile")}</Tabs.Tab>
-              <Tabs.Tab value="media">{t("tab.media")}</Tabs.Tab>
               <Tabs.Tab value="availability">{t("tab.availability")}</Tabs.Tab>
               <Tabs.Tab value="account">{t("tab.account")}</Tabs.Tab>
             </Tabs.List>
@@ -249,11 +247,6 @@ export function MyProfilePage() {
                 savePending={mutations.saveProfileMutation.isPending}
                 isDirty={form.isDirty}
                 fieldBioPlaceholder={t("field.bio")}
-              />
-            </Tabs.Panel>
-
-            <Tabs.Panel value="media" pt="md">
-              <ProfileMediaTab
                 videoDraft={form.videoDraft}
                 videoList={form.videoList}
                 imageList={form.imageList}
@@ -281,9 +274,6 @@ export function MyProfilePage() {
                 onReorderImages={form.setImageList}
                 onRemoveImage={mutations.removeImage}
                 onRemoveAudio={mutations.removeAudio}
-                onSaveProfile={mutations.saveProfile}
-                savePending={mutations.saveProfileMutation.isPending}
-                isDirty={form.isDirty}
               />
             </Tabs.Panel>
 
