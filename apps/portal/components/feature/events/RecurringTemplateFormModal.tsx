@@ -13,6 +13,7 @@ import {
   Textarea,
 } from "@mantine/core";
 import { SaveIcon, PlusIcon, XIcon } from "@portal/components/icons";
+import { IconPlayerPause, IconPlayerPlay, IconTrash } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
@@ -27,6 +28,9 @@ type RecurringTemplateFormModalProps = {
   confirmLoading: boolean;
   onCancel: () => void;
   onSave: (payload: RecurringTemplateFormPayload) => void;
+  onPause?: (id: string) => Promise<unknown>;
+  onResume?: (id: string) => Promise<unknown>;
+  onDelete?: (id: string) => void;
 };
 
 export function RecurringTemplateFormModal({
@@ -36,6 +40,9 @@ export function RecurringTemplateFormModal({
   confirmLoading,
   onCancel,
   onSave,
+  onPause,
+  onResume,
+  onDelete,
 }: RecurringTemplateFormModalProps) {
   const { t } = useTranslation("events");
   const [formState, setFormState] = useState<RecurringTemplateFormState>(() => buildFormState(template));
@@ -400,13 +407,46 @@ export function RecurringTemplateFormModal({
         </Stack>
 
         {/* ── Actions ── */}
-        <Group justify="flex-end" mt={4}>
-          <Button variant="default" onClick={onCancel} leftSection={<XIcon size={16} />}>
-            {t("button.cancel")}
-          </Button>
-          <Button onClick={handleSave} loading={confirmLoading} leftSection={mode === "create" ? <PlusIcon size={16} /> : <SaveIcon size={16} />}>
-            {mode === "create" ? t("recurring.create") : t("button.save")}
-          </Button>
+        <Group justify={mode === "edit" ? "space-between" : "flex-end"} mt={4}>
+          {mode === "edit" && template && (
+            <Group gap={8}>
+              {template.archived_at ? (
+                <Button
+                  variant="light"
+                  color="green"
+                  leftSection={<IconPlayerPlay size={16} />}
+                  onClick={() => { void onResume?.(template.id); onCancel(); }}
+                >
+                  {t("recurring.resume")}
+                </Button>
+              ) : (
+                <Button
+                  variant="light"
+                  color="yellow"
+                  leftSection={<IconPlayerPause size={16} />}
+                  onClick={() => { void onPause?.(template.id); onCancel(); }}
+                >
+                  {t("recurring.pause")}
+                </Button>
+              )}
+              <Button
+                variant="light"
+                color="red"
+                leftSection={<IconTrash size={16} />}
+                onClick={() => { onDelete?.(template.id); }}
+              >
+                {t("recurring.delete")}
+              </Button>
+            </Group>
+          )}
+          <Group gap={8}>
+            <Button variant="default" onClick={onCancel} leftSection={<XIcon size={16} />}>
+              {t("button.cancel")}
+            </Button>
+            <Button onClick={handleSave} loading={confirmLoading} leftSection={mode === "create" ? <PlusIcon size={16} /> : <SaveIcon size={16} />}>
+              {mode === "create" ? t("recurring.create") : t("button.save")}
+            </Button>
+          </Group>
         </Group>
       </Stack>
     </Modal>

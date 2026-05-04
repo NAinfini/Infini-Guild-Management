@@ -1,14 +1,10 @@
 import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
 import { PortalCard } from "@portal/components/shared/PortalCard";
 import { Badge, Group, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { DotsIcon, PencilIcon, PlayIcon, TrashIcon } from "@portal/components/icons";
 import {
   IconCalendarRepeat,
-  IconPlayerPause,
   IconClock,
   IconUsers,
 } from "@tabler/icons-react";
@@ -239,59 +235,6 @@ export function RecurringTemplatesTab({
                           </Text>
                         </Tooltip>
                       )}
-
-                      {canManage && (
-                        <InfiniMenu position="bottom-end" withArrow>
-                          <InfiniMenu.Target>
-                            <DepthButton
-                              type="secondary"
-                              size="sm"
-                              iconOnly
-                              onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                            >
-                              <DotsIcon size={16} />
-                            </DepthButton>
-                          </InfiniMenu.Target>
-                          <InfiniMenu.Dropdown>
-                            <InfiniMenu.Item
-                              leftSection={<PencilIcon size={14} />}
-                              onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleEdit(template); }}
-                            >
-                              {t("menu.edit")}
-                            </InfiniMenu.Item>
-                            {isPaused ? (
-                              <InfiniMenu.Item
-                                leftSection={<PlayIcon size={14} />}
-                                onClick={(e: React.MouseEvent) => {
-                                  e.stopPropagation();
-                                  void onResumeTemplate(template.id);
-                                }}
-                              >
-                                {t("recurring.resume")}
-                              </InfiniMenu.Item>
-                            ) : (
-                              <InfiniMenu.Item
-                                leftSection={<IconPlayerPause size={14} />}
-                                onClick={(e: React.MouseEvent) => {
-                                  e.stopPropagation();
-                                  void onPauseTemplate(template.id);
-                                }}
-                              >
-                                {t("recurring.pause")}
-                              </InfiniMenu.Item>
-                            )}
-                            <InfiniMenu.Divider />
-                            <InfiniMenu.Item
-                              className="infini-menu-item--danger"
-                              color="red"
-                              leftSection={<TrashIcon size={14} />}
-                              onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDelete(template); }}
-                            >
-                              {t("recurring.delete")}
-                            </InfiniMenu.Item>
-                          </InfiniMenu.Dropdown>
-                        </InfiniMenu>
-                      )}
                     </Group>
                   </Group>
                 </div>
@@ -311,6 +254,12 @@ export function RecurringTemplatesTab({
           setEditingTemplate(null);
         }}
         onSave={handleFormSave}
+        onPause={onPauseTemplate}
+        onResume={onResumeTemplate}
+        onDelete={(id) => {
+          const tpl = templates.find((t) => t.id === id);
+          if (tpl) handleDelete(tpl);
+        }}
       />
     </>
   );
