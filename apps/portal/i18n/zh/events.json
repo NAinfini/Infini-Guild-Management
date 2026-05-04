@@ -198,5 +198,9 @@
   "field.attachmentsCount": "附件（{{current}}/{{max}}）",
   "field.endBeforeStart": "结束时间必须晚于开始时间",
   "aria.filterByType": "按类型筛选活动",
-  "action.loadMore": "加载更多"
+  "action.loadMore": "加载更多",
+  "recurring.section.details": "活动信息",
+  "recurring.section.schedule": "时间安排",
+  "recurring.section.recurrence": "重复模式",
+  "recurring.section.options": "选项"
 }
