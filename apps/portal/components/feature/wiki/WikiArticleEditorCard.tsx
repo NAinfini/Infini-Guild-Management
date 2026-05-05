@@ -203,17 +203,18 @@ export function WikiArticleEditorCard({
 
           {!isLoading && !isError ? (
             <Stack gap={12}>
-              <TextInput
-                label={t("articleEditor.titleField")}
-                value={articleTitle}
-                disabled={!canEdit}
-                onChange={(event) => onArticleTitleChange(event.currentTarget.value)}
-                placeholder={t("articleEditor.titleField")}
-                aria-label={t("aria.articleTitle")}
-              />
-              <Group gap={8} wrap="wrap">
+              <Group gap={12} wrap="nowrap" align="flex-end" grow>
+                <TextInput
+                  label={t("articleEditor.titleField")}
+                  value={articleTitle}
+                  disabled={!canEdit}
+                  onChange={(event) => onArticleTitleChange(event.currentTarget.value)}
+                  placeholder={t("articleEditor.titleField")}
+                  aria-label={t("aria.articleTitle")}
+                  style={{ flex: 1 }}
+                />
                 <Select
-                  w={260}
+                  w={200}
                   label={t("articleEditor.category")}
                   value={articleCategoryId || null}
                   disabled={!canEdit}
@@ -221,6 +222,7 @@ export function WikiArticleEditorCard({
                   placeholder={t("articleEditor.category")}
                   aria-label={t("aria.articleCategory")}
                   onChange={(value) => onArticleCategoryChange(value ?? "")}
+                  style={{ flex: 0, minWidth: 200 }}
                 />
               </Group>
               <Text fw={600} size="sm">
