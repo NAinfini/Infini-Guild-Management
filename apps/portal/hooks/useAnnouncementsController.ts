@@ -69,7 +69,7 @@ export function useAnnouncementsController() {
 
   const { canManage: canManagePermission } = useEffectivePermissions();
 
-  const isModerator = canManagePermission(["announcements.create", "announcements.edit", "announcements.archive"]);
+  const isModerator = canManagePermission(["announcements.create", "announcements.edit", "announcements.archive", "announcements.delete"]);
   const canEdit = isModerator && !isExternalView;
 
   const [pinnedFilter, setPinnedFilter] = useState(false);

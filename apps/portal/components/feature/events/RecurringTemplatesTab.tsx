@@ -1,7 +1,8 @@
 import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
 import { PortalCard } from "@portal/components/shared/PortalCard";
-import { Badge, Group, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
+import { CircleCheckIcon, PauseIcon } from "@portal/components/icons";
+import { Badge, Group, HoverCard, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import {
   IconCalendarRepeat,
@@ -199,14 +200,33 @@ export function RecurringTemplatesTab({
                               {t(`common:eventType.${typeDef}`)}
                             </Badge>
                           )}
-                          <Badge
-                            size="xs"
-                            variant="light"
-                            color={isPaused ? "gray" : "green"}
-                            style={{ flexShrink: 0 }}
-                          >
-                            {isPaused ? t("recurring.status.paused") : t("recurring.status.active")}
-                          </Badge>
+                          <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                            <HoverCard.Target>
+                              <Badge
+                                size="xs"
+                                variant="light"
+                                color={isPaused ? "gray" : "green"}
+                                style={{ flexShrink: 0 }}
+                              >
+                                {isPaused ? t("recurring.status.paused") : t("recurring.status.active")}
+                              </Badge>
+                            </HoverCard.Target>
+                            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                              <Group gap={10} wrap="nowrap" align="flex-start">
+                                <ThemeIcon variant="light" color={isPaused ? "yellow" : "green"} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                                  {isPaused ? <PauseIcon size={16} /> : <CircleCheckIcon size={16} />}
+                                </ThemeIcon>
+                                <div style={{ minWidth: 0 }}>
+                                  <Text size="sm" fw={700} lh={1.3} mb={4}>
+                                    {isPaused ? t("tooltip.templatePaused.title") : t("tooltip.templateActive.title")}
+                                  </Text>
+                                  <Text size="xs" c="dimmed" lh={1.5}>
+                                    {isPaused ? t("tooltip.templatePaused.desc") : t("tooltip.templateActive.desc")}
+                                  </Text>
+                                </div>
+                              </Group>
+                            </HoverCard.Dropdown>
+                          </HoverCard>
                         </Group>
 
                         <Group gap={16} wrap="wrap">
@@ -229,11 +249,25 @@ export function RecurringTemplatesTab({
 
                     <Group gap={12} align="center" wrap="nowrap" style={{ flexShrink: 0 }}>
                       {template.last_generated_date && (
-                        <Tooltip label={t("recurring.lastGenerated", { date: new Date(template.last_generated_date).toLocaleDateString(i18n.language) })} withArrow>
-                          <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-                            {t("recurring.generated", { count: template.generation_count })}
-                          </Text>
-                        </Tooltip>
+                        <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                          <HoverCard.Target>
+                            <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                              {t("recurring.generated", { count: template.generation_count })}
+                            </Text>
+                          </HoverCard.Target>
+                          <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                            <Group gap={10} wrap="nowrap" align="flex-start">
+                              <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                                <IconClock size={16} stroke={1.5} />
+                              </ThemeIcon>
+                              <div style={{ minWidth: 0 }}>
+                                <Text size="sm" fw={700} lh={1.3}>{t("recurring.hovercard.lastGenerated.title")}</Text>
+                                <Text size="xs" c="dimmed" lh={1.5}>{t("recurring.lastGenerated", { date: new Date(template.last_generated_date).toLocaleDateString(i18n.language) })}</Text>
+                                <Text size="xs" c="dimmed" lh={1.5}>{t("recurring.hovercard.lastGenerated.desc")}</Text>
+                              </div>
+                            </Group>
+                          </HoverCard.Dropdown>
+                        </HoverCard>
                       )}
                     </Group>
                   </Group>

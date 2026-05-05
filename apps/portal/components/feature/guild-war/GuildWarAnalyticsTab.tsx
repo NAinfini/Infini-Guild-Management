@@ -3,6 +3,7 @@ import {
   Avatar,
   Collapse,
   Group,
+  HoverCard,
   NumberInput,
   SegmentedControl,
   Select,
@@ -13,6 +14,7 @@ import {
   Table,
   Text,
   TextInput,
+  ThemeIcon,
   UnstyledButton,
 } from "@mantine/core";
 import {
@@ -382,23 +384,38 @@ export function GuildWarAnalyticsTab({
             {/* ── Center: Chart ── */}
             <div className="gwa-main">
               <div className="gwa-chart">
-                <UnstyledButton
-                  onClick={() => setChartExpanded(!chartExpanded)}
-                  className="gwa-chart__expand"
-                  aria-label={chartExpanded ? t("analytics.aria.collapseChart") : t("analytics.aria.expandChart")}
-                >
-                  {chartExpanded ? (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
-                      <line x1="14" y1="10" x2="21" y2="3" /><line x1="3" y1="21" x2="10" y2="14" />
-                    </svg>
-                  ) : (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
-                      <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-                    </svg>
-                  )}
-                </UnstyledButton>
+                <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                  <HoverCard.Target>
+                    <UnstyledButton
+                      onClick={() => setChartExpanded(!chartExpanded)}
+                      className="gwa-chart__expand"
+                      aria-label={chartExpanded ? t("analytics.aria.collapseChart") : t("analytics.aria.expandChart")}
+                    >
+                      {chartExpanded ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
+                          <line x1="14" y1="10" x2="21" y2="3" /><line x1="3" y1="21" x2="10" y2="14" />
+                        </svg>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+                          <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+                        </svg>
+                      )}
+                    </UnstyledButton>
+                  </HoverCard.Target>
+                  <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                    <Group gap={10} wrap="nowrap" align="flex-start">
+                      <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                        {chartExpanded ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
+                      </ThemeIcon>
+                      <div style={{ minWidth: 0 }}>
+                        <Text size="sm" fw={700} lh={1.3} mb={4}>{chartExpanded ? t("hovercard.collapseChart.title") : t("hovercard.expandChart.title")}</Text>
+                        <Text size="xs" c="dimmed" lh={1.5}>{chartExpanded ? t("hovercard.collapseChart.desc") : t("hovercard.expandChart.desc")}</Text>
+                      </div>
+                    </Group>
+                  </HoverCard.Dropdown>
+                </HoverCard>
                 {analytics.analyticsMode === "radar" && analytics.analyticsRadarOption ? (
                   <ReactEChartsCore
                     key={`radar-${analytics.analyticsSelectedUsers.join(",")}-${analytics.analyticsSelectedMetrics.join(",")}`}
@@ -589,14 +606,29 @@ export function GuildWarAnalyticsTab({
                   label={t("analytics.heatmap")}
                   styles={{ label: { fontSize: 11, cursor: "pointer" } }}
                 />
-                <UnstyledButton
-                  onClick={(e) => { e.stopPropagation(); analytics.copyAnalyticsCsv(); }}
-                  className="gwa-table-action"
-                  aria-label={t("analytics.aria.copyCsv")}
-                >
-                  <CopyIcon size={13} />
-                  <Text size="xs">CSV</Text>
-                </UnstyledButton>
+                <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                  <HoverCard.Target>
+                    <UnstyledButton
+                      onClick={(e) => { e.stopPropagation(); analytics.copyAnalyticsCsv(); }}
+                      className="gwa-table-action"
+                      aria-label={t("analytics.aria.copyCsv")}
+                    >
+                      <CopyIcon size={13} />
+                      <Text size="xs">CSV</Text>
+                    </UnstyledButton>
+                  </HoverCard.Target>
+                  <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                    <Group gap={10} wrap="nowrap" align="flex-start">
+                      <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                        <CopyIcon size={16} />
+                      </ThemeIcon>
+                      <div style={{ minWidth: 0 }}>
+                        <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.copyCsv.title")}</Text>
+                        <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.copyCsv.desc")}</Text>
+                      </div>
+                    </Group>
+                  </HoverCard.Dropdown>
+                </HoverCard>
               </Group>
             </UnstyledButton>
             <Collapse in={tableExpanded}>

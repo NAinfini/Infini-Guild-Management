@@ -17,7 +17,7 @@ import { writeAuditLog } from "../services/audit";
 import { AdminService, type MediaLike } from "../services/AdminService";
 import { AdminAuditService, AuditLogQueryError } from "../services/AdminAuditService";
 import { createPasswordHash } from "../services/auth";
-import { buildError, parseBoolean, parseJsonBody, parsePage } from "./_shared";
+import { buildError, parseBoolean, parseJsonBody } from "./_shared";
 
 const generateInviteCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 8);
 const generateTemporaryPassword = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", 12);
@@ -276,22 +276,12 @@ adminRoutes.get("/audit-archive/months", async (c) => {
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
 
-adminRoutes.get("/audit-archive/:month", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.audit.view");
-  if (sessionUser instanceof Response) return sessionUser;
-  const page = parsePage(c.req.query("page"), 1);
-  const limit = Math.min(100, parsePage(c.req.query("limit"), 100));
-  const result = await getAdminAuditService(c).getArchiveMonth(c.req.param("month"), page, limit);
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
-});
-
 adminRoutes.get("/audit-archive/download", async (c) => {
   const sessionUser = await requirePermission(c, "admin.audit.export");
   if (sessionUser instanceof Response) return sessionUser;
   const month = c.req.query("month");
   if (!month) return buildError(c, "VALIDATION_ERROR", "month query parameter required");
-  const format = c.req.query("format") ?? "raw_ndjson_gz";
-  const result = await getAdminAuditService(c).getArchiveDownloadLinks(sessionUser.id, month, format, (token) => buildArchiveDownloadUrl(c, token));
+  const result = await getAdminAuditService(c).getArchiveDownloadLinks(sessionUser.id, month, (token) => buildArchiveDownloadUrl(c, token));
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
 });
 

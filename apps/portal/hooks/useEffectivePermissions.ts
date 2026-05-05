@@ -39,6 +39,7 @@ export function useEffectivePermissions(): {
       "admin.invite.view",
       "admin.audit.view",
       "admin.status.view",
+      "admin.analytics.view",
       "admin.roles.manage",
     ].some((p) => (r.permissions as Record<string, boolean>)[p] === true),
   );

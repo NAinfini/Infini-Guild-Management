@@ -1,7 +1,7 @@
 ﻿import type { WikiArticle } from "@guild/shared";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
-import { Alert, Button, Group, MultiSelect, Skeleton, Stack, Text, Tooltip, VisuallyHidden } from "@mantine/core";
+import { Alert, Button, Group, HoverCard, MultiSelect, Skeleton, Stack, Text, ThemeIcon, VisuallyHidden } from "@mantine/core";
 import { ArchiveIcon, PencilIcon, PinIcon, PlusIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -113,18 +113,44 @@ export function WikiArticleListCard({
                     <Group gap={6}>
                       <Text fw={600}>{item.title}</Text>
                       {item.pinned ? (
-                        <Tooltip label={t("articleEditor.pinned")} withArrow>
-                          <Text c="blue" style={{ display: "inline-flex", alignItems: "center" }}>
-                            <PinIcon size={14} aria-hidden />
-                          </Text>
-                        </Tooltip>
+                        <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                          <HoverCard.Target>
+                            <ThemeIcon variant="transparent" color="orange" size="sm" style={{ cursor: "default" }}>
+                              <PinIcon size={14} aria-hidden />
+                            </ThemeIcon>
+                          </HoverCard.Target>
+                          <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                            <Group gap={10} wrap="nowrap" align="flex-start">
+                              <ThemeIcon variant="light" color="orange" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                                <PinIcon size={16} />
+                              </ThemeIcon>
+                              <div style={{ minWidth: 0 }}>
+                                <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.pinned.title")}</Text>
+                                <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.pinned.desc")}</Text>
+                              </div>
+                            </Group>
+                          </HoverCard.Dropdown>
+                        </HoverCard>
                       ) : null}
                       {item.archived_at ? (
-                        <Tooltip label={t("articleEditor.archived")} withArrow>
-                          <Text c="yellow" style={{ display: "inline-flex", alignItems: "center" }}>
-                            <ArchiveIcon size={14} aria-hidden />
-                          </Text>
-                        </Tooltip>
+                        <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                          <HoverCard.Target>
+                            <ThemeIcon variant="transparent" color="gray" size="sm" style={{ cursor: "default" }}>
+                              <ArchiveIcon size={14} aria-hidden />
+                            </ThemeIcon>
+                          </HoverCard.Target>
+                          <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                            <Group gap={10} wrap="nowrap" align="flex-start">
+                              <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                                <ArchiveIcon size={16} />
+                              </ThemeIcon>
+                              <div style={{ minWidth: 0 }}>
+                                <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.archived.title")}</Text>
+                                <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.archived.desc")}</Text>
+                              </div>
+                            </Group>
+                          </HoverCard.Dropdown>
+                        </HoverCard>
                       ) : null}
                     </Group>
                     <Text c="dimmed" size="xs">

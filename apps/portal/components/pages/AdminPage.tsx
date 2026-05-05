@@ -383,6 +383,9 @@ export function AdminPage() {
               onAuditPageChange={setAuditPage}
               rolesData={rolesQuery.data ?? []}
               userMap={userMap}
+              archiveMonths={auditMonthsQuery.data?.months ?? []}
+              archiveMonthsLoading={auditMonthsQuery.isLoading}
+              archiveMonthsError={auditMonthsQuery.isError}
             />
           </Suspense>
           </ErrorBoundary>

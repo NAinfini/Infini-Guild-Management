@@ -159,6 +159,7 @@
   "unsavedChanges.stay": "Stay",
   "label.notificationsUnread": "Notifications (unread)",
   "action.clearNotifications": "Clear all notifications",
+  "notification.tooltip.clearAll": "Remove all notification history from this session.",
   "nav.skipToContent": "Skip to content",
   "pagination.perPage": "Per page",
   "pagination.page": "Page"

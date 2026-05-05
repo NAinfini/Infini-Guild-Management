@@ -6,6 +6,7 @@ import { useAuthStore } from "../../../stores/auth";
 import { formatAuditDiffHeader, formatDateTime, maskIdentifier } from "../../../utils/admin";
 import { canManageRoles, canViewStatus } from "../../../utils/permissions";
 import { AuditLogViewer } from "./AuditLogViewer";
+import { AuditArchiveExplorer } from "./AuditArchiveExplorer";
 
 type AuditRow = AuditLogEntry;
 
@@ -29,6 +30,9 @@ type AdminAuditSectionProps = {
   onAuditPageChange: (nextPage: number) => void;
   rolesData: import("@guild/shared").AdminRole[];
   userMap?: Map<string, string>;
+  archiveMonths: string[];
+  archiveMonthsLoading: boolean;
+  archiveMonthsError: boolean;
 };
 
 export function AdminAuditSection({
@@ -51,6 +55,9 @@ export function AdminAuditSection({
   onAuditPageChange,
   rolesData,
   userMap,
+  archiveMonths,
+  archiveMonthsLoading,
+  archiveMonthsError,
 }: AdminAuditSectionProps) {
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
@@ -125,6 +132,12 @@ export function AdminAuditSection({
         formatAuditDiffHeader={formatAuditDiffHeader}
         formatDateTime={formatDateTime}
         userMap={userMap}
+      />
+
+      <AuditArchiveExplorer
+        months={archiveMonths}
+        monthsLoading={archiveMonthsLoading}
+        monthsError={archiveMonthsError}
       />
     </Stack>
   );

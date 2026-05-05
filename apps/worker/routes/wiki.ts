@@ -29,7 +29,6 @@ function getService(c: Context): WikiService {
 
 async function requireWikiArticlesCreate(c: Context) { return requirePermission(c, "wiki.articles.create"); }
 async function requireWikiArticlesEdit(c: Context) { return requirePermission(c, "wiki.articles.edit"); }
-async function requireWikiArticlesArchive(c: Context) { return requirePermission(c, "wiki.articles.archive"); }
 async function requireWikiCategoriesManage(c: Context) { return requirePermission(c, "wiki.categories.manage"); }
 
 wikiRoutes.get("/image", async (c) => {
@@ -126,7 +125,7 @@ wikiRoutes.patch("/articles/:id", async (c) => {
 });
 
 wikiRoutes.delete("/articles/:id", async (c) => {
-  const sessionUser = await requireWikiArticlesArchive(c);
+  const sessionUser = await requirePermission(c, "wiki.articles.delete");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).archiveArticle(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);

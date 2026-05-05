@@ -8,17 +8,6 @@ import { parsePage } from "../routes/_shared";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
 
-type AuditArchiveRow = {
-  id: string;
-  entityType: string;
-  action: string;
-  actorId: string;
-  entityId: string;
-  diffTitle: string | null;
-  detailText: string | null;
-  createdAt: string;
-};
-
 type AuditArchiveManifestFile = {
   key: string;
   row_count: number;
@@ -33,12 +22,6 @@ type AuditArchiveManifest = {
   total_rows: number;
   entities: Record<string, number>;
   files: AuditArchiveManifestFile[];
-};
-
-type AuditArchiveReadResult = {
-  rows: AuditArchiveRow[];
-  source: "r2_manifest";
-  manifest: AuditArchiveManifest | null;
 };
 
 type SignedArchiveDownloadPayload = {
@@ -176,41 +159,9 @@ function csvCell(value: string | null) {
   return `"${normalized.replace(/"/g, "\"\"")}"`;
 }
 
-function normalizeAuditArchiveRow(value: unknown): AuditArchiveRow | null {
-  if (!value || typeof value !== "object") return null;
-  const row = value as Record<string, unknown>;
-  const id = typeof row.id === "string" ? row.id : null;
-  const entityType = typeof row.entity_type === "string" ? row.entity_type : null;
-  const action = typeof row.action === "string" ? row.action : null;
-  const actorId = typeof row.actor_id === "string" ? row.actor_id : null;
-  const entityId = typeof row.entity_id === "string" ? row.entity_id : null;
-  const createdAt = typeof row.created_at === "string" ? row.created_at : null;
-  if (!id || !entityType || !action || !actorId || !entityId || !createdAt) return null;
-  return {
-    id, entityType, action, actorId, entityId,
-    diffTitle: typeof row.diff_title === "string" ? row.diff_title : null,
-    detailText: typeof row.detail_text === "string" ? row.detail_text : null,
-    createdAt,
-  };
-}
-
 function archiveMonthPaths(month: string): { manifestKey: string } {
   const [year, monthNumber] = month.split("-");
   return { manifestKey: `${AUDIT_ARCHIVE_PREFIX}/${year}/${monthNumber}/manifest.json` };
-}
-
-function normalizeArchiveManifestFile(value: unknown): AuditArchiveManifestFile | null {
-  if (!value || typeof value !== "object") return null;
-  const row = value as Record<string, unknown>;
-  const key = typeof row.key === "string" ? row.key : null;
-  const rowCount = typeof row.row_count === "number" ? row.row_count : null;
-  const sizeBytes = typeof row.size_bytes === "number" ? row.size_bytes : null;
-  if (!key || rowCount === null || sizeBytes === null) return null;
-  return {
-    key, row_count: rowCount, size_bytes: sizeBytes,
-    content_encoding: typeof row.content_encoding === "string" ? row.content_encoding : undefined,
-    content_type: typeof row.content_type === "string" ? row.content_type : undefined,
-  };
 }
 
 function normalizeAuditArchiveManifest(value: unknown, month: string): AuditArchiveManifest | null {
@@ -221,8 +172,20 @@ function normalizeAuditArchiveManifest(value: unknown, month: string): AuditArch
   const totalRows = typeof record.total_rows === "number" ? record.total_rows : null;
   const filesRaw = record.files;
   if (payloadMonth !== month || !generatedAt || totalRows === null || !Array.isArray(filesRaw)) return null;
-  const files = filesRaw.map(normalizeArchiveManifestFile);
-  if (files.some((f) => f === null)) return null;
+  const files: AuditArchiveManifestFile[] = [];
+  for (const f of filesRaw) {
+    if (!f || typeof f !== "object") return null;
+    const fr = f as Record<string, unknown>;
+    const key = typeof fr.key === "string" ? fr.key : null;
+    const rowCount = typeof fr.row_count === "number" ? fr.row_count : null;
+    const sizeBytes = typeof fr.size_bytes === "number" ? fr.size_bytes : null;
+    if (!key || rowCount === null || sizeBytes === null) return null;
+    files.push({
+      key, row_count: rowCount, size_bytes: sizeBytes,
+      content_encoding: typeof fr.content_encoding === "string" ? fr.content_encoding : undefined,
+      content_type: typeof fr.content_type === "string" ? fr.content_type : undefined,
+    });
+  }
   const entities: Record<string, number> = {};
   const entitiesRaw = record.entities;
   if (entitiesRaw && typeof entitiesRaw === "object" && !Array.isArray(entitiesRaw)) {
@@ -230,33 +193,7 @@ function normalizeAuditArchiveManifest(value: unknown, month: string): AuditArch
       if (typeof count === "number") entities[et] = count;
     }
   }
-  return { month: payloadMonth, generated_at: generatedAt, total_rows: totalRows, entities, files: files as AuditArchiveManifestFile[] };
-}
-
-async function decompressGzipText(buffer: ArrayBuffer): Promise<string> {
-  const decompression = new DecompressionStream("gzip");
-  const decompressedStream = new Blob([buffer]).stream().pipeThrough(decompression);
-  return await new Response(decompressedStream).text();
-}
-
-function parseArchiveRowsFromNdjson(ndjson: string): AuditArchiveRow[] {
-  if (!ndjson.trim()) return [];
-  const lines = ndjson.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
-  const normalized = lines.map((l) => normalizeAuditArchiveRow(JSON.parse(l) as unknown));
-  if (normalized.some((r) => r === null)) throw new Error("Invalid archive row shape");
-  return normalized as AuditArchiveRow[];
-}
-
-async function readArchiveRowsFromManifest(media: MediaLike, manifest: AuditArchiveManifest): Promise<AuditArchiveRow[]> {
-  const rows: AuditArchiveRow[] = [];
-  for (const file of manifest.files) {
-    const object = await media.get(file.key);
-    if (!object) throw new Error(`Missing archive file ${file.key}`);
-    const shouldDecompress = file.key.endsWith(".gz") || file.content_encoding?.toLowerCase() === "gzip" || object.httpMetadata?.contentEncoding?.toLowerCase() === "gzip";
-    const text = shouldDecompress ? await decompressGzipText(await object.arrayBuffer()) : await object.text();
-    rows.push(...parseArchiveRowsFromNdjson(text));
-  }
-  return rows;
+  return { month: payloadMonth, generated_at: generatedAt, total_rows: totalRows, entities, files };
 }
 
 async function listArchiveMonthsFromR2(media: MediaLike): Promise<string[]> {
@@ -271,16 +208,6 @@ async function listArchiveMonthsFromR2(media: MediaLike): Promise<string[]> {
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
   return Array.from(months).sort((a, b) => b.localeCompare(a));
-}
-
-async function readArchiveMonthFromR2(media: MediaLike, month: string): Promise<AuditArchiveReadResult | null> {
-  const { manifestKey } = archiveMonthPaths(month);
-  const manifestObject = await media.get(manifestKey);
-  if (!manifestObject) return null;
-  const parsed = normalizeAuditArchiveManifest(JSON.parse(await manifestObject.text()) as unknown, month);
-  if (!parsed) throw new Error("Invalid archive manifest");
-  const rows = await readArchiveRowsFromManifest(media, parsed);
-  return { rows, source: "r2_manifest", manifest: parsed };
 }
 
 async function readArchiveManifestFromR2(media: MediaLike, month: string): Promise<AuditArchiveManifest | null> {
@@ -516,30 +443,8 @@ export class AdminAuditService {
     return ok({ months, source: "r2_manifest" });
   }
 
-  async getArchiveMonth(month: string, page: number, limit: number): Promise<ServiceResult<unknown>> {
+  async getArchiveDownloadLinks(actorId: string, month: string, buildDownloadUrl: (token: string) => string): Promise<ServiceResult<unknown>> {
     if (!/^\d{4}-\d{2}$/.test(month)) return err("VALIDATION_ERROR", "month must match YYYY-MM");
-    let rows: AuditArchiveRow[] = [];
-    let source: "r2_manifest" = "r2_manifest";
-    let manifest: AuditArchiveManifest | null = null;
-    try {
-      const resolved = await readArchiveMonthFromR2(this.deps.media, month);
-      if (!resolved) return err("NOT_FOUND", "Archive month not found");
-      rows = resolved.rows;
-      source = resolved.source;
-      manifest = resolved.manifest;
-    } catch {
-      return err("SERVER_ERROR", "Failed to read audit archive");
-    }
-    const total = rows.length;
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-    const offset = (page - 1) * limit;
-    const pageRows = rows.slice(offset, offset + limit);
-    return ok({ month, total, page, limit, total_pages: totalPages, source, manifest: manifest === null ? null : { generated_at: manifest.generated_at, total_rows: manifest.total_rows, file_count: manifest.files.length, total_size_bytes: manifest.files.reduce((sum, f) => sum + Math.max(0, f.size_bytes), 0) }, data: pageRows.map((r) => auditLogSchema.parse({ id: r.id, entity_type: r.entityType, action: r.action, actor_id: r.actorId, entity_id: r.entityId, diff_title: r.diffTitle, detail_text: r.detailText, created_at: r.createdAt })) });
-  }
-
-  async getArchiveDownloadLinks(actorId: string, month: string, format: string, buildDownloadUrl: (token: string) => string): Promise<ServiceResult<unknown>> {
-    if (!/^\d{4}-\d{2}$/.test(month)) return err("VALIDATION_ERROR", "month must match YYYY-MM");
-    if (format !== "raw_ndjson_gz" && format !== "csv") return err("VALIDATION_ERROR", "format must be raw_ndjson_gz or csv");
     const cutoff = new Date(Date.now() - AUDIT_ARCHIVE_EXPORT_MIN_INTERVAL_SECONDS * 1000).toISOString();
     const recent = (await this.deps.db.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.entityType, "audit_archive_export"), eq(auditLog.actorId, actorId), gte(auditLog.createdAt, cutoff))).limit(1))[0];
     if (recent) return err("RATE_LIMITED", `Archive export is limited to one action every ${AUDIT_ARCHIVE_EXPORT_MIN_INTERVAL_SECONDS} seconds`);
@@ -556,8 +461,8 @@ export class AdminAuditService {
       const token = await signArchiveDownloadToken(this.deps.signingSecret, { key: file.key, month, actor_id: actorId, exp: expiresAtEpochSeconds, nonce: this.deps.generateId().slice(0, 10) });
       return { key: file.key, row_count: file.row_count, size_bytes: file.size_bytes, expires_at: new Date(expiresAtEpochSeconds * 1000).toISOString(), url: buildDownloadUrl(token) };
     }));
-    await this.deps.writeAuditLog({ entityType: "audit_archive_export", action: format === "csv" ? "export_csv" : "export_raw_ndjson_gz", actorId, entityId: month, diffTitle: month, detailText: JSON.stringify({ format, file_count: downloadFiles.length, ttl_seconds: AUDIT_ARCHIVE_DOWNLOAD_TTL_SECONDS }) });
-    return ok({ month, format, expires_in_seconds: AUDIT_ARCHIVE_DOWNLOAD_TTL_SECONDS, files: downloadFiles });
+    await this.deps.writeAuditLog({ entityType: "audit_archive_export", action: "download_raw_ndjson_gz", actorId, entityId: month, diffTitle: month, detailText: JSON.stringify({ file_count: downloadFiles.length, ttl_seconds: AUDIT_ARCHIVE_DOWNLOAD_TTL_SECONDS }) });
+    return ok({ month, expires_in_seconds: AUDIT_ARCHIVE_DOWNLOAD_TTL_SECONDS, files: downloadFiles });
   }
 
   async verifyAndGetArchiveFile(token: string): Promise<ServiceResult<{ body: ReadableStream; contentType: string; contentEncoding?: string; filename: string; actorId: string; month: string; key: string }>> {

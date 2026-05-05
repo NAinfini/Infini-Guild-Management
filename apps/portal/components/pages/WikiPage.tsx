@@ -50,7 +50,7 @@ export function WikiPage() {
   const isMobile = !isDesktop;
   const isExternalView = useExternalView();
   const { canManage: canManagePermission } = useEffectivePermissions();
-  const isModerator = canManagePermission(["wiki.articles.create", "wiki.articles.edit", "wiki.articles.archive", "wiki.categories.manage"]);
+  const isModerator = canManagePermission(["wiki.articles.create", "wiki.articles.edit", "wiki.articles.archive", "wiki.articles.delete", "wiki.categories.manage"]);
   const canEdit = isModerator && !isExternalView;
 
   const [search, setSearch] = useState("");

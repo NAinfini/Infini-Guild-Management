@@ -1,5 +1,6 @@
-import { Alert, Badge, RingProgress, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
+import { Alert, Badge, Group, HoverCard, RingProgress, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
 import { IconDatabase, IconCloud, IconWifi, IconClock } from "@tabler/icons-react";
+import { CircleCheckIcon, AlertTriangleIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import "./AdminSystemSection.css";
 
@@ -79,20 +80,35 @@ export function AdminSystemSection({
         const color = isOk ? svc.okColor : svc.errorColor;
 
         return (
-          <div key={svc.key} className={`system-health-tile ${isOk ? "system-health-tile--ok" : "system-health-tile--error"}`}>
-            <div className="system-health-tile__icon" style={{ color }}>
-              <Icon size={22} stroke={1.8} />
-            </div>
-            <Text size="xs" fw={700} className="system-health-tile__label">{svc.label}</Text>
-            <Badge
-              size="sm"
-              variant="light"
-              color={isOk ? "green" : svc.key === "ws" ? "yellow" : "red"}
-              className="system-health-tile__badge"
-            >
-              {statusData[svc.key].toUpperCase()}
-            </Badge>
-          </div>
+          <HoverCard key={svc.key} width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+            <HoverCard.Target>
+              <div className={`system-health-tile ${isOk ? "system-health-tile--ok" : "system-health-tile--error"}`}>
+                <div className="system-health-tile__icon" style={{ color }}>
+                  <Icon size={22} stroke={1.8} />
+                </div>
+                <Text size="xs" fw={700} className="system-health-tile__label">{svc.label}</Text>
+                <Badge
+                  size="sm"
+                  variant="light"
+                  color={isOk ? "green" : svc.key === "ws" ? "yellow" : "red"}
+                  className="system-health-tile__badge"
+                >
+                  {statusData[svc.key].toUpperCase()}
+                </Badge>
+              </div>
+            </HoverCard.Target>
+            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+              <Group gap={10} wrap="nowrap" align="flex-start">
+                <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <Icon size={16} stroke={1.8} />
+                </ThemeIcon>
+                <div style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={700} lh={1.3} mb={4}>{svc.label}</Text>
+                  <Text size="xs" c="dimmed" lh={1.5}>{t(`status.tooltip.${svc.key}`)}</Text>
+                </div>
+              </Group>
+            </HoverCard.Dropdown>
+          </HoverCard>
         );
       })}
 
@@ -117,12 +133,25 @@ export function AdminSystemSection({
         </Stack>
       </div>
 
-      <Tooltip label={allOk ? t("status.allHealthy", { defaultValue: "All systems operational" }) : t("status.hasIssues", { defaultValue: "Some services have issues" })} withArrow>
-        <div className={`system-health-overall ${allOk ? "system-health-overall--ok" : "system-health-overall--warn"}`}>
-          <div className={`system-health-overall__dot ${allOk ? "system-health-overall__dot--ok" : "system-health-overall__dot--warn"}`} />
-          <Text size="xs" fw={700}>{allOk ? t("status.operational") : t("status.degraded")}</Text>
-        </div>
-      </Tooltip>
+      <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+        <HoverCard.Target>
+          <div className={`system-health-overall ${allOk ? "system-health-overall--ok" : "system-health-overall--warn"}`}>
+            <div className={`system-health-overall__dot ${allOk ? "system-health-overall__dot--ok" : "system-health-overall__dot--warn"}`} />
+            <Text size="xs" fw={700}>{allOk ? t("status.operational") : t("status.degraded")}</Text>
+          </div>
+        </HoverCard.Target>
+        <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+          <Group gap={10} wrap="nowrap" align="flex-start">
+            <ThemeIcon variant="light" color={allOk ? "green" : "yellow"} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+              {allOk ? <CircleCheckIcon size={16} /> : <AlertTriangleIcon size={16} />}
+            </ThemeIcon>
+            <div style={{ minWidth: 0 }}>
+              <Text size="sm" fw={700} lh={1.3}>{allOk ? t("status.tooltip.overallHealthy.title") : t("status.tooltip.overallDegraded.title")}</Text>
+              <Text size="xs" c="dimmed" lh={1.5}>{allOk ? t("status.tooltip.overallHealthy.desc") : t("status.tooltip.overallDegraded.desc")}</Text>
+            </div>
+          </Group>
+        </HoverCard.Dropdown>
+      </HoverCard>
     </div>
   );
 }

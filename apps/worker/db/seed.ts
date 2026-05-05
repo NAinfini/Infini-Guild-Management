@@ -55,7 +55,11 @@ const ALL_TABLES = [
 export async function clearAllData(env: Bindings): Promise<void> {
   const db = drizzle(env.DB);
   for (const table of ALL_TABLES) {
-    await db.run(sql.raw(`DELETE FROM ${table}`));
+    try {
+      await db.run(sql.raw(`DELETE FROM ${table}`));
+    } catch {
+      // Table may not exist in a fresh or partially-migrated database
+    }
   }
 }
 
@@ -80,7 +84,6 @@ const ROLE_PERMISSION_KEYS = [
   "admin.analytics.view",
   "admin.analytics.manage",
   "guildwar.teams.edit",
-  "guildwar.templates",
   "guildwar.history.edit",
   "events.create",
   "events.edit",
@@ -90,11 +93,14 @@ const ROLE_PERMISSION_KEYS = [
   "announcements.create",
   "announcements.edit",
   "announcements.archive",
+  "announcements.delete",
   "gallery.upload",
   "gallery.manage",
+  "gallery.delete",
   "wiki.articles.create",
   "wiki.articles.edit",
   "wiki.articles.archive",
+  "wiki.articles.delete",
   "wiki.categories.manage",
 ] as const;
 
@@ -107,7 +113,6 @@ const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
   "admin.roles.view",
   "admin.analytics.view",
   "guildwar.teams.edit",
-  "guildwar.templates",
   "guildwar.history.edit",
   "events.create",
   "events.edit",
@@ -117,8 +122,10 @@ const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
   "announcements.create",
   "announcements.edit",
   "announcements.archive",
+  "announcements.delete",
   "gallery.upload",
   "gallery.manage",
+  "gallery.delete",
   "wiki.articles.create",
   "wiki.articles.edit",
   "wiki.articles.archive",

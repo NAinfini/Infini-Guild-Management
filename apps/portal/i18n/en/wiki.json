@@ -87,5 +87,9 @@
   "confirm.deleteArticle.title": "Delete Article",
   "confirm.deleteArticle.description": "Delete \"{{title}}\"? This cannot be undone.",
   "message.articleDeleted": "Article deleted",
-  "message.articleDeleteFailed": "Failed to delete article"
+  "message.articleDeleteFailed": "Failed to delete article",
+  "hovercard.pinned.title": "Pinned Article",
+  "hovercard.pinned.desc": "Pinned article — displayed first in category",
+  "hovercard.archived.title": "Archived Article",
+  "hovercard.archived.desc": "Archived — only accessible via direct link"
 }

@@ -1,9 +1,14 @@
 import {
   Badge,
   Checkbox,
+  Group,
+  HoverCard,
   NumberInput,
   Stack,
+  Text,
+  ThemeIcon,
 } from "@mantine/core";
+import { CircleCheckIcon, AlertTriangleIcon } from "@portal/components/icons";
 import { modals } from "@mantine/modals";
 import { getCoreRowModel, getSortedRowModel, useReactTable } from "@portal/components/shared/InfiniTable";
 import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
@@ -664,9 +669,39 @@ export function WarHistoryTab({
         const s = row.original.stats;
         const hasAnyData = s !== null && s !== undefined && Object.values(s).some((v) => v !== null && v !== 0);
         return hasAnyData ? (
-          <Badge color="green">{t("history.table.complete")}</Badge>
+          <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+            <HoverCard.Target>
+              <Badge color="green" style={{ cursor: "default" }}>{t("history.table.complete")}</Badge>
+            </HoverCard.Target>
+            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+              <Group gap={10} wrap="nowrap" align="flex-start">
+                <ThemeIcon variant="light" color="green" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <CircleCheckIcon size={16} />
+                </ThemeIcon>
+                <div style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.statusComplete.title")}</Text>
+                  <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.statusComplete.desc")}</Text>
+                </div>
+              </Group>
+            </HoverCard.Dropdown>
+          </HoverCard>
         ) : (
-          <Badge color="yellow">{t("history.table.missing")}</Badge>
+          <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+            <HoverCard.Target>
+              <Badge color="yellow" style={{ cursor: "default" }}>{t("history.table.missing")}</Badge>
+            </HoverCard.Target>
+            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+              <Group gap={10} wrap="nowrap" align="flex-start">
+                <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <AlertTriangleIcon size={16} />
+                </ThemeIcon>
+                <div style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.statusMissing.title")}</Text>
+                  <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.statusMissing.desc")}</Text>
+                </div>
+              </Group>
+            </HoverCard.Dropdown>
+          </HoverCard>
         );
       },
     },

@@ -376,6 +376,7 @@ export class AdminService {
     await this.deps.db.insert(roles).values({ id: roleId, name: input.name.trim(), level: input.level, color: input.color ?? null, isBuiltin: false });
     const permissionRecord = emptyPermissionRecord();
     for (const perm of PERMISSIONS) permissionRecord[perm] = Boolean(input.permissions?.[perm]);
+    permissionRecord["admin.roles.manage"] = false;
     await replaceRolePermissions(this.deps.rawDb, roleId, permissionRecord);
     clearPermissionCache(roleId);
     await this.deps.writeAuditLog({ entityType: "role", action: "create", actorId, entityId: roleId, diffTitle: input.name.trim(), detailText: JSON.stringify({ name: input.name.trim(), level: input.level, color: input.color ?? null, permissions: permissionRecord }) });
@@ -403,6 +404,7 @@ export class AdminService {
       const currentPermissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
       const nextPermissionRecord = parsePermissionRecord(roleId, currentPermissionRows);
       for (const perm of PERMISSIONS) if (Object.prototype.hasOwnProperty.call(input.permissions, perm)) nextPermissionRecord[perm] = Boolean(input.permissions[perm]);
+      if (roleId !== "admin") nextPermissionRecord["admin.roles.manage"] = false;
       await replaceRolePermissions(this.deps.rawDb, roleId, nextPermissionRecord);
       clearPermissionCache(roleId);
     }

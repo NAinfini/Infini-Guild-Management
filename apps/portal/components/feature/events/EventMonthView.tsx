@@ -1,12 +1,20 @@
 import type { Event as GuildEvent } from "@guild/shared";
 import { PortalCard } from "../../shared/PortalCard";
-import { Badge, Button, Group, Popover, Stack, Text, Tooltip } from "@mantine/core";
+import { Badge, Button, Group, HoverCard, Popover, Stack, Text, ThemeIcon } from "@mantine/core";
 import { addDays, format, getDate, getDay, getMonth, isSameDay, startOfMonth, startOfWeek } from "date-fns";
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { CalendarEventIcon } from "@portal/components/icons";
 import "./EventMonthView.css";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
+
+const EVENT_TYPE_COLORS: Record<string, string> = {
+  weekly_mission: "blue",
+  guild_war: "red",
+  social: "grape",
+  other: "gray",
+};
 
 function buildAvailabilityOverlayStyle(intensity: number, maxCount: number): CSSProperties | undefined {
   if (!maxCount || intensity <= 0) {
@@ -147,36 +155,38 @@ export function EventMonthView({
             >
               <Stack gap={2} style={{ width: "100%" }}>
                 {dayEvents.slice(0, 3).map((event) => (
-                  <Tooltip
-                    key={event.id}
-                    withArrow
-                    multiline
-                    w={220}
-                    label={
-                      <Stack gap={2}>
-                        <Text size="xs" fw={600}>{event.title}</Text>
-                        <Group gap={4}>
-                          <Text size="xs">{t(`common:eventType.${event.type}`)}</Text>
-                          <Text size="xs" c="dimmed">{format(new Date(event.start_at), "HH:mm")}</Text>
-                        </Group>
-                        {event.description ? (
-                          <Text size="xs" c="dimmed" lineClamp={2}>{event.description}</Text>
-                        ) : null}
-                      </Stack>
-                    }
-                  >
-                    <Badge
-                      variant="light"
-                      size="xs"
-                      style={{ cursor: "pointer" }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        (onViewEvent ?? onEditEvent)(event);
-                      }}
-                    >
-                      {event.title}
-                    </Badge>
-                  </Tooltip>
+                  <HoverCard key={event.id} width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                    <HoverCard.Target>
+                      <Badge
+                        variant="light"
+                        size="xs"
+                        style={{ cursor: "pointer" }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          (onViewEvent ?? onEditEvent)(event);
+                        }}
+                      >
+                        {event.title}
+                      </Badge>
+                    </HoverCard.Target>
+                    <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                      <Group gap={10} wrap="nowrap" align="flex-start">
+                        <ThemeIcon variant="light" color={EVENT_TYPE_COLORS[event.type] ?? "blue"} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                          <CalendarEventIcon size={18} />
+                        </ThemeIcon>
+                        <div style={{ minWidth: 0 }}>
+                          <Text size="sm" fw={700} lh={1.3}>{event.title}</Text>
+                          <Group gap={4} mt={4}>
+                            <Text size="xs">{t(`common:eventType.${event.type}`)}</Text>
+                            <Text size="xs" c="dimmed">{format(new Date(event.start_at), "HH:mm")}</Text>
+                          </Group>
+                          {event.description ? (
+                            <Text size="xs" c="dimmed" lh={1.5} mt={4} lineClamp={2}>{event.description}</Text>
+                          ) : null}
+                        </div>
+                      </Group>
+                    </HoverCard.Dropdown>
+                  </HoverCard>
                 ))}
                 {dayEvents.length > 3 ? (
                   <Popover withinPortal>

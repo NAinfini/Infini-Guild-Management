@@ -83,5 +83,9 @@
   "aria.publishTime": "Announcement publish time",
   "aria.expireTime": "Announcement expire time",
   "aria.searchAnnouncements": "Search announcements",
-  "aria.openAnnouncement": "Open announcement {{title}}"
+  "aria.openAnnouncement": "Open announcement {{title}}",
+  "tooltip.status.draft.desc": "This announcement is a draft and not yet visible to members.",
+  "tooltip.status.scheduled.desc": "This announcement is scheduled to be published at a future time.",
+  "tooltip.status.published.desc": "This announcement is live and visible to all members.",
+  "tooltip.status.archived.desc": "This announcement has been archived and is hidden from the main list."
 }

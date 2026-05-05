@@ -1,10 +1,10 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { ActionIcon, Button, Tooltip } from "@mantine/core";
+import { ActionIcon, Button, Tooltip, type TooltipProps } from "@mantine/core";
 
 type ToggleVariant = "primary" | "secondary" | "danger" | "success" | "warning" | "info";
 type ToggleSize = "xs" | "sm" | "md" | "lg";
 
-type TooltipConfig = string | { label: ReactNode; withArrow?: boolean };
+type TooltipConfig = string | Omit<TooltipProps, "children">;
 
 export interface DepthToggleProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "onToggle" | "color"> {
   type?: ToggleVariant;

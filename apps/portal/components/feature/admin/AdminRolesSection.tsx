@@ -7,17 +7,38 @@ import {
   ColorInput,
   ColorSwatch,
   Group,
+  HoverCard,
   Skeleton,
   ScrollArea,
   Stack,
   Text,
   TextInput,
+  ThemeIcon,
   Title,
   UnstyledButton,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { CheckIcon, PlusIcon, SaveIcon, TrashIcon, XIcon } from "@portal/components/icons";
-import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangleIcon,
+  ArchiveIcon,
+  BookTextIcon,
+  CalendarDaysIcon,
+  CheckIcon,
+  EyeIcon,
+  GalleryThumbnailsIcon,
+  LockIcon,
+  PencilIcon,
+  PlusIcon,
+  SaveIcon,
+  SettingsIcon,
+  ShieldIcon,
+  SwordsIcon,
+  TrashIcon,
+  UploadIcon,
+  UserCheckIcon,
+  XIcon,
+} from "@portal/components/icons";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
 import { userCanManageRoles } from "../../../utils/permissions";
@@ -99,17 +120,60 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
   },
   {
     labelKey: "roles.category.announcements",
-    permissions: ["announcements.create", "announcements.edit", "announcements.archive"],
+    permissions: ["announcements.create", "announcements.edit", "announcements.archive", "announcements.delete"],
   },
   {
     labelKey: "roles.category.gallery",
-    permissions: ["gallery.upload", "gallery.manage"],
+    permissions: ["gallery.upload", "gallery.manage", "gallery.delete"],
   },
   {
     labelKey: "roles.category.wiki",
-    permissions: ["wiki.articles.create", "wiki.articles.edit", "wiki.articles.archive", "wiki.categories.manage"],
+    permissions: ["wiki.articles.create", "wiki.articles.edit", "wiki.articles.archive", "wiki.articles.delete", "wiki.categories.manage"],
   },
 ];
+
+type PermMeta = { icon: ReactNode; color: string; danger?: boolean };
+
+const PERM_ICON_SIZE = 16;
+
+const PERM_META: Record<string, PermMeta> = {
+  "admin.users.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.users.edit":      { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
+  "admin.users.role":      { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "violet" },
+  "admin.users.activate":  { icon: <UserCheckIcon size={PERM_ICON_SIZE} />,          color: "orange" },
+  "admin.users.delete":    { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
+  "admin.users.password":  { icon: <LockIcon size={PERM_ICON_SIZE} />,               color: "orange", danger: true },
+  "admin.invite.view":     { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.invite.manage":   { icon: <PlusIcon size={PERM_ICON_SIZE} />,               color: "teal" },
+  "admin.audit.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.audit.export":    { icon: <ArchiveIcon size={PERM_ICON_SIZE} />,            color: "grape" },
+  "admin.status.view":     { icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "blue" },
+  "admin.roles.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.roles.manage":    { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "red", danger: true },
+  "admin.analytics.view":  { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.analytics.manage":{ icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "teal" },
+  "guildwar.teams.edit":   { icon: <SwordsIcon size={PERM_ICON_SIZE} />,             color: "orange" },
+  "guildwar.history.edit": { icon: <SwordsIcon size={PERM_ICON_SIZE} />,             color: "orange" },
+  "events.create":         { icon: <PlusIcon size={PERM_ICON_SIZE} />,               color: "teal" },
+  "events.edit":           { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
+  "events.archive":        { icon: <ArchiveIcon size={PERM_ICON_SIZE} />,            color: "grape" },
+  "events.delete":         { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
+  "events.templates":      { icon: <CalendarDaysIcon size={PERM_ICON_SIZE} />,       color: "teal" },
+  "announcements.create":  { icon: <PlusIcon size={PERM_ICON_SIZE} />,               color: "teal" },
+  "announcements.edit":    { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
+  "announcements.archive": { icon: <ArchiveIcon size={PERM_ICON_SIZE} />,            color: "grape" },
+  "announcements.delete":  { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
+  "gallery.upload":        { icon: <UploadIcon size={PERM_ICON_SIZE} />,             color: "teal" },
+  "gallery.manage":        { icon: <GalleryThumbnailsIcon size={PERM_ICON_SIZE} />,  color: "teal" },
+  "gallery.delete":        { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
+  "wiki.articles.create":  { icon: <PlusIcon size={PERM_ICON_SIZE} />,               color: "teal" },
+  "wiki.articles.edit":    { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
+  "wiki.articles.archive": { icon: <ArchiveIcon size={PERM_ICON_SIZE} />,            color: "grape" },
+  "wiki.articles.delete":  { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
+  "wiki.categories.manage":{ icon: <BookTextIcon size={PERM_ICON_SIZE} />,           color: "teal" },
+};
+
+const DEFAULT_META: PermMeta = { icon: <SettingsIcon size={PERM_ICON_SIZE} />, color: "gray" };
 
 function buildEmptyPermissions(): Record<Permission, boolean> {
   return Object.fromEntries(PERMISSIONS.map((permission) => [permission, false])) as Record<Permission, boolean>;
@@ -455,10 +519,13 @@ export function AdminRolesSection({
                         </Text>
                         <div className="admin-roles-perm-grid">
                           {category.permissions.map((permission) => {
-                            const isReadOnly = selectedRole.id === "admin";
+                            const isAdminRole = selectedRole.id === "admin";
+                            const isReadOnly = isAdminRole;
                             const isGranted = Boolean(selectedDraft.permissions[permission]);
+                            const meta = PERM_META[permission] ?? DEFAULT_META;
+                            const tooltipText = t(`roles.tooltip.${permission}`, { defaultValue: "" });
 
-                            return (
+                            const toggle = (
                               <DepthToggle
                                 key={`${selectedRole.id}-${permission}`}
                                 pressed={isGranted}
@@ -480,6 +547,56 @@ export function AdminRolesSection({
                               >
                                 {t(`roles.permission.${permission}`, { defaultValue: permission })}
                               </DepthToggle>
+                            );
+
+                            if (!tooltipText) return toggle;
+
+                            return (
+                              <HoverCard
+                                key={`${selectedRole.id}-${permission}`}
+                                width={320}
+                                shadow="lg"
+                                withArrow
+                                arrowSize={10}
+                                openDelay={350}
+                                closeDelay={80}
+                                position="top"
+                              >
+                                <HoverCard.Target>{toggle}</HoverCard.Target>
+                                <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                                  <Group gap={10} wrap="nowrap" align="flex-start">
+                                    <ThemeIcon
+                                      variant="light"
+                                      color={meta.color}
+                                      size="lg"
+                                      radius="md"
+                                      style={{ flexShrink: 0, marginTop: 2 }}
+                                    >
+                                      {meta.icon}
+                                    </ThemeIcon>
+                                    <div style={{ minWidth: 0 }}>
+                                      <Group gap={6} mb={4}>
+                                        <Text size="sm" fw={700} lh={1.3}>
+                                          {t(`roles.permission.${permission}`, { defaultValue: permission })}
+                                        </Text>
+                                        {meta.danger ? (
+                                          <Badge
+                                            size="xs"
+                                            color="red"
+                                            variant="light"
+                                            leftSection={<AlertTriangleIcon size={10} />}
+                                          >
+                                            {t("roles.tooltip.dangerBadge", { defaultValue: "Caution" })}
+                                          </Badge>
+                                        ) : null}
+                                      </Group>
+                                      <Text size="xs" c="dimmed" lh={1.5}>
+                                        {tooltipText}
+                                      </Text>
+                                    </div>
+                                  </Group>
+                                </HoverCard.Dropdown>
+                              </HoverCard>
                             );
                           })}
                         </div>

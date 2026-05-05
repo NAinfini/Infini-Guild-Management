@@ -1,7 +1,7 @@
 import type { InviteLink } from "@guild/shared";
-import { Alert, Badge, Button, Group, Loader, Modal, NumberInput, SegmentedControl, Skeleton, Stack, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Badge, Button, Group, HoverCard, Loader, Modal, NumberInput, SegmentedControl, Skeleton, Stack, Text, TextInput, ThemeIcon, Title } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
-import { CopyIcon, PlusIcon, TrashIcon } from "@portal/components/icons";
+import { AlertTriangleIcon, CircleCheckIcon, CircleXIcon, CopyIcon, InfoCircleIcon, PlusIcon, TrashIcon } from "@portal/components/icons";
 import { IconBan } from "@tabler/icons-react";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import {
@@ -148,10 +148,70 @@ export function AdminInviteSection({
           const r = row.original;
           const expired = Boolean(r.expires_at && Date.parse(r.expires_at) <= Date.now());
           const fullyUsed = r.used_count >= r.max_uses;
-          if (r.revoked_at) return <Badge color="red" variant="light">{t("invite.status.revoked")}</Badge>;
-          if (fullyUsed) return <Badge color="yellow" variant="light">{t("invite.status.fullyUsed")}</Badge>;
-          if (expired) return <Badge color="yellow" variant="light">{t("invite.status.expired")}</Badge>;
-          return <Badge color="green" variant="light">{t("invite.status.active")}</Badge>;
+          if (r.revoked_at) return (
+            <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+              <HoverCard.Target><Badge color="red" variant="light">{t("invite.status.revoked")}</Badge></HoverCard.Target>
+              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                <Group gap={10} wrap="nowrap" align="flex-start">
+                  <ThemeIcon variant="light" color="red" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                    <AlertTriangleIcon size={16} />
+                  </ThemeIcon>
+                  <div style={{ minWidth: 0 }}>
+                    <Text size="sm" fw={700} lh={1.3} mb={4}>{t("invite.status.revoked")}</Text>
+                    <Text size="xs" c="dimmed" lh={1.5}>{t("invite.tooltip.revoked")}</Text>
+                  </div>
+                </Group>
+              </HoverCard.Dropdown>
+            </HoverCard>
+          );
+          if (fullyUsed) return (
+            <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+              <HoverCard.Target><Badge color="yellow" variant="light">{t("invite.status.fullyUsed")}</Badge></HoverCard.Target>
+              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                <Group gap={10} wrap="nowrap" align="flex-start">
+                  <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                    <CircleXIcon size={16} />
+                  </ThemeIcon>
+                  <div style={{ minWidth: 0 }}>
+                    <Text size="sm" fw={700} lh={1.3} mb={4}>{t("invite.status.fullyUsed")}</Text>
+                    <Text size="xs" c="dimmed" lh={1.5}>{t("invite.tooltip.fullyUsed")}</Text>
+                  </div>
+                </Group>
+              </HoverCard.Dropdown>
+            </HoverCard>
+          );
+          if (expired) return (
+            <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+              <HoverCard.Target><Badge color="yellow" variant="light">{t("invite.status.expired")}</Badge></HoverCard.Target>
+              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                <Group gap={10} wrap="nowrap" align="flex-start">
+                  <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                    <InfoCircleIcon size={16} />
+                  </ThemeIcon>
+                  <div style={{ minWidth: 0 }}>
+                    <Text size="sm" fw={700} lh={1.3} mb={4}>{t("invite.status.expired")}</Text>
+                    <Text size="xs" c="dimmed" lh={1.5}>{t("invite.tooltip.expired")}</Text>
+                  </div>
+                </Group>
+              </HoverCard.Dropdown>
+            </HoverCard>
+          );
+          return (
+            <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+              <HoverCard.Target><Badge color="green" variant="light">{t("invite.status.active")}</Badge></HoverCard.Target>
+              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                <Group gap={10} wrap="nowrap" align="flex-start">
+                  <ThemeIcon variant="light" color="green" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                    <CircleCheckIcon size={16} />
+                  </ThemeIcon>
+                  <div style={{ minWidth: 0 }}>
+                    <Text size="sm" fw={700} lh={1.3} mb={4}>{t("invite.status.active")}</Text>
+                    <Text size="xs" c="dimmed" lh={1.5}>{t("invite.tooltip.active")}</Text>
+                  </div>
+                </Group>
+              </HoverCard.Dropdown>
+            </HoverCard>
+          );
         },
       });
     }

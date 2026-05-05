@@ -25,7 +25,6 @@ export type { CreateRolePayload, UpdateRolePayload } from "../api/mutations/role
 export {
   downloadAdminAuditArchiveFile,
   downloadAdminAuditLogExport,
-  fetchAdminAuditArchiveMonth,
   fetchAdminAuditArchiveMonths,
   fetchAdminAuditLog,
   fetchAdminInviteLinks,
@@ -36,7 +35,6 @@ export {
 export type {
   AdminAuditArchiveDownloadFile,
   AdminAuditArchiveDownloadResponse,
-  AdminAuditArchiveMonthResponse,
   AdminAuditExportParams,
   AdminStatus,
   InviteLinkStatsSummary,

@@ -1,4 +1,4 @@
-import { ActionIcon, Badge, Button, Group, Select, Skeleton, Stack, Text, TextInput, Tooltip, Alert } from "@mantine/core";
+import { ActionIcon, Badge, Button, Group, HoverCard, Select, Skeleton, Stack, Text, TextInput, ThemeIcon, Alert } from "@mantine/core";
 import { IconCalendarOff } from "@tabler/icons-react";
 import { InfiniTable, useReactTable } from "@portal/components/shared/InfiniTable";
 import { useTranslation } from "react-i18next";
@@ -96,11 +96,24 @@ export function WarHistoryTable({
             aria-label={t("history.aria.dateTo")}
             style={{ width: 170 }}
           />
-          <Tooltip label={t("history.clearDates")}>
-            <ActionIcon variant="subtle" onClick={onClearDates} disabled={!historyDateFrom && !historyDateTo} aria-label={t("history.aria.clearDates")}>
-              <IconCalendarOff size={18} />
-            </ActionIcon>
-          </Tooltip>
+          <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+            <HoverCard.Target>
+              <ActionIcon variant="subtle" onClick={onClearDates} disabled={!historyDateFrom && !historyDateTo} aria-label={t("history.aria.clearDates")}>
+                <IconCalendarOff size={18} />
+              </ActionIcon>
+            </HoverCard.Target>
+            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+              <Group gap={10} wrap="nowrap" align="flex-start">
+                <ThemeIcon variant="light" color="orange" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <IconCalendarOff size={16} />
+                </ThemeIcon>
+                <div style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={700} lh={1.3}>{t("hovercard.clearDates.title")}</Text>
+                  <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.clearDates.desc")}</Text>
+                </div>
+              </Group>
+            </HoverCard.Dropdown>
+          </HoverCard>
         </div>
       </div>
 

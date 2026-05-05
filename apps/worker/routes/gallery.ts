@@ -33,7 +33,6 @@ function getService(c: Context): GalleryService {
 }
 
 async function requireGalleryUploader(c: Context) { return requirePermission(c, "gallery.upload"); }
-async function requireGalleryManager(c: Context) { return requirePermission(c, "gallery.manage"); }
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -124,14 +123,14 @@ galleryRoutes.post("/videos", async (c) => {
 });
 
 galleryRoutes.delete("/:id", async (c) => {
-  const sessionUser = await requireGalleryManager(c);
+  const sessionUser = await requirePermission(c, "gallery.delete");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).deleteItem(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 galleryRoutes.post("/batch-delete", async (c) => {
-  const sessionUser = await requireGalleryManager(c);
+  const sessionUser = await requirePermission(c, "gallery.delete");
   if (sessionUser instanceof Response) return sessionUser;
   let body: unknown;
   try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }

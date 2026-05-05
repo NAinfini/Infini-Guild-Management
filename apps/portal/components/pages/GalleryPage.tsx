@@ -47,9 +47,9 @@ export function GalleryPage() {
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
   const { canManage: canManagePermission } = useEffectivePermissions();
-  const isModerator = canManagePermission(["gallery.manage"]);
+  const canDeleteGallery = canManagePermission(["gallery.delete"]);
   const canUpload = canManagePermission(["gallery.upload"]) && !isExternalView;
-  const canModerate = isModerator && !isExternalView;
+  const canModerate = canDeleteGallery && !isExternalView;
   const { showError } = useAppError();
 
   const [typeFilter, setTypeFilter] = useState<"image" | "video" | undefined>(undefined);

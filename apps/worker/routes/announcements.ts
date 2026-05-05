@@ -29,13 +29,12 @@ function getService(c: Context): AnnouncementService {
 
 async function requireAnnouncementCreate(c: Context) { return requirePermission(c, "announcements.create"); }
 async function requireAnnouncementEdit(c: Context) { return requirePermission(c, "announcements.edit"); }
-async function requireAnnouncementArchive(c: Context) { return requirePermission(c, "announcements.archive"); }
 
 // --- Routes ---
 
 announcementsRoutes.get("/", async (c) => {
   const user = await getRequestUser(c);
-  const canReadAll = user ? hasAnyPermission(user.permissions, ["announcements.create", "announcements.edit", "announcements.archive"]) : false;
+  const canReadAll = user ? hasAnyPermission(user.permissions, ["announcements.create", "announcements.edit", "announcements.archive", "announcements.delete"]) : false;
   const query = c.req.query();
   const page = parsePage(query.page, 1);
   const limit = Math.min(100, parsePage(query.limit, 20));
@@ -61,7 +60,7 @@ announcementsRoutes.get("/image", async (c) => {
 
 announcementsRoutes.get("/:id", async (c) => {
   const user = await getRequestUser(c);
-  const canReadAll = user ? hasAnyPermission(user.permissions, ["announcements.create", "announcements.edit", "announcements.archive"]) : false;
+  const canReadAll = user ? hasAnyPermission(user.permissions, ["announcements.create", "announcements.edit", "announcements.archive", "announcements.delete"]) : false;
   const result = await getService(c).getOne(c.req.param("id"), canReadAll);
   return handleResult(c, result);
 });
@@ -92,7 +91,7 @@ announcementsRoutes.patch("/:id", async (c) => {
 });
 
 announcementsRoutes.delete("/:id", async (c) => {
-  const sessionUser = await requireAnnouncementArchive(c);
+  const sessionUser = await requirePermission(c, "announcements.delete");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).archive(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);

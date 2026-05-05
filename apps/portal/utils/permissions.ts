@@ -17,6 +17,7 @@ export function canAccessAdmin(roles: AdminRole[], roleId: string): boolean {
     "admin.invite.view",
     "admin.audit.view",
     "admin.status.view",
+    "admin.analytics.view",
     "admin.roles.manage",
   ]);
 }
@@ -48,6 +49,7 @@ export function userCanAccessAdmin(user: User | null): boolean {
     "admin.invite.view",
     "admin.audit.view",
     "admin.status.view",
+    "admin.analytics.view",
     "admin.roles.manage",
   ]);
 }

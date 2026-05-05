@@ -1,6 +1,7 @@
 import type { Event } from "@guild/shared";
 import { PortalCard } from "../shared/PortalCard";
-import { Tooltip, Stack, Text, Badge, Group } from "@mantine/core";
+import { HoverCard, ThemeIcon, Text, Badge, Group } from "@mantine/core";
+import { CalendarEventIcon } from "@portal/components/icons";
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { UserCheckOutlined } from "../../utils/icons";
@@ -68,36 +69,38 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
                     const color = `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--color-primary, #3b82f6))`;
 
                     return (
-                      <Tooltip
-                        key={item.event.id}
-                        withArrow
-                        multiline
-                        w={220}
-                        label={
-                          <Stack gap={2}>
-                            <Text size="xs" fw={600}>{item.event.title}</Text>
-                            <Group gap={4}>
-                              <Badge size="xs" color={eventTypeTagColor(item.event.type)} variant="light">
-                                {t(`common:eventType.${item.event.type}`)}
-                              </Badge>
-                              <Text size="xs">{formatDateTime(item.event.start_at)}</Text>
-                            </Group>
-                            {item.event.description ? (
-                              <Text size="xs" c="dimmed" lineClamp={2}>{item.event.description}</Text>
-                            ) : null}
-                          </Stack>
-                        }
-                      >
-                        <button
-                          type="button"
-                          className="signup-box-event"
-                          onClick={() => onOpenEvent(item.event)}
-                        >
-                          <span className="signup-box-event-dot" style={{ background: color }} />
-                          <span className="signup-box-event-title">{item.event.title}</span>
-                          <span className="signup-box-event-time">{formatTime(item.event.start_at)}</span>
-                        </button>
-                      </Tooltip>
+                      <HoverCard key={item.event.id} width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                        <HoverCard.Target>
+                          <button
+                            type="button"
+                            className="signup-box-event"
+                            onClick={() => onOpenEvent(item.event)}
+                          >
+                            <span className="signup-box-event-dot" style={{ background: color }} />
+                            <span className="signup-box-event-title">{item.event.title}</span>
+                            <span className="signup-box-event-time">{formatTime(item.event.start_at)}</span>
+                          </button>
+                        </HoverCard.Target>
+                        <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                          <Group gap={10} wrap="nowrap" align="flex-start">
+                            <ThemeIcon variant="light" color={eventTypeTagColor(item.event.type)} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                              <CalendarEventIcon size={18} />
+                            </ThemeIcon>
+                            <div style={{ minWidth: 0 }}>
+                              <Text size="sm" fw={700} lh={1.3}>{item.event.title}</Text>
+                              <Group gap={4} mt={4}>
+                                <Badge size="xs" color={eventTypeTagColor(item.event.type)} variant="light">
+                                  {t(`common:eventType.${item.event.type}`)}
+                                </Badge>
+                                <Text size="xs" c="dimmed">{formatDateTime(item.event.start_at)}</Text>
+                              </Group>
+                              {item.event.description ? (
+                                <Text size="xs" c="dimmed" lh={1.5} mt={4} lineClamp={2}>{item.event.description}</Text>
+                              ) : null}
+                            </div>
+                          </Group>
+                        </HoverCard.Dropdown>
+                      </HoverCard>
                     );
                   })
                 )}

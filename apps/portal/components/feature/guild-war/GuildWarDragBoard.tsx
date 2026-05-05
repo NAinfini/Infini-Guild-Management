@@ -1,7 +1,7 @@
 import { DndContext, DragOverlay, closestCenter, useDroppable, type DragEndEvent, type DragStartEvent, type Modifier } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ActionIcon, Badge, Card, Group, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Card, Group, HoverCard, Stack, Text, TextInput, ThemeIcon } from "@mantine/core";
 import { UserIcon, ShieldIcon, BoltIcon, CopyIcon, ChevronUpIcon, ChevronDownIcon, LockIcon, UnlockIcon, UserPlusIcon } from "@portal/components/icons";
 import { PortalCard } from "../../shared/PortalCard";
 import { memo, useState, useMemo } from "react";
@@ -228,59 +228,180 @@ function DroppableMemberColumn(props: {
               </Text>
             )}
             <Badge size="sm" variant="default">{props.column.members.length}</Badge>
-            {props.column.locked ? <Badge color="red" size="sm">{t("active.locked")}</Badge> : null}
+            {props.column.locked ? (
+              <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                <HoverCard.Target>
+                  <Badge color="red" size="sm" style={{ cursor: "default" }}>{t("active.locked")}</Badge>
+                </HoverCard.Target>
+                <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                  <Group gap={10} wrap="nowrap" align="flex-start">
+                    <ThemeIcon variant="light" color="red" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                      <LockIcon size={16} />
+                    </ThemeIcon>
+                    <div style={{ minWidth: 0 }}>
+                      <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.lockedBadge.title")}</Text>
+                      <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.lockedBadge.desc")}</Text>
+                    </div>
+                  </Group>
+                </HoverCard.Dropdown>
+              </HoverCard>
+            ) : null}
           </Group>
           <Group gap={4} wrap="nowrap">
             {isTeamColumn && props.onToggleLock ? (
-              <Tooltip label={props.isLocked ? t("active.teamSetup.locked") : t("active.teamSetup.open")}>
-                <ActionIcon size="sm" variant={props.isLocked ? "filled" : "subtle"} color={props.isLocked ? "red" : undefined} onClick={() => props.onToggleLock?.(props.column.containerId)} aria-label={props.isLocked ? t("active.teamSetup.locked") : t("active.teamSetup.open")}>
-                  {props.isLocked ? <LockIcon size={14} /> : <UnlockIcon size={14} />}
-                </ActionIcon>
-              </Tooltip>
+              <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                <HoverCard.Target>
+                  <ActionIcon size="sm" variant={props.isLocked ? "filled" : "subtle"} color={props.isLocked ? "red" : undefined} onClick={() => props.onToggleLock?.(props.column.containerId)} aria-label={props.isLocked ? t("active.teamSetup.locked") : t("active.teamSetup.open")}>
+                    {props.isLocked ? <LockIcon size={14} /> : <UnlockIcon size={14} />}
+                  </ActionIcon>
+                </HoverCard.Target>
+                <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                  <Group gap={10} wrap="nowrap" align="flex-start">
+                    <ThemeIcon variant="light" color={props.isLocked ? "red" : "green"} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                      {props.isLocked ? <LockIcon size={16} /> : <UnlockIcon size={16} />}
+                    </ThemeIcon>
+                    <div style={{ minWidth: 0 }}>
+                      <Text size="sm" fw={700} lh={1.3} mb={4}>{props.isLocked ? t("hovercard.lock.title") : t("hovercard.unlock.title")}</Text>
+                      <Text size="xs" c="dimmed" lh={1.5}>{props.isLocked ? t("hovercard.lock.desc") : t("hovercard.unlock.desc")}</Text>
+                    </div>
+                  </Group>
+                </HoverCard.Dropdown>
+              </HoverCard>
             ) : null}
             {isTeamColumn && props.onMoveTeam ? (
               <>
-                <Tooltip label={t("active.teamSetup.moveUp")}>
-                  <ActionIcon size="sm" variant="subtle" onClick={() => props.onMoveTeam?.(props.column.containerId, "up")} disabled={props.teamIndex === 0} aria-label={t("active.teamSetup.moveUp")}>
-                    <ChevronUpIcon size={14} />
-                  </ActionIcon>
-                </Tooltip>
-                <Tooltip label={t("active.teamSetup.moveDown")}>
-                  <ActionIcon size="sm" variant="subtle" onClick={() => props.onMoveTeam?.(props.column.containerId, "down")} disabled={props.teamIndex === (props.teamCount ?? 1) - 1} aria-label={t("active.teamSetup.moveDown")}>
-                    <ChevronDownIcon size={14} />
-                  </ActionIcon>
-                </Tooltip>
+                <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                  <HoverCard.Target>
+                    <ActionIcon size="sm" variant="subtle" onClick={() => props.onMoveTeam?.(props.column.containerId, "up")} disabled={props.teamIndex === 0} aria-label={t("active.teamSetup.moveUp")}>
+                      <ChevronUpIcon size={14} />
+                    </ActionIcon>
+                  </HoverCard.Target>
+                  <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                    <Group gap={10} wrap="nowrap" align="flex-start">
+                      <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                        <ChevronUpIcon size={16} />
+                      </ThemeIcon>
+                      <div style={{ minWidth: 0 }}>
+                        <Text size="sm" fw={700} lh={1.3}>{t("hovercard.moveUp.title")}</Text>
+                        <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.moveUp.desc")}</Text>
+                      </div>
+                    </Group>
+                  </HoverCard.Dropdown>
+                </HoverCard>
+                <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                  <HoverCard.Target>
+                    <ActionIcon size="sm" variant="subtle" onClick={() => props.onMoveTeam?.(props.column.containerId, "down")} disabled={props.teamIndex === (props.teamCount ?? 1) - 1} aria-label={t("active.teamSetup.moveDown")}>
+                      <ChevronDownIcon size={14} />
+                    </ActionIcon>
+                  </HoverCard.Target>
+                  <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                    <Group gap={10} wrap="nowrap" align="flex-start">
+                      <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                        <ChevronDownIcon size={16} />
+                      </ThemeIcon>
+                      <div style={{ minWidth: 0 }}>
+                        <Text size="sm" fw={700} lh={1.3}>{t("hovercard.moveDown.title")}</Text>
+                        <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.moveDown.desc")}</Text>
+                      </div>
+                    </Group>
+                  </HoverCard.Dropdown>
+                </HoverCard>
               </>
             ) : null}
             {isTeamColumn && props.onCopyTeamMentions ? (
-              <Tooltip label={t("active.teamCopied")}>
-                <ActionIcon size="sm" variant="subtle" onClick={() => props.onCopyTeamMentions?.(props.column.containerId)} aria-label={t("active.teamCopied")}>
-                  <CopyIcon size={14} />
-                </ActionIcon>
-              </Tooltip>
+              <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                <HoverCard.Target>
+                  <ActionIcon size="sm" variant="subtle" onClick={() => props.onCopyTeamMentions?.(props.column.containerId)} aria-label={t("active.teamCopied")}>
+                    <CopyIcon size={14} />
+                  </ActionIcon>
+                </HoverCard.Target>
+                <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                  <Group gap={10} wrap="nowrap" align="flex-start">
+                    <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                      <CopyIcon size={16} />
+                    </ThemeIcon>
+                    <div style={{ minWidth: 0 }}>
+                      <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.copyTeam.title")}</Text>
+                      <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.copyTeam.desc")}</Text>
+                    </div>
+                  </Group>
+                </HoverCard.Dropdown>
+              </HoverCard>
             ) : null}
             {isPoolColumn && props.onAddToPool ? (
-              <Tooltip label={t("active.addToPool")}>
-                <ActionIcon size="sm" variant="subtle" onClick={props.onAddToPool} aria-label={t("active.addToPool")}>
-                  <UserPlusIcon size={14} />
-                </ActionIcon>
-              </Tooltip>
+              <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                <HoverCard.Target>
+                  <ActionIcon size="sm" variant="subtle" onClick={props.onAddToPool} aria-label={t("active.addToPool")}>
+                    <UserPlusIcon size={14} />
+                  </ActionIcon>
+                </HoverCard.Target>
+                <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                  <Group gap={10} wrap="nowrap" align="flex-start">
+                    <ThemeIcon variant="light" color="teal" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                      <UserPlusIcon size={16} />
+                    </ThemeIcon>
+                    <div style={{ minWidth: 0 }}>
+                      <Text size="sm" fw={700} lh={1.3}>{t("hovercard.addToPool.title")}</Text>
+                      <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.addToPool.desc")}</Text>
+                    </div>
+                  </Group>
+                </HoverCard.Dropdown>
+              </HoverCard>
             ) : null}
-            <Tooltip label={t("active.sort.username")}>
-              <ActionIcon size="sm" variant={sortBy === "username" ? "filled" : "subtle"} onClick={() => toggleSort("username")} aria-label={t("active.sort.username")}>
-                <UserIcon size={14} />
-              </ActionIcon>
-            </Tooltip>
-            <Tooltip label={t("active.sort.class")}>
-              <ActionIcon size="sm" variant={sortBy === "class" ? "filled" : "subtle"} onClick={() => toggleSort("class")} aria-label={t("active.sort.class")}>
-                <ShieldIcon size={14} />
-              </ActionIcon>
-            </Tooltip>
-            <Tooltip label={t("active.sort.power")}>
-              <ActionIcon size="sm" variant={sortBy === "power" ? "filled" : "subtle"} onClick={() => toggleSort("power")} aria-label={t("active.sort.power")}>
-                <BoltIcon size={14} />
-              </ActionIcon>
-            </Tooltip>
+            <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+              <HoverCard.Target>
+                <ActionIcon size="sm" variant={sortBy === "username" ? "filled" : "subtle"} onClick={() => toggleSort("username")} aria-label={t("active.sort.username")}>
+                  <UserIcon size={14} />
+                </ActionIcon>
+              </HoverCard.Target>
+              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                <Group gap={10} wrap="nowrap" align="flex-start">
+                  <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                    <UserIcon size={16} />
+                  </ThemeIcon>
+                  <div style={{ minWidth: 0 }}>
+                    <Text size="sm" fw={700} lh={1.3}>{t("hovercard.sortUsername.title")}</Text>
+                    <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.sortUsername.desc")}</Text>
+                  </div>
+                </Group>
+              </HoverCard.Dropdown>
+            </HoverCard>
+            <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+              <HoverCard.Target>
+                <ActionIcon size="sm" variant={sortBy === "class" ? "filled" : "subtle"} onClick={() => toggleSort("class")} aria-label={t("active.sort.class")}>
+                  <ShieldIcon size={14} />
+                </ActionIcon>
+              </HoverCard.Target>
+              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                <Group gap={10} wrap="nowrap" align="flex-start">
+                  <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                    <ShieldIcon size={16} />
+                  </ThemeIcon>
+                  <div style={{ minWidth: 0 }}>
+                    <Text size="sm" fw={700} lh={1.3}>{t("hovercard.sortClass.title")}</Text>
+                    <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.sortClass.desc")}</Text>
+                  </div>
+                </Group>
+              </HoverCard.Dropdown>
+            </HoverCard>
+            <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+              <HoverCard.Target>
+                <ActionIcon size="sm" variant={sortBy === "power" ? "filled" : "subtle"} onClick={() => toggleSort("power")} aria-label={t("active.sort.power")}>
+                  <BoltIcon size={14} />
+                </ActionIcon>
+              </HoverCard.Target>
+              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                <Group gap={10} wrap="nowrap" align="flex-start">
+                  <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                    <BoltIcon size={16} />
+                  </ThemeIcon>
+                  <div style={{ minWidth: 0 }}>
+                    <Text size="sm" fw={700} lh={1.3}>{t("hovercard.sortPower.title")}</Text>
+                    <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.sortPower.desc")}</Text>
+                  </div>
+                </Group>
+              </HoverCard.Dropdown>
+            </HoverCard>
           </Group>
         </Group>
         {props.statusContent ? <div className="guild-war-column-header-status">{props.statusContent}</div> : null}

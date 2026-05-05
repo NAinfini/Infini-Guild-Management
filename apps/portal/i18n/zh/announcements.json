@@ -83,5 +83,9 @@
   "aria.publishTime": "公告发布时间",
   "aria.expireTime": "公告过期时间",
   "aria.searchAnnouncements": "搜索公告",
-  "aria.openAnnouncement": "打开公告 {{title}}"
+  "aria.openAnnouncement": "打开公告 {{title}}",
+  "tooltip.status.draft.desc": "该公告为草稿，尚未对成员可见。",
+  "tooltip.status.scheduled.desc": "该公告已设定定时发布，将在指定时间对成员可见。",
+  "tooltip.status.published.desc": "该公告已发布，所有成员均可查看。",
+  "tooltip.status.archived.desc": "该公告已归档，不再显示在主列表中。"
 }

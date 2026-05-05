@@ -1,4 +1,4 @@
-import { ActionIcon, Badge, Code, Group, ScrollArea, Text } from "@mantine/core";
+import { ActionIcon, Badge, Code, Group, HoverCard, ScrollArea, Text, ThemeIcon } from "@mantine/core";
 import { useClipboard } from "@mantine/hooks";
 import { PortalCard } from "../../shared/PortalCard";
 import { ClipboardIcon, TrashIcon } from "@portal/components/icons";
@@ -42,25 +42,55 @@ export function AdminApiDebugConsole({
             <Badge size="xs" variant="default">{logs.length}</Badge>
           </Group>
           <Group gap={4}>
-            <ActionIcon
-              size="sm"
-              variant="subtle"
-              onClick={copyAll}
-              disabled={logs.length === 0}
-              aria-label={t("status.api.copyAll")}
-            >
-              <ClipboardIcon size={14} />
-            </ActionIcon>
-            <ActionIcon
-              size="sm"
-              variant="subtle"
-              color="red"
-              onClick={onClear}
-              disabled={logs.length === 0}
-              aria-label={t("status.api.clearDebug")}
-            >
-              <TrashIcon size={14} />
-            </ActionIcon>
+            <HoverCard width={220} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+              <HoverCard.Target>
+                <ActionIcon
+                  size="sm"
+                  variant="subtle"
+                  onClick={copyAll}
+                  disabled={logs.length === 0}
+                  aria-label={t("status.api.copyAll")}
+                >
+                  <ClipboardIcon size={14} />
+                </ActionIcon>
+              </HoverCard.Target>
+              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                <Group gap={10} wrap="nowrap" align="flex-start">
+                  <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                    <ClipboardIcon size={16} />
+                  </ThemeIcon>
+                  <div style={{ minWidth: 0 }}>
+                    <Text size="sm" fw={700} lh={1.3} mb={4}>{t("status.api.copyAll")}</Text>
+                    <Text size="xs" c="dimmed" lh={1.5}>{t("status.api.tooltip.copyAll")}</Text>
+                  </div>
+                </Group>
+              </HoverCard.Dropdown>
+            </HoverCard>
+            <HoverCard width={220} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+              <HoverCard.Target>
+                <ActionIcon
+                  size="sm"
+                  variant="subtle"
+                  color="red"
+                  onClick={onClear}
+                  disabled={logs.length === 0}
+                  aria-label={t("status.api.clearDebug")}
+                >
+                  <TrashIcon size={14} />
+                </ActionIcon>
+              </HoverCard.Target>
+              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                <Group gap={10} wrap="nowrap" align="flex-start">
+                  <ThemeIcon variant="light" color="red" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                    <TrashIcon size={16} />
+                  </ThemeIcon>
+                  <div style={{ minWidth: 0 }}>
+                    <Text size="sm" fw={700} lh={1.3} mb={4}>{t("status.api.clearDebug")}</Text>
+                    <Text size="xs" c="dimmed" lh={1.5}>{t("status.api.tooltip.clearDebug")}</Text>
+                  </div>
+                </Group>
+              </HoverCard.Dropdown>
+            </HoverCard>
           </Group>
         </Group>
         <ScrollArea.Autosize mah={400}>

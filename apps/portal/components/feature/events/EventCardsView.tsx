@@ -1,5 +1,5 @@
 ﻿import type { Event, MemberProfile, User } from "@guild/shared";
-import { Badge, Button, Group, Modal, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
+import { Badge, Button, Group, HoverCard, Modal, SimpleGrid, Stack, Text, ThemeIcon } from "@mantine/core";
 import { MemberRoleAvatar } from "../../shared/MemberRoleAvatar";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
@@ -14,6 +14,9 @@ import {
   CalendarEventIcon,
   TrashIcon,
   UserPlusIcon,
+  PinIcon,
+  LockIcon,
+  ArchiveIcon,
 } from "@portal/components/icons";
 import {
   IconArchive,
@@ -208,34 +211,112 @@ export function EventCardsView({
                     {t(`common:eventType.${event.type}`)}
                   </Badge>
                   {event.recurrence_rule && event.series_id ? (
-                    <Tooltip label={t("card.recurring")}>
-                      <RefreshCwIcon size={14} className="event-card__recurring-icon" />
-                    </Tooltip>
+                    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                      <HoverCard.Target>
+                        <RefreshCwIcon size={14} className="event-card__recurring-icon" />
+                      </HoverCard.Target>
+                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                        <Group gap={10} wrap="nowrap" align="flex-start">
+                          <ThemeIcon variant="light" color="teal" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                            <RefreshCwIcon size={16} />
+                          </ThemeIcon>
+                          <div style={{ minWidth: 0 }}>
+                            <Text size="sm" fw={700} lh={1.3} mb={4}>{t("tooltip.recurring.title")}</Text>
+                            <Text size="xs" c="dimmed" lh={1.5}>{t("tooltip.recurring.desc")}</Text>
+                          </div>
+                        </Group>
+                      </HoverCard.Dropdown>
+                    </HoverCard>
                   ) : null}
                   {event.pinned ? (
-                    <Tooltip label={t("card.pinned")}>
-                      <IconPin size={16} style={{ color: "var(--mantine-color-yellow-6)" }} />
-                    </Tooltip>
+                    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                      <HoverCard.Target>
+                        <IconPin size={16} style={{ color: "var(--mantine-color-yellow-6)" }} />
+                      </HoverCard.Target>
+                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                        <Group gap={10} wrap="nowrap" align="flex-start">
+                          <ThemeIcon variant="light" color="orange" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                            <PinIcon size={16} />
+                          </ThemeIcon>
+                          <div style={{ minWidth: 0 }}>
+                            <Text size="sm" fw={700} lh={1.3} mb={4}>{t("tooltip.pinned.title")}</Text>
+                            <Text size="xs" c="dimmed" lh={1.5}>{t("tooltip.pinned.desc")}</Text>
+                          </div>
+                        </Group>
+                      </HoverCard.Dropdown>
+                    </HoverCard>
                   ) : null}
                   {event.signup_locked ? (
-                    <Tooltip label={t("card.locked")}>
-                      <IconLock size={16} style={{ color: "var(--mantine-color-red-6)" }} />
-                    </Tooltip>
+                    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                      <HoverCard.Target>
+                        <IconLock size={16} style={{ color: "var(--mantine-color-red-6)" }} />
+                      </HoverCard.Target>
+                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                        <Group gap={10} wrap="nowrap" align="flex-start">
+                          <ThemeIcon variant="light" color="red" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                            <LockIcon size={16} />
+                          </ThemeIcon>
+                          <div style={{ minWidth: 0 }}>
+                            <Text size="sm" fw={700} lh={1.3} mb={4}>{t("tooltip.locked.title")}</Text>
+                            <Text size="xs" c="dimmed" lh={1.5}>{t("tooltip.locked.desc")}</Text>
+                          </div>
+                        </Group>
+                      </HoverCard.Dropdown>
+                    </HoverCard>
                   ) : null}
                   {event.archived_at ? (
-                    <Tooltip label={t("card.archived")}>
-                      <IconArchive size={16} style={{ opacity: 0.5 }} />
-                    </Tooltip>
+                    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                      <HoverCard.Target>
+                        <IconArchive size={16} style={{ opacity: 0.5 }} />
+                      </HoverCard.Target>
+                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                        <Group gap={10} wrap="nowrap" align="flex-start">
+                          <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                            <ArchiveIcon size={16} />
+                          </ThemeIcon>
+                          <div style={{ minWidth: 0 }}>
+                            <Text size="sm" fw={700} lh={1.3} mb={4}>{t("tooltip.archived.title")}</Text>
+                            <Text size="xs" c="dimmed" lh={1.5}>{t("tooltip.archived.desc")}</Text>
+                          </div>
+                        </Group>
+                      </HoverCard.Dropdown>
+                    </HoverCard>
                   ) : null}
                   {flag === "NEW" ? (
-                    <Tooltip label={t("card.new")}>
-                      <IconSparkles size={16} style={{ color: "var(--mantine-color-green-6)" }} />
-                    </Tooltip>
+                    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                      <HoverCard.Target>
+                        <IconSparkles size={16} style={{ color: "var(--mantine-color-green-6)" }} />
+                      </HoverCard.Target>
+                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                        <Group gap={10} wrap="nowrap" align="flex-start">
+                          <ThemeIcon variant="light" color="green" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                            <IconSparkles size={16} />
+                          </ThemeIcon>
+                          <div style={{ minWidth: 0 }}>
+                            <Text size="sm" fw={700} lh={1.3} mb={4}>{t("tooltip.new.title")}</Text>
+                            <Text size="xs" c="dimmed" lh={1.5}>{t("tooltip.new.desc")}</Text>
+                          </div>
+                        </Group>
+                      </HoverCard.Dropdown>
+                    </HoverCard>
                   ) : null}
                   {flag === "UPDATED" ? (
-                    <Tooltip label={t("card.updated")}>
-                      <IconSparkles2 size={16} style={{ color: "var(--mantine-color-blue-6)" }} />
-                    </Tooltip>
+                    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                      <HoverCard.Target>
+                        <IconSparkles2 size={16} style={{ color: "var(--mantine-color-blue-6)" }} />
+                      </HoverCard.Target>
+                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                        <Group gap={10} wrap="nowrap" align="flex-start">
+                          <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                            <IconSparkles2 size={16} />
+                          </ThemeIcon>
+                          <div style={{ minWidth: 0 }}>
+                            <Text size="sm" fw={700} lh={1.3} mb={4}>{t("tooltip.updated.title")}</Text>
+                            <Text size="xs" c="dimmed" lh={1.5}>{t("tooltip.updated.desc")}</Text>
+                          </div>
+                        </Group>
+                      </HoverCard.Dropdown>
+                    </HoverCard>
                   ) : null}
                 </div>
                 {canManage ? (

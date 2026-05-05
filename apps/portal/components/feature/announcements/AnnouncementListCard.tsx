@@ -2,7 +2,7 @@
 import { PushpinOutlined } from "@portal/utils/icons";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
-import { Alert, Badge, Button, Group, Indicator, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
+import { Alert, Badge, Button, Group, HoverCard, Indicator, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
 import { PlusIcon } from "@portal/components/icons";
 import { IconArchive, IconCalendarTime, IconCircleCheck, IconFileText } from "@tabler/icons-react";
 import { format } from "date-fns";
@@ -28,6 +28,21 @@ function statusIcon(value: Announcement["status"]): ReactNode {
       return <IconArchive size={14} style={{ color: "var(--mantine-color-red-filled)" }} />;
     default:
       return null;
+  }
+}
+
+function statusThemeIconProps(value: Announcement["status"]): { color: string; icon: ReactNode } {
+  switch (value) {
+    case "draft":
+      return { color: "gray", icon: <IconFileText size={18} /> };
+    case "scheduled":
+      return { color: "blue", icon: <IconCalendarTime size={18} /> };
+    case "published":
+      return { color: "green", icon: <IconCircleCheck size={18} /> };
+    case "archived":
+      return { color: "yellow", icon: <IconArchive size={18} /> };
+    default:
+      return { color: "gray", icon: <IconFileText size={18} /> };
   }
 }
 
@@ -119,11 +134,27 @@ export function AnnouncementListCard({
                         <div className="announcement-item-title">
                             <Text fw={600}>{item.title}</Text>
                           {item.pinned ? <PushpinOutlined className="announcement-item-pin" /> : null}
-                          {canEdit || item.status === "archived" ? (
-                            <Tooltip label={t(`status.${item.status}`)} withArrow>
-                              <span style={{ display: "inline-flex", lineHeight: 0 }}>{statusIcon(item.status)}</span>
-                            </Tooltip>
-                          ) : null}
+                          {canEdit || item.status === "archived" ? (() => {
+                            const { color, icon } = statusThemeIconProps(item.status);
+                            return (
+                              <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                                <HoverCard.Target>
+                                  <span style={{ display: "inline-flex", lineHeight: 0 }}>{statusIcon(item.status)}</span>
+                                </HoverCard.Target>
+                                <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                                  <Group gap={10} wrap="nowrap" align="flex-start">
+                                    <ThemeIcon variant="light" color={color} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                                      {icon}
+                                    </ThemeIcon>
+                                    <div style={{ minWidth: 0 }}>
+                                      <Text size="sm" fw={700} lh={1.3}>{t(`status.${item.status}`)}</Text>
+                                      <Text size="xs" c="dimmed" lh={1.5}>{t(`tooltip.status.${item.status}.desc`)}</Text>
+                                    </div>
+                                  </Group>
+                                </HoverCard.Dropdown>
+                              </HoverCard>
+                            );
+                          })() : null}
                         </div>
                         <Group gap={8}>
                           {canEdit && item.status === "scheduled" && item.publish_at ? (
