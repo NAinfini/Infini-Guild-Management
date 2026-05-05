@@ -10,6 +10,7 @@ import {
   type Role,
   type AdminRole,
 } from "@guild/shared";
+import { activeGame } from "@guild/shared/games";
 import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { inviteLinks, rolePermissions, roles, sessions, userAuthPassword, users } from "../db/schema";
@@ -23,11 +24,7 @@ type DrizzleDb = ReturnType<typeof drizzle>;
 
 export type AnalyticsSettings = {
   reference_duration_minutes: number;
-  modifier_weight_kda: number;
-  modifier_weight_towers: number;
-  modifier_weight_credits: number;
-  modifier_weight_distance: number;
-  modifier_weight_basehp: number;
+  modifier_weights: Record<string, number>;
 };
 
 const ANALYTICS_SETTINGS_KEY = "config/analytics-settings.json";
@@ -35,9 +32,9 @@ const D1_SAFE_VARIABLE_LIMIT = 90;
 const ROLE_PERMISSION_INSERT_BATCH_SIZE = Math.max(1, Math.floor(D1_SAFE_VARIABLE_LIMIT / 3));
 
 const BUILTIN_ROLE_DEFAULTS: Record<Role, { name: string; level: number; color: string }> = {
-  admin: { name: "Admin", level: 3, color: "red" },
-  moderator: { name: "Moderator", level: 2, color: "blue" },
-  member: { name: "Member", level: 1, color: "gray" },
+  admin: { name: "Admin", level: 3, color: "#ef4444" },
+  moderator: { name: "Moderator", level: 2, color: "#3b82f6" },
+  member: { name: "Member", level: 1, color: "#64748b" },
 };
 
 export function defaultPermissionGranted(roleId: string, permission: Permission): boolean {
@@ -122,39 +119,35 @@ export async function ensureBuiltinRolesAndPermissions(db: DrizzleDb): Promise<v
 export function defaultAnalyticsSettings(): AnalyticsSettings {
   return {
     reference_duration_minutes: 30,
-    modifier_weight_kda: 0.30,
-    modifier_weight_towers: 0.10,
-    modifier_weight_credits: 0.30,
-    modifier_weight_distance: 0.15,
-    modifier_weight_basehp: 0.15,
+    modifier_weights: { ...activeGame.war.modifierWeights },
   };
 }
 
 export function normalizeAnalyticsWeights(settings: AnalyticsSettings): AnalyticsSettings {
-  const weightSum = settings.modifier_weight_kda + settings.modifier_weight_towers +
-    settings.modifier_weight_credits + settings.modifier_weight_distance + settings.modifier_weight_basehp;
+  const weights = settings.modifier_weights;
+  const weightSum = Object.values(weights).reduce((s, v) => s + v, 0);
   if (weightSum <= 0) return settings;
-  return {
-    ...settings,
-    modifier_weight_kda: Number((settings.modifier_weight_kda / weightSum).toFixed(4)),
-    modifier_weight_towers: Number((settings.modifier_weight_towers / weightSum).toFixed(4)),
-    modifier_weight_credits: Number((settings.modifier_weight_credits / weightSum).toFixed(4)),
-    modifier_weight_distance: Number((settings.modifier_weight_distance / weightSum).toFixed(4)),
-    modifier_weight_basehp: Number((settings.modifier_weight_basehp / weightSum).toFixed(4)),
-  };
+  const normalized: Record<string, number> = {};
+  for (const [key, val] of Object.entries(weights)) {
+    normalized[key] = Number((val / weightSum).toFixed(4));
+  }
+  return { ...settings, modifier_weights: normalized };
 }
 
 export function parseAnalyticsInput(record: Record<string, unknown>): AnalyticsSettings {
   const defaults = defaultAnalyticsSettings();
+  const rawWeights = record.modifier_weights;
+  const modifier_weights: Record<string, number> = { ...defaults.modifier_weights };
+  if (typeof rawWeights === "object" && rawWeights !== null) {
+    for (const [key, val] of Object.entries(rawWeights as Record<string, unknown>)) {
+      if (typeof val === "number") modifier_weights[key] = val;
+    }
+  }
   return {
     reference_duration_minutes:
       typeof record.reference_duration_minutes === "number" && record.reference_duration_minutes > 0
         ? record.reference_duration_minutes : defaults.reference_duration_minutes,
-    modifier_weight_kda: typeof record.modifier_weight_kda === "number" ? record.modifier_weight_kda : defaults.modifier_weight_kda,
-    modifier_weight_towers: typeof record.modifier_weight_towers === "number" ? record.modifier_weight_towers : defaults.modifier_weight_towers,
-    modifier_weight_credits: typeof record.modifier_weight_credits === "number" ? record.modifier_weight_credits : defaults.modifier_weight_credits,
-    modifier_weight_distance: typeof record.modifier_weight_distance === "number" ? record.modifier_weight_distance : defaults.modifier_weight_distance,
-    modifier_weight_basehp: typeof record.modifier_weight_basehp === "number" ? record.modifier_weight_basehp : defaults.modifier_weight_basehp,
+    modifier_weights,
   };
 }
 

@@ -1,4 +1,4 @@
-import type { AdminRole } from "@guild/shared";
+import type { AdminRole, FeatureFlags } from "@guild/shared";
 import {
   BookOutlined,
   CalendarOutlined,
@@ -37,6 +37,7 @@ export type NavItem = {
   requiresSession?: boolean;
   requiresModerator?: boolean;
   feature?: NotificationFeature;
+  featureFlag?: keyof FeatureFlags;
 };
 
 export const SIDEBAR_WIDTH = 236;
@@ -44,13 +45,13 @@ export const SIDEBAR_COLLAPSED_WIDTH = 56;
 
 export const NAV_ITEMS: NavItem[] = [
   { to: "/", labelKey: "nav.dashboard", icon: DashboardOutlined },
-  { to: "/announcements", labelKey: "nav.announcements", icon: NotificationOutlined, feature: "announcements" },
+  { to: "/announcements", labelKey: "nav.announcements", icon: NotificationOutlined, feature: "announcements", featureFlag: "announcements" },
   { to: "/roster", labelKey: "nav.roster", icon: TeamOutlined, feature: "members" },
-  { to: "/events", labelKey: "nav.events", icon: CalendarOutlined },
-  { to: "/guild-war", labelKey: "nav.guild-war", icon: ThunderboltOutlined },
-  { to: "/gallery", labelKey: "nav.gallery", icon: PictureOutlined },
-  { to: "/wiki", labelKey: "nav.wiki", icon: BookOutlined },
-  { to: "/tools", labelKey: "nav.tools", icon: ToolOutlined },
+  { to: "/events", labelKey: "nav.events", icon: CalendarOutlined, featureFlag: "events" },
+  { to: "/guild-war", labelKey: "nav.guild-war", icon: ThunderboltOutlined, featureFlag: "guildWar" },
+  { to: "/gallery", labelKey: "nav.gallery", icon: PictureOutlined, featureFlag: "gallery" },
+  { to: "/wiki", labelKey: "nav.wiki", icon: BookOutlined, featureFlag: "wiki" },
+  { to: "/tools", labelKey: "nav.tools", icon: ToolOutlined, featureFlag: "tools" },
   {
     to: "/admin",
     labelKey: "nav.admin",

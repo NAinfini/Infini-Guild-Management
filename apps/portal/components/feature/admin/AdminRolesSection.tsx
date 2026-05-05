@@ -115,11 +115,30 @@ function buildEmptyPermissions(): Record<Permission, boolean> {
   return Object.fromEntries(PERMISSIONS.map((permission) => [permission, false])) as Record<Permission, boolean>;
 }
 
+const CSS_COLOR_TO_HEX: Record<string, string> = {
+  red: "#ef4444",
+  blue: "#3b82f6",
+  gray: "#64748b",
+  green: "#22c55e",
+  orange: "#f97316",
+  yellow: "#eab308",
+  teal: "#14b8a6",
+  purple: "#a855f7",
+  pink: "#ec4899",
+  indigo: "#6366f1",
+};
+
+function normalizeColor(color: string | null): string {
+  if (!color) return "";
+  const lower = color.trim().toLowerCase();
+  return CSS_COLOR_TO_HEX[lower] ?? color;
+}
+
 function roleToDraft(role: AdminRole): RoleDraft {
   return {
     name: role.name,
     level: role.level,
-    color: role.color ?? "",
+    color: normalizeColor(role.color),
     permissions: { ...buildEmptyPermissions(), ...role.permissions },
   };
 }
@@ -304,7 +323,7 @@ export function AdminRolesSection({
                       <Group gap={8} wrap="nowrap" justify="space-between">
                         <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
                           {role.color ? (
-                            <ColorSwatch color={role.color} size={14} />
+                            <ColorSwatch color={normalizeColor(role.color)} size={14} />
                           ) : (
                             <ColorSwatch color="transparent" size={14} />
                           )}
@@ -367,13 +386,14 @@ export function AdminRolesSection({
                       <TextInput
                         size="sm"
                         label={t("roles.field.name")}
-                        value={selectedDraft.name}
+                        value={selectedRole.is_builtin ? t(`role.${selectedRole.id}`, { defaultValue: selectedDraft.name }) : selectedDraft.name}
                         onChange={(event) => updateDraftField(selectedRole.id, "name", event.currentTarget.value)}
                         style={{ flex: 1, minWidth: 120, maxWidth: 200 }}
                         disabled={selectedRole.is_builtin}
                       />
                       <ColorInput
                         size="sm"
+                        format="hex"
                         label={t("roles.field.color")}
                         value={selectedDraft.color}
                         onChange={(value) => updateDraftField(selectedRole.id, "color", value)}

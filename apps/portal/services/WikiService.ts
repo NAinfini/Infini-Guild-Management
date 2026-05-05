@@ -1,6 +1,7 @@
 export {
   createWikiArticle,
   createWikiCategory,
+  deleteWikiArticle,
   deleteWikiCategory,
   updateWikiArticle,
   updateWikiCategory,

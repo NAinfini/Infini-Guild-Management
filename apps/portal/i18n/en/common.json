@@ -19,6 +19,7 @@
   "action.confirm": "Confirm",
   "action.cancel": "Cancel",
   "action.delete": "Delete",
+  "action.discard": "Discard",
   "action.logout": "Logout",
   "action.login": "Login",
   "action.clear": "Clear",

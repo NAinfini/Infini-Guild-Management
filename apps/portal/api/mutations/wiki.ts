@@ -54,6 +54,12 @@ export function updateWikiArticle(id: string, payload: UpdateWikiArticlePayload,
   });
 }
 
+export function deleteWikiArticle(id: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/wiki/articles/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export async function uploadWikiArticleImages(
   articleId: string,
   files: File[],

@@ -164,11 +164,11 @@ export function WarHistoryDetail({
                 </span>
               </div>
               <div className="war-history-compare-section">
-                <CompareBar classPrefix="war-history-compare-" icon={<TargetOutlined size={13} />} label={t("history.kills")} own={historyDetail.own_kills ?? 0} enemy={historyDetail.enemy_kills ?? 0} />
-                <CompareBar classPrefix="war-history-compare-" icon={<ShieldOutlined size={13} />} label={t("history.towers")} own={historyDetail.own_towers ?? 0} enemy={historyDetail.enemy_towers ?? 0} />
-                <CompareBar classPrefix="war-history-compare-" icon={<ShieldOutlined size={13} />} label={t("history.baseHp")} own={historyDetail.own_base_hp ?? 0} enemy={historyDetail.enemy_base_hp ?? 0} />
-                <CompareBar classPrefix="war-history-compare-" icon={<TargetOutlined size={13} />} label={t("history.distance")} own={historyDetail.own_distance ?? 0} enemy={historyDetail.enemy_distance ?? 0} />
-                <CompareBar classPrefix="war-history-compare-" icon={<CrownOutlined size={13} />} label={t("history.credits")} own={historyDetail.own_credits ?? 0} enemy={historyDetail.enemy_credits ?? 0} />
+                <CompareBar classPrefix="war-history-compare-" icon={<TargetOutlined size={13} />} label={t("history.kills")} own={historyDetail.own_stats?.kills ?? 0} enemy={historyDetail.enemy_stats?.kills ?? 0} />
+                <CompareBar classPrefix="war-history-compare-" icon={<ShieldOutlined size={13} />} label={t("history.towers")} own={historyDetail.own_stats?.towers ?? 0} enemy={historyDetail.enemy_stats?.towers ?? 0} />
+                <CompareBar classPrefix="war-history-compare-" icon={<ShieldOutlined size={13} />} label={t("history.baseHp")} own={historyDetail.own_stats?.base_hp ?? 0} enemy={historyDetail.enemy_stats?.base_hp ?? 0} />
+                <CompareBar classPrefix="war-history-compare-" icon={<TargetOutlined size={13} />} label={t("history.distance")} own={historyDetail.own_stats?.distance ?? 0} enemy={historyDetail.enemy_stats?.distance ?? 0} />
+                <CompareBar classPrefix="war-history-compare-" icon={<CrownOutlined size={13} />} label={t("history.credits")} own={historyDetail.own_stats?.credits ?? 0} enemy={historyDetail.enemy_stats?.credits ?? 0} />
               </div>
             </div>
 

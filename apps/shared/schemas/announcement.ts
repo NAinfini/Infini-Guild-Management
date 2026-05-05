@@ -1,4 +1,7 @@
-﻿import { z } from "zod";
+import { z } from "zod";
+import { LIMITS } from "../config/limits";
+
+const L = LIMITS.content;
 
 export const announcementSchema = z.object({
   id: z.string(),
@@ -15,8 +18,8 @@ export const announcementSchema = z.object({
 });
 
 export const createAnnouncementSchema = z.object({
-  title: z.string().min(1).max(200),
-  body_json: z.string().min(1).max(500000),
+  title: z.string().min(L.announcementTitle.min).max(L.announcementTitle.max),
+  body_json: z.string().min(L.announcementBody.min).max(L.announcementBody.max),
   pinned: z.boolean().default(false),
   publish_at: z.string().datetime().optional(),
   expires_at: z.string().datetime().optional(),

@@ -169,7 +169,7 @@ function SortableCategoryRow({
           </div>
           <Button
             size="sm"
-            variant="default"
+            variant="light"
             color="red"
             leftSection={<TrashIcon size={16} />}
             onClick={() => onDeleteCategory(draft.id)}

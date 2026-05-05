@@ -2,8 +2,8 @@
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { PortalCard } from "../../shared/PortalCard";
-import { Alert, Group, Select, Skeleton, Stack, Text, TextInput } from "@mantine/core";
-import { ArchiveIcon, PinIcon, PlusIcon, SaveIcon, XIcon } from "@portal/components/icons";
+import { ActionIcon, Alert, Group, Select, Skeleton, Stack, Text, TextInput } from "@mantine/core";
+import { ArchiveIcon, PinIcon, PlusIcon, SaveIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
@@ -49,6 +49,7 @@ type WikiArticleEditorCardProps = {
   onCreateArticle: () => void;
   onExitEditor: () => void;
   onImageUpload: (file: File) => Promise<string>;
+  onDeleteArticle: () => void;
   emptyTitle: ReactNode;
 };
 
@@ -78,6 +79,7 @@ export function WikiArticleEditorCard({
   onCreateArticle,
   onExitEditor,
   onImageUpload,
+  onDeleteArticle,
   emptyTitle,
 }: WikiArticleEditorCardProps) {
   const { t } = useTranslation("wiki");
@@ -127,15 +129,28 @@ export function WikiArticleEditorCard({
                       >
                         <PinIcon size={16} />
                       </DepthToggle>
-                    <DepthButton
-                      type={archiveIntent === "none" ? "danger" : "secondary"}
+                    <DepthToggle
+                      pressed={selectedArticle?.archived_at ? archiveIntent !== "unarchive" : archiveIntent === "archive"}
+                      onToggle={onToggleArchiveIntent}
+                      type="primary"
+                      iconOnly
                       size="sm"
-                      before={<ArchiveIcon size={16} />}
-                      onClick={onToggleArchiveIntent}
                       disabled={isSaving}
+                      aria-label={archiveLabel}
+                      tooltip={{ label: archiveLabel, withArrow: true }}
                     >
-                      {archiveLabel}
-                    </DepthButton>
+                      <ArchiveIcon size={16} />
+                    </DepthToggle>
+                    <ActionIcon
+                      color="red"
+                      variant="filled"
+                      size="sm"
+                      onClick={onDeleteArticle}
+                      disabled={isSaving}
+                      aria-label={t("common:action.delete")}
+                    >
+                      <TrashIcon size={16} />
+                    </ActionIcon>
                     <DepthButton
                       type="primary"
                       size="sm"
@@ -222,7 +237,7 @@ export function WikiArticleEditorCard({
               {selectedArticle ? (
                 <Stack gap={2}>
                   <Group gap={6}>
-                    <Text size="sm">Wiki</Text>
+                    <Text size="sm">{t("articleEditor.title")}</Text>
                     <Text size="sm" c="dimmed">/</Text>
                     <Text size="sm">{selectedCategory?.name ?? t("articleEditor.categoryFallback")}</Text>
                     <Text size="sm" c="dimmed">/</Text>

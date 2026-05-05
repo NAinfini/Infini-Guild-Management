@@ -4,6 +4,7 @@ import type {
   InviteLinkStats,
   PaginatedResponse,
 } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { apiDownload, apiRequest } from "../client";
 
 export type InviteLinkStatsSummary = {
@@ -93,7 +94,7 @@ export function fetchAdminAuditLog(params: {
 }): Promise<PaginatedResponse<AuditLogEntry>> {
   const query = new URLSearchParams();
   query.set("page", String(params.page ?? 1));
-  query.set("limit", String(params.limit ?? 50));
+  query.set("limit", String(params.limit ?? LIMITS.pagination.admin));
   if (params.entity_type) query.set("entity_type", params.entity_type);
   if (params.actor_id) query.set("actor_id", params.actor_id);
   if (params.search) query.set("search", params.search);

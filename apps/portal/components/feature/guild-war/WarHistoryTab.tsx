@@ -11,38 +11,21 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
+import { activeGame } from "@guild/shared/games";
 import type { EChartsThemeConfig } from "../../../theme/echarts";
 import { WarHistoryTable } from "./WarHistoryTable";
 import { WarHistoryDetail } from "./WarHistoryDetail";
 
 
 export type HistoryViewMode = "table" | "chart";
-export type AnalyticsMetricKey =
-  | "kills"
-  | "deaths"
-  | "assists"
-  | "damage"
-  | "healing"
-  | "building_damage"
-  | "credits"
-  | "damage_taken"
-  | "kda";
-type EditableMetricKey = Exclude<AnalyticsMetricKey, "kda">;
-type MemberStatDraft = Record<EditableMetricKey, number>;
-const EDITABLE_METRIC_KEYS: EditableMetricKey[] = [
-  "kills",
-  "deaths",
-  "assists",
-  "damage",
-  "healing",
-  "building_damage",
-  "credits",
-  "damage_taken",
-];
+export type AnalyticsMetricKey = string;
+type EditableMetricKey = string;
+type MemberStatDraft = Record<string, number>;
+const EDITABLE_METRIC_KEYS: string[] = activeGame.war.memberStats.map((s) => s.key);
 
 export type HistoryMemberStatsUpdate = {
   userId: string;
-  payload: Partial<Record<EditableMetricKey, number>>;
+  payload: Partial<Record<string, number>>;
 };
 
 export type HistorySummaryRow = {
@@ -51,8 +34,8 @@ export type HistorySummaryRow = {
   enemy_name: string | null;
   result: string | null;
   created_at: string;
-  own_kills: number | null;
-  enemy_kills: number | null;
+  own_stats: Record<string, number | null> | null;
+  enemy_stats: Record<string, number | null> | null;
 };
 
 export type HistoryMemberStat = {
@@ -60,14 +43,7 @@ export type HistoryMemberStat = {
   user_id: string;
   username?: string;
   role_tag: string | null;
-  kills: number | null;
-  deaths: number | null;
-  assists: number | null;
-  damage: number | null;
-  healing: number | null;
-  building_damage: number | null;
-  credits: number | null;
-  damage_taken: number | null;
+  stats: Record<string, number | null> | null;
 };
 
 type HistoryDetailTeam = {
@@ -86,16 +62,8 @@ export type HistoryDetailData = {
   war_name: string;
   enemy_name: string | null;
   result: string | null;
-  own_kills: number | null;
-  enemy_kills: number | null;
-  own_towers: number | null;
-  enemy_towers: number | null;
-  own_base_hp: number | null;
-  enemy_base_hp: number | null;
-  own_distance: number | null;
-  enemy_distance: number | null;
-  own_credits: number | null;
-  enemy_credits: number | null;
+  own_stats: Record<string, number | null> | null;
+  enemy_stats: Record<string, number | null> | null;
   notes: string | null;
   member_stats: HistoryMemberStat[];
   teams: HistoryDetailTeam[];
@@ -118,14 +86,14 @@ function toDraftMetricValue(value: string | number | null | undefined): number {
 
 function createMemberDraft(row: HistoryMemberStat): MemberStatDraft {
   return {
-    kills: toDraftMetricValue(row.kills),
-    deaths: toDraftMetricValue(row.deaths),
-    assists: toDraftMetricValue(row.assists),
-    damage: toDraftMetricValue(row.damage),
-    healing: toDraftMetricValue(row.healing),
-    building_damage: toDraftMetricValue(row.building_damage),
-    credits: toDraftMetricValue(row.credits),
-    damage_taken: toDraftMetricValue(row.damage_taken),
+    kills: toDraftMetricValue(row.stats?.kills),
+    deaths: toDraftMetricValue(row.stats?.deaths),
+    assists: toDraftMetricValue(row.stats?.assists),
+    damage: toDraftMetricValue(row.stats?.damage),
+    healing: toDraftMetricValue(row.stats?.healing),
+    building_damage: toDraftMetricValue(row.stats?.building_damage),
+    credits: toDraftMetricValue(row.stats?.credits),
+    damage_taken: toDraftMetricValue(row.stats?.damage_taken),
   };
 }
 
@@ -283,8 +251,8 @@ export function WarHistoryTab({
       || (row.enemy_name ?? "").toLowerCase().includes(keyword)
       || (row.result ?? "").toLowerCase().includes(keyword)
       || row.created_at.toLowerCase().includes(keyword)
-      || String(row.own_kills ?? "").includes(keyword)
-      || String(row.enemy_kills ?? "").includes(keyword)
+      || String(row.own_stats?.kills ?? "").includes(keyword)
+      || String(row.enemy_stats?.kills ?? "").includes(keyword)
     ));
   }, [historyRows, historySearch]);
 
@@ -471,14 +439,17 @@ export function WarHistoryTab({
       }
       return {
         ...row,
-        kills: draft.kills,
-        deaths: draft.deaths,
-        assists: draft.assists,
-        damage: draft.damage,
-        healing: draft.healing,
-        building_damage: draft.building_damage,
-        credits: draft.credits,
-        damage_taken: draft.damage_taken,
+        stats: {
+          ...row.stats,
+          kills: draft.kills,
+          deaths: draft.deaths,
+          assists: draft.assists,
+          damage: draft.damage,
+          healing: draft.healing,
+          building_damage: draft.building_damage,
+          credits: draft.credits,
+          damage_taken: draft.damage_taken,
+        },
       };
     });
   }, [historyDetail, memberStatsDraft]);
@@ -547,159 +518,151 @@ export function WarHistoryTab({
     {
       header: t("history.table.kills"),
       id: "kills",
-      accessorFn: (row) => row.kills ?? 0,
+      accessorFn: (row) => row.stats?.kills ?? 0,
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
             hideControls
             min={0}
             size="xs"
-            value={row.original.kills ?? 0}
+            value={row.original.stats?.kills ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "kills", value)}
           />
-        ) : (row.original.kills ?? "-"),
+        ) : (row.original.stats?.kills ?? "-"),
     },
     {
       header: t("history.table.deaths"),
       id: "deaths",
-      accessorFn: (row) => row.deaths ?? 0,
+      accessorFn: (row) => row.stats?.deaths ?? 0,
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
             hideControls
             min={0}
             size="xs"
-            value={row.original.deaths ?? 0}
+            value={row.original.stats?.deaths ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "deaths", value)}
           />
-        ) : (row.original.deaths ?? "-"),
+        ) : (row.original.stats?.deaths ?? "-"),
     },
     {
       header: t("history.table.assists"),
       id: "assists",
-      accessorFn: (row) => row.assists ?? 0,
+      accessorFn: (row) => row.stats?.assists ?? 0,
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
             hideControls
             min={0}
             size="xs"
-            value={row.original.assists ?? 0}
+            value={row.original.stats?.assists ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "assists", value)}
           />
-        ) : (row.original.assists ?? "-"),
+        ) : (row.original.stats?.assists ?? "-"),
     },
     {
       header: t("analytics.metric.kda"),
       id: "kda",
       enableSorting: true,
       accessorFn: (row) => {
-        const k = row.kills ?? 0;
-        const d = row.deaths ?? 0;
-        const a = row.assists ?? 0;
+        const k = row.stats?.kills ?? 0;
+        const d = row.stats?.deaths ?? 0;
+        const a = row.stats?.assists ?? 0;
         return (k + a) / Math.max(1, d);
       },
       cell: ({ row }) => {
-        const k = row.original.kills ?? 0;
-        const d = row.original.deaths ?? 0;
-        const a = row.original.assists ?? 0;
+        const k = row.original.stats?.kills ?? 0;
+        const d = row.original.stats?.deaths ?? 0;
+        const a = row.original.stats?.assists ?? 0;
         return ((k + a) / Math.max(1, d)).toFixed(2);
       },
     },
     {
       header: t("history.table.damage"),
       id: "damage",
-      accessorFn: (row) => row.damage ?? 0,
+      accessorFn: (row) => row.stats?.damage ?? 0,
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
             hideControls
             min={0}
             size="xs"
-            value={row.original.damage ?? 0}
+            value={row.original.stats?.damage ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "damage", value)}
             decimalScale={2}
           />
-        ) : (row.original.damage ?? "-"),
+        ) : (row.original.stats?.damage ?? "-"),
     },
     {
       header: t("history.table.healing"),
       id: "healing",
-      accessorFn: (row) => row.healing ?? 0,
+      accessorFn: (row) => row.stats?.healing ?? 0,
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
             hideControls
             min={0}
             size="xs"
-            value={row.original.healing ?? 0}
+            value={row.original.stats?.healing ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "healing", value)}
             decimalScale={2}
           />
-        ) : (row.original.healing ?? "-"),
+        ) : (row.original.stats?.healing ?? "-"),
     },
     {
       header: t("history.table.building"),
       id: "building_damage",
-      accessorFn: (row) => row.building_damage ?? 0,
+      accessorFn: (row) => row.stats?.building_damage ?? 0,
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
             hideControls
             min={0}
             size="xs"
-            value={row.original.building_damage ?? 0}
+            value={row.original.stats?.building_damage ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "building_damage", value)}
             decimalScale={2}
           />
-        ) : (row.original.building_damage ?? "-"),
+        ) : (row.original.stats?.building_damage ?? "-"),
     },
     {
       header: t("history.table.credits"),
       id: "credits",
-      accessorFn: (row) => row.credits ?? 0,
+      accessorFn: (row) => row.stats?.credits ?? 0,
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
             hideControls
             min={0}
             size="xs"
-            value={row.original.credits ?? 0}
+            value={row.original.stats?.credits ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "credits", value)}
           />
-        ) : (row.original.credits ?? "-"),
+        ) : (row.original.stats?.credits ?? "-"),
     },
     {
       header: t("history.table.damageTaken"),
       id: "damage_taken",
-      accessorFn: (row) => row.damage_taken ?? 0,
+      accessorFn: (row) => row.stats?.damage_taken ?? 0,
       cell: ({ row }) =>
         canManage ? (
           <NumberInput
             hideControls
             min={0}
             size="xs"
-            value={row.original.damage_taken ?? 0}
+            value={row.original.stats?.damage_taken ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "damage_taken", value)}
             decimalScale={2}
           />
-        ) : (row.original.damage_taken ?? "-"),
+        ) : (row.original.stats?.damage_taken ?? "-"),
     },
     {
       header: t("history.table.missing"),
       id: "missing",
       enableSorting: false,
       cell: ({ row }) => {
-        const stat = row.original;
-        const hasAnyData =
-          (stat.kills !== null && stat.kills !== 0) ||
-          (stat.deaths !== null && stat.deaths !== 0) ||
-          (stat.assists !== null && stat.assists !== 0) ||
-          (stat.damage !== null && stat.damage !== 0) ||
-          (stat.healing !== null && stat.healing !== 0) ||
-          (stat.building_damage !== null && stat.building_damage !== 0) ||
-          (stat.credits !== null && stat.credits !== 0) ||
-          (stat.damage_taken !== null && stat.damage_taken !== 0);
+        const s = row.original.stats;
+        const hasAnyData = s !== null && s !== undefined && Object.values(s).some((v) => v !== null && v !== 0);
         return hasAnyData ? (
           <Badge color="green">{t("history.table.complete")}</Badge>
         ) : (

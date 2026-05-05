@@ -262,7 +262,7 @@ export function AdminUsersSection({
               row.profile.classes.join(", "),
               String(row.profile.power),
               row.user.role,
-              row.user.is_active ? "Active" : "Inactive",
+              row.user.is_active ? t("member.status.active") : t("member.status.inactive"),
             ].join(", "),
           );
           clipboard.copy(lines.join("\n") + "\n");

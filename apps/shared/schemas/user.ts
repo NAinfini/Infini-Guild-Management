@@ -1,7 +1,9 @@
-﻿import { z } from "zod";
+import { z } from "zod";
+import { LIMITS } from "../config/limits";
 import { CLASS_NAMES } from "../constants/classes";
 import { PERMISSIONS } from "../constants/roles";
 
+const L = LIMITS.content;
 const permissionKeySchema = z.enum(PERMISSIONS);
 
 export const userSchema = z.object({
@@ -20,16 +22,16 @@ export const memberProfileSchema = z.object({
   user_id: z.string(),
   power: z.number().min(0),
   classes: z.array(z.enum(CLASS_NAMES)),
-  title_html: z.string().max(2000).nullable(),
-  bio: z.string().max(2000).nullable(),
+  title_html: z.string().max(L.profileTitleHtml.max).nullable(),
+  bio: z.string().max(L.profileBio.max).nullable(),
   avatar_key: z.string().nullable(),
-  images: z.array(z.string()).max(10),
+  images: z.array(z.string()).max(L.profileImages.max),
   audio_key: z.string().nullable(),
-  video_urls: z.array(z.string().url()).max(10),
+  video_urls: z.array(z.string().url()).max(L.profileVideoUrls.max),
   availability: z.record(z.string(), z.unknown()).nullable(),
   vacation_start: z.string().nullable(),
   vacation_end: z.string().nullable(),
-  notes: z.string().max(2000).nullable(),
+  notes: z.string().max(L.profileNotes.max).nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -51,11 +53,11 @@ export const updateProfileSchema = memberProfileSchema
   .partial();
 
 export const adminUpdateProfileSchema = updateProfileSchema.extend({
-  role: z.string().min(1).max(80).optional(),
+  role: z.string().min(1).max(L.roleName.max).optional(),
   is_active: z.boolean().optional(),
-  notes: z.string().max(2000).nullable().optional(),
+  notes: z.string().max(L.profileNotes.max).nullable().optional(),
 });
 
 export const deleteProfileImagesSchema = z.object({
-  keys: z.array(z.string().min(1)).min(1).max(10),
+  keys: z.array(z.string().min(1)).min(L.profileImagesDeleteBatch.min).max(L.profileImagesDeleteBatch.max),
 });

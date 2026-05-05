@@ -1,4 +1,5 @@
 import type { CursorResponse, GalleryItem } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { apiRequest } from "../client";
 
 export function fetchGallery(params: {
@@ -12,7 +13,7 @@ export function fetchGallery(params: {
 }): Promise<CursorResponse<GalleryItem>> {
   const query = new URLSearchParams();
   if (params.cursor) query.set("cursor", params.cursor);
-  query.set("limit", String(params.limit ?? 24));
+  query.set("limit", String(params.limit ?? LIMITS.pagination.gallery));
   if (params.type) query.set("type", params.type);
   if (params.date_from) query.set("date_from", params.date_from);
   if (params.date_to) query.set("date_to", params.date_to);

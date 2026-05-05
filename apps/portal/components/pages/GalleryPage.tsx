@@ -343,6 +343,19 @@ export function GalleryPage() {
                   {t("upload.summary", { queued: queuedCount, uploading: uploadingCount, total: uploadQueue.length })}
                 </Text>
               </Group>
+              <GalleryUploadQueueCard
+                uploadQueue={uploadQueue}
+                uploadingCount={uploadingCount}
+                uploadQueueTitle={t("uploadQueue")}
+                captionPlaceholder={t("field.caption")}
+                onCaptionChange={(taskId, caption) =>
+                  setUploadQueue((current) =>
+                    current.map((item) =>
+                      item.id === taskId ? { ...item, caption } : item,
+                    ),
+                  )
+                }
+              />
             </Stack>
           </Tabs.Panel>
 
@@ -412,24 +425,6 @@ export function GalleryPage() {
         addMediaLabel={t("action.addMedia")}
       />
 
-      <GalleryUploadQueueCard
-        uploadQueue={uploadQueue}
-        uploadingCount={uploadingCount}
-        uploadQueueTitle={t("uploadQueue")}
-        captionPlaceholder={t("field.caption")}
-        onCaptionChange={(taskId, caption) =>
-          setUploadQueue((current) =>
-            current.map((item) =>
-              item.id === taskId
-                ? {
-                    ...item,
-                    caption,
-                  }
-                : item,
-            ),
-          )
-        }
-      />
       <GalleryGrid
         rows={rows}
         isLoading={galleryQuery.isLoading}
@@ -453,7 +448,7 @@ export function GalleryPage() {
           modals.openConfirmModal({
             title: t("confirm.delete.title"),
             children: <Text size="sm">{t("confirm.delete.description")}</Text>,
-            labels: { confirm: t("action.delete"), cancel: t("common:cancel") },
+            labels: { confirm: t("action.delete"), cancel: t("common:action.cancel") },
             confirmProps: { color: "red" },
             onConfirm: () => deleteMutation.mutate(id),
           })

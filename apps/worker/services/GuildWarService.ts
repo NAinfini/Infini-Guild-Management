@@ -8,6 +8,7 @@ import {
   warTeamMemberSchema,
   warTeamSchema,
 } from "@guild/shared";
+import { activeGame } from "@guild/shared/games";
 import { and, asc, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
@@ -33,16 +34,8 @@ export type WarHistoryRow = {
   warName: string;
   enemyName: string | null;
   result: string | null;
-  ownKills: number | null;
-  ownTowers: number | null;
-  ownBaseHp: number | null;
-  ownCredits: number | null;
-  ownDistance: number | null;
-  enemyKills: number | null;
-  enemyTowers: number | null;
-  enemyBaseHp: number | null;
-  enemyCredits: number | null;
-  enemyDistance: number | null;
+  ownStats: Record<string, number | null> | null;
+  enemyStats: Record<string, number | null> | null;
   durationMinutes: number | null;
   notes: string | null;
   createdBy: string;
@@ -65,14 +58,7 @@ export type WarTeamMemberRow = {
   userId: string;
   roleTag: string | null;
   sortOrder: number;
-  kills: number | null;
-  deaths: number | null;
-  assists: number | null;
-  damage: number | null;
-  healing: number | null;
-  buildingDamage: number | null;
-  credits: number | null;
-  damageTaken: number | null;
+  stats: Record<string, number | null> | null;
   note: string | null;
 };
 
@@ -120,10 +106,8 @@ function toNum(v: unknown): number | null {
 export function toWarHistoryPayload(row: WarHistoryRow) {
   return warHistorySchema.parse({
     id: row.id, event_id: row.eventId, war_name: row.warName, enemy_name: row.enemyName, result: row.result,
-    own_kills: toNum(row.ownKills), own_towers: toNum(row.ownTowers), own_base_hp: toNum(row.ownBaseHp),
-    own_credits: toNum(row.ownCredits), own_distance: toNum(row.ownDistance),
-    enemy_kills: toNum(row.enemyKills), enemy_towers: toNum(row.enemyTowers), enemy_base_hp: toNum(row.enemyBaseHp),
-    enemy_credits: toNum(row.enemyCredits), enemy_distance: toNum(row.enemyDistance),
+    own_stats: row.ownStats ?? null,
+    enemy_stats: row.enemyStats ?? null,
     duration_minutes: toNum(row.durationMinutes), notes: row.notes,
     created_by: row.createdBy, created_at: row.createdAt, updated_at: row.updatedAt,
   });
@@ -139,10 +123,7 @@ export function toTeamPayload(row: WarTeamRow) {
 export function toMemberPayload(row: WarTeamMemberRow) {
   return warTeamMemberSchema.parse({
     id: row.id, war_team_id: row.warTeamId, user_id: row.userId, role_tag: row.roleTag,
-    sort_order: toNum(row.sortOrder) ?? 0, kills: toNum(row.kills), deaths: toNum(row.deaths),
-    assists: toNum(row.assists), damage: toNum(row.damage), healing: toNum(row.healing),
-    building_damage: toNum(row.buildingDamage), credits: toNum(row.credits),
-    damage_taken: toNum(row.damageTaken), note: row.note,
+    sort_order: toNum(row.sortOrder) ?? 0, stats: row.stats ?? null, note: row.note,
   });
 }
 
@@ -157,32 +138,33 @@ function toCsvCell(value: unknown): string {
 }
 
 function buildWarHistoryCsv(rows: WarHistoryRow[], creatorMap: Map<string, string>): string {
-  const headers = ["id","event_id","war_name","enemy_name","result","own_kills","enemy_kills","own_towers","enemy_towers","own_base_hp","enemy_base_hp","own_credits","enemy_credits","own_distance","enemy_distance","duration_minutes","notes","created_by","created_by_username","created_at","updated_at"];
+  const objectives = activeGame.war.teamObjectives.filter((o) => o.hasBothSides);
+  const statHeaders = objectives.flatMap((o) => [`own_${o.key}`, `enemy_${o.key}`]);
+  const headers = ["id","event_id","war_name","enemy_name","result",...statHeaders,"duration_minutes","notes","created_by","created_by_username","created_at","updated_at"];
   const lines = [headers.join(",")];
   for (const row of rows) {
-    lines.push([toCsvCell(row.id),toCsvCell(row.eventId),toCsvCell(row.warName),toCsvCell(row.enemyName),toCsvCell(row.result),toCsvCell(row.ownKills),toCsvCell(row.enemyKills),toCsvCell(row.ownTowers),toCsvCell(row.enemyTowers),toCsvCell(row.ownBaseHp),toCsvCell(row.enemyBaseHp),toCsvCell(row.ownCredits),toCsvCell(row.enemyCredits),toCsvCell(row.ownDistance),toCsvCell(row.enemyDistance),toCsvCell(row.durationMinutes),toCsvCell(row.notes),toCsvCell(row.createdBy),toCsvCell(creatorMap.get(row.createdBy ?? "") ?? row.createdBy),toCsvCell(row.createdAt),toCsvCell(row.updatedAt)].join(","));
+    const statCells = objectives.flatMap((o) => [toCsvCell(row.ownStats?.[o.key]), toCsvCell(row.enemyStats?.[o.key])]);
+    lines.push([toCsvCell(row.id),toCsvCell(row.eventId),toCsvCell(row.warName),toCsvCell(row.enemyName),toCsvCell(row.result),...statCells,toCsvCell(row.durationMinutes),toCsvCell(row.notes),toCsvCell(row.createdBy),toCsvCell(creatorMap.get(row.createdBy ?? "") ?? row.createdBy),toCsvCell(row.createdAt),toCsvCell(row.updatedAt)].join(","));
   }
   return lines.join("\n");
 }
 
 function computeWarModifier(
-  war: { ownKills: number | null; ownTowers: number | null; ownBaseHp: number | null; ownCredits: number | null; ownDistance: number | null; enemyKills: number | null; enemyTowers: number | null; enemyBaseHp: number | null; enemyCredits: number | null; enemyDistance: number | null },
+  war: { ownStats: Record<string, number | null> | null; enemyStats: Record<string, number | null> | null },
   _ownTeamSize: number, settings: AnalyticsSettings,
 ): { value: number; breakdown: ModifierBreakdown[] } {
-  // Note: Previously some factors used perCapita which divided only ownVal by
-  // ownTeamSize, mixing per-capita and total units. Enemy team size is not
-  // tracked in the schema, so we use raw totals for both sides to keep units
-  // consistent. The ratio thus reflects total team performance comparison.
-  const factors = [
-    { key: "kda", weight: settings.modifier_weight_kda, ownVal: war.ownKills, enemyVal: war.enemyKills },
-    { key: "towers", weight: settings.modifier_weight_towers, ownVal: war.ownTowers, enemyVal: war.enemyTowers },
-    { key: "credits", weight: settings.modifier_weight_credits, ownVal: war.ownCredits, enemyVal: war.enemyCredits },
-    { key: "distance", weight: settings.modifier_weight_distance, ownVal: war.ownDistance, enemyVal: war.enemyDistance },
-    { key: "basehp", weight: settings.modifier_weight_basehp, ownVal: war.ownBaseHp, enemyVal: war.enemyBaseHp },
-  ];
+  const weights = settings.modifier_weights;
+  const own = war.ownStats ?? {};
+  const enemy = war.enemyStats ?? {};
+  const factors: Array<{ key: string; weight: number; ownVal: number | null; enemyVal: number | null }> = [];
+  for (const [key, weight] of Object.entries(weights)) {
+    if (weight <= 0) continue;
+    const objectiveKey = key === "basehp" ? "base_hp" : key === "kda" ? "kills" : key;
+    factors.push({ key, weight, ownVal: own[objectiveKey] ?? null, enemyVal: enemy[objectiveKey] ?? null });
+  }
   const valid: Array<{ key: string; weight: number; ratio: number }> = [];
   for (const f of factors) {
-    if (f.weight <= 0 || f.ownVal === null || f.enemyVal === null) continue;
+    if (f.ownVal === null || f.enemyVal === null) continue;
     valid.push({ key: f.key, weight: f.weight, ratio: f.enemyVal / Math.max(f.ownVal, 1) });
   }
   if (valid.length === 0) return { value: 1.0, breakdown: [] };
@@ -217,13 +199,16 @@ export class GuildWarService {
       const defaults = defaultAnalyticsSettings();
       if (typeof parsed !== "object" || parsed === null) return defaults;
       const record = parsed as Record<string, unknown>;
+      const rawWeights = record.modifier_weights;
+      const modifier_weights: Record<string, number> = { ...defaults.modifier_weights };
+      if (typeof rawWeights === "object" && rawWeights !== null) {
+        for (const [key, val] of Object.entries(rawWeights as Record<string, unknown>)) {
+          if (typeof val === "number") modifier_weights[key] = val;
+        }
+      }
       return {
         reference_duration_minutes: typeof record.reference_duration_minutes === "number" && record.reference_duration_minutes > 0 ? record.reference_duration_minutes : defaults.reference_duration_minutes,
-        modifier_weight_kda: typeof record.modifier_weight_kda === "number" ? record.modifier_weight_kda : defaults.modifier_weight_kda,
-        modifier_weight_towers: typeof record.modifier_weight_towers === "number" ? record.modifier_weight_towers : defaults.modifier_weight_towers,
-        modifier_weight_credits: typeof record.modifier_weight_credits === "number" ? record.modifier_weight_credits : defaults.modifier_weight_credits,
-        modifier_weight_distance: typeof record.modifier_weight_distance === "number" ? record.modifier_weight_distance : defaults.modifier_weight_distance,
-        modifier_weight_basehp: typeof record.modifier_weight_basehp === "number" ? record.modifier_weight_basehp : defaults.modifier_weight_basehp,
+        modifier_weights,
       };
     } catch { return defaultAnalyticsSettings(); }
   }
@@ -231,12 +216,12 @@ export class GuildWarService {
   // --- DB query methods ---
 
   async getWarHistoryById(warId: string): Promise<WarHistoryRow | null> {
-    const row = (await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownKills: warHistory.ownKills, ownTowers: warHistory.ownTowers, ownBaseHp: warHistory.ownBaseHp, ownCredits: warHistory.ownCredits, ownDistance: warHistory.ownDistance, enemyKills: warHistory.enemyKills, enemyTowers: warHistory.enemyTowers, enemyBaseHp: warHistory.enemyBaseHp, enemyCredits: warHistory.enemyCredits, enemyDistance: warHistory.enemyDistance, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(eq(warHistory.id, warId)).limit(1))[0];
+    const row = (await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(eq(warHistory.id, warId)).limit(1))[0];
     return row ?? null;
   }
 
   async getLatestWarHistory(eventId?: string): Promise<WarHistoryRow | null> {
-    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownKills: warHistory.ownKills, ownTowers: warHistory.ownTowers, ownBaseHp: warHistory.ownBaseHp, ownCredits: warHistory.ownCredits, ownDistance: warHistory.ownDistance, enemyKills: warHistory.enemyKills, enemyTowers: warHistory.enemyTowers, enemyBaseHp: warHistory.enemyBaseHp, enemyCredits: warHistory.enemyCredits, enemyDistance: warHistory.enemyDistance, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(eventId ? eq(warHistory.eventId, eventId) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(1);
+    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(eventId ? eq(warHistory.eventId, eventId) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(1);
     return rows[0] ?? null;
   }
 
@@ -246,7 +231,7 @@ export class GuildWarService {
 
   async getMembersForTeams(teamIds: string[]): Promise<WarTeamMemberRow[]> {
     if (teamIds.length === 0) return [];
-    return await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, kills: warTeamMembers.kills, deaths: warTeamMembers.deaths, assists: warTeamMembers.assists, damage: warTeamMembers.damage, healing: warTeamMembers.healing, buildingDamage: warTeamMembers.buildingDamage, credits: warTeamMembers.credits, damageTaken: warTeamMembers.damageTaken, note: warTeamMembers.note }).from(warTeamMembers).where(inArray(warTeamMembers.warTeamId, teamIds)).orderBy(asc(warTeamMembers.sortOrder), asc(warTeamMembers.id));
+    return await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, stats: warTeamMembers.stats, note: warTeamMembers.note }).from(warTeamMembers).where(inArray(warTeamMembers.warTeamId, teamIds)).orderBy(asc(warTeamMembers.sortOrder), asc(warTeamMembers.id));
   }
 
   async getPoolMembers(warHistoryId: string): Promise<Array<{ id: string; warHistoryId: string; userId: string }>> {
@@ -511,7 +496,7 @@ export class GuildWarService {
     if (filters.dateFrom) where.push(gte(warHistory.createdAt, filters.dateFrom));
     if (filters.dateTo) where.push(lte(warHistory.createdAt, filters.dateTo));
     if (filters.eventId) where.push(eq(warHistory.eventId, filters.eventId));
-    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownKills: warHistory.ownKills, ownTowers: warHistory.ownTowers, ownBaseHp: warHistory.ownBaseHp, ownCredits: warHistory.ownCredits, ownDistance: warHistory.ownDistance, enemyKills: warHistory.enemyKills, enemyTowers: warHistory.enemyTowers, enemyBaseHp: warHistory.enemyBaseHp, enemyCredits: warHistory.enemyCredits, enemyDistance: warHistory.enemyDistance, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(where.length > 0 ? and(...where) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(5000);
+    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(where.length > 0 ? and(...where) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(5000);
     const creatorIds = [...new Set(rows.map((r) => r.createdBy).filter(Boolean) as string[])];
     const creatorMap = await this.getUsernameMap(creatorIds);
     const dateStamp = new Date().toISOString().slice(0, 10);
@@ -546,13 +531,13 @@ export class GuildWarService {
     if (filters.dateFrom) where.push(gte(warHistory.createdAt, filters.dateFrom));
     if (filters.dateTo) where.push(lte(warHistory.createdAt, filters.dateTo));
     const whereClause = where.length > 0 ? and(...where) : undefined;
-    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownKills: warHistory.ownKills, ownTowers: warHistory.ownTowers, ownBaseHp: warHistory.ownBaseHp, ownCredits: warHistory.ownCredits, ownDistance: warHistory.ownDistance, enemyKills: warHistory.enemyKills, enemyTowers: warHistory.enemyTowers, enemyBaseHp: warHistory.enemyBaseHp, enemyCredits: warHistory.enemyCredits, enemyDistance: warHistory.enemyDistance, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt, _total: sql<number>`count(*) over()` }).from(warHistory).where(whereClause).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(limit).offset(offset);
+    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt, _total: sql<number>`count(*) over()` }).from(warHistory).where(whereClause).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(limit).offset(offset);
     const total = Number((rows[0] as Record<string, unknown> | undefined)?._total ?? 0);
     return ok({ data: rows.map(toWarHistoryPayload), total, page, limit, total_pages: Math.max(1, Math.ceil(total / limit)) });
   }
 
   async batchHistory(ids: string[]): Promise<ServiceResult<{ data: unknown[] }>> {
-    const histories = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownKills: warHistory.ownKills, ownTowers: warHistory.ownTowers, ownBaseHp: warHistory.ownBaseHp, ownCredits: warHistory.ownCredits, ownDistance: warHistory.ownDistance, enemyKills: warHistory.enemyKills, enemyTowers: warHistory.enemyTowers, enemyBaseHp: warHistory.enemyBaseHp, enemyCredits: warHistory.enemyCredits, enemyDistance: warHistory.enemyDistance, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(inArray(warHistory.id, ids));
+    const histories = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(inArray(warHistory.id, ids));
     const allTeams = await this.db.select({ id: warTeams.id, warHistoryId: warTeams.warHistoryId, teamName: warTeams.teamName, sortOrder: warTeams.sortOrder, notes: warTeams.notes, isLocked: warTeams.isLocked }).from(warTeams).where(inArray(warTeams.warHistoryId, ids)).orderBy(asc(warTeams.sortOrder), asc(warTeams.id));
     const teamIds = allTeams.map((t) => t.id);
     const allMembers = teamIds.length > 0 ? await this.getMembersForTeams(teamIds) : [];
@@ -592,7 +577,7 @@ export class GuildWarService {
 
   async createHistory(actorId: string, input: CreateWarHistoryInput): Promise<ServiceResult<unknown>> {
     const historyId = nanoid();
-    await this.db.insert(warHistory).values({ id: historyId, eventId: input.event_id ?? null, warName: input.war_name, enemyName: input.enemy_name ?? null, result: input.result ?? null, ownKills: input.own_kills ?? null, ownTowers: input.own_towers ?? null, ownBaseHp: input.own_base_hp ?? null, ownCredits: input.own_credits ?? null, ownDistance: input.own_distance ?? null, enemyKills: input.enemy_kills ?? null, enemyTowers: input.enemy_towers ?? null, enemyBaseHp: input.enemy_base_hp ?? null, enemyCredits: input.enemy_credits ?? null, enemyDistance: input.enemy_distance ?? null, notes: input.notes ?? null, createdBy: actorId });
+    await this.db.insert(warHistory).values({ id: historyId, eventId: input.event_id ?? null, warName: input.war_name, enemyName: input.enemy_name ?? null, result: input.result ?? null, ownStats: input.own_stats ?? null, enemyStats: input.enemy_stats ?? null, notes: input.notes ?? null, createdBy: actorId });
     const created = await this.getWarHistoryById(historyId);
     if (!created) return err("SERVER_ERROR", "Failed to create war history");
     await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "create", actorId, entityId: historyId, diffTitle: created.warName });
@@ -608,16 +593,8 @@ export class GuildWarService {
     if (input.war_name !== undefined) patch.warName = input.war_name;
     if (input.enemy_name !== undefined) patch.enemyName = input.enemy_name;
     if (input.result !== undefined) patch.result = input.result;
-    if (input.own_kills !== undefined) patch.ownKills = input.own_kills;
-    if (input.own_towers !== undefined) patch.ownTowers = input.own_towers;
-    if (input.own_base_hp !== undefined) patch.ownBaseHp = input.own_base_hp;
-    if (input.own_credits !== undefined) patch.ownCredits = input.own_credits;
-    if (input.own_distance !== undefined) patch.ownDistance = input.own_distance;
-    if (input.enemy_kills !== undefined) patch.enemyKills = input.enemy_kills;
-    if (input.enemy_towers !== undefined) patch.enemyTowers = input.enemy_towers;
-    if (input.enemy_base_hp !== undefined) patch.enemyBaseHp = input.enemy_base_hp;
-    if (input.enemy_credits !== undefined) patch.enemyCredits = input.enemy_credits;
-    if (input.enemy_distance !== undefined) patch.enemyDistance = input.enemy_distance;
+    if (input.own_stats !== undefined) patch.ownStats = input.own_stats;
+    if (input.enemy_stats !== undefined) patch.enemyStats = input.enemy_stats;
     if (input.duration_minutes !== undefined) patch.durationMinutes = input.duration_minutes;
     if (input.notes !== undefined) patch.notes = input.notes;
     await this.db.update(warHistory).set(patch).where(eq(warHistory.id, warId));
@@ -682,20 +659,13 @@ export class GuildWarService {
   async updateMemberStats(actorId: string, warId: string, targetUserId: string, input: z.infer<typeof updateMemberStatsSchema>): Promise<ServiceResult<unknown>> {
     const existingHistory = await this.getWarHistoryById(warId);
     if (!existingHistory) return err("NOT_FOUND", "War history not found");
-    const memberRow = (await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, kills: warTeamMembers.kills, deaths: warTeamMembers.deaths, assists: warTeamMembers.assists, damage: warTeamMembers.damage, healing: warTeamMembers.healing, buildingDamage: warTeamMembers.buildingDamage, credits: warTeamMembers.credits, damageTaken: warTeamMembers.damageTaken, note: warTeamMembers.note }).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(and(eq(warTeams.warHistoryId, warId), eq(warTeamMembers.userId, targetUserId))).limit(1))[0];
+    const memberRow = (await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, stats: warTeamMembers.stats, note: warTeamMembers.note }).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(and(eq(warTeams.warHistoryId, warId), eq(warTeamMembers.userId, targetUserId))).limit(1))[0];
     if (!memberRow) return err("NOT_FOUND", "Team member not found in selected war history");
     const patch: Partial<typeof warTeamMembers.$inferInsert> = {};
-    if (input.kills !== undefined) patch.kills = input.kills;
-    if (input.deaths !== undefined) patch.deaths = input.deaths;
-    if (input.assists !== undefined) patch.assists = input.assists;
-    if (input.damage !== undefined) patch.damage = input.damage;
-    if (input.healing !== undefined) patch.healing = input.healing;
-    if (input.building_damage !== undefined) patch.buildingDamage = input.building_damage;
-    if (input.credits !== undefined) patch.credits = input.credits;
-    if (input.damage_taken !== undefined) patch.damageTaken = input.damage_taken;
+    if (input.stats !== undefined) patch.stats = input.stats;
     if (input.note !== undefined) patch.note = input.note;
     await this.db.update(warTeamMembers).set(patch).where(eq(warTeamMembers.id, memberRow.id));
-    const refreshed = (await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, kills: warTeamMembers.kills, deaths: warTeamMembers.deaths, assists: warTeamMembers.assists, damage: warTeamMembers.damage, healing: warTeamMembers.healing, buildingDamage: warTeamMembers.buildingDamage, credits: warTeamMembers.credits, damageTaken: warTeamMembers.damageTaken, note: warTeamMembers.note }).from(warTeamMembers).where(eq(warTeamMembers.id, memberRow.id)).limit(1))[0];
+    const refreshed = (await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, stats: warTeamMembers.stats, note: warTeamMembers.note }).from(warTeamMembers).where(eq(warTeamMembers.id, memberRow.id)).limit(1))[0];
     if (!refreshed) return err("SERVER_ERROR", "Failed to load updated member stats");
     const targetUser = (await this.db.select({ username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     await this.deps.writeAuditLog({ entityType: "guild_war_member_stats", action: "update", actorId, entityId: `${warId}:${targetUserId}`, diffTitle: targetUser?.username ?? null, detailText: JSON.stringify(input) });
@@ -706,7 +676,7 @@ export class GuildWarService {
     const existingHistory = await this.getWarHistoryById(warId);
     if (!existingHistory) return err("NOT_FOUND", "War history not found");
     const userIds = updates.map((u) => u.user_id).filter((id) => typeof id === "string" && id.length > 0);
-    const memberRows = await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, kills: warTeamMembers.kills, deaths: warTeamMembers.deaths, assists: warTeamMembers.assists, damage: warTeamMembers.damage, healing: warTeamMembers.healing, buildingDamage: warTeamMembers.buildingDamage, credits: warTeamMembers.credits, damageTaken: warTeamMembers.damageTaken, note: warTeamMembers.note }).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(and(eq(warTeams.warHistoryId, warId), inArray(warTeamMembers.userId, userIds)));
+    const memberRows = await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, stats: warTeamMembers.stats, note: warTeamMembers.note }).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(and(eq(warTeams.warHistoryId, warId), inArray(warTeamMembers.userId, userIds)));
     const memberByUserId = new Map(memberRows.map((m) => [m.userId, m]));
     const results: ReturnType<typeof toMemberPayload>[] = [];
 
@@ -719,14 +689,7 @@ export class GuildWarService {
       const parsed = updateMemberStatsSchema.safeParse(update.stats);
       if (!parsed.success) continue;
       const patch: Partial<typeof warTeamMembers.$inferInsert> = {};
-      if (parsed.data.kills !== undefined) patch.kills = parsed.data.kills;
-      if (parsed.data.deaths !== undefined) patch.deaths = parsed.data.deaths;
-      if (parsed.data.assists !== undefined) patch.assists = parsed.data.assists;
-      if (parsed.data.damage !== undefined) patch.damage = parsed.data.damage;
-      if (parsed.data.healing !== undefined) patch.healing = parsed.data.healing;
-      if (parsed.data.building_damage !== undefined) patch.buildingDamage = parsed.data.building_damage;
-      if (parsed.data.credits !== undefined) patch.credits = parsed.data.credits;
-      if (parsed.data.damage_taken !== undefined) patch.damageTaken = parsed.data.damage_taken;
+      if (parsed.data.stats !== undefined) patch.stats = parsed.data.stats;
       if (parsed.data.note !== undefined) patch.note = parsed.data.note;
       if (Object.keys(patch).length > 0) {
         pendingPatches.push({ memberRow, patch });
@@ -741,14 +704,7 @@ export class GuildWarService {
         const setClauses: string[] = [];
         const bindings: unknown[] = [];
         let paramIdx = 1;
-        if (patch.kills !== undefined) { setClauses.push(`kills = ?${paramIdx++}`); bindings.push(patch.kills); }
-        if (patch.deaths !== undefined) { setClauses.push(`deaths = ?${paramIdx++}`); bindings.push(patch.deaths); }
-        if (patch.assists !== undefined) { setClauses.push(`assists = ?${paramIdx++}`); bindings.push(patch.assists); }
-        if (patch.damage !== undefined) { setClauses.push(`damage = ?${paramIdx++}`); bindings.push(patch.damage); }
-        if (patch.healing !== undefined) { setClauses.push(`healing = ?${paramIdx++}`); bindings.push(patch.healing); }
-        if (patch.buildingDamage !== undefined) { setClauses.push(`building_damage = ?${paramIdx++}`); bindings.push(patch.buildingDamage); }
-        if (patch.credits !== undefined) { setClauses.push(`credits = ?${paramIdx++}`); bindings.push(patch.credits); }
-        if (patch.damageTaken !== undefined) { setClauses.push(`damage_taken = ?${paramIdx++}`); bindings.push(patch.damageTaken); }
+        if (patch.stats !== undefined) { setClauses.push(`stats = ?${paramIdx++}`); bindings.push(JSON.stringify(patch.stats)); }
         if (patch.note !== undefined) { setClauses.push(`note = ?${paramIdx++}`); bindings.push(patch.note); }
         bindings.push(memberRow.id);
         return (rawDb.prepare(`UPDATE war_team_members SET ${setClauses.join(", ")} WHERE id = ?${paramIdx}`) as D1PreparedStatement).bind(...(bindings as Parameters<D1PreparedStatement["bind"]>));
@@ -768,7 +724,7 @@ export class GuildWarService {
   async getAnalytics(warIds: string[], userIds: string[]): Promise<ServiceResult<{ wars: unknown[]; member_stats: unknown[]; analytics_settings: AnalyticsSettings }>> {
     const warFilters: SQL<unknown>[] = [];
     if (warIds.length > 0) warFilters.push(inArray(warHistory.id, warIds));
-    const wars = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownKills: warHistory.ownKills, ownTowers: warHistory.ownTowers, ownBaseHp: warHistory.ownBaseHp, ownCredits: warHistory.ownCredits, ownDistance: warHistory.ownDistance, enemyKills: warHistory.enemyKills, enemyTowers: warHistory.enemyTowers, enemyBaseHp: warHistory.enemyBaseHp, enemyCredits: warHistory.enemyCredits, enemyDistance: warHistory.enemyDistance, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(warFilters.length > 0 ? and(...warFilters) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(200);
+    const wars = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(warFilters.length > 0 ? and(...warFilters) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(200);
     const historyIds = wars.map((w) => w.id);
     if (historyIds.length === 0) return ok({ wars: [], member_stats: [], analytics_settings: defaultAnalyticsSettings() });
     const teamSizeCounts = await this.db.select({ warHistoryId: warTeams.warHistoryId, memberCount: sql<number>`count(${warTeamMembers.id})`.as("member_count") }).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(inArray(warTeams.warHistoryId, historyIds)).groupBy(warTeams.warHistoryId);
@@ -782,13 +738,14 @@ export class GuildWarService {
     });
     const memberFilters: SQL<unknown>[] = [inArray(warTeams.warHistoryId, historyIds)];
     if (userIds.length > 0) memberFilters.push(inArray(warTeamMembers.userId, userIds));
-    const members = await this.db.select({ userId: warTeamMembers.userId, kills: warTeamMembers.kills, deaths: warTeamMembers.deaths, assists: warTeamMembers.assists, damage: warTeamMembers.damage, healing: warTeamMembers.healing, buildingDamage: warTeamMembers.buildingDamage, credits: warTeamMembers.credits, damageTaken: warTeamMembers.damageTaken }).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(and(...memberFilters));
-    const aggregate = new Map<string, { user_id: string; kills: number; deaths: number; assists: number; damage: number; healing: number; building_damage: number; credits: number; damage_taken: number }>();
+    const members = await this.db.select({ userId: warTeamMembers.userId, stats: warTeamMembers.stats }).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(and(...memberFilters));
+    const aggregate = new Map<string, { user_id: string; stats: Record<string, number> }>();
     for (const row of members) {
-      const current = aggregate.get(row.userId) ?? { user_id: row.userId, kills: 0, deaths: 0, assists: 0, damage: 0, healing: 0, building_damage: 0, credits: 0, damage_taken: 0 };
-      current.kills += row.kills ?? 0; current.deaths += row.deaths ?? 0; current.assists += row.assists ?? 0;
-      current.damage += row.damage ?? 0; current.healing += row.healing ?? 0; current.building_damage += row.buildingDamage ?? 0;
-      current.credits += row.credits ?? 0; current.damage_taken += row.damageTaken ?? 0;
+      const s = row.stats ?? {};
+      const current = aggregate.get(row.userId) ?? { user_id: row.userId, stats: {} };
+      for (const [key, val] of Object.entries(s)) {
+        current.stats[key] = (current.stats[key] ?? 0) + (val ?? 0);
+      }
       aggregate.set(row.userId, current);
     }
     return ok({ wars: warsWithModifier, member_stats: Array.from(aggregate.values()), analytics_settings: analyticsSettings });

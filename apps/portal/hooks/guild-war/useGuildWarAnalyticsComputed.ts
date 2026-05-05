@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { activeGame } from "@guild/shared/games";
 import type { AnalyticsAggregation, AnalyticsMetricKey, AnalyticsTableColumn } from "./useGuildWarAnalytics";
 import { hashToPaletteColor } from "./useGuildWarAnalytics";
 
@@ -11,27 +12,13 @@ type WarDetail = {
   member_stats: Array<{
     user_id: string;
     username?: string | null;
-    kills: number | null;
-    deaths: number | null;
-    assists: number | null;
-    damage: number | null;
-    healing: number | null;
-    building_damage: number | null;
-    credits: number | null;
-    damage_taken: number | null;
+    stats: Record<string, number | null> | null;
   }>;
   teams: Array<{
     team_name: string;
     members: Array<{
       user_id: string;
-      kills: number | null;
-      deaths: number | null;
-      assists: number | null;
-      damage: number | null;
-      healing: number | null;
-      building_damage: number | null;
-      credits: number | null;
-      damage_taken: number | null;
+      stats: Record<string, number | null> | null;
     }>;
   }>;
 };
@@ -56,27 +43,13 @@ type UseGuildWarAnalyticsComputedParams = {
   getMetricLabelKey: (metric: AnalyticsMetricKey) => string;
   metricValueFromWarMember: (
     row: {
-      kills: number | null;
-      deaths: number | null;
-      assists: number | null;
-      damage: number | null;
-      healing: number | null;
-      building_damage: number | null;
-      credits: number | null;
-      damage_taken: number | null;
+      stats: Record<string, number | null> | null;
     },
     metric: AnalyticsMetricKey,
   ) => number;
   metricValueOrNullFromWarMember: (
     row: {
-      kills: number | null;
-      deaths: number | null;
-      assists: number | null;
-      damage: number | null;
-      healing: number | null;
-      building_damage: number | null;
-      credits: number | null;
-      damage_taken: number | null;
+      stats: Record<string, number | null> | null;
     },
     metric: AnalyticsMetricKey,
   ) => number | null;
@@ -181,9 +154,9 @@ export function useGuildWarAnalyticsComputed({
       const ctx = warNormContext.get(warId);
       if (!ctx) return raw;
       if (metric === "kda") {
-        const normK = normalizeMetricValue(member.kills ?? 0, "kills", ctx.durationMinutes, referenceDuration, ctx.modifier);
-        const normD = normalizeMetricValue(member.deaths ?? 0, "deaths", ctx.durationMinutes, referenceDuration, ctx.modifier);
-        const normA = normalizeMetricValue(member.assists ?? 0, "assists", ctx.durationMinutes, referenceDuration, ctx.modifier);
+        const normK = normalizeMetricValue(member.stats?.kills ?? 0, "kills", ctx.durationMinutes, referenceDuration, ctx.modifier);
+        const normD = normalizeMetricValue(member.stats?.deaths ?? 0, "deaths", ctx.durationMinutes, referenceDuration, ctx.modifier);
+        const normA = normalizeMetricValue(member.stats?.assists ?? 0, "assists", ctx.durationMinutes, referenceDuration, ctx.modifier);
         return Number(((normK + normA) / Math.max(normD, 1)).toFixed(2));
       }
       return normalizeMetricValue(raw, metric, ctx.durationMinutes, referenceDuration, ctx.modifier);
@@ -542,7 +515,10 @@ export function useGuildWarAnalyticsComputed({
     if (analyticsMode !== "radar") return null;
     const metricsToUse: AnalyticsMetricKey[] = analyticsSelectedMetrics.length > 0
       ? analyticsSelectedMetrics
-      : ["damage", "healing", "building_damage", "kills", "assists", "credits", "damage_taken", "kda"];
+      : [
+          ...activeGame.war.memberStats.map((s) => s.key),
+          ...(activeGame.war.computedStats?.map((s) => s.key) ?? []),
+        ];
 
     // Compute max per metric across all users for normalization to percentile
     const metricMaxes = new Map<AnalyticsMetricKey, number>();

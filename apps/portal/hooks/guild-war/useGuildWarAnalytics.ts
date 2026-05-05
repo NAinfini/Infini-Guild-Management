@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { activeGame } from "@guild/shared/games";
 import {
   ANALYTICS_SELECTION_SOFT_CAP,
   GuildWarService,
@@ -18,16 +19,7 @@ const message = {
   warning: (content: string) => notifyWarning(content),
 };
 
-type AnalyticsMetricKey =
-  | "kills"
-  | "deaths"
-  | "assists"
-  | "damage"
-  | "healing"
-  | "building_damage"
-  | "credits"
-  | "damage_taken"
-  | "kda";
+type AnalyticsMetricKey = string;
 type AnalyticsAggregation = "total" | "average" | "best" | "median";
 
 type AnalyticsTableColumn = {
@@ -36,85 +28,56 @@ type AnalyticsTableColumn = {
   dataIndex?: string;
 };
 
+const METRIC_LABEL_MAP: Record<string, string> = Object.fromEntries(
+  activeGame.war.memberStats.map((s) => [s.key, s.label.replace(/^guild-war:/, "")]),
+);
+
 export function getMetricLabelKey(metric: AnalyticsMetricKey): string {
-  switch (metric) {
-    case "kills":
-      return "analytics.metric.kills";
-    case "deaths":
-      return "analytics.metric.deaths";
-    case "assists":
-      return "analytics.metric.assists";
-    case "damage":
-      return "analytics.metric.damage";
-    case "healing":
-      return "analytics.metric.healing";
-    case "building_damage":
-      return "analytics.metric.buildingDamage";
-    case "credits":
-      return "analytics.metric.credits";
-    case "damage_taken":
-      return "analytics.metric.damageTaken";
-    case "kda":
-      return "analytics.metric.kda";
-    default:
-      return metric;
-  }
+  if (metric === "kda") return "analytics.metric.kda";
+  return METRIC_LABEL_MAP[metric] ?? metric;
 }
 
 export function metricValueFromWarMember(
   row: {
-    kills: number | null;
-    deaths: number | null;
-    assists: number | null;
-    damage: number | null;
-    healing: number | null;
-    building_damage: number | null;
-    credits: number | null;
-    damage_taken: number | null;
+    stats: Record<string, number | null> | null;
   },
   metric: AnalyticsMetricKey,
 ): number {
-  const normalized = {
-    kills: row.kills ?? 0,
-    deaths: row.deaths ?? 0,
-    assists: row.assists ?? 0,
-    damage: row.damage ?? 0,
-    healing: row.healing ?? 0,
-    building_damage: row.building_damage ?? 0,
-    credits: row.credits ?? 0,
-    damage_taken: row.damage_taken ?? 0,
-  };
-  if (metric === "kda") {
-    const deaths = normalized.deaths > 0 ? normalized.deaths : 1;
-    return Number(((normalized.kills + normalized.assists) / deaths).toFixed(2));
+  const s = row.stats ?? {};
+  const computedDef = activeGame.war.computedStats?.find((c) => c.key === metric);
+  if (computedDef) {
+    const resolved: Record<string, number> = {};
+    for (const stat of activeGame.war.memberStats) {
+      resolved[stat.key] = s[stat.key] ?? 0;
+    }
+    return computedDef.compute(resolved);
   }
-  return normalized[metric];
+  return s[metric] ?? 0;
 }
 
 export function metricValueOrNullFromWarMember(
   row: {
-    kills: number | null;
-    deaths: number | null;
-    assists: number | null;
-    damage: number | null;
-    healing: number | null;
-    building_damage: number | null;
-    credits: number | null;
-    damage_taken: number | null;
+    stats: Record<string, number | null> | null;
   },
   metric: AnalyticsMetricKey,
 ): number | null {
-  if (metric === "kda") {
-    if (row.kills === null && row.assists === null && row.deaths === null) {
-      return null;
-    }
+  const computedDef = activeGame.war.computedStats?.find((c) => c.key === metric);
+  if (computedDef) {
+    const s = row.stats ?? {};
+    const hasAny = activeGame.war.memberStats.some((stat) => s[stat.key] !== null && s[stat.key] !== undefined);
+    if (!hasAny) return null;
     return metricValueFromWarMember(row, metric);
   }
-  const value = row[metric];
-  return value === null ? null : value;
+  const value = row.stats?.[metric];
+  return value === null || value === undefined ? null : value;
 }
 
-const LOWER_IS_BETTER_METRICS: Set<AnalyticsMetricKey> = new Set(["deaths", "damage_taken"]);
+const LOWER_IS_BETTER_METRICS: Set<string> = new Set(
+  [
+    ...activeGame.war.memberStats.filter((s) => s.lowerIsBetter).map((s) => s.key),
+    ...(activeGame.war.computedStats?.filter((s) => s.lowerIsBetter).map((s) => s.key) ?? []),
+  ],
+);
 
 export function normalizeMetricValue(
   rawValue: number,
@@ -254,13 +217,7 @@ export function useGuildWarAnalytics({
 
   useEffect(() => {
     if (analyticsSettings && !modifierWeightsInitialized) {
-      setModifierWeights({
-        kda: analyticsSettings.modifier_weight_kda,
-        towers: analyticsSettings.modifier_weight_towers,
-        credits: analyticsSettings.modifier_weight_credits,
-        distance: analyticsSettings.modifier_weight_distance,
-        basehp: analyticsSettings.modifier_weight_basehp,
-      });
+      setModifierWeights({ ...analyticsSettings.modifier_weights });
       setModifierWeightsInitialized(true);
     }
   }, [analyticsSettings, modifierWeightsInitialized]);

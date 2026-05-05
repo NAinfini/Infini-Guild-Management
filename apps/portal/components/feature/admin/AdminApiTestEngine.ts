@@ -608,11 +608,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     case "PATCH /api/admin/analytics-settings":
       return buildJsonRequest(path, {
         reference_duration_minutes: 30,
-        modifier_weight_kda: 0.3,
-        modifier_weight_towers: 0.1,
-        modifier_weight_credits: 0.3,
-        modifier_weight_distance: 0.15,
-        modifier_weight_basehp: 0.15,
+        modifier_weights: { kda: 0.3, towers: 0.1, credits: 0.3, distance: 0.15, basehp: 0.15 },
       });
 
     case "POST /api/auth/register/:inviteCode":

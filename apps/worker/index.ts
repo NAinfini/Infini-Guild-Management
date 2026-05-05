@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
+import { LIMITS } from "@guild/shared/config/limits";
 import { runDailyMaintenanceCron, runQuarterHourlyMaintenanceCron } from "./crons/maintenance";
 import { WebSocketDO } from "./durable-objects/WebSocketDO";
 import { etagMiddleware } from "./middleware/etag";
@@ -36,35 +37,36 @@ type Variables = {
 };
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+const RL = LIMITS.rateLimit;
 const authRateLimit = createRateLimitMiddleware({
   keyPrefix: "auth",
-  maxRequests: 5,
-  windowMs: 60_000,
+  maxRequests: RL.auth.maxRequests,
+  windowMs: RL.auth.windowMs,
 });
 const checkUsernameRateLimit = createRateLimitMiddleware({
   keyPrefix: "auth-check",
-  maxRequests: 15,
-  windowMs: 60_000,
+  maxRequests: RL.usernameCheck.maxRequests,
+  windowMs: RL.usernameCheck.windowMs,
 });
 const mutationRateLimit = createRateLimitMiddleware({
   keyPrefix: "mutation",
-  maxRequests: 80,
-  windowMs: 60_000,
+  maxRequests: RL.mutations.maxRequests,
+  windowMs: RL.mutations.windowMs,
 });
 const uploadRateLimit = createRateLimitMiddleware({
   keyPrefix: "upload",
-  maxRequests: 20,
-  windowMs: 60_000,
+  maxRequests: RL.uploads.maxRequests,
+  windowMs: RL.uploads.windowMs,
 });
 const credentialChangeRateLimit = createRateLimitMiddleware({
   keyPrefix: "cred-change",
-  maxRequests: 5,
-  windowMs: 60_000,
+  maxRequests: RL.credentials.maxRequests,
+  windowMs: RL.credentials.windowMs,
 });
 const readRateLimit = createRateLimitMiddleware({
   keyPrefix: "read",
-  maxRequests: 120,
-  windowMs: 60_000,
+  maxRequests: RL.reads.maxRequests,
+  windowMs: RL.reads.windowMs,
 });
 
 function isMutationMethod(method: string): boolean {
@@ -153,6 +155,14 @@ app.get("/api/site-config", (c) => {
   return c.json({
     site_name: env.SITE_NAME || "Guild Portal",
     site_logo_url: env.SITE_LOGO_URL || null,
+    features: {
+      announcements: true,
+      events: true,
+      guildWar: true,
+      gallery: true,
+      wiki: true,
+      tools: true,
+    },
   });
 });
 

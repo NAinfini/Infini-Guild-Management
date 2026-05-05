@@ -387,8 +387,8 @@ export function AdminStatusTab({
                       <th>DB</th>
                       <th>R2</th>
                       <th>WS</th>
-                      <th>Crons</th>
-                      <th>Latency</th>
+                      <th>{t("status.service.crons")}</th>
+                      <th>{t("status.latency")}</th>
                     </tr>
                   </thead>
                   <tbody>

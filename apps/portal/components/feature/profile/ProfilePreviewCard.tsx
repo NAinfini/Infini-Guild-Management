@@ -4,13 +4,9 @@ import { PhotoIcon, VideoIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { resolveProfileMediaUrl } from "../../../utils/media";
 import { CLASS_COLOR_GROUP } from "@guild/shared/constants/classes";
+import { activeGame } from "@guild/shared/games";
 
-const CLASS_BADGE_COLOR: Record<string, string> = {
-  blue: "blue",
-  green: "teal",
-  purple: "violet",
-  "dark-red": "red",
-};
+const CLASS_BADGE_COLOR: Record<string, string> = activeGame.classColorMapping;
 
 type ProfilePreviewCardProps = {
   username: string;

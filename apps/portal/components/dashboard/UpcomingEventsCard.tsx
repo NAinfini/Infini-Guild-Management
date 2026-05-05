@@ -1,4 +1,5 @@
 import type { Event } from "@guild/shared";
+import { activeGame } from "@guild/shared/games";
 import { NumberTicker } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
 import { Badge, Button, Group, RingProgress, Stack, Text } from "@mantine/core";
@@ -20,15 +21,19 @@ import {
   type DashboardUpcomingEventRow,
 } from "./shared";
 
-const EVENT_TYPE_ICON: Record<string, React.ReactNode> = {
-  weekly_mission: <IconTargetArrow size={12} />,
-  guild_war: <SwordsIcon size={12} />,
-  social: <IconFriends size={12} />,
-  other: <CalendarEventIcon size={12} />,
+const ICON_COMPONENT_MAP: Record<string, React.ReactNode> = {
+  TargetOutlined: <IconTargetArrow size={12} />,
+  SwordsOutlined: <SwordsIcon size={12} />,
+  TeamOutlined: <IconFriends size={12} />,
+  CalendarEventOutlined: <CalendarEventIcon size={12} />,
 };
 
+const EVENT_TYPE_ICON: Record<string, React.ReactNode> = Object.fromEntries(
+  activeGame.eventTypes.map((et) => [et.id, ICON_COMPONENT_MAP[et.icon] ?? <CalendarEventIcon size={12} />]),
+);
+
 function eventTypeIcon(type: string): React.ReactNode {
-  return EVENT_TYPE_ICON[type] ?? EVENT_TYPE_ICON.other;
+  return EVENT_TYPE_ICON[type] ?? <CalendarEventIcon size={12} />;
 }
 
 type UpcomingEventsCardProps = {

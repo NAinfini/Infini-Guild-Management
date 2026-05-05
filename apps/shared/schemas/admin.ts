@@ -93,9 +93,5 @@ export const updateRoleSchema = z
 
 export const analyticsSettingsSchema = z.object({
   reference_duration_minutes: z.number().positive().optional(),
-  modifier_weight_kda: z.number().optional(),
-  modifier_weight_towers: z.number().optional(),
-  modifier_weight_credits: z.number().optional(),
-  modifier_weight_distance: z.number().optional(),
-  modifier_weight_basehp: z.number().optional(),
+  modifier_weights: z.record(z.string(), z.number()).optional(),
 });

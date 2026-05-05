@@ -2,14 +2,17 @@
 // Tables: events, event_participants
 // Dependencies: auth.users
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { activeGame } from "@guild/shared/games";
 import { users } from "./auth";
 import { nowUtc } from "./shared";
+
+const EVENT_TYPE_IDS = activeGame.eventTypes.map((e) => e.id) as [string, ...string[]];
 
 export const events = sqliteTable(
   "events",
   {
     id: text("id").primaryKey(),
-    type: text("type", { enum: ["weekly_mission", "guild_war", "social", "other"] }).notNull(),
+    type: text("type", { enum: EVENT_TYPE_IDS }).notNull(),
     title: text("title").notNull(),
     description: text("description"),
     startAt: text("start_at").notNull(),

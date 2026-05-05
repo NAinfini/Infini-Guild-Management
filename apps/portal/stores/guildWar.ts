@@ -1,35 +1,15 @@
 import { create } from "zustand";
+import { activeGame } from "@guild/shared/games";
 
 type AnalyticsMode = "player" | "rankings" | "teams" | "radar";
-type AnalyticsMetricKey =
-  | "kills"
-  | "deaths"
-  | "assists"
-  | "damage"
-  | "healing"
-  | "building_damage"
-  | "credits"
-  | "damage_taken"
-  | "kda";
+type AnalyticsMetricKey = string;
 type AnalyticsAggregation = "total" | "average" | "best" | "median";
 export type AnalyticsDatePreset = "5" | "10" | "20" | "all";
 type HistoryViewMode = "table" | "chart";
 type TeamAggregation = "total" | "average";
-type ModifierWeights = {
-  kda: number;
-  towers: number;
-  credits: number;
-  distance: number;
-  basehp: number;
-};
+type ModifierWeights = Record<string, number>;
 
-const DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS: ModifierWeights = {
-  kda: 0.30,
-  towers: 0.10,
-  credits: 0.30,
-  distance: 0.15,
-  basehp: 0.15,
-};
+const DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS: ModifierWeights = { ...activeGame.war.modifierWeights };
 
 type GuildWarStoreState = {
   selectedEventId: string | undefined;
@@ -86,11 +66,13 @@ type GuildWarStoreState = {
   setHistoryPerPage: (historyPerPage: number) => void;
 };
 
+const defaultMetric = activeGame.war.memberStats[3]?.key ?? "damage";
+
 export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   selectedEventId: undefined,
   selectedHistoryId: null,
   analyticsMode: "player",
-  analyticsSelectedMetrics: ["damage"],
+  analyticsSelectedMetrics: [defaultMetric],
   analyticsOnlyParticipated: true,
   analyticsDatePreset: "10",
   analyticsSelectedWarIds: [],
@@ -108,7 +90,7 @@ export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   modifierWeights: DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS,
   modifierWeightsInitialized: false,
   historyViewMode: "table",
-  historyChartMetric: "damage",
+  historyChartMetric: defaultMetric,
   historyDateFrom: "",
   historyDateTo: "",
   historyPage: 1,

@@ -1,4 +1,5 @@
 import type { Event, PaginatedResponse, RecurringTemplate } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { apiRequest } from "../client";
 
 export type EventDetailResponse = Event & {
@@ -14,7 +15,7 @@ export function fetchEventsList(params: {
   start_before?: string;
 }): Promise<PaginatedResponse<Event>> {
   const page = params.page ?? 1;
-  const limit = params.limit ?? 100;
+  const limit = params.limit ?? LIMITS.pagination.events;
   const query = new URLSearchParams();
   query.set("page", String(page));
   query.set("limit", String(limit));

@@ -1,4 +1,5 @@
 import type { MemberProfile, PaginatedResponse, User } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { apiRequest } from "../client";
 
 type UserDetailResponse = { user: User; profile: MemberProfile };
@@ -15,7 +16,7 @@ type UsersListOptions = {
 function buildUsersListPath(options?: UsersListOptions): string {
   const query = new URLSearchParams({
     page: String(options?.page ?? 1),
-    limit: String(options?.limit ?? 500),
+    limit: String(options?.limit ?? LIMITS.pagination.users),
   });
 
   if (options?.includeTotal === false) {

@@ -1,4 +1,5 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
+import { activeGame } from "@guild/shared/games";
 import { Group, Text } from "@mantine/core";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -12,13 +13,12 @@ export function formatDateTime(iso: string | null): string {
   return format(date, "yyyy-MM-dd HH:mm");
 }
 
+const EVENT_TYPE_COLOR_MAP: Record<string, string> = Object.fromEntries(
+  activeGame.eventTypes.map((et) => [et.id, et.color]),
+);
+
 export function eventTypeTagColor(value: string): string {
-  if (value === "raid" || value === "weekly_mission") return "blue";
-  if (value === "guild_war") return "orange";
-  if (value === "meeting" || value === "social") return "red";
-  if (value === "training") return "grape";
-  if (value === "other") return "yellow";
-  return "blue";
+  return EVENT_TYPE_COLOR_MAP[value] ?? "blue";
 }
 
 export function cardHeading(text: string, icon?: ReactNode) {
@@ -48,18 +48,14 @@ export type DashboardUpcomingEventRow = {
 };
 
 export type DashboardLastWarMvpEntry = {
+  category: string;
   label: string;
   name: string;
   initials: string;
   value: number;
 };
 
-export type DashboardLastWarMvp = {
-  damage: DashboardLastWarMvpEntry;
-  healing: DashboardLastWarMvpEntry;
-  damageTaken: DashboardLastWarMvpEntry;
-  building: DashboardLastWarMvpEntry;
-} | null;
+export type DashboardLastWarMvp = DashboardLastWarMvpEntry[] | null;
 
 export type DashboardMySignupEvent = {
   event: Event;

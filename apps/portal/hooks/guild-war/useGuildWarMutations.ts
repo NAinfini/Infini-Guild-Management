@@ -91,7 +91,7 @@ export function useGuildWarMutations({
     }) =>
       batchUpdateGuildWarMemberStats(
         historyId,
-        updates.map((update) => ({ user_id: update.userId, stats: update.payload })),
+        updates.map((update) => ({ user_id: update.userId, stats: { stats: update.payload as Record<string, number | null> } })),
       ),
     onSuccess: async () => {
       message.success(t("history.saveStatsSuccess"));

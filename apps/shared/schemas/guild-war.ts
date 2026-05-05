@@ -1,24 +1,24 @@
 import { z } from "zod";
+import { LIMITS } from "../config/limits";
 import { eventSchema } from "./event";
+import { activeGame } from "../games";
+
+const L = LIMITS.content;
+
+const statsObjectSchema = z.record(z.string(), z.number().int().nullable()).nullable();
+
+const WAR_RESULTS = activeGame.war.resultOptions as unknown as [string, ...string[]];
 
 export const warHistorySchema = z.object({
   id: z.string(),
   event_id: z.string().nullable(),
-  war_name: z.string().max(200),
-  enemy_name: z.string().max(200).nullable(),
-  result: z.enum(["win", "loss", "draw"]).nullable(),
-  own_kills: z.number().int().nullable(),
-  own_towers: z.number().int().nullable(),
-  own_base_hp: z.number().int().nullable(),
-  own_credits: z.number().int().nullable(),
-  own_distance: z.number().int().nullable(),
-  enemy_kills: z.number().int().nullable(),
-  enemy_towers: z.number().int().nullable(),
-  enemy_base_hp: z.number().int().nullable(),
-  enemy_credits: z.number().int().nullable(),
-  enemy_distance: z.number().int().nullable(),
+  war_name: z.string().max(L.warName.max),
+  enemy_name: z.string().max(L.warEnemyName.max).nullable(),
+  result: z.enum(WAR_RESULTS).nullable(),
+  own_stats: statsObjectSchema,
+  enemy_stats: statsObjectSchema,
   duration_minutes: z.number().nullable(),
-  notes: z.string().max(2000).nullable(),
+  notes: z.string().max(L.warNotes.max).nullable(),
   created_by: z.string(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -26,21 +26,13 @@ export const warHistorySchema = z.object({
 
 export const createWarHistorySchema = z.object({
   event_id: z.string().optional(),
-  war_name: z.string().min(1).max(200),
-  enemy_name: z.string().max(200).optional(),
-  result: z.enum(["win", "loss", "draw"]).optional(),
-  own_kills: z.number().int().optional(),
-  own_towers: z.number().int().optional(),
-  own_base_hp: z.number().int().optional(),
-  own_credits: z.number().int().optional(),
-  own_distance: z.number().int().optional(),
-  enemy_kills: z.number().int().optional(),
-  enemy_towers: z.number().int().optional(),
-  enemy_base_hp: z.number().int().optional(),
-  enemy_credits: z.number().int().optional(),
-  enemy_distance: z.number().int().optional(),
+  war_name: z.string().min(L.warName.min).max(L.warName.max),
+  enemy_name: z.string().max(L.warEnemyName.max).optional(),
+  result: z.enum(WAR_RESULTS).optional(),
+  own_stats: z.record(z.string(), z.number().int().nullable()).optional(),
+  enemy_stats: z.record(z.string(), z.number().int().nullable()).optional(),
   duration_minutes: z.number().positive().optional(),
-  notes: z.string().max(2000).optional(),
+  notes: z.string().max(L.warNotes.max).optional(),
 });
 
 export const updateWarHistorySchema = createWarHistorySchema.partial();
@@ -60,14 +52,7 @@ export const warTeamMemberSchema = z.object({
   user_id: z.string(),
   role_tag: z.string().nullable(),
   sort_order: z.number().int(),
-  kills: z.number().int().nullable(),
-  deaths: z.number().int().nullable(),
-  assists: z.number().int().nullable(),
-  damage: z.number().int().nullable(),
-  healing: z.number().int().nullable(),
-  building_damage: z.number().int().nullable(),
-  credits: z.number().int().nullable(),
-  damage_taken: z.number().int().nullable(),
+  stats: statsObjectSchema,
   note: z.string().nullable(),
 });
 
@@ -95,19 +80,10 @@ export const saveTeamsPayloadSchema = z.object({
   ),
 });
 
-export const updateMemberStatsSchema = warTeamMemberSchema
-  .pick({
-    kills: true,
-    deaths: true,
-    assists: true,
-    damage: true,
-    healing: true,
-    building_damage: true,
-    credits: true,
-    damage_taken: true,
-    note: true,
-  })
-  .partial();
+export const updateMemberStatsSchema = z.object({
+  stats: z.record(z.string(), z.number().int().nullable()).optional(),
+  note: z.string().nullable().optional(),
+});
 
 export const moveGuildWarMemberSchema = z.object({
   event_id: z.string(),

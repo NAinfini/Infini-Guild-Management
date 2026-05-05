@@ -1,17 +1,20 @@
 import { z } from "zod";
+import { LIMITS } from "../config/limits";
 
-const usernameSchema = z.string().min(1).max(50).regex(/^[a-zA-Z0-9_一-鿿]+$/);
+const L = LIMITS.content;
+
+const usernameSchema = z.string().min(L.username.min).max(L.username.max).regex(/^[a-zA-Z0-9_一-鿿]+$/);
 
 export const loginSchema = z.object({
   username: usernameSchema,
-  password: z.string().min(1).max(128),
+  password: z.string().min(1).max(L.password.max),
 });
 
 export const registerSchema = z
   .object({
     username: usernameSchema,
-    password: z.string().min(8).max(128),
-    confirmPassword: z.string().min(8).max(128),
+    password: z.string().min(L.password.min).max(L.password.max),
+    confirmPassword: z.string().min(L.password.min).max(L.password.max),
   })
   .refine((value) => value.password === value.confirmPassword, {
     path: ["confirmPassword"],
@@ -21,8 +24,8 @@ export const registerSchema = z
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1),
-    newPassword: z.string().min(8).max(128),
-    confirmNewPassword: z.string().min(8).max(128),
+    newPassword: z.string().min(L.password.min).max(L.password.max),
+    confirmNewPassword: z.string().min(L.password.min).max(L.password.max),
   })
   .refine((value) => value.newPassword === value.confirmNewPassword, {
     path: ["confirmNewPassword"],

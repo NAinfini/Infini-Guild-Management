@@ -154,13 +154,13 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
         map.set(member.user_id, {
           teamName,
           roleTag: member.role_tag ?? null,
-          kills: member.kills ?? 0,
-          deaths: member.deaths ?? 0,
-          assists: member.assists ?? 0,
-          damage: member.damage ?? 0,
-          healing: member.healing ?? 0,
-          buildingDamage: member.building_damage ?? 0,
-          credits: member.credits ?? 0,
+          kills: member.stats?.kills ?? 0,
+          deaths: member.stats?.deaths ?? 0,
+          assists: member.stats?.assists ?? 0,
+          damage: member.stats?.damage ?? 0,
+          healing: member.stats?.healing ?? 0,
+          buildingDamage: member.stats?.building_damage ?? 0,
+          credits: member.stats?.credits ?? 0,
         });
       }
     }
@@ -191,7 +191,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
           username: userData?.username ?? member.user_id,
           power: userData?.power ?? 0,
           class: userData?.class ?? "Unknown",
-          subtitle: `${member.role_tag ? `[${member.role_tag}] ` : ""}K/D/A: ${member.kills ?? 0}/${member.deaths ?? 0}/${member.assists ?? 0}`,
+          subtitle: `${member.role_tag ? `[${member.role_tag}] ` : ""}K/D/A: ${member.stats?.kills ?? 0}/${member.stats?.deaths ?? 0}/${member.stats?.assists ?? 0}`,
         };
       }),
     }));

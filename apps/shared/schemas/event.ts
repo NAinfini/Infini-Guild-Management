@@ -1,5 +1,8 @@
 import { z } from "zod";
+import { LIMITS } from "../config/limits";
 import { EVENT_TYPES } from "../constants/event-types";
+
+const L = LIMITS.content;
 
 const recurrenceRuleSchema = z.object({
   frequency: z.enum(["daily", "weekly", "monthly"]),
@@ -9,7 +12,7 @@ const recurrenceRuleSchema = z.object({
   endAfter: z.number().int().positive().optional(),
   endDate: z.string().datetime().optional(),
 });
-const eventAttachmentsSchema = z.array(z.string().min(1)).max(5);
+const eventAttachmentsSchema = z.array(z.string().min(1)).max(L.eventAttachments.max);
 
 export const eventSchema = z.object({
   id: z.string(),
@@ -37,8 +40,8 @@ export const eventSchema = z.object({
 
 export const createEventSchema = z.object({
   type: z.enum(EVENT_TYPES),
-  title: z.string().min(1).max(200),
-  description: z.string().max(5000).optional(),
+  title: z.string().min(L.eventTitle.min).max(L.eventTitle.max),
+  description: z.string().max(L.eventDescription.max).optional(),
   start_at: z.string().datetime(),
   end_at: z.string().datetime().optional(),
   capacity: z.number().int().positive().optional(),
@@ -62,7 +65,7 @@ export const eventParticipantSchema = z.object({
 });
 
 export const eventParticipantsBatchSchema = z.object({
-  user_ids: z.array(z.string().min(1)).min(1).max(100),
+  user_ids: z.array(z.string().min(1)).min(1).max(L.eventParticipantsBatch.max),
 });
 
 // ── Recurring Templates ──
@@ -89,8 +92,8 @@ export const recurringTemplateSchema = z.object({
 
 export const createTemplateSchema = z.object({
   type: z.enum(EVENT_TYPES),
-  title: z.string().min(1).max(200),
-  description: z.string().max(5000).optional(),
+  title: z.string().min(L.eventTitle.min).max(L.eventTitle.max),
+  description: z.string().max(L.eventDescription.max).optional(),
   start_at: z.string().datetime(),
   end_at: z.string().datetime().optional(),
   capacity: z.number().int().positive().optional(),

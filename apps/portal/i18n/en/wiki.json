@@ -83,5 +83,9 @@
   "aria.articleTitle": "Wiki article title",
   "aria.articleCategory": "Wiki article category",
   "aria.categoryName": "Wiki category name",
-  "aria.openArticle": "Open wiki article {{title}}"
+  "aria.openArticle": "Open wiki article {{title}}",
+  "confirm.deleteArticle.title": "Delete Article",
+  "confirm.deleteArticle.description": "Delete \"{{title}}\"? This cannot be undone.",
+  "message.articleDeleted": "Article deleted",
+  "message.articleDeleteFailed": "Failed to delete article"
 }

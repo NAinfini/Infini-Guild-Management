@@ -18,6 +18,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { apiRequest } from "../../api/client";
 import { queryKeys } from "../../api/query-keys";
+import { useSiteConfigStore } from "../../stores/site-config";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import {
   CalendarOutlined,
@@ -54,6 +55,7 @@ function normalizeSearchText(value: string): string {
 export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
   const navigate = useNavigate();
   const { t } = useTranslation("common");
+  const features = useSiteConfigStore((s) => s.features);
   const [open, openHandlers] = useDisclosure(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery] = useDebouncedValue(query, 300);
@@ -72,11 +74,11 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
       const [usersResponse, eventsResponse, announcementsResponse, wikiResponse, warHistoryResponse, galleryResponse] =
         await Promise.allSettled([
           apiRequest<UsersListResponse>("/api/users?page=1&limit=40"),
-          apiRequest<PaginatedResponse<Event>>("/api/events?page=1&limit=40"),
-          apiRequest<PaginatedResponse<Announcement>>("/api/announcements?page=1&limit=25"),
-          apiRequest<PaginatedResponse<WikiArticle>>("/api/wiki/articles?page=1&limit=25"),
-          apiRequest<PaginatedResponse<WarHistory>>("/api/guild-war/history?page=1&limit=25"),
-          apiRequest<CursorResponse<GalleryItem>>("/api/gallery?cursor=0&limit=25"),
+          features.events ? apiRequest<PaginatedResponse<Event>>("/api/events?page=1&limit=40") : Promise.reject("disabled"),
+          features.announcements ? apiRequest<PaginatedResponse<Announcement>>("/api/announcements?page=1&limit=25") : Promise.reject("disabled"),
+          features.wiki ? apiRequest<PaginatedResponse<WikiArticle>>("/api/wiki/articles?page=1&limit=25") : Promise.reject("disabled"),
+          features.guildWar ? apiRequest<PaginatedResponse<WarHistory>>("/api/guild-war/history?page=1&limit=25") : Promise.reject("disabled"),
+          features.gallery ? apiRequest<CursorResponse<GalleryItem>>("/api/gallery?cursor=0&limit=25") : Promise.reject("disabled"),
         ]);
 
       const userItems: SearchItem[] = usersResponse.status === "fulfilled"

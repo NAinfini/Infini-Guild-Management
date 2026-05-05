@@ -341,18 +341,15 @@ export function GuildWarPage() {
     const members: ConcludeWarMember[] = [];
     for (const team of activeData.teams) {
       for (const member of team.members) {
+        const stats: Record<string, number> = {};
+        for (const key of Object.keys(member.stats ?? {})) {
+          stats[key] = member.stats?.[key] ?? 0;
+        }
         members.push({
           userId: member.user_id,
           username: userMap.get(member.user_id) ?? member.user_id,
           teamName: team.team_name,
-          kills: member.kills ?? 0,
-          deaths: member.deaths ?? 0,
-          assists: member.assists ?? 0,
-          damage: member.damage ?? 0,
-          healing: member.healing ?? 0,
-          buildingDamage: member.building_damage ?? 0,
-          credits: member.credits ?? 0,
-          damageTaken: member.damage_taken ?? 0,
+          stats,
         });
       }
     }
@@ -373,21 +370,21 @@ export function GuildWarPage() {
 
     setConcludeWarPending(true);
     try {
-      // Step 1: Update war-level stats
       const warUpdate: Record<string, unknown> = {};
       if (data.warInfo.enemyName) warUpdate.enemy_name = data.warInfo.enemyName;
       if (data.warInfo.result) warUpdate.result = data.warInfo.result;
       if (data.warInfo.durationMinutes !== null) warUpdate.duration_minutes = data.warInfo.durationMinutes;
-      if (data.warInfo.ownKills !== null) warUpdate.own_kills = data.warInfo.ownKills;
-      if (data.warInfo.ownTowers !== null) warUpdate.own_towers = data.warInfo.ownTowers;
-      if (data.warInfo.ownBaseHp !== null) warUpdate.own_base_hp = data.warInfo.ownBaseHp;
-      if (data.warInfo.ownCredits !== null) warUpdate.own_credits = data.warInfo.ownCredits;
-      if (data.warInfo.ownDistance !== null) warUpdate.own_distance = data.warInfo.ownDistance;
-      if (data.warInfo.enemyKills !== null) warUpdate.enemy_kills = data.warInfo.enemyKills;
-      if (data.warInfo.enemyTowers !== null) warUpdate.enemy_towers = data.warInfo.enemyTowers;
-      if (data.warInfo.enemyBaseHp !== null) warUpdate.enemy_base_hp = data.warInfo.enemyBaseHp;
-      if (data.warInfo.enemyCredits !== null) warUpdate.enemy_credits = data.warInfo.enemyCredits;
-      if (data.warInfo.enemyDistance !== null) warUpdate.enemy_distance = data.warInfo.enemyDistance;
+
+      const ownStats: Record<string, number | null> = {};
+      const enemyStats: Record<string, number | null> = {};
+      for (const [key, val] of Object.entries(data.warInfo.ownStats)) {
+        if (val !== null) ownStats[key] = val;
+      }
+      for (const [key, val] of Object.entries(data.warInfo.enemyStats)) {
+        if (val !== null) enemyStats[key] = val;
+      }
+      if (Object.keys(ownStats).length > 0) warUpdate.own_stats = ownStats;
+      if (Object.keys(enemyStats).length > 0) warUpdate.enemy_stats = enemyStats;
 
       if (Object.keys(warUpdate).length > 0) {
         await updateGuildWarHistory(warHistoryId, warUpdate);
@@ -395,7 +392,10 @@ export function GuildWarPage() {
 
       // Step 2: Batch update member stats
       if (data.memberStats.length > 0) {
-        await batchUpdateGuildWarMemberStats(warHistoryId, data.memberStats);
+        await batchUpdateGuildWarMemberStats(
+          warHistoryId,
+          data.memberStats.map((m) => ({ user_id: m.user_id, stats: { stats: m.stats } })),
+        );
       }
 
       // Step 3: Archive the event

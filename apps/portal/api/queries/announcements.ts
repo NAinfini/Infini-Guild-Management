@@ -1,4 +1,5 @@
 import type { Announcement, PaginatedResponse } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { apiRequest } from "../client";
 
 export function fetchAnnouncements(params: {
@@ -11,7 +12,7 @@ export function fetchAnnouncements(params: {
 }): Promise<PaginatedResponse<Announcement>> {
   const query = new URLSearchParams();
   query.set("page", String(params.page ?? 1));
-  query.set("limit", String(params.limit ?? 50));
+  query.set("limit", String(params.limit ?? LIMITS.pagination.announcements));
   if (params.status) query.set("status", params.status);
   if (params.pinned !== undefined) query.set("pinned", String(params.pinned));
   if (params.archived !== undefined) query.set("archived", String(params.archived));

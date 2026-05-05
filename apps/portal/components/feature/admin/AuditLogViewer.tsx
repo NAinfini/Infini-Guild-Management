@@ -30,11 +30,24 @@ type DetailData =
   | { kind: "info"; entries: InfoEntry[] }
   | null;
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
+
 function formatDiffValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "boolean") return value ? "✓" : "✗";
   if (typeof value === "number") return String(value);
+  if (typeof value === "object" && !Array.isArray(value)) {
+    const json = JSON.stringify(value);
+    if (json.length > 80) return `${json.slice(0, 77)}…`;
+    return json;
+  }
   const str = String(value);
+  if (ISO_DATE_RE.test(str)) {
+    const d = new Date(str);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+    }
+  }
   if (str.length > 80) return `${str.slice(0, 77)}…`;
   return str;
 }
@@ -58,6 +71,12 @@ function formatInfoValue(value: unknown, userMap?: Map<string, string>): string 
   }
   const str = String(value);
   if (userMap?.has(str)) return userMap.get(str)!;
+  if (ISO_DATE_RE.test(str)) {
+    const d = new Date(str);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+    }
+  }
   if (str.length > 80) return `${str.slice(0, 77)}…`;
   return str;
 }
@@ -68,10 +87,12 @@ function parseDetailData(
   userMap?: Map<string, string>,
 ): DetailData {
   if (!detailText) return null;
+  const HIDDEN_FIELDS = new Set(["password", "body_json"]);
   try {
     const parsed = JSON.parse(detailText) as unknown;
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const entries = Object.entries(parsed as Record<string, unknown>);
+      const entries = Object.entries(parsed as Record<string, unknown>)
+        .filter(([field]) => !HIDDEN_FIELDS.has(field));
       if (entries.length === 0) return null;
 
       const isDiffFormat = entries.every(
@@ -146,15 +167,15 @@ function getEntityColor(entityType: string): ActionColor {
   return "gray";
 }
 
-function formatRelativeTime(iso: string): string {
+function formatRelativeTime(iso: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1) return t("audit.relativeTime.justNow");
+  if (minutes < 60) return t("audit.relativeTime.minutesAgo", { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return t("audit.relativeTime.hoursAgo", { count: hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
+  if (days < 7) return t("audit.relativeTime.daysAgo", { count: days });
   return "";
 }
 
@@ -246,7 +267,7 @@ export function AuditLogViewer({
       targetName,
       detailData,
       formattedTime: formatDateTime(row.created_at),
-      relativeTime: formatRelativeTime(row.created_at),
+      relativeTime: formatRelativeTime(row.created_at, t),
       actionColor: getActionColor(row.action),
       entityColor: getEntityColor(row.entity_type),
     };

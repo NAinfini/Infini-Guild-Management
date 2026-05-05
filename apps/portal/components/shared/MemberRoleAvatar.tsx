@@ -1,26 +1,42 @@
 import type { MemberProfile, User } from "@guild/shared";
+import { activeGame } from "@guild/shared/games";
 import { Avatar, Group, HoverCard, Stack, Text } from "@mantine/core";
 import { IconShield, IconSword, IconHeartbeat, IconBolt } from "@tabler/icons-react";
 import { resolveProfileMediaUrl } from "../../utils/media";
 
-type ClassRole = "healer" | "tank" | "dps";
-
-const ROLE_CONFIG: Record<ClassRole, { color: string; avatarColor: string; icon: typeof IconSword; label: string }> = {
-  healer: { color: "#10b981", avatarColor: "green", icon: IconHeartbeat, label: "治疗" },
-  tank:   { color: "#d97706", avatarColor: "yellow", icon: IconShield, label: "防御" },
-  dps:    { color: "#3b82f6", avatarColor: "blue", icon: IconSword, label: "输出" },
+const ICON_MAP: Record<string, typeof IconSword> = {
+  IconSword,
+  IconShield,
+  IconHeartbeat,
 };
 
-function classToRole(cls: string): ClassRole {
-  if (cls === "牵丝霖") return "healer";
-  if (cls === "裂石威") return "tank";
-  return "dps";
+type RoleConfigResolved = {
+  id: string;
+  color: string;
+  avatarColor: string;
+  icon: typeof IconSword;
+  label: string;
+};
+
+const ROLE_CONFIG: Record<string, RoleConfigResolved> = Object.fromEntries(
+  activeGame.roles.map((r) => [
+    r.id,
+    { id: r.id, color: r.color, avatarColor: r.avatarColor, icon: ICON_MAP[r.icon] ?? IconSword, label: r.label },
+  ]),
+);
+
+const CLASS_TO_ROLE: Record<string, string> = Object.fromEntries(
+  activeGame.classes.filter((c) => c.role).map((c) => [c.id, c.role!]),
+);
+
+function classToRole(cls: string): string {
+  return CLASS_TO_ROLE[cls] ?? activeGame.defaultRole;
 }
 
-function getUniqueRoles(classes: string[]): ClassRole[] {
-  if (classes.length === 0) return ["dps"];
-  const seen = new Set<ClassRole>();
-  const roles: ClassRole[] = [];
+function getUniqueRoles(classes: string[]): string[] {
+  if (classes.length === 0) return [activeGame.defaultRole];
+  const seen = new Set<string>();
+  const roles: string[] = [];
   for (const cls of classes) {
     const role = classToRole(cls);
     if (!seen.has(role)) {
@@ -31,10 +47,13 @@ function getUniqueRoles(classes: string[]): ClassRole[] {
   return roles;
 }
 
-function getPrimaryAvatarColor(roles: ClassRole[]): string {
-  if (roles.includes("healer")) return "green";
-  if (roles.includes("tank")) return "yellow";
-  return "blue";
+function getPrimaryAvatarColor(roles: string[]): string {
+  for (const roleId of activeGame.roles.map((r) => r.id)) {
+    if (roles.includes(roleId) && roleId !== activeGame.defaultRole) {
+      return ROLE_CONFIG[roleId]?.avatarColor ?? "blue";
+    }
+  }
+  return ROLE_CONFIG[activeGame.defaultRole]?.avatarColor ?? "blue";
 }
 
 type MemberRoleAvatarProps = {
@@ -67,7 +86,7 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
           height: badgeH,
           width: badgeW,
           borderRadius: badgeH / 2,
-          background: roles.length === 1 ? ROLE_CONFIG[roles[0]].color : "rgba(30,41,59,0.85)",
+          background: roles.length === 1 ? (ROLE_CONFIG[roles[0]]?.color ?? "#3b82f6") : "rgba(30,41,59,0.85)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -77,10 +96,11 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
           boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
         }}
       >
-        {roles.map((role) => {
-          const cfg = ROLE_CONFIG[role];
+        {roles.map((roleId) => {
+          const cfg = ROLE_CONFIG[roleId] ?? ROLE_CONFIG[activeGame.defaultRole];
+          if (!cfg) return null;
           const Icon = cfg.icon;
-          return <Icon key={role} size={iconSize} color={roles.length === 1 ? "#fff" : cfg.color} stroke={2.5} />;
+          return <Icon key={roleId} size={iconSize} color={roles.length === 1 ? "#fff" : cfg.color} stroke={2.5} />;
         })}
       </div>
     </div>
@@ -105,8 +125,9 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
         </Group>
         <Group gap={6} mt={10} wrap="wrap">
           {profile.classes.map((cls) => {
-            const role = classToRole(cls);
-            const cfg = ROLE_CONFIG[role];
+            const roleId = classToRole(cls);
+            const cfg = ROLE_CONFIG[roleId] ?? ROLE_CONFIG[activeGame.defaultRole];
+            if (!cfg) return null;
             const Icon = cfg.icon;
             return (
               <Group key={cls} gap={4}>

@@ -15,7 +15,7 @@ type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 type AuditLogInput = { entityType: string; action: string; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
 
 type CategoryRow = { id: string; name: string; slug: string; sortOrder: number; parentId: string | null; createdAt: string; updatedAt: string };
-type ArticleRow = { id: string; title: string; slug: string; categoryId: string; bodyJson: string; sortOrder: number; pinned: boolean; archivedAt: string | null; createdBy: string; updatedBy: string | null; createdAt: string; updatedAt: string };
+type ArticleRow = { id: string; title: string; slug: string; categoryId: string; bodyJson: string; sortOrder: number; pinned: boolean; archivedAt: string | null; createdBy: string; updatedBy: string | null; createdAt: string; updatedAt: string; updatedByUsername: string | null };
 
 type EntityChangedInput = { entityType: string; entityId: string; hint: string };
 
@@ -37,13 +37,13 @@ function toCategoryPayload(row: CategoryRow) {
 }
 
 function toArticlePayload(row: ArticleRow) {
-  return wikiArticleSchema.parse({ id: row.id, title: row.title, slug: row.slug, category_id: row.categoryId, body_json: row.bodyJson, sort_order: row.sortOrder, pinned: row.pinned, archived_at: row.archivedAt, created_by: row.createdBy, updated_by: row.updatedBy, created_at: row.createdAt, updated_at: row.updatedAt });
+  return wikiArticleSchema.parse({ id: row.id, title: row.title, slug: row.slug, category_id: row.categoryId, body_json: row.bodyJson, sort_order: row.sortOrder, pinned: row.pinned, archived_at: row.archivedAt, created_by: row.createdBy, updated_by: row.updatedBy, updated_by_username: row.updatedByUsername, created_at: row.createdAt, updated_at: row.updatedAt });
 }
 
 const CATEGORY_COLS = { id: wikiCategories.id, name: wikiCategories.name, slug: wikiCategories.slug, sortOrder: wikiCategories.sortOrder, parentId: wikiCategories.parentId, createdAt: wikiCategories.createdAt, updatedAt: wikiCategories.updatedAt } as const;
-const ARTICLE_COLS = { id: wikiArticles.id, title: wikiArticles.title, slug: wikiArticles.slug, categoryId: wikiArticles.categoryId, bodyJson: wikiArticles.bodyJson, sortOrder: wikiArticles.sortOrder, pinned: wikiArticles.pinned, archivedAt: wikiArticles.archivedAt, createdBy: wikiArticles.createdBy, updatedBy: wikiArticles.updatedBy, createdAt: wikiArticles.createdAt, updatedAt: wikiArticles.updatedAt } as const;
+const ARTICLE_COLS = { id: wikiArticles.id, title: wikiArticles.title, slug: wikiArticles.slug, categoryId: wikiArticles.categoryId, bodyJson: wikiArticles.bodyJson, sortOrder: wikiArticles.sortOrder, pinned: wikiArticles.pinned, archivedAt: wikiArticles.archivedAt, createdBy: wikiArticles.createdBy, updatedBy: wikiArticles.updatedBy, updatedByUsername: sql<string | null>`(SELECT username FROM users WHERE id = COALESCE(${wikiArticles.updatedBy}, ${wikiArticles.createdBy}))`.as("updated_by_username"), createdAt: wikiArticles.createdAt, updatedAt: wikiArticles.updatedAt } as const;
 
-const LIST_ARTICLE_COLS = { id: wikiArticles.id, title: wikiArticles.title, slug: wikiArticles.slug, categoryId: wikiArticles.categoryId, sortOrder: wikiArticles.sortOrder, pinned: wikiArticles.pinned, archivedAt: wikiArticles.archivedAt, createdBy: wikiArticles.createdBy, updatedBy: wikiArticles.updatedBy, createdAt: wikiArticles.createdAt, updatedAt: wikiArticles.updatedAt } as const;
+const LIST_ARTICLE_COLS = { id: wikiArticles.id, title: wikiArticles.title, slug: wikiArticles.slug, categoryId: wikiArticles.categoryId, sortOrder: wikiArticles.sortOrder, pinned: wikiArticles.pinned, archivedAt: wikiArticles.archivedAt, createdBy: wikiArticles.createdBy, updatedBy: wikiArticles.updatedBy, updatedByUsername: sql<string | null>`(SELECT username FROM users WHERE id = COALESCE(${wikiArticles.updatedBy}, ${wikiArticles.createdBy}))`.as("updated_by_username"), createdAt: wikiArticles.createdAt, updatedAt: wikiArticles.updatedAt } as const;
 
 type ArticleListRow = Omit<ArticleRow, "bodyJson">;
 
@@ -51,7 +51,7 @@ function toArticleListPayload(row: ArticleListRow) {
   return {
     id: row.id, title: row.title, slug: row.slug, category_id: row.categoryId, body_json: "",
     sort_order: row.sortOrder, pinned: row.pinned, archived_at: row.archivedAt,
-    created_by: row.createdBy, updated_by: row.updatedBy, created_at: row.createdAt, updated_at: row.updatedAt,
+    created_by: row.createdBy, updated_by: row.updatedBy, updated_by_username: row.updatedByUsername, created_at: row.createdAt, updated_at: row.updatedAt,
   };
 }
 

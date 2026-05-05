@@ -15,6 +15,8 @@
   "toolbar.table": "表格",
   "toolbar.addCol": "添加列",
   "toolbar.addRow": "添加行",
+  "toolbar.delCol": "删除列",
+  "toolbar.delRow": "删除行",
   "toolbar.delTable": "删除表格",
   "toolbar.image": "图片",
   "slashCommands": "快捷命令",

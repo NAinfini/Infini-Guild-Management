@@ -1,4 +1,5 @@
 import type { GuildWarActiveResponse, PaginatedResponse, WarHistory } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { apiDownload, apiRequest } from "../client";
 
 type WarTeamMember = {
@@ -8,14 +9,7 @@ type WarTeamMember = {
   username?: string;
   role_tag: string | null;
   sort_order: number;
-  kills: number | null;
-  deaths: number | null;
-  assists: number | null;
-  damage: number | null;
-  healing: number | null;
-  building_damage: number | null;
-  credits: number | null;
-  damage_taken: number | null;
+  stats: Record<string, number | null> | null;
   note: string | null;
 };
 
@@ -31,14 +25,7 @@ type WarTeam = {
 
 export type GuildWarAnalyticsMemberStat = {
   user_id: string;
-  kills: number;
-  deaths: number;
-  assists: number;
-  damage: number;
-  healing: number;
-  building_damage: number;
-  credits: number;
-  damage_taken: number;
+  stats: Record<string, number>;
 };
 
 export type ModifierBreakdown = {
@@ -56,11 +43,7 @@ export type AnalyticsWarEntry = WarHistory & {
 
 export type AnalyticsSettings = {
   reference_duration_minutes: number;
-  modifier_weight_kda: number;
-  modifier_weight_towers: number;
-  modifier_weight_credits: number;
-  modifier_weight_distance: number;
-  modifier_weight_basehp: number;
+  modifier_weights: Record<string, number>;
 };
 
 export type GuildWarAnalyticsResponse = {
@@ -89,7 +72,7 @@ export function fetchGuildWarHistory(params: {
 }): Promise<PaginatedResponse<WarHistory>> {
   const query = new URLSearchParams();
   query.set("page", String(params.page ?? 1));
-  query.set("limit", String(params.limit ?? 20));
+  query.set("limit", String(params.limit ?? LIMITS.pagination.guildWar));
   if (params.date_from) query.set("date_from", params.date_from);
   if (params.date_to) query.set("date_to", params.date_to);
 

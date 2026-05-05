@@ -1,4 +1,5 @@
 import type { Event } from "@guild/shared";
+import { activeGame } from "@guild/shared/games";
 import { Grid, Skeleton, Stack } from "@mantine/core";
 import { LayoutGridIcon } from "@portal/components/icons";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -203,46 +204,25 @@ export function DashboardPage() {
       const name = resolveName(userId);
       return name.slice(0, 2).toUpperCase();
     };
+    const mvpCategories = activeGame.war.mvpCategories;
     return details.map((detail) => {
       const stats = detail.member_stats ?? [];
       if (stats.length === 0) return null;
-      let topDamage = stats[0];
-      let topHealing = stats[0];
-      let topDamageTaken = stats[0];
-      let topBuilding = stats[0];
-      for (let i = 1; i < stats.length; i++) {
-        const s = stats[i];
-        if ((s.damage ?? 0) > (topDamage.damage ?? 0)) topDamage = s;
-        if ((s.healing ?? 0) > (topHealing.healing ?? 0)) topHealing = s;
-        if ((s.damage_taken ?? 0) > (topDamageTaken.damage_taken ?? 0)) topDamageTaken = s;
-        if ((s.building_damage ?? 0) > (topBuilding.building_damage ?? 0)) topBuilding = s;
-      }
-      return {
-        damage: {
-          label: t("card.lastWar.mvp.damage"),
-          name: resolveName(topDamage.user_id),
-          initials: initials(topDamage.user_id),
-          value: topDamage.damage ?? 0,
-        },
-        healing: {
-          label: t("card.lastWar.mvp.healing"),
-          name: resolveName(topHealing.user_id),
-          initials: initials(topHealing.user_id),
-          value: topHealing.healing ?? 0,
-        },
-        damageTaken: {
-          label: t("card.lastWar.mvp.damageTaken"),
-          name: resolveName(topDamageTaken.user_id),
-          initials: initials(topDamageTaken.user_id),
-          value: topDamageTaken.damage_taken ?? 0,
-        },
-        building: {
-          label: t("card.lastWar.mvp.building"),
-          name: resolveName(topBuilding.user_id),
-          initials: initials(topBuilding.user_id),
-          value: topBuilding.building_damage ?? 0,
-        },
-      };
+      return mvpCategories.map((category) => {
+        let top = stats[0];
+        for (let i = 1; i < stats.length; i++) {
+          if ((stats[i].stats?.[category] ?? 0) > (top.stats?.[category] ?? 0)) {
+            top = stats[i];
+          }
+        }
+        return {
+          category,
+          label: t(`card.lastWar.mvp.${category}`),
+          name: resolveName(top.user_id),
+          initials: initials(top.user_id),
+          value: top.stats?.[category] ?? 0,
+        };
+      });
     });
   }, [recentWarDetailsQuery.data, userRowById, t]);
 

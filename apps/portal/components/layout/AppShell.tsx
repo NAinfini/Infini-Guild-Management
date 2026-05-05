@@ -18,6 +18,7 @@ import { fetchRoles } from "../../services/AdminService";
 import { useAuthStore } from "../../stores/auth";
 import { useNotificationStore } from "../../stores/notifications";
 import { usePreferencesStore } from "../../stores/preferences";
+import { useSiteConfigStore } from "../../stores/site-config";
 import { isExternalViewSearch } from "../../utils/external-view";
 import { AppErrorOverlay } from "../shared/AppErrorOverlay";
 import { OverlayRegistrar } from "../shared/OverlayRegistrar";
@@ -255,9 +256,14 @@ export function AppShell() {
     staleTime: Infinity,
   });
 
+  const features = useSiteConfigStore((s) => s.features);
+
   const visibleNavItems = useMemo(
     () =>
       NAV_ITEMS.filter((item) => {
+        if (item.featureFlag && !features[item.featureFlag]) {
+          return false;
+        }
         if (isExternalView && (item.to === "/profile" || item.to === "/admin")) {
           return false;
         }
@@ -270,7 +276,7 @@ export function AppShell() {
         }
         return true;
       }),
-    [isExternalView, user, viewingAs, rolesQuery.data],
+    [isExternalView, user, viewingAs, rolesQuery.data, features],
   );
 
   const mobileMainItems = useMemo(

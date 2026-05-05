@@ -12,6 +12,7 @@ import {
   type UpdateWikiArticlePayload,
   updateWikiArticle,
   uploadWikiArticleImages,
+  deleteWikiArticle,
 } from "../services/WikiService";
 import { queryKeys } from "../api/query-keys";
 
@@ -98,6 +99,18 @@ export function useWikiArticleEditor({
     },
     onError: (error) => {
       showError(error, t("message.articleSaveFailed"));
+    },
+  });
+
+  const deleteArticleMutation = useMutation({
+    mutationFn: (id: string) => deleteWikiArticle(id),
+    onSuccess: async () => {
+      notifySuccess(t("message.articleDeleted"));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
+      onArticleCreated(""); // clear selection
+    },
+    onError: (error) => {
+      showError(error, t("message.articleDeleteFailed"));
     },
   });
 
@@ -230,6 +243,10 @@ export function useWikiArticleEditor({
     });
   };
 
+  const deleteArticle = (id: string) => {
+    deleteArticleMutation.mutate(id);
+  };
+
   const uploadWikiArticleImage = async (file: File) => {
     if (!selectedArticle) {
       throw new Error("Save article first before uploading images");
@@ -239,7 +256,9 @@ export function useWikiArticleEditor({
     if (!key) {
       throw new Error("Image upload returned no key");
     }
-    return key;
+    if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:")) return key;
+    const path = `/api/wiki/image?key=${encodeURIComponent(key)}`;
+    return new URL(path, window.location.origin).toString();
   };
 
   return {
@@ -265,5 +284,6 @@ export function useWikiArticleEditor({
     togglePinnedIntent,
     toggleArchiveIntent,
     uploadWikiArticleImage,
+    deleteArticle,
   };
 }

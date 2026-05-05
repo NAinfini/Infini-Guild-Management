@@ -22,7 +22,7 @@ const baseTeams = [
     notes: null,
     is_locked: false,
     members: [
-      { id: "m-1", war_team_id: "team-1", user_id: "u-1", role_tag: "tank", sort_order: 0, kills: null, deaths: null, assists: null, damage: null, healing: null, building_damage: null, credits: null, damage_taken: null, note: null },
+      { id: "m-1", war_team_id: "team-1", user_id: "u-1", role_tag: "tank", sort_order: 0, stats: null, note: null },
     ],
   },
 ];

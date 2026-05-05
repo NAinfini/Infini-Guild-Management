@@ -12,14 +12,18 @@ import "./i18n";
 import { ErrorBoundary } from "./components/effects/ErrorBoundary";
 import { PortalThemeProvider } from "./providers/ThemeProvider";
 import { AppRouter } from "./router";
+import type { FeatureFlags } from "@guild/shared/config/features";
 import { useSiteConfigStore } from "./stores/site-config";
 
 async function loadSiteConfig(): Promise<void> {
   try {
     const response = await fetch("/api/site-config");
     if (response.ok) {
-      const data = await response.json() as { site_name: string; site_logo_url: string | null };
+      const data = await response.json() as { site_name: string; site_logo_url: string | null; features?: Partial<FeatureFlags> };
       useSiteConfigStore.getState().setSiteConfig(data.site_name, data.site_logo_url);
+      if (data.features) {
+        useSiteConfigStore.getState().setFeatures(data.features);
+      }
       document.title = data.site_name;
       if (data.site_logo_url) {
         const link = document.querySelector<HTMLLinkElement>("link[rel='icon']");

@@ -11,6 +11,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { IconFlag } from "@tabler/icons-react";
+import { activeGame } from "@guild/shared/games";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -20,46 +21,22 @@ export type ConcludeWarMember = {
   userId: string;
   username: string;
   teamName: string;
-  kills: number;
-  deaths: number;
-  assists: number;
-  damage: number;
-  healing: number;
-  buildingDamage: number;
-  credits: number;
-  damageTaken: number;
+  stats: Record<string, number>;
 };
 
 export type ConcludeWarInfo = {
   enemyName: string;
-  result: "win" | "loss" | "draw" | "";
+  result: string;
   durationMinutes: number | null;
-  ownKills: number | null;
-  ownTowers: number | null;
-  ownBaseHp: number | null;
-  ownCredits: number | null;
-  ownDistance: number | null;
-  enemyKills: number | null;
-  enemyTowers: number | null;
-  enemyBaseHp: number | null;
-  enemyCredits: number | null;
-  enemyDistance: number | null;
+  ownStats: Record<string, number | null>;
+  enemyStats: Record<string, number | null>;
 };
 
 export type ConcludeWarSubmitData = {
   warInfo: ConcludeWarInfo;
   memberStats: Array<{
     user_id: string;
-    stats: {
-      kills?: number;
-      deaths?: number;
-      assists?: number;
-      damage?: number;
-      healing?: number;
-      building_damage?: number;
-      credits?: number;
-      damage_taken?: number;
-    };
+    stats: Record<string, number>;
   }>;
 };
 
@@ -72,23 +49,12 @@ type ConcludeWarModalProps = {
   warName: string;
 };
 
-// --- Stat field definitions for extensibility ---
+const MEMBER_STAT_FIELDS = activeGame.war.memberStats.map((s) => ({
+  key: s.key,
+  apiKey: s.key,
+}));
 
-type MemberStatField = {
-  key: keyof Omit<ConcludeWarMember, "userId" | "username" | "teamName">;
-  apiKey: string;
-};
-
-const MEMBER_STAT_FIELDS: MemberStatField[] = [
-  { key: "kills", apiKey: "kills" },
-  { key: "deaths", apiKey: "deaths" },
-  { key: "assists", apiKey: "assists" },
-  { key: "damage", apiKey: "damage" },
-  { key: "healing", apiKey: "healing" },
-  { key: "buildingDamage", apiKey: "building_damage" },
-  { key: "credits", apiKey: "credits" },
-  { key: "damageTaken", apiKey: "damage_taken" },
-];
+const TEAM_OBJECTIVE_FIELDS = activeGame.war.teamObjectives.filter((o) => o.hasBothSides);
 
 // --- Component ---
 
@@ -102,67 +68,44 @@ export function ConcludeWarModal({
 }: ConcludeWarModalProps) {
   const { t } = useTranslation("guild-war");
 
-  // War info state
-  const [warInfo, setWarInfo] = useState<ConcludeWarInfo>({
+  const [warInfo, setWarInfo] = useState<ConcludeWarInfo>(() => ({
     enemyName: "",
     result: "",
     durationMinutes: null,
-    ownKills: null,
-    ownTowers: null,
-    ownBaseHp: null,
-    ownCredits: null,
-    ownDistance: null,
-    enemyKills: null,
-    enemyTowers: null,
-    enemyBaseHp: null,
-    enemyCredits: null,
-    enemyDistance: null,
-  });
+    ownStats: Object.fromEntries(TEAM_OBJECTIVE_FIELDS.map((o) => [o.key, null])),
+    enemyStats: Object.fromEntries(TEAM_OBJECTIVE_FIELDS.map((o) => [o.key, null])),
+  }));
 
-  // Member stats state — keyed by userId
-  const [memberStatsMap, setMemberStatsMap] = useState<
-    Map<string, Record<string, number>>
-  >(() => {
+  const [memberStatsMap, setMemberStatsMap] = useState<Map<string, Record<string, number>>>(() => {
     const map = new Map<string, Record<string, number>>();
     for (const m of members) {
-      map.set(m.userId, {
-        kills: m.kills,
-        deaths: m.deaths,
-        assists: m.assists,
-        damage: m.damage,
-        healing: m.healing,
-        building_damage: m.buildingDamage,
-        credits: m.credits,
-        damage_taken: m.damageTaken,
-      });
+      map.set(m.userId, { ...m.stats });
     }
     return map;
   });
 
-  // Re-initialize member stats when members change (modal re-opened with new data)
   useEffect(() => {
     const map = new Map<string, Record<string, number>>();
     for (const m of members) {
-      map.set(m.userId, {
-        kills: m.kills,
-        deaths: m.deaths,
-        assists: m.assists,
-        damage: m.damage,
-        healing: m.healing,
-        building_damage: m.buildingDamage,
-        credits: m.credits,
-        damage_taken: m.damageTaken,
-      });
+      map.set(m.userId, { ...m.stats });
     }
     setMemberStatsMap(map);
   }, [members]);
 
-  const updateWarInfo = useCallback(
+  const updateWarInfoField = useCallback(
     <K extends keyof ConcludeWarInfo>(key: K, value: ConcludeWarInfo[K]) => {
       setWarInfo((prev) => ({ ...prev, [key]: value }));
     },
     [],
   );
+
+  const updateOwnStat = useCallback((key: string, value: number | null) => {
+    setWarInfo((prev) => ({ ...prev, ownStats: { ...prev.ownStats, [key]: value } }));
+  }, []);
+
+  const updateEnemyStat = useCallback((key: string, value: number | null) => {
+    setWarInfo((prev) => ({ ...prev, enemyStats: { ...prev.enemyStats, [key]: value } }));
+  }, []);
 
   const updateMemberStat = useCallback(
     (userId: string, field: string, value: number) => {
@@ -185,11 +128,11 @@ export function ConcludeWarModal({
   }, [members, memberStatsMap, onSubmit, warInfo]);
 
   const resultOptions = useMemo(
-    () => [
-      { value: "win", label: t("conclude.result.win") },
-      { value: "loss", label: t("conclude.result.loss") },
-      { value: "draw", label: t("conclude.result.draw") },
-    ],
+    () =>
+      activeGame.war.resultOptions.map((value) => ({
+        value,
+        label: t(`conclude.result.${value}`),
+      })),
     [t],
   );
 
@@ -211,21 +154,21 @@ export function ConcludeWarModal({
           <TextInput
             label={t("conclude.field.enemyName")}
             value={warInfo.enemyName}
-            onChange={(e) => updateWarInfo("enemyName", e.currentTarget.value)}
+            onChange={(e) => updateWarInfoField("enemyName", e.currentTarget.value)}
             style={{ flex: "1 1 180px" }}
           />
           <Select
             label={t("conclude.field.result")}
             data={resultOptions}
             value={warInfo.result || null}
-            onChange={(v) => updateWarInfo("result", (v ?? "") as ConcludeWarInfo["result"])}
+            onChange={(v) => updateWarInfoField("result", v ?? "")}
             clearable
             style={{ flex: "0 1 140px" }}
           />
           <NumberInput
             label={t("conclude.field.duration")}
             value={warInfo.durationMinutes ?? ""}
-            onChange={(v) => updateWarInfo("durationMinutes", typeof v === "number" ? v : null)}
+            onChange={(v) => updateWarInfoField("durationMinutes", typeof v === "number" ? v : null)}
             min={0}
             hideControls
             suffix=" min"
@@ -233,23 +176,31 @@ export function ConcludeWarModal({
           />
         </Group>
 
-        {/* Own vs Enemy stats */}
-        <Group gap={10} wrap="wrap" grow>
-          <NumberInput label={t("conclude.field.ownKills")} value={warInfo.ownKills ?? ""} onChange={(v) => updateWarInfo("ownKills", typeof v === "number" ? v : null)} min={0} hideControls style={{ flex: "1 1 100px" }} />
-          <NumberInput label={t("conclude.field.enemyKills")} value={warInfo.enemyKills ?? ""} onChange={(v) => updateWarInfo("enemyKills", typeof v === "number" ? v : null)} min={0} hideControls style={{ flex: "1 1 100px" }} />
-          <NumberInput label={t("conclude.field.ownTowers")} value={warInfo.ownTowers ?? ""} onChange={(v) => updateWarInfo("ownTowers", typeof v === "number" ? v : null)} min={0} hideControls style={{ flex: "1 1 100px" }} />
-          <NumberInput label={t("conclude.field.enemyTowers")} value={warInfo.enemyTowers ?? ""} onChange={(v) => updateWarInfo("enemyTowers", typeof v === "number" ? v : null)} min={0} hideControls style={{ flex: "1 1 100px" }} />
-        </Group>
-        <Group gap={10} wrap="wrap" grow>
-          <NumberInput label={t("conclude.field.ownBaseHp")} value={warInfo.ownBaseHp ?? ""} onChange={(v) => updateWarInfo("ownBaseHp", typeof v === "number" ? v : null)} min={0} hideControls style={{ flex: "1 1 100px" }} />
-          <NumberInput label={t("conclude.field.enemyBaseHp")} value={warInfo.enemyBaseHp ?? ""} onChange={(v) => updateWarInfo("enemyBaseHp", typeof v === "number" ? v : null)} min={0} hideControls style={{ flex: "1 1 100px" }} />
-          <NumberInput label={t("conclude.field.ownCredits")} value={warInfo.ownCredits ?? ""} onChange={(v) => updateWarInfo("ownCredits", typeof v === "number" ? v : null)} min={0} hideControls style={{ flex: "1 1 100px" }} />
-          <NumberInput label={t("conclude.field.enemyCredits")} value={warInfo.enemyCredits ?? ""} onChange={(v) => updateWarInfo("enemyCredits", typeof v === "number" ? v : null)} min={0} hideControls style={{ flex: "1 1 100px" }} />
-        </Group>
-        <Group gap={10} wrap="wrap" grow>
-          <NumberInput label={t("conclude.field.ownDistance")} value={warInfo.ownDistance ?? ""} onChange={(v) => updateWarInfo("ownDistance", typeof v === "number" ? v : null)} min={0} hideControls style={{ flex: "1 1 100px" }} />
-          <NumberInput label={t("conclude.field.enemyDistance")} value={warInfo.enemyDistance ?? ""} onChange={(v) => updateWarInfo("enemyDistance", typeof v === "number" ? v : null)} min={0} hideControls style={{ flex: "1 1 100px" }} />
-        </Group>
+        {/* Own vs Enemy stats — driven by teamObjectives */}
+        {TEAM_OBJECTIVE_FIELDS.length > 0 ? (
+          <Group gap={10} wrap="wrap" grow>
+            {TEAM_OBJECTIVE_FIELDS.map((obj) => (
+              <Group key={obj.key} gap={10} wrap="wrap" grow style={{ flex: "1 1 200px" }}>
+                <NumberInput
+                  label={t(`conclude.field.own_${obj.key}`, { defaultValue: `Own ${obj.key}` })}
+                  value={warInfo.ownStats[obj.key] ?? ""}
+                  onChange={(v) => updateOwnStat(obj.key, typeof v === "number" ? v : null)}
+                  min={0}
+                  hideControls
+                  style={{ flex: "1 1 100px" }}
+                />
+                <NumberInput
+                  label={t(`conclude.field.enemy_${obj.key}`, { defaultValue: `Enemy ${obj.key}` })}
+                  value={warInfo.enemyStats[obj.key] ?? ""}
+                  onChange={(v) => updateEnemyStat(obj.key, typeof v === "number" ? v : null)}
+                  min={0}
+                  hideControls
+                  style={{ flex: "1 1 100px" }}
+                />
+              </Group>
+            ))}
+          </Group>
+        ) : null}
 
         {/* Section 2: Member stats table */}
         {members.length > 0 ? (

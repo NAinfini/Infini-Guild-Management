@@ -32,7 +32,7 @@
   "categoryEditor.empty": "暂无分类",
   "categoryEditor.treeDiagram": "分类树图",
   "categoryEditor.treeEmpty": "暂无可展示的分类",
-  "categoryEditor.hint": "点击“管理”可编辑名称和父分类，点击“删除”可移除分类。",
+  "categoryEditor.hint": "点击「管理」可编辑名称和父分类，点击「删除」可移除分类。",
   "articleEditor.title": "Wiki",
   "articleEditor.save": "保存",
   "articleEditor.pin": "置顶",
@@ -71,7 +71,7 @@
   "filter.showActive": "显示活跃",
   "filter.showArchived": "显示归档",
   "confirm.deleteCategory.title": "删除分类",
-  "confirm.deleteCategory.description": "确认删除“{{name}}”？此操作不可撤销。",
+  "confirm.deleteCategory.description": "确认删除「{{name}}」？此操作不可撤销。",
   "message.articleUnarchived": "文章已取消归档",
   "message.articleUnarchiveFailed": "取消归档失败",
   "validation.titleRequired": "文章标题不能为空。",
@@ -83,5 +83,9 @@
   "aria.articleTitle": "Wiki 文章标题",
   "aria.articleCategory": "Wiki 文章分类",
   "aria.categoryName": "Wiki 分类名称",
-  "aria.openArticle": "打开 Wiki 文章 {{title}}"
+  "aria.openArticle": "打开 Wiki 文章 {{title}}",
+  "confirm.deleteArticle.title": "删除文章",
+  "confirm.deleteArticle.description": "确认删除「{{title}}」？此操作不可撤销。",
+  "message.articleDeleted": "文章已删除",
+  "message.articleDeleteFailed": "删除文章失败"
 }

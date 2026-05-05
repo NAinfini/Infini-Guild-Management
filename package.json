@@ -22,10 +22,10 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate --config apps/worker/drizzle.config.ts",
     "db:studio": "drizzle-kit studio --config apps/worker/drizzle.config.ts",
-    "db:mock:init": "wrangler d1 migrations apply fanghuazhaoyun-db --local --config apps/worker/wrangler.jsonc --persist-to apps/worker/.wrangler/state",
+    "db:mock:init": "wrangler d1 migrations apply guild-portal-db --local --config apps/worker/wrangler.jsonc --persist-to apps/worker/.wrangler/state",
     "db:mock:seed": "node apps/worker/scripts/seed-local-d1.mjs",
-    "db:mock:status": "wrangler d1 execute fanghuazhaoyun-db --local --config apps/worker/wrangler.jsonc --persist-to apps/worker/.wrangler/state --command \"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name;\"",
-    "db:mock:migrations": "wrangler d1 execute fanghuazhaoyun-db --local --config apps/worker/wrangler.jsonc --persist-to apps/worker/.wrangler/state --command \"SELECT id, name, applied_at FROM d1_migrations ORDER BY id;\"",
+    "db:mock:status": "wrangler d1 execute guild-portal-db --local --config apps/worker/wrangler.jsonc --persist-to apps/worker/.wrangler/state --command \"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name;\"",
+    "db:mock:migrations": "wrangler d1 execute guild-portal-db --local --config apps/worker/wrangler.jsonc --persist-to apps/worker/.wrangler/state --command \"SELECT id, name, applied_at FROM d1_migrations ORDER BY id;\"",
     "db:mock:reset": "node apps/worker/scripts/reset-local-d1.mjs",
     "db:mock:rebuild": "pnpm db:mock:reset && pnpm db:mock:init"
   },

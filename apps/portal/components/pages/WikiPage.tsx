@@ -161,7 +161,7 @@ export function WikiPage() {
   }, [routeSlug, selectedSlug]);
 
   useEffect(() => {
-    if (!selectedSlug && !articleEditor.isCreatingArticle && articles.length > 0 && routeSlug) {
+    if (!selectedSlug && !articleEditor.isCreatingArticle && articles.length > 0) {
       const firstSlug = articles[0]?.slug ?? null;
       setSelectedSlug(firstSlug);
       if (firstSlug) {
@@ -252,7 +252,7 @@ export function WikiPage() {
         confirmProps: { color: "red" },
         labels: {
           cancel: t("common:action.cancel"),
-          confirm: t("common:action.delete"),
+          confirm: t("common:action.discard"),
         },
         onConfirm: () => {
           articleEditor.exitEditor();
@@ -263,6 +263,21 @@ export function WikiPage() {
     }
     articleEditor.exitEditor();
     editorPaneHandlers.close();
+  };
+
+  const handleDeleteArticle = () => {
+    if (!selectedArticle) return;
+    modals.openConfirmModal({
+      title: t("confirm.deleteArticle.title"),
+      children: <Text size="sm">{t("confirm.deleteArticle.description", { title: selectedArticle.title })}</Text>,
+      centered: true,
+      confirmProps: { color: "red" },
+      labels: {
+        cancel: t("common:action.cancel"),
+        confirm: t("common:action.delete"),
+      },
+      onConfirm: () => articleEditor.deleteArticle(selectedArticle.id),
+    });
   };
 
   const handleCategoryFilterChange = (values: string[]) => {
@@ -347,6 +362,7 @@ export function WikiPage() {
           onCreateArticle={articleEditor.createArticle}
           onExitEditor={handleExitArticleEditor}
           onImageUpload={articleEditor.uploadWikiArticleImage}
+          onDeleteArticle={handleDeleteArticle}
           emptyTitle={t("empty")}
         />
       )}
@@ -402,14 +418,6 @@ export function WikiPage() {
                   </Text>
                   <Text size="sm">{selectedCategory?.name ?? t("articleEditor.categoryFallback")}</Text>
                 </Group>
-                <Text c="dimmed" size="sm">
-                  {t("articleEditor.lastUpdatedBy", { user: selectedArticle.created_by.slice(0, 8), date: formatDateTime(selectedArticle.updated_at) })}
-                </Text>
-                {selectedArticle.archived_at ? (
-                  <Text c="yellow" size="sm">
-                    {t("articleEditor.archivedAt", { date: formatDateTime(selectedArticle.archived_at) })}
-                  </Text>
-                ) : null}
                 <TipTapEditor
                   value={selectedArticle.body_json}
                   onChange={() => {
@@ -418,6 +426,14 @@ export function WikiPage() {
                   editable={false}
                   labels={editorLabels}
                 />
+                <Text c="dimmed" size="sm">
+                  {t("articleEditor.lastUpdatedBy", { user: selectedArticle.updated_by_username ?? selectedArticle.created_by.slice(0, 8), date: formatDateTime(selectedArticle.updated_at) })}
+                </Text>
+                {selectedArticle.archived_at ? (
+                  <Text c="yellow" size="sm">
+                    {t("articleEditor.archivedAt", { date: formatDateTime(selectedArticle.archived_at) })}
+                  </Text>
+                ) : null}
               </>
             )}
           </Stack>

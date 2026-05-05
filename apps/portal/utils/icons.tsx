@@ -1,5 +1,5 @@
 import type { IconProps } from "@tabler/icons-react";
-import type { ComponentType, HTMLAttributes } from "react";
+import { useEffect, useRef, type ComponentType, type HTMLAttributes, type Ref } from "react";
 import {
   LayoutGridIcon,
   BellIcon,
@@ -71,12 +71,47 @@ import {
   SpeakerphoneIcon,
 } from "../components/icons";
 
+interface IconHandle {
+  startAnimation: () => void;
+  stopAnimation: () => void;
+}
+
+const INTERACTIVE_SELECTOR = "button, a, [role='button'], [role='menuitem'], [role='tab']";
+
 type PortalIcon = ComponentType<IconProps>;
 
-function withAnimated(AnimatedIcon: ComponentType<HTMLAttributes<HTMLDivElement> & { size?: number }>): PortalIcon {
+function withAnimated(AnimatedIcon: ComponentType<HTMLAttributes<HTMLDivElement> & { size?: number; ref?: Ref<IconHandle> }>): PortalIcon {
   return function AnimatedPortalIcon(props: IconProps) {
     const size = (props.size as number) ?? 16;
-    return <AnimatedIcon size={size} style={{ display: "inline-flex", lineHeight: 0 }} />;
+    const ref = useRef<IconHandle>(null);
+    const wrapperRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      const el = wrapperRef.current;
+      if (!el) return;
+      const parent = el.closest(INTERACTIVE_SELECTOR) as HTMLElement | null;
+      if (!parent) return;
+
+      const onEnter = () => ref.current?.startAnimation();
+      const onLeave = () => ref.current?.stopAnimation();
+      parent.addEventListener("mouseenter", onEnter);
+      parent.addEventListener("mouseleave", onLeave);
+      return () => {
+        parent.removeEventListener("mouseenter", onEnter);
+        parent.removeEventListener("mouseleave", onLeave);
+      };
+    }, []);
+
+    return (
+      <div ref={wrapperRef} style={{ display: "inline-flex", lineHeight: 0 }}>
+        <AnimatedIcon
+          ref={ref}
+          size={size}
+          onMouseEnter={() => ref.current?.startAnimation()}
+          onMouseLeave={() => ref.current?.stopAnimation()}
+        />
+      </div>
+    );
   };
 }
 

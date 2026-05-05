@@ -27,18 +27,13 @@ type UseGuildWarHistoryParams = {
       members: Array<{
         user_id: string;
         username?: string;
-        damage?: number | null;
-        healing?: number | null;
-        building_damage?: number | null;
+        role_tag?: string | null;
       }>;
     }>;
     member_stats: Array<{
       user_id: string;
       username?: string;
-      damage: number | null;
-      healing: number | null;
-      building_damage: number | null;
-      damage_taken?: number | null;
+      stats: Record<string, number | null> | null;
     }>;
   } | null;
 };
@@ -77,7 +72,7 @@ export function useGuildWarHistory({
       header: t("history.table.kills"),
       id: "kills",
       enableSorting: false,
-      cell: ({ row }) => `${row.original.own_kills ?? 0} / ${row.original.enemy_kills ?? 0}`,
+      cell: ({ row }) => `${row.original.own_stats?.kills ?? 0} / ${row.original.enemy_stats?.kills ?? 0}`,
     },
     {
       header: t("history.table.date"),
@@ -96,16 +91,16 @@ export function useGuildWarHistory({
       return null;
     }
 
-    const topDamage = [...stats].sort((a, b) => (b.damage ?? 0) - (a.damage ?? 0))[0] ?? null;
-    const topHealing = [...stats].sort((a, b) => (b.healing ?? 0) - (a.healing ?? 0))[0] ?? null;
-    const topBuilding = [...stats].sort((a, b) => (b.building_damage ?? 0) - (a.building_damage ?? 0))[0] ?? null;
-    const topDamageTaken = [...stats].sort((a, b) => (b.damage_taken ?? 0) - (a.damage_taken ?? 0))[0] ?? null;
+    const topDamage = [...stats].sort((a, b) => (b.stats?.damage ?? 0) - (a.stats?.damage ?? 0))[0] ?? null;
+    const topHealing = [...stats].sort((a, b) => (b.stats?.healing ?? 0) - (a.stats?.healing ?? 0))[0] ?? null;
+    const topBuilding = [...stats].sort((a, b) => (b.stats?.building_damage ?? 0) - (a.stats?.building_damage ?? 0))[0] ?? null;
+    const topDamageTaken = [...stats].sort((a, b) => (b.stats?.damage_taken ?? 0) - (a.stats?.damage_taken ?? 0))[0] ?? null;
 
     return {
-      damage: topDamage ? `${topDamage.username ?? topDamage.user_id} (${topDamage.damage ?? 0})` : "-",
-      healing: topHealing ? `${topHealing.username ?? topHealing.user_id} (${topHealing.healing ?? 0})` : "-",
-      building: topBuilding ? `${topBuilding.username ?? topBuilding.user_id} (${topBuilding.building_damage ?? 0})` : "-",
-      damageTaken: topDamageTaken ? `${topDamageTaken.username ?? topDamageTaken.user_id} (${topDamageTaken.damage_taken ?? 0})` : "-",
+      damage: topDamage ? `${topDamage.username ?? topDamage.user_id} (${topDamage.stats?.damage ?? 0})` : "-",
+      healing: topHealing ? `${topHealing.username ?? topHealing.user_id} (${topHealing.stats?.healing ?? 0})` : "-",
+      building: topBuilding ? `${topBuilding.username ?? topBuilding.user_id} (${topBuilding.stats?.building_damage ?? 0})` : "-",
+      damageTaken: topDamageTaken ? `${topDamageTaken.username ?? topDamageTaken.user_id} (${topDamageTaken.stats?.damage_taken ?? 0})` : "-",
     };
   }, [historyDetailData]);
 

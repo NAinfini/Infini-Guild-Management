@@ -26,6 +26,8 @@ import {
   IconTable,
   IconColumnInsertRight,
   IconRowInsertBottom,
+  IconColumnRemove,
+  IconRowRemove,
   IconTableOff,
   IconPhoto,
 } from "@tabler/icons-react";
@@ -53,6 +55,8 @@ export type TipTapEditorLabels = {
   table: string;
   addCol: string;
   addRow: string;
+  delCol: string;
+  delRow: string;
   delTable: string;
   image: string;
   close: string;
@@ -80,6 +84,8 @@ const DEFAULT_LABELS: TipTapEditorLabels = {
   table: "Table",
   addCol: "Add column",
   addRow: "Add row",
+  delCol: "Delete column",
+  delRow: "Delete row",
   delTable: "Delete table",
   image: "Image",
   close: "Close",
@@ -108,6 +114,8 @@ export function buildTipTapEditorLabels(t: (key: string) => string): TipTapEdito
     table: t("toolbar.table"),
     addCol: t("toolbar.addCol"),
     addRow: t("toolbar.addRow"),
+    delCol: t("toolbar.delCol"),
+    delRow: t("toolbar.delRow"),
     delTable: t("toolbar.delTable"),
     image: t("toolbar.image"),
     close: t("toolbar.close"),
@@ -385,6 +393,8 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
             <Tooltip label={labels.table} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}><IconTable size={16} /></ActionIcon></Tooltip>
             <Tooltip label={labels.addCol} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().addColumnAfter().run()}><IconColumnInsertRight size={16} /></ActionIcon></Tooltip>
             <Tooltip label={labels.addRow} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().addRowAfter().run()}><IconRowInsertBottom size={16} /></ActionIcon></Tooltip>
+            <Tooltip label={labels.delCol} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().deleteColumn().run()}><IconColumnRemove size={16} /></ActionIcon></Tooltip>
+            <Tooltip label={labels.delRow} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().deleteRow().run()}><IconRowRemove size={16} /></ActionIcon></Tooltip>
             <Tooltip label={labels.delTable} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().deleteTable().run()}><IconTableOff size={16} /></ActionIcon></Tooltip>
             <Tooltip label={labels.image} withArrow><ActionIcon size="sm" variant="default" onClick={() => fileInputRef.current?.click()}><IconPhoto size={16} /></ActionIcon></Tooltip>
           </div>

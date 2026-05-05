@@ -357,7 +357,7 @@ export function useAnnouncementsController() {
         confirmProps: { color: "red" },
         labels: {
           cancel: t("action.cancel"),
-          confirm: t("common:action.delete"),
+          confirm: t("common:action.discard"),
         },
         onConfirm: () => {
           if (id !== null) {

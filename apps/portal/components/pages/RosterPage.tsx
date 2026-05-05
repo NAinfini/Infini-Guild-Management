@@ -1,5 +1,6 @@
 import type { MemberProfile, User } from "@guild/shared";
 import { CLASS_NAMES } from "@guild/shared";
+import { activeGame } from "@guild/shared/games";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { StaggerList } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
@@ -46,7 +47,11 @@ const rosterCardVariants = {
 
 type RosterEntry = { user: User; profile: MemberProfile };
 const ROSTER_FILTERS_KEY = "roster.filters";
-const ROSTER_SORT_MODES = ["power", "username", "class"] as const;
+const ROSTER_SORT_MODES = [
+  ...activeGame.profileStats.filter((s) => s.sortable).map((s) => s.key),
+  "username",
+  "class",
+] as const;
 
 type RosterSortMode = (typeof ROSTER_SORT_MODES)[number];
 function readStoredClassFilter(): string[] {

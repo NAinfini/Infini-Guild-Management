@@ -32,6 +32,22 @@ async function requireWikiArticlesEdit(c: Context) { return requirePermission(c,
 async function requireWikiArticlesArchive(c: Context) { return requirePermission(c, "wiki.articles.archive"); }
 async function requireWikiCategoriesManage(c: Context) { return requirePermission(c, "wiki.categories.manage"); }
 
+wikiRoutes.get("/image", async (c) => {
+  const key = c.req.query("key");
+  if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
+  if (!key.startsWith("wiki/")) return buildError(c, "FORBIDDEN", "Invalid wiki image key");
+
+  const object = await (c.env as Bindings).MEDIA.get(key);
+  if (!object?.body) return buildError(c, "NOT_FOUND", "Wiki image not found");
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
+  headers.set("Cache-Control", "private, max-age=300");
+  headers.set("ETag", object.httpEtag);
+  return new Response(object.body, { headers });
+});
+
 // --- Category routes ---
 
 wikiRoutes.get("/categories", async (c) => {

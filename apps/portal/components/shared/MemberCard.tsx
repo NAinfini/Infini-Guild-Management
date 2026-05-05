@@ -22,7 +22,7 @@ function isClassName(value: string): value is ClassName {
   return (CLASS_NAMES as readonly string[]).includes(value);
 }
 
-function resolveClassGroup(className: string | null): "blue" | "green" | "purple" | "dark-red" {
+function resolveClassGroup(className: string | null): string {
   if (!className || !isClassName(className)) {
     return "blue";
   }

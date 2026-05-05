@@ -112,7 +112,7 @@ export function AdminSystemSection({
           }
         />
         <Stack gap={0} align="center">
-          <Text size="xs" fw={700} className="system-health-tile__label">Latency</Text>
+          <Text size="xs" fw={700} className="system-health-tile__label">{t("status.latency")}</Text>
           <Text size="10px" c="dimmed">ms</Text>
         </Stack>
       </div>
@@ -120,7 +120,7 @@ export function AdminSystemSection({
       <Tooltip label={allOk ? t("status.allHealthy", { defaultValue: "All systems operational" }) : t("status.hasIssues", { defaultValue: "Some services have issues" })} withArrow>
         <div className={`system-health-overall ${allOk ? "system-health-overall--ok" : "system-health-overall--warn"}`}>
           <div className={`system-health-overall__dot ${allOk ? "system-health-overall__dot--ok" : "system-health-overall__dot--warn"}`} />
-          <Text size="xs" fw={700}>{allOk ? "Operational" : "Degraded"}</Text>
+          <Text size="xs" fw={700}>{allOk ? t("status.operational") : t("status.degraded")}</Text>
         </div>
       </Tooltip>
     </div>

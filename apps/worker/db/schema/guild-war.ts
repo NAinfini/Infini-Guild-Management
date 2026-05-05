@@ -2,9 +2,12 @@
 // Tables: warHistory, warTeams, warTeamMembers, warPoolMembers, warTemplates
 // Dependencies: auth.users, events.events
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { activeGame } from "@guild/shared/games";
 import { users } from "./auth";
 import { events } from "./events";
 import { nowUtc } from "./shared";
+
+const WAR_RESULT_OPTIONS = activeGame.war.resultOptions as unknown as [string, ...string[]];
 
 export const warHistory = sqliteTable(
   "war_history",
@@ -13,17 +16,9 @@ export const warHistory = sqliteTable(
     eventId: text("event_id").references(() => events.id),
     warName: text("war_name").notNull(),
     enemyName: text("enemy_name"),
-    result: text("result", { enum: ["win", "loss", "draw"] }),
-    ownKills: integer("own_kills"),
-    ownTowers: integer("own_towers"),
-    ownBaseHp: integer("own_base_hp"),
-    ownCredits: integer("own_credits"),
-    ownDistance: integer("own_distance"),
-    enemyKills: integer("enemy_kills"),
-    enemyTowers: integer("enemy_towers"),
-    enemyBaseHp: integer("enemy_base_hp"),
-    enemyCredits: integer("enemy_credits"),
-    enemyDistance: integer("enemy_distance"),
+    result: text("result", { enum: WAR_RESULT_OPTIONS }),
+    ownStats: text("own_stats", { mode: "json" }).$type<Record<string, number | null>>(),
+    enemyStats: text("enemy_stats", { mode: "json" }).$type<Record<string, number | null>>(),
     durationMinutes: real("duration_minutes"),
     notes: text("notes"),
     createdBy: text("created_by").notNull().references(() => users.id),
@@ -59,14 +54,7 @@ export const warTeamMembers = sqliteTable(
     userId: text("user_id").notNull().references(() => users.id),
     roleTag: text("role_tag"),
     sortOrder: integer("sort_order").notNull().default(0),
-    kills: integer("kills"),
-    deaths: integer("deaths"),
-    assists: integer("assists"),
-    damage: integer("damage"),
-    healing: integer("healing"),
-    buildingDamage: integer("building_damage"),
-    credits: integer("credits"),
-    damageTaken: integer("damage_taken"),
+    stats: text("stats", { mode: "json" }).$type<Record<string, number | null>>(),
     note: text("note"),
   },
   (table) => ({

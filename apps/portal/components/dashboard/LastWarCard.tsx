@@ -19,6 +19,13 @@ import { CompareBar } from "../shared/CompareBar";
 import { EmptyState } from "../shared/EmptyState";
 import { cardHeading, formatDateTime, type DashboardLastWarMvp, type DashboardLastWarMvpEntry } from "./shared";
 
+const MVP_ICON_MAP: Record<string, React.ReactNode> = {
+  damage: <FlameIcon size={12} />,
+  healing: <HeartIcon size={12} />,
+  damage_taken: <ShieldIcon size={12} />,
+  building_damage: <HammerIcon size={12} />,
+};
+
 type LastWarCardProps = {
   recentWars: WarHistory[];
   warMvps: DashboardLastWarMvp[];
@@ -142,8 +149,8 @@ export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isEx
               classPrefix="war-compare-"
               icon={<TargetOutlined size={13} />}
               label={t("card.lastWar.kills")}
-              own={war.own_kills ?? 0}
-              enemy={war.enemy_kills ?? 0}
+              own={war.own_stats?.kills ?? 0}
+              enemy={war.enemy_stats?.kills ?? 0}
             />
             {!isExternalView ? (
               <>
@@ -151,22 +158,22 @@ export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isEx
                   classPrefix="war-compare-"
                   icon={<CrownOutlined size={13} />}
                   label={t("card.lastWar.credits")}
-                  own={war.own_credits ?? 0}
-                  enemy={war.enemy_credits ?? 0}
+                  own={war.own_stats?.credits ?? 0}
+                  enemy={war.enemy_stats?.credits ?? 0}
                 />
                 <CompareBar
                   classPrefix="war-compare-"
                   icon={<ShieldOutlined size={13} />}
                   label={t("card.lastWar.towers")}
-                  own={war.own_towers ?? 0}
-                  enemy={war.enemy_towers ?? 0}
+                  own={war.own_stats?.towers ?? 0}
+                  enemy={war.enemy_stats?.towers ?? 0}
                 />
                 <CompareBar
                   classPrefix="war-compare-"
                   icon={<ShieldOutlined size={13} />}
                   label={t("card.lastWar.baseHp")}
-                  own={war.own_base_hp ?? 0}
-                  enemy={war.enemy_base_hp ?? 0}
+                  own={war.own_stats?.base_hp ?? 0}
+                  enemy={war.enemy_stats?.base_hp ?? 0}
                 />
               </>
             ) : null}
@@ -179,10 +186,9 @@ export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isEx
                 {t("card.lastWar.mvps")}
               </Text>
               <Stack gap={6}>
-                <MvpChip entry={{ ...mvp.damage, label: t("card.lastWar.mvp.damage") }} icon={<FlameIcon size={12} />} />
-                <MvpChip entry={{ ...mvp.healing, label: t("card.lastWar.mvp.healing") }} icon={<HeartIcon size={12} />} />
-                <MvpChip entry={{ ...mvp.damageTaken, label: t("card.lastWar.mvp.damageTaken") }} icon={<ShieldIcon size={12} />} />
-                <MvpChip entry={{ ...mvp.building, label: t("card.lastWar.mvp.building") }} icon={<HammerIcon size={12} />} />
+                {mvp.map((entry) => (
+                  <MvpChip key={entry.category} entry={entry} icon={MVP_ICON_MAP[entry.category] ?? <FlameIcon size={12} />} />
+                ))}
               </Stack>
             </Stack>
           ) : null}
