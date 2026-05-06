@@ -20,7 +20,7 @@ type AnnouncementStatus = "draft" | "scheduled" | "published" | "archived";
 type AnnouncementRow = {
   id: string; title: string; bodyJson: string; pinned: boolean;
   status: AnnouncementStatus; publishAt: string | null; expiresAt: string | null; archivedAt: string | null;
-  createdBy: string; createdAt: string; updatedAt: string;
+  createdBy: string; updatedBy: string | null; createdAt: string; updatedAt: string;
 };
 
 export type AnnouncementServiceDeps = {
@@ -36,7 +36,7 @@ function toPayload(row: AnnouncementRow) {
   return announcementSchema.parse({
     id: row.id, title: row.title, body_json: row.bodyJson, pinned: row.pinned,
     status: row.status, publish_at: row.publishAt, expires_at: row.expiresAt, archived_at: row.archivedAt,
-    created_by: row.createdBy, created_at: row.createdAt, updated_at: row.updatedAt,
+    created_by: row.createdBy, updated_by: row.updatedBy ?? null, created_at: row.createdAt, updated_at: row.updatedAt,
   });
 }
 
@@ -44,14 +44,14 @@ const COLS = {
   id: announcements.id, title: announcements.title, bodyJson: announcements.bodyJson,
   pinned: announcements.pinned, status: announcements.status,
   publishAt: announcements.publishAt, expiresAt: announcements.expiresAt, archivedAt: announcements.archivedAt,
-  createdBy: announcements.createdBy, createdAt: announcements.createdAt, updatedAt: announcements.updatedAt,
+  createdBy: announcements.createdBy, updatedBy: announcements.updatedBy, createdAt: announcements.createdAt, updatedAt: announcements.updatedAt,
 } as const;
 
 const LIST_COLS = {
   id: announcements.id, title: announcements.title,
   pinned: announcements.pinned, status: announcements.status,
   publishAt: announcements.publishAt, expiresAt: announcements.expiresAt, archivedAt: announcements.archivedAt,
-  createdBy: announcements.createdBy, createdAt: announcements.createdAt, updatedAt: announcements.updatedAt,
+  createdBy: announcements.createdBy, updatedBy: announcements.updatedBy, createdAt: announcements.createdAt, updatedAt: announcements.updatedAt,
 } as const;
 
 type AnnouncementListRow = Omit<AnnouncementRow, "bodyJson">;
@@ -60,7 +60,7 @@ function toListPayload(row: AnnouncementListRow) {
   return {
     id: row.id, title: row.title, body_json: "", pinned: row.pinned,
     status: row.status, publish_at: row.publishAt, expires_at: row.expiresAt, archived_at: row.archivedAt,
-    created_by: row.createdBy, created_at: row.createdAt, updated_at: row.updatedAt,
+    created_by: row.createdBy, updated_by: row.updatedBy ?? null, created_at: row.createdAt, updated_at: row.updatedAt,
   };
 }
 
@@ -152,7 +152,7 @@ export class AnnouncementService {
       }
     }
 
-    const patch: Partial<typeof announcements.$inferInsert> = { updatedAt: new Date().toISOString() };
+    const patch: Partial<typeof announcements.$inferInsert> = { updatedAt: new Date().toISOString(), updatedBy: actorId };
     if (data.title !== undefined) patch.title = data.title;
     if (data.body_json !== undefined) patch.bodyJson = data.body_json;
     if (data.pinned !== undefined) patch.pinned = data.pinned;

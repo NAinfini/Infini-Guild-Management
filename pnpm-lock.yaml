@@ -29,9 +29,6 @@ importers:
       '@mantine/core':
         specifier: ^8.3.16
         version: 8.3.16(@mantine/hooks@8.3.16(react@19.2.5))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@mantine/dates':
-        specifier: ^8.3.16
-        version: 8.3.16(@mantine/core@8.3.16(@mantine/hooks@8.3.16(react@19.2.5))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(@mantine/hooks@8.3.16(react@19.2.5))(dayjs@1.11.19)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@mantine/dropzone':
         specifier: ^8.3.16
         version: 8.3.16(@mantine/core@8.3.16(@mantine/hooks@8.3.16(react@19.2.5))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(@mantine/hooks@8.3.16(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -156,6 +153,9 @@ importers:
         specifier: ^5.0.12
         version: 5.0.12(@types/react@19.2.14)(react@19.2.5)(use-sync-external-store@1.6.0(react@19.2.5))
     devDependencies:
+      '@axe-core/react':
+        specifier: ^4.11.3
+        version: 4.11.3
       '@cloudflare/workers-types':
         specifier: ^4.20260426.1
         version: 4.20260426.1
@@ -236,6 +236,9 @@ packages:
 
   '@asamuzakjp/nwsapi@2.3.9':
     resolution: {integrity: sha512-n8GuYSrI9bF7FFZ/SjhwevlHc8xaVlb/7HmHelnc/PZXBD2ZR49NnN9sMMuDdEGPeeRQ5d0hqlSlEpgCX3Wl0Q==}
+
+  '@axe-core/react@4.11.3':
+    resolution: {integrity: sha512-G7TrxptKNFfrQZ+Iygb8nGx5w8Su0jIjwmtVN/9Jc4G6RumCh1rD3pZRT2NzZKjT70q4BReuWVwEazS3HxFfjg==}
 
   '@babel/code-frame@7.29.0':
     resolution: {integrity: sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw==}
@@ -1153,15 +1156,6 @@ packages:
       react: ^18.x || ^19.x
       react-dom: ^18.x || ^19.x
 
-  '@mantine/dates@8.3.16':
-    resolution: {integrity: sha512-oZhOS4j5cMsyY3rZtkfCgKxu67Aptkav6Z7Tqa1hHpAdJ2XNse/Bl7hgqsdaTaUY8L5zpeTWaptBe1053Zgj8A==}
-    peerDependencies:
-      '@mantine/core': 8.3.16
-      '@mantine/hooks': 8.3.16
-      dayjs: '>=1.0.0'
-      react: ^18.x || ^19.x
-      react-dom: ^18.x || ^19.x
-
   '@mantine/dropzone@8.3.16':
     resolution: {integrity: sha512-HFxt+DLlJKFpPPitfayiz+ZhtaXbiGgdmxBLmVe/ybEOXRS5St5xTlHQE6Iw67CGd4LuAv1CvDqyiQJw/fC9VQ==}
     peerDependencies:
@@ -2061,6 +2055,10 @@ packages:
     resolution: {integrity: sha512-0bDNnY/u6pPwHDMoF0FieU354oBi0a8rD9FcsLwzcGWbc8KS8KPIi7y+s13OlVY+gMWc/9xEMUgNE6Qm8ZllYQ==}
     engines: {node: '>=4'}
 
+  axe-core@4.11.4:
+    resolution: {integrity: sha512-KunSNx+TVpkAw/6ULfhnx+HWRecjqZGTOyquAoWHYLRSdK1tB5Ihce1ZW+UY3fj33bYAFWPu7W/GRSmmrCGuxA==}
+    engines: {node: '>=4'}
+
   balanced-match@4.0.4:
     resolution: {integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==}
     engines: {node: 18 || 20 || >=22}
@@ -2159,9 +2157,6 @@ packages:
 
   date-fns@4.1.0:
     resolution: {integrity: sha512-Ukq0owbQXxa/U3EGtsdVBkR1w7KOQ5gIBqdH2hkvknzZPYvBxb/aa6E8L7tmjFtkwZBu3UXBbjIgPo/Ez4xaNg==}
-
-  dayjs@1.11.19:
-    resolution: {integrity: sha512-t5EcLVS6QPBNqM2z8fakk/NKel+Xzshgt8FFKAn+qwlD1pzZWxh0nVCrvFK7ZDb6XucZeF9z8C7CBWTRIVApAw==}
 
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -2985,6 +2980,9 @@ packages:
     resolution: {integrity: sha512-6tDA8g98We0zd0GvVeMT9arEOnTw9qM03L9cJXaCjrip1OO764RDBLBfrB4cwzNGDj5OA5ioymC9GkizgWJDUg==}
     engines: {node: '>=8'}
 
+  requestidlecallback@0.3.0:
+    resolution: {integrity: sha512-TWHFkT7S9p7IxLC5A1hYmAYQx2Eb9w1skrXmQ+dS1URyvR8tenMLl4lHbqEOUnpEYxNKpkVMXUgknVpBZWXXfQ==}
+
   require-directory@2.1.1:
     resolution: {integrity: sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q==}
     engines: {node: '>=0.10.0'}
@@ -3495,6 +3493,11 @@ snapshots:
   '@asamuzakjp/generational-cache@1.0.1': {}
 
   '@asamuzakjp/nwsapi@2.3.9': {}
+
+  '@axe-core/react@4.11.3':
+    dependencies:
+      axe-core: 4.11.4
+      requestidlecallback: 0.3.0
 
   '@babel/code-frame@7.29.0':
     dependencies:
@@ -4159,15 +4162,6 @@ snapshots:
       type-fest: 4.41.0
     transitivePeerDependencies:
       - '@types/react'
-
-  '@mantine/dates@8.3.16(@mantine/core@8.3.16(@mantine/hooks@8.3.16(react@19.2.5))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(@mantine/hooks@8.3.16(react@19.2.5))(dayjs@1.11.19)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
-    dependencies:
-      '@mantine/core': 8.3.16(@mantine/hooks@8.3.16(react@19.2.5))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@mantine/hooks': 8.3.16(react@19.2.5)
-      clsx: 2.1.1
-      dayjs: 1.11.19
-      react: 19.2.5
-      react-dom: 19.2.5(react@19.2.5)
 
   '@mantine/dropzone@8.3.16(@mantine/core@8.3.16(@mantine/hooks@8.3.16(react@19.2.5))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(@mantine/hooks@8.3.16(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
@@ -5012,6 +5006,8 @@ snapshots:
 
   attr-accept@2.2.5: {}
 
+  axe-core@4.11.4: {}
+
   balanced-match@4.0.4: {}
 
   baseline-browser-mapping@2.10.0: {}
@@ -5113,8 +5109,6 @@ snapshots:
       - '@noble/hashes'
 
   date-fns@4.1.0: {}
-
-  dayjs@1.11.19: {}
 
   debug@4.4.3:
     dependencies:
@@ -5882,6 +5876,8 @@ snapshots:
     dependencies:
       indent-string: 4.0.0
       strip-indent: 3.0.0
+
+  requestidlecallback@0.3.0: {}
 
   require-directory@2.1.1: {}
 

@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { events } from "../db/schema";
 import type { Bindings } from "../index";
+import { logger } from "../utils/logger";
 
 type RecurrenceRule = {
   frequency: "daily" | "weekly" | "monthly";
@@ -63,7 +64,7 @@ function parseRecurrenceRule(value: string | null): RecurrenceRule | null {
       endDate,
     };
   } catch (e) {
-    console.error("[event-instance-gen] Failed to parse recurrence rule:", value, e);
+    logger.warn("Failed to parse recurrence rule", { value, error: String(e) });
     return null;
   }
 }

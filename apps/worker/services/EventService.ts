@@ -72,6 +72,7 @@ export type EventRow = {
   autoArchive: boolean;
   autoArchived: boolean;
   createdBy: string;
+  updatedBy: string | null;
   recurrenceRule: string | null;
   attachments: string;
   seriesId: string | null;
@@ -159,6 +160,7 @@ export function toEventPayload(row: EventRow) {
     visible_at: row.visibleAt,
     archived_at: row.archivedAt,
     created_by: row.createdBy,
+    updated_by: row.updatedBy ?? null,
     recurrence_rule: parseRecurrenceRule(row.recurrenceRule),
     attachments: parseAttachments(row.attachments),
     series_id: row.seriesId,
@@ -284,6 +286,7 @@ export class EventService {
 
     const patch: Record<string, unknown> = {
       updatedAt: this.now(),
+      updatedBy: actorId,
     };
 
     if (data.type !== undefined) patch.type = data.type;
@@ -886,6 +889,7 @@ export class EventService {
     autoArchive: events.autoArchive,
     autoArchived: events.autoArchived,
     createdBy: events.createdBy,
+    updatedBy: events.updatedBy,
     recurrenceRule: events.recurrenceRule,
     attachments: events.attachments,
     seriesId: events.seriesId,

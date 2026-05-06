@@ -1,6 +1,9 @@
 import type { Bindings } from "../index";
+import { logger } from "../utils/logger";
+import { writeErrorLog } from "../services/ErrorLogService";
 import { runAnnouncementPublishCron } from "./announcement-publish";
 import { runAuditArchiveCron } from "./audit-archive";
+import { runErrorLogCleanupCron } from "./error-log-cleanup";
 import { runEventAutoArchiveCron } from "./event-auto-archive";
 import { runEventInstanceGenerationCron } from "./event-instance-gen";
 import { runMediaOrphanCleanupCron } from "./media-orphan-cleanup";
@@ -16,6 +19,7 @@ export const DAILY_MAINTENANCE_JOBS: readonly MaintenanceJob[] = [
   { name: "session-cleanup", run: runSessionCleanupCron },
   { name: "audit-archive", run: runAuditArchiveCron },
   { name: "media-orphan-cleanup", run: runMediaOrphanCleanupCron },
+  { name: "error-log-cleanup", run: runErrorLogCleanupCron },
 ];
 
 export const QUARTER_HOURLY_MAINTENANCE_JOBS: readonly MaintenanceJob[] = [
@@ -35,16 +39,20 @@ async function runMaintenanceJobs(env: Bindings, jobs: readonly MaintenanceJob[]
         failures.push(job.name);
         const message = error instanceof Error ? error.message : String(error);
         const stack = error instanceof Error ? error.stack : undefined;
-        console.error(JSON.stringify({
-          level: "error",
+        logger.error("Cron job failed", {
           source: "cron",
           job: job.name,
           cron,
           elapsed_ms: Date.now() - start,
           error: message,
           stack,
-          timestamp: new Date().toISOString(),
-        }));
+        });
+        await writeErrorLog(env.DB, {
+          source: "cron",
+          message: `[${job.name}] ${message}`,
+          stack,
+          context: { job: job.name, cron, elapsed_ms: Date.now() - start },
+        });
       }
     }),
   );

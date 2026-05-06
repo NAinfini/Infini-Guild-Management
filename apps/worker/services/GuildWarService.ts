@@ -39,6 +39,7 @@ export type WarHistoryRow = {
   durationMinutes: number | null;
   notes: string | null;
   createdBy: string;
+  updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -109,7 +110,7 @@ export function toWarHistoryPayload(row: WarHistoryRow) {
     own_stats: row.ownStats ?? null,
     enemy_stats: row.enemyStats ?? null,
     duration_minutes: toNum(row.durationMinutes), notes: row.notes,
-    created_by: row.createdBy, created_at: row.createdAt, updated_at: row.updatedAt,
+    created_by: row.createdBy, updated_by: row.updatedBy ?? null, created_at: row.createdAt, updated_at: row.updatedAt,
   });
 }
 
@@ -216,12 +217,12 @@ export class GuildWarService {
   // --- DB query methods ---
 
   async getWarHistoryById(warId: string): Promise<WarHistoryRow | null> {
-    const row = (await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(eq(warHistory.id, warId)).limit(1))[0];
+    const row = (await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(eq(warHistory.id, warId)).limit(1))[0];
     return row ?? null;
   }
 
   async getLatestWarHistory(eventId?: string): Promise<WarHistoryRow | null> {
-    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(eventId ? eq(warHistory.eventId, eventId) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(1);
+    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(eventId ? eq(warHistory.eventId, eventId) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(1);
     return rows[0] ?? null;
   }
 
@@ -496,7 +497,7 @@ export class GuildWarService {
     if (filters.dateFrom) where.push(gte(warHistory.createdAt, filters.dateFrom));
     if (filters.dateTo) where.push(lte(warHistory.createdAt, filters.dateTo));
     if (filters.eventId) where.push(eq(warHistory.eventId, filters.eventId));
-    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(where.length > 0 ? and(...where) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(5000);
+    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(where.length > 0 ? and(...where) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(5000);
     const creatorIds = [...new Set(rows.map((r) => r.createdBy).filter(Boolean) as string[])];
     const creatorMap = await this.getUsernameMap(creatorIds);
     const dateStamp = new Date().toISOString().slice(0, 10);
@@ -531,13 +532,13 @@ export class GuildWarService {
     if (filters.dateFrom) where.push(gte(warHistory.createdAt, filters.dateFrom));
     if (filters.dateTo) where.push(lte(warHistory.createdAt, filters.dateTo));
     const whereClause = where.length > 0 ? and(...where) : undefined;
-    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt, _total: sql<number>`count(*) over()` }).from(warHistory).where(whereClause).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(limit).offset(offset);
+    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt, _total: sql<number>`count(*) over()` }).from(warHistory).where(whereClause).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(limit).offset(offset);
     const total = Number((rows[0] as Record<string, unknown> | undefined)?._total ?? 0);
     return ok({ data: rows.map(toWarHistoryPayload), total, page, limit, total_pages: Math.max(1, Math.ceil(total / limit)) });
   }
 
   async batchHistory(ids: string[]): Promise<ServiceResult<{ data: unknown[] }>> {
-    const histories = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(inArray(warHistory.id, ids));
+    const histories = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(inArray(warHistory.id, ids));
     const allTeams = await this.db.select({ id: warTeams.id, warHistoryId: warTeams.warHistoryId, teamName: warTeams.teamName, sortOrder: warTeams.sortOrder, notes: warTeams.notes, isLocked: warTeams.isLocked }).from(warTeams).where(inArray(warTeams.warHistoryId, ids)).orderBy(asc(warTeams.sortOrder), asc(warTeams.id));
     const teamIds = allTeams.map((t) => t.id);
     const allMembers = teamIds.length > 0 ? await this.getMembersForTeams(teamIds) : [];
@@ -588,7 +589,7 @@ export class GuildWarService {
   async updateHistory(actorId: string, warId: string, input: UpdateWarHistoryInput): Promise<ServiceResult<unknown>> {
     const existing = await this.getWarHistoryById(warId);
     if (!existing) return err("NOT_FOUND", "War history not found");
-    const patch: Partial<typeof warHistory.$inferInsert> = { updatedAt: new Date().toISOString() };
+    const patch: Partial<typeof warHistory.$inferInsert> = { updatedAt: new Date().toISOString(), updatedBy: actorId };
     if (input.event_id !== undefined) patch.eventId = input.event_id;
     if (input.war_name !== undefined) patch.warName = input.war_name;
     if (input.enemy_name !== undefined) patch.enemyName = input.enemy_name;
@@ -724,7 +725,7 @@ export class GuildWarService {
   async getAnalytics(warIds: string[], userIds: string[]): Promise<ServiceResult<{ wars: unknown[]; member_stats: unknown[]; analytics_settings: AnalyticsSettings }>> {
     const warFilters: SQL<unknown>[] = [];
     if (warIds.length > 0) warFilters.push(inArray(warHistory.id, warIds));
-    const wars = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(warFilters.length > 0 ? and(...warFilters) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(200);
+    const wars = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(warFilters.length > 0 ? and(...warFilters) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(200);
     const historyIds = wars.map((w) => w.id);
     if (historyIds.length === 0) return ok({ wars: [], member_stats: [], analytics_settings: defaultAnalyticsSettings() });
     const teamSizeCounts = await this.db.select({ warHistoryId: warTeams.warHistoryId, memberCount: sql<number>`count(${warTeamMembers.id})`.as("member_count") }).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(inArray(warTeams.warHistoryId, historyIds)).groupBy(warTeams.warHistoryId);

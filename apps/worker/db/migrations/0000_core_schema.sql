@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS role_permissions (
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY NOT NULL,
   username TEXT NOT NULL UNIQUE,
-  role TEXT NOT NULL DEFAULT 'member' REFERENCES roles(id) CHECK (role IN ('admin', 'moderator', 'member')),
+  role TEXT NOT NULL DEFAULT 'member' REFERENCES roles(id),
   is_active INTEGER NOT NULL DEFAULT 1,
   deleted_at TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS events (
   auto_archive INTEGER NOT NULL DEFAULT 0,
   auto_archived INTEGER NOT NULL DEFAULT 0,
   created_by TEXT NOT NULL REFERENCES users(id),
+  updated_by TEXT REFERENCES users(id),
   recurrence_rule TEXT,
   attachments TEXT NOT NULL DEFAULT '[]',
   series_id TEXT,
@@ -105,6 +106,7 @@ CREATE TABLE IF NOT EXISTS announcements (
   expires_at TEXT,
   archived_at TEXT,
   created_by TEXT NOT NULL REFERENCES users(id),
+  updated_by TEXT REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -120,6 +122,7 @@ CREATE TABLE IF NOT EXISTS war_history (
   enemy_stats TEXT,
   notes TEXT,
   created_by TEXT NOT NULL REFERENCES users(id),
+  updated_by TEXT REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -353,6 +356,23 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_entity_actor_created
 CREATE INDEX IF NOT EXISTS idx_audit_log_actor_id
   ON audit_log(actor_id);
 
+-- error_log (observability)
+CREATE TABLE IF NOT EXISTS error_log (
+  id TEXT PRIMARY KEY NOT NULL,
+  source TEXT NOT NULL,
+  level TEXT NOT NULL DEFAULT 'error',
+  message TEXT NOT NULL,
+  request_path TEXT,
+  request_method TEXT,
+  request_id TEXT,
+  stack TEXT,
+  context TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_error_log_created_at ON error_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_error_log_source ON error_log(source);
+
 -- ===== ROLE BASELINE DATA =====
 
 INSERT OR IGNORE INTO roles (id, name, level, color, is_builtin) VALUES
@@ -388,11 +408,14 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('admin', 'announcements.create', 1),
   ('admin', 'announcements.edit', 1),
   ('admin', 'announcements.archive', 1),
+  ('admin', 'announcements.delete', 1),
   ('admin', 'gallery.upload', 1),
   ('admin', 'gallery.manage', 1),
+  ('admin', 'gallery.delete', 1),
   ('admin', 'wiki.articles.create', 1),
   ('admin', 'wiki.articles.edit', 1),
   ('admin', 'wiki.articles.archive', 1),
+  ('admin', 'wiki.articles.delete', 1),
   ('admin', 'wiki.categories.manage', 1),
 
   -- moderator (common management operations)
@@ -422,11 +445,14 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('moderator', 'announcements.create', 1),
   ('moderator', 'announcements.edit', 1),
   ('moderator', 'announcements.archive', 1),
+  ('moderator', 'announcements.delete', 1),
   ('moderator', 'gallery.upload', 1),
   ('moderator', 'gallery.manage', 1),
+  ('moderator', 'gallery.delete', 1),
   ('moderator', 'wiki.articles.create', 1),
   ('moderator', 'wiki.articles.edit', 1),
   ('moderator', 'wiki.articles.archive', 1),
+  ('moderator', 'wiki.articles.delete', 1),
   ('moderator', 'wiki.categories.manage', 1),
 
   -- member (baseline contributor)
@@ -456,9 +482,12 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('member', 'announcements.create', 0),
   ('member', 'announcements.edit', 0),
   ('member', 'announcements.archive', 0),
+  ('member', 'announcements.delete', 0),
   ('member', 'gallery.upload', 1),
   ('member', 'gallery.manage', 0),
+  ('member', 'gallery.delete', 0),
   ('member', 'wiki.articles.create', 0),
   ('member', 'wiki.articles.edit', 0),
   ('member', 'wiki.articles.archive', 0),
+  ('member', 'wiki.articles.delete', 0),
   ('member', 'wiki.categories.manage', 0);

@@ -22,6 +22,7 @@ export const warHistory = sqliteTable(
     durationMinutes: real("duration_minutes"),
     notes: text("notes"),
     createdBy: text("created_by").notNull().references(() => users.id),
+    updatedBy: text("updated_by").references(() => users.id),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },

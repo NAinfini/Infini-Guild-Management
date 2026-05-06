@@ -7,6 +7,7 @@ import {
   createRoleSchema,
   updateRoleSchema,
 } from "@guild/shared";
+import { desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -17,6 +18,7 @@ import { writeAuditLog } from "../services/audit";
 import { AdminService, type MediaLike } from "../services/AdminService";
 import { AdminAuditService, AuditLogQueryError } from "../services/AdminAuditService";
 import { createPasswordHash } from "../services/auth";
+import { errorLog } from "../db/schema/error-log";
 import { buildError, parseBoolean, parseJsonBody } from "./_shared";
 
 const generateInviteCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 8);
@@ -333,4 +335,40 @@ adminRoutes.get("/audit-log/export", async (c) => {
     if (e instanceof AuditLogQueryError) return buildError(c, "VALIDATION_ERROR", e.message);
     throw e;
   }
+});
+
+// Error Log
+adminRoutes.get("/error-log", async (c) => {
+  const sessionUser = await requirePermission(c, "admin.status.view");
+  if (sessionUser instanceof Response) return sessionUser;
+
+  const db = getDb(c);
+  const pageRaw = Number.parseInt(c.req.query("page") ?? "", 10);
+  const limitRaw = Number.parseInt(c.req.query("limit") ?? "", 10);
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : 50;
+  const sourceFilter = c.req.query("source");
+
+  const where = sourceFilter ? eq(errorLog.source, sourceFilter) : undefined;
+
+  const [{ count: total }] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(errorLog)
+    .where(where);
+
+  const data = await db
+    .select()
+    .from(errorLog)
+    .where(where)
+    .orderBy(desc(errorLog.createdAt))
+    .limit(limit)
+    .offset((page - 1) * limit);
+
+  return c.json({
+    data,
+    total,
+    page,
+    limit,
+    total_pages: Math.ceil(total / limit),
+  });
 });

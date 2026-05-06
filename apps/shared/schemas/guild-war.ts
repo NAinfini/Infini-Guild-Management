@@ -20,6 +20,7 @@ export const warHistorySchema = z.object({
   duration_minutes: z.number().nullable(),
   notes: z.string().max(L.warNotes.max).nullable(),
   created_by: z.string(),
+  updated_by: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 });

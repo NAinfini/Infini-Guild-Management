@@ -13,6 +13,7 @@ export const announcementSchema = z.object({
   expires_at: z.string().nullable(),
   archived_at: z.string().nullable(),
   created_by: z.string(),
+  updated_by: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 });

@@ -1,6 +1,7 @@
 import type { PushMessage } from "@guild/shared";
 import type { Context } from "hono";
 import type { Bindings } from "../index";
+import { logger } from "../utils/logger";
 
 async function publishPushMessage(env: Bindings, message: PushMessage): Promise<void> {
   try {
@@ -12,7 +13,7 @@ async function publishPushMessage(env: Bindings, message: PushMessage): Promise<
       body: JSON.stringify(message),
     });
   } catch (err) {
-    console.error("[push] publishPushMessage failed:", message.type, err);
+    logger.error("publishPushMessage failed", { type: message.type, error: String(err) });
   }
 }
 

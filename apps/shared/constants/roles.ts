@@ -21,6 +21,7 @@ export const PERMISSIONS = [
   "admin.roles.view",
   "admin.roles.manage",
   "guildwar.teams.edit",
+  "guildwar.templates",
   "guildwar.history.edit",
   "events.create",
   "events.edit",
@@ -52,6 +53,7 @@ export const MODERATOR_DEFAULT_PERMISSIONS: ReadonlySet<Permission> = new Set<Pe
   "admin.analytics.view",
   "admin.roles.view",
   "guildwar.teams.edit",
+  "guildwar.templates",
   "guildwar.history.edit",
   "events.create",
   "events.edit",
@@ -68,6 +70,7 @@ export const MODERATOR_DEFAULT_PERMISSIONS: ReadonlySet<Permission> = new Set<Pe
   "wiki.articles.create",
   "wiki.articles.edit",
   "wiki.articles.archive",
+  "wiki.articles.delete",
   "wiki.categories.manage",
 ]);
 

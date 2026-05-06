@@ -17,6 +17,7 @@ export const announcements = sqliteTable(
     expiresAt: text("expires_at"),
     archivedAt: text("archived_at"),
     createdBy: text("created_by").notNull().references(() => users.id),
+    updatedBy: text("updated_by").references(() => users.id),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },

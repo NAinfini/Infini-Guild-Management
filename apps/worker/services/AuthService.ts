@@ -13,6 +13,7 @@ import { nanoid } from "nanoid";
 import { memberProfiles, rolePermissions, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { parseStringArray, parseRecord } from "./helpers";
+import { logger } from "../utils/logger";
 
 // --- Types ---
 
@@ -102,9 +103,15 @@ export class AuthService {
 
   async login(username: string, password: string, stayLoggedIn: boolean): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
     const account = (await this.db.select({ ...USER_COLS, passwordHash: userAuthPassword.passwordHash, salt: userAuthPassword.salt }).from(users).innerJoin(userAuthPassword, eq(users.id, userAuthPassword.userId)).where(eq(users.username, username)).limit(1))[0];
-    if (!account || !account.isActive || account.deletedAt !== null) return err("UNAUTHORIZED", "Invalid credentials");
+    if (!account || !account.isActive || account.deletedAt !== null) {
+      logger.warn("Login failed: invalid credentials or inactive account", { username });
+      return err("UNAUTHORIZED", "Invalid credentials");
+    }
     const valid = await this.deps.verifyPassword(password, account.salt, account.passwordHash);
-    if (!valid) return err("UNAUTHORIZED", "Invalid credentials");
+    if (!valid) {
+      logger.warn("Login failed: wrong password", { username });
+      return err("UNAUTHORIZED", "Invalid credentials");
+    }
     await this.deps.createSession(account.id, { stayLoggedIn });
     const profile = await this.ensureProfile(account.id);
     const extra = await this.resolveUserPermissions(account.role);
@@ -168,6 +175,7 @@ export class AuthService {
   async getMe(userId: string, sessionId: string): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
     const currentUser = (await this.db.select(USER_COLS).from(users).where(eq(users.id, userId)).limit(1))[0];
     if (!currentUser || !currentUser.isActive || currentUser.deletedAt !== null) {
+      logger.warn("Session invalid: user inactive or deleted", { userId });
       await this.deps.destroySession(sessionId);
       return err("UNAUTHORIZED", "Authentication required");
     }

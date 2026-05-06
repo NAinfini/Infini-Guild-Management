@@ -8,6 +8,7 @@ describe("cron maintenance schedules", () => {
       "session-cleanup",
       "audit-archive",
       "media-orphan-cleanup",
+      "error-log-cleanup",
     ]);
   });
 

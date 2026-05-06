@@ -84,6 +84,7 @@ const ROLE_PERMISSION_KEYS = [
   "admin.analytics.view",
   "admin.analytics.manage",
   "guildwar.teams.edit",
+  "guildwar.templates",
   "guildwar.history.edit",
   "events.create",
   "events.edit",
@@ -113,6 +114,7 @@ const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
   "admin.roles.view",
   "admin.analytics.view",
   "guildwar.teams.edit",
+  "guildwar.templates",
   "guildwar.history.edit",
   "events.create",
   "events.edit",
@@ -129,6 +131,7 @@ const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
   "wiki.articles.create",
   "wiki.articles.edit",
   "wiki.articles.archive",
+  "wiki.articles.delete",
   "wiki.categories.manage",
 ]);
 

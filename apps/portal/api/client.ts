@@ -36,6 +36,7 @@ export function isApiRequestError(error: unknown): error is ApiRequestError {
 }
 
 const INTERNAL_SERVER_MESSAGE_PATTERN = /D1_ERROR|SQLITE_ERROR|no such table|no such column/i;
+const JSON_CACHE_MAX = 100;
 const jsonResponseCache = new Map<string, CachedJsonResponse>();
 
 function fetchWithTimeout(url: string, init: RequestInit, externalSignal?: AbortSignal, timeoutMs = 30000): Promise<Response> {
@@ -190,7 +191,10 @@ export async function apiRequest<TResponse>(
   }
 
   if (response.status === 304) {
-    if (cachedResponse) {
+    if (cacheKey && cachedResponse) {
+      // Refresh recency: move entry to the end of insertion order
+      jsonResponseCache.delete(cacheKey);
+      jsonResponseCache.set(cacheKey, cachedResponse);
       return cachedResponse.data as TResponse;
     }
     throw new ApiRequestError("Cached response unavailable", { status: 304 });
@@ -219,6 +223,10 @@ export async function apiRequest<TResponse>(
 
   const etag = response.headers.get("ETag");
   if (cacheKey && etag) {
+    if (jsonResponseCache.size >= JSON_CACHE_MAX) {
+      const oldest = jsonResponseCache.keys().next().value;
+      if (oldest !== undefined) jsonResponseCache.delete(oldest);
+    }
     jsonResponseCache.set(cacheKey, { etag, data });
   }
 

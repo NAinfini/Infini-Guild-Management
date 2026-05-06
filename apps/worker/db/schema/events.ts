@@ -25,6 +25,7 @@ export const events = sqliteTable(
     autoArchive: integer("auto_archive", { mode: "boolean" }).notNull().default(false),
     autoArchived: integer("auto_archived", { mode: "boolean" }).notNull().default(false),
     createdBy: text("created_by").notNull().references(() => users.id),
+    updatedBy: text("updated_by").references(() => users.id),
     recurrenceRule: text("recurrence_rule"),
     attachments: text("attachments").notNull().default("[]"),
     seriesId: text("series_id"),

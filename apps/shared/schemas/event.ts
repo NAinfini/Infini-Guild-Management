@@ -29,6 +29,7 @@ export const eventSchema = z.object({
   visible_at: z.string().nullable(),
   archived_at: z.string().nullable(),
   created_by: z.string(),
+  updated_by: z.string().nullable(),
   recurrence_rule: recurrenceRuleSchema.nullable(),
   attachments: eventAttachmentsSchema.default([]),
   series_id: z.string().nullable(),

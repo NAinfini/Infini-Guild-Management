@@ -19,6 +19,7 @@ const historyRow = {
   durationMinutes: null,
   notes: null,
   createdBy: "mod-1",
+  updatedBy: null,
   createdAt: "2026-03-08T12:00:00.000Z",
   updatedAt: "2026-03-08T12:00:00.000Z",
 };

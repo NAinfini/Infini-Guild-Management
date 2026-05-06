@@ -50,6 +50,14 @@ export const SESSION_COOKIE_NAME = "ig_session";
 export const SESSION_MODE_COOKIE_NAME = "ig_session_mode";
 
 const textEncoder = new TextEncoder();
+/**
+ * Per-isolate cache of role permission rows (TTL = PERMISSION_CACHE_TTL_MS = 60 s).
+ * Cloudflare Worker isolates do NOT share memory, so after a role's permissions
+ * are changed via admin, other isolates may serve stale permissions for up to 60 s.
+ * For any operation that checks permissions before a destructive action (delete,
+ * role change, etc.), pass `{ freshPermissions: true }` to `resolveSession()`.
+ * `clearPermissionCache()` only clears the current isolate's cache.
+ */
 const permissionRowsCache = new Map<RoleId, { expiresAtMs: number; rows: Array<{ permission: string; granted: boolean }> }>();
 
 export function clearPermissionCache(roleId?: RoleId): void {

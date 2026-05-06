@@ -5,7 +5,7 @@ import "@mantine/dropzone/styles.css";
 import "@mantine/nprogress/styles.css";
 import { ContextMenuProvider } from "mantine-contextmenu";
 import "mantine-contextmenu/styles.css";
-import { StrictMode } from "react";
+import React, { StrictMode } from "react";
 import type { Root } from "react-dom/client";
 import "@gfazioli/mantine-split-pane/styles.css";
 import "./i18n";
@@ -60,4 +60,12 @@ export async function mountApp(root: Root): Promise<void> {
       </ErrorBoundary>
     </StrictMode>,
   );
+
+  if (import.meta.env.DEV) {
+    import("@axe-core/react").then((axe) => {
+      import("react-dom").then((ReactDOM) => {
+        axe.default(React, ReactDOM, 1000);
+      });
+    });
+  }
 }

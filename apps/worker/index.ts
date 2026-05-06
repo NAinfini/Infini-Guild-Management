@@ -273,4 +273,4 @@ export default {
   },
 };
 
-export { WebSocketDO };
+export { app, WebSocketDO };

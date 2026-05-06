@@ -65,6 +65,7 @@ Commits that do not follow this format will be rejected by CI.
 - Route handlers should be thin — delegate business logic to `apps/worker/services/`.
 - All mutations must write to `audit_log` via `writeAuditLog()`.
 - Use `nanoid()` for all ID generation.
+- **Permission cache:** Role permission rows are cached per-isolate for 60 seconds. After changing a role's permissions via admin, other isolates may serve stale data until TTL expires. For sensitive permission checks (delete, role change), pass `{ freshPermissions: true }` to `resolveSession()`.
 
 ### Database
 - Drizzle schema is the source of truth. SQL migrations must match exactly.

@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { nanoid } from "nanoid";
 import { auditLog } from "../db/schema";
 import type { Bindings } from "../index";
+import { createLogger } from "../utils/logger";
 
 type WriteAuditLogInput = {
   entityType: string;
@@ -16,6 +17,7 @@ type WriteAuditLogInput = {
 export async function writeAuditLog(c: Context, input: WriteAuditLogInput): Promise<void> {
   const env = c.env as Bindings;
   const db = drizzle(env.DB);
+  const log = createLogger(c.get("requestId") as string | undefined);
   const task = db.insert(auditLog).values({
     id: nanoid(),
     entityType: input.entityType,
@@ -25,7 +27,7 @@ export async function writeAuditLog(c: Context, input: WriteAuditLogInput): Prom
     diffTitle: input.diffTitle ?? null,
     detailText: input.detailText ?? null,
   }).catch((err) => {
-    console.error("[audit] writeAuditLog failed:", input.action, input.entityType, err);
+    log.error("writeAuditLog failed", { action: input.action, entityType: input.entityType, error: String(err) });
   });
   c.executionCtx.waitUntil(task);
 }

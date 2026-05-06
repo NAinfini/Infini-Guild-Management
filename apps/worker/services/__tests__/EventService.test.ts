@@ -16,6 +16,7 @@ function createEventRow(overrides: Partial<Record<string, unknown>> = {}) {
     autoArchive: false,
     autoArchived: false,
     createdBy: "mod-1",
+    updatedBy: null,
     recurrenceRule: null,
     attachments: "[]",
     seriesId: null,

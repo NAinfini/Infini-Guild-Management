@@ -235,6 +235,24 @@ That's it. Open `http://localhost:5173` and log in:
 
 ---
 
+## Deploy to Staging
+
+```bash
+# 1. Create a separate D1 database and R2 bucket for staging on the Cloudflare dashboard
+
+# 2. Update apps/worker/wrangler.jsonc [env.staging] with your staging D1 ID and PORTAL_ORIGIN
+
+# 3. Run migrations against the staging database
+wrangler d1 migrations apply guild-portal-db-staging --config apps/worker/wrangler.jsonc --env staging
+
+# 4. Deploy to staging (workers.dev subdomain)
+pnpm deploy:staging
+```
+
+Staging uses a separate D1 database and R2 bucket. `workers_dev = true` gives you a `*.workers.dev` URL without a custom domain.
+
+---
+
 ## Deploy to Production
 
 ```bash

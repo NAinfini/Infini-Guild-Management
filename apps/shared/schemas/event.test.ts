@@ -19,6 +19,7 @@ describe("event schemas", () => {
         visible_at: null,
         archived_at: null,
         created_by: "user-1",
+        updated_by: null,
         recurrence_rule: null,
         attachments: [],
         series_id: null,

@@ -7,3 +7,4 @@ export * from "./guild-war";
 export * from "./wiki";
 export * from "./gallery";
 export * from "./audit";
+export * from "./error-log";
