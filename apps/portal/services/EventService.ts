@@ -198,5 +198,8 @@ export class EventService {
     await this.queryClient?.invalidateQueries({
       queryKey: queryKeys.events.all,
     });
+    await this.queryClient?.invalidateQueries({
+      queryKey: queryKeys.dashboard.all,
+    });
   }
 }

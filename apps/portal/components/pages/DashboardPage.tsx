@@ -33,6 +33,7 @@ import "./DashboardPage.css";
  */
 let _dashboardNow: Date | null = null;
 let _dashboardNowBucket = -1;
+export const DASHBOARD_EVENTS_REFETCH_INTERVAL_MS = 60_000;
 
 function getDashboardNow(): Date {
   const bucket = Math.floor(Date.now() / (5 * 60_000));
@@ -43,6 +44,19 @@ function getDashboardNow(): Date {
     _dashboardNowBucket = bucket;
   }
   return _dashboardNow;
+}
+
+export function buildDashboardUpcomingEventsQueryParams(now: Date): Parameters<typeof fetchEventsList>[0] {
+  const end = new Date(now);
+  end.setUTCDate(end.getUTCDate() + 7);
+
+  return {
+    page: 1,
+    limit: 20,
+    archived: false,
+    start_after: now.toISOString(),
+    start_before: end.toISOString(),
+  };
 }
 
 function buildUpcomingEventRow(
@@ -93,16 +107,9 @@ export function DashboardPage() {
 
   const upcomingEventsQuery = useQuery({
     queryKey: queryKeys.dashboard.upcomingEvents(nowIso),
-    queryFn: async () => {
-      const result = await fetchEventsList({
-        page: 1,
-        limit: 20,
-        archived: false,
-        start_after: now.toISOString(),
-      });
-      return result;
-    },
-    staleTime: 10 * 60_000,
+    queryFn: () => fetchEventsList(buildDashboardUpcomingEventsQueryParams(now)),
+    staleTime: DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
+    refetchInterval: DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
     placeholderData: keepPreviousData,
   });
 

@@ -90,6 +90,7 @@ describe("EventService", () => {
       [file],
     );
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.events.all });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.dashboard.all });
   });
 
   it("updates events by uploading new files and merging existing attachment keys", async () => {
@@ -144,6 +145,7 @@ describe("EventService", () => {
       }),
     );
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.events.all });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.dashboard.all });
   });
 
   it("rejects invalid drafts before any network call", async () => {

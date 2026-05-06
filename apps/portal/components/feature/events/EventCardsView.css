@@ -98,6 +98,13 @@
   min-width: 0;
 }
 
+.event-card__header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .event-card__header--weekly_mission {
   background: linear-gradient(135deg,
     color-mix(in srgb, var(--color-primary, #3b82f6) 22%, var(--color-surface, #ffffff)),
@@ -203,10 +210,11 @@
 }
 
 .event-card__avatar-grid {
-  display: grid;
-  grid-template-columns: repeat(5, auto);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
-  justify-content: start;
+  justify-content: flex-start;
 }
 
 .event-card__capacity {
@@ -214,6 +222,10 @@
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
+  min-height: 28px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 62%, transparent);
 }
 
 .event-card__capacity-text {
@@ -238,59 +250,6 @@
 
 .event-card__view-members-btn:hover {
   background: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
-}
-
-/* ── Capacity progress bar ── */
-.event-card__progress-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.event-card__progress-track {
-  flex: 1;
-  height: 6px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
-  overflow: hidden;
-}
-
-.event-card__progress-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 300ms ease;
-}
-
-/* Capped: hue-based color from blue → green → yellow → orange → red */
-.event-card__progress-fill--capped {
-  background: hsl(var(--progress-hue, 210) 72% 52%);
-  box-shadow: 0 0 6px hsl(var(--progress-hue, 210) 72% 52% / 0.35);
-}
-
-/* Uncapped: neon gradient fills full width */
-.event-card__progress-fill--uncapped {
-  width: 100%;
-  background: linear-gradient(
-    90deg,
-    var(--color-primary, #3b82f6),
-    var(--color-accent, #8b5cf6),
-    var(--color-secondary, #22d3ee),
-    var(--color-primary, #3b82f6)
-  );
-  background-size: 200% 100%;
-  animation: event-progress-shimmer 3s linear infinite;
-  box-shadow: 0 0 8px color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
-}
-
-@keyframes event-progress-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.event-card__progress-label {
-  font-variant-numeric: tabular-nums;
-  min-width: 32px;
-  text-align: right;
 }
 
 /* ── Actions ── */

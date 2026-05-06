@@ -6,6 +6,14 @@ import { defineConfig, loadEnv } from "vite";
 
 const portalDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(portalDir, "..", "..");
+export const API_PROXY_CONTEXT = "^/api(?:/|$)";
+const SOURCE_MODULE_PATH_PATTERN = /\/[^/?#]+\.[^/?#]+$/;
+
+export function shouldProxyApiRequest(url: string): boolean {
+  const queryIndex = url.search(/[?#]/);
+  const pathname = queryIndex === -1 ? url : url.slice(0, queryIndex);
+  return new RegExp(API_PROXY_CONTEXT).test(pathname) && !SOURCE_MODULE_PATH_PATTERN.test(pathname);
+}
 
 function normalizeTarget(value: string): string {
   return value.replace(/\/+$/, "");
@@ -140,9 +148,13 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
-        "^/api/(?!.*\\.[^/]+(?:\\?.*)?$).*": {
+        [API_PROXY_CONTEXT]: {
           target: workerHttpTarget,
           changeOrigin: true,
+          bypass(req) {
+            if (!req.url || shouldProxyApiRequest(req.url)) return undefined;
+            return req.url;
+          },
           configure(proxy) {
             // Prevent ECONNREFUSED from bubbling into viteErrorMiddleware,
             // where JSON.stringify on the DevEnvironment error object causes a

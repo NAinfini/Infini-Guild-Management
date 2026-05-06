@@ -195,6 +195,7 @@ export function EventCardsView({
           const isFull = event.capacity !== null && joinedCount >= event.capacity;
           const isJoined = currentUserId ? members.some((m) => m.user.id === currentUserId) : false;
           const isFocused = focusedEventId === event.id;
+          const capacityColor = event.capacity !== null ? `hsl(${capacityHue(joinedCount, event.capacity)}, 70%, 50%)` : undefined;
 
           return (
               <PortalCard key={event.id} className={`event-card${isFocused ? " event-card--focused" : ""}`} onClick={() => setDetailModalEvent(event)} style={{ cursor: "pointer" }} role="button" tabIndex={0} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetailModalEvent(event); } }} aria-label={event.title}>
@@ -319,50 +320,62 @@ export function EventCardsView({
                     </HoverCard>
                   ) : null}
                 </div>
-                {canManage ? (
-                  <InfiniMenu position="bottom-end">
-                    <InfiniMenu.Target>
-                      <button type="button" className="event-card__menu-btn" aria-label={t("menu.actions")} onClick={(e) => e.stopPropagation()}>
-                        <DotsIcon size={16} />
-                      </button>
-                    </InfiniMenu.Target>
-                    <InfiniMenu.Dropdown onClick={(e) => e.stopPropagation()}>
-                      <InfiniMenu.Item leftSection={<PencilIcon size={14} />} onClick={() => onEditEvent(event)}>
-                        {t("menu.edit")}
-                      </InfiniMenu.Item>
-                      <InfiniMenu.Item leftSection={<CopyIcon size={14} />} onClick={() => onDuplicateEvent(event)}>
-                        {t("menu.duplicate")}
-                      </InfiniMenu.Item>
-                      <InfiniMenu.Item
-                        leftSection={event.pinned ? <IconPinnedOff size={14} /> : <IconPin size={14} />}
-                        onClick={() => onTogglePinEvent(event)}
-                      >
-                        {event.pinned ? t("menu.unpin") : t("menu.pin")}
-                      </InfiniMenu.Item>
-                      <InfiniMenu.Item
-                        leftSection={event.signup_locked ? <IconLockOpen size={14} /> : <IconLock size={14} />}
-                        onClick={() => onToggleLockEvent(event)}
-                      >
-                        {event.signup_locked ? t("menu.unlockSignup") : t("menu.lockSignup")}
-                      </InfiniMenu.Item>
-                      <InfiniMenu.Divider />
-                      <InfiniMenu.Item
-                        leftSection={event.archived_at ? <IconArchiveOff size={14} /> : <IconArchive size={14} />}
-                        onClick={() => event.archived_at ? onUnarchiveEvent(event.id) : setArchiveConfirmEvent(event)}
-                      >
-                        {event.archived_at ? t("menu.unarchive") : t("menu.archive")}
-                      </InfiniMenu.Item>
-                      <InfiniMenu.Item
-                        className="infini-menu-item--danger"
-                        color="red"
-                        leftSection={<TrashIcon size={14} />}
-                        onClick={() => onDeleteEvent(event)}
-                      >
-                        {t("menu.delete")}
-                      </InfiniMenu.Item>
-                    </InfiniMenu.Dropdown>
-                  </InfiniMenu>
-                ) : null}
+                <div className="event-card__header-right">
+                  <div className="event-card__capacity">
+                    <IconUsers
+                      size={15}
+                      style={{ color: capacityColor }}
+                      className={event.capacity !== null ? undefined : "event-card__icon-muted"}
+                    />
+                    <Text size="sm" fw={600} className="event-card__capacity-text" style={{ color: capacityColor }}>
+                      {joinedCount} / {event.capacity ?? "∞"}
+                    </Text>
+                  </div>
+                  {canManage ? (
+                    <InfiniMenu position="bottom-end">
+                      <InfiniMenu.Target>
+                        <button type="button" className="event-card__menu-btn" aria-label={t("menu.actions")} onClick={(e) => e.stopPropagation()}>
+                          <DotsIcon size={16} />
+                        </button>
+                      </InfiniMenu.Target>
+                      <InfiniMenu.Dropdown onClick={(e) => e.stopPropagation()}>
+                        <InfiniMenu.Item leftSection={<PencilIcon size={14} />} onClick={() => onEditEvent(event)}>
+                          {t("menu.edit")}
+                        </InfiniMenu.Item>
+                        <InfiniMenu.Item leftSection={<CopyIcon size={14} />} onClick={() => onDuplicateEvent(event)}>
+                          {t("menu.duplicate")}
+                        </InfiniMenu.Item>
+                        <InfiniMenu.Item
+                          leftSection={event.pinned ? <IconPinnedOff size={14} /> : <IconPin size={14} />}
+                          onClick={() => onTogglePinEvent(event)}
+                        >
+                          {event.pinned ? t("menu.unpin") : t("menu.pin")}
+                        </InfiniMenu.Item>
+                        <InfiniMenu.Item
+                          leftSection={event.signup_locked ? <IconLockOpen size={14} /> : <IconLock size={14} />}
+                          onClick={() => onToggleLockEvent(event)}
+                        >
+                          {event.signup_locked ? t("menu.unlockSignup") : t("menu.lockSignup")}
+                        </InfiniMenu.Item>
+                        <InfiniMenu.Divider />
+                        <InfiniMenu.Item
+                          leftSection={event.archived_at ? <IconArchiveOff size={14} /> : <IconArchive size={14} />}
+                          onClick={() => event.archived_at ? onUnarchiveEvent(event.id) : setArchiveConfirmEvent(event)}
+                        >
+                          {event.archived_at ? t("menu.unarchive") : t("menu.archive")}
+                        </InfiniMenu.Item>
+                        <InfiniMenu.Item
+                          className="infini-menu-item--danger"
+                          color="red"
+                          leftSection={<TrashIcon size={14} />}
+                          onClick={() => onDeleteEvent(event)}
+                        >
+                          {t("menu.delete")}
+                        </InfiniMenu.Item>
+                      </InfiniMenu.Dropdown>
+                    </InfiniMenu>
+                  ) : null}
+                </div>
               </div>
 
               {/* ── Body ── */}
@@ -402,41 +415,8 @@ export function EventCardsView({
                           <Text size="xs" c="dimmed" fw={600}>+{members.length - 10}</Text>
                         ) : null}
                       </div>
-                      <div className="event-card__capacity">
-                        <IconUsers
-                          size={15}
-                          style={{ color: event.capacity ? `hsl(${capacityHue(joinedCount, event.capacity)}, 70%, 50%)` : undefined }}
-                          className={event.capacity ? undefined : "event-card__icon-muted"}
-                        />
-                        <Text
-                          size="sm"
-                          fw={600}
-                          className="event-card__capacity-text"
-                          style={{ color: event.capacity ? `hsl(${capacityHue(joinedCount, event.capacity)}, 70%, 50%)` : undefined }}
-                        >
-                          {joinedCount} / {event.capacity ?? "∞"}
-                        </Text>
-                      </div>
                     </div>
                   </div>
-
-                  {/* ── Progress bar ── */}
-                  {event.capacity ? (
-                  <div className="event-card__progress-wrap">
-                    <div className="event-card__progress-track">
-                        <div
-                          className="event-card__progress-fill event-card__progress-fill--capped"
-                          style={{
-                            width: `${Math.min(100, (joinedCount / event.capacity) * 100)}%`,
-                            "--progress-hue": `${capacityHue(joinedCount, event.capacity)}`,
-                          } as React.CSSProperties}
-                        />
-                    </div>
-                    <Text size="xs" c="dimmed" className="event-card__progress-label">
-                      {`${Math.round((joinedCount / event.capacity) * 100)}%`}
-                    </Text>
-                  </div>
-                  ) : null}
 
                   {/* ── Actions ── */}
                   {canInteract ? (
