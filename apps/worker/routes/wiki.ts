@@ -132,7 +132,7 @@ wikiRoutes.patch("/articles/:id", async (c) => {
 });
 
 wikiRoutes.delete("/articles/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "wiki.articles.delete");
+  const sessionUser = await requirePermission(c, "wiki.articles.archive");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).archiveArticle(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);

@@ -123,9 +123,9 @@ galleryRoutes.post("/videos", async (c) => {
 });
 
 galleryRoutes.delete("/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "gallery.delete");
+  const sessionUser = await requireSessionUser(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const result = await getService(c).deleteItem(sessionUser.id, c.req.param("id"));
+  const result = await getService(c).deleteItem(sessionUser.id, sessionUser.permissions.has("gallery.delete"), c.req.param("id"));
   return handleResult(c, result);
 });
 

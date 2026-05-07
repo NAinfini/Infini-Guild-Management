@@ -140,9 +140,10 @@ export class GalleryService {
     return ok(toGalleryPayload(created));
   }
 
-  async deleteItem(actorId: string, itemId: string): Promise<ServiceResult<{ ok: true }>> {
+  async deleteItem(actorId: string, canDeleteAny: boolean, itemId: string): Promise<ServiceResult<{ ok: true }>> {
     const existing = await this.getItemById(itemId);
     if (!existing) return err("NOT_FOUND", "Gallery item not found");
+    if (existing.uploadedBy !== actorId && !canDeleteAny) return err("FORBIDDEN", "Cannot delete this gallery item");
     await this.db.delete(galleryItems).where(eq(galleryItems.id, itemId));
     if (existing.type === "image") await this.deps.media.delete(existing.url);
     await this.deps.writeAuditLog({ entityType: "gallery_item", action: "delete", actorId, entityId: itemId, diffTitle: existing.caption });

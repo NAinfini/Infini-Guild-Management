@@ -91,7 +91,7 @@ announcementsRoutes.patch("/:id", async (c) => {
 });
 
 announcementsRoutes.delete("/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "announcements.delete");
+  const sessionUser = await requirePermission(c, "announcements.archive");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).archive(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
