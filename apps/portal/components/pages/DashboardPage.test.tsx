@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
   buildDashboardUpcomingEventsQueryParams,
+  orderDashboardUpcomingRows,
 } from "./DashboardPage";
 
 describe("DashboardPage upcoming event query", () => {
@@ -19,5 +20,21 @@ describe("DashboardPage upcoming event query", () => {
 
   it("keeps upcoming event data fresh for read-only dashboard viewers", () => {
     expect(DASHBOARD_EVENTS_REFETCH_INTERVAL_MS).toBe(60_000);
+  });
+
+  it("orders upcoming rows by closest start time before pinned priority", () => {
+    const rows = [
+      { item: { id: "may-11", start_at: "2026-05-11T22:11:00.000Z", pinned: true } },
+      { item: { id: "may-08", start_at: "2026-05-08T22:11:00.000Z", pinned: false } },
+      { item: { id: "may-07", start_at: "2026-05-07T22:11:00.000Z", pinned: true } },
+      { item: { id: "may-09", start_at: "2026-05-09T22:11:00.000Z", pinned: false } },
+    ];
+
+    expect(orderDashboardUpcomingRows(rows as never).map((row) => row.item.id)).toEqual([
+      "may-07",
+      "may-08",
+      "may-09",
+      "may-11",
+    ]);
   });
 });

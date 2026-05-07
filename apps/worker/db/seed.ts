@@ -4,6 +4,9 @@ import { nanoid } from "nanoid";
 import {
   announcements,
   auditLog,
+  eventPollOptions,
+  eventPolls,
+  eventPollVotes,
   eventParticipants,
   events,
   galleryComments,
@@ -39,6 +42,9 @@ const ALL_TABLES = [
   "war_teams",
   "war_templates",
   "war_history",
+  "event_poll_votes",
+  "event_poll_options",
+  "event_polls",
   "event_participants",
   "events",
   "invite_links",
@@ -347,6 +353,13 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     10,
   );
 
+  const openPollEventId = nanoid();
+  const hiddenPollEventId = nanoid();
+  const closedPollEventId = nanoid();
+  const openPollOptionIds = Array.from({ length: 4 }, () => nanoid());
+  const hiddenPollOptionIds = Array.from({ length: 3 }, () => nanoid());
+  const closedPollOptionIds = Array.from({ length: 3 }, () => nanoid());
+
   const eventRows: Array<typeof events.$inferInsert> = [
     {
       id: nanoid(),
@@ -589,6 +602,58 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
+    // ── Poll events ──
+    {
+      id: openPollEventId,
+      type: "poll",
+      title: "Poll: Next Activity",
+      description: "Vote for the next activity. Results are visible after voting.",
+      startAt: addHours(now, -1),
+      endAt: addDays(now, 2),
+      capacity: null,
+      pinned: true,
+      signupLocked: true,
+      archivedAt: null,
+      createdBy: moderatorIds[0],
+      recurrenceRule: null,
+      seriesId: null,
+      isSeriesParent: false,
+      instanceDate: null,
+    },
+    {
+      id: hiddenPollEventId,
+      type: "poll",
+      title: "Poll: War Prep Window",
+      description: "Private-name poll with results visible only after the poll closes.",
+      startAt: addHours(now, -2),
+      endAt: addDays(now, 4),
+      capacity: null,
+      pinned: false,
+      signupLocked: true,
+      archivedAt: null,
+      createdBy: adminId,
+      recurrenceRule: null,
+      seriesId: null,
+      isSeriesParent: false,
+      instanceDate: null,
+    },
+    {
+      id: closedPollEventId,
+      type: "poll",
+      title: "Poll: Closed Example",
+      description: "Closed poll with final results visible.",
+      startAt: addDays(now, -5),
+      endAt: addDays(now, -2),
+      capacity: null,
+      pinned: false,
+      signupLocked: true,
+      archivedAt: null,
+      createdBy: moderatorIds[1],
+      recurrenceRule: null,
+      seriesId: null,
+      isSeriesParent: false,
+      instanceDate: null,
+    },
     // ── Recurring templates (isSeriesParent = true) ──
     {
       id: nanoid(),
@@ -651,8 +716,92 @@ export async function seedDatabase(env: Bindings): Promise<void> {
 
   await batchInsert(db, events, eventRows, 5);
 
+  await batchInsert(db, eventPolls, [
+    {
+      eventId: openPollEventId,
+      resultsVisibility: "after_vote",
+      showVoterNames: true,
+      createdAt: addHours(now, -1),
+      updatedAt: addHours(now, -1),
+    },
+    {
+      eventId: hiddenPollEventId,
+      resultsVisibility: "after_close",
+      showVoterNames: false,
+      createdAt: addHours(now, -2),
+      updatedAt: addHours(now, -2),
+    },
+    {
+      eventId: closedPollEventId,
+      resultsVisibility: "after_close",
+      showVoterNames: true,
+      createdAt: addDays(now, -5),
+      updatedAt: addDays(now, -2),
+    },
+  ], 3);
+
+  const pollOptionRows: Array<typeof eventPollOptions.$inferInsert> = [
+    ...["Guild War Practice", "Weekly Mission", "PvP Training", "Social Night"].map((label, index) => ({
+      id: openPollOptionIds[index],
+      eventId: openPollEventId,
+      label,
+      sortOrder: index,
+      createdAt: addHours(now, -1),
+    })),
+    ...["Friday Night", "Saturday Afternoon", "Sunday Evening"].map((label, index) => ({
+      id: hiddenPollOptionIds[index],
+      eventId: hiddenPollEventId,
+      label,
+      sortOrder: index,
+      createdAt: addHours(now, -2),
+    })),
+    ...["Raid Review", "Arena Scrims", "Build Workshop"].map((label, index) => ({
+      id: closedPollOptionIds[index],
+      eventId: closedPollEventId,
+      label,
+      sortOrder: index,
+      createdAt: addDays(now, -5),
+    })),
+  ];
+  await batchInsert(db, eventPollOptions, pollOptionRows, 6);
+
+  const pollVoteRows: Array<typeof eventPollVotes.$inferInsert> = [
+    ...memberIds.slice(0, 8).map((userId, index) => ({
+      id: nanoid(),
+      eventId: openPollEventId,
+      optionId: openPollOptionIds[index % openPollOptionIds.length],
+      userId,
+      createdAt: addMinutes(now, -120 + index),
+    })),
+    ...memberIds.slice(2, 6).map((userId, index) => ({
+      id: nanoid(),
+      eventId: openPollEventId,
+      optionId: openPollOptionIds[(index + 1) % openPollOptionIds.length],
+      userId,
+      createdAt: addMinutes(now, -90 + index),
+    })),
+    ...memberIds.slice(0, 9).map((userId, index) => ({
+      id: nanoid(),
+      eventId: hiddenPollEventId,
+      optionId: hiddenPollOptionIds[index % hiddenPollOptionIds.length],
+      userId,
+      createdAt: addMinutes(now, -180 + index),
+    })),
+    ...memberIds.slice(0, 10).map((userId, index) => ({
+      id: nanoid(),
+      eventId: closedPollEventId,
+      optionId: closedPollOptionIds[index % closedPollOptionIds.length],
+      userId,
+      createdAt: addDays(now, -4),
+    })),
+  ];
+  await batchInsert(db, eventPollVotes, pollVoteRows, 8);
+
   const participantRows: Array<typeof eventParticipants.$inferInsert> = [];
   for (const event of eventRows) {
+    if (event.type === "poll") {
+      continue;
+    }
     // Skip archived events for participants sometimes
     const count = event.archivedAt ? 3 : 6;
     for (const userId of memberIds.slice(0, count)) {
@@ -666,6 +815,9 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   }
   // Add moderators to some events
   for (const event of eventRows.slice(0, 5)) {
+    if (event.type === "poll") {
+      continue;
+    }
     for (const modId of moderatorIds) {
       participantRows.push({
         id: nanoid(),

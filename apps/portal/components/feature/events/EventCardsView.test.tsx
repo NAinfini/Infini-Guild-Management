@@ -5,6 +5,7 @@ import { PERMISSIONS, type Event, type MemberProfile, type Permission, type User
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { calculateEventCardAvatarSize } from "./EventCardAvatarStrip";
 import { EventCardsView } from "./EventCardsView";
 
 vi.mock("react-i18next", () => ({
@@ -21,7 +22,7 @@ vi.mock("../../shared/MemberRoleAvatar", () => ({
 const now = "2026-05-07T16:11:00.000Z";
 const noPermissions = Object.fromEntries(PERMISSIONS.map((permission) => [permission, false])) as Record<Permission, boolean>;
 
-function createEvent(): Event {
+function createEvent(overrides: Partial<Event> = {}): Event {
   return {
     id: "event-1",
     type: "weekly_mission",
@@ -44,6 +45,7 @@ function createEvent(): Event {
     instance_date: null,
     created_at: now,
     updated_at: now,
+    ...overrides,
   } as unknown as Event;
 }
 
@@ -82,8 +84,17 @@ function createMember(index: number): { user: User; profile: MemberProfile } {
   };
 }
 
-function renderCardsView(memberCount = 9) {
-  const event = createEvent();
+function renderCardsView(
+  memberCount = 9,
+  options: {
+    eventOverrides?: Partial<Event>;
+    canInteract?: boolean;
+    currentUserId?: string | null;
+    onLeaveEvent?: (eventId: string) => void;
+    onVotePoll?: (eventId: string, optionIds: string[]) => void;
+  } = {},
+) {
+  const event = createEvent(options.eventOverrides);
   const members = Array.from({ length: memberCount }, (_, index) => createMember(index + 1));
 
   render(
@@ -92,8 +103,8 @@ function renderCardsView(memberCount = 9) {
         events={[event]}
         cardsEmptyDescription="No events"
         canManage={false}
-        canInteract={false}
-        currentUserId={null}
+        canInteract={options.canInteract ?? false}
+        currentUserId={options.currentUserId ?? null}
         eventType={undefined}
         archivedOnly={false}
         pinnedOnly={false}
@@ -110,7 +121,7 @@ function renderCardsView(memberCount = 9) {
         onResetFilters={() => {}}
         onCreateEvent={() => {}}
         onJoinEvent={() => {}}
-        onLeaveEvent={() => {}}
+        onLeaveEvent={options.onLeaveEvent ?? (() => {})}
         onCopyMentions={() => {}}
         onEditEvent={() => {}}
         onDuplicateEvent={() => {}}
@@ -121,6 +132,7 @@ function renderCardsView(memberCount = 9) {
         onDeleteEvent={() => {}}
         onAddParticipant={() => {}}
         onRemoveParticipant={() => {}}
+        onVotePoll={options.onVotePoll}
       />
     </MantineProvider>,
   );
@@ -136,19 +148,111 @@ describe("EventCardsView", () => {
     expect(capacityText.closest(".event-card__header")).not.toBeNull();
   });
 
-  it("renders the first ten member avatars and an overflow count", () => {
-    renderCardsView(12);
+  it("groups event state indicators separately from the event type header", () => {
+    renderCardsView(9, {
+      eventOverrides: {
+        pinned: true,
+        signup_locked: true,
+      },
+    });
 
-    expect(screen.getAllByTestId("member-avatar")).toHaveLength(10);
-    expect(screen.getByText("+2")).toBeInTheDocument();
+    expect(document.querySelector(".event-card__status-rail")).not.toBeNull();
+    expect(document.querySelector(".event-card__header-left .event-card__status-rail")).toBeNull();
   });
 
-  it("uses a wrapping avatar layout without a fixed per-row column count", () => {
+  it("renders nine member avatars and an overflow count when more than ten members signed up", () => {
+    renderCardsView(12);
+
+    expect(screen.getAllByTestId("member-avatar")).toHaveLength(9);
+    expect(screen.getByText("+3")).toBeInTheDocument();
+  });
+
+  it("renders ten member avatars without overflow when exactly ten members signed up", () => {
+    renderCardsView(10);
+
+    expect(screen.getAllByTestId("member-avatar")).toHaveLength(10);
+    expect(screen.queryByText(/\+\d+/)).not.toBeInTheDocument();
+  });
+
+  it("renders an empty member placeholder when nobody has signed up", () => {
+    renderCardsView(0);
+
+    expect(screen.queryByTestId("member-avatar")).not.toBeInTheDocument();
+    expect(document.querySelector(".event-card__avatar-placeholder")).not.toBeNull();
+  });
+
+  it("keeps event card avatars on one row", () => {
     const css = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/events/EventCardsView.css"), "utf8");
     const avatarGridRule = css.match(/\.event-card__avatar-grid\s*\{[^}]*\}/)?.[0] ?? "";
 
     expect(avatarGridRule).toContain("display: flex");
-    expect(avatarGridRule).toContain("flex-wrap: wrap");
+    expect(avatarGridRule).toContain("flex-wrap: nowrap");
     expect(avatarGridRule).not.toContain("grid-template-columns");
+  });
+
+  it("allows event card avatar badges to render outside the avatar circle", () => {
+    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/events/EventCardsView.css"), "utf8");
+    const avatarGridRule = css.match(/\.event-card__avatar-grid\s*\{[^}]*\}/)?.[0] ?? "";
+
+    expect(avatarGridRule).toContain("overflow: visible");
+  });
+
+  it("uses larger event card avatar slots to reduce unused row space", () => {
+    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/events/EventCardsView.css"), "utf8");
+    const overflowRule = css.match(/\.event-card__avatar-overflow\s*\{[^}]*\}/)?.[0] ?? "";
+
+    expect(overflowRule).toContain("width: var(--event-card-avatar-size, 36px)");
+    expect(overflowRule).toContain("height: var(--event-card-avatar-size, 36px)");
+  });
+
+  it("shrinks event card avatars to fit narrow card widths", () => {
+    expect(calculateEventCardAvatarSize(420, 10)).toBe(36);
+    expect(calculateEventCardAvatarSize(310, 10)).toBe(28);
+    expect(calculateEventCardAvatarSize(230, 10)).toBe(24);
+  });
+
+  it("disables leaving an archived event from the card", () => {
+    const onLeaveEvent = vi.fn();
+    renderCardsView(1, {
+      eventOverrides: { archived_at: "2026-05-08T16:11:00.000Z" },
+      canInteract: true,
+      currentUserId: "user-1",
+      onLeaveEvent,
+    });
+
+    const leaveButton = screen.getByRole("button", { name: /button\.leave/i });
+
+    expect(leaveButton).toBeDisabled();
+    expect(onLeaveEvent).not.toHaveBeenCalled();
+  });
+
+  it("shows poll status without card voting controls", () => {
+    const onVotePoll = vi.fn();
+    renderCardsView(0, {
+      eventOverrides: {
+        type: "poll",
+        capacity: null,
+        poll: {
+          results_visibility: "after_vote",
+          show_voter_names: false,
+          has_voted: false,
+          can_vote: true,
+          options: [
+            { id: "opt-1", label: "Raid", vote_count: 0, voter_ids: [], voted_by_me: false },
+            { id: "opt-2", label: "Dungeon", vote_count: 0, voter_ids: [], voted_by_me: false },
+          ],
+        },
+      } as Partial<Event>,
+      canInteract: true,
+      currentUserId: "user-1",
+      onVotePoll,
+    });
+
+    expect(screen.getByText("poll.status.open")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /Raid/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /Dungeon/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /poll\.vote/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /button\.join/i })).not.toBeInTheDocument();
+    expect(onVotePoll).not.toHaveBeenCalled();
   });
 });

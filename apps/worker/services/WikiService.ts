@@ -169,11 +169,13 @@ export class WikiService {
 
   // --- Articles ---
 
-  async listArticles(opts: { page: number; limit: number; categoryId?: string; archived?: boolean; search?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
+  async listArticles(opts: { page: number; limit: number; categoryId?: string; archived?: boolean; pinned?: boolean; search?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
     const offset = (opts.page - 1) * opts.limit;
     const filters: SQL<unknown>[] = [];
     if (opts.categoryId) filters.push(eq(wikiArticles.categoryId, opts.categoryId));
-    if (opts.archived === true) { filters.push(isNotNull(wikiArticles.archivedAt)); } else { filters.push(isNull(wikiArticles.archivedAt)); }
+    if (opts.archived === true) { filters.push(isNotNull(wikiArticles.archivedAt)); }
+    else if (opts.archived === false) { filters.push(isNull(wikiArticles.archivedAt)); }
+    if (opts.pinned !== undefined) filters.push(eq(wikiArticles.pinned, opts.pinned));
     if (opts.search) {
       const pattern = `%${escapeLikePattern(opts.search)}%`;
       filters.push(or(like(wikiArticles.title, pattern), like(wikiArticles.bodyJson, pattern))!);

@@ -133,6 +133,9 @@ export function EventsPage() {
     editorPinned,
     editorSignupLocked,
     editorAutoArchive,
+    editorPollOptions,
+    editorPollResultsVisibility,
+    editorPollShowVoterNames,
     editorStartIso,
     editorEndIso,
     setEditorType,
@@ -142,6 +145,9 @@ export function EventsPage() {
     setEditorEndAt,
     setEditorCapacity,
     setEditorAutoArchive,
+    setEditorPollOptions,
+    setEditorPollResultsVisibility,
+    setEditorPollShowVoterNames,
     markEditorTouched,
     openCreateEditor: openCreateEditorBase,
     openEditEditor: openEditEditorBase,
@@ -216,6 +222,9 @@ export function EventsPage() {
       pinned: editorPinned,
       signupLocked: editorSignupLocked,
       autoArchive: editorAutoArchive,
+      pollOptions: editorPollOptions,
+      pollResultsVisibility: editorPollResultsVisibility,
+      pollShowVoterNames: editorPollShowVoterNames,
     });
   };
 
@@ -243,14 +252,14 @@ export function EventsPage() {
         <LazyEventsFiltersCard
           searchQuery={filtering.searchQuery}
           eventType={filtering.eventType}
-          archivedOnly={filtering.archivedOnly}
+          eventStatus={filtering.eventStatus}
           pinnedOnly={filtering.pinnedOnly}
           lockedOnly={filtering.lockedOnly}
           viewMode={viewMode}
           canManage={canManage}
           onSearchChange={filtering.setSearchQuery}
           onEventTypeChange={filtering.setEventType}
-          onArchivedOnlyChange={filtering.setArchivedOnly}
+          onEventStatusChange={filtering.setEventStatus}
           onPinnedOnlyChange={filtering.setPinnedOnly}
           onLockedOnlyChange={filtering.setLockedOnly}
           onViewModeChange={setViewMode}
@@ -284,6 +293,7 @@ export function EventsPage() {
             archivedOnly={filtering.archivedOnly}
             pinnedOnly={filtering.pinnedOnly}
             lockedOnly={filtering.lockedOnly}
+            hasAnyFilter={filtering.hasAnyFilter}
             focusedEventId={filtering.focusEventId}
             eventFlags={filtering.eventFlags}
             eventMembersMap={filtering.eventMembersMap}
@@ -293,6 +303,7 @@ export function EventsPage() {
             archivePending={mutations.archivePending}
             joinPending={mutations.joinPending}
             leavePending={mutations.leavePending}
+            votePending={mutations.votePending}
             onResetFilters={filtering.resetFilters}
             onCreateEvent={() => openCreateEditor()}
             onJoinEvent={(eventId) => {
@@ -309,6 +320,7 @@ export function EventsPage() {
             onDeleteEvent={(event) => { void mutations.deleteEventWithConfirm(event); }}
             onAddParticipant={mutations.addParticipant}
             onRemoveParticipant={mutations.removeParticipant}
+            onVotePoll={canInteract ? mutations.votePoll : undefined}
             hasMore={filtering.eventsHasMore}
             isLoadingMore={filtering.eventsLoadingMore}
             onLoadMore={filtering.onLoadMoreEvents}
@@ -347,6 +359,12 @@ export function EventsPage() {
             onDescriptionChange={setEditorDescription}
             autoArchive={editorAutoArchive}
             onAutoArchiveChange={setEditorAutoArchive}
+            pollOptions={editorPollOptions}
+            onPollOptionsChange={setEditorPollOptions}
+            pollResultsVisibility={editorPollResultsVisibility}
+            onPollResultsVisibilityChange={setEditorPollResultsVisibility}
+            pollShowVoterNames={editorPollShowVoterNames}
+            onPollShowVoterNamesChange={setEditorPollShowVoterNames}
             attachmentItems={attachmentItems}
             onAttachmentsChange={handleAttachmentItemsChange}
             onFilesSelected={handleFilesSelected}
@@ -377,6 +395,8 @@ export function EventsPage() {
         onLeave={mutations.handleLeave}
         onAddParticipant={mutations.addParticipant}
         onRemoveParticipant={mutations.removeParticipant}
+        onVotePoll={canInteract ? mutations.votePoll : undefined}
+        votePending={mutations.votePending}
       />
     </PageLayout>
   );

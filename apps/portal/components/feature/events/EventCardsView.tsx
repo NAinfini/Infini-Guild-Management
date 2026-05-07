@@ -1,6 +1,5 @@
 ﻿import type { Event, MemberProfile, User } from "@guild/shared";
 import { Badge, Button, Group, HoverCard, Modal, SimpleGrid, Stack, Text, ThemeIcon } from "@mantine/core";
-import { MemberRoleAvatar } from "../../shared/MemberRoleAvatar";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
@@ -21,6 +20,7 @@ import {
 import {
   IconArchive,
   IconArchiveOff,
+  IconChartBar,
   IconClock,
   IconFriends,
   IconLock,
@@ -37,6 +37,7 @@ import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type EventTypeFilter } from "../../../utils/event-navigation";
 import { EmptyState } from "../../shared/EmptyState";
+import { EventCardAvatarStrip } from "./EventCardAvatarStrip";
 import { EventDetailModal } from "./EventDetailModal";
 import "./EventCardsView.css";
 
@@ -44,6 +45,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   weekly_mission: "blue",
   guild_war: "red",
   social: "grape",
+  poll: "teal",
   other: "gray",
 };
 
@@ -51,6 +53,7 @@ const EVENT_TYPE_ICONS: Record<string, React.ReactNode> = {
   weekly_mission: <IconTargetArrow size={12} />,
   guild_war: <SwordsIcon size={12} />,
   social: <IconFriends size={12} />,
+  poll: <IconChartBar size={12} />,
   other: <CalendarEventIcon size={12} />,
 };
 
@@ -73,17 +76,36 @@ function formatLocalTime(startAt: string, endAt: string | null, locale: string):
   return `${startTime} - ${endTime}`;
 }
 
-
-/** Returns HSL hue: 210 (blue) → 120 (green) → 60 (yellow) → 30 (orange) → 0 (red) based on fill ratio. */
-function capacityHue(joined: number, capacity: number): number {
-  const ratio = Math.min(1, joined / capacity);
-  if (ratio <= 0.4) return 210 - ratio * (90 / 0.4);       // blue(210) → green(120)
-  if (ratio <= 0.6) return 120 - (ratio - 0.4) * (60 / 0.2); // green(120) → yellow(60)
-  if (ratio <= 0.8) return 60 - (ratio - 0.6) * (30 / 0.2);  // yellow(60) → orange(30)
-  return 30 - (ratio - 0.8) * (30 / 0.2);                     // orange(30) → red(0)
-}
-
 type MemberEntry = { user: User; profile: MemberProfile };
+
+type EventStatusIndicatorProps = {
+  children: React.ReactNode;
+  color: string;
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+};
+
+function EventStatusIndicator({ children, color, icon, title, description }: EventStatusIndicatorProps) {
+  return (
+    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+      <HoverCard.Target>
+        <span className="event-card__status-icon">{children}</span>
+      </HoverCard.Target>
+      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+        <Group gap={10} wrap="nowrap" align="flex-start">
+          <ThemeIcon variant="light" color={color} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+            {icon}
+          </ThemeIcon>
+          <div style={{ minWidth: 0 }}>
+            <Text size="sm" fw={700} lh={1.3} mb={4}>{title}</Text>
+            <Text size="xs" c="dimmed" lh={1.5}>{description}</Text>
+          </div>
+        </Group>
+      </HoverCard.Dropdown>
+    </HoverCard>
+  );
+}
 
 type EventCardsViewProps = {
   events: Event[];
@@ -95,6 +117,7 @@ type EventCardsViewProps = {
   archivedOnly: boolean;
   pinnedOnly: boolean;
   lockedOnly: boolean;
+  hasAnyFilter?: boolean;
   focusedEventId: string | null;
   eventFlags: Map<string, "NEW" | "UPDATED">;
   eventMembersMap: Map<string, MemberEntry[]>;
@@ -103,6 +126,7 @@ type EventCardsViewProps = {
   updatePending: boolean;
   archivePending: boolean;
   joinPending: boolean;
+  votePending?: boolean;
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -121,6 +145,7 @@ type EventCardsViewProps = {
   onDeleteEvent: (event: Event) => void;
   onAddParticipant: (eventId: string, userId: string) => void;
   onRemoveParticipant: (eventId: string, userId: string) => void;
+  onVotePoll?: (eventId: string, optionIds: string[]) => void;
 };
 
 export function EventCardsView({
@@ -133,11 +158,13 @@ export function EventCardsView({
   archivedOnly,
   pinnedOnly,
   lockedOnly,
+  hasAnyFilter,
   focusedEventId,
   eventFlags,
   eventMembersMap,
   allUsers,
   joinPending,
+  votePending,
   leavePending,
   onResetFilters,
   onCreateEvent,
@@ -153,6 +180,7 @@ export function EventCardsView({
   onDeleteEvent,
   onAddParticipant,
   onRemoveParticipant,
+  onVotePoll,
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
@@ -169,7 +197,7 @@ export function EventCardsView({
           title={cardsEmptyDescription}
           actions={
             <Group gap={8}>
-              <Button onClick={onResetFilters} disabled={!eventType && !archivedOnly && !pinnedOnly && !lockedOnly}>
+              <Button onClick={onResetFilters} disabled={hasAnyFilter === undefined ? !eventType && !archivedOnly && !pinnedOnly && !lockedOnly : !hasAnyFilter}>
                 {t("card.resetFilters")}
               </Button>
               {canManage ? (
@@ -195,7 +223,81 @@ export function EventCardsView({
           const isFull = event.capacity !== null && joinedCount >= event.capacity;
           const isJoined = currentUserId ? members.some((m) => m.user.id === currentUserId) : false;
           const isFocused = focusedEventId === event.id;
-          const capacityColor = event.capacity !== null ? `hsl(${capacityHue(joinedCount, event.capacity)}, 70%, 50%)` : undefined;
+          const isArchived = Boolean(event.archived_at);
+          const hasEnded = event.end_at != null && new Date(event.end_at) < new Date();
+          const isPoll = event.type === "poll";
+          const visibleMembers = members.length > 10 ? members.slice(0, 9) : members.slice(0, 10);
+          const hiddenMembersCount = members.length > 10 ? members.length - visibleMembers.length : 0;
+          const pollStatusLabel = hasEnded
+            ? t("poll.status.closed")
+            : event.poll?.has_voted
+              ? t("poll.status.voted")
+              : t("poll.status.open");
+          const participantActionDisabled = joinPending || leavePending || isArchived || (!isJoined && (event.signup_locked || isFull || hasEnded));
+          const statusIndicators = (
+            <>
+              {event.recurrence_rule && event.series_id ? (
+                <EventStatusIndicator
+                  color="teal"
+                  icon={<RefreshCwIcon size={16} />}
+                  title={t("tooltip.recurring.title")}
+                  description={t("tooltip.recurring.desc")}
+                >
+                  <RefreshCwIcon size={14} />
+                </EventStatusIndicator>
+              ) : null}
+              {event.pinned ? (
+                <EventStatusIndicator
+                  color="orange"
+                  icon={<PinIcon size={16} />}
+                  title={t("tooltip.pinned.title")}
+                  description={t("tooltip.pinned.desc")}
+                >
+                  <IconPin size={16} style={{ color: "var(--mantine-color-yellow-6)" }} />
+                </EventStatusIndicator>
+              ) : null}
+              {event.signup_locked ? (
+                <EventStatusIndicator
+                  color="red"
+                  icon={<LockIcon size={16} />}
+                  title={t("tooltip.locked.title")}
+                  description={t("tooltip.locked.desc")}
+                >
+                  <IconLock size={16} style={{ color: "var(--mantine-color-red-6)" }} />
+                </EventStatusIndicator>
+              ) : null}
+              {event.archived_at ? (
+                <EventStatusIndicator
+                  color="gray"
+                  icon={<ArchiveIcon size={16} />}
+                  title={t("tooltip.archived.title")}
+                  description={t("tooltip.archived.desc")}
+                >
+                  <IconArchive size={16} style={{ opacity: 0.5 }} />
+                </EventStatusIndicator>
+              ) : null}
+              {flag === "NEW" ? (
+                <EventStatusIndicator
+                  color="green"
+                  icon={<IconSparkles size={16} />}
+                  title={t("tooltip.new.title")}
+                  description={t("tooltip.new.desc")}
+                >
+                  <IconSparkles size={16} style={{ color: "var(--mantine-color-green-6)" }} />
+                </EventStatusIndicator>
+              ) : null}
+              {flag === "UPDATED" ? (
+                <EventStatusIndicator
+                  color="blue"
+                  icon={<IconSparkles2 size={16} />}
+                  title={t("tooltip.updated.title")}
+                  description={t("tooltip.updated.desc")}
+                >
+                  <IconSparkles2 size={16} style={{ color: "var(--mantine-color-blue-6)" }} />
+                </EventStatusIndicator>
+              ) : null}
+            </>
+          );
 
           return (
               <PortalCard key={event.id} className={`event-card${isFocused ? " event-card--focused" : ""}`} onClick={() => setDetailModalEvent(event)} style={{ cursor: "pointer" }} role="button" tabIndex={0} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetailModalEvent(event); } }} aria-label={event.title}>
@@ -211,123 +313,14 @@ export function EventCardsView({
                   >
                     {t(`common:eventType.${event.type}`)}
                   </Badge>
-                  {event.recurrence_rule && event.series_id ? (
-                    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                      <HoverCard.Target>
-                        <RefreshCwIcon size={14} className="event-card__recurring-icon" />
-                      </HoverCard.Target>
-                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                        <Group gap={10} wrap="nowrap" align="flex-start">
-                          <ThemeIcon variant="light" color="teal" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                            <RefreshCwIcon size={16} />
-                          </ThemeIcon>
-                          <div style={{ minWidth: 0 }}>
-                            <Text size="sm" fw={700} lh={1.3} mb={4}>{t("tooltip.recurring.title")}</Text>
-                            <Text size="xs" c="dimmed" lh={1.5}>{t("tooltip.recurring.desc")}</Text>
-                          </div>
-                        </Group>
-                      </HoverCard.Dropdown>
-                    </HoverCard>
-                  ) : null}
-                  {event.pinned ? (
-                    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                      <HoverCard.Target>
-                        <IconPin size={16} style={{ color: "var(--mantine-color-yellow-6)" }} />
-                      </HoverCard.Target>
-                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                        <Group gap={10} wrap="nowrap" align="flex-start">
-                          <ThemeIcon variant="light" color="orange" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                            <PinIcon size={16} />
-                          </ThemeIcon>
-                          <div style={{ minWidth: 0 }}>
-                            <Text size="sm" fw={700} lh={1.3} mb={4}>{t("tooltip.pinned.title")}</Text>
-                            <Text size="xs" c="dimmed" lh={1.5}>{t("tooltip.pinned.desc")}</Text>
-                          </div>
-                        </Group>
-                      </HoverCard.Dropdown>
-                    </HoverCard>
-                  ) : null}
-                  {event.signup_locked ? (
-                    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                      <HoverCard.Target>
-                        <IconLock size={16} style={{ color: "var(--mantine-color-red-6)" }} />
-                      </HoverCard.Target>
-                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                        <Group gap={10} wrap="nowrap" align="flex-start">
-                          <ThemeIcon variant="light" color="red" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                            <LockIcon size={16} />
-                          </ThemeIcon>
-                          <div style={{ minWidth: 0 }}>
-                            <Text size="sm" fw={700} lh={1.3} mb={4}>{t("tooltip.locked.title")}</Text>
-                            <Text size="xs" c="dimmed" lh={1.5}>{t("tooltip.locked.desc")}</Text>
-                          </div>
-                        </Group>
-                      </HoverCard.Dropdown>
-                    </HoverCard>
-                  ) : null}
-                  {event.archived_at ? (
-                    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                      <HoverCard.Target>
-                        <IconArchive size={16} style={{ opacity: 0.5 }} />
-                      </HoverCard.Target>
-                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                        <Group gap={10} wrap="nowrap" align="flex-start">
-                          <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                            <ArchiveIcon size={16} />
-                          </ThemeIcon>
-                          <div style={{ minWidth: 0 }}>
-                            <Text size="sm" fw={700} lh={1.3} mb={4}>{t("tooltip.archived.title")}</Text>
-                            <Text size="xs" c="dimmed" lh={1.5}>{t("tooltip.archived.desc")}</Text>
-                          </div>
-                        </Group>
-                      </HoverCard.Dropdown>
-                    </HoverCard>
-                  ) : null}
-                  {flag === "NEW" ? (
-                    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                      <HoverCard.Target>
-                        <IconSparkles size={16} style={{ color: "var(--mantine-color-green-6)" }} />
-                      </HoverCard.Target>
-                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                        <Group gap={10} wrap="nowrap" align="flex-start">
-                          <ThemeIcon variant="light" color="green" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                            <IconSparkles size={16} />
-                          </ThemeIcon>
-                          <div style={{ minWidth: 0 }}>
-                            <Text size="sm" fw={700} lh={1.3} mb={4}>{t("tooltip.new.title")}</Text>
-                            <Text size="xs" c="dimmed" lh={1.5}>{t("tooltip.new.desc")}</Text>
-                          </div>
-                        </Group>
-                      </HoverCard.Dropdown>
-                    </HoverCard>
-                  ) : null}
-                  {flag === "UPDATED" ? (
-                    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                      <HoverCard.Target>
-                        <IconSparkles2 size={16} style={{ color: "var(--mantine-color-blue-6)" }} />
-                      </HoverCard.Target>
-                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                        <Group gap={10} wrap="nowrap" align="flex-start">
-                          <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                            <IconSparkles2 size={16} />
-                          </ThemeIcon>
-                          <div style={{ minWidth: 0 }}>
-                            <Text size="sm" fw={700} lh={1.3} mb={4}>{t("tooltip.updated.title")}</Text>
-                            <Text size="xs" c="dimmed" lh={1.5}>{t("tooltip.updated.desc")}</Text>
-                          </div>
-                        </Group>
-                      </HoverCard.Dropdown>
-                    </HoverCard>
-                  ) : null}
                 </div>
                 <div className="event-card__header-right">
                   <div className="event-card__capacity">
                     <IconUsers
                       size={15}
-                      style={{ color: capacityColor }}
-                      className={event.capacity !== null ? undefined : "event-card__icon-muted"}
+                      className="event-card__icon-muted"
                     />
-                    <Text size="sm" fw={600} className="event-card__capacity-text" style={{ color: capacityColor }}>
+                    <Text size="sm" fw={600} className="event-card__capacity-text">
                       {joinedCount} / {event.capacity ?? "∞"}
                     </Text>
                   </div>
@@ -381,8 +374,10 @@ export function EventCardsView({
               {/* ── Body ── */}
               <div className="event-card__body">
                 <Stack gap={8}>
-                  {/* Title */}
-                  <Text fw={700} size="md" className="event-card__title">{event.title}</Text>
+                  <div className="event-card__title-row">
+                    <Text fw={700} size="md" className="event-card__title">{event.title}</Text>
+                    <div className="event-card__status-rail">{statusIndicators}</div>
+                  </div>
 
                   {/* Description preview */}
                   {event.description ? (
@@ -405,21 +400,25 @@ export function EventCardsView({
                   </Group>
 
                   {/* ── Members & Capacity ── */}
+                  {isPoll ? (
+                    <div className="event-card__poll-status">
+                      <IconChartBar size={16} className="event-card__icon-muted" />
+                      <Text size="sm" fw={700}>{pollStatusLabel}</Text>
+                    </div>
+                  ) : (
                   <div className="event-card__members-bar">
                     <div className="event-card__members-left">
-                      <div className="event-card__avatar-grid">
-                        {members.slice(0, 10).map((member) => (
-                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={36} />
-                        ))}
-                        {members.length > 10 ? (
-                          <Text size="xs" c="dimmed" fw={600}>+{members.length - 10}</Text>
-                        ) : null}
-                      </div>
+                      <EventCardAvatarStrip
+                        members={members}
+                        visibleMembers={visibleMembers}
+                        hiddenMembersCount={hiddenMembersCount}
+                      />
                     </div>
                   </div>
+                  )}
 
                   {/* ── Actions ── */}
-                  {canInteract ? (
+                  {canInteract && !isPoll ? (
                   <div className="event-card__actions" onClick={(e) => e.stopPropagation()}>
                     <DepthToggle
                       pressed={isJoined}
@@ -432,7 +431,7 @@ export function EventCardsView({
                       }}
                       type="primary"
                       size="xs"
-                      disabled={joinPending || leavePending || (!isJoined && (event.signup_locked || Boolean(event.archived_at) || isFull || (event.end_at != null && new Date(event.end_at) < new Date())))}
+                      disabled={participantActionDisabled}
                       tooltip={isJoined ? t("button.leave") : t("button.join")}
                     >
                       {isJoined ? <IconUserMinus size={14} /> : <UserPlusIcon size={14} />}
@@ -482,6 +481,8 @@ export function EventCardsView({
         onLeave={onLeaveEvent}
         onAddParticipant={onAddParticipant}
         onRemoveParticipant={onRemoveParticipant}
+        onVotePoll={onVotePoll}
+        votePending={votePending}
       />
 
       {/* ── Archive Confirmation Modal ── */}

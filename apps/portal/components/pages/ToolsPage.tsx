@@ -154,13 +154,11 @@ export function ToolsPage() {
         ))}
       </PageLayout.Grid>
 
-      <Modal title={t("sandbox.title")} opened={sandboxOpened} onClose={sandboxHandlers.close} size={920}>
+      <Modal title={t("sandbox.title")} opened={sandboxOpened} onClose={sandboxHandlers.close} size={1120}>
         <div className={isExternalView ? "tools-readonly" : undefined}>
           <div className="sandbox">
-            {/* ── Left: Controls ── */}
-            <div className="sandbox__controls">
-              {/* Title input */}
-              <div className="sandbox__section">
+            <div className="sandbox__topbar">
+              <div className="sandbox__section sandbox__title-section">
                 <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.titleText")}</Text>
                 <TextInput
                   value={titleText}
@@ -171,158 +169,154 @@ export function ToolsPage() {
                   maxLength={200}
                 />
               </div>
-
-              {/* Color section */}
-              <div className="sandbox__section">
-                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">
-                  <IconPalette size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
-                  {t("sandbox.section.color")}
-                </Text>
-
-                <ColorPicker
-                  value={color}
-                  onChange={applyColor}
-                  onChangeEnd={commitColor}
-                  format="hex"
-                  swatches={PRESET_COLORS}
-                  style={{ width: "100%", pointerEvents: isExternalView ? "none" : "auto", opacity: isExternalView ? 0.5 : 1 }}
-                />
-
-                <div className="sandbox__opacity-wrap" style={{ marginTop: 12 }}>
-                  <Text size="xs" c="dimmed">{t("sandbox.label.opacity")}</Text>
-                  <Slider min={0} max={100} value={opacity} onChange={setOpacity} aria-label={t("sandbox.aria.opacitySlider")} disabled={isExternalView} className="sandbox__opacity-slider" />
-                  <Text size="xs" fw={500} className="sandbox__opacity-value">{opacity}%</Text>
-                </div>
-
-                {/* Recent colors */}
-                {recentColors.length > 0 ? (
-                  <div className="sandbox__recent">
-                    <Text size="xs" c="dimmed">{t("sandbox.label.recent")}</Text>
-                    <div className="sandbox__recent-list">
-                      {recentColors.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          className="sandbox__recent-btn"
-                          onClick={() => commitColor(c)}
-                          aria-label={t("sandbox.aria.useRecentColor", { color: c })}
-                          disabled={isExternalView}
-                        >
-                          <span className="sandbox__recent-dot" style={{ background: c }} />
-                          <span>{c}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              {/* Typography */}
-              <div className="sandbox__section">
-                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.typography")}</Text>
-                <div className="sandbox__typo-toggles">
-                  <button
-                    type="button"
-                    className={`sandbox__typo-btn${bold ? " sandbox__typo-btn--active" : ""}`}
-                    onClick={() => setBold(!bold)}
-                    disabled={isExternalView}
-                    aria-label={t("sandbox.aria.toggleBold")}
-                  >
-                    <IconBold size={16} />
-                    <span>{t("sandbox.button.bold")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`sandbox__typo-btn${italic ? " sandbox__typo-btn--active" : ""}`}
-                    onClick={() => setItalic(!italic)}
-                    disabled={isExternalView}
-                    aria-label={t("sandbox.aria.toggleItalic")}
-                  >
-                    <IconItalic size={16} />
-                    <span>{t("sandbox.button.italic")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`sandbox__typo-btn${underline ? " sandbox__typo-btn--active" : ""}`}
-                    onClick={() => setUnderline(!underline)}
-                    disabled={isExternalView}
-                    aria-label={t("sandbox.aria.toggleUnderline")}
-                  >
-                    <IconUnderline size={16} />
-                    <span>{t("sandbox.button.underline")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`sandbox__typo-btn${strikethrough ? " sandbox__typo-btn--active" : ""}`}
-                    onClick={() => setStrikethrough(!strikethrough)}
-                    disabled={isExternalView}
-                    aria-label={t("sandbox.aria.toggleStrikethrough")}
-                  >
-                    <IconStrikethrough size={16} />
-                    <span>{t("sandbox.button.strike")}</span>
-                  </button>
-                </div>
-
-                {/* Font size */}
-                <div className="sandbox__slider-row">
-                  <IconTextSize size={15} className="sandbox__slider-icon" />
-                  <Text size="xs" c="dimmed" className="sandbox__slider-label">{t("sandbox.label.size")}</Text>
-                  <Slider min={10} max={48} value={fontSize} onChange={setFontSize} disabled={isExternalView} className="sandbox__slider" />
-                  <Text size="xs" fw={500} className="sandbox__slider-value">{fontSize}px</Text>
-                </div>
-
-                {/* Letter spacing */}
-                <div className="sandbox__slider-row">
-                  <IconLetterSpacing size={15} className="sandbox__slider-icon" />
-                  <Text size="xs" c="dimmed" className="sandbox__slider-label">{t("sandbox.label.spacing")}</Text>
-                  <Slider min={-5} max={20} value={letterSpacing} onChange={setLetterSpacing} disabled={isExternalView} className="sandbox__slider" />
-                  <Text size="xs" fw={500} className="sandbox__slider-value">{(letterSpacing / 100).toFixed(2)}em</Text>
-                </div>
-              </div>
             </div>
 
-            {/* ── Right: Preview + Output ── */}
-            <div className="sandbox__output">
-              {/* Live preview */}
-              <div className="sandbox__section">
-                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.livePreview")}</Text>
-                <div className="sandbox__preview-card">
-                  <div className="sandbox__preview-bg">
-                    <div className="sandbox__preview-rendered" dangerouslySetInnerHTML={{ __html: safeHtml }} />
+            <div className="sandbox__workspace">
+              <div className="sandbox__panel sandbox__panel--controls">
+                <div className="sandbox__section">
+                  <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">
+                    <IconPalette size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
+                    {t("sandbox.section.color")}
+                  </Text>
+
+                  <ColorPicker
+                    value={color}
+                    onChange={applyColor}
+                    onChangeEnd={commitColor}
+                    format="hex"
+                    swatches={PRESET_COLORS}
+                    style={{ width: "100%", pointerEvents: isExternalView ? "none" : "auto", opacity: isExternalView ? 0.5 : 1 }}
+                  />
+
+                  <div className="sandbox__opacity-wrap" style={{ marginTop: 12 }}>
+                    <Text size="xs" c="dimmed">{t("sandbox.label.opacity")}</Text>
+                    <Slider min={0} max={100} value={opacity} onChange={setOpacity} aria-label={t("sandbox.aria.opacitySlider")} disabled={isExternalView} className="sandbox__opacity-slider" />
+                    <Text size="xs" fw={500} className="sandbox__opacity-value">{opacity}%</Text>
                   </div>
-                  <div className="sandbox__preview-meta">
-                    <Text size="xs" c="dimmed">
-                      {previewMetaText}
-                    </Text>
+
+                  {recentColors.length > 0 ? (
+                    <div className="sandbox__recent">
+                      <Text size="xs" c="dimmed">{t("sandbox.label.recent")}</Text>
+                      <div className="sandbox__recent-list">
+                        {recentColors.map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            className="sandbox__recent-btn"
+                            onClick={() => commitColor(c)}
+                            aria-label={t("sandbox.aria.useRecentColor", { color: c })}
+                            disabled={isExternalView}
+                          >
+                            <span className="sandbox__recent-dot" style={{ background: c }} />
+                            <span>{c}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="sandbox__section">
+                  <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.typography")}</Text>
+                  <div className="sandbox__typo-toggles">
+                    <button
+                      type="button"
+                      className={`sandbox__typo-btn${bold ? " sandbox__typo-btn--active" : ""}`}
+                      onClick={() => setBold(!bold)}
+                      disabled={isExternalView}
+                      aria-label={t("sandbox.aria.toggleBold")}
+                    >
+                      <IconBold size={16} />
+                      <span>{t("sandbox.button.bold")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`sandbox__typo-btn${italic ? " sandbox__typo-btn--active" : ""}`}
+                      onClick={() => setItalic(!italic)}
+                      disabled={isExternalView}
+                      aria-label={t("sandbox.aria.toggleItalic")}
+                    >
+                      <IconItalic size={16} />
+                      <span>{t("sandbox.button.italic")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`sandbox__typo-btn${underline ? " sandbox__typo-btn--active" : ""}`}
+                      onClick={() => setUnderline(!underline)}
+                      disabled={isExternalView}
+                      aria-label={t("sandbox.aria.toggleUnderline")}
+                    >
+                      <IconUnderline size={16} />
+                      <span>{t("sandbox.button.underline")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`sandbox__typo-btn${strikethrough ? " sandbox__typo-btn--active" : ""}`}
+                      onClick={() => setStrikethrough(!strikethrough)}
+                      disabled={isExternalView}
+                      aria-label={t("sandbox.aria.toggleStrikethrough")}
+                    >
+                      <IconStrikethrough size={16} />
+                      <span>{t("sandbox.button.strike")}</span>
+                    </button>
+                  </div>
+
+                  <div className="sandbox__slider-row">
+                    <IconTextSize size={15} className="sandbox__slider-icon" />
+                    <Text size="xs" c="dimmed" className="sandbox__slider-label">{t("sandbox.label.size")}</Text>
+                    <Slider min={10} max={48} value={fontSize} onChange={setFontSize} disabled={isExternalView} className="sandbox__slider" />
+                    <Text size="xs" fw={500} className="sandbox__slider-value">{fontSize}px</Text>
+                  </div>
+
+                  <div className="sandbox__slider-row">
+                    <IconLetterSpacing size={15} className="sandbox__slider-icon" />
+                    <Text size="xs" c="dimmed" className="sandbox__slider-label">{t("sandbox.label.spacing")}</Text>
+                    <Slider min={-5} max={20} value={letterSpacing} onChange={setLetterSpacing} disabled={isExternalView} className="sandbox__slider" />
+                    <Text size="xs" fw={500} className="sandbox__slider-value">{(letterSpacing / 100).toFixed(2)}em</Text>
                   </div>
                 </div>
               </div>
 
-              {/* HTML source */}
-              <div className="sandbox__section">
-                <Group gap={6} align="center" className="sandbox__section-label">
-                  <Text size="xs" fw={600} c="dimmed">{t("sandbox.section.htmlSource")}</Text>
-                  <button
-                    type="button"
-                    className="sandbox__copy-icon-btn"
-                    onClick={() => {
-                      void copyPlainText(safeHtml);
-                      notifySuccess(t("message.generatedHtmlCopied"));
-                    }}
-                    aria-label={t("sandbox.aria.copyGeneratedHtml")}
-                  >
-                    <CopyIcon size={14} />
-                  </button>
-                </Group>
-                <Textarea
-                  value={manualHtml || generatedHtml}
-                  minRows={3}
-                  onChange={(event) => setManualHtml(event.currentTarget.value)}
-                  placeholder={t("sandbox.manualOverridePlaceholder")}
-                  aria-label={t("sandbox.aria.customHtmlOverride")}
-                  disabled={isExternalView}
-                  className="sandbox__override-textarea"
-                />
+              <div className="sandbox__panel sandbox__panel--output">
+                <div className="sandbox__section">
+                  <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.livePreview")}</Text>
+                  <div className="sandbox__preview-card">
+                    <div className="sandbox__preview-bg">
+                      <div className="sandbox__preview-rendered" dangerouslySetInnerHTML={{ __html: safeHtml }} />
+                    </div>
+                    <div className="sandbox__preview-meta">
+                      <Text size="xs" c="dimmed">
+                        {previewMetaText}
+                      </Text>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="sandbox__section">
+                  <Group gap={6} align="center" className="sandbox__section-label">
+                    <Text size="xs" fw={600} c="dimmed">{t("sandbox.section.htmlSource")}</Text>
+                    <button
+                      type="button"
+                      className="sandbox__copy-icon-btn"
+                      onClick={() => {
+                        void copyPlainText(safeHtml);
+                        notifySuccess(t("message.generatedHtmlCopied"));
+                      }}
+                      aria-label={t("sandbox.aria.copyGeneratedHtml")}
+                    >
+                      <CopyIcon size={14} />
+                    </button>
+                  </Group>
+                  <Textarea
+                    value={manualHtml || generatedHtml}
+                    minRows={3}
+                    onChange={(event) => setManualHtml(event.currentTarget.value)}
+                    placeholder={t("sandbox.manualOverridePlaceholder")}
+                    aria-label={t("sandbox.aria.customHtmlOverride")}
+                    disabled={isExternalView}
+                    className="sandbox__override-textarea"
+                  />
+                </div>
               </div>
             </div>
           </div>

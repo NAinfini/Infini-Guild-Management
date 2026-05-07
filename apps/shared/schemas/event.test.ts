@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createEventSchema, createTemplateSchema, eventSchema, recurringTemplateSchema, updateEventSchema, updateTemplateSchema } from "./event";
+import { createEventSchema, createTemplateSchema, eventPollSchema, eventSchema, pollVoteSchema, recurringTemplateSchema, updateEventSchema, updateTemplateSchema } from "./event";
 
 describe("event schemas", () => {
   it("keeps event auto-archive controls in event and template payloads", () => {
@@ -70,5 +70,55 @@ describe("event schemas", () => {
     })).toMatchObject({ auto_archive: true });
 
     expect(updateTemplateSchema.parse({ auto_archive: false })).toMatchObject({ auto_archive: false });
+  });
+
+  it("requires poll events to have an end time and 2-10 options", () => {
+    expect(createEventSchema.safeParse({
+      type: "poll",
+      title: "Next activity?",
+      start_at: "2026-05-07T19:00:00.000Z",
+      poll: {
+        options: ["Raid", "Dungeon"],
+        results_visibility: "after_vote",
+        show_voter_names: false,
+      },
+    }).success).toBe(false);
+
+    expect(createEventSchema.parse({
+      type: "poll",
+      title: "Next activity?",
+      start_at: "2026-05-07T19:00:00.000Z",
+      end_at: "2026-05-07T21:00:00.000Z",
+      poll: {
+        options: ["Raid", "Dungeon"],
+        results_visibility: "after_vote",
+        show_voter_names: false,
+      },
+    })).toMatchObject({
+      type: "poll",
+      poll: { options: ["Raid", "Dungeon"] },
+    });
+
+    expect(createEventSchema.safeParse({
+      type: "poll",
+      title: "Next activity?",
+      start_at: "2026-05-07T19:00:00.000Z",
+      end_at: "2026-05-07T21:00:00.000Z",
+      poll: { options: ["Only one"] },
+    }).success).toBe(false);
+  });
+
+  it("parses poll detail and vote payloads", () => {
+    expect(eventPollSchema.parse({
+      results_visibility: "always",
+      show_voter_names: true,
+      has_voted: true,
+      can_vote: true,
+      options: [
+        { id: "opt-1", label: "Raid", vote_count: 2, voter_ids: ["u-1", "u-2"], voted_by_me: true },
+      ],
+    })).toMatchObject({ has_voted: true });
+
+    expect(pollVoteSchema.parse({ option_ids: ["opt-1", "opt-2"] })).toEqual({ option_ids: ["opt-1", "opt-2"] });
   });
 });

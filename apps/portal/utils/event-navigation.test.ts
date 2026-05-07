@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  EVENTS_ROUTE_SEARCH_SCHEMA,
   buildEventWorkbenchSearch,
   sanitizeEventsRouteSearch,
 } from "./event-navigation";
@@ -39,19 +40,31 @@ describe("event navigation", () => {
       sanitizeEventsRouteSearch({
         search: "Guild Raid",
         type: "guild_war",
-        archived: true,
+        status: "archived",
         pinned: true,
-        locked: false,
+        locked: true,
         eventId: "event-42",
         view: "month",
       }),
     ).toEqual({
       search: "Guild Raid",
       type: "guild_war",
-      archived: true,
+      status: "archived",
       pinned: true,
+      locked: true,
       eventId: "event-42",
       view: "month",
     });
+  });
+
+  it("normalizes legacy archived search into explicit status", () => {
+    expect(EVENTS_ROUTE_SEARCH_SCHEMA.parse({ archived: "true" })).toEqual({
+      archived: true,
+    });
+    expect(sanitizeEventsRouteSearch({ archived: true })).toEqual({ status: "archived" });
+  });
+
+  it("keeps all status explicit because it changes server filtering", () => {
+    expect(sanitizeEventsRouteSearch({ status: "all" })).toEqual({ status: "all" });
   });
 });

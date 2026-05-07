@@ -10,7 +10,7 @@ import { useTheme } from "../../providers/ThemeProvider";
 import {
   ActionIcon,
   AppShell as MantineAppShell,
-  Text,
+  Title,
 } from "@mantine/core";
 import { type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -67,9 +67,9 @@ export function AppHeader({
   return (
     <MantineAppShell.Header className="app-header">
       <div className="app-header__left">
-        <Text fw={700} className="app-header__page-title">
+        <Title order={1} className="app-header__page-title">
           {activePageTitle}
-        </Text>
+        </Title>
       </div>
 
       <div className="app-header__center">{headerActions}</div>

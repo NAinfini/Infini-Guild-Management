@@ -111,19 +111,21 @@ export function ProfileModal({
     <Modal
       opened={open}
       title={
-        <Group gap={12} wrap="nowrap" justify="space-between" style={{ flex: 1 }}>
-          <span>{user ? t("profile.modalTitle", { name: user.username }) : t("profile.modalTitleFallback")}</span>
-          {canEdit && onEdit ? (
-            <DepthButton
-              onClick={onEdit}
-              type="secondary"
-              size="sm"
-              before={<PencilIcon size={14} />}
-            >
-              {editLabel || t("profile.editProfile")}
-            </DepthButton>
-          ) : null}
-        </Group>
+        user ? (
+          <Group gap={12} wrap="nowrap" justify="space-between" style={{ flex: 1 }}>
+            <span>{t("profile.modalTitle", { name: user.username })}</span>
+            {canEdit && onEdit ? (
+              <DepthButton
+                onClick={onEdit}
+                type="secondary"
+                size="sm"
+                before={<PencilIcon size={14} />}
+              >
+                {editLabel || t("profile.editProfile")}
+              </DepthButton>
+            ) : null}
+          </Group>
+        ) : undefined
       }
       onClose={onClose}
       classNames={{ content: styles.modalContent, title: styles.modalTitle }}

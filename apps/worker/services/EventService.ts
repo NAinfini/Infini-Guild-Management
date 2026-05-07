@@ -1,5 +1,5 @@
 import { createEventSchema, eventParticipantSchema, eventSchema, recurringTemplateSchema, updateEventSchema } from "@guild/shared";
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, like, lte, or, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
 import {
@@ -7,6 +7,7 @@ import {
   events,
   users,
 } from "../db/schema";
+import { escapeLikePattern } from "./helpers";
 
 type QueryChain = Promise<unknown[]> & {
   limit: (n: number) => Promise<unknown[]>;
@@ -35,6 +36,7 @@ type DatabaseLike = {
 
 type BoundStatement = {
   run: () => Promise<{ meta?: { changes?: number } }>;
+  all?: () => Promise<{ results?: unknown[] } | unknown[]>;
 };
 
 type RawDbLike = {
@@ -90,6 +92,25 @@ type EventParticipantRow = {
   eventId: string;
   userId: string;
   joinedAt: string;
+};
+
+type PollResultsVisibility = "always" | "after_vote" | "after_close";
+
+type PollOptionRow = {
+  id: string;
+  eventId: string;
+  label: string;
+  sortOrder: number;
+};
+
+type PollJoinedRow = {
+  event_id: string;
+  results_visibility: PollResultsVisibility;
+  show_voter_names: number | boolean;
+  option_id: string;
+  label: string;
+  sort_order: number;
+  voter_id: string | null;
 };
 
 const MAX_EVENT_ATTACHMENTS = 5;
@@ -217,6 +238,7 @@ export class EventService {
 
   async createEvent(actorId: string, data: CreateEventInput, files: File[] = []) {
     this.validateDateRange(data.start_at, data.end_at);
+    this.validatePollEventInput(data);
 
     const eventId = this.deps.createId?.() ?? nanoid();
     const uploadedAttachments = await this.storeImages(eventId, files, 0);
@@ -238,7 +260,7 @@ export class EventService {
       description: data.description?.trim() || null,
       startAt: data.start_at,
       endAt: data.end_at ?? null,
-      capacity: data.capacity ?? null,
+      capacity: data.type === "poll" ? null : data.capacity ?? null,
       pinned: false,
       signupLocked: false,
       autoArchive: data.auto_archive ?? false,
@@ -253,6 +275,10 @@ export class EventService {
       createdAt: now,
       updatedAt: now,
     });
+
+    if (data.type === "poll" && data.poll) {
+      await this.createPoll(eventId, data.poll);
+    }
 
     if (isSeriesParent) {
       await this.deps.materializeRecurringSeries(eventId);
@@ -283,6 +309,7 @@ export class EventService {
     const effectiveStartAt = data.start_at ?? existing.startAt;
     const effectiveEndAt = data.end_at !== undefined ? data.end_at : existing.endAt;
     this.validateDateRange(effectiveStartAt, effectiveEndAt);
+    this.validatePollEventUpdate(existing, data, effectiveEndAt);
 
     const patch: Record<string, unknown> = {
       updatedAt: this.now(),
@@ -294,7 +321,7 @@ export class EventService {
     if (data.description !== undefined) patch.description = data.description?.trim() || null;
     if (data.start_at !== undefined) patch.startAt = data.start_at;
     if (data.end_at !== undefined) patch.endAt = data.end_at ?? null;
-    if (data.capacity !== undefined) patch.capacity = data.capacity ?? null;
+    if (data.capacity !== undefined) patch.capacity = existing.type === "poll" || data.type === "poll" ? null : data.capacity ?? null;
     if (data.pinned !== undefined) patch.pinned = data.pinned;
     if (data.signup_locked !== undefined) patch.signupLocked = data.signup_locked;
     if (data.auto_archive !== undefined) patch.autoArchive = data.auto_archive;
@@ -305,7 +332,15 @@ export class EventService {
       patch.isSeriesParent = true;
     }
 
+    if ((existing.type === "poll" || data.type === "poll") && data.poll && await this.pollHasVotes(eventId) && await this.pollOptionsChanged(eventId, data.poll.options)) {
+      throw new EventServiceValidationError("Poll options cannot be changed after voting starts");
+    }
+
     await this.db.update(events).set(patch).where(eq(events.id, eventId));
+
+    if ((existing.type === "poll" || data.type === "poll") && data.poll) {
+      await this.updatePoll(eventId, data.poll);
+    }
 
     const updated = await this.deps.getEventById(eventId);
     if (!updated) {
@@ -348,6 +383,9 @@ export class EventService {
     await this.rawDb.batch([
       this.rawDb.prepare("UPDATE war_templates SET source_event_id = NULL WHERE source_event_id = ?1").bind(eventId),
       this.rawDb.prepare("UPDATE war_history SET event_id = NULL, updated_at = ?1 WHERE event_id = ?2").bind(now, eventId),
+      this.rawDb.prepare("DELETE FROM event_poll_votes WHERE event_id = ?1").bind(eventId),
+      this.rawDb.prepare("DELETE FROM event_poll_options WHERE event_id = ?1").bind(eventId),
+      this.rawDb.prepare("DELETE FROM event_polls WHERE event_id = ?1").bind(eventId),
       this.rawDb.prepare("DELETE FROM event_participants WHERE event_id = ?1").bind(eventId),
       this.rawDb.prepare("DELETE FROM events WHERE id = ?1").bind(eventId),
     ]);
@@ -397,6 +435,11 @@ export class EventService {
     | { ok: false; code: "NOT_FOUND" | "CONFLICT" | "SERVER_ERROR"; message: string }
   > {
     const participantId = this.deps.createId?.() ?? nanoid();
+    const eventRow = await this.deps.getEventById(eventId);
+    if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
+    if (eventRow.type === "poll") {
+      return { ok: false, code: "CONFLICT", message: "Poll events do not support signups" };
+    }
 
     const insertResult = await this.rawDb
       .prepare(
@@ -418,8 +461,6 @@ export class EventService {
       .run();
 
     if ((insertResult.meta?.changes ?? 0) !== 1) {
-      const eventRow = await this.deps.getEventById(eventId);
-      if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
       if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
       if (eventRow.signupLocked) return { ok: false, code: "CONFLICT", message: "Event signup is locked" };
 
@@ -483,7 +524,15 @@ export class EventService {
     return { ok: true, participant: created };
   }
 
-  async leaveEvent(actorId: string, eventId: string): Promise<void> {
+  async leaveEvent(actorId: string, eventId: string): Promise<
+    | { ok: true }
+    | { ok: false; code: "NOT_FOUND" | "CONFLICT"; message: string }
+  > {
+    const eventRow = await this.deps.getEventById(eventId);
+    if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
+    if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
+    if (eventRow.type === "poll") return { ok: false, code: "CONFLICT", message: "Poll events do not support signups" };
+
     const existing = (
       await (this.db as any)
         .select({ id: eventParticipants.id })
@@ -515,6 +564,8 @@ export class EventService {
         hint: "participant_left",
       });
     }
+
+    return { ok: true };
   }
 
   async addParticipants(
@@ -530,6 +581,7 @@ export class EventService {
 
     const eventRow = await this.deps.getEventById(eventId);
     if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
+    if (eventRow.type === "poll") return { ok: false, code: "CONFLICT", message: "Poll events do not support signups" };
 
     const activeUserRows = (await (this.db as any)
       .select({ id: users.id })
@@ -593,6 +645,50 @@ export class EventService {
     });
 
     return { ok: true, participants: createdRows };
+  }
+
+  async votePoll(actorId: string, eventId: string, optionIds: string[]): Promise<
+    | { ok: true }
+    | { ok: false; code: "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR" | "SERVER_ERROR"; message: string }
+  > {
+    const uniqueOptionIds = [...new Set(optionIds.filter((id) => id.trim().length > 0))];
+    if (uniqueOptionIds.length === 0) return { ok: false, code: "VALIDATION_ERROR", message: "At least one option_id is required" };
+    if (uniqueOptionIds.length > 10) return { ok: false, code: "VALIDATION_ERROR", message: "Maximum 10 options per vote" };
+
+    const eventRow = await this.deps.getEventById(eventId);
+    if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
+    if (eventRow.type !== "poll") return { ok: false, code: "CONFLICT", message: "Event is not a poll" };
+    if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
+    if (!eventRow.endAt) return { ok: false, code: "CONFLICT", message: "Poll has no close time" };
+    if (eventRow.endAt <= this.now()) return { ok: false, code: "CONFLICT", message: "Poll is closed" };
+
+    const validOptions = await this.getPollOptions(eventId);
+    if (validOptions.length > 0) {
+      const validIds = new Set(validOptions.map((option) => option.id));
+      if (uniqueOptionIds.some((id) => !validIds.has(id))) {
+        return { ok: false, code: "VALIDATION_ERROR", message: "Invalid poll option" };
+      }
+    }
+
+    const now = this.now();
+    const deleteStmt = this.rawDb.prepare("DELETE FROM event_poll_votes WHERE event_id = ?1 AND user_id = ?2").bind(eventId, actorId);
+    const insertStmts = uniqueOptionIds.map((optionId) =>
+      this.rawDb
+        .prepare("INSERT INTO event_poll_votes (id, event_id, option_id, user_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5)")
+        .bind(this.deps.createId?.() ?? nanoid(), eventId, optionId, actorId, now),
+    );
+    await this.rawDb.batch([deleteStmt, ...insertStmts]);
+
+    await this.deps.writeAuditLog({
+      entityType: "event_poll_vote",
+      action: "vote",
+      actorId,
+      entityId: `${eventId}:${actorId}`,
+      diffTitle: eventRow.title,
+      detailText: JSON.stringify({ option_count: uniqueOptionIds.length }),
+    });
+    await this.deps.publishEntityChanged({ entityType: "event", entityId: eventId, hint: "poll_voted" });
+    return { ok: true };
   }
 
   // ── Template CRUD ──
@@ -840,6 +936,79 @@ export class EventService {
     }
   }
 
+  private validatePollEventInput(data: CreateEventInput) {
+    if (data.type !== "poll") return;
+    if (!data.end_at) throw new EventServiceValidationError("Poll events require end_at");
+    if (!data.poll) throw new EventServiceValidationError("Poll events require poll settings");
+    if (data.recurrence_rule) throw new EventServiceValidationError("Poll events cannot recur");
+  }
+
+  private validatePollEventUpdate(existing: EventRow, data: UpdateEventInput, effectiveEndAt: string | null) {
+    const effectiveType = data.type ?? existing.type;
+    if (effectiveType !== "poll") {
+      if (data.poll) throw new EventServiceValidationError("Only poll events can include poll settings");
+      return;
+    }
+    if (!effectiveEndAt) throw new EventServiceValidationError("Poll events require end_at");
+    if (data.recurrence_rule) throw new EventServiceValidationError("Poll events cannot recur");
+  }
+
+  private async createPoll(eventId: string, poll: NonNullable<CreateEventInput["poll"]>) {
+    const now = this.now();
+    const pollStmt = this.rawDb
+      .prepare("INSERT INTO event_polls (event_id, results_visibility, show_voter_names, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)")
+      .bind(eventId, poll.results_visibility ?? "after_vote", poll.show_voter_names ?? false, now, now);
+    const optionStmts = poll.options.map((label, index) =>
+      this.rawDb
+        .prepare("INSERT INTO event_poll_options (id, event_id, label, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5)")
+        .bind(this.deps.createId?.() ?? nanoid(), eventId, label.trim(), index, now),
+    );
+    await this.rawDb.batch([pollStmt, ...optionStmts]);
+  }
+
+  private async updatePoll(eventId: string, poll: NonNullable<CreateEventInput["poll"]>) {
+    const hasVotes = await this.pollHasVotes(eventId);
+    const now = this.now();
+    const stmts = [
+      this.rawDb
+        .prepare("UPDATE event_polls SET results_visibility = ?1, show_voter_names = ?2, updated_at = ?3 WHERE event_id = ?4")
+        .bind(poll.results_visibility ?? "after_vote", poll.show_voter_names ?? false, now, eventId),
+    ];
+    if (!hasVotes) {
+      stmts.push(this.rawDb.prepare("DELETE FROM event_poll_options WHERE event_id = ?1").bind(eventId));
+      stmts.push(...poll.options.map((label, index) =>
+        this.rawDb
+          .prepare("INSERT INTO event_poll_options (id, event_id, label, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5)")
+          .bind(this.deps.createId?.() ?? nanoid(), eventId, label.trim(), index, now),
+      ));
+    } else if (await this.pollOptionsChanged(eventId, poll.options)) {
+      throw new EventServiceValidationError("Poll options cannot be changed after voting starts");
+    }
+    await this.rawDb.batch(stmts);
+  }
+
+  private async pollOptionsChanged(eventId: string, nextOptions: string[]): Promise<boolean> {
+    const existing = await this.getPollOptions(eventId);
+    if (existing.length === 0) return false;
+    const existingLabels = existing.sort((left, right) => left.sortOrder - right.sortOrder).map((option) => option.label.trim());
+    const nextLabels = nextOptions.map((option) => option.trim());
+    return JSON.stringify(existingLabels) !== JSON.stringify(nextLabels);
+  }
+
+  private async pollHasVotes(eventId: string): Promise<boolean> {
+    const statement = this.rawDb.prepare("SELECT id FROM event_poll_votes WHERE event_id = ?1 LIMIT 1").bind(eventId);
+    const result = await statement.all?.();
+    const rows = Array.isArray(result) ? result : result?.results;
+    return Array.isArray(rows) && rows.length > 0;
+  }
+
+  private async getPollOptions(eventId: string): Promise<PollOptionRow[]> {
+    const statement = this.rawDb.prepare("SELECT id, event_id as eventId, label, sort_order as sortOrder FROM event_poll_options WHERE event_id = ?1").bind(eventId);
+    const result = await statement.all?.();
+    const rows = Array.isArray(result) ? result : result?.results;
+    return Array.isArray(rows) ? rows as PollOptionRow[] : [];
+  }
+
   private async storeImages(eventId: string, files: File[], existingAttachmentCount: number) {
     if (files.length === 0) {
       return [];
@@ -905,6 +1074,9 @@ export class EventService {
   private static buildEventsWhereFilters(params: {
     typeFilter?: string;
     archivedFilter?: boolean;
+    pinnedFilter?: boolean;
+    lockedFilter?: boolean;
+    search?: string;
     startAfter?: string;
     startBefore?: string;
   }): SQL<unknown>[] {
@@ -914,8 +1086,19 @@ export class EventService {
     }
     if (params.archivedFilter === true) {
       filters.push(isNotNull(events.archivedAt));
-    } else {
+    } else if (params.archivedFilter === false) {
       filters.push(isNull(events.archivedAt));
+    }
+    if (params.pinnedFilter !== undefined) {
+      filters.push(eq(events.pinned, params.pinnedFilter));
+    }
+    if (params.lockedFilter !== undefined) {
+      filters.push(eq(events.signupLocked, params.lockedFilter));
+    }
+    const search = params.search?.trim();
+    if (search) {
+      const pattern = `%${escapeLikePattern(search)}%`;
+      filters.push(or(like(events.title, pattern), like(events.description, pattern))!);
     }
     if (params.startAfter) filters.push(gte(events.startAt, params.startAfter));
     if (params.startBefore) filters.push(lte(events.startAt, params.startBefore));
@@ -927,7 +1110,7 @@ export class EventService {
   }
 
   async listEvents(params: {
-    page: number; limit: number; typeFilter?: string; archivedFilter?: boolean; startAfter?: string; startBefore?: string;
+    page: number; limit: number; typeFilter?: string; archivedFilter?: boolean; pinnedFilter?: boolean; lockedFilter?: boolean; search?: string; startAfter?: string; startBefore?: string; viewerId?: string | null; canManage?: boolean;
   }) {
     const offset = (params.page - 1) * params.limit;
     const whereClause = and(...EventService.buildEventsWhereFilters(params));
@@ -942,8 +1125,9 @@ export class EventService {
 
     const total = Number(rows[0]?._total ?? 0);
 
+    const data = await this.attachPolls(rows.map(toEventPayload), params.viewerId ?? null, params.canManage ?? false);
     return {
-      data: rows.map(toEventPayload),
+      data,
       total,
       page: params.page,
       limit: params.limit,
@@ -951,7 +1135,7 @@ export class EventService {
     };
   }
 
-  async getEventDetail(eventId: string) {
+  async getEventDetail(eventId: string, viewerId?: string | null, canManage = false) {
     const eventRow = await this.getEventById(eventId);
     if (!eventRow) return null;
 
@@ -960,10 +1144,11 @@ export class EventService {
       .from(eventParticipants)
       .where(eq(eventParticipants.eventId, eventId))) as EventParticipantRow[];
 
-    return { ...toEventPayload(eventRow), participants: participants.map(toParticipantPayload) };
+    const [eventWithPoll] = await this.attachPolls([toEventPayload(eventRow)], viewerId ?? null, canManage);
+    return { ...eventWithPoll, participants: participants.map(toParticipantPayload) };
   }
 
-  async batchDetails(ids: string[]) {
+  async batchDetails(ids: string[], viewerId?: string | null, canManage = false) {
     const eventRows = (await this.db
       .select(EventService.eventSelectFields)
       .from(events)
@@ -974,8 +1159,10 @@ export class EventService {
       .from(eventParticipants)
       .where(inArray(eventParticipants.eventId, ids))) as EventParticipantRow[];
 
-    return eventRows.map((row) => ({
-      ...toEventPayload(row),
+    const eventsWithPolls = await this.attachPolls(eventRows.map(toEventPayload), viewerId ?? null, canManage);
+
+    return eventsWithPolls.map((row) => ({
+      ...row,
       participants: allParticipants.filter((p) => p.eventId === row.id).map(toParticipantPayload),
     }));
   }
@@ -988,5 +1175,81 @@ export class EventService {
       .orderBy(asc(events.createdAt), asc(events.id))) as EventRow[];
 
     return rows.map(toTemplatePayload);
+  }
+
+  private async attachPolls<T extends { id: string; type: string; end_at: string | null }>(
+    eventPayloads: T[],
+    viewerId: string | null,
+    canManage: boolean,
+  ): Promise<Array<T & { poll?: unknown }>> {
+    const pollEvents = eventPayloads.filter((event) => event.type === "poll");
+    if (pollEvents.length === 0) return eventPayloads;
+    const pollMap = await this.loadPollsForEvents(pollEvents, viewerId, canManage);
+    return eventPayloads.map((event) => ({
+      ...event,
+      poll: pollMap.get(event.id) ?? null,
+    }));
+  }
+
+  private async loadPollsForEvents(
+    pollEvents: Array<{ id: string; end_at: string | null }>,
+    viewerId: string | null,
+    canManage: boolean,
+  ) {
+    const placeholders = pollEvents.map((_, index) => `?${index + 1}`).join(", ");
+    const statement = this.rawDb
+      .prepare(
+        `SELECT p.event_id, p.results_visibility, p.show_voter_names,
+                o.id as option_id, o.label, o.sort_order, v.user_id as voter_id
+         FROM event_polls p
+         JOIN event_poll_options o ON o.event_id = p.event_id
+         LEFT JOIN event_poll_votes v ON v.option_id = o.id
+         WHERE p.event_id IN (${placeholders})
+         ORDER BY p.event_id, o.sort_order, o.id`,
+      )
+      .bind(...pollEvents.map((event) => event.id));
+    const result = await statement.all?.();
+    const rows = (Array.isArray(result) ? result : result?.results) as PollJoinedRow[] | undefined;
+    const rowsByEvent = new Map<string, PollJoinedRow[]>();
+    for (const row of rows ?? []) {
+      rowsByEvent.set(row.event_id, [...(rowsByEvent.get(row.event_id) ?? []), row]);
+    }
+
+    const map = new Map<string, unknown>();
+    for (const event of pollEvents) {
+      const eventRows = rowsByEvent.get(event.id) ?? [];
+      if (eventRows.length === 0) {
+        map.set(event.id, null);
+        continue;
+      }
+      const visibility = eventRows[0]?.results_visibility ?? "after_vote";
+      const showVoterNames = Boolean(eventRows[0]?.show_voter_names);
+      const voterIds = new Set(eventRows.map((row) => row.voter_id).filter((id): id is string => Boolean(id)));
+      const hasVoted = viewerId ? voterIds.has(viewerId) : false;
+      const isClosed = Boolean(event.end_at && event.end_at <= this.now());
+      const resultsVisible = canManage || visibility === "always" || (visibility === "after_vote" && hasVoted) || (visibility === "after_close" && isClosed);
+      const optionsById = new Map<string, { id: string; label: string; sortOrder: number; voterIds: string[] }>();
+      for (const row of eventRows) {
+        const option = optionsById.get(row.option_id) ?? { id: row.option_id, label: row.label, sortOrder: row.sort_order, voterIds: [] };
+        if (row.voter_id) option.voterIds.push(row.voter_id);
+        optionsById.set(row.option_id, option);
+      }
+      map.set(event.id, {
+        results_visibility: visibility,
+        show_voter_names: showVoterNames,
+        has_voted: hasVoted,
+        can_vote: Boolean(viewerId) && !isClosed,
+        options: [...optionsById.values()]
+          .sort((left, right) => left.sortOrder - right.sortOrder)
+          .map((option) => ({
+            id: option.id,
+            label: option.label,
+            vote_count: resultsVisible ? option.voterIds.length : 0,
+            voter_ids: resultsVisible && (showVoterNames || canManage) ? option.voterIds : [],
+            voted_by_me: viewerId ? option.voterIds.includes(viewerId) : false,
+          })),
+      });
+    }
+    return map;
   }
 }

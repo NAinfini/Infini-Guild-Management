@@ -92,8 +92,6 @@ export function AnnouncementsPage() {
             onScheduleEnabledChange={controller.setScheduleEnabled}
             publishAt={controller.publishAt}
             onPublishAtChange={controller.setPublishAt}
-            expiresAt={controller.expiresAt}
-            onExpiresAtChange={controller.setExpiresAt}
             onFinish={controller.handleFinish}
             onDelete={controller.handleDelete}
             onCloseEditor={controller.handleCloseEditor}

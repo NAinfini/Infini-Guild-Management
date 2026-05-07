@@ -113,12 +113,15 @@ export function WarHistoryDetail({
   }, [chartThemeConfig, chartThemeName]);
 
   const resultColor = historyDetail ? resolveResultTagColor(historyDetail.result) : "gray";
+  const modalTitle = historyDetail
+    ? `${historyDetail.war_name}${historyDetail.enemy_name ? ` ${t("history.versus")} ${historyDetail.enemy_name}` : ""}`
+    : opened ? historyDetailTitle : undefined;
 
   return (
     <Modal
       opened={opened}
       onClose={onClose}
-      title={historyDetail ? `${historyDetail.war_name}${historyDetail.enemy_name ? ` ${t("history.versus")} ${historyDetail.enemy_name}` : ""}` : historyDetailTitle}
+      title={modalTitle}
       size="min(1400px, calc(100vw - 2rem))"
     >
       <Stack gap={16}>

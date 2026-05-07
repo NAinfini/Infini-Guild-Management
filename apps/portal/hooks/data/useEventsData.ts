@@ -4,16 +4,27 @@ import { queryKeys } from "../../api/query-keys";
 import { fetchUsersList } from "../../services/UserService";
 import { useEffect, useRef, useState } from "react";
 import type { Event } from "@guild/shared";
+import type { EventStatusFilter } from "../../utils/event-navigation";
 
 const PAGE_LIMIT = 50;
 
 type UseEventsDataOptions = {
   eventType?: string;
-  archivedOnly: boolean;
+  status: EventStatusFilter;
+  searchQuery: string;
+  pinnedOnly: boolean;
+  lockedOnly: boolean;
 };
 
+function toArchivedParam(status: EventStatusFilter): boolean | undefined {
+  if (status === "active") return false;
+  if (status === "archived") return true;
+  return undefined;
+}
+
 export function useEventsData(options: UseEventsDataOptions) {
-  const { eventType, archivedOnly } = options;
+  const { eventType, status, searchQuery, pinnedOnly, lockedOnly } = options;
+  const normalizedSearch = searchQuery.trim();
 
   const [eventsPage, setEventsPage] = useState(1);
   const accumulatedEventsRef = useRef<Event[]>([]);
@@ -27,16 +38,26 @@ export function useEventsData(options: UseEventsDataOptions) {
     setEventsTotal(0);
     setEventsPage(1);
    
-  }, [eventType, archivedOnly]);
+  }, [eventType, status, normalizedSearch, pinnedOnly, lockedOnly]);
 
   const eventsQuery = useQuery({
-    queryKey: queryKeys.events.list(eventType ?? "all", archivedOnly, eventsPage),
+    queryKey: queryKeys.events.list({
+      eventType: eventType ?? "all",
+      status,
+      search: normalizedSearch,
+      pinnedOnly,
+      lockedOnly,
+      page: eventsPage,
+    }),
     queryFn: () =>
       fetchEventsList({
         page: eventsPage,
         limit: PAGE_LIMIT,
         type: eventType,
-        archived: archivedOnly,
+        archived: toArchivedParam(status),
+        search: normalizedSearch || undefined,
+        pinned: pinnedOnly ? true : undefined,
+        locked: lockedOnly ? true : undefined,
       }),
     staleTime: 10 * 60_000,
     placeholderData: keepPreviousData,

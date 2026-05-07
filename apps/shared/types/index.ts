@@ -1,6 +1,6 @@
 ﻿import type { z } from "zod";
 import type { userSchema, memberProfileSchema } from "../schemas/user";
-import type { eventSchema, eventParticipantSchema, recurringTemplateSchema } from "../schemas/event";
+import type { eventSchema, eventParticipantSchema, eventPollSchema, recurringTemplateSchema } from "../schemas/event";
 import type { announcementSchema } from "../schemas/announcement";
 import type {
   guildWarActiveResponseSchema,
@@ -22,6 +22,7 @@ export type User = z.infer<typeof userSchema>;
 export type MemberProfile = z.infer<typeof memberProfileSchema>;
 export type Event = z.infer<typeof eventSchema>;
 export type EventParticipant = z.infer<typeof eventParticipantSchema>;
+export type EventPoll = z.infer<typeof eventPollSchema>;
 export type RecurringTemplate = z.infer<typeof recurringTemplateSchema>;
 export type Announcement = z.infer<typeof announcementSchema>;
 export type WarHistory = z.infer<typeof warHistorySchema>;

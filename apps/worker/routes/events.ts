@@ -2,6 +2,7 @@ import {
   createEventSchema,
   createTemplateSchema,
   eventParticipantsBatchSchema,
+  pollVoteSchema,
   updateEventSchema,
   updateTemplateSchema,
 } from "@guild/shared";
@@ -11,7 +12,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { runEventInstanceGenerationCron } from "../crons/event-instance-gen";
 import type { Bindings } from "../index";
-import { requirePermission } from "../middleware/rbac";
+import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { users } from "../db/schema";
 import {
@@ -79,9 +80,18 @@ async function materializeRecurringSeries(c: Context, _templateId: string): Prom
 
 eventsRoutes.get("/", async (c) => {
   const q = c.req.query();
+  const viewer = await getRequestUser(c);
   return c.json(await getEventService(c).listEvents({
     page: parsePage(q.page, 1), limit: Math.min(100, parsePage(q.limit, 20)),
-    typeFilter: q.type, archivedFilter: parseBoolean(q.archived), startAfter: q.start_after, startBefore: q.start_before,
+    typeFilter: q.type,
+    archivedFilter: parseBoolean(q.archived),
+    pinnedFilter: parseBoolean(q.pinned),
+    lockedFilter: parseBoolean(q.locked),
+    search: (q.search ?? "").trim() || undefined,
+    startAfter: q.start_after,
+    startBefore: q.start_before,
+    viewerId: viewer?.id ?? null,
+    canManage: viewer?.permissions.has("events.edit") ?? false,
   }));
 });
 
@@ -93,7 +103,8 @@ eventsRoutes.post("/batch-details", async (c) => {
   const ids = ((body as { ids: string[] }).ids).filter((id) => typeof id === "string" && id.length > 0);
   if (ids.length === 0) return c.json({ data: [] });
   if (ids.length > 50) return buildError(c, "VALIDATION_ERROR", "Maximum 50 ids per batch request");
-  return c.json({ data: await getEventService(c).batchDetails(ids) });
+  const viewer = await getRequestUser(c);
+  return c.json({ data: await getEventService(c).batchDetails(ids, viewer?.id ?? null, viewer?.permissions.has("events.edit") ?? false) });
 });
 
 eventsRoutes.get("/image", async (c) => {
@@ -114,7 +125,8 @@ eventsRoutes.get("/image", async (c) => {
 });
 
 eventsRoutes.get("/:id", async (c) => {
-  const detail = await getEventService(c).getEventDetail(c.req.param("id"));
+  const viewer = await getRequestUser(c);
+  const detail = await getEventService(c).getEventDetail(c.req.param("id"), viewer?.id ?? null, viewer?.permissions.has("events.edit") ?? false);
   return detail ? c.json(detail) : buildError(c, "NOT_FOUND", "Event not found");
 });
 
@@ -195,8 +207,19 @@ eventsRoutes.post("/:id/join", async (c) => {
 eventsRoutes.delete("/:id/leave", async (c) => {
   const sessionUser = await requireSessionUser(c);
   if (sessionUser instanceof Response) return sessionUser;
-  await getEventService(c).leaveEvent(sessionUser.id, c.req.param("id"));
-  return c.json({ ok: true });
+  const result = await getEventService(c).leaveEvent(sessionUser.id, c.req.param("id"));
+  return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message);
+});
+
+eventsRoutes.post("/:id/poll/vote", async (c) => {
+  const sessionUser = await requireSessionUser(c);
+  if (sessionUser instanceof Response) return sessionUser;
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
+  const parsed = pollVoteSchema.safeParse(body);
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid poll vote payload", parsed.error.flatten());
+  const result = await getEventService(c).votePoll(sessionUser.id, c.req.param("id"), parsed.data.option_ids);
+  return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message);
 });
 
 eventsRoutes.post("/:id/participants", async (c) => {

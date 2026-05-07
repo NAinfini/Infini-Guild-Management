@@ -1,0 +1,325 @@
+.event-detail-modal__content {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.event-detail-modal__header {
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+}
+
+.event-detail-modal__title {
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.event-detail-modal__body {
+  padding: 16px 20px 20px;
+}
+
+.event-detail-modal__grid {
+  min-width: 0;
+}
+
+.event-detail-modal__meta-card,
+.event-detail-modal__section {
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 9%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent);
+}
+
+.event-detail-modal__meta-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 74px;
+  padding: 12px;
+}
+
+.event-detail-modal__meta-card svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.event-detail-modal__meta-card--type svg {
+  color: var(--mantine-color-blue-6);
+}
+
+.event-detail-modal__meta-card--time svg {
+  color: var(--mantine-color-violet-6);
+}
+
+.event-detail-modal__section {
+  padding: 14px;
+}
+
+.event-detail-modal__section--poll {
+  border-color: color-mix(in srgb, var(--mantine-color-teal-6) 22%, transparent);
+  background: color-mix(in srgb, var(--mantine-color-teal-0) 58%, var(--color-surface, #ffffff));
+}
+
+.event-detail-modal__section--poll > .mantine-Group-root:first-child svg {
+  color: var(--mantine-color-teal-7);
+}
+
+.event-detail-modal__poll-header {
+  min-width: 0;
+}
+
+.event-detail-modal__poll-total {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--mantine-color-teal-7) 18%, transparent);
+  border-radius: 999px;
+  color: var(--mantine-color-teal-8);
+  background: color-mix(in srgb, var(--mantine-color-teal-0) 72%, var(--color-surface, #ffffff));
+  font-variant-numeric: tabular-nums;
+}
+
+.event-detail-modal__section--members {
+  border-color: color-mix(in srgb, var(--mantine-color-green-6) 24%, transparent);
+  background: color-mix(in srgb, var(--mantine-color-green-0) 56%, var(--color-surface, #ffffff));
+}
+
+.event-detail-modal__section--members > .mantine-Group-root:first-child svg {
+  color: var(--mantine-color-green-7);
+}
+
+.event-detail-modal__poll-result-board {
+  display: grid;
+  gap: 9px;
+}
+
+.event-detail-modal__poll-result-row {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.event-detail-modal__poll-result-row:hover {
+  border-color: color-mix(in srgb, var(--mantine-color-teal-6) 32%, transparent);
+  background: color-mix(in srgb, var(--mantine-color-teal-0) 28%, var(--color-surface, #ffffff));
+}
+
+.event-detail-modal__poll-result-row:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mantine-color-teal-6) 34%, transparent);
+}
+
+.event-detail-modal__poll-result-row--selected {
+  border-color: color-mix(in srgb, var(--mantine-color-teal-6) 52%, transparent);
+  background: color-mix(in srgb, var(--mantine-color-teal-0) 44%, var(--color-surface, #ffffff));
+  box-shadow: inset 3px 0 0 var(--mantine-color-teal-6);
+}
+
+.event-detail-modal__poll-result-row--disabled {
+  cursor: default;
+}
+
+.event-detail-modal__poll-result-row--disabled:hover {
+  border-color: color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
+}
+
+.event-detail-modal__poll-result-main {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.event-detail-modal__poll-result-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.event-detail-modal__poll-choice {
+  min-width: 0;
+  flex: 1;
+}
+
+.event-detail-modal__poll-choice .mantine-Text-root {
+  min-width: 0;
+}
+
+.event-detail-modal__poll-choice-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 18%, transparent);
+  border-radius: 999px;
+  color: #ffffff;
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 74%, transparent);
+}
+
+.event-detail-modal__poll-result-row--selected .event-detail-modal__poll-choice-indicator {
+  border-color: var(--mantine-color-teal-6);
+  background: var(--mantine-color-teal-6);
+}
+
+.event-detail-modal__poll-result-stats {
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--color-text, #111827) 62%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-detail-modal__poll-option-votes {
+  white-space: nowrap;
+}
+
+.event-detail-modal__poll-progress {
+  width: 100%;
+  --progress-radius: 999px;
+}
+
+.event-detail-modal__poll-progress.mantine-Progress-root {
+  background: color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  overflow: hidden;
+}
+
+.event-detail-modal__poll-percent {
+  min-width: 34px;
+  text-align: right;
+  color: var(--mantine-color-teal-8);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-detail-modal__poll-voters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 32px;
+  padding-left: 28px;
+}
+
+.event-detail-modal__poll-voter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 176px;
+  min-height: 32px;
+  padding: 2px 9px 2px 4px;
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 7%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent);
+}
+
+.event-detail-modal__poll-voter-chip .mantine-Text-root {
+  min-width: 0;
+}
+
+.event-detail-modal__poll-voter-overflow,
+.event-detail-modal__poll-voter-missing,
+.event-detail-modal__poll-empty-voters {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text, #111827) 7%, transparent);
+}
+
+.event-detail-modal__poll-empty-voters {
+  width: fit-content;
+  margin-left: 28px;
+  min-height: 26px;
+  padding: 0 9px;
+}
+
+.event-detail-modal__poll-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.event-detail-modal__poll-actions .mantine-Button-root {
+  min-width: 112px;
+  min-height: 38px;
+}
+
+.event-detail-modal__member-list {
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.event-detail-modal__member-row {
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 7%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 78%, transparent);
+}
+
+.event-detail-modal__member-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.dark .event-detail-modal__meta-card,
+.dark .event-detail-modal__section,
+.dark .event-detail-modal__poll-result-row,
+.dark .event-detail-modal__member-row,
+.dark .event-detail-modal__poll-voter-chip,
+.dark .event-detail-modal__poll-total {
+  background: color-mix(in srgb, var(--color-surface, #1e293b) 88%, transparent);
+}
+
+.dark .event-detail-modal__poll-result-row--selected {
+  background: color-mix(in srgb, var(--mantine-color-teal-9) 22%, var(--color-surface, #1e293b));
+}
+
+.dark .event-detail-modal__poll-choice-indicator {
+  background: color-mix(in srgb, var(--color-surface, #1e293b) 84%, transparent);
+}
+
+.dark .event-detail-modal__poll-result-row--selected .event-detail-modal__poll-choice-indicator {
+  background: var(--mantine-color-teal-6);
+}
+
+@media (max-width: 520px) {
+  .event-detail-modal__header {
+    padding: 16px 16px 10px;
+  }
+
+  .event-detail-modal__body {
+    padding: 14px 16px 16px;
+  }
+
+  .event-detail-modal__member-row {
+    align-items: flex-start;
+  }
+
+  .event-detail-modal__poll-result-top {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .event-detail-modal__poll-result-stats {
+    align-self: flex-end;
+  }
+
+  .event-detail-modal__poll-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .event-detail-modal__poll-actions .mantine-Button-root {
+    width: 100%;
+  }
+}

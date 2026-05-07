@@ -17,6 +17,9 @@ type EditorSnapshot = {
   pinned: boolean;
   signupLocked: boolean;
   autoArchive: boolean;
+  pollOptions: string[];
+  pollResultsVisibility: "always" | "after_vote" | "after_close";
+  pollShowVoterNames: boolean;
   attachmentSnapshot: string;
 };
 
@@ -63,6 +66,9 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   const [editorPinned, setEditorPinned] = useState(false);
   const [editorSignupLocked, setEditorSignupLocked] = useState(false);
   const [editorAutoArchive, setEditorAutoArchive] = useState(false);
+  const [editorPollOptions, setEditorPollOptions] = useState<string[]>(["", ""]);
+  const [editorPollResultsVisibility, setEditorPollResultsVisibility] = useState<"always" | "after_vote" | "after_close">("after_vote");
+  const [editorPollShowVoterNames, setEditorPollShowVoterNames] = useState(false);
   const [editorBaseline, setEditorBaseline] = useState<string | null>(null);
 
   const editorStartIso = toIso(editorStartAt);
@@ -80,6 +86,9 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     pinned: editorPinned,
     signupLocked: editorSignupLocked,
     autoArchive: editorAutoArchive,
+    pollOptions: editorPollOptions,
+    pollResultsVisibility: editorPollResultsVisibility,
+    pollShowVoterNames: editorPollShowVoterNames,
     attachmentSnapshot,
   });
   const isEditorDirty = editorOpen && editorBaseline !== null && editorTouched && editorCurrentSnapshot !== editorBaseline;
@@ -124,6 +133,21 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorAutoArchive(value);
   }, []);
 
+  const handleEditorPollOptionsChange = useCallback((value: string[]) => {
+    setEditorTouched(true);
+    setEditorPollOptions(value);
+  }, []);
+
+  const handleEditorPollResultsVisibilityChange = useCallback((value: "always" | "after_vote" | "after_close") => {
+    setEditorTouched(true);
+    setEditorPollResultsVisibility(value);
+  }, []);
+
+  const handleEditorPollShowVoterNamesChange = useCallback((value: boolean) => {
+    setEditorTouched(true);
+    setEditorPollShowVoterNames(value);
+  }, []);
+
   const openCreateEditor = useCallback((initialDateKey?: string) => {
     const now = new Date();
     const fallbackStart = new Date(now.getTime() + 60 * 60_000);
@@ -148,6 +172,9 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPinned(false);
     setEditorSignupLocked(false);
     setEditorAutoArchive(false);
+    setEditorPollOptions(["", ""]);
+    setEditorPollResultsVisibility("after_vote");
+    setEditorPollShowVoterNames(false);
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "create",
@@ -161,6 +188,9 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
         pinned: false,
         signupLocked: false,
         autoArchive: false,
+        pollOptions: ["", ""],
+        pollResultsVisibility: "after_vote",
+        pollShowVoterNames: false,
         attachmentSnapshot: "[]",
       }),
     );
@@ -184,6 +214,9 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPinned(event.pinned);
     setEditorSignupLocked(event.signup_locked);
     setEditorAutoArchive(event.auto_archive);
+    setEditorPollOptions(event.poll?.options.map((option) => option.label) ?? ["", ""]);
+    setEditorPollResultsVisibility(event.poll?.results_visibility ?? "after_vote");
+    setEditorPollShowVoterNames(event.poll?.show_voter_names ?? false);
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "edit",
@@ -197,6 +230,9 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
         pinned: event.pinned,
         signupLocked: event.signup_locked,
         autoArchive: event.auto_archive,
+        pollOptions: event.poll?.options.map((option) => option.label) ?? ["", ""],
+        pollResultsVisibility: event.poll?.results_visibility ?? "after_vote",
+        pollShowVoterNames: event.poll?.show_voter_names ?? false,
         attachmentSnapshot: initialAttachmentSnapshot ?? "[]",
       }),
     );
@@ -246,6 +282,9 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     editorPinned,
     editorSignupLocked,
     editorAutoArchive,
+    editorPollOptions,
+    editorPollResultsVisibility,
+    editorPollShowVoterNames,
     editorStartIso,
     editorEndIso,
     isEditorDirty,
@@ -259,6 +298,9 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPinned,
     setEditorSignupLocked,
     setEditorAutoArchive: handleEditorAutoArchiveChange,
+    setEditorPollOptions: handleEditorPollOptionsChange,
+    setEditorPollResultsVisibility: handleEditorPollResultsVisibilityChange,
+    setEditorPollShowVoterNames: handleEditorPollShowVoterNamesChange,
     openCreateEditor,
     openEditEditor,
     closeEditor,

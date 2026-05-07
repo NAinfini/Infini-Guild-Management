@@ -14,6 +14,7 @@ import {
   EventValidationError,
   type EventSaveInput,
   updateEvent,
+  votePoll,
 } from "../services/EventService";
 import { queryKeys } from "../api/query-keys";
 import { useEventsParticipantMutations } from "./useEventsParticipantMutations";
@@ -111,7 +112,11 @@ export function useEventsMutations({
           ? t("message.startTimeRequired")
           : error.reason === "missing_title"
             ? t("message.titleRequired")
-            : t("message.missingEventId");
+            : error.reason === "missing_poll_end"
+              ? t("poll.message.endRequired")
+              : error.reason === "invalid_poll"
+                ? t("poll.message.optionsInvalid")
+                : t("message.missingEventId");
         showError(error, messageText);
         return;
       }
@@ -174,6 +179,19 @@ export function useEventsMutations({
     },
     onError: (error) => {
       showError(error, t("message.deleteFailed"));
+    },
+  });
+
+  const votePollMutation = useMutation({
+    mutationFn: ({ eventId, optionIds }: { eventId: string; optionIds: string[] }) => votePoll(eventId, optionIds),
+    onSuccess: async (_, { eventId }) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events.previewDetails() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+      notifySuccess(t("poll.message.voted"));
+    },
+    onError: (error) => {
+      showError(error, t("poll.message.voteFailed"));
     },
   });
 
@@ -264,6 +282,7 @@ export function useEventsMutations({
     savePending: saveEventMutation.isPending,
     joinPending: participantMutations.joinPending,
     leavePending: participantMutations.leavePending,
+    votePending: votePollMutation.isPending,
     resetAttachmentItems,
     handleJoin,
     handleLeave,
@@ -276,6 +295,7 @@ export function useEventsMutations({
     archiveEventById,
     unarchiveEventById,
     deleteEventWithConfirm,
+    votePoll: (eventId: string, optionIds: string[]) => votePollMutation.mutate({ eventId, optionIds }),
     addParticipant: participantMutations.addParticipant,
     removeParticipant: participantMutations.removeParticipant,
   };

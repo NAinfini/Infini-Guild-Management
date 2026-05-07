@@ -1,8 +1,56 @@
 .infini-tiptap-toolbar {
   display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 4px;
+  gap: 6px;
+  flex-wrap: wrap;
+  overflow: visible;
+  padding-block: 4px;
+}
+
+.infini-tiptap-toolbar__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 6px;
+  border-right: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+}
+
+.infini-tiptap-toolbar__group:last-child {
+  border-right: 0;
+}
+
+.infini-tiptap-color-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 24px);
+  gap: 6px;
+  padding: 8px;
+}
+
+.infini-tiptap-color-swatch {
+  width: 24px;
+  height: 24px;
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 18%, transparent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.infini-tiptap-color-custom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--color-text, #111827);
+}
+
+.infini-tiptap-color-custom input {
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 18%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
 }
 
 .infini-tiptap-surface {
@@ -22,6 +70,58 @@
   margin: 0 0 8px;
 }
 
+.infini-tiptap-surface h1,
+.infini-tiptap-surface h2,
+.infini-tiptap-surface h3 {
+  margin: 12px 0 8px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-text, #111827);
+}
+
+.infini-tiptap-surface h1 {
+  font-size: 1.5rem;
+}
+
+.infini-tiptap-surface h2 {
+  font-size: 1.25rem;
+}
+
+.infini-tiptap-surface h3 {
+  font-size: 1.1rem;
+}
+
+.infini-tiptap-surface ul,
+.infini-tiptap-surface ol {
+  margin: 8px 0;
+  padding-left: 1.5rem;
+}
+
+.infini-tiptap-surface ul {
+  list-style: disc;
+}
+
+.infini-tiptap-surface ol {
+  list-style: decimal;
+}
+
+.infini-tiptap-surface li > p {
+  margin: 0 0 4px;
+}
+
+.infini-tiptap-surface a {
+  color: var(--color-primary, #3b82f6);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+.infini-tiptap-surface a:hover {
+  color: color-mix(in srgb, var(--color-primary, #3b82f6) 72%, var(--color-text, #111827));
+  text-decoration-thickness: 2px;
+}
+
 .infini-tiptap-surface pre {
   background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, var(--color-text, #111827) 7%);
   border-radius: 8px;
@@ -34,6 +134,44 @@
   padding-left: 10px;
   border-left: 3px solid color-mix(in srgb, var(--color-text, #111827) 24%, transparent);
   color: color-mix(in srgb, var(--color-text, #111827) 62%, transparent);
+}
+
+.infini-tiptap-surface hr {
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-text, #111827) 18%, transparent);
+  margin: 14px 0;
+}
+
+.infini-tiptap-surface ul[data-type="taskList"] {
+  list-style: none;
+  padding: 0;
+}
+
+.infini-tiptap-surface ul[data-type="taskList"] > li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: center;
+  margin: 4px 0;
+}
+
+.infini-tiptap-surface ul[data-type="taskList"] > li > label {
+  display: inline-flex;
+  align-items: center;
+  padding-top: 0;
+  line-height: 1;
+}
+
+.infini-tiptap-surface ul[data-type="taskList"] > li > label > input {
+  margin: 0;
+}
+
+.infini-tiptap-surface ul[data-type="taskList"] > li > div {
+  min-width: 0;
+}
+
+.infini-tiptap-surface ul[data-type="taskList"] > li > div > p {
+  margin: 0 0 4px;
 }
 
 .infini-tiptap-surface table {
@@ -56,6 +194,52 @@
 
 .infini-tiptap-slash-menu {
   border-style: dashed;
+}
+
+.infini-tiptap-link-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal, 200);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.infini-tiptap-link-dialog {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
+  border-radius: 8px;
+  background: var(--color-surface, #ffffff);
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.24);
+}
+
+.infini-tiptap-link-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.infini-tiptap-link-dialog__input {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 16%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 96%, var(--color-text, #111827) 2%);
+  color: var(--color-text, #111827);
+  font: inherit;
+}
+
+.infini-tiptap-link-dialog__input:focus {
+  border-color: var(--color-primary, #3b82f6);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent);
 }
 
 .infini-tiptap-lightbox-viewport {

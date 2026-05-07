@@ -1,11 +1,12 @@
 import { type WikiArticle } from "@guild/shared";
-import { Button, Drawer, Group, Skeleton, Stack, Text, TextInput, VisuallyHidden } from "@mantine/core";
+import { Button, Drawer, Group, SegmentedControl, Skeleton, Stack, Text, TextInput, VisuallyHidden } from "@mantine/core";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { TipTapEditor, buildTipTapEditorLabels } from "@portal/components/shared/TipTapEditor";
 import { PortalCard } from "../shared/PortalCard";
+import { FilterToolbar } from "../shared/FilterToolbar";
 import { modals } from "@mantine/modals";
-import { ArchiveIcon, PencilIcon, PinIcon } from "@portal/components/icons";
+import { PencilIcon, PinIcon } from "@portal/components/icons";
 import { useDebouncedValue, useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
@@ -39,6 +40,14 @@ function formatDateTime(iso: string): string {
   return format(date, "yyyy-MM-dd HH:mm");
 }
 
+type WikiArchivedMode = "active" | "archived" | "all";
+
+function toArchivedParam(mode: WikiArchivedMode): boolean | undefined {
+  if (mode === "active") return false;
+  if (mode === "archived") return true;
+  return undefined;
+}
+
 export function WikiPage() {
   const { t } = useTranslation("wiki");
   const { t: te } = useTranslation("editor");
@@ -57,7 +66,7 @@ export function WikiPage() {
   const [debouncedSearchRaw] = useDebouncedValue(search, 300);
   const debouncedSearch = debouncedSearchRaw.trim();
   const [pinnedOnly, setPinnedOnly] = useState(false);
-  const [archivedOnly, setArchivedOnly] = useState(false);
+  const [archivedMode, setArchivedMode] = useState<WikiArchivedMode>("active");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(routeSlug);
@@ -82,14 +91,15 @@ export function WikiPage() {
   const singleSelectedCategoryId = selectedCategoryIds.length === 1 ? selectedCategoryIds[0] : undefined;
 
   const articlesQuery = useQuery({
-    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, archivedOnly ? "archived" : "active", articlesPage),
+    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, archivedMode, pinnedOnly, articlesPage),
     queryFn: () =>
       fetchWikiArticles({
         page: articlesPage,
         limit: 50,
         category_id: singleSelectedCategoryId,
         search: debouncedSearch || undefined,
-        archived: archivedOnly,
+        archived: toArchivedParam(archivedMode),
+        pinned: pinnedOnly ? true : undefined,
       }),
     staleTime: 10 * 60_000,
     placeholderData: keepPreviousData,
@@ -112,7 +122,7 @@ export function WikiPage() {
     setArticlesTotal(0);
     setArticlesPage(1);
    
-  }, [selectedCategoryFilterKey, debouncedSearch, archivedOnly]);
+  }, [selectedCategoryFilterKey, debouncedSearch, archivedMode, pinnedOnly]);
 
   // Accumulate articles across pages
   useEffect(() => {
@@ -137,12 +147,9 @@ export function WikiPage() {
       if (selectedCategoryIds.length > 0 && !selectedSet.has(item.category_id)) {
         return false;
       }
-      if (pinnedOnly && !item.pinned) {
-        return false;
-      }
       return true;
     });
-  }, [accumulatedArticles, pinnedOnly, selectedCategoryIds]);
+  }, [accumulatedArticles, selectedCategoryIds]);
   const selectedArticle = detailQuery.data ?? null;
   const articleEditor = useWikiArticleEditor({
     canEdit,
@@ -450,15 +457,27 @@ export function WikiPage() {
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")}>
       <PageLayout.Section>
-        <PortalCard interactive={false}>
-          <div style={{ padding: "1.2rem" }}>
-            <Group gap={8} wrap="wrap">
+        <FilterToolbar
+          active={Boolean(search.trim()) || pinnedOnly || archivedMode !== "active"}
+          primary={
               <TextInput
-                style={{ width: 300 }}
                 placeholder={t("filter.search")}
                 aria-label={t("filter.searchAria")}
                 value={search}
                 onChange={(event) => setSearch(event.currentTarget.value)}
+              />
+          }
+          filters={
+            <>
+              <SegmentedControl
+                value={archivedMode}
+                onChange={(value) => setArchivedMode(value as WikiArchivedMode)}
+                data={[
+                  { value: "active", label: t("filter.status.active") },
+                  { value: "archived", label: t("filter.status.archived") },
+                  { value: "all", label: t("filter.status.all") },
+                ]}
+                aria-label={t("filter.status")}
               />
               <DepthToggle
                   pressed={pinnedOnly}
@@ -471,20 +490,9 @@ export function WikiPage() {
                 >
                   <PinIcon size={16} />
                 </DepthToggle>
-              <DepthToggle
-                  pressed={archivedOnly}
-                  onToggle={() => setArchivedOnly((value) => !value)}
-                  type="secondary"
-                  size="sm"
-                  iconOnly
-                  aria-label={archivedOnly ? t("filter.showActive") : t("filter.showArchived")}
-                  tooltip={{ label: archivedOnly ? t("filter.showActive") : t("filter.showArchived"), withArrow: true }}
-                >
-                  <ArchiveIcon size={16} />
-                </DepthToggle>
-            </Group>
-          </div>
-        </PortalCard>
+            </>
+          }
+        />
       </PageLayout.Section>
 
       <div className={`wiki-page-grid ${isMobile ? "wiki-page-grid--mobile" : ""}`}>

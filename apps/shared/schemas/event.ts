@@ -13,6 +13,33 @@ const recurrenceRuleSchema = z.object({
   endDate: z.string().datetime().optional(),
 });
 const eventAttachmentsSchema = z.array(z.string().min(1)).max(L.eventAttachments.max);
+export const pollResultsVisibilitySchema = z.enum(["always", "after_vote", "after_close"]);
+
+export const eventPollOptionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  vote_count: z.number().int().nonnegative(),
+  voter_ids: z.array(z.string()),
+  voted_by_me: z.boolean(),
+});
+
+export const eventPollSchema = z.object({
+  results_visibility: pollResultsVisibilitySchema,
+  show_voter_names: z.boolean(),
+  has_voted: z.boolean(),
+  can_vote: z.boolean(),
+  options: z.array(eventPollOptionSchema),
+});
+
+const pollSettingsSchema = z.object({
+  options: z.array(z.string().trim().min(1)).min(2).max(10),
+  results_visibility: pollResultsVisibilitySchema.default("after_vote"),
+  show_voter_names: z.boolean().default(false),
+});
+
+export const pollVoteSchema = z.object({
+  option_ids: z.array(z.string().min(1)).min(1).max(10),
+});
 
 export const eventSchema = z.object({
   id: z.string(),
@@ -35,11 +62,12 @@ export const eventSchema = z.object({
   series_id: z.string().nullable(),
   is_series_parent: z.boolean(),
   instance_date: z.string().nullable(),
+  poll: eventPollSchema.nullable().optional(),
   created_at: z.string(),
   updated_at: z.string(),
 });
 
-export const createEventSchema = z.object({
+const eventMutationSchema = z.object({
   type: z.enum(EVENT_TYPES),
   title: z.string().min(L.eventTitle.min).max(L.eventTitle.max),
   description: z.string().max(L.eventDescription.max).optional(),
@@ -49,13 +77,50 @@ export const createEventSchema = z.object({
   attachments: eventAttachmentsSchema.optional(),
   recurrence_rule: recurrenceRuleSchema.optional(),
   auto_archive: z.boolean().optional(),
+  poll: pollSettingsSchema.optional(),
 });
 
-export const updateEventSchema = createEventSchema.partial().extend({
+export const createEventSchema = eventMutationSchema.superRefine((value, ctx) => {
+  if (value.type === "poll") {
+    if (!value.end_at) {
+      ctx.addIssue({ code: "custom", path: ["end_at"], message: "Poll events require end_at" });
+    }
+    if (!value.poll) {
+      ctx.addIssue({ code: "custom", path: ["poll"], message: "Poll events require poll settings" });
+    }
+    if (value.capacity !== undefined) {
+      ctx.addIssue({ code: "custom", path: ["capacity"], message: "Poll events do not use capacity" });
+    }
+    if (value.recurrence_rule !== undefined) {
+      ctx.addIssue({ code: "custom", path: ["recurrence_rule"], message: "Poll events cannot recur" });
+    }
+  } else if (value.poll !== undefined) {
+    ctx.addIssue({ code: "custom", path: ["poll"], message: "Only poll events can include poll settings" });
+  }
+});
+
+export const updateEventSchema = eventMutationSchema.partial().extend({
   pinned: z.boolean().optional(),
   signup_locked: z.boolean().optional(),
   archived_at: z.string().datetime().nullable().optional(),
   recurrence_scope: z.enum(["this", "future", "all"]).optional(),
+}).superRefine((value, ctx) => {
+  if (value.type === "poll") {
+    if (value.end_at === undefined) {
+      ctx.addIssue({ code: "custom", path: ["end_at"], message: "Poll events require end_at" });
+    }
+    if (!value.poll) {
+      ctx.addIssue({ code: "custom", path: ["poll"], message: "Poll events require poll settings" });
+    }
+    if (value.capacity !== undefined) {
+      ctx.addIssue({ code: "custom", path: ["capacity"], message: "Poll events do not use capacity" });
+    }
+    if (value.recurrence_rule !== undefined) {
+      ctx.addIssue({ code: "custom", path: ["recurrence_rule"], message: "Poll events cannot recur" });
+    }
+  } else if (value.type !== undefined && value.poll !== undefined) {
+    ctx.addIssue({ code: "custom", path: ["poll"], message: "Only poll events can include poll settings" });
+  }
 });
 
 export const eventParticipantSchema = z.object({

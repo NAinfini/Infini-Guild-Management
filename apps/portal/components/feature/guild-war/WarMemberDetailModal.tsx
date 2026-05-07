@@ -30,7 +30,7 @@ export function WarMemberDetailModal({
   return (
     <Modal
       opened={open}
-      title={activeDetailUserId ? t("memberDetail.title", { userId: activeDetailUserId }) : t("memberDetail.titleFallback")}
+      title={activeDetailUserId ? t("memberDetail.title", { userId: activeDetailUserId }) : undefined}
       onClose={onClose}
       withCloseButton
     >

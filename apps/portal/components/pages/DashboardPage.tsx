@@ -97,6 +97,20 @@ function buildUpcomingEventRow(
   };
 }
 
+export function orderDashboardUpcomingRows<T extends { item: Pick<Event, "id" | "start_at" | "pinned"> }>(rows: T[]): T[] {
+  return [...rows].sort((left, right) => {
+    const leftTime = new Date(left.item.start_at).getTime();
+    const rightTime = new Date(right.item.start_at).getTime();
+    if (leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+    if (left.item.pinned !== right.item.pinned) {
+      return left.item.pinned ? -1 : 1;
+    }
+    return left.item.id.localeCompare(right.item.id);
+  });
+}
+
 export function DashboardPage() {
   const { t } = useTranslation("dashboard");
   const navigate = useNavigate();
@@ -245,24 +259,8 @@ export function DashboardPage() {
     return map;
   }, [upcomingEventDetailsQuery.data, userRowById]);
 
-  const featuredEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
-    return upcomingEvents
-      .filter((item) => item.pinned)
-      .map((item) =>
-        buildUpcomingEventRow(
-          item,
-          upcomingEvents,
-          now,
-          upcomingEventDetailById,
-          participantsByEventId,
-          user?.id,
-        ),
-      );
-  }, [now, participantsByEventId, upcomingEventDetailById, upcomingEvents, user?.id]);
-
-  const upcomingEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
-    return upcomingEvents
-      .filter((item) => !item.pinned)
+  const orderedUpcomingEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
+    return orderDashboardUpcomingRows(upcomingEvents
       .map((item) =>
         buildUpcomingEventRow(
           item,
@@ -273,8 +271,18 @@ export function DashboardPage() {
           user?.id,
         ),
       )
-      .slice(0, 3);
+    ).slice(0, 5);
   }, [now, participantsByEventId, upcomingEventDetailById, upcomingEvents, user?.id]);
+
+  const featuredEventRows = useMemo<DashboardUpcomingEventRow[]>(
+    () => orderedUpcomingEventRows.filter((row) => row.item.pinned),
+    [orderedUpcomingEventRows],
+  );
+
+  const upcomingEventRows = useMemo<DashboardUpcomingEventRow[]>(
+    () => orderedUpcomingEventRows.filter((row) => !row.item.pinned),
+    [orderedUpcomingEventRows],
+  );
 
   const openEventDetail = (event: Pick<Event, "id" | "title">) => {
     void navigate({

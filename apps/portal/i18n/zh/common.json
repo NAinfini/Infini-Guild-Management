@@ -60,6 +60,7 @@
   "eventType.weekly_mission": "周常任务",
   "eventType.guild_war": "公会战",
   "eventType.social": "社交",
+  "eventType.poll": "投票",
   "eventType.other": "其他",
   "cmdk.searchButton": "搜索 (Ctrl+K)",
   "cmdk.searchTitle": "搜索",

@@ -457,7 +457,7 @@ router.subscribe("onResolved", () => nprogress.complete());
 export function AppRouter() {
   return (
     <QueryClientProvider client={queryClient}>
-      <NavigationProgress />
+      <NavigationProgress aria-hidden="true" />
       <RouterProvider router={router} />
     </QueryClientProvider>
   );

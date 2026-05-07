@@ -1,4 +1,4 @@
-import { type Event, type EventParticipant, type RecurringTemplate, createEventSchema, createTemplateSchema, eventParticipantsBatchSchema, updateEventSchema, updateTemplateSchema } from "@guild/shared";
+import { type Event, type EventParticipant, type RecurringTemplate, createEventSchema, createTemplateSchema, eventParticipantsBatchSchema, pollVoteSchema, updateEventSchema, updateTemplateSchema } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
 import { convertImageToWebP } from "../../utils/media-convert";
@@ -17,6 +17,14 @@ export function joinEvent(eventId: string): Promise<{ id: string }> {
 export function leaveEvent(eventId: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/events/${eventId}/leave`, {
     method: "DELETE",
+  });
+}
+
+export function votePoll(eventId: string, optionIds: string[]): Promise<{ ok: true }> {
+  const bodyJson = pollVoteSchema.parse({ option_ids: optionIds });
+  return apiRequest<{ ok: true }>(`/api/events/${eventId}/poll/vote`, {
+    method: "POST",
+    bodyJson,
   });
 }
 

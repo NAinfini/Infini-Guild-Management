@@ -1,0 +1,51 @@
+.filter-toolbar {
+  padding: 12px;
+  border-left: 3px solid transparent;
+}
+
+.filter-toolbar--active {
+  border-left-color: color-mix(in srgb, var(--color-primary, #3b82f6) 72%, transparent);
+}
+
+.filter-toolbar__content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-toolbar__primary {
+  flex: 0 1 280px;
+  width: min(100%, 280px);
+  min-width: min(100%, 220px);
+}
+
+.filter-toolbar__filters,
+.filter-toolbar__view,
+.filter-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-toolbar__view {
+  margin-left: auto;
+}
+
+.filter-toolbar__actions {
+  flex-shrink: 0;
+}
+
+@media (max-width: 767px) {
+  .filter-toolbar__primary,
+  .filter-toolbar__filters,
+  .filter-toolbar__view,
+  .filter-toolbar__actions {
+    width: 100%;
+  }
+
+  .filter-toolbar__view {
+    margin-left: 0;
+  }
+}

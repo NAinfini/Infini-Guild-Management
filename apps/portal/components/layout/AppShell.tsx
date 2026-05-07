@@ -426,8 +426,8 @@ export function AppShell() {
           onLoginClick={() => void navigate({ to: "/login" })}
         />
 
-        <MantineAppShell.Main ref={scrollContainerRef} className={`app-content ${isMobile ? "app-content-mobile" : ""}`}>
-          <main id="main-content" className="app-main">
+        <MantineAppShell.Main id="main-content" ref={scrollContainerRef} className={`app-content ${isMobile ? "app-content-mobile" : ""}`}>
+          <div className="app-main">
             {isExternalView ? (
               <Alert color="blue" variant="light" className="app-banner">
                 {t("nav.externalViewBanner")}
@@ -454,7 +454,7 @@ export function AppShell() {
             <div className="app-route-container">
               <AnimatedOutlet pathname={pathname} enabled={shouldAnimateRoute} />
             </div>
-          </main>
+          </div>
         </MantineAppShell.Main>
 
         {isMobile ? (

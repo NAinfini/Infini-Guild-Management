@@ -87,7 +87,14 @@ describe("portal data hooks", () => {
     serviceMocks.fetchUsersList.mockResolvedValueOnce({ data: [] });
 
     const { result } = renderHook(
-      () => useEventsData({ eventType: "social", archivedOnly: false }),
+      () =>
+        useEventsData({
+          eventType: "social",
+          status: "active",
+          searchQuery: "guild raid",
+          pinnedOnly: true,
+          lockedOnly: true,
+        }),
       { wrapper: createWrapper() },
     );
 
@@ -101,6 +108,9 @@ describe("portal data hooks", () => {
       limit: 50,
       type: "social",
       archived: false,
+      search: "guild raid",
+      pinned: true,
+      locked: true,
     });
     expect(serviceMocks.fetchUsersList).toHaveBeenCalled();
   });

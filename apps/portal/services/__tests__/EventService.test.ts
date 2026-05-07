@@ -182,4 +182,51 @@ describe("EventService", () => {
     });
     expect(createEvent).not.toHaveBeenCalled();
   });
+
+  it("creates poll events with required end time and poll options", async () => {
+    const createEvent = vi.fn().mockResolvedValue({ id: "evt-1" });
+    const service = new EventService({
+      attachmentService: {
+        extractNewFiles: vi.fn(() => []),
+        extractExistingUrls: vi.fn(() => []),
+      },
+      createEvent,
+      updateEvent: vi.fn(),
+      uploadEventImages: vi.fn(),
+    });
+
+    await service.saveEvent({
+      mode: "create",
+      editingEventId: null,
+      eventType: "poll",
+      title: "Next activity?",
+      description: "",
+      startAt: "2026-03-20T19:00",
+      startIso: "2026-03-20T19:00:00.000Z",
+      endAt: "2026-03-20T21:00",
+      endIso: "2026-03-20T21:00:00.000Z",
+      capacity: "",
+      pinned: false,
+      signupLocked: false,
+      autoArchive: true,
+      pollOptions: ["Raid", "Dungeon"],
+      pollResultsVisibility: "after_vote",
+      pollShowVoterNames: false,
+      attachmentItems: [],
+    });
+
+    expect(createEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "poll",
+        end_at: "2026-03-20T21:00:00.000Z",
+        capacity: undefined,
+        poll: {
+          options: ["Raid", "Dungeon"],
+          results_visibility: "after_vote",
+          show_voter_names: false,
+        },
+      }),
+      [],
+    );
+  });
 });

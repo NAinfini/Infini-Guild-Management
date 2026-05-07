@@ -23,7 +23,6 @@ export const createAnnouncementSchema = z.object({
   body_json: z.string().min(L.announcementBody.min).max(L.announcementBody.max),
   pinned: z.boolean().default(false),
   publish_at: z.string().datetime().optional(),
-  expires_at: z.string().datetime().optional(),
   status: z.enum(["draft", "scheduled", "published", "archived"]).default("draft"),
 });
 

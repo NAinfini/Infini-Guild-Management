@@ -13,6 +13,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   weekly_mission: "blue",
   guild_war: "red",
   social: "grape",
+  poll: "teal",
   other: "gray",
 };
 
@@ -29,6 +30,10 @@ function buildAvailabilityOverlayStyle(intensity: number, maxCount: number): CSS
 
 function startOfMonthGrid(base: Date): Date {
   return startOfWeek(startOfMonth(base));
+}
+
+function isMutedMonthEvent(event: GuildEvent): boolean {
+  return Boolean(event.archived_at || (event.end_at && new Date(event.end_at) < new Date()));
 }
 
 type MonthCalendarProps = {
@@ -154,40 +159,46 @@ export function EventMonthView({
               style={overlayStyle}
             >
               <Stack gap={2} style={{ width: "100%" }}>
-                {dayEvents.slice(0, 3).map((event) => (
-                  <HoverCard key={event.id} width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                    <HoverCard.Target>
-                      <Badge
-                        variant="light"
-                        size="xs"
-                        style={{ cursor: "pointer" }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          (onViewEvent ?? onEditEvent)(event);
-                        }}
-                      >
-                        {event.title}
-                      </Badge>
-                    </HoverCard.Target>
-                    <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                      <Group gap={10} wrap="nowrap" align="flex-start">
-                        <ThemeIcon variant="light" color={EVENT_TYPE_COLORS[event.type] ?? "blue"} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                          <CalendarEventIcon size={18} />
-                        </ThemeIcon>
-                        <div style={{ minWidth: 0 }}>
-                          <Text size="sm" fw={700} lh={1.3}>{event.title}</Text>
-                          <Group gap={4} mt={4}>
-                            <Text size="xs">{t(`common:eventType.${event.type}`)}</Text>
-                            <Text size="xs" c="dimmed">{format(new Date(event.start_at), "HH:mm")}</Text>
-                          </Group>
-                          {event.description ? (
-                            <Text size="xs" c="dimmed" lh={1.5} mt={4} lineClamp={2}>{event.description}</Text>
-                          ) : null}
-                        </div>
-                      </Group>
-                    </HoverCard.Dropdown>
-                  </HoverCard>
-                ))}
+                {dayEvents.slice(0, 3).map((event) => {
+                  const isMuted = isMutedMonthEvent(event);
+                  const eventColor = isMuted ? "gray" : EVENT_TYPE_COLORS[event.type] ?? "blue";
+                  return (
+                    <HoverCard key={event.id} width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                      <HoverCard.Target>
+                        <Badge
+                          variant="light"
+                          color={eventColor}
+                          size="xs"
+                          className={isMuted ? "month-calendar__event-badge--muted" : undefined}
+                          style={{ cursor: "pointer" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            (onViewEvent ?? onEditEvent)(event);
+                          }}
+                        >
+                          {event.title}
+                        </Badge>
+                      </HoverCard.Target>
+                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                        <Group gap={10} wrap="nowrap" align="flex-start">
+                          <ThemeIcon variant="light" color={eventColor} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                            <CalendarEventIcon size={18} />
+                          </ThemeIcon>
+                          <div style={{ minWidth: 0 }}>
+                            <Text size="sm" fw={700} lh={1.3}>{event.title}</Text>
+                            <Group gap={4} mt={4}>
+                              <Text size="xs">{t(`common:eventType.${event.type}`)}</Text>
+                              <Text size="xs" c="dimmed">{format(new Date(event.start_at), "HH:mm")}</Text>
+                            </Group>
+                            {event.description ? (
+                              <Text size="xs" c="dimmed" lh={1.5} mt={4} lineClamp={2}>{event.description}</Text>
+                            ) : null}
+                          </div>
+                        </Group>
+                      </HoverCard.Dropdown>
+                    </HoverCard>
+                  );
+                })}
                 {dayEvents.length > 3 ? (
                   <Popover withinPortal>
                     <Popover.Target>

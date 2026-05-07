@@ -477,7 +477,9 @@
 
 .app-header__page-title {
   display: inline-block;
+  margin: 0;
   font-size: 16px;
+  font-weight: 700;
   line-height: 1.2;
   max-width: 100%;
   white-space: nowrap;

@@ -60,6 +60,7 @@
   "eventType.weekly_mission": "Weekly Mission",
   "eventType.guild_war": "Guild War",
   "eventType.social": "Social",
+  "eventType.poll": "Poll",
   "eventType.other": "Other",
   "cmdk.searchButton": "Search (Ctrl+K)",
   "cmdk.searchTitle": "Search",

@@ -45,6 +45,7 @@ export function ViewingAsSelector({ value, compact = false, roles, onChange }: V
       <Select
         data={options}
         value={value}
+        aria-label={t("viewingAs.label")}
         onChange={(val) => {
           if (val) {
             onChange(val);

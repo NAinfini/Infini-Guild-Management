@@ -86,7 +86,6 @@ export function useAnnouncementsController() {
   const [archived, setArchived] = useState(false);
   const [draftEnabled, setDraftEnabled] = useState(false);
   const [publishAt, setPublishAt] = useState("");
-  const [expiresAt, setExpiresAt] = useState("");
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [announcementsLastSeenAt, setAnnouncementsLastSeenAt] = useState<string | null>(null);
 
@@ -306,7 +305,6 @@ export function useAnnouncementsController() {
       setArchived(false);
       setDraftEnabled(false);
       setPublishAt("");
-      setExpiresAt("");
       setScheduleEnabled(false);
     } else if (selected) {
       setTitle(selected.title);
@@ -315,7 +313,6 @@ export function useAnnouncementsController() {
       setArchived(selected.status === "archived");
       setDraftEnabled(selected.status === "draft");
       setPublishAt(toDateTimePickerValue(selected.publish_at));
-      setExpiresAt(toDateTimePickerValue(selected.expires_at));
       setScheduleEnabled(selected.status === "scheduled");
     }
   }, [isCreating, selected]);
@@ -331,14 +328,13 @@ export function useAnnouncementsController() {
         bodyJson !== selected.body_json ||
         pinned !== selected.pinned ||
         publishAt !== toDateTimePickerValue(selected.publish_at) ||
-        expiresAt !== toDateTimePickerValue(selected.expires_at) ||
         scheduleEnabled !== (selected.status === "scheduled") ||
         draftEnabled !== (selected.status === "draft") ||
         archived !== (selected.status === "archived")
       );
     }
     return false;
-  }, [archived, bodyJson, canEdit, draftEnabled, expiresAt, isCreating, pinned, publishAt, scheduleEnabled, selected, title]);
+  }, [archived, bodyJson, canEdit, draftEnabled, isCreating, pinned, publishAt, scheduleEnabled, selected, title]);
 
   useBeforeUnloadPrompt(isDirty);
 
@@ -400,7 +396,6 @@ export function useAnnouncementsController() {
             pinned,
             status,
             publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
-            expires_at: toIsoOrUndefined(expiresAt),
           },
         });
         isCreatingHandlers.close();
@@ -415,7 +410,6 @@ export function useAnnouncementsController() {
         pinned,
         status,
         publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
-        expires_at: toIsoOrUndefined(expiresAt),
       });
       return;
     }
@@ -442,7 +436,6 @@ export function useAnnouncementsController() {
         pinned,
         status,
         publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
-        expires_at: toIsoOrUndefined(expiresAt),
       },
       ifMatch: `"announcement-${selected.id}-${selected.updated_at}"`,
     });
@@ -468,7 +461,6 @@ export function useAnnouncementsController() {
     setArchived(selected.status === "archived");
     setDraftEnabled(selected.status === "draft");
     setPublishAt(toDateTimePickerValue(selected.publish_at));
-    setExpiresAt(toDateTimePickerValue(selected.expires_at));
     setScheduleEnabled(selected.status === "scheduled");
   };
 
@@ -527,8 +519,6 @@ export function useAnnouncementsController() {
     setDraftEnabled,
     publishAt,
     setPublishAt,
-    expiresAt,
-    setExpiresAt,
     scheduleEnabled,
     setScheduleEnabled,
     announcementsLastSeenAt,

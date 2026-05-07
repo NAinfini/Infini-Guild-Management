@@ -8,7 +8,7 @@ import { useEventsData } from "./data/useEventsData";
 import { fetchEventDetailBatch } from "../services/EventService";
 import { queryKeys } from "../api/query-keys";
 import { buildAvailabilityHeatData } from "../utils/availability";
-import { sanitizeEventsRouteSearch, type EventsRouteSearch } from "../utils/event-navigation";
+import { sanitizeEventsRouteSearch, type EventStatusFilter, type EventsRouteSearch } from "../utils/event-navigation";
 type MemberEntry = { user: User; profile: MemberProfile };
 
 const EVENTS_LAST_SEEN_KEY = "events.last_seen_at";
@@ -23,7 +23,8 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   const routeSearch = useSearch({ strict: false }) as EventsRouteSearch;
   const eventType = routeSearch.type;
   const searchQuery = routeSearch.search ?? "";
-  const archivedOnly = routeSearch.archived ?? false;
+  const eventStatus = routeSearch.status ?? (routeSearch.archived ? "archived" : "active");
+  const archivedOnly = eventStatus === "archived";
   const pinnedOnly = routeSearch.pinned ?? false;
   const lockedOnly = routeSearch.locked ?? false;
   const focusEventId = routeSearch.eventId ?? null;
@@ -60,7 +61,11 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   }, [updateSearch]);
 
   const setArchivedOnly = useCallback((value: boolean) => {
-    updateSearch({ archived: value || undefined });
+    updateSearch({ status: value ? "archived" : undefined, archived: undefined });
+  }, [updateSearch]);
+
+  const setEventStatus = useCallback((value: EventStatusFilter) => {
+    updateSearch({ status: value === "active" ? undefined : value, archived: undefined });
   }, [updateSearch]);
 
   const setPinnedOnly = useCallback((value: boolean) => {
@@ -73,28 +78,17 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
 
   const { eventsQuery, eventsQueryData, eventsHasMore, eventsLoadingMore, onLoadMoreEvents, usersQuery } = useEventsData({
     eventType,
-    archivedOnly,
+    status: eventStatus,
+    searchQuery,
+    pinnedOnly,
+    lockedOnly,
   });
 
   const events = eventsQueryData;
   const users = usersQuery.data?.data ?? [];
 
   const sortedEvents = useMemo(() => {
-    let filtered = events;
-    if (pinnedOnly) {
-      filtered = filtered.filter((event) => event.pinned);
-    }
-    if (lockedOnly) {
-      filtered = filtered.filter((event) => event.signup_locked);
-    }
-    if (searchQuery.trim()) {
-      const query = searchQuery.trim().toLowerCase();
-      filtered = filtered.filter(
-        (event) => event.title.toLowerCase().includes(query) || event.description?.toLowerCase().includes(query),
-      );
-    }
-
-    return [...filtered].sort((left, right) => {
+    return [...events].sort((left, right) => {
       if (focusEventId && left.id !== right.id) {
         if (left.id === focusEventId) {
           return -1;
@@ -108,7 +102,7 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
       }
       return left.start_at.localeCompare(right.start_at);
     });
-  }, [events, focusEventId, lockedOnly, pinnedOnly, searchQuery]);
+  }, [events, focusEventId]);
 
   const eventFlags = useMemo(() => {
     if (!lastSeenAt) {
@@ -200,7 +194,7 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   const availabilityHeatData = useMemo(() => buildAvailabilityHeatData(users), [users]);
 
   const hasAnyFilter =
-    Boolean(eventType) || archivedOnly || pinnedOnly || lockedOnly || Boolean(searchQuery.trim());
+    Boolean(eventType) || eventStatus !== "active" || pinnedOnly || lockedOnly || Boolean(searchQuery.trim());
   const cardsEmptyDescription = archivedOnly
     ? eventType
       ? t("empty.archivedFiltered")
@@ -213,6 +207,7 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
     updateSearch({
       search: undefined,
       type: undefined,
+      status: undefined,
       archived: undefined,
       pinned: undefined,
       locked: undefined,
@@ -241,6 +236,8 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   return {
     eventType,
     setEventType,
+    eventStatus,
+    setEventStatus,
     searchQuery,
     setSearchQuery,
     archivedOnly,
@@ -261,6 +258,7 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
     eventsByDay,
     availabilityHeatData,
     cardsEmptyDescription,
+    hasAnyFilter,
     resetFilters,
     eventsHasMore,
     eventsLoadingMore,

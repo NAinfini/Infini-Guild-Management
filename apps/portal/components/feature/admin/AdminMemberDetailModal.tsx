@@ -73,7 +73,7 @@ export function AdminMemberDetailModal({
   return (
     <Modal
       opened={open}
-      title={member ? t("detail.titleWithName", { username: member.user.username }) : t("detail.title")}
+      title={member ? t("detail.titleWithName", { username: member.user.username }) : undefined}
       onClose={onClose}
       size="min(960px, 96vw)"
       centered

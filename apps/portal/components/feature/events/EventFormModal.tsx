@@ -9,6 +9,7 @@ import {
   Text,
   TextInput,
   Textarea,
+  ActionIcon,
 } from "@mantine/core";
 import { XIcon, PlusIcon, SaveIcon } from "@portal/components/icons";
 import { useState } from "react";
@@ -36,6 +37,12 @@ type EventFormModalProps = {
   onDescriptionChange: (value: string) => void;
   autoArchive: boolean;
   onAutoArchiveChange: (value: boolean) => void;
+  pollOptions?: string[];
+  onPollOptionsChange?: (value: string[]) => void;
+  pollResultsVisibility?: "always" | "after_vote" | "after_close";
+  onPollResultsVisibilityChange?: (value: "always" | "after_vote" | "after_close") => void;
+  pollShowVoterNames?: boolean;
+  onPollShowVoterNamesChange?: (value: boolean) => void;
   attachmentItems: ImageGridEditorItem[];
   onAttachmentsChange: (items: ImageGridEditorItem[]) => void;
   onFilesSelected: (files: File[]) => void;
@@ -66,6 +73,12 @@ export function EventFormModal({
   onDescriptionChange,
   autoArchive,
   onAutoArchiveChange,
+  pollOptions = ["", ""],
+  onPollOptionsChange,
+  pollResultsVisibility = "after_vote",
+  onPollResultsVisibilityChange,
+  pollShowVoterNames = false,
+  onPollShowVoterNamesChange,
   attachmentItems,
   onAttachmentsChange,
   onFilesSelected,
@@ -82,7 +95,10 @@ export function EventFormModal({
 
   const titleError = titleTouched && !title.trim() ? t("message.titleRequired") : undefined;
   const dateError = startAt && endAt && endAt < startAt ? t("field.endBeforeStart") : undefined;
-  const isSaveDisabled = !title.trim() || Boolean(dateError);
+  const isPoll = eventType === "poll";
+  const pollOptionCount = pollOptions.map((option) => option.trim()).filter(Boolean).length;
+  const pollError = isPoll && pollOptionCount < 2 ? t("poll.field.optionsInvalid") : undefined;
+  const isSaveDisabled = !title.trim() || Boolean(dateError) || (isPoll && (!endAt || Boolean(pollError)));
 
   return (
     <Modal
@@ -134,17 +150,70 @@ export function EventFormModal({
           />
         </Group>
 
-        {/* ── Capacity ── */}
-        <TextInput
-          label={t("field.capacity")}
-          type="number"
-          min={1}
-          max={9999}
-          value={capacity}
-          onChange={(event) => onCapacityChange(event.currentTarget.value)}
-          placeholder={t("field.unlimited")}
-          maw={200}
-        />
+        {isPoll ? (
+          <Stack gap={10}>
+            <Text size="sm" fw={600}>{t("poll.field.options")}</Text>
+            {pollOptions.map((option, index) => (
+              <Group key={index} gap={8} wrap="nowrap">
+                <TextInput
+                  value={option}
+                  onChange={(event) => {
+                    const next = [...pollOptions];
+                    next[index] = event.currentTarget.value;
+                    onPollOptionsChange?.(next);
+                  }}
+                  placeholder={t("poll.field.optionPlaceholder", { index: index + 1 })}
+                  error={index === pollOptions.length - 1 ? pollError : undefined}
+                  style={{ flex: 1 }}
+                />
+                <ActionIcon
+                  variant="subtle"
+                  color="red"
+                  aria-label={t("poll.field.removeOption")}
+                  disabled={pollOptions.length <= 2}
+                  onClick={() => onPollOptionsChange?.(pollOptions.filter((_, optionIndex) => optionIndex !== index))}
+                >
+                  <XIcon size={16} />
+                </ActionIcon>
+              </Group>
+            ))}
+            <Button
+              variant="light"
+              size="xs"
+              leftSection={<PlusIcon size={14} />}
+              disabled={pollOptions.length >= 10}
+              onClick={() => onPollOptionsChange?.([...pollOptions, ""])}
+            >
+              {t("poll.field.addOption")}
+            </Button>
+            <Select
+              label={t("poll.field.resultsVisibility")}
+              value={pollResultsVisibility}
+              onChange={(value) => value && onPollResultsVisibilityChange?.(value as "always" | "after_vote" | "after_close")}
+              data={[
+                { value: "always", label: t("poll.visibility.always") },
+                { value: "after_vote", label: t("poll.visibility.afterVote") },
+                { value: "after_close", label: t("poll.visibility.afterClose") },
+              ]}
+            />
+            <Switch
+              checked={pollShowVoterNames}
+              onChange={(event) => onPollShowVoterNamesChange?.(event.currentTarget.checked)}
+              label={t("poll.field.showVoterNames")}
+            />
+          </Stack>
+        ) : (
+          <TextInput
+            label={t("field.capacity")}
+            type="number"
+            min={1}
+            max={9999}
+            value={capacity}
+            onChange={(event) => onCapacityChange(event.currentTarget.value)}
+            placeholder={t("field.unlimited")}
+            maw={200}
+          />
+        )}
 
         {/* ── Description ── */}
         <Textarea

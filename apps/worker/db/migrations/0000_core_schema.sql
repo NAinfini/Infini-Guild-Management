@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS member_profile_classes (
 
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('weekly_mission', 'guild_war', 'social', 'other')),
+  type TEXT NOT NULL CHECK (type IN ('weekly_mission', 'guild_war', 'social', 'poll', 'other')),
   title TEXT NOT NULL,
   description TEXT,
   start_at TEXT NOT NULL,
@@ -94,6 +94,31 @@ CREATE TABLE IF NOT EXISTS event_participants (
   user_id TEXT NOT NULL REFERENCES users(id),
   joined_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   UNIQUE(event_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS event_polls (
+  event_id TEXT PRIMARY KEY NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  results_visibility TEXT NOT NULL DEFAULT 'after_vote' CHECK (results_visibility IN ('always', 'after_vote', 'after_close')),
+  show_voter_names INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS event_poll_options (
+  id TEXT PRIMARY KEY NOT NULL,
+  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS event_poll_votes (
+  id TEXT PRIMARY KEY NOT NULL,
+  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  option_id TEXT NOT NULL REFERENCES event_poll_options(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE(event_id, option_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS announcements (
@@ -285,6 +310,16 @@ CREATE INDEX IF NOT EXISTS idx_event_participants_event_joined
   ON event_participants(event_id, joined_at, id);
 CREATE INDEX IF NOT EXISTS idx_event_participants_user_event
   ON event_participants(user_id, event_id);
+
+-- event polls
+CREATE INDEX IF NOT EXISTS idx_event_poll_options_event_sort
+  ON event_poll_options(event_id, sort_order, id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_event_poll_votes_event_option_user
+  ON event_poll_votes(event_id, option_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_event_poll_votes_event_user
+  ON event_poll_votes(event_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_event_poll_votes_option
+  ON event_poll_votes(option_id);
 
 -- announcements
 CREATE INDEX IF NOT EXISTS idx_announcements_status_pinned_created

@@ -11,6 +11,7 @@ export function fetchWikiArticles(params: {
   limit?: number;
   category_id?: string;
   archived?: boolean;
+  pinned?: boolean;
   search?: string;
 }): Promise<PaginatedResponse<WikiArticle>> {
   const query = new URLSearchParams();
@@ -18,6 +19,7 @@ export function fetchWikiArticles(params: {
   query.set("limit", String(params.limit ?? LIMITS.pagination.wiki));
   if (params.category_id) query.set("category_id", params.category_id);
   if (params.archived !== undefined) query.set("archived", String(params.archived));
+  if (params.pinned !== undefined) query.set("pinned", String(params.pinned));
   if (params.search) query.set("search", params.search);
 
   return apiRequest<PaginatedResponse<WikiArticle>>(`/api/wiki/articles?${query.toString()}`);

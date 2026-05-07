@@ -90,7 +90,14 @@ wikiRoutes.get("/articles", async (c) => {
   const query = c.req.query();
   const page = parsePage(query.page, 1);
   const limit = Math.min(100, parsePage(query.limit, 20));
-  const result = await getService(c).listArticles({ page, limit, categoryId: query.category_id, archived: parseBoolean(query.archived), search: (query.search ?? "").trim() || undefined });
+  const result = await getService(c).listArticles({
+    page,
+    limit,
+    categoryId: query.category_id,
+    archived: parseBoolean(query.archived),
+    pinned: parseBoolean(query.pinned),
+    search: (query.search ?? "").trim() || undefined,
+  });
   return handleResult(c, result);
 });
 

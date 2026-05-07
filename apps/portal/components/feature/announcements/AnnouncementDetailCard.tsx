@@ -62,8 +62,6 @@ type AnnouncementDetailCardProps = {
   onScheduleEnabledChange: (value: boolean) => void;
   publishAt: string;
   onPublishAtChange: (value: string) => void;
-  expiresAt: string;
-  onExpiresAtChange: (value: string) => void;
   onFinish: (mode: StatusMode) => void;
   onDelete: () => void;
   onCloseEditor: () => void;
@@ -95,8 +93,6 @@ export function AnnouncementDetailCard({
   onScheduleEnabledChange,
   publishAt,
   onPublishAtChange,
-  expiresAt,
-  onExpiresAtChange,
   onFinish,
   onDelete,
   onCloseEditor,
@@ -129,14 +125,6 @@ export function AnnouncementDetailCard({
       const scheduledDate = new Date(publishAt.replace(" ", "T"));
       if (!Number.isNaN(scheduledDate.getTime()) && scheduledDate <= new Date()) {
         notifyError(t("validation.schedulePast"));
-        return;
-      }
-    }
-    if (publishAt && expiresAt) {
-      const publishDate = new Date(publishAt.replace(" ", "T"));
-      const expiryDate = new Date(expiresAt.replace(" ", "T"));
-      if (!Number.isNaN(publishDate.getTime()) && !Number.isNaN(expiryDate.getTime()) && expiryDate <= publishDate) {
-        notifyError(t("validation.expiresBeforePublish"));
         return;
       }
     }
@@ -252,9 +240,6 @@ export function AnnouncementDetailCard({
                 {canEdit && selected.status === "scheduled" && selected.publish_at ? (
                   <Badge color="blue">{t("meta.scheduled", { datetime: formatDateTime(selected.publish_at) })}</Badge>
                 ) : null}
-                {canEdit && selected.expires_at ? (
-                  <Badge variant="outline">{t("meta.expires", { datetime: formatDateTime(selected.expires_at) })}</Badge>
-                ) : null}
               </Group>
 
               {/* Rendered body (read-only TipTap) */}
@@ -343,9 +328,6 @@ export function AnnouncementDetailCard({
 
                   {/* Schedule */}
                   <Stack gap={8}>
-                    <Text fw={600} size="sm" c="dimmed" tt="uppercase" style={{ letterSpacing: "0.05em" }}>
-                      {t("section.schedule")}
-                    </Text>
                     <div>
                       <Text size="xs" c="dimmed">{t("field.publishAt")}</Text>
                       <TextInput
@@ -353,16 +335,6 @@ export function AnnouncementDetailCard({
                         value={toDateTimeLocalValue(publishAt) || undefined}
                         onChange={(event) => onPublishAtChange(fromDateTimeLocalValue(event.currentTarget.value))}
                         aria-label={t("aria.publishTime")}
-                        size="sm"
-                      />
-                    </div>
-                    <div>
-                      <Text size="xs" c="dimmed">{t("field.expiresAt")}</Text>
-                      <TextInput
-                        type="datetime-local"
-                        value={toDateTimeLocalValue(expiresAt) || undefined}
-                        onChange={(event) => onExpiresAtChange(fromDateTimeLocalValue(event.currentTarget.value))}
-                        aria-label={t("aria.expireTime")}
                         size="sm"
                       />
                     </div>

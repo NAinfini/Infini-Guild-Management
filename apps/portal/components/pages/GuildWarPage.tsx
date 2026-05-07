@@ -114,14 +114,6 @@ function PageTabs({ items, destroyInactiveTabPane = false, initialActiveKey }: P
   );
 }
 
-function sectionHeading(text: string) {
-  return (
-    <h3 className="guild-war-section-heading">
-      {text}
-    </h3>
-  );
-}
-
 export function GuildWarPage() {
   const { t } = useTranslation("guild-war");
   const guildWarSearch = useSearch({ strict: false }) as {
@@ -745,7 +737,7 @@ export function GuildWarPage() {
                 }
               >
                 <LazyWarHistoryTab
-                  heading={sectionHeading(t("tab.history"))}
+                  heading={null}
                   historyViewMode={historyViewMode}
                   onHistoryViewModeChange={setHistoryViewMode}
                   historyChartMetric={historyChartMetric}

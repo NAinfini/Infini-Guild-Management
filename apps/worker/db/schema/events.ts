@@ -1,5 +1,5 @@
 // Domain: Events & Signups
-// Tables: events, event_participants
+// Tables: events, event_participants, event_polls, event_poll_options, event_poll_votes
 // Dependencies: auth.users
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { activeGame } from "@guild/shared/games";
@@ -57,5 +57,46 @@ export const eventParticipants = sqliteTable(
     uxEventUser: uniqueIndex("ux_event_participants_event_user").on(table.eventId, table.userId),
     idxEventJoined: index("idx_event_participants_event_joined").on(table.eventId, table.joinedAt, table.id),
     idxUserEvent: index("idx_event_participants_user_event").on(table.userId, table.eventId),
+  }),
+);
+
+export const eventPolls = sqliteTable(
+  "event_polls",
+  {
+    eventId: text("event_id").primaryKey().references(() => events.id, { onDelete: "cascade" }),
+    resultsVisibility: text("results_visibility", { enum: ["always", "after_vote", "after_close"] }).notNull().default("after_vote"),
+    showVoterNames: integer("show_voter_names", { mode: "boolean" }).notNull().default(false),
+    createdAt: text("created_at").notNull().default(nowUtc),
+    updatedAt: text("updated_at").notNull().default(nowUtc),
+  },
+);
+
+export const eventPollOptions = sqliteTable(
+  "event_poll_options",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").notNull().default(nowUtc),
+  },
+  (table) => ({
+    idxEventSort: index("idx_event_poll_options_event_sort").on(table.eventId, table.sortOrder, table.id),
+  }),
+);
+
+export const eventPollVotes = sqliteTable(
+  "event_poll_votes",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    optionId: text("option_id").notNull().references(() => eventPollOptions.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id),
+    createdAt: text("created_at").notNull().default(nowUtc),
+  },
+  (table) => ({
+    uxEventOptionUser: uniqueIndex("ux_event_poll_votes_event_option_user").on(table.eventId, table.optionId, table.userId),
+    idxEventUser: index("idx_event_poll_votes_event_user").on(table.eventId, table.userId),
+    idxOption: index("idx_event_poll_votes_option").on(table.optionId),
   }),
 );

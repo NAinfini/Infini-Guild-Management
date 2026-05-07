@@ -11,6 +11,9 @@ export function fetchEventsList(params: {
   limit?: number;
   type?: string;
   archived?: boolean;
+  pinned?: boolean;
+  locked?: boolean;
+  search?: string;
   start_after?: string;
   start_before?: string;
 }): Promise<PaginatedResponse<Event>> {
@@ -25,13 +28,21 @@ export function fetchEventsList(params: {
   if (params.archived !== undefined) {
     query.set("archived", String(params.archived));
   }
+  if (params.pinned !== undefined) {
+    query.set("pinned", String(params.pinned));
+  }
+  if (params.locked !== undefined) {
+    query.set("locked", String(params.locked));
+  }
+  if (params.search) {
+    query.set("search", params.search);
+  }
   if (params.start_after) {
     query.set("start_after", params.start_after);
   }
   if (params.start_before) {
     query.set("start_before", params.start_before);
   }
-
   return apiRequest<PaginatedResponse<Event>>(`/api/events?${query.toString()}`);
 }
 

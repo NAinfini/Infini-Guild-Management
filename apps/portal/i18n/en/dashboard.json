@@ -41,6 +41,7 @@
   "eventType.weekly_mission": "Weekly Mission",
   "eventType.guild_war": "Guild War",
   "eventType.social": "Social",
+  "eventType.poll": "Poll",
   "eventType.other": "Other",
   "guest.banner": "You are browsing as a guest. Log in to access all features.",
   "guest.login": "Log in",

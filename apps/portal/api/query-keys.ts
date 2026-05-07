@@ -15,7 +15,23 @@ export const queryKeys = {
   },
   events: {
     all: ["events"] as const,
-    list: (eventType: string, archivedOnly: boolean, page?: number) => [...queryKeys.events.all, eventType, archivedOnly, page ?? 1] as const,
+    list: (filters: {
+      eventType: string;
+      status: string;
+      search: string;
+      pinnedOnly: boolean;
+      lockedOnly: boolean;
+      page?: number;
+    }) =>
+      [
+        ...queryKeys.events.all,
+        filters.eventType,
+        filters.status,
+        filters.search,
+        filters.pinnedOnly,
+        filters.lockedOnly,
+        filters.page ?? 1,
+      ] as const,
     detail: (id: string) => [...queryKeys.events.all, "detail", id] as const,
     previewDetails: () => [...queryKeys.events.all, "preview-details"] as const,
     previewDetailsByIds: (idsKey: string) => [...queryKeys.events.previewDetails(), idsKey] as const,
@@ -66,8 +82,8 @@ export const queryKeys = {
   wiki: {
     all: ["wiki"] as const,
     categories: () => [...queryKeys.wiki.all, "categories"] as const,
-    articles: (categoryId: string, search: string, archivedMode: string, page?: number) =>
-      [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, page ?? 1] as const,
+    articles: (categoryId: string, search: string, archivedMode: string, pinnedOnly: boolean, page?: number) =>
+      [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, pinnedOnly, page ?? 1] as const,
     article: (slug: string | null) => [...queryKeys.wiki.all, "article", slug] as const,
   },
   cmdk: {

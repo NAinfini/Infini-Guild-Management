@@ -18,6 +18,7 @@ import {
   updateEvent as updateEventMutation,
   updateTemplate,
   uploadEventImages as uploadEventImagesMutation,
+  votePoll,
 } from "../api/mutations/events";
 import { queryKeys } from "../api/query-keys";
 import {
@@ -51,6 +52,7 @@ export {
   updateEventMutation as updateEvent,
   updateTemplate,
   uploadEventImagesMutation as uploadEventImages,
+  votePoll,
 };
 export type { CreateEventPayload, EventDetailResponse };
 
@@ -58,6 +60,8 @@ type EventValidationReason =
   | "missing_start"
   | "missing_title"
   | "invalid_capacity"
+  | "invalid_poll"
+  | "missing_poll_end"
   | "missing_event_id";
 
 export class EventValidationError extends Error {
@@ -84,6 +88,9 @@ export type EventSaveInput = {
   pinned: boolean;
   signupLocked: boolean;
   autoArchive: boolean;
+  pollOptions?: string[];
+  pollResultsVisibility?: "always" | "after_vote" | "after_close";
+  pollShowVoterNames?: boolean;
   attachmentItems: AttachmentItem[];
 };
 
@@ -172,7 +179,7 @@ export class EventService {
     }
 
     let capacity: number | undefined;
-    if (input.capacity.trim()) {
+    if (input.eventType !== "poll" && input.capacity.trim()) {
       const parsedCapacity = Number.parseInt(input.capacity, 10);
       if (Number.isNaN(parsedCapacity) || parsedCapacity < 1) {
         throw new EventValidationError("invalid_capacity", "Capacity must be positive");
@@ -181,6 +188,15 @@ export class EventService {
     }
 
     const description = input.description.trim();
+    const pollOptions = (input.pollOptions ?? []).map((option) => option.trim()).filter(Boolean);
+    if (input.eventType === "poll") {
+      if (!input.endIso) {
+        throw new EventValidationError("missing_poll_end", "Poll end time required");
+      }
+      if (pollOptions.length < 2 || pollOptions.length > 10) {
+        throw new EventValidationError("invalid_poll", "Polls require 2 to 10 options");
+      }
+    }
 
     return {
       type: input.eventType,
@@ -191,6 +207,13 @@ export class EventService {
       capacity,
       attachments: [],
       auto_archive: input.autoArchive,
+      poll: input.eventType === "poll"
+        ? {
+            options: pollOptions,
+            results_visibility: input.pollResultsVisibility ?? "after_vote",
+            show_voter_names: input.pollShowVoterNames ?? false,
+          }
+        : undefined,
     };
   }
 
