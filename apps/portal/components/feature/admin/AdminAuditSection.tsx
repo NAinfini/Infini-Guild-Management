@@ -68,7 +68,7 @@ export function AdminAuditSection({
         canViewStatus(rolesData, user.role)),
   );
   const loadErrorMessage = tc("loadError");
-  const heading = <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.audit")}</Title>;
+  const heading = <Title order={2} style={{ margin: 0, fontSize: 16 }}>{t("tab.audit")}</Title>;
 
   return (
     <Stack gap={12}>

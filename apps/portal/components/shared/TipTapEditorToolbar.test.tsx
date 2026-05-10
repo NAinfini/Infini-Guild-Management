@@ -49,6 +49,21 @@ const labels: TipTapEditorLabels = {
   imageInserted: "Image inserted",
   imageUploadFailed: "Image upload failed",
   uploading: "Uploading...",
+  youtube: "YouTube",
+  bilibili: "Bilibili",
+  videoUrl: "Video URL",
+  embedVideo: "Embed video",
+  details: "Toggle section",
+  findReplace: "Find & Replace",
+  findPlaceholder: "Find...",
+  replacePlaceholder: "Replace...",
+  findNext: "Next",
+  findPrev: "Previous",
+  replaceOne: "Replace",
+  replaceAllLabel: "Replace all",
+  tableOfContents: "Table of Contents",
+  words: "words",
+  characters: "characters",
 };
 
 function createEditorStub(): Editor {
@@ -106,6 +121,8 @@ function renderToolbar() {
         labels={labels}
         onInsertImage={() => {}}
         onInsertLink={() => {}}
+        onInsertVideo={() => {}}
+        onToggleFindReplace={() => {}}
       />
     </MantineProvider>,
   );
@@ -149,7 +166,7 @@ describe("TipTapEditorToolbar", () => {
     const editor = createEditorStub();
     render(
       <MantineProvider>
-        <TipTapEditorToolbar editor={editor} labels={labels} onInsertImage={() => {}} onInsertLink={() => {}} />
+        <TipTapEditorToolbar editor={editor} labels={labels} onInsertImage={() => {}} onInsertLink={() => {}} onInsertVideo={() => {}} onToggleFindReplace={() => {}} />
       </MantineProvider>,
     );
 
@@ -163,7 +180,7 @@ describe("TipTapEditorToolbar", () => {
     const editor = createEditorStub();
     render(
       <MantineProvider>
-        <TipTapEditorToolbar editor={editor} labels={labels} onInsertImage={() => {}} onInsertLink={() => {}} />
+        <TipTapEditorToolbar editor={editor} labels={labels} onInsertImage={() => {}} onInsertLink={() => {}} onInsertVideo={() => {}} onToggleFindReplace={() => {}} />
       </MantineProvider>,
     );
 

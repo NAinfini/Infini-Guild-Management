@@ -269,7 +269,7 @@ export function AdminInviteSection({
 
   return (
     <Stack gap={12}>
-      <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.invite")}</Title>
+      <Title order={2} style={{ margin: 0, fontSize: 16 }}>{t("tab.invite")}</Title>
       {/* Toolbar card: segment + stats + search + create button */}
       <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>

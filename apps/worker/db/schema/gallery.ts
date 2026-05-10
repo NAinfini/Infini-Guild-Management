@@ -18,6 +18,7 @@ export const galleryItems = sqliteTable(
   (table) => ({
     idxCreated: index("idx_gallery_items_created").on(table.createdAt, table.id),
     idxUploadedBy: index("idx_gallery_items_uploaded_by").on(table.uploadedBy, table.createdAt, table.id),
+    idxTypeCreated: index("idx_gallery_items_type_created").on(table.type, table.createdAt, table.id),
   }),
 );
 

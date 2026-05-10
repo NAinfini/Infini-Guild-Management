@@ -11,6 +11,6 @@ export async function securityHeadersMiddleware(c: Context, next: Next): Promise
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   c.header(
     "Content-Security-Policy",
-    `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; ${connectSrc}; font-src 'self'; object-src 'none'; frame-ancestors 'none'`,
+    `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; ${connectSrc}; font-src 'self'; object-src 'none'; frame-src https://www.youtube-nocookie.com https://player.bilibili.com; frame-ancestors 'none'`,
   );
 }

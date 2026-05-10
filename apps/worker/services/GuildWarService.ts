@@ -532,8 +532,12 @@ export class GuildWarService {
     if (filters.dateFrom) where.push(gte(warHistory.createdAt, filters.dateFrom));
     if (filters.dateTo) where.push(lte(warHistory.createdAt, filters.dateTo));
     const whereClause = where.length > 0 ? and(...where) : undefined;
-    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt, _total: sql<number>`count(*) over()` }).from(warHistory).where(whereClause).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(limit).offset(offset);
-    const total = Number((rows[0] as Record<string, unknown> | undefined)?._total ?? 0);
+    const selectFields = { id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt };
+    const [rows, countRow] = await Promise.all([
+      this.db.select(selectFields).from(warHistory).where(whereClause).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(limit).offset(offset),
+      this.db.select({ count: sql<number>`count(*)` }).from(warHistory).where(whereClause),
+    ]);
+    const total = Number(countRow[0]?.count ?? 0);
     return ok({ data: rows.map(toWarHistoryPayload), total, page, limit, total_pages: Math.max(1, Math.ceil(total / limit)) });
   }
 

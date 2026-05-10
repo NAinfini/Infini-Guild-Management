@@ -103,7 +103,7 @@ export function AdminUsersSection({
   const { t: tc } = useTranslation("common");
   const clipboard = useClipboard();
   const loadErrorMessage = tc("loadError");
-  const heading = <Title order={3} m={0} fz={16}>{t("tab.member")}</Title>;
+  const heading = <Title order={2} m={0} fz={16}>{t("tab.member")}</Title>;
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);

@@ -89,10 +89,12 @@ export function EventDetailModal({
   const { t: tc } = useTranslation("common");
   const mediaLabels = useMemo(() => buildMediaGalleryLabels(tc), [tc]);
   const [renderedEvent, setRenderedEvent] = useState<Event | null>(event);
+  const [renderedMembers, setRenderedMembers] = useState<MemberEntry[]>(members);
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
   const modalEvent = event ?? renderedEvent;
-  const isJoined = currentUserId ? members.some((entry) => entry.user.id === currentUserId) : false;
-  const isFull = modalEvent?.capacity != null ? members.length >= modalEvent.capacity : false;
+  const modalMembers = event ? members : renderedMembers;
+  const isJoined = currentUserId ? modalMembers.some((entry) => entry.user.id === currentUserId) : false;
+  const isFull = modalEvent?.capacity != null ? modalMembers.length >= modalEvent.capacity : false;
   const hasEnded = Boolean(modalEvent?.end_at && new Date(modalEvent.end_at) < new Date());
   const isPoll = modalEvent?.type === "poll";
   const showMemberAction = Boolean(currentUserId && (isJoined ? onLeave : onJoin));
@@ -109,8 +111,9 @@ export function EventDetailModal({
   useEffect(() => {
     if (event) {
       setRenderedEvent(event);
+      setRenderedMembers(members);
     }
-  }, [event]);
+  }, [event, members]);
 
   useEffect(() => {
     if (!event) {
@@ -143,7 +146,7 @@ export function EventDetailModal({
       title={modalEvent?.title}
       size={modalEvent?.attachments && modalEvent.attachments.length > 0 ? "calc(100vw - 80px)" : "min(820px, calc(100vw - 32px))"}
       centered
-      transitionProps={{ onExited: () => setRenderedEvent(null) }}
+      transitionProps={{ onExited: () => { setRenderedEvent(null); setRenderedMembers([]); } }}
       classNames={{
         body: "event-detail-modal__body",
         content: "event-detail-modal__content",
@@ -282,7 +285,7 @@ export function EventDetailModal({
                     <Group gap={8}>
                       <IconUsers size={20} />
                       <Text size="md" fw={800}>
-                        {modalEvent.capacity ? t("detail.membersWithCap", { count: members.length, capacity: modalEvent.capacity }) : t("detail.members", { count: members.length })}
+                        {modalEvent.capacity ? t("detail.membersWithCap", { count: modalMembers.length, capacity: modalEvent.capacity }) : t("detail.members", { count: modalMembers.length })}
                       </Text>
                     </Group>
                     {showMemberAction ? (
@@ -319,19 +322,19 @@ export function EventDetailModal({
                       }}
                       disabled={event === null}
                       data={allUsers
-                        .filter((entry) => entry.user.is_active && !entry.user.deleted_at && !members.some((m) => m.user.id === entry.user.id))
+                        .filter((entry) => entry.user.is_active && !entry.user.deleted_at && !modalMembers.some((m) => m.user.id === entry.user.id))
                         .map((entry) => ({ value: entry.user.id, label: entry.user.username }))
                       }
                       leftSection={<IconUserPlus size={16} />}
                     />
                   ) : null}
 
-                  {members.length === 0 ? (
+                  {modalMembers.length === 0 ? (
                     <Text c="dimmed" size="sm">{t("detail.noMembers")}</Text>
                   ) : (
                     <div className="event-detail-modal__member-list">
                       <Stack gap={8}>
-                        {members.map((entry) => (
+                        {modalMembers.map((entry) => (
                           <Group key={entry.user.id} gap={10} className="event-detail-modal__member-row" wrap="nowrap">
                             <MemberRoleAvatar user={entry.user} profile={entry.profile} size={40} withTooltip={false} />
                             <div className="event-detail-modal__member-info">

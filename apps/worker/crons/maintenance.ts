@@ -15,15 +15,15 @@ export type MaintenanceJob = {
 };
 
 export const DAILY_MAINTENANCE_JOBS: readonly MaintenanceJob[] = [
-  { name: "event-instance-gen", run: runEventInstanceGenerationCron },
-  { name: "session-cleanup", run: runSessionCleanupCron },
   { name: "audit-archive", run: runAuditArchiveCron },
   { name: "media-orphan-cleanup", run: runMediaOrphanCleanupCron },
   { name: "error-log-cleanup", run: runErrorLogCleanupCron },
 ];
 
 export const QUARTER_HOURLY_MAINTENANCE_JOBS: readonly MaintenanceJob[] = [
+  { name: "event-instance-gen", run: runEventInstanceGenerationCron },
   { name: "event-auto-archive", run: runEventAutoArchiveCron },
+  { name: "session-cleanup", run: runSessionCleanupCron },
   { name: "announcement-publish", run: runAnnouncementPublishCron },
 ];
 

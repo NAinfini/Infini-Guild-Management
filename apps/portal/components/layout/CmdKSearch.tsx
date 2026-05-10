@@ -73,7 +73,7 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
     queryFn: async () => {
       const [usersResponse, eventsResponse, announcementsResponse, wikiResponse, warHistoryResponse, galleryResponse] =
         await Promise.allSettled([
-          apiRequest<UsersListResponse>("/api/users?page=1&limit=40"),
+          apiRequest<UsersListResponse>("/api/users?page=1&limit=40&include_total=false"),
           features.events ? apiRequest<PaginatedResponse<Event>>("/api/events?page=1&limit=40") : Promise.reject("disabled"),
           features.announcements ? apiRequest<PaginatedResponse<Announcement>>("/api/announcements?page=1&limit=25") : Promise.reject("disabled"),
           features.wiki ? apiRequest<PaginatedResponse<WikiArticle>>("/api/wiki/articles?page=1&limit=25") : Promise.reject("disabled"),

@@ -31,6 +31,9 @@ import {
   IconHighlight,
   IconEraser,
   IconSeparatorHorizontal,
+  IconPlayerPlay,
+  IconLayoutList,
+  IconSearch,
 } from "@tabler/icons-react";
 import type { TipTapEditorLabels } from "./TipTapEditor";
 
@@ -43,9 +46,11 @@ type TipTapEditorToolbarProps = {
   labels: TipTapEditorLabels;
   onInsertLink: () => void;
   onInsertImage: () => void;
+  onInsertVideo: () => void;
+  onToggleFindReplace: () => void;
 };
 
-export function TipTapEditorToolbar({ editor, labels, onInsertLink, onInsertImage }: TipTapEditorToolbarProps) {
+export function TipTapEditorToolbar({ editor, labels, onInsertLink, onInsertImage, onInsertVideo, onToggleFindReplace }: TipTapEditorToolbarProps) {
   return (
     <div
       className="infini-tiptap-toolbar"
@@ -143,6 +148,8 @@ export function TipTapEditorToolbar({ editor, labels, onInsertLink, onInsertImag
       <div className="infini-tiptap-toolbar__group">
         <Tooltip label={labels.divider} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.divider} size="sm" variant="default" onClick={() => editor.chain().focus().setHorizontalRule().run()}><IconSeparatorHorizontal size={16} /></ActionIcon></Tooltip>
         <Tooltip label={labels.image} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.image} size="sm" variant="default" onClick={onInsertImage}><IconPhoto size={16} /></ActionIcon></Tooltip>
+        <Tooltip label={labels.embedVideo} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.embedVideo} size="sm" variant="default" onClick={onInsertVideo}><IconPlayerPlay size={16} /></ActionIcon></Tooltip>
+        <Tooltip label={labels.details} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.details} size="sm" variant="default" onClick={() => (editor.commands as Record<string, Function>).setDetails()}><IconLayoutList size={16} /></ActionIcon></Tooltip>
         <Menu withinPortal position="bottom-end">
           <Tooltip label={labels.table} {...TOOLTIP_PROPS}>
             <Menu.Target>
@@ -160,6 +167,9 @@ export function TipTapEditorToolbar({ editor, labels, onInsertLink, onInsertImag
             <Menu.Item leftSection={<IconTableOff size={14} />} onClick={() => editor.chain().focus().deleteTable().run()}>{labels.delTable}</Menu.Item>
           </Menu.Dropdown>
         </Menu>
+      </div>
+      <div className="infini-tiptap-toolbar__group">
+        <Tooltip label={labels.findReplace} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.findReplace} size="sm" variant="default" onClick={onToggleFindReplace}><IconSearch size={16} /></ActionIcon></Tooltip>
       </div>
     </div>
   );

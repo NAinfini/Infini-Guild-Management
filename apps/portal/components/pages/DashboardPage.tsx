@@ -123,7 +123,6 @@ export function DashboardPage() {
     queryKey: queryKeys.dashboard.upcomingEvents(nowIso),
     queryFn: () => fetchEventsList(buildDashboardUpcomingEventsQueryParams(now)),
     staleTime: DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
-    refetchInterval: DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
     placeholderData: keepPreviousData,
   });
 

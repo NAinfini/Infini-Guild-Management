@@ -81,7 +81,7 @@ export function AdminStatusTab({
   const user = useAuthStore((state) => state.user);
   const isAdmin = userCanViewStatus(user);
   const loadErrorMessage = tc("loadError");
-  const heading = <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.status")}</Title>;
+  const heading = <Title order={2} style={{ margin: 0, fontSize: 16 }}>{t("tab.status")}</Title>;
   const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
   const [runningSet, setRunningSet] = useState<Set<string>>(new Set());
   const [resultMap, setResultMap] = useState<Map<string, EndpointResult>>(new Map());

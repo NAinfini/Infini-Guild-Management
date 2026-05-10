@@ -1,5 +1,5 @@
 import { PlusIcon, SpeakerphoneIcon } from "@portal/components/icons";
-import { Button, Grid, Group, Loader } from "@mantine/core";
+import { Button, Group, Loader } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { usePageHeaderActions } from "../../context/PageHeaderContext";
 import { useAnnouncementsController } from "../../hooks/useAnnouncementsController";
@@ -52,8 +52,8 @@ export function AnnouncementsPage() {
         onSearchChange={controller.setSearch}
       />
 
-      <Grid gutter={12}>
-        <Grid.Col span={{ base: 12, lg: 3 }}>
+      <div className="announcements-page-grid">
+        <div>
           <AnnouncementListCard
             title={t("list.title")}
             rows={controller.rows}
@@ -70,9 +70,9 @@ export function AnnouncementsPage() {
             isLoadingMore={controller.listLoadingMore}
             onLoadMore={controller.onLoadMoreList}
           />
-        </Grid.Col>
+        </div>
 
-        <Grid.Col span={{ base: 12, lg: "auto" }}>
+        <div>
           <AnnouncementDetailCard
             title={controller.isCreating ? t("detail.titleCreate") : t("detail.title")}
             canEdit={controller.canEdit}
@@ -104,8 +104,8 @@ export function AnnouncementsPage() {
             isDirty={controller.isDirty}
             emptyTitle={t("common:message.noData")}
           />
-        </Grid.Col>
-      </Grid>
+        </div>
+      </div>
 
       {controller.isBusy ? <Loader size="sm" /> : null}
     </PageLayout>

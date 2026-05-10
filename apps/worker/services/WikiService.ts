@@ -81,23 +81,21 @@ export class WikiService {
   }
 
   private async uniqueCategorySlug(base: string): Promise<string> {
-    let slug = base;
-    let suffix = 1;
-    while ((await this.db.select({ id: wikiCategories.id }).from(wikiCategories).where(eq(wikiCategories.slug, slug)).limit(1))[0]) {
-      suffix++;
-      slug = `${base}-${suffix}`;
-    }
-    return slug;
+    const rows = await this.db.select({ slug: wikiCategories.slug }).from(wikiCategories).where(like(wikiCategories.slug, `${escapeLikePattern(base)}%`));
+    const existing = new Set(rows.map((r) => r.slug));
+    if (!existing.has(base)) return base;
+    let suffix = 2;
+    while (existing.has(`${base}-${suffix}`)) suffix++;
+    return `${base}-${suffix}`;
   }
 
   private async uniqueArticleSlug(base: string): Promise<string> {
-    let slug = base;
-    let suffix = 1;
-    while ((await this.db.select({ id: wikiArticles.id }).from(wikiArticles).where(eq(wikiArticles.slug, slug)).limit(1))[0]) {
-      suffix++;
-      slug = `${base}-${suffix}`;
-    }
-    return slug;
+    const rows = await this.db.select({ slug: wikiArticles.slug }).from(wikiArticles).where(like(wikiArticles.slug, `${escapeLikePattern(base)}%`));
+    const existing = new Set(rows.map((r) => r.slug));
+    if (!existing.has(base)) return base;
+    let suffix = 2;
+    while (existing.has(`${base}-${suffix}`)) suffix++;
+    return `${base}-${suffix}`;
   }
 
   // --- Categories ---
@@ -181,8 +179,11 @@ export class WikiService {
       filters.push(or(like(wikiArticles.title, pattern), like(wikiArticles.bodyJson, pattern))!);
     }
     const whereClause = and(...filters);
-    const rows = await this.db.select({ ...LIST_ARTICLE_COLS, _total: sql<number>`count(*) over()` }).from(wikiArticles).where(whereClause).orderBy(desc(wikiArticles.pinned), asc(wikiArticles.sortOrder), desc(wikiArticles.updatedAt), asc(wikiArticles.id)).limit(opts.limit).offset(offset);
-    const total = Number((rows[0] as Record<string, unknown> | undefined)?._total ?? 0);
+    const [rows, countRow] = await Promise.all([
+      this.db.select(LIST_ARTICLE_COLS).from(wikiArticles).where(whereClause).orderBy(desc(wikiArticles.pinned), asc(wikiArticles.sortOrder), desc(wikiArticles.updatedAt), asc(wikiArticles.id)).limit(opts.limit).offset(offset),
+      this.db.select({ count: sql<number>`count(*)` }).from(wikiArticles).where(whereClause),
+    ]);
+    const total = Number(countRow[0]?.count ?? 0);
     return ok({ data: rows.map(toArticleListPayload), total, page: opts.page, limit: opts.limit, total_pages: Math.max(1, Math.ceil(total / opts.limit)) });
   }
 

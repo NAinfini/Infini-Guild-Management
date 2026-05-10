@@ -31,6 +31,12 @@ const ANALYTICS_SETTINGS_KEY = "config/analytics-settings.json";
 const D1_SAFE_VARIABLE_LIMIT = 90;
 const ROLE_PERMISSION_INSERT_BATCH_SIZE = Math.max(1, Math.floor(D1_SAFE_VARIABLE_LIMIT / 3));
 
+let _ensureBuiltinPromise: Promise<void> | null = null;
+
+export function resetBuiltinRolesCache(): void {
+  _ensureBuiltinPromise = null;
+}
+
 const BUILTIN_ROLE_DEFAULTS: Record<Role, { name: string; level: number; color: string }> = {
   admin: { name: "Admin", level: 3, color: "#ef4444" },
   moderator: { name: "Moderator", level: 2, color: "#3b82f6" },
@@ -89,6 +95,17 @@ export async function replaceRolePermissions(
 }
 
 export async function ensureBuiltinRolesAndPermissions(db: DrizzleDb): Promise<void> {
+  if (_ensureBuiltinPromise) return _ensureBuiltinPromise;
+  _ensureBuiltinPromise = _ensureBuiltinRolesAndPermissionsImpl(db);
+  try {
+    await _ensureBuiltinPromise;
+  } catch (e) {
+    _ensureBuiltinPromise = null;
+    throw e;
+  }
+}
+
+async function _ensureBuiltinRolesAndPermissionsImpl(db: DrizzleDb): Promise<void> {
   const existingRoleRows = await db
     .select({ id: roles.id }).from(roles).where(inArray(roles.id, [...ROLES]));
   const existingRoleSet = new Set(existingRoleRows.map((r) => r.id));

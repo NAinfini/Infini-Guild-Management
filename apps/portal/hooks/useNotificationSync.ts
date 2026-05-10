@@ -13,11 +13,9 @@ import { useNotificationStore } from "../stores/notifications";
 
 type UseNotificationSyncOptions = {
   enabled?: boolean;
-  pollIntervalMs?: number;
   onMessage?: (message: PushMessage) => void;
 };
 
-const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const FALLBACK_POLL_INTERVAL_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 25_000;
 const reconnectDelays = [1000, 10_000, 30_000, 60_000];
@@ -56,7 +54,6 @@ function toIsoOrNow(value: string | undefined): string {
 
 export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
   const enabled = options.enabled ?? true;
-  const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const appendPushMessage = useNotificationStore((state) => state.appendPushMessage);
   const setFeatureLatest = useNotificationStore((state) => state.setFeatureLatest);
   const setFeatureLatestBatch = useNotificationStore((state) => state.setFeatureLatestBatch);
@@ -64,6 +61,7 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
   const setLastSyncedAt = useNotificationStore((state) => state.setLastSyncedAt);
   const setWsConnected = useNotificationStore((state) => state.setWsConnected);
   const onMessageRef = useRef<((message: PushMessage) => void) | undefined>(options.onMessage);
+  const wsConnectedRef = useRef(false);
 
   useEffect(() => {
     onMessageRef.current = options.onMessage;
@@ -78,7 +76,7 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
     try {
       const [announcementsResponse, usersResponse] = await Promise.all([
         apiRequest<PaginatedResponse<Announcement>>("/api/announcements?page=1&limit=30&archived=false"),
-        apiRequest<UsersListResponse>("/api/users?page=1&limit=100"),
+        apiRequest<UsersListResponse>("/api/users?page=1&limit=100&include_total=false"),
       ]);
 
       const latestAnnouncements = getLatestIso(announcementsResponse.data.map((item) => item.updated_at));
@@ -96,19 +94,13 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
     }
   }, [enabled, setFeatureLatestBatch, setLastSyncedAt, setSyncing]);
 
+  // Initial sync on mount only — ongoing updates come from WebSocket push
   useEffect(() => {
     if (!enabled) {
       return;
     }
-
     void syncFeatureNotifications();
-    const timerId = window.setInterval(() => {
-      void syncFeatureNotifications();
-    }, pollIntervalMs);
-    return () => {
-      window.clearInterval(timerId);
-    };
-  }, [enabled, pollIntervalMs, syncFeatureNotifications]);
+  }, [enabled, syncFeatureNotifications]);
 
   useEffect(() => {
     if (!enabled) {
@@ -139,7 +131,12 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
       if (fallbackPollId != null) {
         return;
       }
-      fallbackPollId = window.setInterval(emitFallbackSignal, FALLBACK_POLL_INTERVAL_MS);
+      // When WS is down, poll feature timestamps as fallback
+      void syncFeatureNotifications();
+      fallbackPollId = window.setInterval(() => {
+        emitFallbackSignal();
+        void syncFeatureNotifications();
+      }, FALLBACK_POLL_INTERVAL_MS);
     };
 
     const stopFallbackPolling = () => {
@@ -187,6 +184,7 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
       socket.onopen = () => {
         retryCount = 0;
         stopFallbackPolling();
+        wsConnectedRef.current = true;
         setWsConnected(true);
         if (socket) {
           startHeartbeat(socket);
@@ -197,7 +195,6 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
         try {
           const message = JSON.parse(event.data) as PushMessage;
 
-          // heartbeat_ack is handled silently — no need to propagate
           if (message.type === "heartbeat_ack") {
             return;
           }
@@ -208,6 +205,15 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
             setFeatureLatest("announcements", toIsoOrNow(message.published_at));
           }
 
+          if (message.type === "entity_changed") {
+            const updatedAt = toIsoOrNow(message.updated_at);
+            if (message.entity_type === "announcement") {
+              setFeatureLatest("announcements", updatedAt);
+            } else if (message.entity_type === "member_profile") {
+              setFeatureLatest("members", updatedAt);
+            }
+          }
+
           onMessageRef.current?.(message);
         } catch {
           // Ignore invalid push payloads.
@@ -215,6 +221,7 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
       };
 
       socket.onclose = (event) => {
+        wsConnectedRef.current = false;
         setWsConnected(false);
         stopHeartbeat();
         socket = null;
@@ -246,6 +253,7 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
 
     return () => {
       isCleaningUp = true;
+      wsConnectedRef.current = false;
       setWsConnected(false);
       stopFallbackPolling();
       stopHeartbeat();
@@ -255,7 +263,7 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
       socket?.close();
       socket = null;
     };
-  }, [appendPushMessage, enabled, setFeatureLatest, setWsConnected]);
+  }, [appendPushMessage, enabled, setFeatureLatest, setWsConnected, syncFeatureNotifications]);
 
   return {
     sync: syncFeatureNotifications,

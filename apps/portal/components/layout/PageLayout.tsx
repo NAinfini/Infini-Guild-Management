@@ -61,7 +61,7 @@ function PageLayoutSection({ title, children, className }: PageLayoutSectionProp
   return (
     <section className={`page-layout__section ${className ?? ""}`.trim()}>
       {title ? (
-        <Title order={4} className="page-layout__section-title">
+        <Title order={2} className="page-layout__section-title">
           {title}
         </Title>
       ) : null}

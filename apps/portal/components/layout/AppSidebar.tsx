@@ -176,7 +176,7 @@ export function AppSidebar({
           </div>
           <SidebarLabel collapsed={isSidebarCollapsed} className="app-brand-title-wrap">
             <Tooltip label={siteName} position="right" withArrow openDelay={400}>
-              <Title order={4} className="app-brand-title">
+              <Title order={2} className="app-brand-title">
                 {siteName}
               </Title>
             </Tooltip>

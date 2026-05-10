@@ -349,21 +349,21 @@ export class UserService {
       activeFilter: params.activeFilter,
     }));
 
-    const selectFields = params.includeTotal === false
-      ? userProfileSelect
-      : { ...userProfileSelect, _total: sql<number>`count(*) over()` };
-
-    const rows = await this.db.select(selectFields).from(users)
+    const rows = await this.db.select(userProfileSelect).from(users)
       .leftJoin(memberProfiles, eq(memberProfiles.userId, users.id))
       .where(whereClause).orderBy(users.createdAt, users.id)
       .limit(params.limit).offset(offset);
 
-    const total = params.includeTotal === false
-      ? offset + rows.length
-      : Number((rows[0] as Record<string, unknown> | undefined)?._total ?? 0);
-    const totalPages = params.includeTotal === false
-      ? (rows.length < params.limit ? params.page : params.page + 1)
-      : Math.max(1, Math.ceil(total / params.limit));
+    let total: number;
+    let totalPages: number;
+    if (params.includeTotal) {
+      const countRow = await this.db.select({ count: sql<number>`count(*)` }).from(users).where(whereClause);
+      total = Number(countRow[0]?.count ?? 0);
+      totalPages = Math.max(1, Math.ceil(total / params.limit));
+    } else {
+      total = offset + rows.length;
+      totalPages = rows.length < params.limit ? params.page : params.page + 1;
+    }
 
     const data = rows.map((row) => {
       const normalized = rowToUserWithProfile(row as unknown as Record<string, unknown>);

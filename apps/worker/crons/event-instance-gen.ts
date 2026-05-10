@@ -240,9 +240,7 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
       if (template.visibilityOffsetMinutes != null && template.visibilityOffsetMinutes > 0) {
         const createAt = new Date(nextOccurrence.getTime() - template.visibilityOffsetMinutes * 60_000);
         if (now < createAt) {
-          currentAnchor = nextOccurrence;
-          catchupCount += 1;
-          continue;
+          break;
         }
       }
 

@@ -168,7 +168,7 @@ export function SettingsPage() {
       <Stack gap="xl">
         {/* ── Appearance ── */}
         <div className="settings-section">
-          <Title order={4} className="settings-section__title">{t("section.appearance")}</Title>
+          <Title order={2} className="settings-section__title">{t("section.appearance")}</Title>
           <Stack gap="lg">
             {/* Theme */}
             <div>
@@ -211,7 +211,7 @@ export function SettingsPage() {
 
         {/* ── Preferences ── */}
         <div className="settings-section">
-          <Title order={4} className="settings-section__title">{t("section.preferences")}</Title>
+          <Title order={2} className="settings-section__title">{t("section.preferences")}</Title>
           <Stack gap="lg">
             {/* Language */}
             <div>
@@ -262,7 +262,7 @@ export function SettingsPage() {
 
         {/* ── Backup & Reset ── */}
         <div className="settings-section">
-          <Title order={4} className="settings-section__title">{t("field.backup")}</Title>
+          <Title order={2} className="settings-section__title">{t("field.backup")}</Title>
           <Text size="sm" c="dimmed" mb={12}>{t("backup.description")}</Text>
           <div className="settings-backup-actions">
             <Button

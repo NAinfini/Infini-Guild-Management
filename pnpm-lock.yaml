@@ -71,6 +71,9 @@ importers:
       '@tiptap/extension-color':
         specifier: 3.22.5
         version: 3.22.5(@tiptap/extension-text-style@3.22.5(@tiptap/core@3.22.5(@tiptap/pm@3.22.5)))
+      '@tiptap/extension-details':
+        specifier: ^3.22.5
+        version: 3.23.1(@tiptap/core@3.22.5(@tiptap/pm@3.22.5))(@tiptap/extension-text-style@3.22.5(@tiptap/core@3.22.5(@tiptap/pm@3.22.5)))(@tiptap/pm@3.22.5)
       '@tiptap/extension-highlight':
         specifier: 3.22.5
         version: 3.22.5(@tiptap/core@3.22.5(@tiptap/pm@3.22.5))
@@ -92,6 +95,9 @@ importers:
       '@tiptap/extension-text-style':
         specifier: 3.22.5
         version: 3.22.5(@tiptap/core@3.22.5(@tiptap/pm@3.22.5))
+      '@tiptap/extension-youtube':
+        specifier: ^3.22.5
+        version: 3.23.1(@tiptap/core@3.22.5(@tiptap/pm@3.22.5))
       '@tiptap/extensions':
         specifier: ^3.22.5
         version: 3.22.5(@tiptap/core@3.22.5(@tiptap/pm@3.22.5))(@tiptap/pm@3.22.5)
@@ -1766,6 +1772,13 @@ packages:
     peerDependencies:
       '@tiptap/extension-text-style': 3.22.5
 
+  '@tiptap/extension-details@3.23.1':
+    resolution: {integrity: sha512-SDwUVQ9plAfJkJ4hUObs1tJsIoNPkOJitz4V8//95ZLvBHwHXrIulqoXh5QGy8h6toshsneRzHG+PKX75/lP+w==}
+    peerDependencies:
+      '@tiptap/core': 3.23.1
+      '@tiptap/extension-text-style': 3.23.1
+      '@tiptap/pm': 3.23.1
+
   '@tiptap/extension-document@3.22.5':
     resolution: {integrity: sha512-8NJERd+pCtvSuEP4C4WMGYmRRCV12ePZL7bC+QUdFlbdXg+kNZS0zZ7hh879tYA0Kidbi8rWWD1Tx+H2ezkmMw==}
     peerDependencies:
@@ -1891,6 +1904,11 @@ packages:
     resolution: {integrity: sha512-9ut09rJD0iEbS6sk7yd2j6IwuFDLTNmDEGTDLodvqAfi+bq7ddsTDv0YviXoZaA9sdHAdTEVr2ITy2m6WK5jpA==}
     peerDependencies:
       '@tiptap/core': 3.22.5
+
+  '@tiptap/extension-youtube@3.23.1':
+    resolution: {integrity: sha512-ZMMp0hg5d4kRb3/kuFjkCFreF4/Mxox8B0fShX1Dh1Uwf2gwy85XfUnonuaU+VX6QQ0/BGx5J+eUSc4qSBHCKQ==}
+    peerDependencies:
+      '@tiptap/core': 3.23.1
 
   '@tiptap/extensions@3.22.5':
     resolution: {integrity: sha512-Ifg4MzKCj3uRqe3ieTwYnomu2y4p7EXr2avVSKZYfh12i2dyWe2Gkn1KuZDREANVE+gHqFlQjJRYzhJFwzSCrg==}
@@ -4695,6 +4713,12 @@ snapshots:
     dependencies:
       '@tiptap/extension-text-style': 3.22.5(@tiptap/core@3.22.5(@tiptap/pm@3.22.5))
 
+  '@tiptap/extension-details@3.23.1(@tiptap/core@3.22.5(@tiptap/pm@3.22.5))(@tiptap/extension-text-style@3.22.5(@tiptap/core@3.22.5(@tiptap/pm@3.22.5)))(@tiptap/pm@3.22.5)':
+    dependencies:
+      '@tiptap/core': 3.22.5(@tiptap/pm@3.22.5)
+      '@tiptap/extension-text-style': 3.22.5(@tiptap/core@3.22.5(@tiptap/pm@3.22.5))
+      '@tiptap/pm': 3.22.5
+
   '@tiptap/extension-document@3.22.5(@tiptap/core@3.22.5(@tiptap/pm@3.22.5))':
     dependencies:
       '@tiptap/core': 3.22.5(@tiptap/pm@3.22.5)
@@ -4796,6 +4820,10 @@ snapshots:
       '@tiptap/core': 3.22.5(@tiptap/pm@3.22.5)
 
   '@tiptap/extension-underline@3.22.5(@tiptap/core@3.22.5(@tiptap/pm@3.22.5))':
+    dependencies:
+      '@tiptap/core': 3.22.5(@tiptap/pm@3.22.5)
+
+  '@tiptap/extension-youtube@3.23.1(@tiptap/core@3.22.5(@tiptap/pm@3.22.5))':
     dependencies:
       '@tiptap/core': 3.22.5(@tiptap/pm@3.22.5)
 

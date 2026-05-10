@@ -139,7 +139,7 @@ export function ToolsPage() {
               }}
             >
               <div className="tool-card__content">
-                <Title order={5} className="tool-card__title">
+                <Title order={3} className="tool-card__title">
                   {tool.title}
                 </Title>
                 <Text c="dimmed" className="tool-card__description">

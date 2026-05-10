@@ -155,6 +155,7 @@ export function WikiArticleListCard({
                     </Group>
                     <Text c="dimmed" size="xs">
                       {formatDateTime(item.updated_at)}
+                      {item.updated_by_username ? ` · ${item.updated_by_username}` : null}
                     </Text>
                   </Stack>
                 </button>

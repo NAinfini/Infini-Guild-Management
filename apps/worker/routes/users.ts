@@ -72,7 +72,7 @@ usersRoutes.get("/", async (c) => {
     classFilter: query.class,
     activeFilter: parseBoolean(query.active),
     sessionUser,
-    includeTotal: parseBoolean(query.include_total) !== false,
+    includeTotal: parseBoolean(query.include_total) === true,
   });
   return serviceResponse(c, result);
 });

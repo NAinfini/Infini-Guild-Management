@@ -808,6 +808,11 @@ export class EventService {
       patch.autoArchive = data.auto_archive;
     }
 
+    if (data.start_at !== undefined || data.recurrence_rule !== undefined) {
+      patch.lastGeneratedDate = null;
+      patch.generationCount = 0;
+    }
+
     await this.db.update(events).set(patch).where(eq(events.id, templateId));
 
     const updated = await this.deps.getEventById(templateId);
@@ -821,6 +826,10 @@ export class EventService {
       diffTitle: updated.title,
       detailText: JSON.stringify(this.buildTemplateUpdateDiff(existing, data)),
     });
+
+    if (data.start_at !== undefined || data.recurrence_rule !== undefined) {
+      await this.deps.materializeRecurringSeries(templateId);
+    }
 
     return updated;
   }
@@ -849,6 +858,8 @@ export class EventService {
       entityId: templateId,
       diffTitle: existing.title,
     });
+
+    await this.deps.materializeRecurringSeries(templateId);
   }
 
   async deleteTemplate(actorId: string, templateId: string, existing: EventRow): Promise<void> {
@@ -1115,15 +1126,18 @@ export class EventService {
     const offset = (params.page - 1) * params.limit;
     const whereClause = and(...EventService.buildEventsWhereFilters(params));
 
-    const rows = (await this.db
-      .select({ ...EventService.eventSelectFields, _total: sql<number>`count(*) over()` })
-      .from(events)
-      .where(whereClause)
-      .orderBy(asc(events.startAt), asc(events.id))
-      .offset(offset)
-      .limit(params.limit)) as (EventRow & { _total: number })[];
+    const [rows, countRow] = await Promise.all([
+      this.db
+        .select(EventService.eventSelectFields)
+        .from(events)
+        .where(whereClause)
+        .orderBy(asc(events.startAt), asc(events.id))
+        .offset(offset)
+        .limit(params.limit) as Promise<EventRow[]>,
+      this.db.select({ count: sql<number>`count(*)` }).from(events).where(whereClause) as Promise<{ count: number }[]>,
+    ]);
 
-    const total = Number(rows[0]?._total ?? 0);
+    const total = Number(countRow[0]?.count ?? 0);
 
     const data = await this.attachPolls(rows.map(toEventPayload), params.viewerId ?? null, params.canManage ?? false);
     return {

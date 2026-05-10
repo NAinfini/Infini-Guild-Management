@@ -75,7 +75,7 @@ export class GalleryService {
       likeCount: sql<number>`(SELECT COUNT(*) FROM gallery_likes WHERE gallery_item_id = ${galleryItems.id})`,
       commentCount: sql<number>`(SELECT COUNT(*) FROM gallery_comments WHERE gallery_item_id = ${galleryItems.id})`,
       isLiked: currentUserId
-        ? sql<number>`(SELECT COUNT(*) FROM gallery_likes WHERE gallery_item_id = ${galleryItems.id} AND user_id = ${currentUserId})`
+        ? sql<number>`EXISTS(SELECT 1 FROM gallery_likes WHERE gallery_item_id = ${galleryItems.id} AND user_id = ${currentUserId})`
         : sql<number>`0`,
     }).from(galleryItems).leftJoin(users, eq(users.id, galleryItems.uploadedBy)).where(eq(galleryItems.id, itemId)).limit(1))[0];
     if (!row) return null;
@@ -101,15 +101,37 @@ export class GalleryService {
     const rows = await this.db.select({
       id: galleryItems.id, type: galleryItems.type, url: galleryItems.url, caption: galleryItems.caption,
       uploadedBy: galleryItems.uploadedBy, uploadedByName: users.username, createdAt: galleryItems.createdAt,
-      likeCount: sql<number>`(SELECT COUNT(*) FROM gallery_likes WHERE gallery_item_id = ${galleryItems.id})`,
-      commentCount: sql<number>`(SELECT COUNT(*) FROM gallery_comments WHERE gallery_item_id = ${galleryItems.id})`,
-      ...(opts.currentUserId ? { isLiked: sql<boolean>`EXISTS(SELECT 1 FROM gallery_likes WHERE gallery_item_id = ${galleryItems.id} AND user_id = ${opts.currentUserId})` } : {}),
     }).from(galleryItems).leftJoin(users, eq(users.id, galleryItems.uploadedBy)).where(whereClause)
       .orderBy(opts.order === "asc" ? asc(galleryItems.createdAt) : desc(galleryItems.createdAt), opts.order === "asc" ? asc(galleryItems.id) : desc(galleryItems.id))
       .limit(opts.limit + 1).offset(opts.cursor);
     const hasMore = rows.length > opts.limit;
     const pageRows = hasMore ? rows.slice(0, opts.limit) : rows;
-    return ok({ data: pageRows.map(toGalleryPayload), next_cursor: hasMore ? String(opts.cursor + opts.limit) : null });
+
+    if (pageRows.length === 0) {
+      return ok({ data: [], next_cursor: null });
+    }
+
+    const itemIds = pageRows.map((r) => r.id);
+    const [likeCounts, commentCounts, likedSet] = await Promise.all([
+      this.db.select({ galleryItemId: galleryLikes.galleryItemId, count: sql<number>`count(*)` }).from(galleryLikes).where(inArray(galleryLikes.galleryItemId, itemIds)).groupBy(galleryLikes.galleryItemId),
+      this.db.select({ galleryItemId: galleryComments.galleryItemId, count: sql<number>`count(*)` }).from(galleryComments).where(inArray(galleryComments.galleryItemId, itemIds)).groupBy(galleryComments.galleryItemId),
+      opts.currentUserId
+        ? this.db.select({ galleryItemId: galleryLikes.galleryItemId }).from(galleryLikes).where(and(inArray(galleryLikes.galleryItemId, itemIds), eq(galleryLikes.userId, opts.currentUserId)))
+        : Promise.resolve([]),
+    ]);
+
+    const likeCountMap = new Map(likeCounts.map((r) => [r.galleryItemId, Number(r.count)]));
+    const commentCountMap = new Map(commentCounts.map((r) => [r.galleryItemId, Number(r.count)]));
+    const likedItemIds = new Set(likedSet.map((r) => r.galleryItemId));
+
+    const enrichedRows: GalleryRow[] = pageRows.map((r) => ({
+      ...r,
+      likeCount: likeCountMap.get(r.id) ?? 0,
+      commentCount: commentCountMap.get(r.id) ?? 0,
+      isLiked: likedItemIds.has(r.id),
+    }));
+
+    return ok({ data: enrichedRows.map(toGalleryPayload), next_cursor: hasMore ? String(opts.cursor + opts.limit) : null });
   }
 
   async uploadImages(actorId: string, files: Array<{ data: ArrayBuffer; contentType: string; name: string }>, captions: Array<string | null>): Promise<ServiceResult<unknown[]>> {

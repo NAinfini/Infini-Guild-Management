@@ -4,8 +4,6 @@ import { DAILY_MAINTENANCE_JOBS, QUARTER_HOURLY_MAINTENANCE_JOBS } from "./maint
 describe("cron maintenance schedules", () => {
   it("runs daily maintenance at midnight UTC", () => {
     expect(DAILY_MAINTENANCE_JOBS.map((job) => job.name)).toEqual([
-      "event-instance-gen",
-      "session-cleanup",
       "audit-archive",
       "media-orphan-cleanup",
       "error-log-cleanup",
@@ -14,7 +12,9 @@ describe("cron maintenance schedules", () => {
 
   it("merges 15-minute maintenance into one dispatcher", () => {
     expect(QUARTER_HOURLY_MAINTENANCE_JOBS.map((job) => job.name)).toEqual([
+      "event-instance-gen",
       "event-auto-archive",
+      "session-cleanup",
       "announcement-publish",
     ]);
   });

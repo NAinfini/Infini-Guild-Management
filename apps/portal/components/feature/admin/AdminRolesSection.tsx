@@ -249,7 +249,7 @@ export function AdminRolesSection({
   const user = useAuthStore((state) => state.user);
   const isAdmin = userCanManageRoles(user);
   const loadErrorMessage = tc("loadError");
-  const heading = <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.roles")}</Title>;
+  const heading = <Title order={2} style={{ margin: 0, fontSize: 16 }}>{t("tab.roles")}</Title>;
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [newRoleName, setNewRoleName] = useState("");
   const [drafts, setDrafts] = useState<Record<string, RoleDraft>>({});

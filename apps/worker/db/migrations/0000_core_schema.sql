@@ -370,6 +370,8 @@ CREATE INDEX IF NOT EXISTS idx_gallery_items_created
   ON gallery_items(created_at, id);
 CREATE INDEX IF NOT EXISTS idx_gallery_items_uploaded_by
   ON gallery_items(uploaded_by, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_gallery_items_type_created
+  ON gallery_items(type, created_at, id);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_gallery_likes_item_user
   ON gallery_likes(gallery_item_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_gallery_comments_item_created

@@ -340,25 +340,27 @@ export class AdminAuditService {
   async listAuditLogs(input: AuditLogQueryInput) {
     const query = this.resolveAuditLogQuery(input);
     const where = buildAuditLogWhere(query);
-    const rows = await this.deps.db
-      .select({
-        id: auditLog.id,
-        entityType: auditLog.entityType,
-        action: auditLog.action,
-        actorId: auditLog.actorId,
-        entityId: auditLog.entityId,
-        diffTitle: auditLog.diffTitle,
-        detailText: auditLog.detailText,
-        createdAt: auditLog.createdAt,
-        _total: sql<number>`count(*) over()`,
-      })
-      .from(auditLog)
-      .where(where)
-      .orderBy(desc(auditLog.createdAt))
-      .limit(query.limit)
-      .offset(query.offset);
+    const [rows, countRow] = await Promise.all([
+      this.deps.db
+        .select({
+          id: auditLog.id,
+          entityType: auditLog.entityType,
+          action: auditLog.action,
+          actorId: auditLog.actorId,
+          entityId: auditLog.entityId,
+          diffTitle: auditLog.diffTitle,
+          detailText: auditLog.detailText,
+          createdAt: auditLog.createdAt,
+        })
+        .from(auditLog)
+        .where(where)
+        .orderBy(desc(auditLog.createdAt))
+        .limit(query.limit)
+        .offset(query.offset),
+      this.deps.db.select({ count: sql<number>`count(*)` }).from(auditLog).where(where),
+    ]);
 
-    const total = Number((rows[0] as Record<string, unknown> | undefined)?._total ?? 0);
+    const total = Number(countRow[0]?.count ?? 0);
 
     return {
       data: rows.map(serializeAuditLogRow),
