@@ -232,6 +232,7 @@ describe("EventCardsView", () => {
       eventOverrides: {
         type: "poll",
         capacity: null,
+        end_at: "2099-12-31T23:59:59.000Z",
         poll: {
           results_visibility: "after_vote",
           show_voter_names: false,
