@@ -204,9 +204,10 @@ export function RosterPage() {
   const rowVirtualizer = useVirtualizer({
     count: rowChunks.length,
     getScrollElement: () => virtualScrollRef.current,
-    estimateSize: () => 320,
+    estimateSize: () => 280,
     overscan: 6,
-    gap: 6,
+    gap: 8,
+    measureElement: (el) => el.getBoundingClientRect().height,
   });
   const virtualRows = rowVirtualizer.getVirtualItems();
 
@@ -300,7 +301,7 @@ export function RosterPage() {
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")} className="roster-page">
       <PortalCard className="roster-filter-card" interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+        <div className="roster-filter-padding">
         <Group wrap="wrap" gap="md" className="roster-filter-controls">
           <TextInput
             className="roster-search-input"
@@ -367,6 +368,8 @@ export function RosterPage() {
                 return (
                   <div
                     key={virtualRow.key}
+                    ref={rowVirtualizer.measureElement}
+                    data-index={virtualRow.index}
                     className="roster-virtual-row"
                     style={{
                       transform: `translateY(${virtualRow.start}px)`,
