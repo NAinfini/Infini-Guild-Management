@@ -18,6 +18,7 @@ export function canAccessAdmin(roles: AdminRole[], roleId: string): boolean {
     "admin.audit.view",
     "admin.status.view",
     "admin.analytics.view",
+    "admin.badges.manage",
     "admin.roles.manage",
   ]);
 }
@@ -50,6 +51,7 @@ export function userCanAccessAdmin(user: User | null): boolean {
     "admin.audit.view",
     "admin.status.view",
     "admin.analytics.view",
+    "admin.badges.manage",
     "admin.roles.manage",
   ]);
 }

@@ -3,6 +3,7 @@ import { motion, useAnimation } from "motion/react";
 import type { HTMLAttributes } from "react";
 import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
 import { cn } from "@portal/utils/cn";
+import { useParentInteractiveHover } from "./useParentInteractiveHover";
 
 export interface PlusIconHandle {
   startAnimation: () => void;
@@ -22,6 +23,7 @@ const PlusIcon = forwardRef<PlusIconHandle, PlusIconProps>(
   ({ onMouseEnter, onMouseLeave, className, size = 28, ...props }, ref) => {
     const controls = useAnimation();
     const isControlledRef = useRef(false);
+    const wrapperRef = useParentInteractiveHover(controls, isControlledRef);
 
     useImperativeHandle(ref, () => {
       isControlledRef.current = true;
@@ -46,7 +48,7 @@ const PlusIcon = forwardRef<PlusIconHandle, PlusIconProps>(
     );
 
     return (
-      <div className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
+      <div ref={wrapperRef} className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
         <motion.svg animate={controls} fill="none" height={size} initial="normal" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" variants={SVG_VARIANTS} viewBox="0 0 24 24" width={size} xmlns="http://www.w3.org/2000/svg">
           <path d="M5 12h14" />
           <path d="M12 5v14" />

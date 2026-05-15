@@ -329,12 +329,28 @@ export function AppShell() {
   );
 
   const handlePushNotificationClick = useCallback(
-    (entryId: string, type: PushMessage["type"]) => {
+    (entryId: string, type: string) => {
       markPushAsRead(entryId);
 
       if (type === "announcement_published") {
         markFeatureAsRead("announcements");
         void navigate({ to: "/announcements" });
+        return;
+      }
+
+      if (type === "event_changed") {
+        void navigate({ to: "/events" });
+        return;
+      }
+
+      if (type === "wiki_changed") {
+        void navigate({ to: "/wiki" });
+        return;
+      }
+
+      if (type === "member_joined") {
+        markFeatureAsRead("members");
+        void navigate({ to: "/roster" });
         return;
       }
     },

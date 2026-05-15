@@ -99,14 +99,14 @@ describe("EventDetailModal", () => {
     expect(screen.getByText(expectedUrl.toString())).toBeInTheDocument();
   });
 
-  it("keeps the last event content during the close transition", () => {
+  it("unmounts content immediately when the modal closes", () => {
     const event = {
       id: "event-closing",
       title: "Closing Event",
       type: "social",
       start_at: "2026-03-12T16:00:00.000Z",
       end_at: null,
-      description: "Still visible while the modal exits",
+      description: "Should not linger after close",
       capacity: null,
       attachments: [],
     } as never;
@@ -139,8 +139,8 @@ describe("EventDetailModal", () => {
       </MantineProvider>,
     );
 
-    expect(screen.getByText("Closing Event")).toBeInTheDocument();
-    expect(screen.getByText("Still visible while the modal exits")).toBeInTheDocument();
+    expect(screen.queryByText("Closing Event")).not.toBeInTheDocument();
+    expect(screen.queryByText("Should not linger after close")).not.toBeInTheDocument();
   });
 
   it("lets users vote in poll detail and still shows voter breakdown", async () => {

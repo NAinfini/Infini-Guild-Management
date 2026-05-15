@@ -14,13 +14,18 @@ import type { Hono } from "hono";
 // ---------------------------------------------------------------------------
 
 const fakeCacheStore = new Map<string, Response>();
+let fakeCachePut: (req: Request, res: Response) => Promise<void> = async (req, res) => {
+  fakeCacheStore.set(req.url, res.clone());
+};
 const fakeCache = {
   match: async (req: Request) => fakeCacheStore.get(req.url) ?? null,
-  put: async (req: Request, res: Response) => {
-    fakeCacheStore.set(req.url, res.clone());
-  },
+  put: (req: Request, res: Response) => fakeCachePut(req, res),
   delete: async (req: Request) => fakeCacheStore.delete(req.url),
 };
+
+function callRelease(release: (() => void) | null): void {
+  if (release) release();
+}
 
 vi.stubGlobal("caches", {
   open: async () => fakeCache,
@@ -64,7 +69,7 @@ function createMockEnv(): Bindings {
     ENVIRONMENT: "test",
     SIGNING_SECRET: "test-secret",
     SITE_NAME: "Test Guild",
-    SITE_LOGO_URL: null,
+    SITE_LOGO_URL: "/guild-logo.webp",
   } as unknown as Bindings;
 }
 
@@ -399,5 +404,109 @@ describe("Rate limiting", () => {
 
     // Cleanup
     fakeCacheStore.delete(cacheKey);
+  });
+
+  it("can defer successful read counter writes without blocking the response", async () => {
+    const { createRateLimitMiddleware } = await import("../middleware/rate-limit");
+    const pendingWrites: Promise<void>[] = [];
+    let releasePut: (() => void) | null = null;
+    let putStarted = false;
+    const previousPut = fakeCachePut;
+    fakeCachePut = async (req, res) => {
+      putStarted = true;
+      await new Promise<void>((resolve) => {
+        releasePut = () => {
+          fakeCacheStore.set(req.url, res.clone());
+          resolve();
+        };
+      });
+    };
+
+    const headers = new Headers();
+    const middleware = createRateLimitMiddleware({
+      keyPrefix: "read-test",
+      maxRequests: 120,
+      windowMs: 60_000,
+      deferWrite: true,
+    });
+    const context = {
+      req: {
+        header: () => undefined,
+      },
+      header: (name: string, value: string) => {
+        headers.set(name, value);
+      },
+      get: () => "test-request-id",
+      json: (body: unknown, status?: number) =>
+        new Response(JSON.stringify(body), { status: status ?? 200 }),
+      executionCtx: {
+        waitUntil: (promise: Promise<unknown>) => {
+          pendingWrites.push(promise as Promise<void>);
+        },
+      },
+    };
+    let nextCalled = false;
+
+    try {
+      const run = middleware(context as never, async () => {
+        nextCalled = true;
+      });
+      await vi.waitFor(() => expect(nextCalled).toBe(true));
+      expect(putStarted).toBe(true);
+      expect(pendingWrites).toHaveLength(1);
+      callRelease(releasePut);
+      await run;
+      await Promise.all(pendingWrites);
+    } finally {
+      callRelease(releasePut);
+      fakeCachePut = previousPut;
+    }
+  });
+
+  it("keeps strict counter writes blocking before continuing", async () => {
+    const { createRateLimitMiddleware } = await import("../middleware/rate-limit");
+    let releasePut: (() => void) | null = null;
+    const previousPut = fakeCachePut;
+    fakeCachePut = async (req, res) => {
+      await new Promise<void>((resolve) => {
+        releasePut = () => {
+          fakeCacheStore.set(req.url, res.clone());
+          resolve();
+        };
+      });
+    };
+
+    const headers = new Headers();
+    const middleware = createRateLimitMiddleware({
+      keyPrefix: "strict-test",
+      maxRequests: 120,
+      windowMs: 60_000,
+    });
+    const context = {
+      req: {
+        header: () => undefined,
+      },
+      header: (name: string, value: string) => {
+        headers.set(name, value);
+      },
+      get: () => "test-request-id",
+      json: (body: unknown, status?: number) =>
+        new Response(JSON.stringify(body), { status: status ?? 200 }),
+    };
+    let nextCalled = false;
+    const run = middleware(context as never, async () => {
+      nextCalled = true;
+    });
+
+    try {
+      await vi.waitFor(() => expect(releasePut).toBeTypeOf("function"));
+      expect(nextCalled).toBe(false);
+      callRelease(releasePut);
+      await run;
+      expect(nextCalled).toBe(true);
+    } finally {
+      callRelease(releasePut);
+      fakeCachePut = previousPut;
+    }
   });
 });

@@ -10,10 +10,11 @@ import {
   Stack,
   Tabs,
 } from "@mantine/core";
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAdminData } from "../../hooks/data/useAdminData";
 import { useAdminAuditFilter } from "../../hooks/useAdminAuditFilter";
+import { useAdminBadgesController } from "../../hooks/useAdminBadgesController";
 import { useAdminInviteController } from "../../hooks/useAdminInviteController";
 import { useAdminMemberDetail } from "../../hooks/useAdminMemberDetail";
 import { useAdminMutations } from "../../hooks/useAdminMutations";
@@ -42,6 +43,9 @@ const LazyAdminInviteSection = lazy(() =>
 );
 const LazyAdminRolesSection = lazy(() =>
   import("../feature/admin/AdminRolesSection").then((mod) => ({ default: mod.AdminRolesSection })),
+);
+const LazyAdminBadgesSection = lazy(() =>
+  import("../feature/admin/AdminBadgesSection").then((mod) => ({ default: mod.AdminBadgesSection })),
 );
 const LazyAdminMemberDetailModal = lazy(() =>
   import("../feature/admin/AdminMemberDetailModal").then((mod) => ({ default: mod.AdminMemberDetailModal })),
@@ -95,11 +99,23 @@ export function AdminPage() {
   const inviteController = useAdminInviteController({
     inviteLinks: inviteLinksQuery.data ?? [],
   });
+
+  const userRowsRaw = usersQuery.data?.data ?? [];
+  const userMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of userRowsRaw) {
+      map.set(row.user.id, row.user.username);
+    }
+    return map;
+  }, [userRowsRaw]);
+  const resolveUsername = useCallback((id: string) => userMap.get(id), [userMap]);
+
   const adminMutations = useAdminMutations({
     invite: inviteController.invite,
     auditFilter,
     batchSelectionLimit: BATCH_SELECTION_LIMIT,
     showError,
+    resolveUsername,
   });
   const {
     invite,
@@ -142,6 +158,14 @@ export function AdminPage() {
   } = adminMutations;
 
   const isAdmin = canManagePermission(["admin.roles.manage"]) || canManagePermission(["admin.status.view"]);
+  const canManageBadges = canManagePermission(["admin.badges.manage"]);
+  const badgesController = useAdminBadgesController(canManageBadges);
+
+  useEffect(() => {
+    if (!canManageBadges && activeTab === "badges") {
+      setActiveTab("member");
+    }
+  }, [activeTab, canManageBadges]);
 
   const {
     setMemberDetailId,
@@ -163,7 +187,6 @@ export function AdminPage() {
     isAdmin,
   });
 
-  const userRowsRaw = usersQuery.data?.data ?? [];
   const userRows = useMemo(() => {
     const q = memberSearch.trim().toLowerCase();
     if (!q) return userRowsRaw;
@@ -176,14 +199,6 @@ export function AdminPage() {
       );
     });
   }, [userRowsRaw, memberSearch]);
-
-  const userMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const row of userRowsRaw) {
-      map.set(row.user.id, row.user.username);
-    }
-    return map;
-  }, [userRowsRaw]);
 
   const rolesWithExternal = useMemo((): AdminRole[] => {
     const apiRoles = rolesQuery.data ?? [];
@@ -244,7 +259,7 @@ export function AdminPage() {
       header: t("member.table.active"),
       id: "active",
       accessorFn: (row) => row.user.is_active,
-      cell: ({ row }) => (row.original.user.is_active ? <Badge color="green">{t("member.status.active")}</Badge> : <Badge color="gray">{t("member.status.inactive")}</Badge>),
+      cell: ({ row }) => (row.original.user.is_active ? <Badge color="green">{t("member.status.active")}</Badge> : <Badge color="red">{t("member.status.inactive")}</Badge>),
     },
   ];
 
@@ -280,6 +295,7 @@ export function AdminPage() {
           <Tabs.Tab value="invite">{t("tab.invite")}</Tabs.Tab>
           <Tabs.Tab value="audit">{t("tab.audit")}</Tabs.Tab>
           <Tabs.Tab value="roles">{t("tab.roles")}</Tabs.Tab>
+          {canManageBadges ? <Tabs.Tab value="badges">{t("tab.badges")}</Tabs.Tab> : null}
           <Tabs.Tab value="status">{t("tab.status")}</Tabs.Tab>
         </Tabs.List>
 
@@ -408,6 +424,19 @@ export function AdminPage() {
           </Suspense>
           </ErrorBoundary>
         </Tabs.Panel>
+
+        {canManageBadges ? (
+          <Tabs.Panel value="badges" pt="sm">
+            <ErrorBoundary>
+            <Suspense fallback={suspenseFallback}>
+              <LazyAdminBadgesSection
+                userRows={userRowsRaw}
+                controller={badgesController}
+              />
+            </Suspense>
+            </ErrorBoundary>
+          </Tabs.Panel>
+        ) : null}
 
         <Tabs.Panel value="status" pt="sm">
           <ErrorBoundary>

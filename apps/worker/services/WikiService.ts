@@ -242,6 +242,15 @@ export class WikiService {
     return ok({ ok: true });
   }
 
+  async permanentDeleteArticle(actorId: string, articleId: string): Promise<ServiceResult<{ ok: true }>> {
+    const existing = await this.getArticleById(articleId);
+    if (!existing) return err("NOT_FOUND", "Wiki article not found");
+    await this.db.delete(wikiArticles).where(eq(wikiArticles.id, articleId));
+    await this.deps.writeAuditLog({ entityType: "wiki_article", action: "delete", actorId, entityId: articleId, diffTitle: existing.title });
+    await this.deps.publishEntityChanged({ entityType: "wiki", entityId: articleId, hint: "article_deleted" });
+    return ok({ ok: true });
+  }
+
   async uploadArticleImages(actorId: string, articleId: string, files: Array<{ data: ArrayBuffer; contentType: string }>): Promise<ServiceResult<{ keys: string[] }>> {
     const existing = await this.getArticleById(articleId);
     if (!existing) return err("NOT_FOUND", "Wiki article not found");

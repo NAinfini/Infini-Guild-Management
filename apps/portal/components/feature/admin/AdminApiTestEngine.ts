@@ -23,7 +23,6 @@ export type TestRunContext = {
   userImageKey: string | null;
   userAudioKey: string | null;
   eventId: string | null;
-  createdEventId: string | null;
   eventParticipantUserId: string | null;
   eventTemplateId: string | null;
   announcementId: string | null;
@@ -44,15 +43,22 @@ export type TestRunContext = {
   adminRoleId: string | null;
   auditArchiveMonth: string | null;
   auditArchiveDownloadToken: string | null;
-  /** IDs of objects created by tests that need cleanup */
+  badgeId: string | null;
+  /** Key of the image uploaded by the test (for cleanup) */
+  uploadedImageKey: string | null;
   registeredUserId: string | null;
   createdInviteLinkId: string | null;
   createdAnnouncementId: string | null;
   createdGalleryImageId: string | null;
+  createdGalleryVideoId: string | null;
   createdWikiCategoryId: string | null;
   createdWikiArticleId: string | null;
   createdWarHistoryId: string | null;
+  createdSaveTeamsHistoryId: string | null;
   createdRoleId: string | null;
+  createdBadgeId: string | null;
+  createdEventId: string | null;
+  createdTemplateId: string | null;
   /** Snapshot of target user's profile before modification, for cleanup restore */
   targetProfileSnapshot: { bio: string | null; classes: string[] } | null;
 };
@@ -87,6 +93,14 @@ export type DebugLogEntry = {
   ranAt: string;
 };
 
+export type CleanupStep = {
+  label: string;
+  method: EndpointDef["method"];
+  path: string;
+  jsonBody?: unknown;
+  clearContext?: Partial<TestRunContext>;
+};
+
 export const API_TEST_GAP_GET_MS = 90;
 export const API_TEST_GAP_MUTATION_MS = 900;
 
@@ -99,7 +113,6 @@ export function createInitialTestRunContext(): TestRunContext {
     userImageKey: null,
     userAudioKey: null,
     eventId: null,
-    createdEventId: null,
     eventParticipantUserId: null,
     eventTemplateId: null,
     announcementId: null,
@@ -120,14 +133,21 @@ export function createInitialTestRunContext(): TestRunContext {
     adminRoleId: null,
     auditArchiveMonth: null,
     auditArchiveDownloadToken: null,
+    badgeId: null,
+    uploadedImageKey: null,
     registeredUserId: null,
     createdInviteLinkId: null,
     createdAnnouncementId: null,
     createdGalleryImageId: null,
+    createdGalleryVideoId: null,
     createdWikiCategoryId: null,
     createdWikiArticleId: null,
     createdWarHistoryId: null,
+    createdSaveTeamsHistoryId: null,
     createdRoleId: null,
+    createdBadgeId: null,
+    createdEventId: null,
+    createdTemplateId: null,
     targetProfileSnapshot: null,
   };
 }
@@ -220,6 +240,161 @@ export function readRetryAfterSeconds(payload: unknown): number | null {
   return Math.ceil(retryAfter);
 }
 
+export function buildCleanupSteps(ctx: TestRunContext): CleanupStep[] {
+  const cleanupSteps: CleanupStep[] = [];
+
+  if (ctx.createdBadgeId) {
+    cleanupSteps.push({
+      label: "Cleanup: Badge",
+      method: "DELETE",
+      path: `/api/badges/${encodeURIComponent(ctx.createdBadgeId)}`,
+      clearContext: { createdBadgeId: null },
+    });
+  }
+  if (ctx.createdGalleryVideoId) {
+    cleanupSteps.push({
+      label: "Cleanup: Gallery Video",
+      method: "DELETE",
+      path: `/api/gallery/${encodeURIComponent(ctx.createdGalleryVideoId)}`,
+      clearContext: { createdGalleryVideoId: null },
+    });
+  }
+  if (ctx.createdGalleryImageId) {
+    cleanupSteps.push({
+      label: "Cleanup: Gallery Image",
+      method: "DELETE",
+      path: `/api/gallery/${encodeURIComponent(ctx.createdGalleryImageId)}`,
+      clearContext: { createdGalleryImageId: null },
+    });
+  }
+  if (ctx.createdAnnouncementId) {
+    cleanupSteps.push({
+      label: "Cleanup: Announcement",
+      method: "DELETE",
+      path: `/api/announcements/${encodeURIComponent(ctx.createdAnnouncementId)}/permanent`,
+      clearContext: { createdAnnouncementId: null },
+    });
+  }
+  if (ctx.createdWikiArticleId) {
+    cleanupSteps.push({
+      label: "Cleanup: Wiki Article",
+      method: "DELETE",
+      path: `/api/wiki/articles/${encodeURIComponent(ctx.createdWikiArticleId)}/permanent`,
+      clearContext: { createdWikiArticleId: null },
+    });
+  }
+  if (ctx.createdWikiCategoryId) {
+    cleanupSteps.push({
+      label: "Cleanup: Wiki Category",
+      method: "DELETE",
+      path: `/api/wiki/categories/${encodeURIComponent(ctx.createdWikiCategoryId)}`,
+      clearContext: { createdWikiCategoryId: null },
+    });
+  }
+  if (ctx.createdWarHistoryId) {
+    cleanupSteps.push({
+      label: "Cleanup: War History",
+      method: "DELETE",
+      path: `/api/guild-war/history/${encodeURIComponent(ctx.createdWarHistoryId)}`,
+      clearContext: {
+        createdWarHistoryId: null,
+        ...(ctx.createdSaveTeamsHistoryId === ctx.createdWarHistoryId ? { createdSaveTeamsHistoryId: null } : {}),
+      },
+    });
+  }
+  if (ctx.createdSaveTeamsHistoryId && ctx.createdSaveTeamsHistoryId !== ctx.createdWarHistoryId) {
+    cleanupSteps.push({
+      label: "Cleanup: Save-Teams History",
+      method: "DELETE",
+      path: `/api/guild-war/history/${encodeURIComponent(ctx.createdSaveTeamsHistoryId)}`,
+      clearContext: { createdSaveTeamsHistoryId: null },
+    });
+  }
+  if (ctx.createdTemplateId) {
+    cleanupSteps.push({
+      label: "Cleanup: Event Template",
+      method: "DELETE",
+      path: `/api/events/templates/${encodeURIComponent(ctx.createdTemplateId)}`,
+      clearContext: { createdTemplateId: null },
+    });
+  }
+  if (ctx.createdEventId) {
+    cleanupSteps.push({
+      label: "Cleanup: Archive Event",
+      method: "DELETE",
+      path: `/api/events/${encodeURIComponent(ctx.createdEventId)}`,
+    });
+    cleanupSteps.push({
+      label: "Cleanup: Destroy Event",
+      method: "DELETE",
+      path: `/api/events/${encodeURIComponent(ctx.createdEventId)}/destroy`,
+      clearContext: { createdEventId: null },
+    });
+  }
+  if (ctx.createdInviteLinkId) {
+    cleanupSteps.push({
+      label: "Cleanup: Invite Link",
+      method: "DELETE",
+      path: `/api/admin/invite-links/${encodeURIComponent(ctx.createdInviteLinkId)}`,
+      clearContext: { createdInviteLinkId: null },
+    });
+  }
+  if (ctx.createdRoleId) {
+    cleanupSteps.push({
+      label: "Cleanup: Admin Role",
+      method: "DELETE",
+      path: `/api/admin/roles/${encodeURIComponent(ctx.createdRoleId)}`,
+      clearContext: { createdRoleId: null },
+    });
+  }
+  if (ctx.meId && ctx.targetProfileSnapshot) {
+    cleanupSteps.push({
+      label: "Cleanup: Restore Profile",
+      method: "PATCH",
+      path: `/api/users/${encodeURIComponent(ctx.meId)}/profile`,
+      jsonBody: {
+        bio: ctx.targetProfileSnapshot.bio,
+        classes: ctx.targetProfileSnapshot.classes,
+      },
+      clearContext: { targetProfileSnapshot: null },
+    });
+  }
+  if (ctx.meId && ctx.uploadedImageKey) {
+    cleanupSteps.push({
+      label: "Cleanup: Test Image",
+      method: "DELETE",
+      path: `/api/users/${encodeURIComponent(ctx.meId)}/media/images`,
+      jsonBody: { keys: [ctx.uploadedImageKey] },
+      clearContext: { uploadedImageKey: null },
+    });
+  }
+  if (ctx.registeredUserId) {
+    cleanupSteps.push({
+      label: "Cleanup: Registered User",
+      method: "PATCH",
+      path: "/api/admin/users/batch/delete",
+      jsonBody: { user_ids: [ctx.registeredUserId] },
+      clearContext: {
+        registeredUserId: null,
+        ...(ctx.adminCreatedUserId === ctx.registeredUserId
+          ? { adminCreatedUserId: null, adminCreatedUserPassword: null }
+          : {}),
+      },
+    });
+  }
+  if (ctx.adminCreatedUserId && ctx.adminCreatedUserId !== ctx.registeredUserId) {
+    cleanupSteps.push({
+      label: "Cleanup: Admin Created User",
+      method: "PATCH",
+      path: "/api/admin/users/batch/delete",
+      jsonBody: { user_ids: [ctx.adminCreatedUserId] },
+      clearContext: { adminCreatedUserId: null, adminCreatedUserPassword: null },
+    });
+  }
+
+  return cleanupSteps;
+}
+
 export function replacePathParam(path: string, key: string, value: string | null): string | null {
   if (!path.includes(key)) {
     return path;
@@ -237,6 +412,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       label: t("status.api.cat.system"),
       endpoints: [
         { label: t("status.api.ep.healthCheck"), method: "GET", path: "/api/health" },
+        { label: t("status.api.ep.siteConfig"), method: "GET", path: "/api/site-config" },
         { label: t("status.api.ep.adminStatus"), method: "GET", path: "/api/admin/status" },
         { label: t("status.api.ep.analyticsSettings"), method: "GET", path: "/api/admin/analytics-settings" },
         { label: t("status.api.ep.updateAnalyticsSettings"), method: "PATCH", path: "/api/admin/analytics-settings" },
@@ -249,7 +425,10 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.checkUsername"), method: "GET", path: "/api/auth/check-username?username=test" },
         { label: t("status.api.ep.currentUser"), method: "GET", path: "/api/auth/me" },
         { label: t("status.api.ep.registerInvitePrep"), method: "GET", path: "/api/admin/invite-links" },
+        { label: t("status.api.ep.verifyInvite"), method: "GET", path: "/api/auth/verify-invite/:code" },
         { label: t("status.api.ep.register"), method: "POST", path: "/api/auth/register/:inviteCode" },
+        { label: t("status.api.ep.login"), method: "POST", path: "/api/auth/login" },
+        { label: t("status.api.ep.logout"), method: "POST", path: "/api/auth/logout" },
       ],
     },
     {
@@ -257,10 +436,14 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       label: t("status.api.cat.users"),
       endpoints: [
         { label: t("status.api.ep.listUsers"), method: "GET", path: "/api/users?page=1&limit=5" },
+        { label: t("status.api.ep.userStats"), method: "GET", path: "/api/users/stats" },
         { label: t("status.api.ep.getUserById"), method: "GET", path: "/api/users/:id" },
+        { label: t("status.api.ep.getUserImage"), method: "GET", path: "/api/users/image" },
         { label: t("status.api.ep.updateProfile"), method: "PATCH", path: "/api/users/:id/profile" },
         { label: t("status.api.ep.uploadImage"), method: "POST", path: "/api/users/:id/media/images" },
         { label: t("status.api.ep.deleteImage"), method: "DELETE", path: "/api/users/:id/media/images" },
+        { label: t("status.api.ep.uploadAvatar"), method: "POST", path: "/api/users/:id/media/avatar" },
+        { label: t("status.api.ep.deleteAvatar"), method: "DELETE", path: "/api/users/:id/media/avatar" },
         { label: t("status.api.ep.uploadAudio"), method: "POST", path: "/api/users/:id/media/audio" },
         { label: t("status.api.ep.deleteAudio"), method: "DELETE", path: "/api/users/:id/media/audio" },
         { label: t("status.api.ep.changePassword"), method: "POST", path: "/api/users/:id/change-password" },
@@ -275,19 +458,21 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.createEvent"), method: "POST", path: "/api/events" },
         { label: t("status.api.ep.getEvent"), method: "GET", path: "/api/events/:id" },
         { label: t("status.api.ep.updateEvent"), method: "PATCH", path: "/api/events/:id" },
+        { label: t("status.api.ep.getEventImage"), method: "GET", path: "/api/events/image" },
+        { label: t("status.api.ep.batchEventDetails"), method: "POST", path: "/api/events/batch-details" },
         { label: t("status.api.ep.uploadEventImages"), method: "POST", path: "/api/events/:id/images" },
         { label: t("status.api.ep.joinEvent"), method: "POST", path: "/api/events/:id/join" },
         { label: t("status.api.ep.addParticipant"), method: "POST", path: "/api/events/:id/participants" },
         { label: t("status.api.ep.removeParticipant"), method: "DELETE", path: "/api/events/:id/participants" },
         { label: t("status.api.ep.leaveEvent"), method: "DELETE", path: "/api/events/:id/leave" },
+        { label: t("status.api.ep.pollVote"), method: "POST", path: "/api/events/:id/poll/vote" },
+        { label: t("status.api.ep.raffleDraw"), method: "POST", path: "/api/events/:id/raffle/draw" },
         { label: t("status.api.ep.listTemplates"), method: "GET", path: "/api/events/templates/list" },
         { label: t("status.api.ep.createTemplate"), method: "POST", path: "/api/events/templates" },
         { label: t("status.api.ep.updateTemplate"), method: "PATCH", path: "/api/events/templates/:id" },
         { label: t("status.api.ep.pauseTemplate"), method: "POST", path: "/api/events/templates/:id/pause" },
         { label: t("status.api.ep.resumeTemplate"), method: "POST", path: "/api/events/templates/:id/resume" },
         { label: t("status.api.ep.deleteTemplate"), method: "DELETE", path: "/api/events/templates/:id" },
-        { label: t("status.api.ep.archiveEvent"), method: "DELETE", path: "/api/events/:id" },
-        { label: t("status.api.ep.destroyEvent"), method: "DELETE", path: "/api/events/:id/destroy" },
       ],
     },
     {
@@ -298,6 +483,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.createAnnouncement"), method: "POST", path: "/api/announcements" },
         { label: t("status.api.ep.getAnnouncement"), method: "GET", path: "/api/announcements/:id" },
         { label: t("status.api.ep.updateAnnouncement"), method: "PATCH", path: "/api/announcements/:id" },
+        { label: t("status.api.ep.getAnnouncementImage"), method: "GET", path: "/api/announcements/image" },
         { label: t("status.api.ep.uploadAnnouncementImages"), method: "POST", path: "/api/announcements/:id/images" },
         { label: t("status.api.ep.archiveAnnouncement"), method: "DELETE", path: "/api/announcements/:id" },
       ],
@@ -307,6 +493,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       label: t("status.api.cat.gallery"),
       endpoints: [
         { label: t("status.api.ep.listGallery"), method: "GET", path: "/api/gallery?limit=5" },
+        { label: t("status.api.ep.getGalleryImage"), method: "GET", path: "/api/gallery/image" },
         { label: t("status.api.ep.uploadGalleryImages"), method: "POST", path: "/api/gallery/images" },
         { label: t("status.api.ep.addVideo"), method: "POST", path: "/api/gallery/videos" },
         { label: t("status.api.ep.likeItem"), method: "POST", path: "/api/gallery/:id/like" },
@@ -314,6 +501,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.addComment"), method: "POST", path: "/api/gallery/:id/comments" },
         { label: t("status.api.ep.editComment"), method: "PATCH", path: "/api/gallery/:id/comments/:commentId" },
         { label: t("status.api.ep.deleteComment"), method: "DELETE", path: "/api/gallery/:id/comments/:commentId" },
+        { label: t("status.api.ep.batchDeleteGallery"), method: "POST", path: "/api/gallery/batch-delete" },
         { label: t("status.api.ep.deleteGalleryItem"), method: "DELETE", path: "/api/gallery/:id" },
       ],
     },
@@ -323,16 +511,19 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       endpoints: [
         { label: t("status.api.ep.activeWar"), method: "GET", path: "/api/guild-war/active" },
         { label: t("status.api.ep.saveTeams"), method: "POST", path: "/api/guild-war/save-teams" },
-        { label: t("status.api.ep.moveMember"), method: "POST", path: "/api/guild-war/move" },
         { label: t("status.api.ep.updateRoleTag"), method: "PATCH", path: "/api/guild-war/role-tag" },
         { label: t("status.api.ep.exportGuildWar"), method: "GET", path: "/api/guild-war/export?format=json" },
         { label: t("status.api.ep.warHistory"), method: "GET", path: "/api/guild-war/history?page=1&limit=5" },
         { label: t("status.api.ep.historyDetail"), method: "GET", path: "/api/guild-war/history/:id" },
+        { label: t("status.api.ep.batchHistoryDetails"), method: "POST", path: "/api/guild-war/history/batch" },
+        { label: t("status.api.ep.updateMemberStats"), method: "PATCH", path: "/api/guild-war/history/:id/member-stats/:userId" },
+        { label: t("status.api.ep.batchMemberStats"), method: "PATCH", path: "/api/guild-war/history/:id/member-stats/batch" },
+        { label: t("status.api.ep.moveMember"), method: "POST", path: "/api/guild-war/move" },
         { label: t("status.api.ep.createHistory"), method: "POST", path: "/api/guild-war/history" },
         { label: t("status.api.ep.updateHistory"), method: "PATCH", path: "/api/guild-war/history/:id" },
-        { label: t("status.api.ep.updateMemberStats"), method: "PATCH", path: "/api/guild-war/history/:id/member-stats/:userId" },
         { label: t("status.api.ep.analytics"), method: "GET", path: "/api/guild-war/analytics" },
         { label: t("status.api.ep.deleteHistory"), method: "DELETE", path: "/api/guild-war/history/:id" },
+        { label: t("status.api.ep.batchDeleteHistory"), method: "POST", path: "/api/guild-war/history/batch-delete" },
       ],
     },
     {
@@ -346,9 +537,24 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.createArticle"), method: "POST", path: "/api/wiki/articles" },
         { label: t("status.api.ep.getArticle"), method: "GET", path: "/api/wiki/articles/:slug" },
         { label: t("status.api.ep.updateArticle"), method: "PATCH", path: "/api/wiki/articles/:id" },
+        { label: t("status.api.ep.getWikiImage"), method: "GET", path: "/api/wiki/image" },
         { label: t("status.api.ep.uploadArticleImages"), method: "POST", path: "/api/wiki/articles/:id/images" },
         { label: t("status.api.ep.archiveArticle"), method: "DELETE", path: "/api/wiki/articles/:id" },
         { label: t("status.api.ep.deleteCategory"), method: "DELETE", path: "/api/wiki/categories/:id" },
+      ],
+    },
+    {
+      key: "badges",
+      label: t("status.api.cat.badges"),
+      endpoints: [
+        { label: t("status.api.ep.listBadges"), method: "GET", path: "/api/badges" },
+        { label: t("status.api.ep.createBadge"), method: "POST", path: "/api/badges" },
+        { label: t("status.api.ep.getBadge"), method: "GET", path: "/api/badges/:id" },
+        { label: t("status.api.ep.updateBadge"), method: "PATCH", path: "/api/badges/:id" },
+        { label: t("status.api.ep.badgeAssignments"), method: "GET", path: "/api/badges/:id/assignments" },
+        { label: t("status.api.ep.assignBadge"), method: "POST", path: "/api/badges/:id/assign" },
+        { label: t("status.api.ep.unassignBadge"), method: "POST", path: "/api/badges/:id/unassign" },
+        { label: t("status.api.ep.deleteBadge"), method: "DELETE", path: "/api/badges/:id" },
       ],
     },
     {
@@ -359,6 +565,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.inviteStats"), method: "GET", path: "/api/admin/invite-links/stats" },
         { label: t("status.api.ep.createInvite"), method: "POST", path: "/api/admin/invite-links" },
         { label: t("status.api.ep.revokeInvite"), method: "DELETE", path: "/api/admin/invite-links/:id" },
+        { label: t("status.api.ep.permanentDeleteInvite"), method: "DELETE", path: "/api/admin/invite-links/:id/permanent" },
       ],
     },
     {
@@ -396,6 +603,13 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.createRole"), method: "POST", path: "/api/admin/roles" },
         { label: t("status.api.ep.updateRole"), method: "PATCH", path: "/api/admin/roles/:id" },
         { label: t("status.api.ep.deleteRole"), method: "DELETE", path: "/api/admin/roles/:id" },
+      ],
+    },
+    {
+      key: "adminErrorLog",
+      label: t("status.api.cat.adminErrorLog"),
+      endpoints: [
+        { label: t("status.api.ep.errorLog"), method: "GET", path: "/api/admin/error-log?page=1&limit=5" },
       ],
     },
   ];
@@ -436,7 +650,9 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   if (path.includes("/api/users/:id")) {
     const selfOnly =
       endpoint.path.includes("/change-password") ||
-      endpoint.path.includes("/change-username");
+      endpoint.path.includes("/change-username") ||
+      endpoint.path.includes("/media/") ||
+      endpoint.path.includes("/profile");
     const userId = selfOnly ? context.meId : context.targetUserId ?? context.meId;
     const next = replacePathParam(path, ":id", userId);
     if (!next) {
@@ -454,15 +670,7 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   }
 
   if (path.includes("/api/events/:id")) {
-    const mutable =
-      endpoint.label === "Update Event" ||
-      endpoint.label === "Join Event" ||
-      endpoint.label === "Leave Event" ||
-      endpoint.label === "Add Participant" ||
-      endpoint.label === "Remove Participant" ||
-      endpoint.label === "Archive Event" ||
-      endpoint.label === "Destroy Event" ||
-      endpoint.label === "Upload Event Images";
+    const mutable = endpoint.method !== "GET";
     const eventId = mutable ? context.createdEventId ?? context.eventId : context.eventId ?? context.createdEventId;
     const next = replacePathParam(path, ":id", eventId);
     if (!next) {
@@ -497,10 +705,14 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   }
 
   if (path.includes("/api/gallery/:id")) {
-    const galleryId =
-      endpoint.label === "Delete Item"
-        ? context.galleryDeleteId ?? context.galleryItemId
-        : context.galleryItemId ?? context.galleryDeleteId;
+    let galleryId: string | null;
+    if (endpoint.method === "DELETE") {
+      galleryId = context.galleryDeleteId ?? context.createdGalleryImageId;
+    } else if (endpoint.method === "GET") {
+      galleryId = context.galleryItemId ?? context.createdGalleryImageId ?? context.galleryDeleteId;
+    } else {
+      galleryId = context.createdGalleryImageId ?? context.galleryDeleteId ?? context.galleryItemId;
+    }
     const next = replacePathParam(path, ":id", galleryId);
     if (!next) {
       return { path, missing: "gallery item id" };
@@ -564,6 +776,45 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
     path = next;
   }
 
+  if (path.includes("/api/auth/verify-invite/:code")) {
+    const next = replacePathParam(path, ":code", context.registerInviteCode);
+    if (!next) {
+      return { path, missing: "invite code (run invite links first)" };
+    }
+    path = next;
+  }
+
+  if (endpoint.path === "/api/users/image") {
+    if (!context.userImageKey) {
+      return { path, missing: "user image key (run user image upload first)" };
+    }
+    return { path: `/api/users/image?key=${encodeURIComponent(context.userImageKey)}`, missing: null };
+  }
+
+  if (endpoint.path === "/api/events/image") {
+    return { path: "/api/events/image?key=placeholder", missing: null };
+  }
+
+  if (endpoint.path === "/api/announcements/image") {
+    return { path: "/api/announcements/image?key=placeholder", missing: null };
+  }
+
+  if (endpoint.path === "/api/gallery/image") {
+    return { path: "/api/gallery/image?key=placeholder", missing: null };
+  }
+
+  if (endpoint.path === "/api/wiki/image") {
+    return { path: "/api/wiki/image?key=placeholder", missing: null };
+  }
+
+  if (path.includes("/api/badges/:id")) {
+    const next = replacePathParam(path, ":id", context.badgeId);
+    if (!next) {
+      return { path, missing: "badge id" };
+    }
+    path = next;
+  }
+
   if (path.includes("/api/admin/invite-links/:id")) {
     const next = replacePathParam(path, ":id", context.inviteLinkId);
     if (!next) {
@@ -599,7 +850,30 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
   }
   const path = resolved.path;
 
-  if (endpoint.method === "GET" || endpoint.method === "DELETE") {
+  if (endpoint.method === "DELETE") {
+    switch (endpoint.path) {
+      case "/api/users/:id/media/avatar":
+        return skipEndpoint(path, "Skipped: would delete existing avatar");
+      case "/api/users/:id/media/audio":
+        return skipEndpoint(path, "Skipped: would delete existing audio");
+      case "/api/users/:id/media/images":
+        if (!context.uploadedImageKey) {
+          return skipEndpoint(path, "No test-uploaded image to delete");
+        }
+        return buildJsonRequest(path, { keys: [context.uploadedImageKey] });
+      case "/api/events/:id/participants":
+        if (!context.eventParticipantUserId && !context.targetUserId && !context.meId) {
+          return skipEndpoint(path, "Missing participant user id");
+        }
+        return buildJsonRequest(path, {
+          user_ids: [context.eventParticipantUserId ?? context.targetUserId ?? context.meId],
+        });
+      default:
+        return { path };
+    }
+  }
+
+  if (endpoint.method === "GET") {
     return { path };
   }
 
@@ -631,16 +905,8 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     case "POST /api/users/:id/media/images":
       return buildFormRequest(path, [["file", createTinyPngFile()]]);
 
-    case "DELETE /api/users/:id/media/images":
-      if (!context.userImageKey) {
-        return skipEndpoint(path, "Missing uploaded image key");
-      }
-      return buildJsonRequest(path, {
-        keys: [context.userImageKey],
-      });
-
     case "POST /api/users/:id/media/audio":
-      return buildFormRequest(path, [["file", createTinyAudioFile()]]);
+      return skipEndpoint(path, "Skipped: replaces existing audio (destructive)");
 
     case "POST /api/users/:id/change-password":
       return skipEndpoint(path, "Requires current user password");
@@ -672,14 +938,6 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       }
       return buildJsonRequest(path, {
         user_ids: [context.targetUserId ?? context.meId],
-      });
-
-    case "DELETE /api/events/:id/participants":
-      if (!context.eventParticipantUserId && !context.targetUserId && !context.meId) {
-        return skipEndpoint(path, "Missing participant user id");
-      }
-      return buildJsonRequest(path, {
-        user_ids: [context.eventParticipantUserId ?? context.targetUserId ?? context.meId],
       });
 
     case "POST /api/events/templates":
@@ -727,7 +985,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     case "POST /api/gallery/videos":
       return buildJsonRequest(path, {
         type: "video",
-        url: "https://example.com/video.mp4",
+        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         caption: "[systemtest] API test video",
       });
 
@@ -742,14 +1000,14 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/guild-war/save-teams":
-      if (!context.warEventId && !context.eventId && !context.createdEventId) {
+      if (!context.createdEventId && !context.eventId && !context.warEventId) {
         return skipEndpoint(path, "Missing event id for guild war teams");
       }
       if (!context.targetUserId && !context.meId) {
         return skipEndpoint(path, "Missing user id for guild war teams");
       }
       return buildJsonRequest(path, {
-        event_id: context.warEventId ?? context.eventId ?? context.createdEventId,
+        event_id: context.createdEventId ?? context.eventId ?? context.warEventId,
         teams: [
           {
             team_name: "[systemtest] API Team A",
@@ -767,32 +1025,32 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/guild-war/move":
-      if (!context.warEventId && !context.eventId && !context.createdEventId) {
+      if (!context.createdEventId && !context.eventId && !context.warEventId) {
         return skipEndpoint(path, "Missing event id for guild war move");
       }
       if (!context.warMemberUserId && !context.targetUserId && !context.meId) {
         return skipEndpoint(path, "Missing member user id for guild war move");
       }
       return buildJsonRequest(path, {
-        event_id: context.warEventId ?? context.eventId ?? context.createdEventId,
+        event_id: context.createdEventId ?? context.eventId ?? context.warEventId,
         moves: [{ user_id: context.warMemberUserId ?? context.targetUserId ?? context.meId, to: "pool" }],
       });
 
     case "PATCH /api/guild-war/role-tag":
-      if (!context.warEventId && !context.eventId && !context.createdEventId) {
+      if (!context.createdEventId && !context.eventId && !context.warEventId) {
         return skipEndpoint(path, "Missing event id for role tag");
       }
       if (!context.warMemberUserId) {
         return skipEndpoint(path, "Missing active war member user id for role tag");
       }
       return buildJsonRequest(path, {
-        event_id: context.warEventId ?? context.eventId ?? context.createdEventId,
+        event_id: context.createdEventId ?? context.eventId ?? context.warEventId,
         updates: [{ user_id: context.warMemberUserId, role_tag: "DPS" }],
       });
 
     case "POST /api/guild-war/history":
       return buildJsonRequest(path, {
-        event_id: context.warEventId ?? context.eventId ?? context.createdEventId ?? undefined,
+        event_id: context.createdEventId ?? context.eventId ?? context.warEventId ?? undefined,
         war_name: `[systemtest] API Test War ${nowId}`,
         result: "win",
       });
@@ -873,12 +1131,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/admin/users/batch/delete":
-      if (!context.adminCreatedUserId) {
-        return skipEndpoint(path, "Missing created admin user id");
-      }
-      return buildJsonRequest(path, {
-        user_ids: [context.adminCreatedUserId],
-      });
+      return skipEndpoint(path, "Deferred to cleanup phase");
 
     case "PATCH /api/admin/users/:id/role":
       return buildJsonRequest(path, {
@@ -913,6 +1166,97 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         name: `[systemtest] API Role Updated ${nowId}`,
       });
 
+    case "POST /api/auth/login":
+      if (!context.adminCreatedUserId || !context.adminCreatedUserPassword) {
+        return skipEndpoint(path, "Requires admin-created test user credentials");
+      }
+      return {
+        ...buildJsonRequest(path, {
+          username: `systemtest_admin_${nowId}`,
+          password: context.adminCreatedUserPassword,
+        }),
+        credentials: "omit",
+      };
+
+    case "POST /api/auth/logout":
+      return {
+        ...buildJsonRequest(path, {}),
+        credentials: "omit",
+      };
+
+    case "POST /api/users/:id/media/avatar":
+      return skipEndpoint(path, "Skipped: replaces existing avatar (destructive)");
+
+    case "POST /api/events/batch-details":
+      if (!context.eventId && !context.createdEventId) {
+        return skipEndpoint(path, "Missing event id");
+      }
+      return buildJsonRequest(path, {
+        ids: [context.eventId ?? context.createdEventId],
+      });
+
+    case "POST /api/events/:id/poll/vote":
+      return skipEndpoint(path, "Requires active poll on event");
+
+    case "POST /api/events/:id/raffle/draw":
+      return skipEndpoint(path, "Requires raffle event setup");
+
+    case "POST /api/gallery/batch-delete":
+      if (!context.galleryDeleteId) {
+        return skipEndpoint(path, "Missing gallery item to batch-delete");
+      }
+      return buildJsonRequest(path, {
+        ids: [context.galleryDeleteId],
+      });
+
+    case "POST /api/guild-war/history/batch":
+      if (!context.warHistoryId) {
+        return skipEndpoint(path, "Missing war history id");
+      }
+      return buildJsonRequest(path, {
+        ids: [context.warHistoryId],
+      });
+
+    case "POST /api/guild-war/history/batch-delete":
+      return skipEndpoint(path, "Skipped to avoid data loss");
+
+    case "PATCH /api/guild-war/history/:id/member-stats/batch":
+      if (!context.warHistoryId || !context.warMemberUserId) {
+        return skipEndpoint(path, "Missing war history id or member user id");
+      }
+      return buildJsonRequest(path, {
+        updates: [{ user_id: context.warMemberUserId, kills: 2 }],
+      });
+
+    case "POST /api/badges":
+      return buildJsonRequest(path, {
+        name: `[systemtest] API Badge ${nowId}`,
+        description: "[systemtest] Created by API tester",
+        icon: "trophy",
+        color: "#f59e0b",
+      });
+
+    case "PATCH /api/badges/:id":
+      return buildJsonRequest(path, {
+        name: `[systemtest] API Badge Updated ${nowId}`,
+      });
+
+    case "POST /api/badges/:id/assign":
+      if (!context.targetUserId && !context.meId) {
+        return skipEndpoint(path, "Missing user id for badge assign");
+      }
+      return buildJsonRequest(path, {
+        user_ids: [context.targetUserId ?? context.meId],
+      });
+
+    case "POST /api/badges/:id/unassign":
+      if (!context.targetUserId && !context.meId) {
+        return skipEndpoint(path, "Missing user id for badge unassign");
+      }
+      return buildJsonRequest(path, {
+        user_ids: [context.targetUserId ?? context.meId],
+      });
+
     default:
       return { path };
   }
@@ -923,7 +1267,54 @@ export function captureContextFromResponse(
   endpoint: EndpointDef,
   result: EndpointResult,
 ): TestRunContext {
-  if (!result.status || result.status < 200 || result.status >= 300 || result.parsedJson === null) {
+  const isSuccess = result.status !== null && result.status >= 200 && result.status < 300;
+
+  // Clear created*Id when in-category DELETEs succeed so cleanup won't 404
+  if (isSuccess && endpoint.method === "DELETE") {
+    const next: TestRunContext = { ...previous };
+    if (endpoint.path === "/api/wiki/categories/:id" && next.createdWikiCategoryId === next.wikiCategoryId) {
+      next.createdWikiCategoryId = null;
+    }
+    if (endpoint.path === "/api/guild-war/history/:id" && next.createdWarHistoryId === next.warHistoryId) {
+      next.createdWarHistoryId = null;
+    }
+    if (endpoint.path === "/api/guild-war/history/:id" && next.createdSaveTeamsHistoryId === next.warHistoryId) {
+      next.createdSaveTeamsHistoryId = null;
+    }
+    if (endpoint.path === "/api/events/templates/:id" && next.createdTemplateId === next.eventTemplateId) {
+      next.createdTemplateId = null;
+    }
+    if (endpoint.path === "/api/events/:id/destroy" && next.createdEventId) {
+      next.createdEventId = null;
+    }
+    if (endpoint.path === "/api/gallery/:id") {
+      const deletedId = next.galleryDeleteId ?? next.createdGalleryImageId;
+      if (deletedId && deletedId === next.createdGalleryVideoId) {
+        next.createdGalleryVideoId = null;
+      }
+      if (deletedId && deletedId === next.createdGalleryImageId) {
+        next.createdGalleryImageId = null;
+      }
+    }
+    if (endpoint.path === "/api/badges/:id" && next.createdBadgeId === next.badgeId) {
+      next.createdBadgeId = null;
+    }
+    if (endpoint.path === "/api/admin/invite-links/:id" && next.createdInviteLinkId === next.inviteLinkId) {
+      next.createdInviteLinkId = null;
+    }
+    if (endpoint.path === "/api/admin/invite-links/:id/permanent" && next.createdInviteLinkId === next.inviteLinkId) {
+      next.createdInviteLinkId = null;
+    }
+    if (endpoint.path === "/api/admin/roles/:id" && next.createdRoleId === next.adminRoleId) {
+      next.createdRoleId = null;
+    }
+    if (endpoint.path === "/api/users/:id/media/images") {
+      next.uploadedImageKey = null;
+    }
+    return next;
+  }
+
+  if (!isSuccess || result.parsedJson === null) {
     return previous;
   }
 
@@ -939,6 +1330,11 @@ export function captureContextFromResponse(
     const firstImage = profileImages.find((item): item is string => typeof item === "string");
     next.userImageKey = firstImage ?? next.userImageKey;
     next.userAudioKey = readString(profile?.audio_key) ?? next.userAudioKey;
+    if (profile && !next.targetProfileSnapshot) {
+      const bio = typeof profile.bio === "string" ? profile.bio : null;
+      const classes = Array.isArray(profile.classes) ? profile.classes.filter((c): c is string => typeof c === "string") : [];
+      next.targetProfileSnapshot = { bio, classes };
+    }
     return next;
   }
 
@@ -984,12 +1380,6 @@ export function captureContextFromResponse(
     const firstImage = images.find((item): item is string => typeof item === "string");
     next.userImageKey = firstImage ?? next.userImageKey;
     next.userAudioKey = readString(profile?.audio_key) ?? next.userAudioKey;
-    // Capture profile snapshot for cleanup restore (before PATCH modifies it)
-    if (profile && !next.targetProfileSnapshot) {
-      const bio = typeof profile.bio === "string" ? profile.bio : null;
-      const classes = Array.isArray(profile.classes) ? profile.classes.filter((c): c is string => typeof c === "string") : [];
-      next.targetProfileSnapshot = { bio, classes };
-    }
     return next;
   }
 
@@ -997,6 +1387,9 @@ export function captureContextFromResponse(
     const firstKey = Array.isArray(payload.keys)
       ? payload.keys.find((item): item is string => typeof item === "string")
       : null;
+    if (firstKey && endpoint.method === "POST") {
+      next.uploadedImageKey = firstKey;
+    }
     next.userImageKey = firstKey ?? next.userImageKey;
     return next;
   }
@@ -1024,7 +1417,9 @@ export function captureContextFromResponse(
   }
 
   if (endpoint.path === "/api/events/templates") {
-    next.eventTemplateId = readString(payload.id) ?? next.eventTemplateId;
+    const id = readString(payload.id);
+    next.eventTemplateId = id ?? next.eventTemplateId;
+    next.createdTemplateId = id ?? next.createdTemplateId;
     return next;
   }
 
@@ -1062,12 +1457,20 @@ export function captureContextFromResponse(
   }
 
   if (endpoint.path === "/api/gallery/videos") {
-    next.galleryDeleteId = readString(payload.id) ?? next.galleryDeleteId;
+    const id = readString(payload.id);
+    next.galleryDeleteId = id ?? next.galleryDeleteId;
+    next.createdGalleryVideoId = id ?? next.createdGalleryVideoId;
     return next;
   }
 
   if (endpoint.path === "/api/gallery/:id/comments") {
     next.galleryCommentId = readString(payload.id) ?? next.galleryCommentId;
+    return next;
+  }
+
+  if (endpoint.path === "/api/gallery/batch-delete") {
+    next.galleryDeleteId = null;
+    next.createdGalleryVideoId = null;
     return next;
   }
 
@@ -1084,6 +1487,15 @@ export function captureContextFromResponse(
         }
       }
     }
+    return next;
+  }
+
+  if (endpoint.path === "/api/guild-war/save-teams") {
+    const id = readString(payload.id);
+    if (id) {
+      next.createdSaveTeamsHistoryId = id;
+    }
+    next.warMemberUserId = next.targetUserId ?? next.meId ?? next.warMemberUserId;
     return next;
   }
 
@@ -1190,6 +1602,23 @@ export function captureContextFromResponse(
     return next;
   }
 
+  if (endpoint.path === "/api/badges") {
+    if (Array.isArray(payload.data)) {
+      const first = firstArrayItem(payload.data);
+      next.badgeId = readString(first?.id) ?? next.badgeId;
+    } else if (Array.isArray(payload)) {
+      const first = payload.find((item): item is Record<string, unknown> => isRecord(item));
+      next.badgeId = readString(first?.id) ?? next.badgeId;
+    } else {
+      const id = readString(payload.id);
+      next.badgeId = id ?? next.badgeId;
+      if (endpoint.method === "POST") {
+        next.createdBadgeId = id ?? next.createdBadgeId;
+      }
+    }
+    return next;
+  }
+
   return next;
 }
 
@@ -1239,11 +1668,16 @@ export async function runEndpointTest(
 
   const started = performance.now();
   try {
+    const mergedHeaders: Record<string, string> = { ...prepared.headers };
+    if (endpoint.method === "POST" || endpoint.method === "PATCH" || endpoint.method === "DELETE") {
+      mergedHeaders["X-Requested-With"] = "XMLHttpRequest";
+    }
+
     const response = await fetch(prepared.path, {
       method: endpoint.method,
       credentials: prepared.credentials ?? "include",
       signal,
-      headers: prepared.headers,
+      headers: mergedHeaders,
       body: prepared.body,
     });
     const latencyMs = Math.round(performance.now() - started);

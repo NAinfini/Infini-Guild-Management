@@ -13,6 +13,7 @@ import { useExternalView } from "./useExternalView";
 import {
   archiveAnnouncement,
   createAnnouncement,
+  deleteAnnouncement,
   type UpdateAnnouncementPayload,
   updateAnnouncement,
   uploadAnnouncementImages,
@@ -78,6 +79,7 @@ export function useAnnouncementsController() {
   const [debouncedSearchRaw] = useDebouncedValue(search, 300);
   const debouncedSearch = debouncedSearchRaw.trim();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [skipAutoSelectOnce, setSkipAutoSelectOnce] = useState(false);
   const [isCreating, isCreatingHandlers] = useDisclosure(false);
   const [draftAnnouncementId, setDraftAnnouncementId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -123,6 +125,7 @@ export function useAnnouncementsController() {
       message.success(t("message.created"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
       isCreatingHandlers.close();
+      setSkipAutoSelectOnce(false);
       setSelectedId(data.id);
     },
     onError: (error) => {
@@ -218,6 +221,7 @@ export function useAnnouncementsController() {
     onSuccess: async () => {
       message.success(t("message.archived"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+      setSkipAutoSelectOnce(true);
       setSelectedId(null);
     },
     onError: (error, _variables, context) => {
@@ -227,6 +231,42 @@ export function useAnnouncementsController() {
         }
       }
       showError(error, t("message.archiveFailed"));
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteAnnouncement,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
+      const previousLists = queryClient
+        .getQueriesData<PaginatedResponse<Announcement>>({ queryKey: queryKeys.announcements.all })
+        .filter(([key]) => !(Array.isArray(key) && key[1] === "detail"));
+
+      for (const [key] of previousLists) {
+        queryClient.setQueryData<PaginatedResponse<Announcement>>(key, (current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            data: current.data.filter((item) => item.id !== id),
+          };
+        });
+      }
+
+      return { previousLists };
+    },
+    onSuccess: async () => {
+      message.success(t("message.deleted"));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+      setSkipAutoSelectOnce(true);
+      setSelectedId(null);
+    },
+    onError: (error, _variables, context) => {
+      if (context) {
+        for (const [key, previous] of context.previousLists) {
+          queryClient.setQueryData(key, previous);
+        }
+      }
+      showError(error, t("message.deleteFailed"));
     },
   });
 
@@ -285,17 +325,23 @@ export function useAnnouncementsController() {
 
   useEffect(() => {
     if (isCreating) return;
-    if (!selectedId && rows.length > 0) {
-      setSelectedId(rows[0]?.id ?? null);
-      return;
-    }
     if (selectedId && rows.length > 0 && !rows.some((r) => r.id === selectedId)) {
       setSelectedId(rows[0]?.id ?? null);
+      setSkipAutoSelectOnce(false);
+      return;
     }
     if (selectedId && rows.length === 0) {
       setSelectedId(null);
+      setSkipAutoSelectOnce(false);
+      return;
     }
-  }, [isCreating, rows, selectedId]);
+    if (selectedId || skipAutoSelectOnce) {
+      return;
+    }
+    if (rows.length > 0) {
+      setSelectedId(rows[0]?.id ?? null);
+    }
+  }, [isCreating, rows, selectedId, skipAutoSelectOnce]);
 
   useEffect(() => {
     if (isCreating) {
@@ -341,6 +387,7 @@ export function useAnnouncementsController() {
   const handleCreateByStatus = useCallback(() => {
     isCreatingHandlers.open();
     setDraftAnnouncementId(null);
+    setSkipAutoSelectOnce(false);
     setSelectedId(null);
   }, []);
 
@@ -359,6 +406,7 @@ export function useAnnouncementsController() {
           if (id !== null) {
             isCreatingHandlers.close();
           }
+          setSkipAutoSelectOnce(false);
           setSelectedId(id);
         },
       });
@@ -367,6 +415,7 @@ export function useAnnouncementsController() {
     if (id !== null) {
       isCreatingHandlers.close();
     }
+    setSkipAutoSelectOnce(false);
     setSelectedId(id);
   }, [isDirty, isCreatingHandlers, t]);
 
@@ -399,6 +448,7 @@ export function useAnnouncementsController() {
           },
         });
         isCreatingHandlers.close();
+        setSkipAutoSelectOnce(false);
         setSelectedId(draftAnnouncementId);
         setDraftAnnouncementId(null);
         return;
@@ -466,7 +516,7 @@ export function useAnnouncementsController() {
 
   const handleDelete = () => {
     if (!selectedId) return;
-    archiveMutation.mutate(selectedId);
+    deleteMutation.mutate(selectedId);
   };
 
   const handleUploadAnnouncementImages = async (file: File) => {
@@ -529,9 +579,9 @@ export function useAnnouncementsController() {
     listHasMore,
     listLoadingMore: listQuery.isFetching && listPage > 1,
     onLoadMoreList: () => setListPage((p) => p + 1),
-    isBusy: createMutation.isPending || updateMutation.isPending || archiveMutation.isPending,
+    isBusy: createMutation.isPending || updateMutation.isPending || archiveMutation.isPending || deleteMutation.isPending,
     savePending: updateMutation.isPending,
-    deletePending: archiveMutation.isPending,
+    deletePending: deleteMutation.isPending,
     isDirty,
     resetFilters,
     handleCreateByStatus,

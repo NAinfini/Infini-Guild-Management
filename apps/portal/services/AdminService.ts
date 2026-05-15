@@ -23,6 +23,14 @@ export type {
 export { createRole, deleteRole, updateRole } from "../api/mutations/roles";
 export type { CreateRolePayload, UpdateRolePayload } from "../api/mutations/roles";
 export {
+  assignBadge,
+  createBadge,
+  deleteBadge,
+  unassignBadge,
+  updateBadge,
+} from "../api/mutations/badges";
+export type { CreateBadgePayload, UpdateBadgePayload } from "../api/mutations/badges";
+export {
   downloadAdminAuditArchiveFile,
   downloadAdminAuditLogExport,
   fetchAdminAuditArchiveMonths,
@@ -32,6 +40,7 @@ export {
   fetchAdminStatus,
   requestAdminAuditArchiveDownload,
 } from "../api/queries/admin";
+export { fetchBadgeAssignments, fetchBadges } from "../api/queries/badges";
 export type {
   AdminAuditArchiveDownloadFile,
   AdminAuditArchiveDownloadResponse,

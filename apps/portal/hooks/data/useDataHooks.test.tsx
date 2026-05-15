@@ -22,7 +22,7 @@ const serviceMocks = vi.hoisted(() => ({
   fetchRoles: vi.fn(),
   fetchTemplatesList: vi.fn(),
   fetchUserDetail: vi.fn(),
-  fetchUsersList: vi.fn(),
+  fetchAllUsersListWithOptions: vi.fn(),
 }));
 
 vi.mock("../../services/EventService", () => ({
@@ -38,8 +38,8 @@ vi.mock("../../services/GuildWarService", () => ({
 }));
 
 vi.mock("../../services/UserService", () => ({
+  fetchAllUsersListWithOptions: serviceMocks.fetchAllUsersListWithOptions,
   fetchUserDetail: serviceMocks.fetchUserDetail,
-  fetchUsersList: serviceMocks.fetchUsersList,
 }));
 
 vi.mock("../../services/AdminService", () => ({
@@ -84,7 +84,7 @@ describe("portal data hooks", () => {
 
   it("loads events and users through the service layer", async () => {
     serviceMocks.fetchEventsList.mockResolvedValueOnce({ data: [] });
-    serviceMocks.fetchUsersList.mockResolvedValueOnce({ data: [] });
+    serviceMocks.fetchAllUsersListWithOptions.mockResolvedValueOnce({ data: [] });
 
     const { result } = renderHook(
       () =>
@@ -112,7 +112,7 @@ describe("portal data hooks", () => {
       pinned: true,
       locked: true,
     });
-    expect(serviceMocks.fetchUsersList).toHaveBeenCalled();
+    expect(serviceMocks.fetchAllUsersListWithOptions).toHaveBeenCalled();
   });
 
   it("loads guild war queries through the service layer", async () => {
@@ -147,7 +147,6 @@ describe("portal data hooks", () => {
       page: 1,
       limit: 100,
       type: "guild_war",
-      archived: false,
     });
     expect(serviceMocks.fetchEventDetail).toHaveBeenCalledWith("event-1");
     expect(serviceMocks.fetchGuildWarActive).toHaveBeenCalledWith("event-1");
@@ -177,7 +176,7 @@ describe("portal data hooks", () => {
 
   it("loads admin data through service exports when permissions allow it", async () => {
     serviceMocks.fetchRoles.mockResolvedValueOnce([]);
-    serviceMocks.fetchUsersList.mockResolvedValueOnce({ data: [] });
+    serviceMocks.fetchAllUsersListWithOptions.mockResolvedValueOnce({ data: [] });
     serviceMocks.fetchAdminInviteLinks.mockResolvedValueOnce([]);
     serviceMocks.fetchAdminInviteStats.mockResolvedValueOnce({});
     serviceMocks.fetchAdminAuditLog.mockResolvedValueOnce({ data: [] });
@@ -208,7 +207,7 @@ describe("portal data hooks", () => {
     });
 
     expect(serviceMocks.fetchRoles).toHaveBeenCalled();
-    expect(serviceMocks.fetchUsersList).toHaveBeenCalled();
+    expect(serviceMocks.fetchAllUsersListWithOptions).toHaveBeenCalled();
     expect(serviceMocks.fetchAdminInviteLinks).toHaveBeenCalledWith({
       include_expired: true,
       include_revoked: true,

@@ -3,8 +3,8 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Badge, Grid, Group, Skeleton, Stack, Tabs, Text } from "@mantine/core";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { TrashIcon } from "@portal/components/icons";
-import { IconGripVertical, IconUserCircle } from "@tabler/icons-react";
+import { TrashIcon, UserCircleIcon } from "@portal/components/icons";
+import { IconGripVertical } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -175,7 +175,7 @@ export function MyProfilePage() {
     <PageLayout
       title={t("title")}
       subtitle={t("subtitle")}
-      icon={<IconUserCircle size={22} />}
+      icon={<UserCircleIcon size={22} />}
       className="my-profile-page"
     >
       {profileQuery.isLoading ? (

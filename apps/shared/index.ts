@@ -16,5 +16,6 @@ export * from "./schemas/guild-war";
 export * from "./schemas/wiki";
 export * from "./schemas/gallery";
 export * from "./schemas/admin";
+export * from "./schemas/badge";
 
 export * from "./types";

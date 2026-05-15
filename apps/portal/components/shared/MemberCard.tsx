@@ -1,5 +1,6 @@
-﻿import type { ClassName, MemberProfile, User } from "@guild/shared";
+﻿import type { ClassName, MemberProfile, User, UserBadge } from "@guild/shared";
 import { CLASS_COLOR_GROUP, CLASS_NAMES } from "@guild/shared";
+import { IconPhoto, IconVideo } from "@tabler/icons-react";
 import DOMPurify from "dompurify";
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,6 +10,7 @@ import "./MemberCard.css";
 type MemberCardProps = {
   user: User;
   profile: MemberProfile;
+  badges?: UserBadge[];
   onClick?: () => void;
   onDoubleClick?: () => void;
   compact?: boolean;
@@ -65,6 +67,7 @@ function defaultMediaResolver(value: string): string {
 export const MemberCard = memo(function MemberCard({
   user,
   profile,
+  badges,
   onClick,
   onDoubleClick,
   compact = false,
@@ -134,8 +137,27 @@ export const MemberCard = memo(function MemberCard({
         </div>
 
         <div className="member-card__meta-row">
-          <span className="member-card__pill member-card__pill--photo">{t("member.photo")} {profile.images.length}</span>
-          <span className="member-card__pill member-card__pill--video">{t("member.video")} {profile.video_urls.length}</span>
+          <span className="member-card__pill member-card__pill--photo" aria-label={`${t("member.photo")} ${profile.images.length}`}>
+            <IconPhoto size={13} />
+            {profile.images.length}
+          </span>
+          <span className="member-card__pill member-card__pill--video" aria-label={`${t("member.video")} ${profile.video_urls.length}`}>
+            <IconVideo size={13} />
+            {profile.video_urls.length}
+          </span>
+          {badges?.map((badge) => (
+            <span
+              key={badge.id}
+              className="member-card__badge"
+              style={{ "--badge-color": badge.color } as React.CSSProperties}
+              dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(badge.label_html, {
+                  ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
+                  ALLOWED_ATTR: ["style"],
+                }),
+              }}
+            />
+          ))}
         </div>
 
         <div className="member-card__content">

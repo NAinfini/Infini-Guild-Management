@@ -6,6 +6,7 @@ import {
   archiveEvent,
   createEvent as createEventMutation,
   deleteEvent,
+  drawRaffle,
   type CreateEventPayload,
   joinEvent,
   leaveEvent,
@@ -38,6 +39,7 @@ export {
   createTemplate,
   deleteEvent,
   deleteTemplate,
+  drawRaffle,
   fetchEventDetail,
   fetchEventDetailBatch,
   fetchEventsList,
@@ -62,6 +64,8 @@ type EventValidationReason =
   | "invalid_capacity"
   | "invalid_poll"
   | "missing_poll_end"
+  | "missing_raffle_end"
+  | "missing_winner_count"
   | "missing_event_id";
 
 export class EventValidationError extends Error {
@@ -91,6 +95,7 @@ export type EventSaveInput = {
   pollOptions?: string[];
   pollResultsVisibility?: "always" | "after_vote" | "after_close";
   pollShowVoterNames?: boolean;
+  winnerCount?: string;
   attachmentItems: AttachmentItem[];
 };
 
@@ -198,6 +203,20 @@ export class EventService {
       }
     }
 
+    if (input.eventType === "raffle") {
+      if (!input.endIso) {
+        throw new EventValidationError("missing_raffle_end", "Raffle end time required");
+      }
+      const parsedWinnerCount = Number.parseInt(input.winnerCount ?? "", 10);
+      if (!Number.isFinite(parsedWinnerCount) || parsedWinnerCount < 1) {
+        throw new EventValidationError("missing_winner_count", "Winner count required");
+      }
+    }
+
+    const winnerCount = input.eventType === "raffle"
+      ? Number.parseInt(input.winnerCount ?? "", 10) || undefined
+      : undefined;
+
     return {
       type: input.eventType,
       title,
@@ -214,6 +233,7 @@ export class EventService {
             show_voter_names: input.pollShowVoterNames ?? false,
           }
         : undefined,
+      winner_count: winnerCount,
     };
   }
 

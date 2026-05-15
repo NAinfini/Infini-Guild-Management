@@ -3,6 +3,7 @@ import { motion, useAnimation } from "motion/react";
 import type { HTMLAttributes } from "react";
 import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
 import { cn } from "@portal/utils/cn";
+import { useParentInteractiveHover } from "./useParentInteractiveHover";
 
 export interface DotsIconHandle {
   startAnimation: () => void;
@@ -32,6 +33,7 @@ const DotsIcon = forwardRef<DotsIconHandle, DotsIconProps>(
   ({ onMouseEnter, onMouseLeave, className, size = 28, ...props }, ref) => {
     const controls = useAnimation();
     const isControlledRef = useRef(false);
+    const wrapperRef = useParentInteractiveHover(controls, isControlledRef);
 
     useImperativeHandle(ref, () => {
       isControlledRef.current = true;
@@ -56,7 +58,7 @@ const DotsIcon = forwardRef<DotsIconHandle, DotsIconProps>(
     );
 
     return (
-      <div className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
+      <div ref={wrapperRef} className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
         <svg fill="none" height={size} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width={size} xmlns="http://www.w3.org/2000/svg">
           <motion.circle animate={controls} cx="12" cy="12" initial="normal" r="1" variants={DOT_1} />
           <motion.circle animate={controls} cx="19" cy="12" initial="normal" r="1" variants={DOT_2} />

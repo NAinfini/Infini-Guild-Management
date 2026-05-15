@@ -20,6 +20,7 @@ type EditorSnapshot = {
   pollOptions: string[];
   pollResultsVisibility: "always" | "after_vote" | "after_close";
   pollShowVoterNames: boolean;
+  winnerCount: string;
   attachmentSnapshot: string;
 };
 
@@ -57,7 +58,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   const [editorTouched, setEditorTouched] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
-  const [editorType, setEditorType] = useState<(typeof EVENT_TYPES)[number]>(EVENT_TYPES[0] ?? "raid");
+  const [editorType, setEditorType] = useState<(typeof EVENT_TYPES)[number] | "">("");
   const [editorTitle, setEditorTitle] = useState("");
   const [editorDescription, setEditorDescription] = useState("");
   const [editorStartAt, setEditorStartAt] = useState("");
@@ -69,6 +70,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   const [editorPollOptions, setEditorPollOptions] = useState<string[]>(["", ""]);
   const [editorPollResultsVisibility, setEditorPollResultsVisibility] = useState<"always" | "after_vote" | "after_close">("after_vote");
   const [editorPollShowVoterNames, setEditorPollShowVoterNames] = useState(false);
+  const [editorWinnerCount, setEditorWinnerCount] = useState("");
   const [editorBaseline, setEditorBaseline] = useState<string | null>(null);
 
   const editorStartIso = toIso(editorStartAt);
@@ -89,6 +91,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     pollOptions: editorPollOptions,
     pollResultsVisibility: editorPollResultsVisibility,
     pollShowVoterNames: editorPollShowVoterNames,
+    winnerCount: editorWinnerCount,
     attachmentSnapshot,
   });
   const isEditorDirty = editorOpen && editorBaseline !== null && editorTouched && editorCurrentSnapshot !== editorBaseline;
@@ -98,7 +101,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorTouched(true);
   }, []);
 
-  const handleEditorTypeChange = useCallback((value: (typeof EVENT_TYPES)[number]) => {
+  const handleEditorTypeChange = useCallback((value: (typeof EVENT_TYPES)[number] | "") => {
     setEditorTouched(true);
     setEditorType(value);
   }, []);
@@ -148,6 +151,11 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPollShowVoterNames(value);
   }, []);
 
+  const handleEditorWinnerCountChange = useCallback((value: string) => {
+    setEditorTouched(true);
+    setEditorWinnerCount(value);
+  }, []);
+
   const openCreateEditor = useCallback((initialDateKey?: string) => {
     const now = new Date();
     const fallbackStart = new Date(now.getTime() + 60 * 60_000);
@@ -158,7 +166,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorTouched(false);
     setEditorMode("create");
     setEditingEventId(null);
-    setEditorType("guild_war");
+    setEditorType("");
     setEditorTitle("");
     setEditorDescription("");
     const initialEndAt = toLocalInput(
@@ -175,11 +183,12 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPollOptions(["", ""]);
     setEditorPollResultsVisibility("after_vote");
     setEditorPollShowVoterNames(false);
+    setEditorWinnerCount("");
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "create",
         editingEventId: null,
-        type: "guild_war",
+        type: "",
         title: "",
         description: "",
         startAt: initialStartAt,
@@ -191,6 +200,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
         pollOptions: ["", ""],
         pollResultsVisibility: "after_vote",
         pollShowVoterNames: false,
+        winnerCount: "",
         attachmentSnapshot: "[]",
       }),
     );
@@ -217,6 +227,8 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPollOptions(event.poll?.options.map((option) => option.label) ?? ["", ""]);
     setEditorPollResultsVisibility(event.poll?.results_visibility ?? "after_vote");
     setEditorPollShowVoterNames(event.poll?.show_voter_names ?? false);
+    const winnerCountStr = event.winner_count != null ? String(event.winner_count) : "";
+    setEditorWinnerCount(winnerCountStr);
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "edit",
@@ -233,6 +245,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
         pollOptions: event.poll?.options.map((option) => option.label) ?? ["", ""],
         pollResultsVisibility: event.poll?.results_visibility ?? "after_vote",
         pollShowVoterNames: event.poll?.show_voter_names ?? false,
+        winnerCount: winnerCountStr,
         attachmentSnapshot: initialAttachmentSnapshot ?? "[]",
       }),
     );
@@ -285,6 +298,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     editorPollOptions,
     editorPollResultsVisibility,
     editorPollShowVoterNames,
+    editorWinnerCount,
     editorStartIso,
     editorEndIso,
     isEditorDirty,
@@ -301,6 +315,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPollOptions: handleEditorPollOptionsChange,
     setEditorPollResultsVisibility: handleEditorPollResultsVisibilityChange,
     setEditorPollShowVoterNames: handleEditorPollShowVoterNamesChange,
+    setEditorWinnerCount: handleEditorWinnerCountChange,
     openCreateEditor,
     openEditEditor,
     closeEditor,

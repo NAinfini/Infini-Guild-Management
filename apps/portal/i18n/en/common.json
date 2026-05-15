@@ -1,5 +1,4 @@
 {
-  "app.title": "Guild Portal",
   "nav.dashboard": "Dashboard",
   "nav.events": "Events",
   "nav.announcements": "Announcements",
@@ -48,6 +47,7 @@
   "notification.type.announcement": "Announcement",
   "notification.type.eventReminder": "Event",
   "notification.type.memberOnline": "Member",
+  "notification.type.wiki": "Wiki",
   "notification.empty": "No notifications yet",
   "loadError": "Unable to load data. Please try again later.",
   "loadErrorRetry": "Failed to refresh. Showing cached data.",
@@ -61,6 +61,7 @@
   "eventType.guild_war": "Guild War",
   "eventType.social": "Social",
   "eventType.poll": "Poll",
+  "eventType.raffle": "Raffle",
   "eventType.other": "Other",
   "cmdk.searchButton": "Search (Ctrl+K)",
   "cmdk.searchTitle": "Search",
@@ -163,5 +164,11 @@
   "notification.tooltip.clearAll": "Remove all notification history from this session.",
   "nav.skipToContent": "Skip to content",
   "pagination.perPage": "Per page",
-  "pagination.page": "Page"
+  "pagination.page": "Page",
+  "pagination.first": "First page",
+  "pagination.last": "Last page",
+  "pagination.prev": "Previous page",
+  "pagination.next": "Next page",
+  "profile.field.badges": "Badges",
+  "profile.noBadges": "No badges"
 }

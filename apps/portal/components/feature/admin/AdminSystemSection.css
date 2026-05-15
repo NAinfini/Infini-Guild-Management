@@ -146,6 +146,10 @@
   color: color-mix(in srgb, var(--color-text, #111827) 50%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
   white-space: nowrap;
+  position: sticky;
+  top: 0;
+  background: var(--color-surface, #fff);
+  z-index: 1;
 }
 
 .health-log-table td {

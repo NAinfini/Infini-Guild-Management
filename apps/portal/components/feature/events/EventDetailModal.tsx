@@ -5,14 +5,15 @@ import { DepthButton } from "@portal/components/shared/DepthButton";
 import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
 import {
-  IconCalendarEvent,
-  IconChartBar,
-  IconClock,
-  IconCheck,
-  IconUserMinus,
-  IconUserPlus,
-  IconUsers,
-} from "@tabler/icons-react";
+  CalendarEventIcon,
+  ChartBarIcon,
+  CheckIcon,
+  ClockIcon,
+  GiftIcon,
+  UserMinusIcon,
+  UserPlusIcon,
+  UsersIcon,
+} from "@portal/components/icons";
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import "./EventDetailModal.css";
@@ -26,7 +27,7 @@ function formatLocalDate(startAt: string, locale: string): string {
 
 function formatLocalTime(startAt: string, endAt: string | null, locale: string): string {
   const start = new Date(startAt);
-  const timeOpts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+  const timeOpts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit", hour12: true };
   const startTime = start.toLocaleTimeString(locale, timeOpts);
   if (!endAt) return startTime;
   const end = new Date(endAt);
@@ -67,6 +68,8 @@ type EventDetailModalProps = {
   onRemoveParticipant: (eventId: string, userId: string) => void;
   onVotePoll?: (eventId: string, optionIds: string[]) => void;
   votePending?: boolean;
+  onDrawRaffle?: (eventId: string) => void;
+  drawRafflePending?: boolean;
 };
 
 export function EventDetailModal({
@@ -84,42 +87,39 @@ export function EventDetailModal({
   onRemoveParticipant,
   onVotePoll,
   votePending,
+  onDrawRaffle,
+  drawRafflePending,
 }: EventDetailModalProps) {
   const { t, i18n } = useTranslation("events");
   const { t: tc } = useTranslation("common");
   const mediaLabels = useMemo(() => buildMediaGalleryLabels(tc), [tc]);
-  const [renderedEvent, setRenderedEvent] = useState<Event | null>(event);
-  const [renderedMembers, setRenderedMembers] = useState<MemberEntry[]>(members);
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
-  const modalEvent = event ?? renderedEvent;
-  const modalMembers = event ? members : renderedMembers;
-  const isJoined = currentUserId ? modalMembers.some((entry) => entry.user.id === currentUserId) : false;
-  const isFull = modalEvent?.capacity != null ? modalMembers.length >= modalEvent.capacity : false;
-  const hasEnded = Boolean(modalEvent?.end_at && new Date(modalEvent.end_at) < new Date());
-  const isPoll = modalEvent?.type === "poll";
+  const [localHasVoted, setLocalHasVoted] = useState(false);
+  const isJoined = currentUserId ? members.some((entry) => entry.user.id === currentUserId) : false;
+  const isFull = event?.capacity != null ? members.length >= event.capacity : false;
+  const hasEnded = Boolean(event?.end_at && new Date(event.end_at) < new Date());
+  const isPoll = event?.type === "poll";
+  const isRaffle = event?.type === "raffle";
+  const raffleWinners = event?.raffle_winners ?? [];
+  const raffleHasDrawn = raffleWinners.length > 0;
   const showMemberAction = Boolean(currentUserId && (isJoined ? onLeave : onJoin));
-  const memberActionDisabled = modalEvent
-    ? event === null || modalEvent.signup_locked || Boolean(modalEvent.archived_at) || hasEnded || (!isJoined && isFull)
+  const memberActionDisabled = event
+    ? event.signup_locked || Boolean(event.archived_at) || hasEnded || (!isJoined && isFull)
     : true;
   const memberActionLabel = isJoined
     ? t("button.leave")
     : isFull
       ? t("button.full")
       : t("button.join");
-  const pollTotalVotes = modalEvent?.poll?.options.reduce((total, option) => total + option.vote_count, 0) ?? 0;
-
-  useEffect(() => {
-    if (event) {
-      setRenderedEvent(event);
-      setRenderedMembers(members);
-    }
-  }, [event, members]);
+  const pollTotalVotes = event?.poll?.options.reduce((total, option) => total + option.vote_count, 0) ?? 0;
 
   useEffect(() => {
     if (!event) {
       return;
     }
+    const serverHasVoted = event.poll?.has_voted ?? false;
     setSelectedOptionIds(event.poll?.options.filter((option) => option.voted_by_me).map((option) => option.id) ?? []);
+    setLocalHasVoted(serverHasVoted);
   }, [event]);
 
   const togglePollOption = (optionId: string, disabled: boolean) => {
@@ -143,10 +143,10 @@ export function EventDetailModal({
     <Modal
       opened={event !== null}
       onClose={onClose}
-      title={modalEvent?.title}
-      size={modalEvent?.attachments && modalEvent.attachments.length > 0 ? "calc(100vw - 80px)" : "min(820px, calc(100vw - 32px))"}
+      title={event?.title}
+      size={event?.attachments && event.attachments.length > 0 ? "calc(100vw - 80px)" : "min(820px, calc(100vw - 32px))"}
       centered
-      transitionProps={{ onExited: () => { setRenderedEvent(null); setRenderedMembers([]); } }}
+      keepMounted={false}
       classNames={{
         body: "event-detail-modal__body",
         content: "event-detail-modal__content",
@@ -154,41 +154,41 @@ export function EventDetailModal({
         title: "event-detail-modal__title",
       }}
     >
-      {modalEvent ? (
+      {event ? (
         <Grid gutter={16} className="event-detail-modal__grid">
-          <Grid.Col span={modalEvent.attachments && modalEvent.attachments.length > 0 ? { base: 12, md: 5 } : 12}>
+          <Grid.Col span={event.attachments && event.attachments.length > 0 ? { base: 12, md: 5 } : 12}>
             <Stack gap={14}>
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={10}>
                 <section className="event-detail-modal__meta-card event-detail-modal__meta-card--type">
-                  <IconCalendarEvent size={20} />
+                  <CalendarEventIcon size={20} />
                   <div>
                     <Text size="xs" fw={700} tt="uppercase" c="dimmed">{t("detail.eventType")}</Text>
-                    <Text size="sm" fw={700}>{t(`common:eventType.${modalEvent.type}`)}</Text>
+                    <Text size="sm" fw={700}>{t(`common:eventType.${event.type}`)}</Text>
                   </div>
                 </section>
                 <section className="event-detail-modal__meta-card event-detail-modal__meta-card--time">
-                  <IconClock size={20} />
+                  <ClockIcon size={20} />
                   <div>
                     <Text size="xs" fw={700} tt="uppercase" c="dimmed">{t("detail.time")}</Text>
                     <Text size="sm" fw={600}>
-                      {formatLocalDate(modalEvent.start_at, i18n.language)} - {formatLocalTime(modalEvent.start_at, modalEvent.end_at, i18n.language)}
+                      {formatLocalDate(event.start_at, i18n.language)} - {formatLocalTime(event.start_at, event.end_at, i18n.language)}
                     </Text>
                   </div>
                 </section>
               </SimpleGrid>
 
-              {modalEvent.description ? (
+              {event.description ? (
                 <section className="event-detail-modal__section">
                   <Text size="sm" fw={700} mb={4}>{t("detail.description")}</Text>
-                  <Text size="sm" c="dimmed" lh={1.55}>{modalEvent.description}</Text>
+                  <Text size="sm" c="dimmed" lh={1.55}>{event.description}</Text>
                 </section>
               ) : null}
 
-              {isPoll && modalEvent.poll ? (
+              {isPoll && event.poll ? (
                 <section className="event-detail-modal__section event-detail-modal__section--poll">
                   <Group justify="space-between" gap={12} mb={12} wrap="nowrap" className="event-detail-modal__poll-header">
                     <Group gap={8}>
-                      <IconChartBar size={20} />
+                      <ChartBarIcon size={20} />
                       <Text size="md" fw={800}>{t("poll.detail.title")}</Text>
                     </Group>
                     <Text size="xs" fw={700} className="event-detail-modal__poll-total">
@@ -197,14 +197,14 @@ export function EventDetailModal({
                   </Group>
                   <Stack gap={12}>
                     <div className="event-detail-modal__poll-result-board">
-                      {modalEvent.poll.options.map((option) => {
+                      {event.poll.options.map((option) => {
                         const percent = pollTotalVotes > 0 ? Math.round((option.vote_count / pollTotalVotes) * 100) : 0;
                         const voterEntries = resolveVoterEntries(option.voter_ids, allUsers);
                         const missingVoterIds = option.voter_ids.filter((userId) => !voterEntries.some((entry) => entry.user.id === userId));
                         const visibleVoters = voterEntries.slice(0, 10);
                         const hiddenVoterCount = Math.max(0, voterEntries.length - visibleVoters.length);
                         const isSelectedOption = selectedOptionIds.includes(option.id);
-                        const optionDisabled = event === null || !modalEvent.poll?.can_vote || !onVotePoll || hasEnded || Boolean(modalEvent.archived_at) || Boolean(votePending);
+                        const optionDisabled = event === null || !event.poll?.can_vote || !onVotePoll || hasEnded || Boolean(event.archived_at) || Boolean(votePending);
                         return (
                           <div
                             key={option.id}
@@ -220,7 +220,7 @@ export function EventDetailModal({
                               <div className="event-detail-modal__poll-result-top">
                                 <Group gap={9} wrap="nowrap" className="event-detail-modal__poll-choice">
                                   <span className="event-detail-modal__poll-choice-indicator" aria-hidden="true">
-                                    {isSelectedOption ? <IconCheck size={14} stroke={3} /> : null}
+                                    {isSelectedOption ? <CheckIcon size={14} /> : null}
                                   </span>
                                   <Text size="sm" fw={800}>{option.label}</Text>
                                 </Group>
@@ -262,20 +262,99 @@ export function EventDetailModal({
                       })}
                     </div>
                     <div className="event-detail-modal__poll-actions">
-                      {!modalEvent.poll.can_vote || hasEnded || modalEvent.archived_at ? (
+                      {!event.poll.can_vote || hasEnded || event.archived_at ? (
                         <Text size="xs" c="dimmed">{hasEnded ? t("poll.status.closed") : t("poll.status.readOnly")}</Text>
                       ) : null}
                       <Button
                         color="teal"
                         size="sm"
                         loading={votePending}
-                        disabled={event === null || !modalEvent.poll.can_vote || !onVotePoll || hasEnded || Boolean(modalEvent.archived_at) || selectedOptionIds.length === 0}
-                        onClick={() => onVotePoll?.(modalEvent.id, selectedOptionIds)}
+                        disabled={event === null || !event.poll.can_vote || !onVotePoll || hasEnded || Boolean(event.archived_at) || selectedOptionIds.length === 0}
+                        onClick={() => {
+                          onVotePoll?.(event.id, selectedOptionIds);
+                          setLocalHasVoted(true);
+                        }}
                       >
-                        {modalEvent.poll.has_voted ? t("poll.update") : t("poll.vote")}
+                        {localHasVoted ? t("poll.update") : t("poll.vote")}
                       </Button>
                     </div>
                   </Stack>
+                </section>
+              ) : null}
+
+              {isRaffle ? (
+                <section className="event-detail-modal__section event-detail-modal__section--raffle">
+                  <Group justify="space-between" gap={12} mb={12} wrap="nowrap">
+                    <Group gap={8}>
+                      <GiftIcon size={20} />
+                      <Text size="md" fw={800}>{t("raffle.detail.title")}</Text>
+                    </Group>
+                    {raffleHasDrawn ? (
+                      <Text size="xs" fw={700} c="dimmed">{t("raffle.status.drawn")}</Text>
+                    ) : canManage && onDrawRaffle && members.length > 0 ? (
+                      <Button
+                        variant="light"
+                        color="pink"
+                        size="xs"
+                        loading={drawRafflePending}
+                        disabled={event === null || Boolean(event.archived_at)}
+                        leftSection={<GiftIcon size={14} />}
+                        onClick={() => {
+                          modals.openConfirmModal({
+                            title: t("raffle.confirm.draw.title"),
+                            children: (
+                              <Text size="sm">
+                                {t("raffle.confirm.draw.description", {
+                                  count: event.winner_count ?? 0,
+                                  pool: members.length,
+                                })}
+                              </Text>
+                            ),
+                            labels: { confirm: t("raffle.detail.drawNow"), cancel: t("button.cancel") },
+                            confirmProps: { color: "pink" },
+                            onConfirm: () => onDrawRaffle(event.id),
+                            centered: true,
+                          });
+                        }}
+                      >
+                        {t("raffle.detail.drawNow")}
+                      </Button>
+                    ) : (
+                      <Text size="xs" fw={700} c="dimmed">{t("raffle.status.pendingDraw")}</Text>
+                    )}
+                  </Group>
+                  {raffleHasDrawn ? (
+                    <Stack gap={8}>
+                      <Text size="sm" fw={600} c="dimmed">{t("raffle.detail.winnersLabel")}</Text>
+                      {raffleWinners.map((winner) => {
+                        const entry = allUsers.find((e) => e.user.id === winner.user_id);
+                        return (
+                          <Group key={winner.id} gap={10} wrap="nowrap">
+                            {entry ? (
+                              <>
+                                <MemberRoleAvatar user={entry.user} profile={entry.profile} size={36} withTooltip={false} />
+                                <Text size="sm" fw={700}>{entry.user.username}</Text>
+                              </>
+                            ) : (
+                              <Text size="sm" c="dimmed">{winner.user_id}</Text>
+                            )}
+                          </Group>
+                        );
+                      })}
+                    </Stack>
+                  ) : (
+                    <Stack gap={4}>
+                      <Text size="sm" c="dimmed">
+                        {t("raffle.detail.winnerCount", { count: event.winner_count ?? 0 })}
+                      </Text>
+                      <Text size="sm" c="dimmed">
+                        {t("raffle.detail.pool", { count: members.length })}
+                      </Text>
+                      {!canManage ? (
+                        <Text size="xs" c="dimmed">{t("raffle.detail.pendingDraw")}</Text>
+                      ) : null}
+                    </Stack>
+                  )}
                 </section>
               ) : null}
 
@@ -283,9 +362,9 @@ export function EventDetailModal({
                 <section className="event-detail-modal__section event-detail-modal__section--members">
                   <Group justify="space-between" gap={12} mb={12} wrap="wrap">
                     <Group gap={8}>
-                      <IconUsers size={20} />
+                      <UsersIcon size={20} />
                       <Text size="md" fw={800}>
-                        {modalEvent.capacity ? t("detail.membersWithCap", { count: modalMembers.length, capacity: modalEvent.capacity }) : t("detail.members", { count: modalMembers.length })}
+                        {event.capacity ? t("detail.membersWithCap", { count: members.length, capacity: event.capacity }) : t("detail.members", { count: members.length })}
                       </Text>
                     </Group>
                     {showMemberAction ? (
@@ -294,15 +373,15 @@ export function EventDetailModal({
                         size="sm"
                         onClick={() => {
                           if (isJoined) {
-                            onLeave?.(modalEvent.id);
+                            onLeave?.(event.id);
                             return;
                           }
-                          onJoin?.(modalEvent.id);
+                          onJoin?.(event.id);
                         }}
                         disabled={memberActionDisabled || joinPending || leavePending}
                         loading={joinPending || leavePending}
                       >
-                        {isJoined ? <IconUserMinus size={14} style={{ marginRight: 4 }} /> : <IconUserPlus size={14} style={{ marginRight: 4 }} />}
+                        {isJoined ? <UserMinusIcon size={14} style={{ marginRight: 4 }} /> : <UserPlusIcon size={14} style={{ marginRight: 4 }} />}
                         {memberActionLabel}
                       </DepthButton>
                     ) : null}
@@ -317,24 +396,24 @@ export function EventDetailModal({
                       value={null}
                       onChange={(userId) => {
                         if (userId) {
-                          onAddParticipant(modalEvent.id, userId);
+                          onAddParticipant(event.id, userId);
                         }
                       }}
                       disabled={event === null}
                       data={allUsers
-                        .filter((entry) => entry.user.is_active && !entry.user.deleted_at && !modalMembers.some((m) => m.user.id === entry.user.id))
+                        .filter((entry) => entry.user.is_active && !entry.user.deleted_at && !members.some((m) => m.user.id === entry.user.id))
                         .map((entry) => ({ value: entry.user.id, label: entry.user.username }))
                       }
-                      leftSection={<IconUserPlus size={16} />}
+                      leftSection={<UserPlusIcon size={16} />}
                     />
                   ) : null}
 
-                  {modalMembers.length === 0 ? (
+                  {members.length === 0 ? (
                     <Text c="dimmed" size="sm">{t("detail.noMembers")}</Text>
                   ) : (
                     <div className="event-detail-modal__member-list">
                       <Stack gap={8}>
-                        {modalMembers.map((entry) => (
+                        {members.map((entry) => (
                           <Group key={entry.user.id} gap={10} className="event-detail-modal__member-row" wrap="nowrap">
                             <MemberRoleAvatar user={entry.user} profile={entry.profile} size={40} withTooltip={false} />
                             <div className="event-detail-modal__member-info">
@@ -359,13 +438,13 @@ export function EventDetailModal({
                                     ),
                                     labels: { confirm: t("detail.removeMember"), cancel: t("button.cancel") },
                                     confirmProps: { color: "red" },
-                                    onConfirm: () => onRemoveParticipant(modalEvent.id, entry.user.id),
+                                    onConfirm: () => onRemoveParticipant(event.id, entry.user.id),
                                     centered: true,
                                   });
                                 }}
                                 disabled={event === null}
                               >
-                                <IconUserMinus size={14} style={{ marginRight: 4 }} />
+                                <UserMinusIcon size={14} style={{ marginRight: 4 }} />
                                 {t("detail.removeMember")}
                               </DepthButton>
                             ) : null}
@@ -379,9 +458,9 @@ export function EventDetailModal({
             </Stack>
           </Grid.Col>
 
-          {modalEvent.attachments && modalEvent.attachments.length > 0 ? (
+          {event.attachments && event.attachments.length > 0 ? (
             <Grid.Col span={{ base: 12, md: 7 }}>
-              <MediaGallery images={modalEvent.attachments} resolveMediaUrl={resolveEventAttachmentUrl} labels={mediaLabels} />
+              <MediaGallery images={event.attachments} resolveMediaUrl={resolveEventAttachmentUrl} labels={mediaLabels} />
             </Grid.Col>
           ) : null}
         </Grid>

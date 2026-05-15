@@ -28,6 +28,7 @@ export const warHistory = sqliteTable(
   },
   (table) => ({
     idxEventId: index("idx_war_history_event_id").on(table.eventId),
+    idxEventCreated: index("idx_war_history_event_created").on(table.eventId, table.createdAt, table.id),
     idxCreated: index("idx_war_history_created").on(table.createdAt, table.id),
   }),
 );

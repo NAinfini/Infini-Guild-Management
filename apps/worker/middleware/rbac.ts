@@ -21,8 +21,9 @@ export async function getRequestUser(c: Context): Promise<SessionUser | null> {
   return (await resolveSession(c))?.user ?? null;
 }
 
-export async function requirePermission(c: Context, permission: Permission): Promise<SessionUser | Response> {
-  const user = (await resolveSession(c, { freshPermissions: true }))?.user ?? null;
+export async function requirePermission(c: Context, permission: Permission, options?: { freshPermissions?: boolean }): Promise<SessionUser | Response> {
+  const fresh = options?.freshPermissions ?? true;
+  const user = (await resolveSession(c, { freshPermissions: fresh }))?.user ?? null;
   if (!user) return buildError(c, "UNAUTHORIZED", "Authentication required");
   if (!user.permissions.has(permission)) return buildError(c, "FORBIDDEN", "Insufficient permission");
   return user;

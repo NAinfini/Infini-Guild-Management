@@ -8,6 +8,7 @@ import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { deleteMediaObject, storeProfileAudio, storeProfileImage } from "../services/media";
 import { UserService } from "../services/UserService";
+import { BadgeService } from "../services/BadgeService";
 import { buildError, parseBoolean, parseJsonBody, parsePage } from "./_shared";
 
 export const usersRoutes = new Hono();
@@ -26,6 +27,13 @@ function getUserService(c: Context) {
     verifyPassword,
     createPasswordHash,
     destroySession: () => destroySession(c),
+  });
+}
+
+function getBadgeService(c: Context) {
+  return new BadgeService(getDb(c), {
+    writeAuditLog: (input) => writeAuditLog(c, input),
+    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
   });
 }
 
@@ -64,17 +72,31 @@ usersRoutes.get("/", async (c) => {
   const sessionUser = resolved?.user ?? null;
   const query = c.req.query();
 
+  const isAdmin = sessionUser?.permissions.has("admin.users.view") === true;
+  const explicitActive = parseBoolean(query.active);
+  const activeFilter = explicitActive ?? (isAdmin ? undefined : true);
+
   const result = await getUserService(c).listUsers({
     page: parsePage(query.page, 1),
     limit: Math.min(500, parsePage(query.limit, 20)),
     search: (query.search ?? "").trim().toLowerCase(),
     roleFilter: query.role as Role | undefined,
     classFilter: query.class,
-    activeFilter: parseBoolean(query.active),
+    activeFilter,
     sessionUser,
     includeTotal: parseBoolean(query.include_total) === true,
   });
-  return serviceResponse(c, result);
+  if (!result.ok) return serviceResponse(c, result);
+
+  const data = result.data.data as Array<{ user: { id: string }; profile: unknown }>;
+  const userIds = data.map((row) => row.user.id);
+  const badgeMap = await getBadgeService(c).getBulkUserBadges(userIds);
+  const enriched = data.map((row) => ({
+    ...row,
+    badges: badgeMap.get(row.user.id) ?? [],
+  }));
+
+  return c.json({ ...result.data, data: enriched });
 });
 
 usersRoutes.get("/stats", async (c) => {
@@ -84,7 +106,11 @@ usersRoutes.get("/stats", async (c) => {
 usersRoutes.get("/:id", async (c) => {
   const sessionUser = await requireSession(c);
   if (sessionUser instanceof Response) return sessionUser;
-  return serviceResponse(c, await getUserService(c).getUser(sessionUser, c.req.param("id")));
+  const result = await getUserService(c).getUser(sessionUser, c.req.param("id"));
+  if (!result.ok) return serviceResponse(c, result);
+  const userData = result.data as { user: { id: string }; profile: unknown };
+  const badges = await getBadgeService(c).getUserBadges(userData.user.id);
+  return c.json({ ...userData, badges });
 });
 
 usersRoutes.patch("/:id/profile", async (c) => {

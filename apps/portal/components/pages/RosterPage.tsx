@@ -1,4 +1,4 @@
-import type { MemberProfile, User } from "@guild/shared";
+import type { MemberProfile, User, UserBadge } from "@guild/shared";
 import { CLASS_NAMES } from "@guild/shared";
 import { activeGame } from "@guild/shared/games";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
@@ -25,7 +25,7 @@ import { useTranslation } from "react-i18next";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersListWithOptions } from "../../services/UserService";
+import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { resolveProfileMediaUrl } from "../../utils/media";
@@ -45,7 +45,7 @@ const rosterCardVariants = {
   visible: { opacity: 1, y: 0 },
 } as const;
 
-type RosterEntry = { user: User; profile: MemberProfile };
+type RosterEntry = { user: User; profile: MemberProfile; badges?: UserBadge[] };
 const ROSTER_FILTERS_KEY = "roster.filters";
 const ROSTER_SORT_MODES = [
   ...activeGame.profileStats.filter((s) => s.sortable).map((s) => s.key),
@@ -118,7 +118,7 @@ export function RosterPage() {
   const [audioVolume, setAudioVolumeState] = useLocalStorage<number>({ key: "roster.audio.volume", defaultValue: 20 });
   const hoverAudioDebounceRef = useRef<number | null>(null);
   const hoverAudioStopDebounceRef = useRef<number | null>(null);
-  const [selected, setSelected] = useState<{ user: User; profile: MemberProfile } | null>(null);
+  const [selected, setSelected] = useState<{ user: User; profile: MemberProfile; badges?: UserBadge[] } | null>(null);
   const selectedRef = useRef(selected);
   const [windowWidth, setWindowWidth] = useState(() => typeof window === "undefined" ? 1920 : window.innerWidth);
   const virtualScrollRef = useRef<HTMLDivElement | null>(null);
@@ -131,7 +131,7 @@ export function RosterPage() {
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.roster(isExternalView ? "external" : "default"),
-    queryFn: () => fetchUsersListWithOptions({ externalView: isExternalView }),
+    queryFn: () => fetchAllUsersListWithOptions({ externalView: isExternalView }),
     staleTime: 10 * 60_000,
   });
   useLoadWarningToast(usersQuery.isError, t("common:loadErrorRetry"));
@@ -206,7 +206,7 @@ export function RosterPage() {
     getScrollElement: () => virtualScrollRef.current,
     estimateSize: () => 320,
     overscan: 6,
-    gap: 12,
+    gap: 6,
   });
   const virtualRows = rowVirtualizer.getVirtualItems();
 
@@ -381,7 +381,7 @@ export function RosterPage() {
                           onFocus={() => handleCardFocus(entry)}
                           onBlur={handleCardBlur}
                         >
-                          <MemberCard user={entry.user} profile={entry.profile} resolveMediaUrl={resolveProfileMediaUrl} onClick={() => openMemberProfile(entry)} />
+                          <MemberCard user={entry.user} profile={entry.profile} badges={entry.badges} resolveMediaUrl={resolveProfileMediaUrl} onClick={() => openMemberProfile(entry)} />
                         </div>
                       </div>
                     ))}
@@ -401,7 +401,7 @@ export function RosterPage() {
                     onFocus={() => handleCardFocus(entry)}
                     onBlur={handleCardBlur}
                   >
-                    <MemberCard user={entry.user} profile={entry.profile} resolveMediaUrl={resolveProfileMediaUrl} onClick={() => setSelected(entry)} />
+                    <MemberCard user={entry.user} profile={entry.profile} badges={entry.badges} resolveMediaUrl={resolveProfileMediaUrl} onClick={() => setSelected(entry)} />
                   </div>
                 </motion.div>
               ))}

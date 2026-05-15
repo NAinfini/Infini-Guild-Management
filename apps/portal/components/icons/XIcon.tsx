@@ -3,6 +3,7 @@ import { motion, useAnimation } from "motion/react";
 import type { HTMLAttributes } from "react";
 import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
 import { cn } from "@portal/utils/cn";
+import { useParentInteractiveHover } from "./useParentInteractiveHover";
 
 export interface XIconHandle {
   startAnimation: () => void;
@@ -22,6 +23,7 @@ const XIcon = forwardRef<XIconHandle, XIconProps>(
   ({ onMouseEnter, onMouseLeave, className, size = 28, ...props }, ref) => {
     const controls = useAnimation();
     const isControlledRef = useRef(false);
+    const wrapperRef = useParentInteractiveHover(controls, isControlledRef);
 
     useImperativeHandle(ref, () => {
       isControlledRef.current = true;
@@ -46,7 +48,7 @@ const XIcon = forwardRef<XIconHandle, XIconProps>(
     );
 
     return (
-      <div className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
+      <div ref={wrapperRef} className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
         <motion.svg animate={controls} fill="none" height={size} initial="normal" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" variants={SVG_VARIANTS} viewBox="0 0 24 24" width={size} xmlns="http://www.w3.org/2000/svg">
           <path d="M18 6 6 18" />
           <path d="m6 6 12 12" />

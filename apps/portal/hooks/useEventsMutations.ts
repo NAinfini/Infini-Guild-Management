@@ -10,6 +10,7 @@ import {
   archiveEvent,
   createEvent,
   deleteEvent,
+  drawRaffle,
   EventService,
   EventValidationError,
   type EventSaveInput,
@@ -116,7 +117,11 @@ export function useEventsMutations({
               ? t("poll.message.endRequired")
               : error.reason === "invalid_poll"
                 ? t("poll.message.optionsInvalid")
-                : t("message.missingEventId");
+                : error.reason === "missing_raffle_end"
+                  ? t("raffle.message.endRequired", { defaultValue: "Raffle end time required" })
+                  : error.reason === "missing_winner_count"
+                    ? t("raffle.message.winnerCountRequired", { defaultValue: "Winner count required" })
+                    : t("message.missingEventId");
         showError(error, messageText);
         return;
       }
@@ -192,6 +197,20 @@ export function useEventsMutations({
     },
     onError: (error) => {
       showError(error, t("poll.message.voteFailed"));
+    },
+  });
+
+  const drawRaffleMutation = useMutation({
+    mutationFn: (eventId: string) => drawRaffle(eventId),
+    onSuccess: async (_, eventId) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events.previewDetails() });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+      notifySuccess(t("raffle.message.drawSuccess"));
+    },
+    onError: (error) => {
+      showError(error, t("raffle.message.drawFailed", { defaultValue: "Failed to draw raffle winners" }));
     },
   });
 
@@ -283,6 +302,7 @@ export function useEventsMutations({
     joinPending: participantMutations.joinPending,
     leavePending: participantMutations.leavePending,
     votePending: votePollMutation.isPending,
+    drawRafflePending: drawRaffleMutation.isPending,
     resetAttachmentItems,
     handleJoin,
     handleLeave,
@@ -296,6 +316,7 @@ export function useEventsMutations({
     unarchiveEventById,
     deleteEventWithConfirm,
     votePoll: (eventId: string, optionIds: string[]) => votePollMutation.mutate({ eventId, optionIds }),
+    drawRaffle: (eventId: string) => drawRaffleMutation.mutate(eventId),
     addParticipant: participantMutations.addParticipant,
     removeParticipant: participantMutations.removeParticipant,
   };

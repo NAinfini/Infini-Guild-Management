@@ -235,10 +235,8 @@
   font-weight: 500;
   text-decoration: line-through;
   text-decoration-color: color-mix(in srgb, #ef4444 40%, transparent);
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  word-break: break-all;
   flex: 1;
   min-width: 0;
 }
@@ -259,10 +257,8 @@
   background: color-mix(in srgb, #10b981 10%, transparent);
   color: #059669;
   font-weight: 600;
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  word-break: break-all;
   flex: 1;
   min-width: 0;
 }
@@ -304,10 +300,8 @@
   background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
   color: color-mix(in srgb, var(--color-text, #111827) 85%, transparent);
   font-weight: 500;
-  max-width: 300px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .dark .audit-info-entry__value {

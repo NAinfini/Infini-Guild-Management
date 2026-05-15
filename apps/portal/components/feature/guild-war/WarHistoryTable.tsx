@@ -1,5 +1,5 @@
-import { ActionIcon, Badge, Button, Group, HoverCard, Select, Skeleton, Stack, Text, TextInput, ThemeIcon, Alert } from "@mantine/core";
-import { IconCalendarOff } from "@tabler/icons-react";
+import { ActionIcon, Badge, Button, Group, HoverCard, NumberInput, Select, Skeleton, Stack, Text, TextInput, ThemeIcon, Alert } from "@mantine/core";
+import { CalendarOffIcon } from "@portal/components/icons";
 import { InfiniTable, useReactTable } from "@portal/components/shared/InfiniTable";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
@@ -99,13 +99,13 @@ export function WarHistoryTable({
           <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
             <HoverCard.Target>
               <ActionIcon variant="subtle" onClick={onClearDates} disabled={!historyDateFrom && !historyDateTo} aria-label={t("history.aria.clearDates")}>
-                <IconCalendarOff size={18} />
+                <CalendarOffIcon size={18} />
               </ActionIcon>
             </HoverCard.Target>
             <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
               <Group gap={10} wrap="nowrap" align="flex-start">
                 <ThemeIcon variant="light" color="orange" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                  <IconCalendarOff size={16} />
+                  <CalendarOffIcon size={16} />
                 </ThemeIcon>
                 <div style={{ minWidth: 0 }}>
                   <Text size="sm" fw={700} lh={1.3}>{t("hovercard.clearDates.title")}</Text>
@@ -187,25 +187,53 @@ export function WarHistoryTable({
                     />
                   </Group>
                   <Group gap={4} align="center">
-                    <Button
+                    <ActionIcon size="sm" variant="default" disabled={historyPage <= 1} onClick={() => onHistoryPageChange(1)}>
+                      «
+                    </ActionIcon>
+                    <ActionIcon size="sm" variant="default" disabled={historyPage <= 1} onClick={() => onHistoryPageChange(historyPage - 1)}>
+                      ‹
+                    </ActionIcon>
+                    {(() => {
+                      const pages: (number | "ellipsis-left" | "ellipsis-right")[] = [];
+                      const start = Math.max(2, historyPage - 1);
+                      const end = Math.min(historyTotalPages - 1, historyPage + 1);
+                      pages.push(1);
+                      if (start > 2) pages.push("ellipsis-left");
+                      for (let i = start; i <= end; i++) pages.push(i);
+                      if (end < historyTotalPages - 1) pages.push("ellipsis-right");
+                      if (historyTotalPages > 1) pages.push(historyTotalPages);
+                      return pages.map((item) => {
+                        if (item === "ellipsis-left" || item === "ellipsis-right") {
+                          return <Text key={item} size="sm" c="dimmed" px={2}>…</Text>;
+                        }
+                        return (
+                          <ActionIcon key={item} size="sm" variant={item === historyPage ? "filled" : "default"} onClick={() => onHistoryPageChange(item)}>
+                            {item}
+                          </ActionIcon>
+                        );
+                      });
+                    })()}
+                    <ActionIcon size="sm" variant="default" disabled={historyPage >= historyTotalPages} onClick={() => onHistoryPageChange(historyPage + 1)}>
+                      ›
+                    </ActionIcon>
+                    <ActionIcon size="sm" variant="default" disabled={historyPage >= historyTotalPages} onClick={() => onHistoryPageChange(historyTotalPages)}>
+                      »
+                    </ActionIcon>
+                    <NumberInput
                       size="xs"
-                      variant="default"
-                      disabled={historyPage <= 1}
-                      onClick={() => onHistoryPageChange(historyPage - 1)}
-                    >
-                      &lt;
-                    </Button>
-                    <Text size="sm">
-                      {t("history.page")} {historyPage} / {historyTotalPages}
-                    </Text>
-                    <Button
-                      size="xs"
-                      variant="default"
-                      disabled={historyPage >= historyTotalPages}
-                      onClick={() => onHistoryPageChange(historyPage + 1)}
-                    >
-                      &gt;
-                    </Button>
+                      min={1}
+                      max={historyTotalPages}
+                      value={historyPage}
+                      onChange={(val) => {
+                        if (typeof val === "number" && val >= 1 && val <= historyTotalPages) {
+                          onHistoryPageChange(val);
+                        }
+                      }}
+                      hideControls
+                      style={{ width: 56 }}
+                      styles={{ input: { textAlign: "center" } }}
+                    />
+                    <Text size="sm" c="dimmed">/ {historyTotalPages}</Text>
                   </Group>
                 </Group>
               ) : null}

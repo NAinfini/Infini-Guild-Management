@@ -1,5 +1,5 @@
-import { PlusIcon, SpeakerphoneIcon } from "@portal/components/icons";
-import { Button, Group, Loader } from "@mantine/core";
+import { SpeakerphoneIcon } from "@portal/components/icons";
+import { Loader } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { usePageHeaderActions } from "../../context/PageHeaderContext";
 import { useAnnouncementsController } from "../../hooks/useAnnouncementsController";
@@ -21,22 +21,6 @@ export function AnnouncementsPage() {
   const emptyText = (
     <EmptyState
       title={controller.search.trim() || controller.statusFilter || controller.pinnedFilter ? t("empty.filtered") : t("empty")}
-      actions={
-        <Group gap={8} wrap="wrap">
-          <Button
-            variant="default"
-            onClick={controller.resetFilters}
-            disabled={!controller.search.trim() && !controller.statusFilter && !controller.pinnedFilter}
-          >
-            {t("action.resetFilters")}
-          </Button>
-          {controller.canEdit ? (
-            <Button onClick={controller.handleCreateByStatus} leftSection={<PlusIcon size={16} />}>
-              {t("action.createAnnouncement")}
-            </Button>
-          ) : null}
-        </Group>
-      }
     />
   );
 

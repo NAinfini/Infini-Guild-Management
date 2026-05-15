@@ -1,14 +1,9 @@
 import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
 import { PortalCard } from "@portal/components/shared/PortalCard";
-import { CircleCheckIcon, PauseIcon } from "@portal/components/icons";
+import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, UsersIcon } from "@portal/components/icons";
 import { Badge, Group, HoverCard, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import {
-  IconCalendarRepeat,
-  IconClock,
-  IconUsers,
-} from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
@@ -101,7 +96,7 @@ export function RecurringTemplatesTab({
       modals.openConfirmModal({
         title: t("recurring.confirm.delete.title"),
         children: (
-          <Text size="sm">{t("recurring.confirm.delete.description")}</Text>
+          <Text size="sm">{t("recurring.confirm.delete.description", { title: template.title })}</Text>
         ),
         confirmProps: { color: "red" },
         labels: { confirm: t("common:action.confirm"), cancel: t("common:action.cancel") },
@@ -148,7 +143,7 @@ export function RecurringTemplatesTab({
         {templates.length === 0 ? (
           <PortalCard interactive={false}>
             <Stack align="center" gap={8} py={40} px={16}>
-              <IconCalendarRepeat size={40} stroke={1.2} style={{ opacity: 0.3 }} />
+              <CalendarRepeatIcon size={40} style={{ opacity: 0.3 }} />
               <Text c="dimmed" size="sm">{t("recurring.empty")}</Text>
             </Stack>
           </PortalCard>
@@ -181,9 +176,8 @@ export function RecurringTemplatesTab({
                           flexShrink: 0,
                         }}
                       >
-                        <IconCalendarRepeat
+                        <CalendarRepeatIcon
                           size={20}
-                          stroke={1.5}
                           style={{
                             color: isPaused ? "var(--color-text-muted, #6b7280)" : "var(--color-primary, #3b82f6)",
                           }}
@@ -207,6 +201,7 @@ export function RecurringTemplatesTab({
                                 variant="light"
                                 color={isPaused ? "gray" : "green"}
                                 style={{ flexShrink: 0 }}
+                                data-animate-icon-trigger
                               >
                                 {isPaused ? t("recurring.status.paused") : t("recurring.status.active")}
                               </Badge>
@@ -231,7 +226,7 @@ export function RecurringTemplatesTab({
 
                         <Group gap={16} wrap="wrap">
                           <Group gap={4} align="center">
-                            <IconClock size={13} stroke={1.5} style={{ opacity: 0.5 }} />
+                            <ClockIcon size={13} style={{ opacity: 0.5 }} />
                             <Text size="xs" c="dimmed">{time}</Text>
                           </Group>
                           <Text size="xs" c="dimmed">
@@ -239,7 +234,7 @@ export function RecurringTemplatesTab({
                           </Text>
                           {template.capacity != null && (
                             <Group gap={4} align="center">
-                              <IconUsers size={13} stroke={1.5} style={{ opacity: 0.5 }} />
+                              <UsersIcon size={13} style={{ opacity: 0.5 }} />
                               <Text size="xs" c="dimmed">{template.capacity}</Text>
                             </Group>
                           )}
@@ -258,7 +253,7 @@ export function RecurringTemplatesTab({
                           <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                             <Group gap={10} wrap="nowrap" align="flex-start">
                               <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                                <IconClock size={16} stroke={1.5} />
+                                <ClockIcon size={16} />
                               </ThemeIcon>
                               <div style={{ minWidth: 0 }}>
                                 <Text size="sm" fw={700} lh={1.3}>{t("recurring.hovercard.lastGenerated.title")}</Text>

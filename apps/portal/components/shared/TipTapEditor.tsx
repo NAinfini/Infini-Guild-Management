@@ -21,7 +21,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { common, createLowlight } from "lowlight";
 import { Bilibili } from "./tiptap-ext-bilibili";
 import { SearchReplace } from "./tiptap-ext-search-replace";
-import { DragHandle } from "./tiptap-ext-drag-handle";
+
 import { TipTapEditorToolbar } from "./TipTapEditorToolbar";
 import { TipTapEditorContextMenu } from "./TipTapEditorContextMenu";
 import { TipTapEditorLinkDialog } from "./TipTapEditorLinkDialog";
@@ -389,7 +389,6 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
         DetailsSummary,
         CharacterCount,
         SearchReplace,
-        DragHandle,
         Placeholder.configure({
           placeholder: placeholder ?? "Start typing...",
         }),

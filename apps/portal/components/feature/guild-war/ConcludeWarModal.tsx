@@ -10,7 +10,7 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { IconFlag } from "@tabler/icons-react";
+import { FlagIcon } from "@portal/components/icons";
 import { activeGame } from "@guild/shared/games";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -260,7 +260,7 @@ export function ConcludeWarModal({
           </Button>
           <Button
             color="red"
-            leftSection={<IconFlag size={16} />}
+            leftSection={<FlagIcon size={16} />}
             onClick={handleSubmit}
             loading={pending}
           >

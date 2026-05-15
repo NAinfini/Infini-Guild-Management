@@ -1,4 +1,4 @@
-import { Button, Group, Select, Text } from "@mantine/core";
+import { ActionIcon, Group, NumberInput, Select, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { useReactTable } from "@tanstack/react-table";
 
@@ -15,6 +15,17 @@ export function TablePagination<T>({ table, pageSizeOptions = [10, 20, 50] }: Ta
 
   const currentPage = table.getState().pagination.pageIndex + 1;
 
+  const pageButtons: (number | "ellipsis-left" | "ellipsis-right")[] = [];
+  const siblings = 1;
+  const start = Math.max(2, currentPage - siblings);
+  const end = Math.min(pageCount - 1, currentPage + siblings);
+
+  pageButtons.push(1);
+  if (start > 2) pageButtons.push("ellipsis-left");
+  for (let i = start; i <= end; i++) pageButtons.push(i);
+  if (end < pageCount - 1) pageButtons.push("ellipsis-right");
+  if (pageCount > 1) pageButtons.push(pageCount);
+
   return (
     <Group justify="space-between" align="center" mt={8}>
       <Group gap={8} align="center">
@@ -29,15 +40,75 @@ export function TablePagination<T>({ table, pageSizeOptions = [10, 20, 50] }: Ta
         />
       </Group>
       <Group gap={4} align="center">
-        <Button size="xs" variant="default" disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()}>
-          &lt;
-        </Button>
-        <Text size="sm">
-          {t("pagination.page")} {currentPage} / {pageCount}
-        </Text>
-        <Button size="xs" variant="default" disabled={!table.getCanNextPage()} onClick={() => table.nextPage()}>
-          &gt;
-        </Button>
+        <ActionIcon
+          size="sm"
+          variant="default"
+          disabled={!table.getCanPreviousPage()}
+          onClick={() => table.setPageIndex(0)}
+          title={t("pagination.first")}
+        >
+          «
+        </ActionIcon>
+        <ActionIcon
+          size="sm"
+          variant="default"
+          disabled={!table.getCanPreviousPage()}
+          onClick={() => table.previousPage()}
+          title={t("pagination.prev")}
+        >
+          ‹
+        </ActionIcon>
+
+        {pageButtons.map((item) => {
+          if (item === "ellipsis-left" || item === "ellipsis-right") {
+            return <Text key={item} size="sm" c="dimmed" px={2}>…</Text>;
+          }
+          return (
+            <ActionIcon
+              key={item}
+              size="sm"
+              variant={item === currentPage ? "filled" : "default"}
+              onClick={() => table.setPageIndex(item - 1)}
+            >
+              {item}
+            </ActionIcon>
+          );
+        })}
+
+        <ActionIcon
+          size="sm"
+          variant="default"
+          disabled={!table.getCanNextPage()}
+          onClick={() => table.nextPage()}
+          title={t("pagination.next")}
+        >
+          ›
+        </ActionIcon>
+        <ActionIcon
+          size="sm"
+          variant="default"
+          disabled={!table.getCanNextPage()}
+          onClick={() => table.setPageIndex(pageCount - 1)}
+          title={t("pagination.last")}
+        >
+          »
+        </ActionIcon>
+
+        <NumberInput
+          size="xs"
+          min={1}
+          max={pageCount}
+          value={currentPage}
+          onChange={(val) => {
+            if (typeof val === "number" && val >= 1 && val <= pageCount) {
+              table.setPageIndex(val - 1);
+            }
+          }}
+          hideControls
+          style={{ width: 56 }}
+          styles={{ input: { textAlign: "center" } }}
+        />
+        <Text size="sm" c="dimmed">/ {pageCount}</Text>
       </Group>
     </Group>
   );

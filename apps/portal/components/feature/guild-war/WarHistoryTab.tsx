@@ -671,7 +671,7 @@ export function WarHistoryTab({
         return hasAnyData ? (
           <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
             <HoverCard.Target>
-              <Badge color="green" style={{ cursor: "default" }}>{t("history.table.complete")}</Badge>
+              <Badge data-animate-icon-trigger color="green" style={{ cursor: "default" }}>{t("history.table.complete")}</Badge>
             </HoverCard.Target>
             <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
               <Group gap={10} wrap="nowrap" align="flex-start">
@@ -688,7 +688,7 @@ export function WarHistoryTab({
         ) : (
           <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
             <HoverCard.Target>
-              <Badge color="yellow" style={{ cursor: "default" }}>{t("history.table.missing")}</Badge>
+              <Badge data-animate-icon-trigger color="yellow" style={{ cursor: "default" }}>{t("history.table.missing")}</Badge>
             </HoverCard.Target>
             <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
               <Group gap={10} wrap="nowrap" align="flex-start">

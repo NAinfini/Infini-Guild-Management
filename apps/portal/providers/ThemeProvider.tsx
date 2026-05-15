@@ -114,7 +114,7 @@ const portalTheme = createTheme({
       defaultProps: { radius: "sm" },
     }),
     Modal: Modal.extend({
-      defaultProps: { radius: "lg", centered: true },
+      defaultProps: { radius: "lg", centered: true, transitionProps: { duration: 0 } },
     }),
     Skeleton: Skeleton.extend({
       defaultProps: { radius: "md" },

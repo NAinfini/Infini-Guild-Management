@@ -65,12 +65,12 @@
   inset-inline: 0;
   top: 0;
   display: grid;
-  gap: 12px;
+  gap: 6px;
 }
 
 .roster-card-grid {
   display: grid;
-  gap: 12px;
+  gap: 6px;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   padding: 16px;
   margin: -16px;
@@ -105,7 +105,7 @@
 @media (max-width: 767px) {
   .roster-card-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 10px;
+    gap: 6px;
   }
 
   .roster-virtual-scroll {

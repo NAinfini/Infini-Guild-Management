@@ -11,7 +11,7 @@ type FeatureState = {
 
 type FeatureMap = Record<NotificationFeature, FeatureState>;
 
-type PushNotificationEntryType = "announcement_published" | "member_online";
+type PushNotificationEntryType = "announcement_published" | "member_online" | "event_changed" | "wiki_changed" | "member_joined";
 
 type PushNotificationEntry = {
   id: string;
@@ -26,7 +26,7 @@ const FEATURE_STORAGE_KEY = "portal:last_seen";
 const PUSH_STORAGE_KEY = "portal:push-notification-center";
 const MAX_PUSH_ENTRIES = 80;
 const FEATURES: NotificationFeature[] = ["announcements", "members"];
-const ENTRY_TYPES: PushNotificationEntryType[] = ["announcement_published", "member_online"];
+const ENTRY_TYPES: PushNotificationEntryType[] = ["announcement_published", "member_online", "event_changed", "wiki_changed", "member_joined"];
 
 function isIsoDate(value: string): boolean {
   return Number.isFinite(Date.parse(value));
@@ -187,6 +187,30 @@ function createEntryFromPush(message: PushMessage): PushNotificationEntry | null
     };
   }
 
+  if (message.type === "entity_changed") {
+    const occurredAt = toIsoOrNow(message.updated_at);
+    if (message.entity_type === "wiki" && message.hint === "article_created") {
+      return {
+        id: `wiki:${message.entity_id}:${message.hint}`,
+        type: "wiki_changed",
+        title: "New Wiki Article",
+        message: message.hint.replace(/_/g, " "),
+        occurredAt,
+        readAt: null,
+      };
+    }
+    if (message.entity_type === "member_profile" && message.hint === "member_joined") {
+      return {
+        id: `member:${message.entity_id}:${message.hint}`,
+        type: "member_joined",
+        title: "New Member Joined",
+        message: message.hint.replace(/_/g, " "),
+        occurredAt,
+        readAt: null,
+      };
+    }
+  }
+
   return null;
 }
 
@@ -198,6 +222,7 @@ type NotificationStore = {
   lastSyncedAt: string | null;
   signalSequence: number;
   lastSignalMessage: PushMessage | null;
+  suppressed: boolean;
   setFeatureLatest: (feature: NotificationFeature, latestUpdatedAt: string | null) => void;
   setFeatureLatestBatch: (latest: Partial<Record<NotificationFeature, string | null>>) => void;
   markFeatureAsRead: (feature: NotificationFeature) => void;
@@ -209,6 +234,7 @@ type NotificationStore = {
   setWsConnected: (connected: boolean) => void;
   setSyncing: (syncing: boolean) => void;
   setLastSyncedAt: (value: string | null) => void;
+  setSuppressed: (suppressed: boolean) => void;
   resetNotifications: () => void;
 };
 
@@ -223,6 +249,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
   lastSyncedAt: null,
   signalSequence: 0,
   lastSignalMessage: null,
+  suppressed: false,
   setFeatureLatest: (feature, latestUpdatedAt) =>
     set((state) => {
       const nextFeatures: FeatureMap = {
@@ -285,6 +312,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
     }),
   appendPushMessage: (message) =>
     set((state) => {
+      if (state.suppressed) return state;
       const nextEntry = createEntryFromPush(message);
       const nextSignalSequence = state.signalSequence + 1;
       if (!nextEntry) {
@@ -355,6 +383,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
   setWsConnected: (connected) => set({ wsConnected: connected }),
   setSyncing: (syncing) => set({ isSyncing: syncing }),
   setLastSyncedAt: (value) => set({ lastSyncedAt: value }),
+  setSuppressed: (suppressed) => set({ suppressed }),
   resetNotifications: () => {
     const nextFeatures = {
       announcements: emptyFeatureState(),
@@ -370,6 +399,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
       lastSyncedAt: null,
       signalSequence: 0,
       lastSignalMessage: null,
+      suppressed: false,
     });
   },
 }));

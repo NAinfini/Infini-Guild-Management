@@ -76,7 +76,7 @@ interface IconHandle {
   stopAnimation: () => void;
 }
 
-const INTERACTIVE_SELECTOR = "button, a, [role='button'], [role='menuitem'], [role='tab']";
+const INTERACTIVE_SELECTOR = "button, a, [role='button'], [role='menuitem'], [role='tab'], [role='option'], [data-animate-icon-trigger]";
 
 type PortalIcon = ComponentType<IconProps>;
 

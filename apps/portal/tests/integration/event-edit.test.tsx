@@ -3,11 +3,41 @@ import { MantineProvider } from "@mantine/core";
 import type { QueryClient } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
+import type { ReactNode } from "react";
+import { createElement, forwardRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { EventFormModal } from "../../components/feature/events/EventFormModal";
 import { AttachmentService } from "../../services/AttachmentService";
 import { EventService } from "../../services/EventService";
+
+vi.mock("motion/react", () => {
+  const motionProps = new Set(["initial", "animate", "exit", "transition", "variants", "whileHover", "whileTap", "whileFocus", "whileDrag", "whileInView", "layout", "layoutId", "onAnimationStart", "onAnimationComplete", "onLayoutAnimationStart", "onLayoutAnimationComplete", "dragListener", "dragControls"]);
+  function filterProps(props: Record<string, unknown>) {
+    const filtered: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(props)) {
+      if (!motionProps.has(k)) filtered[k] = v;
+    }
+    return filtered;
+  }
+  const makeComponent = (tag: string) => forwardRef<unknown, Record<string, unknown>>((props, ref) => {
+    const { children, ...rest } = props;
+    return createElement(tag, { ...filterProps(rest), ref }, children as ReactNode);
+  });
+  const motionProxy = new Proxy({} as Record<string, ReturnType<typeof makeComponent>>, {
+    get: (_target, prop: string) => makeComponent(prop),
+  });
+  const ReorderGroup = forwardRef<HTMLDivElement, Record<string, unknown>>(({ children, axis: _a, values: _v, onReorder: _o, ...rest }, ref) =>
+    createElement("div", { ...filterProps(rest), ref }, children as ReactNode));
+  const ReorderItem = forwardRef<HTMLDivElement, Record<string, unknown>>(({ children, value: _val, ...rest }, ref) =>
+    createElement("div", { ...filterProps(rest), ref }, children as ReactNode));
+  return {
+    motion: motionProxy,
+    AnimatePresence: ({ children }: { children: ReactNode }) => createElement("div", null, children),
+    Reorder: { Group: ReorderGroup, Item: ReorderItem },
+    useDragControls: () => ({ start: vi.fn() }),
+    useAnimation: () => ({ start: vi.fn(), stop: vi.fn() }),
+  };
+});
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({

@@ -20,6 +20,7 @@ import {
   EventServiceValidationError,
   toEventPayload,
   toParticipantPayload,
+  toRaffleWinnerPayload,
   toTemplatePayload,
 } from "../services/EventService";
 import { publishEntityChanged } from "../services/push";
@@ -222,6 +223,13 @@ eventsRoutes.post("/:id/poll/vote", async (c) => {
   return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message);
 });
 
+eventsRoutes.post("/:id/raffle/draw", async (c) => {
+  const sessionUser = await requireEventEdit(c);
+  if (sessionUser instanceof Response) return sessionUser;
+  const result = await getEventService(c).drawRaffleWinners(sessionUser.id, c.req.param("id"));
+  return result.ok ? c.json({ data: result.winners.map(toRaffleWinnerPayload) }) : buildError(c, result.code, result.message);
+});
+
 eventsRoutes.post("/:id/participants", async (c) => {
   const sessionUser = await requireEventEdit(c);
   if (sessionUser instanceof Response) return sessionUser;
@@ -240,7 +248,8 @@ eventsRoutes.delete("/:id/participants", async (c) => {
   if (body instanceof Response) return body;
   const parsed = eventParticipantsBatchSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid participant payload", parsed.error.flatten());
-  return c.json(await getEventService(c).removeParticipants(sessionUser.id, c.req.param("id"), parsed.data.user_ids));
+  const result = await getEventService(c).removeParticipants(sessionUser.id, c.req.param("id"), parsed.data.user_ids);
+  return result.ok ? c.json(result) : buildError(c, result.code, result.message);
 });
 
 // --- Templates ---

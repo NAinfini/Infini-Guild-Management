@@ -1,23 +1,12 @@
-import type {
-  Announcement,
-  CursorResponse,
-  Event,
-  GalleryItem,
-  MemberProfile,
-  PaginatedResponse,
-  User,
-  WarHistory,
-  WikiArticle,
-} from "@guild/shared";
 import { ActionIcon, Badge, Button, Group, Highlight, Kbd, Modal, Stack, Text } from "@mantine/core";
+import { useDebouncedValue, useDisclosure, useHotkeys, useLocalStorage } from "@mantine/hooks";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useMemo, useState } from "react";
-import { useDebouncedValue, useDisclosure, useHotkeys, useLocalStorage } from "@mantine/hooks";
-import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { apiRequest } from "../../api/client";
 import { queryKeys } from "../../api/query-keys";
+import { fetchSearchData } from "../../services/SearchService";
 import { useSiteConfigStore } from "../../stores/site-config";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import {
@@ -41,7 +30,6 @@ type SearchItem = {
   entityId?: string;
 };
 
-type UsersListResponse = PaginatedResponse<{ user: User; profile: MemberProfile }>;
 const RECENT_SEARCHES_KEY = "cmdk.recent.searches";
 const RECENT_LIMIT = 8;
 const RESULT_LIMIT = 24;
@@ -71,79 +59,59 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
     enabled: open,
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      const [usersResponse, eventsResponse, announcementsResponse, wikiResponse, warHistoryResponse, galleryResponse] =
-        await Promise.allSettled([
-          apiRequest<UsersListResponse>("/api/users?page=1&limit=40&include_total=false"),
-          features.events ? apiRequest<PaginatedResponse<Event>>("/api/events?page=1&limit=40") : Promise.reject("disabled"),
-          features.announcements ? apiRequest<PaginatedResponse<Announcement>>("/api/announcements?page=1&limit=25") : Promise.reject("disabled"),
-          features.wiki ? apiRequest<PaginatedResponse<WikiArticle>>("/api/wiki/articles?page=1&limit=25") : Promise.reject("disabled"),
-          features.guildWar ? apiRequest<PaginatedResponse<WarHistory>>("/api/guild-war/history?page=1&limit=25") : Promise.reject("disabled"),
-          features.gallery ? apiRequest<CursorResponse<GalleryItem>>("/api/gallery?cursor=0&limit=25") : Promise.reject("disabled"),
-        ]);
+      const searchData = await fetchSearchData(features);
 
-      const userItems: SearchItem[] = usersResponse.status === "fulfilled"
-        ? usersResponse.value.data.map((entry) => ({
-            id: `user-${entry.user.id}`,
-            title: entry.user.username,
-            subtitle: `${entry.user.role} · ${entry.profile.classes.join(", ") || t("noClass")}`,
-            category: "user",
-            role: entry.user.role,
-            to: "/roster",
-          }))
-        : [];
+      const userItems: SearchItem[] = searchData.users.map((entry) => ({
+        id: `user-${entry.user.id}`,
+        title: entry.user.username,
+        subtitle: `${entry.user.role} - ${entry.profile.classes.join(", ") || t("noClass")}`,
+        category: "user",
+        role: entry.user.role,
+        to: "/roster",
+      }));
 
-      const eventItems: SearchItem[] = eventsResponse.status === "fulfilled"
-        ? eventsResponse.value.data.map((entry) => ({
-            id: `event-${entry.id}`,
-            title: entry.title,
-            subtitle: entry.type,
-            category: "event",
-            to: "/events",
-            entityId: entry.id,
-          }))
-        : [];
+      const eventItems: SearchItem[] = searchData.events.map((entry) => ({
+        id: `event-${entry.id}`,
+        title: entry.title,
+        subtitle: entry.type,
+        category: "event",
+        to: "/events",
+        entityId: entry.id,
+      }));
 
-      const announcementItems: SearchItem[] = announcementsResponse.status === "fulfilled"
-        ? announcementsResponse.value.data.map((entry) => ({
-            id: `announcement-${entry.id}`,
-            title: entry.title,
-            subtitle: entry.status,
-            body: entry.body_json,
-            category: "announcement",
-            to: "/announcements",
-          }))
-        : [];
+      const announcementItems: SearchItem[] = searchData.announcements.map((entry) => ({
+        id: `announcement-${entry.id}`,
+        title: entry.title,
+        subtitle: entry.status,
+        body: entry.body_json,
+        category: "announcement",
+        to: "/announcements",
+      }));
 
-      const wikiItems: SearchItem[] = wikiResponse.status === "fulfilled"
-        ? wikiResponse.value.data.map((entry) => ({
-            id: `wiki-${entry.id}`,
-            title: entry.title,
-            subtitle: entry.slug,
-            body: entry.body_json,
-            category: "wiki",
-            to: "/wiki",
-          }))
-        : [];
+      const wikiItems: SearchItem[] = searchData.wikiArticles.map((entry) => ({
+        id: `wiki-${entry.id}`,
+        title: entry.title,
+        subtitle: entry.slug,
+        body: entry.body_json,
+        category: "wiki",
+        to: "/wiki",
+      }));
 
-      const warItems: SearchItem[] = warHistoryResponse.status === "fulfilled"
-        ? warHistoryResponse.value.data.map((entry) => ({
-            id: `war-${entry.id}`,
-            title: entry.war_name,
-            subtitle: `${entry.result ?? t("unknown")} · ${entry.created_at.slice(0, 10)}`,
-            category: "war",
-            to: "/guild-war",
-          }))
-        : [];
+      const warItems: SearchItem[] = searchData.warHistory.map((entry) => ({
+        id: `war-${entry.id}`,
+        title: entry.war_name,
+        subtitle: `${entry.result ?? t("unknown")} - ${entry.created_at.slice(0, 10)}`,
+        category: "war",
+        to: "/guild-war",
+      }));
 
-      const galleryItems: SearchItem[] = galleryResponse.status === "fulfilled"
-        ? galleryResponse.value.data.map((entry) => ({
-            id: `gallery-${entry.id}`,
-            title: entry.caption ?? entry.url.split("/").pop() ?? entry.id,
-            subtitle: entry.type,
-            category: "gallery",
-            to: "/gallery",
-          }))
-        : [];
+      const galleryItems: SearchItem[] = searchData.galleryItems.map((entry) => ({
+        id: `gallery-${entry.id}`,
+        title: entry.caption ?? entry.url.split("/").pop() ?? entry.id,
+        subtitle: entry.type,
+        category: "gallery",
+        to: "/gallery",
+      }));
 
       return [
         ...userItems,
@@ -265,7 +233,7 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
       ) : (
         <Button onClick={openHandlers.open} size="xs" aria-label={t("cmdk.aria.openSearch")} rightSection={
           <Group gap={2} wrap="nowrap">
-            <Kbd size="xs">{isMac ? "⌘" : "Ctrl"}</Kbd>
+            <Kbd size="xs">{isMac ? "Cmd" : "Ctrl"}</Kbd>
             <Kbd size="xs">K</Kbd>
           </Group>
         }>
@@ -353,4 +321,3 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
     </>
   );
 }
-

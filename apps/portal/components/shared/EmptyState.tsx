@@ -1,4 +1,4 @@
-import { IconAlertTriangle, IconCircleCheck, IconCircleX, IconInfoCircle } from "@tabler/icons-react";
+import { AlertTriangleIcon, CircleCheckIcon, CircleXIcon, InfoCircleIcon } from "@portal/components/icons";
 import { memo, type ReactNode } from "react";
 
 type EmptyStateStatus = "info" | "success" | "error" | "warning";
@@ -13,10 +13,10 @@ type EmptyStateProps = {
 };
 
 const statusIcon: Record<EmptyStateStatus, ReactNode> = {
-  info: <IconInfoCircle size={40} stroke={1.5} />,
-  success: <IconCircleCheck size={40} stroke={1.5} />,
-  error: <IconCircleX size={40} stroke={1.5} />,
-  warning: <IconAlertTriangle size={40} stroke={1.5} />,
+  info: <InfoCircleIcon size={40} />,
+  success: <CircleCheckIcon size={40} />,
+  error: <CircleXIcon size={40} />,
+  warning: <AlertTriangleIcon size={40} />,
 };
 
 export const EmptyState = memo(function EmptyState({

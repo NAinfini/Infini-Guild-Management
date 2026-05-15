@@ -1,6 +1,5 @@
 import { Alert, Badge, Group, HoverCard, RingProgress, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
-import { IconDatabase, IconCloud, IconWifi, IconClock } from "@tabler/icons-react";
-import { CircleCheckIcon, AlertTriangleIcon } from "@portal/components/icons";
+import { CircleCheckIcon, AlertTriangleIcon, DatabaseIcon, CloudIcon, WifiIcon, ClockIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import "./AdminSystemSection.css";
 
@@ -21,17 +20,17 @@ type AdminSystemSectionProps = {
 
 type ServiceInfo = {
   key: keyof StatusData;
-  icon: typeof IconDatabase;
+  icon: typeof DatabaseIcon;
   label: string;
   okColor: string;
   errorColor: string;
 };
 
 const SERVICES: ServiceInfo[] = [
-  { key: "db", icon: IconDatabase, label: "D1", okColor: "#10b981", errorColor: "#ef4444" },
-  { key: "r2", icon: IconCloud, label: "R2", okColor: "#10b981", errorColor: "#ef4444" },
-  { key: "ws", icon: IconWifi, label: "WS", okColor: "#10b981", errorColor: "#eab308" },
-  { key: "crons", icon: IconClock, label: "Crons", okColor: "#10b981", errorColor: "#ef4444" },
+  { key: "db", icon: DatabaseIcon, label: "D1", okColor: "#10b981", errorColor: "#ef4444" },
+  { key: "r2", icon: CloudIcon, label: "R2", okColor: "#10b981", errorColor: "#ef4444" },
+  { key: "ws", icon: WifiIcon, label: "WS", okColor: "#10b981", errorColor: "#eab308" },
+  { key: "crons", icon: ClockIcon, label: "Crons", okColor: "#10b981", errorColor: "#ef4444" },
 ];
 
 function latencyColor(ms: number): string {
@@ -82,9 +81,9 @@ export function AdminSystemSection({
         return (
           <HoverCard key={svc.key} width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
             <HoverCard.Target>
-              <div className={`system-health-tile ${isOk ? "system-health-tile--ok" : "system-health-tile--error"}`}>
+              <div data-animate-icon-trigger className={`system-health-tile ${isOk ? "system-health-tile--ok" : "system-health-tile--error"}`}>
                 <div className="system-health-tile__icon" style={{ color }}>
-                  <Icon size={22} stroke={1.8} />
+                  <Icon size={22} />
                 </div>
                 <Text size="xs" fw={700} className="system-health-tile__label">{svc.label}</Text>
                 <Badge
@@ -100,7 +99,7 @@ export function AdminSystemSection({
             <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
               <Group gap={10} wrap="nowrap" align="flex-start">
                 <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                  <Icon size={16} stroke={1.8} />
+                  <Icon size={16} />
                 </ThemeIcon>
                 <div style={{ minWidth: 0 }}>
                   <Text size="sm" fw={700} lh={1.3} mb={4}>{svc.label}</Text>
@@ -135,7 +134,7 @@ export function AdminSystemSection({
 
       <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
         <HoverCard.Target>
-          <div className={`system-health-overall ${allOk ? "system-health-overall--ok" : "system-health-overall--warn"}`}>
+          <div data-animate-icon-trigger className={`system-health-overall ${allOk ? "system-health-overall--ok" : "system-health-overall--warn"}`}>
             <div className={`system-health-overall__dot ${allOk ? "system-health-overall__dot--ok" : "system-health-overall__dot--warn"}`} />
             <Text size="xs" fw={700}>{allOk ? t("status.operational") : t("status.degraded")}</Text>
           </div>

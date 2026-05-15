@@ -1,6 +1,7 @@
 export {
   archiveAnnouncement,
   createAnnouncement,
+  deleteAnnouncement,
   updateAnnouncement,
   uploadAnnouncementImages,
 } from "../api/mutations/announcements";

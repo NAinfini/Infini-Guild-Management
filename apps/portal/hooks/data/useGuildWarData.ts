@@ -30,7 +30,6 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
         page: 1,
         limit: 100,
         type: "guild_war",
-        archived: false,
       }),
     staleTime: 10 * 60_000,
   });

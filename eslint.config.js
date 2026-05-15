@@ -46,7 +46,7 @@ export default [
         {
           patterns: [
             {
-              group: ["**/api/mutations/*", "**/api/queries/*"],
+              group: ["**/api/client", "**/api/mutations/*", "**/api/queries/*"],
               message: "Import from the services layer, not portal API modules directly.",
             },
             {

@@ -22,7 +22,7 @@ type UseWikiArticleEditorParams = {
   selectedArticle: WikiArticle | null;
   selectedCategoryId?: string;
   selectedCategoryIds: string[];
-  onArticleCreated: (slug: string) => void;
+  onArticleCreated: (slug: string | null) => void;
 };
 
 function getDefaultCategoryId(
@@ -107,7 +107,7 @@ export function useWikiArticleEditor({
     onSuccess: async () => {
       notifySuccess(t("message.articleDeleted"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
-      onArticleCreated(""); // clear selection
+      onArticleCreated(null);
     },
     onError: (error) => {
       showError(error, t("message.articleDeleteFailed"));

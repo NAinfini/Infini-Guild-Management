@@ -3,7 +3,7 @@ import {
   SunOutlined,
   TranslationOutlined,
 } from "../../utils/icons";
-import type { PushMessage, User } from "@guild/shared";
+import type { User } from "@guild/shared";
 import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { useTheme } from "../../providers/ThemeProvider";
@@ -24,7 +24,7 @@ type PushEntry = {
   id: string;
   title: string;
   message: string;
-  type: PushMessage["type"];
+  type: string;
   readAt: string | null;
   occurredAt: string;
 };
@@ -39,7 +39,7 @@ type AppHeaderProps = {
   displayPushEntries: PushEntry[];
   onNotificationClose: () => void;
   onClearPushHistory: () => void;
-  onPushEntryClick: (entryId: string, type: PushMessage["type"]) => void;
+  onPushEntryClick: (entryId: string, type: string) => void;
   onLogout: () => void;
   onLoginClick: () => void;
 };

@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { fetchEventsList } from "../../services/EventService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersList } from "../../services/UserService";
+import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { useEffect, useRef, useState } from "react";
 import type { Event } from "@guild/shared";
 import type { EventStatusFilter } from "../../utils/event-navigation";
@@ -82,7 +82,7 @@ export function useEventsData(options: UseEventsDataOptions) {
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
-    queryFn: fetchUsersList,
+    queryFn: () => fetchAllUsersListWithOptions(),
     staleTime: 10 * 60_000,
   });
 

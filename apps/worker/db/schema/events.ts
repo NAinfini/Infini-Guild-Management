@@ -1,5 +1,5 @@
 // Domain: Events & Signups
-// Tables: events, event_participants, event_polls, event_poll_options, event_poll_votes
+// Tables: events, event_participants, event_polls, event_poll_options, event_poll_votes, event_raffle_winners
 // Dependencies: auth.users
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { activeGame } from "@guild/shared/games";
@@ -34,11 +34,13 @@ export const events = sqliteTable(
     lastGeneratedDate: text("last_generated_date"),
     generationCount: integer("generation_count").notNull().default(0),
     visibilityOffsetMinutes: integer("visibility_offset_minutes"),
+    winnerCount: integer("winner_count"),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
   (table) => ({
     idxArchivedSeriesStart: index("idx_events_archived_series_start").on(table.archivedAt, table.isSeriesParent, table.startAt, table.id),
+    idxSeriesArchivedStart: index("idx_events_series_archived_start").on(table.isSeriesParent, table.archivedAt, table.startAt, table.id),
     idxAutoArchiveDue: index("idx_events_auto_archive_due").on(table.autoArchive, table.autoArchived, table.archivedAt, table.isSeriesParent, table.endAt, table.startAt),
     uxSeriesInstance: uniqueIndex("ux_events_series_instance").on(table.seriesId, table.instanceDate),
     idxCreatedBy: index("idx_events_created_by").on(table.createdBy),
@@ -98,5 +100,19 @@ export const eventPollVotes = sqliteTable(
     uxEventOptionUser: uniqueIndex("ux_event_poll_votes_event_option_user").on(table.eventId, table.optionId, table.userId),
     idxEventUser: index("idx_event_poll_votes_event_user").on(table.eventId, table.userId),
     idxOption: index("idx_event_poll_votes_option").on(table.optionId),
+  }),
+);
+
+export const eventRaffleWinners = sqliteTable(
+  "event_raffle_winners",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id),
+    drawnAt: text("drawn_at").notNull().default(nowUtc),
+  },
+  (table) => ({
+    uxEventUser: uniqueIndex("ux_event_raffle_winners_event_user").on(table.eventId, table.userId),
+    idxEvent: index("idx_event_raffle_winners_event").on(table.eventId),
   }),
 );

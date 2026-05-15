@@ -121,8 +121,8 @@ export function AdminMemberDetailModal({
                             size="sm"
                           />
                           <Badge
-                            color={form.isActive ? "green" : "gray"}
-                            variant={form.isActive ? "light" : "default"}
+                            color={form.isActive ? "green" : "red"}
+                            variant="light"
                           >
                             {form.isActive ? t("member.status.active") : t("member.status.inactive")}
                           </Badge>

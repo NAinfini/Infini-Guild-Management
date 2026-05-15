@@ -1,4 +1,4 @@
-import { type Event, type EventParticipant, type RecurringTemplate, createEventSchema, createTemplateSchema, eventParticipantsBatchSchema, pollVoteSchema, updateEventSchema, updateTemplateSchema } from "@guild/shared";
+import { type Event, type EventParticipant, type EventRaffleWinner, type RecurringTemplate, createEventSchema, createTemplateSchema, eventParticipantsBatchSchema, pollVoteSchema, updateEventSchema, updateTemplateSchema } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
 import { convertImageToWebP } from "../../utils/media-convert";
@@ -144,5 +144,11 @@ export function resumeTemplate(templateId: string): Promise<{ ok: true }> {
 export function deleteTemplate(templateId: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/events/templates/${templateId}`, {
     method: "DELETE",
+  });
+}
+
+export function drawRaffle(eventId: string): Promise<{ data: EventRaffleWinner[] }> {
+  return apiRequest<{ data: EventRaffleWinner[] }>(`/api/events/${eventId}/raffle/draw`, {
+    method: "POST",
   });
 }

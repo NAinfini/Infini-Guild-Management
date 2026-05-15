@@ -1,5 +1,4 @@
 import { PhotoIcon } from "@portal/components/icons";
-import { IconPhoto } from "@tabler/icons-react";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { Button, Group, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
 import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone";
@@ -319,7 +318,7 @@ export function GalleryPage() {
                 className="gallery-dropzone gallery-dropzone--modal"
               >
                 <Group justify="center" gap="xl" style={{ pointerEvents: "none" }}>
-                  <IconPhoto size={40} stroke={1.5} />
+                  <PhotoIcon size={40} />
                   <Text>{t("dropzone")}</Text>
                 </Group>
               </Dropzone>

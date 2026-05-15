@@ -3,18 +3,16 @@ import { DEFAULT_FEATURE_FLAGS, type FeatureFlags } from "@guild/shared/config/f
 
 type SiteConfig = {
   siteName: string;
-  siteLogoUrl: string | null;
+  siteLogoUrl: string;
   features: FeatureFlags;
-  loaded: boolean;
-  setSiteConfig: (name: string, logoUrl: string | null) => void;
+  setSiteConfig: (name: string, logoUrl: string) => void;
   setFeatures: (features: Partial<FeatureFlags>) => void;
 };
 
 export const useSiteConfigStore = create<SiteConfig>((set) => ({
-  siteName: "Guild Portal",
-  siteLogoUrl: null,
+  siteName: "",
+  siteLogoUrl: "",
   features: { ...DEFAULT_FEATURE_FLAGS },
-  loaded: false,
-  setSiteConfig: (name, logoUrl) => set({ siteName: name, siteLogoUrl: logoUrl, loaded: true }),
+  setSiteConfig: (name, logoUrl) => set({ siteName: name, siteLogoUrl: logoUrl }),
   setFeatures: (features) => set((state) => ({ features: { ...state.features, ...features } })),
 }));

@@ -2,7 +2,8 @@ import type { Editor } from "@tiptap/react";
 import { createPortal } from "react-dom";
 import { useRef, useEffect, useState, useCallback } from "react";
 import { ActionIcon, Group, TextInput, Tooltip, Text } from "@mantine/core";
-import { IconArrowDown, IconArrowUp, IconReplace, IconX, IconGripVertical } from "@tabler/icons-react";
+import { ArrowDownIcon, ArrowUpIcon, ReplaceIcon, XIcon } from "@portal/components/icons";
+import { IconGripVertical } from "@tabler/icons-react";
 import type { TipTapEditorLabels } from "./TipTapEditor";
 
 type TipTapEditorFindReplaceProps = {
@@ -86,12 +87,12 @@ export function TipTapEditorFindReplace({ editor, labels, onClose }: TipTapEdito
           <Group gap={2}>
             <Tooltip label={labels.findPrev} withArrow zIndex={1060}>
               <ActionIcon size="sm" variant="subtle" onClick={() => (editor.commands as Record<string, Function>).prevSearchResult()} aria-label={labels.findPrev}>
-                <IconArrowUp size={14} />
+                <ArrowUpIcon size={14} />
               </ActionIcon>
             </Tooltip>
             <Tooltip label={labels.findNext} withArrow zIndex={1060}>
               <ActionIcon size="sm" variant="subtle" onClick={() => (editor.commands as Record<string, Function>).nextSearchResult()} aria-label={labels.findNext}>
-                <IconArrowDown size={14} />
+                <ArrowDownIcon size={14} />
               </ActionIcon>
             </Tooltip>
             <Tooltip label={labels.close} withArrow zIndex={1060}>
@@ -104,7 +105,7 @@ export function TipTapEditorFindReplace({ editor, labels, onClose }: TipTapEdito
                 }}
                 aria-label={labels.close}
               >
-                <IconX size={14} />
+                <XIcon size={14} />
               </ActionIcon>
             </Tooltip>
           </Group>
@@ -128,12 +129,12 @@ export function TipTapEditorFindReplace({ editor, labels, onClose }: TipTapEdito
           <Group gap={2}>
             <Tooltip label={labels.replaceOne} withArrow zIndex={1060}>
               <ActionIcon size="sm" variant="subtle" onClick={() => (editor.commands as Record<string, Function>).replaceCurrent()} aria-label={labels.replaceOne}>
-                <IconReplace size={14} />
+                <ReplaceIcon size={14} />
               </ActionIcon>
             </Tooltip>
             <Tooltip label={labels.replaceAllLabel} withArrow zIndex={1060}>
               <ActionIcon size="sm" variant="subtle" onClick={() => (editor.commands as Record<string, Function>).replaceAll()} aria-label={labels.replaceAllLabel}>
-                <IconReplace size={14} />
+                <ReplaceIcon size={14} />
               </ActionIcon>
             </Tooltip>
           </Group>

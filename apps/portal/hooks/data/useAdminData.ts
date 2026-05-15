@@ -8,7 +8,7 @@ import {
   fetchRoles,
 } from "../../services/AdminService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersList } from "../../services/UserService";
+import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { canViewStatus, canExportAudit } from "../../utils/permissions";
 
 type UseAdminDataOptions = {
@@ -43,7 +43,7 @@ export function useAdminData(options: UseAdminDataOptions) {
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
-    queryFn: fetchUsersList,
+    queryFn: () => fetchAllUsersListWithOptions(),
     enabled: isModerator,
     staleTime: 10 * 60_000,
   });

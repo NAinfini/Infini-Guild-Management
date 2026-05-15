@@ -2,39 +2,39 @@ import type { Editor } from "@tiptap/react";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
-  IconAlignCenter,
-  IconAlignLeft,
-  IconAlignRight,
-  IconArrowBackUp,
-  IconArrowForwardUp,
-  IconBold,
-  IconItalic,
-  IconUnderline,
-  IconStrikethrough,
-  IconLink,
-  IconLinkOff,
-  IconCheckbox,
-  IconH1,
-  IconH2,
-  IconH3,
-  IconList,
-  IconListNumbers,
-  IconBlockquote,
-  IconCode,
-  IconTable,
-  IconColumnInsertRight,
-  IconRowInsertBottom,
-  IconColumnRemove,
-  IconRowRemove,
-  IconTableOff,
-  IconPhoto,
-  IconPalette,
-  IconHighlight,
-  IconEraser,
-  IconSeparatorHorizontal,
-  IconPlayerPlay,
-  IconLayoutList,
-} from "@tabler/icons-react";
+  AlignCenterIcon,
+  AlignLeftIcon,
+  AlignRightIcon,
+  ArrowBackUpIcon,
+  ArrowForwardUpIcon,
+  BoldIcon,
+  ItalicIcon,
+  UnderlineIcon,
+  StrikethroughIcon,
+  LinkIcon,
+  LinkOffIcon,
+  CheckboxIcon,
+  H1Icon,
+  H2Icon,
+  H3Icon,
+  ListIcon,
+  ListNumbersIcon,
+  BlockquoteIcon,
+  CodeIcon,
+  TableIcon,
+  ColumnInsertRightIcon,
+  RowInsertBottomIcon,
+  ColumnRemoveIcon,
+  RowRemoveIcon,
+  TableOffIcon,
+  PhotoIcon,
+  PaletteIcon,
+  HighlightIcon,
+  EraserIcon,
+  SeparatorHorizontalIcon,
+  PlayerPlayIcon,
+  LayoutListIcon,
+} from "@portal/components/icons";
 import type { TipTapEditorLabels } from "./TipTapEditor";
 
 const TEXT_COLORS = ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"];
@@ -104,29 +104,29 @@ export function TipTapEditorContextMenu({
       >
         {/* Undo / Redo */}
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().undo().run())}>
-          <IconArrowBackUp size={ICON_SIZE} /> {labels.undo}
+          <ArrowBackUpIcon size={ICON_SIZE} /> {labels.undo}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().redo().run())}>
-          <IconArrowForwardUp size={ICON_SIZE} /> {labels.redo}
+          <ArrowForwardUpIcon size={ICON_SIZE} /> {labels.redo}
         </button>
 
         <div className="infini-tiptap-context-divider" />
 
         {/* Text formatting */}
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().toggleBold().run())}>
-          <IconBold size={ICON_SIZE} /> {labels.bold}
+          <BoldIcon size={ICON_SIZE} /> {labels.bold}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().toggleItalic().run())}>
-          <IconItalic size={ICON_SIZE} /> {labels.italic}
+          <ItalicIcon size={ICON_SIZE} /> {labels.italic}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().toggleUnderline().run())}>
-          <IconUnderline size={ICON_SIZE} /> {labels.underline}
+          <UnderlineIcon size={ICON_SIZE} /> {labels.underline}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().toggleStrike().run())}>
-          <IconStrikethrough size={ICON_SIZE} /> {labels.strike}
+          <StrikethroughIcon size={ICON_SIZE} /> {labels.strike}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().unsetAllMarks().clearNodes().run())}>
-          <IconEraser size={ICON_SIZE} /> {labels.clearFormatting}
+          <EraserIcon size={ICON_SIZE} /> {labels.clearFormatting}
         </button>
 
         <div className="infini-tiptap-context-divider" />
@@ -134,7 +134,7 @@ export function TipTapEditorContextMenu({
         {/* Colors */}
         <div className="infini-tiptap-context-submenu-wrapper">
           <button type="button" className="infini-tiptap-context-item infini-tiptap-context-item--submenu">
-            <IconPalette size={ICON_SIZE} /> {labels.textColor} <span className="infini-tiptap-context-chevron">▸</span>
+            <PaletteIcon size={ICON_SIZE} /> {labels.textColor} <span className="infini-tiptap-context-chevron">▸</span>
           </button>
           <div className="infini-tiptap-context-submenu">
             <div className="infini-tiptap-color-grid">
@@ -155,7 +155,7 @@ export function TipTapEditorContextMenu({
         </div>
         <div className="infini-tiptap-context-submenu-wrapper">
           <button type="button" className="infini-tiptap-context-item infini-tiptap-context-item--submenu">
-            <IconHighlight size={ICON_SIZE} /> {labels.highlight} <span className="infini-tiptap-context-chevron">▸</span>
+            <HighlightIcon size={ICON_SIZE} /> {labels.highlight} <span className="infini-tiptap-context-chevron">▸</span>
           </button>
           <div className="infini-tiptap-context-submenu">
             <div className="infini-tiptap-color-grid">
@@ -179,93 +179,93 @@ export function TipTapEditorContextMenu({
 
         {/* Alignment */}
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().setTextAlign("left").run())}>
-          <IconAlignLeft size={ICON_SIZE} /> {labels.alignLeft}
+          <AlignLeftIcon size={ICON_SIZE} /> {labels.alignLeft}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().setTextAlign("center").run())}>
-          <IconAlignCenter size={ICON_SIZE} /> {labels.alignCenter}
+          <AlignCenterIcon size={ICON_SIZE} /> {labels.alignCenter}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().setTextAlign("right").run())}>
-          <IconAlignRight size={ICON_SIZE} /> {labels.alignRight}
+          <AlignRightIcon size={ICON_SIZE} /> {labels.alignRight}
         </button>
 
         <div className="infini-tiptap-context-divider" />
 
         {/* Links & Headings */}
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(onInsertLink)}>
-          <IconLink size={ICON_SIZE} /> {labels.link}
+          <LinkIcon size={ICON_SIZE} /> {labels.link}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().unsetLink().run())}>
-          <IconLinkOff size={ICON_SIZE} /> {labels.unlink}
+          <LinkOffIcon size={ICON_SIZE} /> {labels.unlink}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().toggleHeading({ level: 1 }).run())}>
-          <IconH1 size={ICON_SIZE} /> {labels.h1}
+          <H1Icon size={ICON_SIZE} /> {labels.h1}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().toggleHeading({ level: 2 }).run())}>
-          <IconH2 size={ICON_SIZE} /> {labels.h2}
+          <H2Icon size={ICON_SIZE} /> {labels.h2}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().toggleHeading({ level: 3 }).run())}>
-          <IconH3 size={ICON_SIZE} /> {labels.h3}
+          <H3Icon size={ICON_SIZE} /> {labels.h3}
         </button>
 
         <div className="infini-tiptap-context-divider" />
 
         {/* Lists & blocks */}
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().toggleBulletList().run())}>
-          <IconList size={ICON_SIZE} /> {labels.bullet}
+          <ListIcon size={ICON_SIZE} /> {labels.bullet}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().toggleOrderedList().run())}>
-          <IconListNumbers size={ICON_SIZE} /> {labels.number}
+          <ListNumbersIcon size={ICON_SIZE} /> {labels.number}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().toggleTaskList().run())}>
-          <IconCheckbox size={ICON_SIZE} /> {labels.taskList}
+          <CheckboxIcon size={ICON_SIZE} /> {labels.taskList}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().toggleBlockquote().run())}>
-          <IconBlockquote size={ICON_SIZE} /> {labels.quote}
+          <BlockquoteIcon size={ICON_SIZE} /> {labels.quote}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().toggleCodeBlock().run())}>
-          <IconCode size={ICON_SIZE} /> {labels.code}
+          <CodeIcon size={ICON_SIZE} /> {labels.code}
         </button>
 
         <div className="infini-tiptap-context-divider" />
 
         {/* Insert */}
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().setHorizontalRule().run())}>
-          <IconSeparatorHorizontal size={ICON_SIZE} /> {labels.divider}
+          <SeparatorHorizontalIcon size={ICON_SIZE} /> {labels.divider}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(onInsertImage)}>
-          <IconPhoto size={ICON_SIZE} /> {labels.image}
+          <PhotoIcon size={ICON_SIZE} /> {labels.image}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(onInsertVideo)}>
-          <IconPlayerPlay size={ICON_SIZE} /> {labels.embedVideo}
+          <PlayerPlayIcon size={ICON_SIZE} /> {labels.embedVideo}
         </button>
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => (editor.commands as Record<string, Function>).setDetails())}>
-          <IconLayoutList size={ICON_SIZE} /> {labels.details}
+          <LayoutListIcon size={ICON_SIZE} /> {labels.details}
         </button>
 
         {/* Table submenu */}
         <div className="infini-tiptap-context-submenu-wrapper">
           <button type="button" className="infini-tiptap-context-item infini-tiptap-context-item--submenu">
-            <IconTable size={ICON_SIZE} /> {labels.table} <span className="infini-tiptap-context-chevron">▸</span>
+            <TableIcon size={ICON_SIZE} /> {labels.table} <span className="infini-tiptap-context-chevron">▸</span>
           </button>
           <div className="infini-tiptap-context-submenu">
             <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run())}>
-              <IconTable size={ICON_SIZE} /> {labels.table}
+              <TableIcon size={ICON_SIZE} /> {labels.table}
             </button>
             <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().addColumnAfter().run())}>
-              <IconColumnInsertRight size={ICON_SIZE} /> {labels.addCol}
+              <ColumnInsertRightIcon size={ICON_SIZE} /> {labels.addCol}
             </button>
             <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().addRowAfter().run())}>
-              <IconRowInsertBottom size={ICON_SIZE} /> {labels.addRow}
+              <RowInsertBottomIcon size={ICON_SIZE} /> {labels.addRow}
             </button>
             <div className="infini-tiptap-context-divider" />
             <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().deleteColumn().run())}>
-              <IconColumnRemove size={ICON_SIZE} /> {labels.delCol}
+              <ColumnRemoveIcon size={ICON_SIZE} /> {labels.delCol}
             </button>
             <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().deleteRow().run())}>
-              <IconRowRemove size={ICON_SIZE} /> {labels.delRow}
+              <RowRemoveIcon size={ICON_SIZE} /> {labels.delRow}
             </button>
             <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => editor.chain().focus().deleteTable().run())}>
-              <IconTableOff size={ICON_SIZE} /> {labels.delTable}
+              <TableOffIcon size={ICON_SIZE} /> {labels.delTable}
             </button>
           </div>
         </div>

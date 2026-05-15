@@ -14,8 +14,7 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
-import { SaveIcon, PlusIcon, XIcon } from "@portal/components/icons";
-import { IconPlayerPause, IconPlayerPlay, IconTrash } from "@tabler/icons-react";
+import { PlayerPauseIcon, PlayerPlayIcon, SaveIcon, PlusIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
@@ -455,7 +454,7 @@ export function RecurringTemplateFormModal({
                 <Button
                   variant="light"
                   color="green"
-                  leftSection={<IconPlayerPlay size={16} />}
+                  leftSection={<PlayerPlayIcon size={16} />}
                   onClick={() => { void onResume?.(template.id); onCancel(); }}
                 >
                   {t("recurring.resume")}
@@ -464,7 +463,7 @@ export function RecurringTemplateFormModal({
                 <Button
                   variant="light"
                   color="yellow"
-                  leftSection={<IconPlayerPause size={16} />}
+                  leftSection={<PlayerPauseIcon size={16} />}
                   onClick={() => { void onPause?.(template.id); onCancel(); }}
                 >
                   {t("recurring.pause")}
@@ -473,7 +472,7 @@ export function RecurringTemplateFormModal({
               <Button
                 variant="light"
                 color="red"
-                leftSection={<IconTrash size={16} />}
+                leftSection={<TrashIcon size={16} />}
                 onClick={() => { onDelete?.(template.id); }}
               >
                 {t("recurring.delete")}

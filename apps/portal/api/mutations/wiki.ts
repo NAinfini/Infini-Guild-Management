@@ -55,7 +55,7 @@ export function updateWikiArticle(id: string, payload: UpdateWikiArticlePayload,
 }
 
 export function deleteWikiArticle(id: string): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>(`/api/wiki/articles/${id}`, {
+  return apiRequest<{ ok: true }>(`/api/wiki/articles/${id}/permanent`, {
     method: "DELETE",
   });
 }

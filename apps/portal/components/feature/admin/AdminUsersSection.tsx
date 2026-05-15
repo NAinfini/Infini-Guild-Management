@@ -11,11 +11,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { CopyIcon, EyeIcon, PlayIcon, SearchIcon, TrashIcon, UserPlusIcon } from "@portal/components/icons";
-import {
-  IconKey,
-  IconPlayerPause,
-} from "@tabler/icons-react";
+import { CopyIcon, EyeIcon, KeyIcon, PlayIcon, PlayerPauseIcon, SearchIcon, TrashIcon, UserPlusIcon } from "@portal/components/icons";
 import {
   InfiniTable,
   getCoreRowModel,
@@ -118,6 +114,7 @@ export function AdminUsersSection({
     state: { sorting, pagination },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
+    autoResetPageIndex: false,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -293,7 +290,7 @@ export function AdminUsersSection({
         ? [{
             key: "deactivate",
             disabled: singleActivationPending || batchDeactivatePending,
-            icon: <IconPlayerPause size={14} />,
+            icon: <PlayerPauseIcon size={14} />,
             onClick: () => {
               if (isBatchContext) {
                 onBatchDeactivate(nextContextUserIds);
@@ -308,7 +305,7 @@ export function AdminUsersSection({
         ? [{
             key: "reset-password",
             disabled: singleResetPasswordPending,
-            icon: <IconKey size={14} />,
+            icon: <KeyIcon size={14} />,
             onClick: () => {
               onSingleResetPassword(contextSingleUserId);
             },

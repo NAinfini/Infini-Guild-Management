@@ -186,6 +186,15 @@ export class AnnouncementService {
     return ok({ ok: true });
   }
 
+  async permanentDelete(actorId: string, announcementId: string): Promise<ServiceResult<{ ok: true }>> {
+    const existing = await this.getById(announcementId);
+    if (!existing) return err("NOT_FOUND", "Announcement not found");
+    await this.db.delete(announcements).where(eq(announcements.id, announcementId));
+    await this.deps.writeAuditLog({ entityType: "announcement", action: "delete", actorId, entityId: announcementId, diffTitle: existing.title });
+    await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_deleted" });
+    return ok({ ok: true });
+  }
+
   async uploadImages(actorId: string, announcementId: string, files: Array<{ data: ArrayBuffer; contentType: string }>): Promise<ServiceResult<{ keys: string[] }>> {
     const existing = await this.getById(announcementId);
     if (!existing) return err("NOT_FOUND", "Announcement not found");

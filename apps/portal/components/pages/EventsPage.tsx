@@ -136,6 +136,7 @@ export function EventsPage() {
     editorPollOptions,
     editorPollResultsVisibility,
     editorPollShowVoterNames,
+    editorWinnerCount,
     editorStartIso,
     editorEndIso,
     setEditorType,
@@ -148,6 +149,7 @@ export function EventsPage() {
     setEditorPollOptions,
     setEditorPollResultsVisibility,
     setEditorPollShowVoterNames,
+    setEditorWinnerCount,
     markEditorTouched,
     openCreateEditor: openCreateEditorBase,
     openEditEditor: openEditEditorBase,
@@ -208,6 +210,7 @@ export function EventsPage() {
   }, [markEditorTouched, mutations]);
 
   const handleSaveEvent = () => {
+    if (!editorType) return;
     mutations.saveEvent({
       mode: editorMode,
       editingEventId,
@@ -225,6 +228,7 @@ export function EventsPage() {
       pollOptions: editorPollOptions,
       pollResultsVisibility: editorPollResultsVisibility,
       pollShowVoterNames: editorPollShowVoterNames,
+      winnerCount: editorWinnerCount,
     });
   };
 
@@ -321,6 +325,8 @@ export function EventsPage() {
             onAddParticipant={mutations.addParticipant}
             onRemoveParticipant={mutations.removeParticipant}
             onVotePoll={canInteract ? mutations.votePoll : undefined}
+            onDrawRaffle={canManage ? mutations.drawRaffle : undefined}
+            drawRafflePending={mutations.drawRafflePending}
             hasMore={filtering.eventsHasMore}
             isLoadingMore={filtering.eventsLoadingMore}
             onLoadMore={filtering.onLoadMoreEvents}
@@ -365,6 +371,8 @@ export function EventsPage() {
             onPollResultsVisibilityChange={setEditorPollResultsVisibility}
             pollShowVoterNames={editorPollShowVoterNames}
             onPollShowVoterNamesChange={setEditorPollShowVoterNames}
+            winnerCount={editorWinnerCount}
+            onWinnerCountChange={setEditorWinnerCount}
             attachmentItems={attachmentItems}
             onAttachmentsChange={handleAttachmentItemsChange}
             onFilesSelected={handleFilesSelected}
@@ -397,6 +405,8 @@ export function EventsPage() {
         onRemoveParticipant={mutations.removeParticipant}
         onVotePoll={canInteract ? mutations.votePoll : undefined}
         votePending={mutations.votePending}
+        onDrawRaffle={canManage ? mutations.drawRaffle : undefined}
+        drawRafflePending={mutations.drawRafflePending}
       />
     </PageLayout>
   );

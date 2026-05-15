@@ -33,6 +33,10 @@
   background: #14b8a6;
 }
 
+.event-card:has(.event-card__header--raffle)::before {
+  background: #ec4899;
+}
+
 .event-card:has(.event-card__header--other)::before {
   background: color-mix(in srgb, var(--color-text, #111827) 36%, transparent);
 }
@@ -80,6 +84,7 @@
 .event-card__header--guild_war,
 .event-card__header--social,
 .event-card__header--poll,
+.event-card__header--raffle,
 .event-card__header--other {
   background: color-mix(in srgb, var(--color-surface, #ffffff) 72%, transparent);
 }
@@ -94,18 +99,16 @@
 .event-card__capacity {
   display: flex;
   align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-  min-height: 28px;
-  padding: 3px 9px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 9%, transparent);
+  gap: 4px;
+  padding: 2px 8px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, transparent);
-}
-
-.event-card__capacity-text {
+  font-size: 11px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #111827) 76%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, transparent);
+  white-space: nowrap;
 }
 
 .event-card__menu-btn {
@@ -186,6 +189,7 @@
 }
 
 .event-card__members-bar {
+  position: relative;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -196,15 +200,58 @@
   background: color-mix(in srgb, var(--color-text, #111827) 3%, transparent);
 }
 
-.event-card__poll-status {
+.event-card__raffle-winners {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 10px;
+  border: 1px solid color-mix(in srgb, #ec4899 22%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, #ec4899 6%, transparent);
+}
+
+.event-card__raffle-winners-icon {
+  position: absolute;
+  top: -8px;
+  left: -6px;
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--mantine-color-pink-5, #ec4899);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.event-card__poll-ended {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 8px;
-  padding: 9px 10px;
+  padding: 8px 8px 10px;
   border: 1px solid color-mix(in srgb, #14b8a6 22%, transparent);
   border-radius: 8px;
-  color: color-mix(in srgb, var(--color-text, #111827) 82%, transparent);
-  background: color-mix(in srgb, #14b8a6 8%, transparent);
+  background: color-mix(in srgb, #14b8a6 6%, transparent);
+}
+
+.event-card__poll-ended-icon {
+  position: absolute;
+  top: -8px;
+  left: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--mantine-color-teal-5, #14b8a6);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .event-card__members-left {
@@ -251,12 +298,16 @@
   background: color-mix(in srgb, var(--color-text, #111827) 6%, transparent);
 }
 
-.event-card__actions {
+.event-card__header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  gap: 4px;
+}
+
+.event-card__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 2px;
 }
 
 .event-card__icon-muted {

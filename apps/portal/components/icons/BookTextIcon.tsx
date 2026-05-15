@@ -2,6 +2,7 @@ import { motion, useAnimation } from "motion/react";
 import type { HTMLAttributes } from "react";
 import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
 import { cn } from "@portal/utils/cn";
+import { useParentInteractiveHover } from "./useParentInteractiveHover";
 
 export interface BookTextIconHandle {
   startAnimation: () => void;
@@ -16,6 +17,7 @@ const BookTextIcon = forwardRef<BookTextIconHandle, BookTextIconProps>(
   ({ onMouseEnter, onMouseLeave, className, size = 28, ...props }, ref) => {
     const controls = useAnimation();
     const isControlledRef = useRef(false);
+    const wrapperRef = useParentInteractiveHover(controls, isControlledRef);
 
     useImperativeHandle(ref, () => {
       isControlledRef.current = true;
@@ -40,7 +42,7 @@ const BookTextIcon = forwardRef<BookTextIconHandle, BookTextIconProps>(
     );
 
     return (
-      <div className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
+      <div ref={wrapperRef} className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
         <motion.svg animate={controls} fill="none" height={size} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" variants={{ animate: { scale: [1, 1.04, 1], rotate: [0, -8, 8, -8, 0], y: [0, -2, 0], transition: { duration: 0.6, ease: "easeInOut", times: [0, 0.2, 0.5, 0.8, 1] } }, normal: { scale: 1, rotate: 0, y: 0 } }} viewBox="0 0 24 24" width={size} xmlns="http://www.w3.org/2000/svg">
           <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />
           <path d="M8 11h8" />

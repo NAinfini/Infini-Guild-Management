@@ -453,21 +453,30 @@ export class AdminService {
     let r2Status = "ok";
     const dbChecks: Record<string, string> = {};
     const requiredTables = ["users", "member_profiles", "roles", "role_permissions"] as const;
-    try {
-      for (const table of requiredTables) {
-        const row = await this.deps.rawDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1").bind(table).first<{ name: string }>();
-        dbChecks[table] = row?.name ? "ok" : "missing";
+
+    const dbCheck = (async () => {
+      try {
+        const rows = await this.deps.rawDb
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'member_profiles', 'roles', 'role_permissions')")
+          .all<{ name: string }>();
+        const found = new Set(rows.results.map((r) => r.name));
+        for (const table of requiredTables) dbChecks[table] = found.has(table) ? "ok" : "missing";
+        if (requiredTables.some((t) => dbChecks[t] !== "ok")) dbStatus = "error";
+      } catch {
+        dbStatus = "error";
+        for (const table of requiredTables) dbChecks[table] = "error";
       }
-      if (requiredTables.some((t) => dbChecks[t] !== "ok")) dbStatus = "error";
-    } catch {
-      dbStatus = "error";
-      for (const table of requiredTables) dbChecks[table] = "error";
-    }
-    try {
-      await this.deps.media.head(ANALYTICS_SETTINGS_KEY);
-    } catch {
-      r2Status = "error";
-    }
+    })();
+
+    const r2Check = (async () => {
+      try {
+        await this.deps.media.head(ANALYTICS_SETTINGS_KEY);
+      } catch {
+        r2Status = "error";
+      }
+    })();
+
+    await Promise.all([dbCheck, r2Check]);
     return ok({ db: dbStatus, r2: r2Status, ws: this.deps.ws ? "ok" : "missing", crons: "ok", db_checks: dbChecks });
   }
 

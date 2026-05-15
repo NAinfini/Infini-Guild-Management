@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS member_profile_classes (
 
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('weekly_mission', 'guild_war', 'social', 'poll', 'other')),
+  type TEXT NOT NULL CHECK (type IN ('weekly_mission', 'guild_war', 'social', 'poll', 'raffle', 'other')),
   title TEXT NOT NULL,
   description TEXT,
   start_at TEXT NOT NULL,
@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS events (
   last_generated_date TEXT,
   generation_count INTEGER NOT NULL DEFAULT 0,
   visibility_offset_minutes INTEGER,
+  winner_count INTEGER,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -292,10 +293,16 @@ CREATE INDEX IF NOT EXISTS idx_role_permissions_permission
 -- sessions
 CREATE INDEX IF NOT EXISTS idx_sessions_user_expires
   ON sessions(user_id, expires_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires_at
+  ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_created_at
+  ON sessions(created_at);
 
 -- events
 CREATE INDEX IF NOT EXISTS idx_events_archived_series_start
   ON events(archived_at, is_series_parent, start_at, id);
+CREATE INDEX IF NOT EXISTS idx_events_series_archived_start
+  ON events(is_series_parent, archived_at, start_at, id);
 CREATE INDEX IF NOT EXISTS idx_events_auto_archive_due
   ON events(auto_archive, auto_archived, archived_at, is_series_parent, end_at, start_at);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_events_series_instance
@@ -321,6 +328,17 @@ CREATE INDEX IF NOT EXISTS idx_event_poll_votes_event_user
 CREATE INDEX IF NOT EXISTS idx_event_poll_votes_option
   ON event_poll_votes(option_id);
 
+CREATE TABLE IF NOT EXISTS event_raffle_winners (
+  id TEXT PRIMARY KEY NOT NULL,
+  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  drawn_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  UNIQUE(event_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_raffle_winners_event
+  ON event_raffle_winners(event_id);
+
 -- announcements
 CREATE INDEX IF NOT EXISTS idx_announcements_status_pinned_created
   ON announcements(status, pinned, created_at, id);
@@ -332,6 +350,8 @@ CREATE INDEX IF NOT EXISTS idx_announcements_expiry
 -- war_history
 CREATE INDEX IF NOT EXISTS idx_war_history_event_id
   ON war_history(event_id);
+CREATE INDEX IF NOT EXISTS idx_war_history_event_created
+  ON war_history(event_id, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_war_history_created
   ON war_history(created_at, id);
 
@@ -360,6 +380,8 @@ CREATE INDEX IF NOT EXISTS idx_war_templates_updated_at
 -- wiki
 CREATE INDEX IF NOT EXISTS idx_wiki_categories_parent_sort
   ON wiki_categories(parent_id, sort_order, name, id);
+CREATE INDEX IF NOT EXISTS idx_wiki_categories_sort
+  ON wiki_categories(sort_order, name, id);
 CREATE INDEX IF NOT EXISTS idx_wiki_articles_category_archived_sort
   ON wiki_articles(category_id, archived_at, pinned, sort_order, updated_at, id);
 CREATE INDEX IF NOT EXISTS idx_wiki_articles_archived_updated
@@ -390,8 +412,12 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_created_at
   ON audit_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_log_entity_actor_created
   ON audit_log(entity_type, actor_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity_created
+  ON audit_log(entity_type, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_actor_id
   ON audit_log(actor_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor_created
+  ON audit_log(actor_id, created_at, id);
 
 -- error_log (observability)
 CREATE TABLE IF NOT EXISTS error_log (
@@ -409,6 +435,33 @@ CREATE TABLE IF NOT EXISTS error_log (
 
 CREATE INDEX IF NOT EXISTS idx_error_log_created_at ON error_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_error_log_source ON error_log(source);
+
+-- member_badges
+CREATE TABLE IF NOT EXISTS member_badges (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL,
+  label_html TEXT NOT NULL,
+  color TEXT NOT NULL DEFAULT '#3b82f6',
+  description TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_member_badges_sort
+  ON member_badges(sort_order, id);
+
+CREATE TABLE IF NOT EXISTS member_badge_assignments (
+  badge_id TEXT NOT NULL REFERENCES member_badges(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  assigned_by TEXT NOT NULL REFERENCES users(id),
+  assigned_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_member_badge_assignments_badge_user
+  ON member_badge_assignments(badge_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_member_badge_assignments_user
+  ON member_badge_assignments(user_id);
 
 -- ===== ROLE BASELINE DATA =====
 
@@ -454,8 +507,8 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('admin', 'wiki.articles.archive', 1),
   ('admin', 'wiki.articles.delete', 1),
   ('admin', 'wiki.categories.manage', 1),
-
-  -- moderator (common management operations)
+  ('admin', 'admin.badges.manage', 1),
+  -- moderator (limited access)
   ('moderator', 'admin.users.view', 1),
   ('moderator', 'admin.users.edit', 1),
   ('moderator', 'admin.users.role', 0),
@@ -491,8 +544,8 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('moderator', 'wiki.articles.archive', 1),
   ('moderator', 'wiki.articles.delete', 1),
   ('moderator', 'wiki.categories.manage', 1),
-
-  -- member (baseline contributor)
+  ('moderator', 'admin.badges.manage', 0),
+  -- member (minimal access)
   ('member', 'admin.users.view', 0),
   ('member', 'admin.users.edit', 0),
   ('member', 'admin.users.role', 0),
@@ -527,4 +580,5 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('member', 'wiki.articles.edit', 0),
   ('member', 'wiki.articles.archive', 0),
   ('member', 'wiki.articles.delete', 0),
-  ('member', 'wiki.categories.manage', 0);
+  ('member', 'wiki.categories.manage', 0),
+  ('member', 'admin.badges.manage', 0);

@@ -7,6 +7,7 @@ import { runErrorLogCleanupCron } from "./error-log-cleanup";
 import { runEventAutoArchiveCron } from "./event-auto-archive";
 import { runEventInstanceGenerationCron } from "./event-instance-gen";
 import { runMediaOrphanCleanupCron } from "./media-orphan-cleanup";
+import { runRaffleDrawCron } from "./raffle-draw";
 import { runSessionCleanupCron } from "./session-cleanup";
 
 export type MaintenanceJob = {
@@ -22,9 +23,13 @@ export const DAILY_MAINTENANCE_JOBS: readonly MaintenanceJob[] = [
 
 export const QUARTER_HOURLY_MAINTENANCE_JOBS: readonly MaintenanceJob[] = [
   { name: "event-instance-gen", run: runEventInstanceGenerationCron },
-  { name: "event-auto-archive", run: runEventAutoArchiveCron },
+  { name: "raffle-draw", run: runRaffleDrawCron },
   { name: "session-cleanup", run: runSessionCleanupCron },
   { name: "announcement-publish", run: runAnnouncementPublishCron },
+];
+
+export const QUARTER_HOURLY_POST_JOBS: readonly MaintenanceJob[] = [
+  { name: "event-auto-archive", run: runEventAutoArchiveCron },
 ];
 
 async function runMaintenanceJobs(env: Bindings, jobs: readonly MaintenanceJob[], cron: string): Promise<void> {
@@ -68,4 +73,5 @@ export async function runDailyMaintenanceCron(env: Bindings, cron: string): Prom
 
 export async function runQuarterHourlyMaintenanceCron(env: Bindings, cron: string): Promise<void> {
   await runMaintenanceJobs(env, QUARTER_HOURLY_MAINTENANCE_JOBS, cron);
+  await runMaintenanceJobs(env, QUARTER_HOURLY_POST_JOBS, cron);
 }

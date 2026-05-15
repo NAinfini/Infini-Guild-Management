@@ -1,27 +1,27 @@
 import type { MemberProfile, User } from "@guild/shared";
 import { activeGame } from "@guild/shared/games";
 import { Avatar, Group, HoverCard, Stack, Text } from "@mantine/core";
-import { IconShield, IconSword, IconHeartbeat, IconBolt } from "@tabler/icons-react";
+import { ShieldIcon, SwordIcon, HeartbeatIcon, BoltIcon } from "@portal/components/icons";
 import { resolveProfileMediaUrl } from "../../utils/media";
 
-const ICON_MAP: Record<string, typeof IconSword> = {
-  IconSword,
-  IconShield,
-  IconHeartbeat,
+const ICON_MAP: Record<string, typeof SwordIcon> = {
+  IconSword: SwordIcon,
+  IconShield: ShieldIcon,
+  IconHeartbeat: HeartbeatIcon,
 };
 
 type RoleConfigResolved = {
   id: string;
   color: string;
   avatarColor: string;
-  icon: typeof IconSword;
+  icon: typeof SwordIcon;
   label: string;
 };
 
 const ROLE_CONFIG: Record<string, RoleConfigResolved> = Object.fromEntries(
   activeGame.roles.map((r) => [
     r.id,
-    { id: r.id, color: r.color, avatarColor: r.avatarColor, icon: ICON_MAP[r.icon] ?? IconSword, label: r.label },
+    { id: r.id, color: r.color, avatarColor: r.avatarColor, icon: ICON_MAP[r.icon] ?? SwordIcon, label: r.label },
   ]),
 );
 
@@ -68,10 +68,8 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
   const avatarColor = getPrimaryAvatarColor(roles);
   const avatarSrc = profile.avatar_key ? resolveProfileMediaUrl(profile.avatar_key) : undefined;
   const iconSize = Math.max(8, Math.round(size * 0.28));
-  const badgePad = 2;
-  const badgeGap = 1;
-  const badgeH = iconSize + badgePad * 2;
-  const badgeW = roles.length * iconSize + (roles.length - 1) * badgeGap + badgePad * 2;
+  const circleSize = iconSize + 6;
+  const circleGap = 2;
 
   const avatar = (
     <div style={{ position: "relative", display: "inline-flex" }}>
@@ -83,24 +81,33 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
           position: "absolute",
           bottom: -3,
           right: -3,
-          height: badgeH,
-          width: badgeW,
-          borderRadius: badgeH / 2,
-          background: roles.length === 1 ? (ROLE_CONFIG[roles[0]]?.color ?? "#3b82f6") : "rgba(30,41,59,0.85)",
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
-          gap: badgeGap,
-          padding: `0 ${badgePad}px`,
-          border: "2px solid var(--color-surface, #ffffff)",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+          gap: circleGap,
         }}
       >
         {roles.map((roleId) => {
           const cfg = ROLE_CONFIG[roleId] ?? ROLE_CONFIG[activeGame.defaultRole];
           if (!cfg) return null;
           const Icon = cfg.icon;
-          return <Icon key={roleId} size={iconSize} color={roles.length === 1 ? "#fff" : cfg.color} stroke={2.5} />;
+          return (
+            <div
+              key={roleId}
+              style={{
+                width: circleSize,
+                height: circleSize,
+                borderRadius: "50%",
+                background: cfg.color,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "2px solid var(--color-surface, #ffffff)",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+              }}
+            >
+              <Icon size={iconSize} style={{ color: "#fff", display: "inline-flex", lineHeight: 0 }} />
+            </div>
+          );
         })}
       </div>
     </div>
@@ -131,13 +138,13 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
             const Icon = cfg.icon;
             return (
               <Group key={cls} gap={4}>
-                <Icon size={14} color={cfg.color} />
+                <Icon size={14} style={{ color: cfg.color, display: "inline-flex", lineHeight: 0 }} />
                 <Text size="xs" fw={600}>{cls}</Text>
               </Group>
             );
           })}
           {profile.power > 0 ? (
-            <Text size="xs" c="dimmed"><IconBolt size={13} style={{ display: "inline-block", verticalAlign: "-2px" }} /> {profile.power.toLocaleString()}</Text>
+            <Text size="xs" c="dimmed"><BoltIcon size={13} style={{ display: "inline-block", verticalAlign: "-2px" }} /> {profile.power.toLocaleString()}</Text>
           ) : null}
         </Group>
       </HoverCard.Dropdown>

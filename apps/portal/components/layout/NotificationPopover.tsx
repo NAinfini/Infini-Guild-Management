@@ -1,4 +1,3 @@
-import type { PushMessage } from "@guild/shared";
 import { NotificationOutlined } from "../../utils/icons";
 import {
   ActionIcon,
@@ -21,7 +20,7 @@ type PushEntry = {
   id: string;
   title: string;
   message: string;
-  type: PushMessage["type"];
+  type: string;
   readAt: string | null;
   occurredAt: string;
 };
@@ -33,7 +32,7 @@ type NotificationPopoverProps = {
   displayPushEntries: PushEntry[];
   onClose: () => void;
   onClearHistory: () => void;
-  onEntryClick: (entryId: string, type: PushMessage["type"]) => void;
+  onEntryClick: (entryId: string, type: string) => void;
 };
 
 export function NotificationPopover({
@@ -112,6 +111,18 @@ export function NotificationPopover({
                         {item.type === "announcement_published" ? (
                           <Badge variant="light" color="blue">
                             {t("notification.type.announcement")}
+                          </Badge>
+                        ) : item.type === "event_changed" ? (
+                          <Badge variant="light" color="orange">
+                            {t("notification.type.eventReminder")}
+                          </Badge>
+                        ) : item.type === "wiki_changed" ? (
+                          <Badge variant="light" color="teal">
+                            {t("notification.type.wiki")}
+                          </Badge>
+                        ) : item.type === "member_joined" ? (
+                          <Badge variant="light" color="green">
+                            {t("notification.type.memberOnline")}
                           </Badge>
                         ) : null}
                       </Group>

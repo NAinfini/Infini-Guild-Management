@@ -27,7 +27,7 @@ import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { GuildWarService, batchUpdateGuildWarMemberStats, moveGuildWarMember, updateGuildWarHistory } from "../../services/GuildWarService";
 import { archiveEvent } from "../../services/EventService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersList } from "../../services/UserService";
+import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { useGuildWarStore } from "../../stores/guildWar";
@@ -234,7 +234,7 @@ export function GuildWarPage() {
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
-    queryFn: fetchUsersList,
+    queryFn: () => fetchAllUsersListWithOptions(),
     staleTime: 10 * 60_000,
   });
 
@@ -242,7 +242,9 @@ export function GuildWarPage() {
     if (selectedEventId) {
       return;
     }
-    const first = warEventsQuery.data?.data[0];
+    const events = warEventsQuery.data?.data ?? [];
+    const active = events.find((e) => !e.archived_at);
+    const first = active ?? events[0];
     if (first) {
       setSelectedEventId(first.id);
     }
@@ -580,7 +582,9 @@ export function GuildWarPage() {
                           selectedEventId={selectedEventId}
                           eventOptions={(warEventsQuery.data?.data ?? []).map((item) => ({
                             value: item.id,
-                            label: `${item.title} (${guildWarHistory.formatDateTime(item.start_at)})`,
+                            label: item.archived_at
+                              ? `${item.title} (${guildWarHistory.formatDateTime(item.start_at)}) [${t("active.eventArchived")}]`
+                              : `${item.title} (${guildWarHistory.formatDateTime(item.start_at)})`,
                           }))}
                           eventPlaceholder={t("active.event")}
                           onSelectedEventIdChange={setSelectedEventId}

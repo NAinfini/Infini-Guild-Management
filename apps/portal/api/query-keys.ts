@@ -86,6 +86,12 @@ export const queryKeys = {
       [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, pinnedOnly, page ?? 1] as const,
     article: (slug: string | null) => [...queryKeys.wiki.all, "article", slug] as const,
   },
+  badges: {
+    all: ["badges"] as const,
+    list: () => [...queryKeys.badges.all, "list"] as const,
+    detail: (id: string) => [...queryKeys.badges.all, "detail", id] as const,
+    assignments: (id: string) => [...queryKeys.badges.all, "assignments", id] as const,
+  },
   cmdk: {
     all: ["cmdk"] as const,
     searchData: () => [...queryKeys.cmdk.all, "search-data"] as const,

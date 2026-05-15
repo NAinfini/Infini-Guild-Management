@@ -1,7 +1,6 @@
 import { ActionIcon, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
-import { ChevronLeftIcon, ChevronRightIcon } from "@portal/components/icons";
-import { IconFlag } from "@tabler/icons-react";
+import { ChevronLeftIcon, ChevronRightIcon, FlagIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { DepthButton } from "../../shared/DepthButton";
 
@@ -76,7 +75,7 @@ export function GuildWarActiveTopCard({
               <DepthButton
                 type="danger"
                 size="xs"
-                before={<IconFlag size={16} />}
+                before={<FlagIcon size={16} />}
                 onClick={onConcludeWar}
                 disabled={concludeWarDisabled}
               >

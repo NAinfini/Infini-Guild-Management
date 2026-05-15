@@ -1,10 +1,8 @@
 import {
-  Accordion,
   Alert,
   Badge,
   Button,
   Group,
-  Progress,
   ScrollArea,
   SimpleGrid,
   Stack,
@@ -17,6 +15,7 @@ import { ClipboardIcon, PlayIcon } from "@portal/components/icons";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
+import { useNotificationStore } from "../../../stores/notifications";
 import { userCanViewStatus } from "../../../utils/permissions";
 import { formatDateTime } from "../../../utils/admin";
 import { AdminSystemSection } from "./AdminSystemSection";
@@ -24,6 +23,7 @@ import {
   API_TEST_GAP_GET_MS,
   API_TEST_GAP_MUTATION_MS,
   buildApiCategories,
+  buildCleanupSteps,
   captureContextFromResponse,
   createInitialTestRunContext,
   nextLogId,
@@ -39,6 +39,7 @@ import {
 } from "./AdminApiTestEngine";
 import { ApiTestCategory } from "./AdminApiTestCategory";
 import { AdminApiDebugConsole } from "./AdminApiDebugConsole";
+import "./AdminApiTest.css";
 
 type StatusData = {
   db: string;
@@ -79,6 +80,7 @@ export function AdminStatusTab({
   const { t: tc } = useTranslation("common");
   const apiCategories = useMemo(() => buildApiCategories(t), [t]);
   const user = useAuthStore((state) => state.user);
+  const setSuppressed = useNotificationStore((state) => state.setSuppressed);
   const isAdmin = userCanViewStatus(user);
   const loadErrorMessage = tc("loadError");
   const heading = <Title order={2} style={{ margin: 0, fontSize: 16 }}>{t("tab.status")}</Title>;
@@ -171,78 +173,10 @@ export function AdminStatusTab({
     });
   }, [pushLog]);
 
-  const runCategory = useCallback(async (category: CategoryDef) => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    clearRunConsole();
-    await runCategoryInternal(category, controller.signal);
-  }, [clearRunConsole, runCategoryInternal]);
-
   const [runningAll, setRunningAll] = useState(false);
 
   const runCleanup = useCallback(async (signal: AbortSignal) => {
-    const ctx = contextRef.current;
-    const cleanupSteps: Array<{ label: string; method: string; path: string; jsonBody?: unknown }> = [];
-
-    // Order: dependents first, then parents
-    // Gallery image (the uploaded image that survived the in-category delete of the video)
-    if (ctx.createdGalleryImageId) {
-      cleanupSteps.push({ label: "Cleanup: Gallery Image", method: "DELETE", path: `/api/gallery/${encodeURIComponent(ctx.createdGalleryImageId)}` });
-    }
-    // Announcement (archive = soft delete)
-    if (ctx.createdAnnouncementId) {
-      cleanupSteps.push({ label: "Cleanup: Announcement", method: "DELETE", path: `/api/announcements/${encodeURIComponent(ctx.createdAnnouncementId)}` });
-    }
-    // Wiki article before category (article depends on category)
-    if (ctx.createdWikiArticleId) {
-      cleanupSteps.push({ label: "Cleanup: Wiki Article", method: "DELETE", path: `/api/wiki/articles/${encodeURIComponent(ctx.createdWikiArticleId)}` });
-    }
-    if (ctx.createdWikiCategoryId) {
-      cleanupSteps.push({ label: "Cleanup: Wiki Category", method: "DELETE", path: `/api/wiki/categories/${encodeURIComponent(ctx.createdWikiCategoryId)}` });
-    }
-    // Guild war history
-    if (ctx.createdWarHistoryId) {
-      cleanupSteps.push({ label: "Cleanup: War History", method: "DELETE", path: `/api/guild-war/history/${encodeURIComponent(ctx.createdWarHistoryId)}` });
-    }
-    // Invite link
-    if (ctx.createdInviteLinkId) {
-      cleanupSteps.push({ label: "Cleanup: Invite Link", method: "DELETE", path: `/api/admin/invite-links/${encodeURIComponent(ctx.createdInviteLinkId)}` });
-    }
-    // Admin role
-    if (ctx.createdRoleId) {
-      cleanupSteps.push({ label: "Cleanup: Admin Role", method: "DELETE", path: `/api/admin/roles/${encodeURIComponent(ctx.createdRoleId)}` });
-    }
-    // Restore modified profile to original values
-    if (ctx.targetUserId && ctx.targetProfileSnapshot) {
-      cleanupSteps.push({
-        label: "Cleanup: Restore Profile",
-        method: "PATCH",
-        path: `/api/users/${encodeURIComponent(ctx.targetUserId)}/profile`,
-        jsonBody: {
-          bio: ctx.targetProfileSnapshot.bio,
-          classes: ctx.targetProfileSnapshot.classes,
-        },
-      });
-    }
-    // Delete registered test user (batch delete via admin)
-    if (ctx.registeredUserId) {
-      cleanupSteps.push({
-        label: "Cleanup: Registered User",
-        method: "PATCH",
-        path: "/api/admin/users/batch/delete",
-        jsonBody: { user_ids: [ctx.registeredUserId] },
-      });
-    }
-    // Delete admin-created test user (batch delete via admin)
-    if (ctx.adminCreatedUserId && ctx.adminCreatedUserId !== ctx.registeredUserId) {
-      cleanupSteps.push({
-        label: "Cleanup: Admin Created User",
-        method: "PATCH",
-        path: "/api/admin/users/batch/delete",
-        jsonBody: { user_ids: [ctx.adminCreatedUserId] },
-      });
-    }
+    const cleanupSteps = buildCleanupSteps(contextRef.current);
 
     for (const step of cleanupSteps) {
       if (signal.aborted) break;
@@ -256,9 +190,12 @@ export function AdminStatusTab({
           method: step.method,
           credentials: "include",
           signal,
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            ...(step.jsonBody !== undefined ? { "Content-Type": "application/json" } : {}),
+          },
         };
         if (step.jsonBody !== undefined) {
-          fetchOpts.headers = { "Content-Type": "application/json" };
           fetchOpts.body = JSON.stringify(step.jsonBody);
         }
         const response = await fetch(step.path, fetchOpts);
@@ -283,6 +220,9 @@ export function AdminStatusTab({
           body: truncateJson(body),
           ranAt,
         });
+        if (response.ok && step.clearContext) {
+          contextRef.current = { ...contextRef.current, ...step.clearContext };
+        }
       } catch (err) {
         if (signal.aborted) break;
         const latencyMs = Math.round(performance.now() - started);
@@ -302,6 +242,22 @@ export function AdminStatusTab({
     }
   }, [pushLog]);
 
+  const runCategory = useCallback(async (category: CategoryDef) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    clearRunConsole();
+    setSuppressed(true);
+    try {
+      await runCategoryInternal(category, controller.signal);
+      if (!controller.signal.aborted) {
+        await runCleanup(controller.signal);
+      }
+    } finally {
+      setSuppressed(false);
+    }
+  }, [clearRunConsole, runCategoryInternal, runCleanup, setSuppressed]);
+
   const runAllCategories = useCallback(async () => {
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -310,19 +266,20 @@ export function AdminStatusTab({
     setResultMap(new Map());
     contextRef.current = createInitialTestRunContext();
     setRunningAll(true);
+    setSuppressed(true);
     try {
       for (const cat of apiCategories) {
         if (controller.signal.aborted) break;
         await runCategoryInternal(cat, controller.signal);
       }
-      // Cleanup phase: delete test-created objects
       if (!controller.signal.aborted) {
         await runCleanup(controller.signal);
       }
     } finally {
       setRunningAll(false);
+      setSuppressed(false);
     }
-  }, [clearRunConsole, runCategoryInternal, runCleanup]);
+  }, [clearRunConsole, runCategoryInternal, runCleanup, setSuppressed]);
 
   const clearDebug = useCallback(() => {
     setDebugLogs([]);
@@ -343,6 +300,13 @@ export function AdminStatusTab({
   const completedEndpoints = Math.min(resultMap.size, totalEndpoints);
   const progressPercent = totalEndpoints > 0 ? (completedEndpoints / totalEndpoints) * 100 : 0;
 
+  let passedEndpoints = 0;
+  let failedEndpoints = 0;
+  for (const [, r] of resultMap) {
+    if (r.status !== null && r.status >= 200 && r.status < 400) passedEndpoints++;
+    else failedEndpoints++;
+  }
+
   return (
     <Stack gap={16}>
       {heading}
@@ -362,8 +326,8 @@ export function AdminStatusTab({
           </div>
         </PortalCard>
 
-        <PortalCard interactive={false} style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "1.2rem", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <PortalCard interactive={false}>
+          <div style={{ padding: "1.2rem" }}>
             <Group justify="space-between" mb={12}>
               <Text fw={600} size="sm">{t("status.healthLogs.title")}</Text>
               <Button
@@ -376,7 +340,7 @@ export function AdminStatusTab({
                 {t("status.copyConfig")}
               </Button>
             </Group>
-            <ScrollArea style={{ flex: 1 }}>
+            <ScrollArea h={110} scrollbarSize={6} type="always">
               {statusHealthLogs.length === 0 ? (
                 <Text c="dimmed" size="sm">{t("status.healthLogs.empty")}</Text>
               ) : (
@@ -422,61 +386,67 @@ export function AdminStatusTab({
         </PortalCard>
       </SimpleGrid>
 
-      {/* ── API Test Panels ───────────────────────── */}
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
-          <Group justify="space-between" mb={4}>
-            <Group gap={8}>
-              <Text fw={600} size="sm">{t("status.section.apiTests")}</Text>
+      {/* ── API Test Console ────────────────────────── */}
+      <div className="api-console">
+        <div className="api-console__header">
+          <div className="api-console__header-left">
+            <Group gap={8} wrap="nowrap">
+              <Text fw={700} size="sm">{t("status.section.apiTests")}</Text>
               <Badge size="xs" variant="default">{t("status.api.endpointCount", { count: totalEndpoints })}</Badge>
             </Group>
-            <ProgressButton
-              onPress={runAllCategories}
-              loadingLabel={t("status.api.runAll")}
-              successLabel={t("status.api.runAll")}
-              errorLabel={t("status.api.runAll")}
-              indicator="spinner"
-              disabled={runningAll}
-            >
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <PlayIcon size={14} />
-                <span>{t("status.api.runAll")}</span>
-              </span>
-            </ProgressButton>
-          </Group>
-          <Text c="dimmed" size="xs" mb={12}>{t("status.section.apiTestsHint")}</Text>
-          <Accordion variant="separated" multiple>
-            {apiCategories.map((cat) => (
-              <Accordion.Item key={cat.key} value={cat.key}>
-                <Accordion.Control>
-                  <Group gap={8}>
-                    <Text fw={500} size="sm">{cat.label}</Text>
-                    <Badge size="xs" variant="default">
-                      {cat.endpoints.length}
-                    </Badge>
-                  </Group>
-                </Accordion.Control>
-                <Accordion.Panel>
-                  <ApiTestCategory
-                    category={cat}
-                    onRunCategory={runCategory}
-                    runningSet={runningSet}
-                    resultMap={resultMap}
-                    runLabel={t("status.api.runCategory")}
-                  />
-                </Accordion.Panel>
-              </Accordion.Item>
-            ))}
-          </Accordion>
-          <Stack gap={6} mt={12}>
-            <Group justify="space-between" gap={8}>
-              <Text c="dimmed" size="xs">{t("status.api.progress")}</Text>
-              <Text c="dimmed" size="xs">{completedEndpoints}/{totalEndpoints}</Text>
-            </Group>
-            <Progress value={progressPercent} size="sm" radius="xl" striped={runningAll} animated={runningAll} />
-          </Stack>
+
+            {completedEndpoints > 0 ? (
+              <div className="api-console__stats">
+                <span className="api-console__stat">
+                  <span className="api-console__stat-dot api-console__stat-dot--pass" />
+                  <span className="api-console__stat-value">{passedEndpoints}</span>
+                  pass
+                </span>
+                {failedEndpoints > 0 ? (
+                  <span className="api-console__stat">
+                    <span className="api-console__stat-dot api-console__stat-dot--fail" />
+                    <span className="api-console__stat-value">{failedEndpoints}</span>
+                    fail
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <ProgressButton
+            onPress={runAllCategories}
+            loadingLabel={t("status.api.runAll")}
+            successLabel={t("status.api.runAll")}
+            errorLabel={t("status.api.runAll")}
+            indicator="spinner"
+            disabled={runningAll}
+          >
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <PlayIcon size={14} />
+              <span>{t("status.api.runAll")}</span>
+            </span>
+          </ProgressButton>
         </div>
-      </PortalCard>
+
+        <div className="api-console__progress-track">
+          <div
+            className={`api-console__progress-fill${runningAll ? " api-console__progress-fill--running" : ""}`}
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+
+        <div className="api-cat-list">
+          {apiCategories.map((cat) => (
+            <ApiTestCategory
+              key={cat.key}
+              category={cat}
+              onRunCategory={runCategory}
+              runningSet={runningSet}
+              resultMap={resultMap}
+            />
+          ))}
+        </div>
+      </div>
 
       {/* ── Debug Console ─────────────────────────── */}
       <AdminApiDebugConsole logs={debugLogs} onClear={clearDebug} />

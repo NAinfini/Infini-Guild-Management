@@ -1,9 +1,9 @@
-import type { MemberProfile, PaginatedResponse, User } from "@guild/shared";
+import type { MemberProfile, PaginatedResponse, User, UserBadge } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { apiRequest } from "../client";
 
-type UserDetailResponse = { user: User; profile: MemberProfile };
-export type UsersListResponse = PaginatedResponse<{ user: User; profile: MemberProfile }>;
+type UserDetailResponse = { user: User; profile: MemberProfile; badges: UserBadge[] };
+export type UsersListResponse = PaginatedResponse<{ user: User; profile: MemberProfile; badges: UserBadge[] }>;
 export type UsersStatsResponse = { active_members: number; total_members: number };
 
 type UsersListOptions = {
@@ -36,6 +36,31 @@ export function fetchUsersList(): Promise<UsersListResponse> {
 
 export function fetchUsersListWithOptions(options?: UsersListOptions): Promise<UsersListResponse> {
   return apiRequest<UsersListResponse>(buildUsersListPath({ includeTotal: false, ...options }));
+}
+
+export async function fetchAllUsersListWithOptions(options?: Omit<UsersListOptions, "page" | "limit" | "includeTotal">): Promise<UsersListResponse> {
+  const limit = LIMITS.pagination.users;
+  const pages: UsersListResponse[] = [];
+  let page = 1;
+
+  while (true) {
+    const response = await fetchUsersListWithOptions({
+      ...options,
+      page,
+      limit,
+      includeTotal: false,
+    });
+    pages.push(response);
+    if (response.data.length < limit) {
+      return {
+        ...response,
+        data: pages.flatMap((item) => item.data),
+        page: 1,
+        limit,
+      };
+    }
+    page += 1;
+  }
 }
 
 export function fetchUsersStats(): Promise<UsersStatsResponse> {

@@ -17,6 +17,10 @@ export async function runEventAutoArchiveCron(env: Bindings): Promise<void> {
        AND (
          (end_at IS NOT NULL AND end_at < ?1)
          OR (end_at IS NULL AND start_at < ?1)
+       )
+       AND NOT (
+         type = 'raffle'
+         AND NOT EXISTS (SELECT 1 FROM event_raffle_winners w WHERE w.event_id = events.id)
        )`,
   )
     .bind(now)

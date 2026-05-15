@@ -139,13 +139,14 @@ function renderCardsView(
 }
 
 describe("EventCardsView", () => {
-  it("shows player count in the event card header without progress percentage", () => {
+  it("shows player count as a capacity pill in the card header", () => {
     renderCardsView();
 
     expect(screen.queryByText("90%")).not.toBeInTheDocument();
 
-    const capacityText = screen.getByText("9 / 10");
-    expect(capacityText.closest(".event-card__header")).not.toBeNull();
+    const capacityPill = document.querySelector(".event-card__capacity");
+    expect(capacityPill).not.toBeNull();
+    expect(capacityPill!.textContent).toContain("9/10");
   });
 
   it("groups event state indicators separately from the event type header", () => {
@@ -226,7 +227,7 @@ describe("EventCardsView", () => {
     expect(onLeaveEvent).not.toHaveBeenCalled();
   });
 
-  it("shows poll status without card voting controls", () => {
+  it("shows poll without card voting controls", () => {
     const onVotePoll = vi.fn();
     renderCardsView(0, {
       eventOverrides: {
@@ -249,7 +250,6 @@ describe("EventCardsView", () => {
       onVotePoll,
     });
 
-    expect(screen.getByText("poll.status.open")).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: /Raid/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: /Dungeon/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /poll\.vote/i })).not.toBeInTheDocument();

@@ -70,6 +70,7 @@ export function WikiPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(routeSlug);
+  const [skipAutoSelectOnce, setSkipAutoSelectOnce] = useState(false);
   const [editorTab, setEditorTab] = useState<"article" | "categories">("article");
   const [mobilePane, setMobilePane] = useState<"list" | "article">("list");
   const [showEditorPane, editorPaneHandlers] = useDisclosure(false);
@@ -151,23 +152,38 @@ export function WikiPage() {
     });
   }, [accumulatedArticles, selectedCategoryIds]);
   const selectedArticle = detailQuery.data ?? null;
+  const handleArticleCreated = (slug: string | null) => {
+    setSelectedSlug(slug);
+    if (slug) {
+      setSkipAutoSelectOnce(false);
+      return;
+    }
+    setSkipAutoSelectOnce(true);
+    if (routeSlug) {
+      void navigate({ to: "/wiki", replace: true, viewTransition: false });
+    }
+  };
   const articleEditor = useWikiArticleEditor({
     canEdit,
     categories,
     selectedArticle,
     selectedCategoryId,
     selectedCategoryIds,
-    onArticleCreated: setSelectedSlug,
+    onArticleCreated: handleArticleCreated,
   });
   const categoryEditor = useWikiCategoryEditor({ categories });
 
   useEffect(() => {
     if (routeSlug && routeSlug !== selectedSlug) {
       setSelectedSlug(routeSlug);
+      setSkipAutoSelectOnce(false);
     }
   }, [routeSlug, selectedSlug]);
 
   useEffect(() => {
+    if (skipAutoSelectOnce) {
+      return;
+    }
     if (!selectedSlug && !articleEditor.isCreatingArticle && articles.length > 0) {
       const firstSlug = articles[0]?.slug ?? null;
       setSelectedSlug(firstSlug);
@@ -180,7 +196,7 @@ export function WikiPage() {
         });
       }
     }
-  }, [articleEditor.isCreatingArticle, articles, navigate, routeSlug, selectedSlug]);
+  }, [articleEditor.isCreatingArticle, articles, navigate, routeSlug, selectedSlug, skipAutoSelectOnce]);
 
   useEffect(() => {
     if (!isMobile) {
@@ -210,6 +226,7 @@ export function WikiPage() {
   useBeforeUnloadPrompt(isEditorPaneVisible && (articleEditor.isDirty || categoryEditor.isDirty));
 
   const handleSelectArticle = (slug: string) => {
+    setSkipAutoSelectOnce(false);
     setSelectedSlug(slug);
     void navigate({
       to: "/wiki/$slug",
@@ -226,6 +243,7 @@ export function WikiPage() {
     editorPaneHandlers.open();
     articleEditor.startCreateArticle();
     setSelectedSlug(null);
+    setSkipAutoSelectOnce(true);
     if (routeSlug) {
       void navigate({ to: "/wiki", viewTransition: false });
     }
@@ -283,7 +301,10 @@ export function WikiPage() {
         cancel: t("common:action.cancel"),
         confirm: t("common:action.delete"),
       },
-      onConfirm: () => articleEditor.deleteArticle(selectedArticle.id),
+      onConfirm: () => {
+        setSkipAutoSelectOnce(true);
+        articleEditor.deleteArticle(selectedArticle.id);
+      },
     });
   };
 

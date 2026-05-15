@@ -180,6 +180,8 @@ export { myGame as activeGame } from "./definitions/my-game";
 }
 ```
 
+把 `apps/portal/public/guild-logo.webp` 替换成自己公会的 Logo。
+
 ### 第 5 步 · 关掉不需要的功能 (可选)
 
 改 `apps/shared/config/features.ts`：
@@ -193,6 +195,14 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   wiki: true,
   tools: true,
 };
+```
+
+也可以不改代码，直接在 `wrangler.jsonc` 的 vars 里加 `FEATURES` 环境变量覆盖：
+
+```jsonc
+"vars": {
+  "FEATURES": "{\"guildWar\":false,\"wiki\":false}"
+}
 ```
 
 ---
@@ -270,6 +280,7 @@ wrangler deploy --config apps/worker/wrangler.jsonc
 | `SIGNING_SECRET` | 审计日志归档下载用的签名密钥 |
 | `SITE_NAME` | 页面上显示的公会名 |
 | `SITE_LOGO_URL` | 公会 Logo 的路径 |
+| `FEATURES` | JSON 格式覆盖功能开关（如 `{"guildWar":false}`） |
 
 ### 前端 (`apps/portal/.env.local`)
 

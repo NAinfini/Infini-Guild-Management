@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
 import { LIMITS } from "@guild/shared/config/limits";
+import { DEFAULT_FEATURE_FLAGS, type FeatureFlags } from "@guild/shared/config/features";
+import { logger } from "./utils/logger";
 import { runDailyMaintenanceCron, runQuarterHourlyMaintenanceCron } from "./crons/maintenance";
 import { WebSocketDO } from "./durable-objects/WebSocketDO";
 import { etagMiddleware } from "./middleware/etag";
@@ -18,6 +20,7 @@ import { galleryRoutes } from "./routes/gallery";
 import { guildWarRoutes } from "./routes/guild-war";
 import { usersRoutes } from "./routes/users";
 import { wikiRoutes } from "./routes/wiki";
+import { badgeRoutes } from "./routes/badges";
 
 export type Bindings = {
   DB: D1Database;
@@ -27,8 +30,9 @@ export type Bindings = {
   PORTAL_ORIGIN?: string;
   ENVIRONMENT?: string;
   SIGNING_SECRET?: string;
-  SITE_NAME?: string;
-  SITE_LOGO_URL?: string;
+  SITE_NAME: string;
+  SITE_LOGO_URL: string;
+  FEATURES?: string;
 };
 
 type Variables = {
@@ -67,6 +71,7 @@ const readRateLimit = createRateLimitMiddleware({
   keyPrefix: "read",
   maxRequests: RL.reads.maxRequests,
   windowMs: RL.reads.windowMs,
+  deferWrite: true,
 });
 
 function isMutationMethod(method: string): boolean {
@@ -152,17 +157,19 @@ app.get("/api/health", async (c) => {
 
 app.get("/api/site-config", (c) => {
   const env = c.env as Bindings;
+  const features: FeatureFlags = { ...DEFAULT_FEATURE_FLAGS };
+  if (env.FEATURES) {
+    try {
+      const overrides = JSON.parse(env.FEATURES) as Partial<FeatureFlags>;
+      for (const key of Object.keys(features) as (keyof FeatureFlags)[]) {
+        if (typeof overrides[key] === "boolean") features[key] = overrides[key];
+      }
+    } catch (e) { logger.warn("Malformed FEATURES JSON, using defaults", { error: String(e) }); }
+  }
   return c.json({
-    site_name: env.SITE_NAME || "Guild Portal",
-    site_logo_url: env.SITE_LOGO_URL || null,
-    features: {
-      announcements: true,
-      events: true,
-      guildWar: true,
-      gallery: true,
-      wiki: true,
-      tools: true,
-    },
+    site_name: env.SITE_NAME,
+    site_logo_url: env.SITE_LOGO_URL,
+    features,
   });
 });
 
@@ -240,6 +247,7 @@ app.route("/api/announcements", announcementsRoutes);
 app.route("/api/guild-war", guildWarRoutes);
 app.route("/api/wiki", wikiRoutes);
 app.route("/api/gallery", galleryRoutes);
+app.route("/api/badges", badgeRoutes);
 app.route("/api/admin", adminRoutes);
 
 export default {
@@ -251,7 +259,10 @@ export default {
     const assetResponse = await env.ASSETS.fetch(request);
     const contentType = assetResponse.headers.get("content-type") ?? "";
     if (contentType.includes("text/html")) {
-      const response = new Response(assetResponse.body, assetResponse);
+      let html = await assetResponse.text();
+      html = html.replaceAll("{{SITE_NAME}}", env.SITE_NAME);
+      html = html.replaceAll("{{SITE_LOGO_URL}}", env.SITE_LOGO_URL);
+      const response = new Response(html, assetResponse);
       response.headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
       return response;
     }

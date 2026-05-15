@@ -115,7 +115,7 @@ export function WikiArticleListCard({
                       {item.pinned ? (
                         <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                           <HoverCard.Target>
-                            <ThemeIcon variant="transparent" color="orange" size="sm" style={{ cursor: "default" }}>
+                            <ThemeIcon variant="transparent" color="orange" size="sm" style={{ cursor: "default" }} data-animate-icon-trigger>
                               <PinIcon size={14} aria-hidden />
                             </ThemeIcon>
                           </HoverCard.Target>
@@ -135,7 +135,7 @@ export function WikiArticleListCard({
                       {item.archived_at ? (
                         <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                           <HoverCard.Target>
-                            <ThemeIcon variant="transparent" color="gray" size="sm" style={{ cursor: "default" }}>
+                            <ThemeIcon variant="transparent" color="gray" size="sm" style={{ cursor: "default" }} data-animate-icon-trigger>
                               <ArchiveIcon size={14} aria-hidden />
                             </ThemeIcon>
                           </HoverCard.Target>

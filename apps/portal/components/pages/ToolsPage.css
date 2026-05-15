@@ -63,7 +63,7 @@
 }
 
 .tool-card:nth-child(even):hover .tool-card__icon {
-  transform: rotate(-12deg) scale(1.18);
+  transform: rotate(12deg) scale(1.18);
 }
 
 .tool-card__title.tool-card__title {
@@ -336,5 +336,200 @@
 
   .sandbox__panel--output {
     position: static;
+  }
+}
+
+/* ── Dice Roller ── */
+
+.dice {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dice__config {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.dice__input {
+  min-width: 0;
+}
+
+.dice__input .mantine-NumberInput-controls {
+  display: none;
+}
+
+.dice__roll-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 24px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-primary, #3b82f6);
+  transition: background 150ms ease, transform 100ms ease, box-shadow 150ms ease;
+}
+
+.dice__roll-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 85%, #000);
+  box-shadow: var(--shadow-primary-md, 0 4px 12px rgba(59, 130, 246, 0.35));
+}
+
+.dice__roll-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.dice__roll-btn:disabled {
+  cursor: not-allowed;
+}
+
+.dice__roll-btn--rolling {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 70%, #000);
+  animation: dice-pulse 600ms ease-in-out infinite;
+}
+
+@keyframes dice-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+
+.dice__icon-spin {
+  animation: dice-spin 400ms linear infinite;
+}
+
+@keyframes dice-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.dice__results {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 16px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-text, #111827) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+}
+
+.dice__results--rolling {
+  animation: dice-shake 120ms linear infinite;
+}
+
+@keyframes dice-shake {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(-2px, 1px); }
+  50% { transform: translate(2px, -1px); }
+  75% { transform: translate(-1px, -2px); }
+  100% { transform: translate(1px, 2px); }
+}
+
+.dice__results-dice {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.dice__die {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary, #3b82f6);
+  background: var(--color-surface, #ffffff);
+  border: 2px solid color-mix(in srgb, var(--color-primary, #3b82f6) 30%, transparent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transition: transform 200ms ease, border-color 200ms ease;
+}
+
+.dice__die--spinning {
+  animation: dice-die-bounce 120ms ease-in-out infinite alternate;
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 50%, transparent);
+}
+
+@keyframes dice-die-bounce {
+  from { transform: scale(0.92) rotate(-3deg); }
+  to { transform: scale(1.08) rotate(3deg); }
+}
+
+.dice__total {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dice__history-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  padding-top: 12px;
+}
+
+.dice__section-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dice__clear-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--color-text, #111827) 50%, transparent);
+  transition: color 120ms ease;
+}
+
+.dice__clear-btn:hover {
+  color: var(--color-danger, #dc2626);
+}
+
+.dice__history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.dice__history-item {
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-text, #111827) 3%, transparent);
+  animation: dice-history-in 200ms ease-out;
+}
+
+.dice__history-item:first-child {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
+}
+
+@keyframes dice-history-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

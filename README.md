@@ -174,6 +174,8 @@ In `apps/worker/wrangler.jsonc`:
 }
 ```
 
+Replace `apps/portal/public/guild-logo.webp` with your guild's logo.
+
 ### Step 5 — Toggle features (optional)
 
 In `apps/shared/config/features.ts`, turn off what you don't need:
@@ -187,6 +189,14 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   wiki: true,
   tools: true,
 };
+```
+
+Or override per-environment without code changes — add `FEATURES` to your `wrangler.jsonc` vars:
+
+```jsonc
+"vars": {
+  "FEATURES": "{\"guildWar\":false,\"wiki\":false}"
+}
 ```
 
 ---
@@ -282,6 +292,7 @@ The portal SPA is bundled as static assets and served from the Worker — one de
 | `SIGNING_SECRET` | HMAC secret for audit archive tokens |
 | `SITE_NAME` | Guild name in the UI |
 | `SITE_LOGO_URL` | Path to logo image |
+| `FEATURES` | JSON object to override feature flags (e.g. `{"guildWar":false}`) |
 
 ### Portal (`apps/portal/.env.local`)
 

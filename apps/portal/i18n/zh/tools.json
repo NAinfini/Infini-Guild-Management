@@ -47,5 +47,16 @@
   "message.generatedHtmlCopied": "生成的 HTML 已复制",
   "theme.title": "主题展示",
   "theme.current": "当前主题：",
-  "sandbox.defaultTitle": "公会先锋"
+  "sandbox.defaultTitle": "公会先锋",
+  "dice.title": "骰子工具",
+  "dice.description": "可配置骰子数量和面数，带投掷动画",
+  "dice.count": "骰子数量",
+  "dice.sides": "每颗面数",
+  "dice.roll": "投掷",
+  "dice.rolling": "投掷中...",
+  "dice.total": "总计",
+  "dice.history": "历史记录",
+  "dice.clearHistory": "清空",
+  "dice.noHistory": "暂无记录，点击投掷！",
+  "dice.result": "{{count}}d{{sides}} → {{results}} = {{total}}"
 }

@@ -2,8 +2,7 @@ import { useCallback } from "react";
 import { Button, Group, SimpleGrid, Stack, Switch, Text, Title } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import { MoonIcon, RefreshCwIcon, SaveIcon, SettingsIcon, SunIcon } from "@portal/components/icons";
-import { IconFileImport, IconLanguage } from "@tabler/icons-react";
+import { FileImportIcon, LanguageIcon, MoonIcon, RefreshCwIcon, SaveIcon, SettingsIcon, SunIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { ShinyText } from "@portal/components/effects";
 
@@ -222,14 +221,14 @@ export function SettingsPage() {
                   onClick={() => handleLocaleChange("en")}
                   label={t("locale.en")}
                   description={t("locale.en.desc")}
-                  icon={<IconLanguage size={20} />}
+                  icon={<LanguageIcon size={20} />}
                 />
                 <OptionCard
                   active={locale === "zh"}
                   onClick={() => handleLocaleChange("zh")}
                   label={t("locale.zh")}
                   description={t("locale.zh.desc")}
-                  icon={<IconLanguage size={20} />}
+                  icon={<LanguageIcon size={20} />}
                 />
               </SimpleGrid>
             </div>
@@ -274,7 +273,7 @@ export function SettingsPage() {
             </Button>
             <Button
               variant="default"
-              leftSection={<IconFileImport size={16} />}
+              leftSection={<FileImportIcon size={16} />}
               onClick={handleImport}
             >
               {t("backup.import")}

@@ -1,6 +1,6 @@
 import type { AuditLogEntry } from "@guild/shared";
-import { Alert, Badge, Group, Pagination, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
-import { IconArrowRight, IconChevronDown } from "@tabler/icons-react";
+import { Alert, Badge, Group, NumberInput, Pagination, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
+import { ArrowRightIcon, ChevronDownIcon } from "@portal/components/icons";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "./AuditLogViewer.css";
@@ -37,9 +37,7 @@ function formatDiffValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "✓" : "✗";
   if (typeof value === "number") return String(value);
   if (typeof value === "object" && !Array.isArray(value)) {
-    const json = JSON.stringify(value);
-    if (json.length > 80) return `${json.slice(0, 77)}…`;
-    return json;
+    return JSON.stringify(value);
   }
   const str = String(value);
   if (ISO_DATE_RE.test(str)) {
@@ -48,7 +46,6 @@ function formatDiffValue(value: unknown): string {
       return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
     }
   }
-  if (str.length > 80) return `${str.slice(0, 77)}…`;
   return str;
 }
 
@@ -65,9 +62,7 @@ function formatInfoValue(value: unknown, userMap?: Map<string, string>): string 
     return `${resolved.slice(0, 5).join(", ")} (+${resolved.length - 5})`;
   }
   if (typeof value === "object") {
-    const json = JSON.stringify(value);
-    if (json.length > 80) return `${json.slice(0, 77)}…`;
-    return json;
+    return JSON.stringify(value);
   }
   const str = String(value);
   if (userMap?.has(str)) return userMap.get(str)!;
@@ -77,7 +72,6 @@ function formatInfoValue(value: unknown, userMap?: Map<string, string>): string 
       return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
     }
   }
-  if (str.length > 80) return `${str.slice(0, 77)}…`;
   return str;
 }
 
@@ -138,22 +132,23 @@ type ActionColor = "blue" | "green" | "red" | "yellow" | "grape" | "cyan" | "ora
 
 function getActionColor(action: string): ActionColor {
   if (action === "create" || action === "init" || action === "admin_create_member" || action === "create_video") return "green";
-  if (action === "delete" || action === "remove_by_moderator" || action === "batch_delete") return "red";
+  if (action === "delete" || action === "remove_by_moderator" || action === "batch_remove_by_moderator" || action === "batch_delete") return "red";
   if (action === "update" || action === "role_change" || action === "password_reset" || action === "update_role" || action === "batch_role_update" || action === "batch_update" || action === "set_role_tag" || action === "change_username") return "blue";
   if (action === "archive" || action === "pause" || action === "deactivate" || action === "batch_deactivate") return "yellow";
-  if (action === "join" || action === "add_by_moderator") return "cyan";
+  if (action === "join" || action === "add_by_moderator" || action === "batch_add_by_moderator" || action === "vote") return "cyan";
   if (action === "leave") return "orange";
   if (action === "upload" || action === "upload_images") return "grape";
   if (action === "resume" || action === "reactivate" || action === "unarchive" || action === "batch_reactivate") return "green";
   if (action === "change_password" || action === "reset_password") return "orange";
   if (action === "revoke") return "red";
+  if (action === "assign" || action === "unassign") return "grape";
   if (action === "save_teams" || action === "move_member") return "blue";
   if (action.startsWith("export") || action.startsWith("download")) return "gray";
   return "blue";
 }
 
 function getEntityColor(entityType: string): ActionColor {
-  if (entityType === "event" || entityType === "event_participant") return "blue";
+  if (entityType === "event" || entityType === "event_participant" || entityType === "event_poll_vote") return "blue";
   if (entityType === "recurring_template") return "grape";
   if (entityType === "announcement") return "cyan";
   if (entityType === "user" || entityType === "member_profile" || entityType === "user_auth") return "green";
@@ -163,6 +158,7 @@ function getEntityColor(entityType: string): ActionColor {
   if (entityType === "gallery" || entityType === "gallery_item" || entityType === "gallery_comment") return "grape";
   if (entityType === "wiki_article" || entityType === "wiki_category") return "cyan";
   if (entityType === "audit_log_export" || entityType === "audit_archive_export") return "gray";
+  if (entityType === "member_badge") return "grape";
   if (entityType === "analytics_settings") return "blue";
   return "gray";
 }
@@ -349,7 +345,7 @@ export function AuditLogViewer({
                     </div>
 
                     {hasDetail ? (
-                      <IconChevronDown
+                      <ChevronDownIcon
                         size={14}
                         className={`audit-log-row__chevron ${isExpanded ? "audit-log-row__chevron--open" : ""}`}
                       />
@@ -377,7 +373,7 @@ export function AuditLogViewer({
                             <div key={entry.field} className="audit-diff-entry">
                               <span className="audit-diff-entry__field">{entry.field}</span>
                               <span className="audit-diff-entry__from">{(entry as DiffEntry).from}</span>
-                              <IconArrowRight size={12} className="audit-diff-entry__arrow" />
+                              <ArrowRightIcon size={12} className="audit-diff-entry__arrow" />
                               <span className="audit-diff-entry__to">{(entry as DiffEntry).to}</span>
                             </div>
                           ))}
@@ -400,7 +396,7 @@ export function AuditLogViewer({
           </div>
           )}
 
-          <Group justify="flex-end">
+          <Group justify="flex-end" align="center" gap={8}>
             <Pagination
               value={auditPageCurrent}
               total={totalPages}
@@ -408,6 +404,21 @@ export function AuditLogViewer({
               withEdges
               size="sm"
             />
+            <NumberInput
+              size="xs"
+              min={1}
+              max={totalPages}
+              value={auditPageCurrent}
+              onChange={(val) => {
+                if (typeof val === "number" && val >= 1 && val <= totalPages) {
+                  onAuditPageChange(val);
+                }
+              }}
+              hideControls
+              style={{ width: 56 }}
+              styles={{ input: { textAlign: "center" } }}
+            />
+            <Text size="sm" c="dimmed">/ {totalPages}</Text>
           </Group>
         </>
       ) : null}

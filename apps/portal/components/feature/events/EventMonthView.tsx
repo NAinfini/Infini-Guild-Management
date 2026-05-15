@@ -171,6 +171,7 @@ export function EventMonthView({
                           size="xs"
                           className={isMuted ? "month-calendar__event-badge--muted" : undefined}
                           style={{ cursor: "pointer" }}
+                          data-animate-icon-trigger
                           onClick={(e) => {
                             e.stopPropagation();
                             (onViewEvent ?? onEditEvent)(event);

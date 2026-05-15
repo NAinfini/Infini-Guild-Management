@@ -1,8 +1,7 @@
 import type { InviteLink } from "@guild/shared";
 import { Alert, Badge, Button, Group, HoverCard, Loader, Modal, NumberInput, SegmentedControl, Skeleton, Stack, Text, TextInput, ThemeIcon, Title } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
-import { AlertTriangleIcon, CircleCheckIcon, CircleXIcon, CopyIcon, InfoCircleIcon, PlusIcon, TrashIcon } from "@portal/components/icons";
-import { IconBan } from "@tabler/icons-react";
+import { AlertTriangleIcon, BanIcon, CircleCheckIcon, CircleXIcon, CopyIcon, InfoCircleIcon, PlusIcon, TrashIcon } from "@portal/components/icons";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import {
   InfiniTable,
@@ -150,7 +149,7 @@ export function AdminInviteSection({
           const fullyUsed = r.used_count >= r.max_uses;
           if (r.revoked_at) return (
             <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-              <HoverCard.Target><Badge color="red" variant="light">{t("invite.status.revoked")}</Badge></HoverCard.Target>
+              <HoverCard.Target><Badge data-animate-icon-trigger color="red" variant="light">{t("invite.status.revoked")}</Badge></HoverCard.Target>
               <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                 <Group gap={10} wrap="nowrap" align="flex-start">
                   <ThemeIcon variant="light" color="red" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
@@ -166,7 +165,7 @@ export function AdminInviteSection({
           );
           if (fullyUsed) return (
             <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-              <HoverCard.Target><Badge color="yellow" variant="light">{t("invite.status.fullyUsed")}</Badge></HoverCard.Target>
+              <HoverCard.Target><Badge data-animate-icon-trigger color="yellow" variant="light">{t("invite.status.fullyUsed")}</Badge></HoverCard.Target>
               <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                 <Group gap={10} wrap="nowrap" align="flex-start">
                   <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
@@ -182,7 +181,7 @@ export function AdminInviteSection({
           );
           if (expired) return (
             <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-              <HoverCard.Target><Badge color="yellow" variant="light">{t("invite.status.expired")}</Badge></HoverCard.Target>
+              <HoverCard.Target><Badge data-animate-icon-trigger color="yellow" variant="light">{t("invite.status.expired")}</Badge></HoverCard.Target>
               <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                 <Group gap={10} wrap="nowrap" align="flex-start">
                   <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
@@ -198,7 +197,7 @@ export function AdminInviteSection({
           );
           return (
             <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-              <HoverCard.Target><Badge color="green" variant="light">{t("invite.status.active")}</Badge></HoverCard.Target>
+              <HoverCard.Target><Badge data-animate-icon-trigger color="green" variant="light">{t("invite.status.active")}</Badge></HoverCard.Target>
               <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                 <Group gap={10} wrap="nowrap" align="flex-start">
                   <ThemeIcon variant="light" color="green" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
@@ -243,7 +242,7 @@ export function AdminInviteSection({
               <Button size="xs" leftSection={<CopyIcon size={16} />} onClick={() => handleCopyInviteLink(row.original)} disabled={inactive}>
                 {t("invite.copy")}
               </Button>
-              <DepthButton size="sm" type="danger" iconOnly before={<IconBan size={16} />} disabled={inactive} onClick={() => handleRevokeInvite(row.original)} tooltip={{ label: t("invite.revoke"), withArrow: true }} />
+              <DepthButton size="sm" type="danger" iconOnly before={<BanIcon size={16} />} disabled={inactive} onClick={() => handleRevokeInvite(row.original)} tooltip={{ label: t("invite.revoke"), withArrow: true }} />
               <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={16} />} onClick={() => handleDeleteInvite(row.original)} tooltip={{ label: t("invite.delete"), withArrow: true }} />
             </Group>
           );
@@ -261,6 +260,7 @@ export function AdminInviteSection({
     state: { sorting, pagination },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
+    autoResetPageIndex: false,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),

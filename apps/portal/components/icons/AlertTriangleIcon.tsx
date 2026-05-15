@@ -3,6 +3,7 @@ import { motion, useAnimation } from "motion/react";
 import type { HTMLAttributes } from "react";
 import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
 import { cn } from "@portal/utils/cn";
+import { useParentInteractiveHover } from "./useParentInteractiveHover";
 
 export interface AlertTriangleIconHandle {
   startAnimation: () => void;
@@ -27,6 +28,7 @@ const AlertTriangleIcon = forwardRef<AlertTriangleIconHandle, AlertTriangleIconP
   ({ onMouseEnter, onMouseLeave, className, size = 28, ...props }, ref) => {
     const controls = useAnimation();
     const isControlledRef = useRef(false);
+    const wrapperRef = useParentInteractiveHover(controls, isControlledRef);
 
     useImperativeHandle(ref, () => {
       isControlledRef.current = true;
@@ -51,7 +53,7 @@ const AlertTriangleIcon = forwardRef<AlertTriangleIconHandle, AlertTriangleIconP
     );
 
     return (
-      <div className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
+      <div ref={wrapperRef} className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
         <motion.svg animate={controls} fill="none" height={size} initial="normal" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" variants={SVG_VARIANTS} viewBox="0 0 24 24" width={size} xmlns="http://www.w3.org/2000/svg">
           <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
           <motion.path animate={controls} d="M12 9v4" initial="normal" variants={EXCLAMATION_VARIANTS} />

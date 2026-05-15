@@ -3,6 +3,7 @@ import {
   Button,
   Group,
   Modal,
+  NumberInput,
   Select,
   Stack,
   Switch,
@@ -25,8 +26,8 @@ type EventFormModalProps = {
   canManage: boolean;
   title: string;
   onTitleChange: (value: string) => void;
-  eventType: (typeof EVENT_TYPES)[number];
-  onEventTypeChange: (value: (typeof EVENT_TYPES)[number]) => void;
+  eventType: (typeof EVENT_TYPES)[number] | "";
+  onEventTypeChange: (value: (typeof EVENT_TYPES)[number] | "") => void;
   startAt: string;
   onStartAtChange: (value: string) => void;
   endAt: string;
@@ -43,6 +44,8 @@ type EventFormModalProps = {
   onPollResultsVisibilityChange?: (value: "always" | "after_vote" | "after_close") => void;
   pollShowVoterNames?: boolean;
   onPollShowVoterNamesChange?: (value: boolean) => void;
+  winnerCount?: string;
+  onWinnerCountChange?: (value: string) => void;
   attachmentItems: ImageGridEditorItem[];
   onAttachmentsChange: (items: ImageGridEditorItem[]) => void;
   onFilesSelected: (files: File[]) => void;
@@ -79,6 +82,8 @@ export function EventFormModal({
   onPollResultsVisibilityChange,
   pollShowVoterNames = false,
   onPollShowVoterNamesChange,
+  winnerCount = "",
+  onWinnerCountChange,
   attachmentItems,
   onAttachmentsChange,
   onFilesSelected,
@@ -96,9 +101,14 @@ export function EventFormModal({
   const titleError = titleTouched && !title.trim() ? t("message.titleRequired") : undefined;
   const dateError = startAt && endAt && endAt < startAt ? t("field.endBeforeStart") : undefined;
   const isPoll = eventType === "poll";
+  const isRaffle = eventType === "raffle";
   const pollOptionCount = pollOptions.map((option) => option.trim()).filter(Boolean).length;
   const pollError = isPoll && pollOptionCount < 2 ? t("poll.field.optionsInvalid") : undefined;
-  const isSaveDisabled = !title.trim() || Boolean(dateError) || (isPoll && (!endAt || Boolean(pollError)));
+  const raffleWinnerCountNum = Number.parseInt(winnerCount, 10);
+  const raffleError = isRaffle && (!Number.isFinite(raffleWinnerCountNum) || raffleWinnerCountNum < 1);
+  const isSaveDisabled = !title.trim() || !eventType || Boolean(dateError)
+    || (isPoll && (!endAt || Boolean(pollError)))
+    || (isRaffle && (!endAt || raffleError));
 
   return (
     <Modal
@@ -128,9 +138,10 @@ export function EventFormModal({
         {/* ── Type ── */}
         <Select
           label={t("filter.type")}
-          value={eventType}
+          value={eventType || null}
           onChange={(value) => value && onEventTypeChange(value as (typeof EVENT_TYPES)[number])}
           data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
+          placeholder={t("field.selectType")}
         />
 
         {/* ── Date & Time ── */}
@@ -202,6 +213,26 @@ export function EventFormModal({
               label={t("poll.field.showVoterNames")}
             />
           </Stack>
+        ) : isRaffle ? (
+          <Group grow wrap="wrap">
+            <NumberInput
+              label={t("raffle.field.winnerCount")}
+              min={1}
+              value={winnerCount === "" ? "" : raffleWinnerCountNum}
+              onChange={(value) => onWinnerCountChange?.(String(value))}
+              placeholder="1"
+              styles={{ controls: { display: "none" } }}
+            />
+            <TextInput
+              label={t("field.capacity")}
+              type="number"
+              min={1}
+              max={9999}
+              value={capacity}
+              onChange={(event) => onCapacityChange(event.currentTarget.value)}
+              placeholder={t("field.unlimited")}
+            />
+          </Group>
         ) : (
           <TextInput
             label={t("field.capacity")}

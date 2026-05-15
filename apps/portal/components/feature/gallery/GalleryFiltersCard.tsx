@@ -2,7 +2,7 @@ import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
 import { ActionIcon, Group, HoverCard, SegmentedControl, Select, Text, TextInput, ThemeIcon } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { IconCalendarOff } from "@tabler/icons-react";
+import { CalendarOffIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 
 type GalleryFiltersCardProps = {
@@ -111,13 +111,13 @@ export function GalleryFiltersCard({
           <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
             <HoverCard.Target>
               <ActionIcon variant="subtle" onClick={onClearDates} disabled={!dateFrom && !dateTo} aria-label={t("aria.clearDates")}>
-                <IconCalendarOff size={18} />
+                <CalendarOffIcon size={18} />
               </ActionIcon>
             </HoverCard.Target>
             <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
               <Group gap={10} wrap="nowrap" align="flex-start">
                 <ThemeIcon variant="light" color="orange" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                  <IconCalendarOff size={16} />
+                  <CalendarOffIcon size={16} />
                 </ThemeIcon>
                 <div style={{ minWidth: 0 }}>
                   <Text size="sm" fw={700} lh={1.3}>{t("hovercard.clearDates.title")}</Text>

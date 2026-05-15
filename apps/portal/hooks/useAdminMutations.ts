@@ -1,6 +1,6 @@
 import { modals } from "@mantine/modals";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { createElement, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifySuccess, notifyWarning } from "../utils/notifications";
 import type { MemberDetailFormState } from "../components/feature/admin/AdminMemberDetailModal";
@@ -40,6 +40,7 @@ type UseAdminMutationsParams = {
   auditFilter: AuditFilterState;
   batchSelectionLimit: number;
   showError: (error: unknown, fallbackMessage: string) => void;
+  resolveUsername: (userId: string) => string | undefined;
 };
 
 export function useAdminMutations({
@@ -47,6 +48,7 @@ export function useAdminMutations({
   auditFilter,
   batchSelectionLimit,
   showError,
+  resolveUsername,
 }: UseAdminMutationsParams) {
   const { t } = useTranslation("admin");
   const queryClient = useQueryClient();
@@ -308,14 +310,24 @@ export function useAdminMutations({
 
   const getCappedUserIds = (userIds: string[]) => userIds.slice(0, batchSelectionLimit);
 
-  const confirmBatchAction = async (userIds: string[], message: string): Promise<boolean> => {
+  const resolveNames = useCallback((userIds: string[]) => {
+    return userIds.map((id) => resolveUsername(id) ?? id);
+  }, [resolveUsername]);
+
+  const confirmBatchAction = async (userIds: string[], message: string, names: string[]): Promise<boolean> => {
     if (userIds.length === 0) {
       return false;
     }
+    const nameList = names.length > 0
+      ? createElement("div", { style: { marginTop: 8 } },
+          createElement("span", { style: { fontSize: "0.875rem", fontWeight: 600, display: "block", marginBottom: 4 } }, t("confirm.affectedMembers")),
+          createElement("span", { style: { fontSize: "0.875rem", color: "var(--mantine-color-dimmed)", wordBreak: "break-word" as const } }, names.join("、")),
+        )
+      : null;
     return new Promise<boolean>((resolve) => {
       modals.openConfirmModal({
         title: t("confirm.batchActionTitle"),
-        children: message,
+        children: createElement("div", null, message, nameList),
         labels: { confirm: t("common:action.save"), cancel: t("common:action.cancel") },
         confirmProps: { color: "yellow" },
         onConfirm: () => resolve(true),
@@ -329,12 +341,14 @@ export function useAdminMutations({
 
   const handleBatchRole = async (userIds: string[], role: "member" | "moderator") => {
     const targetIds = getCappedUserIds(userIds);
+    const names = resolveNames(targetIds);
     const confirmed = await confirmBatchAction(
       targetIds,
       t("member.batchRoleConfirm", {
         count: targetIds.length,
         role: t(`role.${role}`),
       }),
+      names,
     );
     if (confirmed) {
       batchRoleMutation.mutate({ userIds: targetIds, newRole: role });
@@ -343,9 +357,11 @@ export function useAdminMutations({
 
   const handleBatchActivate = async (userIds: string[]) => {
     const targetIds = getCappedUserIds(userIds);
+    const names = resolveNames(targetIds);
     const confirmed = await confirmBatchAction(
       targetIds,
       t("member.batchReactivateConfirm", { count: targetIds.length }),
+      names,
     );
     if (confirmed) {
       batchReactivateMutation.mutate(targetIds);
@@ -354,9 +370,11 @@ export function useAdminMutations({
 
   const handleBatchDeactivate = async (userIds: string[]) => {
     const targetIds = getCappedUserIds(userIds);
+    const names = resolveNames(targetIds);
     const confirmed = await confirmBatchAction(
       targetIds,
       t("member.batchDeactivateConfirm", { count: targetIds.length }),
+      names,
     );
     if (confirmed) {
       batchDeactivateMutation.mutate(targetIds);
@@ -365,9 +383,11 @@ export function useAdminMutations({
 
   const handleBatchDelete = async (userIds: string[]) => {
     const targetIds = getCappedUserIds(userIds);
+    const names = resolveNames(targetIds);
     const confirmed = await confirmBatchAction(
       targetIds,
       t("member.batchDeleteConfirm", { count: targetIds.length }),
+      names,
     );
     if (confirmed) {
       batchDeleteMutation.mutate(targetIds);

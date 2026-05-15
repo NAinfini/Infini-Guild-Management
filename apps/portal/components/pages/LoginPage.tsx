@@ -1,4 +1,3 @@
-﻿import type { MemberProfile, User } from "@guild/shared";
 import { loginSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -21,19 +20,16 @@ import {
 
 } from "@portal/components/effects";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { ArrowLeftIcon, EyeIcon, EyeOffIcon } from "@portal/components/icons";
-import { IconKeyboard } from "@tabler/icons-react";
+import { ArrowLeftIcon, EyeIcon, EyeOffIcon, KeyboardIcon } from "@portal/components/icons";
 import { useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
-import { apiRequest, isApiRequestError } from "../../api/client";
+import { isApiRequestError, login as requestLogin } from "../../services/AuthService";
 import { useAuthStore } from "../../stores/auth";
 import { useSiteConfigStore } from "../../stores/site-config";
 import "./AuthPages.css";
-
-type AuthSessionResponse = { user: User; profile: MemberProfile };
 
 const LOGIN_FORM_SCHEMA = loginSchema.extend({
   stay_logged_in: z.boolean().default(false),
@@ -118,11 +114,7 @@ export function LoginPage() {
   const passwordValue = watch("password");
 
   const loginMutation = useMutation({
-    mutationFn: (values: LoginFormValues) =>
-      apiRequest<AuthSessionResponse>("/api/auth/login", {
-        method: "POST",
-        bodyJson: values,
-      }),
+    mutationFn: requestLogin,
     onSuccess: (response) => {
       setSession(response.user, response.profile);
       const fallback = "/";
@@ -220,7 +212,7 @@ export function LoginPage() {
                 />
                 <div className="login-page__password-actions">
                   {isCapsLockOn ? (
-                    <IconKeyboard size={18} className="login-page__caps-icon" />
+                    <KeyboardIcon size={18} className="login-page__caps-icon" />
                   ) : null}
                   <button
                     type="button"

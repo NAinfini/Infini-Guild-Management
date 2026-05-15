@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CmdKSearch } from "./CmdKSearch";
 
 const navigateMock = vi.hoisted(() => vi.fn());
-const apiRequestMock = vi.hoisted(() => vi.fn());
+const fetchSearchDataMock = vi.hoisted(() => vi.fn());
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -40,8 +40,8 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => navigateMock,
 }));
 
-vi.mock("../../api/client", () => ({
-  apiRequest: apiRequestMock,
+vi.mock("../../services/SearchService", () => ({
+  fetchSearchData: fetchSearchDataMock,
 }));
 
 function createWrapper(queryClient: QueryClient) {
@@ -57,32 +57,17 @@ function createWrapper(queryClient: QueryClient) {
 describe("CmdKSearch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    apiRequestMock.mockImplementation((path: string) => {
-      if (path.startsWith("/api/users")) {
-        return Promise.reject(new Error("users failed"));
-      }
-      if (path.startsWith("/api/events")) {
-        return Promise.resolve({ data: [] });
-      }
-      if (path.startsWith("/api/announcements")) {
-        return Promise.resolve({ data: [] });
-      }
-      if (path.startsWith("/api/wiki/articles")) {
-        return Promise.resolve({ data: [{ id: "wiki-1", title: "war history", slug: "war-history", body_json: "archive" }] });
-      }
-      if (path.startsWith("/api/guild-war/history")) {
-        return Promise.resolve({
-          data: [{ id: "war-1", war_name: "Guild War", result: "win", created_at: "2026-03-01T10:00:00.000Z" }],
-        });
-      }
-      if (path.startsWith("/api/gallery")) {
-        return Promise.resolve({ data: [] });
-      }
-      return Promise.resolve({ data: [] });
+    fetchSearchDataMock.mockResolvedValue({
+      users: [],
+      events: [],
+      announcements: [],
+      wikiArticles: [{ id: "wiki-1", title: "war history", slug: "war-history", body_json: "archive" }],
+      warHistory: [{ id: "war-1", war_name: "Guild War", result: "win", created_at: "2026-03-01T10:00:00.000Z" }],
+      galleryItems: [],
     });
   });
 
-  it("still shows war matches when one search source fails", async () => {
+  it("shows war matches from search service data", async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },

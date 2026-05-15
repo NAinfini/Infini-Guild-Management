@@ -1,7 +1,7 @@
 import type { MemberProfile, User } from "@guild/shared";
 import { Text } from "@mantine/core";
 import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
-import { IconUsers } from "@tabler/icons-react";
+import { UsersIcon } from "@portal/components/icons";
 import React, { useEffect, useRef, useState } from "react";
 
 type MemberEntry = { user: User; profile: MemberProfile };
@@ -67,11 +67,11 @@ export function EventCardAvatarStrip({ members, visibleMembers, hiddenMembersCou
     >
       {members.length === 0 ? (
         <span className="event-card__avatar-placeholder" aria-hidden="true">
-          <IconUsers size={Math.max(14, Math.round(avatarSize * 0.5))} />
+          <UsersIcon size={Math.max(14, Math.round(avatarSize * 0.5))} />
         </span>
       ) : null}
       {visibleMembers.map((member) => (
-        <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={avatarSize} />
+        <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={avatarSize} withTooltip={false} />
       ))}
       {hiddenMembersCount > 0 ? (
         <Text size="xs" c="dimmed" fw={700} className="event-card__avatar-overflow">+{hiddenMembersCount}</Text>

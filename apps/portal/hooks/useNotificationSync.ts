@@ -199,6 +199,10 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
             return;
           }
 
+          if (useNotificationStore.getState().suppressed) {
+            return;
+          }
+
           appendPushMessage(message);
 
           if (message.type === "announcement_published") {

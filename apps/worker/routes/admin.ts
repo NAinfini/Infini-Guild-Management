@@ -245,7 +245,7 @@ adminRoutes.delete("/roles/:id", async (c) => {
 
 // Status
 adminRoutes.get("/status", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.status.view");
+  const sessionUser = await requirePermission(c, "admin.status.view", { freshPermissions: false });
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).getStatus();
   return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);

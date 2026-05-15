@@ -329,15 +329,15 @@ export class UserService {
     );
   }
 
-  private async canEditTarget(sessionUser: SessionUser, targetUserId: string): Promise<"allowed" | "forbidden" | "not_found"> {
+  private async canEditTarget(sessionUser: SessionUser, targetUserId: string): Promise<{ status: "allowed"; username: string } | { status: "forbidden" | "not_found"; username: null }> {
     const target = (
-      await this.db.select({ role: users.role, deletedAt: users.deletedAt }).from(users).where(eq(users.id, targetUserId)).limit(1)
+      await this.db.select({ role: users.role, deletedAt: users.deletedAt, username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1)
     )[0];
-    if (!target || target.deletedAt !== null) return "not_found";
-    if (sessionUser.id === targetUserId) return "allowed";
-    if (!sessionUser.permissions.has("admin.users.edit")) return "forbidden";
-    if (target.role === "admin" && sessionUser.role !== "admin") return "forbidden";
-    return "allowed";
+    if (!target || target.deletedAt !== null) return { status: "not_found", username: null };
+    if (sessionUser.id === targetUserId) return { status: "allowed", username: target.username };
+    if (!sessionUser.permissions.has("admin.users.edit")) return { status: "forbidden", username: null };
+    if (target.role === "admin" && sessionUser.role !== "admin") return { status: "forbidden", username: null };
+    return { status: "allowed", username: target.username };
   }
 
   async listUsers(params: ListUsersParams): Promise<ServiceResult<{
@@ -397,6 +397,9 @@ export class UserService {
   async getUser(sessionUser: SessionUser, targetUserId: string): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
     const loaded = await this.loadUserWithProfile(targetUserId);
     if (!loaded) return err("NOT_FOUND", "User not found");
+    if (!loaded.user.isActive && !sessionUser.permissions.has("admin.users.view")) {
+      return err("NOT_FOUND", "User not found");
+    }
     const profile = await this.ensureProfile(targetUserId);
     return ok({
       user: toUserPayload(loaded.user),
@@ -406,8 +409,8 @@ export class UserService {
 
   async updateProfile(sessionUser: SessionUser, targetUserId: string, body: unknown): Promise<ServiceResult<unknown>> {
     const access = await this.canEditTarget(sessionUser, targetUserId);
-    if (access === "not_found") return err("NOT_FOUND", "User not found");
-    if (access === "forbidden") return err("FORBIDDEN", "You cannot edit this profile");
+    if (access.status === "not_found") return err("NOT_FOUND", "User not found");
+    if (access.status === "forbidden") return err("FORBIDDEN", "You cannot edit this profile");
 
     const schema = sessionUser.permissions.has("admin.users.edit") ? adminUpdateProfileSchema : updateProfileSchema;
     const parsed = schema.safeParse(body);
@@ -435,8 +438,8 @@ export class UserService {
 
   async uploadProfileImages(sessionUser: SessionUser, targetUserId: string, files: File[]): Promise<ServiceResult<{ keys: string[] }>> {
     const access = await this.canEditTarget(sessionUser, targetUserId);
-    if (access === "not_found") return err("NOT_FOUND", "User not found");
-    if (access === "forbidden") return err("FORBIDDEN", "You cannot upload media for this profile");
+    if (access.status === "not_found") return err("NOT_FOUND", "User not found");
+    if (access.status === "forbidden") return err("FORBIDDEN", "You cannot upload media for this profile");
     if (files.length === 0) return err("VALIDATION_ERROR", "No files provided");
 
     for (const file of files) {
@@ -457,13 +460,18 @@ export class UserService {
     await this.db.update(memberProfiles)
       .set({ images: JSON.stringify([...existing, ...keys]), updatedAt: new Date().toISOString() })
       .where(eq(memberProfiles.userId, targetUserId));
+    await this.deps.writeAuditLog({
+      entityType: "member_profile", action: "upload_images", actorId: sessionUser.id,
+      entityId: targetUserId, diffTitle: access.username,
+      detailText: JSON.stringify({ keys, count: keys.length }),
+    });
     return ok({ keys });
   }
 
   async deleteProfileImages(sessionUser: SessionUser, targetUserId: string, imageKeys: string[]): Promise<ServiceResult<{ ok: true; deleted: number }>> {
     const access = await this.canEditTarget(sessionUser, targetUserId);
-    if (access === "not_found") return err("NOT_FOUND", "User not found");
-    if (access === "forbidden") return err("FORBIDDEN", "You cannot delete media for this profile");
+    if (access.status === "not_found") return err("NOT_FOUND", "User not found");
+    if (access.status === "forbidden") return err("FORBIDDEN", "You cannot delete media for this profile");
     const parsed = deleteProfileImagesSchema.safeParse({ keys: imageKeys });
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid image delete payload", parsed.error.flatten());
 
@@ -476,13 +484,20 @@ export class UserService {
     await this.db.update(memberProfiles)
       .set({ images: JSON.stringify(images.filter((key) => !requested.has(key))), updatedAt: new Date().toISOString() })
       .where(eq(memberProfiles.userId, targetUserId));
+    if (keysToDelete.length > 0) {
+      await this.deps.writeAuditLog({
+        entityType: "member_profile", action: "delete_images", actorId: sessionUser.id,
+        entityId: targetUserId, diffTitle: access.username,
+        detailText: JSON.stringify({ keys: keysToDelete, deleted: keysToDelete.length }),
+      });
+    }
     return ok({ ok: true, deleted: keysToDelete.length });
   }
 
   async uploadAvatar(sessionUser: SessionUser, targetUserId: string, file: File): Promise<ServiceResult<{ key: string }>> {
     const access = await this.canEditTarget(sessionUser, targetUserId);
-    if (access === "not_found") return err("NOT_FOUND", "User not found");
-    if (access === "forbidden") return err("FORBIDDEN", "You cannot upload media for this profile");
+    if (access.status === "not_found") return err("NOT_FOUND", "User not found");
+    if (access.status === "forbidden") return err("FORBIDDEN", "You cannot upload media for this profile");
 
     if (!ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number]))
       return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
@@ -501,13 +516,18 @@ export class UserService {
     await this.db.update(memberProfiles)
       .set({ avatarKey: key, updatedAt: new Date().toISOString() })
       .where(eq(memberProfiles.userId, targetUserId));
+    await this.deps.writeAuditLog({
+      entityType: "member_profile", action: "upload_avatar", actorId: sessionUser.id,
+      entityId: targetUserId, diffTitle: access.username,
+      detailText: JSON.stringify({ key, replaced: profile.avatarKey ?? null }),
+    });
     return ok({ key });
   }
 
   async deleteAvatar(sessionUser: SessionUser, targetUserId: string): Promise<ServiceResult<{ ok: true }>> {
     const access = await this.canEditTarget(sessionUser, targetUserId);
-    if (access === "not_found") return err("NOT_FOUND", "User not found");
-    if (access === "forbidden") return err("FORBIDDEN", "You cannot delete media for this profile");
+    if (access.status === "not_found") return err("NOT_FOUND", "User not found");
+    if (access.status === "forbidden") return err("FORBIDDEN", "You cannot delete media for this profile");
 
     const profile = await this.ensureProfile(targetUserId);
     if (profile.avatarKey) await this.deps.deleteMediaObject(profile.avatarKey);
@@ -515,13 +535,17 @@ export class UserService {
     await this.db.update(memberProfiles)
       .set({ avatarKey: null, updatedAt: new Date().toISOString() })
       .where(eq(memberProfiles.userId, targetUserId));
+    await this.deps.writeAuditLog({
+      entityType: "member_profile", action: "delete_avatar", actorId: sessionUser.id,
+      entityId: targetUserId, diffTitle: access.username,
+    });
     return ok({ ok: true });
   }
 
   async uploadProfileAudio(sessionUser: SessionUser, targetUserId: string, audioFile: File): Promise<ServiceResult<{ key: string }>> {
     const access = await this.canEditTarget(sessionUser, targetUserId);
-    if (access === "not_found") return err("NOT_FOUND", "User not found");
-    if (access === "forbidden") return err("FORBIDDEN", "You cannot upload media for this profile");
+    if (access.status === "not_found") return err("NOT_FOUND", "User not found");
+    if (access.status === "forbidden") return err("FORBIDDEN", "You cannot upload media for this profile");
 
     const allowedAudioTypes = ["audio/ogg", "audio/webm", "audio/mp4", "audio/mpeg", "audio/wav"];
     if (audioFile.type && !allowedAudioTypes.includes(audioFile.type))
@@ -536,13 +560,18 @@ export class UserService {
     await this.db.update(memberProfiles)
       .set({ audioKey: key, updatedAt: new Date().toISOString() })
       .where(eq(memberProfiles.userId, targetUserId));
+    await this.deps.writeAuditLog({
+      entityType: "member_profile", action: "upload_audio", actorId: sessionUser.id,
+      entityId: targetUserId, diffTitle: access.username,
+      detailText: JSON.stringify({ key, replaced: profile.audioKey ?? null }),
+    });
     return ok({ key });
   }
 
   async deleteProfileAudio(sessionUser: SessionUser, targetUserId: string): Promise<ServiceResult<{ ok: true }>> {
     const access = await this.canEditTarget(sessionUser, targetUserId);
-    if (access === "not_found") return err("NOT_FOUND", "User not found");
-    if (access === "forbidden") return err("FORBIDDEN", "You cannot delete media for this profile");
+    if (access.status === "not_found") return err("NOT_FOUND", "User not found");
+    if (access.status === "forbidden") return err("FORBIDDEN", "You cannot delete media for this profile");
 
     const profile = await this.ensureProfile(targetUserId);
     if (profile.audioKey) await this.deps.deleteMediaObject(profile.audioKey);
@@ -550,6 +579,10 @@ export class UserService {
     await this.db.update(memberProfiles)
       .set({ audioKey: null, updatedAt: new Date().toISOString() })
       .where(eq(memberProfiles.userId, targetUserId));
+    await this.deps.writeAuditLog({
+      entityType: "member_profile", action: "delete_audio", actorId: sessionUser.id,
+      entityId: targetUserId, diffTitle: access.username,
+    });
     return ok({ ok: true });
   }
 

@@ -42,6 +42,7 @@
   "eventType.guild_war": "公会战",
   "eventType.social": "社交",
   "eventType.poll": "投票",
+  "eventType.raffle": "抽奖",
   "eventType.other": "其他",
   "guest.banner": "你正在以访客身份浏览，登录后可使用全部功能。",
   "guest.login": "登录",

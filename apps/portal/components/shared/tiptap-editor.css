@@ -545,33 +545,6 @@
 
 /* ── Drag handle ── */
 
-.infini-tiptap-drag-handle {
-  position: absolute;
-  width: 18px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
-  color: color-mix(in srgb, var(--color-text, #111827) 40%, transparent);
-  cursor: grab;
-  font-size: 12px;
-  line-height: 1;
-  z-index: 5;
-  user-select: none;
-}
-
-.infini-tiptap-drag-handle:hover {
-  background: color-mix(in srgb, var(--color-text, #111827) 16%, transparent);
-  color: var(--color-text, #111827);
-}
-
-.infini-tiptap-drag-handle:active {
-  cursor: grabbing;
-}
-
 /* ── Word count ── */
 
 .infini-tiptap-word-count {

@@ -36,6 +36,35 @@ function resolveSignalPayload(message: PushMessage): PushSignalPayload | null {
     };
   }
 
+  if (message.type === "entity_changed") {
+    switch (message.entity_type) {
+      case "event":
+        return {
+          key: `event:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.eventReminder",
+          message: message.hint.replace(/_/g, " "),
+          color: "yellow",
+          frequencyHz: 660,
+        };
+      case "wiki":
+        return {
+          key: `wiki:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.wiki",
+          message: message.hint.replace(/_/g, " "),
+          color: "blue",
+          frequencyHz: 660,
+        };
+      case "member_profile":
+        return {
+          key: `member:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.memberOnline",
+          message: message.hint.replace(/_/g, " "),
+          color: "yellow",
+          frequencyHz: 660,
+        };
+    }
+  }
+
   return null;
 }
 
@@ -86,11 +115,12 @@ export function useNotificationPresentation(options: UseNotificationPresentation
   const { t } = useTranslation("common");
   const signalSequence = useNotificationStore((state) => state.signalSequence);
   const lastSignalMessage = useNotificationStore((state) => state.lastSignalMessage);
+  const suppressed = useNotificationStore((state) => state.suppressed);
   const lastSignalRef = useRef<Map<string, number>>(new Map());
   const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
-    if (!enabled || !lastSignalMessage || signalSequence <= 0) {
+    if (!enabled || suppressed || !lastSignalMessage || signalSequence <= 0) {
       return;
     }
 
@@ -120,7 +150,7 @@ export function useNotificationPresentation(options: UseNotificationPresentation
         console.warn(`[push-sound] ${message}`);
       });
     }
-  }, [enabled, lastSignalMessage, playSound, showToast, signalSequence, t]);
+  }, [enabled, lastSignalMessage, playSound, showToast, signalSequence, suppressed, t]);
 
   useEffect(() => {
     if (playSound) {

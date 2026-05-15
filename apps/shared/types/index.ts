@@ -1,6 +1,6 @@
 ﻿import type { z } from "zod";
 import type { userSchema, memberProfileSchema } from "../schemas/user";
-import type { eventSchema, eventParticipantSchema, eventPollSchema, recurringTemplateSchema } from "../schemas/event";
+import type { eventSchema, eventParticipantSchema, eventPollSchema, eventRaffleWinnerSchema, recurringTemplateSchema } from "../schemas/event";
 import type { announcementSchema } from "../schemas/announcement";
 import type {
   guildWarActiveResponseSchema,
@@ -17,12 +17,14 @@ import type {
   adminRoleSchema,
   rolePermissionsSchema,
 } from "../schemas/admin";
+import type { memberBadgeSchema, userBadgeSchema, badgeAssignmentSchema } from "../schemas/badge";
 
 export type User = z.infer<typeof userSchema>;
 export type MemberProfile = z.infer<typeof memberProfileSchema>;
 export type Event = z.infer<typeof eventSchema>;
 export type EventParticipant = z.infer<typeof eventParticipantSchema>;
 export type EventPoll = z.infer<typeof eventPollSchema>;
+export type EventRaffleWinner = z.infer<typeof eventRaffleWinnerSchema>;
 export type RecurringTemplate = z.infer<typeof recurringTemplateSchema>;
 export type Announcement = z.infer<typeof announcementSchema>;
 export type WarHistory = z.infer<typeof warHistorySchema>;
@@ -38,6 +40,9 @@ export type InviteLinkStats = z.infer<typeof inviteLinkStatsSchema>;
 export type AuditLogEntry = z.infer<typeof auditLogSchema>;
 export type AdminRole = z.infer<typeof adminRoleSchema>;
 export type RolePermissions = z.infer<typeof rolePermissionsSchema>;
+export type MemberBadge = z.infer<typeof memberBadgeSchema>;
+export type UserBadge = z.infer<typeof userBadgeSchema>;
+export type BadgeAssignment = z.infer<typeof badgeAssignmentSchema>;
 
 export type PaginatedResponse<T> = {
   data: T[];

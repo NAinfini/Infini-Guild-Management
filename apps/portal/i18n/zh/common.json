@@ -1,5 +1,4 @@
 {
-  "app.title": "公会门户",
   "nav.dashboard": "仪表盘",
   "nav.events": "活动",
   "nav.announcements": "公告",
@@ -48,6 +47,7 @@
   "notification.type.announcement": "公告",
   "notification.type.eventReminder": "活动",
   "notification.type.memberOnline": "成员",
+  "notification.type.wiki": "百科",
   "notification.empty": "暂无通知",
   "loadError": "数据加载失败，请稍后重试。",
   "loadErrorRetry": "刷新失败，显示缓存数据。",
@@ -61,6 +61,7 @@
   "eventType.guild_war": "公会战",
   "eventType.social": "社交",
   "eventType.poll": "投票",
+  "eventType.raffle": "抽奖",
   "eventType.other": "其他",
   "cmdk.searchButton": "搜索 (Ctrl+K)",
   "cmdk.searchTitle": "搜索",
@@ -163,5 +164,11 @@
   "notification.tooltip.clearAll": "清除本次会话中的所有通知记录。",
   "nav.skipToContent": "跳至内容",
   "pagination.perPage": "每页",
-  "pagination.page": "页"
+  "pagination.page": "页",
+  "pagination.first": "首页",
+  "pagination.last": "末页",
+  "pagination.prev": "上一页",
+  "pagination.next": "下一页",
+  "profile.field.badges": "徽章",
+  "profile.noBadges": "暂无徽章"
 }

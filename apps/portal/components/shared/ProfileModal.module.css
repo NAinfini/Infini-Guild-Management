@@ -69,6 +69,7 @@
   text-transform: uppercase;
 }
 
+
 @media (max-width: 900px) {
   .header {
     grid-template-columns: 1fr;

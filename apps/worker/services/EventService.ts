@@ -1,9 +1,10 @@
-import { createEventSchema, eventParticipantSchema, eventSchema, recurringTemplateSchema, updateEventSchema } from "@guild/shared";
+import { createEventSchema, eventParticipantSchema, eventSchema, recurringTemplateSchema, updateEventSchema, eventRaffleWinnerSchema } from "@guild/shared";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, like, lte, or, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
 import {
   eventParticipants,
+  eventRaffleWinners,
   events,
   users,
 } from "../db/schema";
@@ -83,6 +84,7 @@ export type EventRow = {
   lastGeneratedDate: string | null;
   generationCount: number;
   visibilityOffsetMinutes: number | null;
+  winnerCount: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -92,6 +94,13 @@ type EventParticipantRow = {
   eventId: string;
   userId: string;
   joinedAt: string;
+};
+
+type RaffleWinnerRow = {
+  id: string;
+  eventId: string;
+  userId: string;
+  drawnAt: string;
 };
 
 type PollResultsVisibility = "always" | "after_vote" | "after_close";
@@ -187,6 +196,7 @@ export function toEventPayload(row: EventRow) {
     series_id: row.seriesId,
     is_series_parent: row.isSeriesParent,
     instance_date: row.instanceDate,
+    winner_count: row.winnerCount ?? null,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   });
@@ -198,6 +208,15 @@ export function toParticipantPayload(row: EventParticipantRow) {
     event_id: row.eventId,
     user_id: row.userId,
     joined_at: row.joinedAt,
+  });
+}
+
+export function toRaffleWinnerPayload(row: RaffleWinnerRow) {
+  return eventRaffleWinnerSchema.parse({
+    id: row.id,
+    event_id: row.eventId,
+    user_id: row.userId,
+    drawn_at: row.drawnAt,
   });
 }
 
@@ -239,6 +258,7 @@ export class EventService {
   async createEvent(actorId: string, data: CreateEventInput, files: File[] = []) {
     this.validateDateRange(data.start_at, data.end_at);
     this.validatePollEventInput(data);
+    this.validateRaffleEventInput(data);
 
     const eventId = this.deps.createId?.() ?? nanoid();
     const uploadedAttachments = await this.storeImages(eventId, files, 0);
@@ -261,6 +281,7 @@ export class EventService {
       startAt: data.start_at,
       endAt: data.end_at ?? null,
       capacity: data.type === "poll" ? null : data.capacity ?? null,
+      winnerCount: data.type === "raffle" ? data.winner_count ?? null : null,
       pinned: false,
       signupLocked: false,
       autoArchive: data.auto_archive ?? false,
@@ -383,6 +404,7 @@ export class EventService {
     await this.rawDb.batch([
       this.rawDb.prepare("UPDATE war_templates SET source_event_id = NULL WHERE source_event_id = ?1").bind(eventId),
       this.rawDb.prepare("UPDATE war_history SET event_id = NULL, updated_at = ?1 WHERE event_id = ?2").bind(now, eventId),
+      this.rawDb.prepare("DELETE FROM event_raffle_winners WHERE event_id = ?1").bind(eventId),
       this.rawDb.prepare("DELETE FROM event_poll_votes WHERE event_id = ?1").bind(eventId),
       this.rawDb.prepare("DELETE FROM event_poll_options WHERE event_id = ?1").bind(eventId),
       this.rawDb.prepare("DELETE FROM event_polls WHERE event_id = ?1").bind(eventId),
@@ -532,6 +554,8 @@ export class EventService {
     if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
     if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
     if (eventRow.type === "poll") return { ok: false, code: "CONFLICT", message: "Poll events do not support signups" };
+    if (eventRow.signupLocked) return { ok: false, code: "CONFLICT", message: "Event signup is locked" };
+    if (eventRow.endAt && eventRow.endAt <= this.now()) return { ok: false, code: "CONFLICT", message: "Event has ended" };
 
     const existing = (
       await (this.db as any)
@@ -541,29 +565,29 @@ export class EventService {
         .limit(1)
     )[0];
 
+    if (!existing) return { ok: false, code: "CONFLICT", message: "Not a participant" };
+
     await (this.db as any)
       .delete(eventParticipants)
       .where(and(eq(eventParticipants.eventId, eventId), eq(eventParticipants.userId, actorId)));
 
-    if (existing) {
-      const [eventTitle, actorName] = await Promise.all([
-        this.resolveEventTitle(eventId),
-        this.deps.getUsername(actorId),
-      ]);
+    const [eventTitle, actorName] = await Promise.all([
+      this.resolveEventTitle(eventId),
+      this.deps.getUsername(actorId),
+    ]);
 
-      await this.deps.writeAuditLog({
-        entityType: "event_participant",
-        action: "leave",
-        actorId,
-        entityId: `${eventId}:${actorId}`,
-        diffTitle: `${eventTitle} | ${actorName ?? actorId}`,
-      });
-      await this.deps.publishEntityChanged({
-        entityType: "event",
-        entityId: eventId,
-        hint: "participant_left",
-      });
-    }
+    await this.deps.writeAuditLog({
+      entityType: "event_participant",
+      action: "leave",
+      actorId,
+      entityId: `${eventId}:${actorId}`,
+      diffTitle: `${eventTitle} | ${actorName ?? actorId}`,
+    });
+    await this.deps.publishEntityChanged({
+      entityType: "event",
+      entityId: eventId,
+      hint: "participant_left",
+    });
 
     return { ok: true };
   }
@@ -582,6 +606,8 @@ export class EventService {
     const eventRow = await this.deps.getEventById(eventId);
     if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
     if (eventRow.type === "poll") return { ok: false, code: "CONFLICT", message: "Poll events do not support signups" };
+    if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
+    if (eventRow.endAt && eventRow.endAt <= this.now()) return { ok: false, code: "CONFLICT", message: "Event has ended" };
 
     const activeUserRows = (await (this.db as any)
       .select({ id: users.id })
@@ -693,9 +719,18 @@ export class EventService {
 
   // ── Template CRUD ──
 
-  async removeParticipants(actorId: string, eventId: string, targetUserIds: string[]): Promise<{ ok: true; removed: number }> {
+  async removeParticipants(actorId: string, eventId: string, targetUserIds: string[]): Promise<
+    | { ok: true; removed: number }
+    | { ok: false; code: "NOT_FOUND" | "CONFLICT"; message: string }
+  > {
     const userIds = [...new Set(targetUserIds.filter((id) => id.trim().length > 0))];
     if (userIds.length === 0) return { ok: true, removed: 0 };
+
+    const eventRow = await this.deps.getEventById(eventId);
+    if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
+    if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
+    if (eventRow.endAt && eventRow.endAt <= this.now()) return { ok: false, code: "CONFLICT", message: "Event has ended" };
+
     const placeholders = userIds.map((_, index) => `?${index + 2}`).join(", ");
     const result = await this.rawDb
       .prepare(`DELETE FROM event_participants WHERE event_id = ?1 AND user_id IN (${placeholders})`)
@@ -941,6 +976,112 @@ export class EventService {
     return diff;
   }
 
+  // ── Raffle Operations ──
+
+  async drawRaffleWinners(actorId: string, eventId: string): Promise<
+    | { ok: true; winners: RaffleWinnerRow[] }
+    | { ok: false; code: "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR"; message: string }
+  > {
+    const eventRow = await this.deps.getEventById(eventId);
+    if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
+    if (eventRow.type !== "raffle") return { ok: false, code: "CONFLICT", message: "Event is not a raffle" };
+    if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
+    if (!eventRow.winnerCount || eventRow.winnerCount < 1) return { ok: false, code: "VALIDATION_ERROR", message: "Raffle has no winner_count configured" };
+
+    const existingWinners = await this.rawDb
+      .prepare("SELECT id FROM event_raffle_winners WHERE event_id = ?1 LIMIT 1")
+      .bind(eventId)
+      .all?.();
+    const hasWinners = Array.isArray(existingWinners) ? existingWinners.length > 0 : (existingWinners?.results?.length ?? 0) > 0;
+    if (hasWinners) return { ok: false, code: "CONFLICT", message: "Raffle winners already drawn" };
+
+    const participantRows = (await (this.db as any)
+      .select({ userId: eventParticipants.userId })
+      .from(eventParticipants)
+      .where(eq(eventParticipants.eventId, eventId))) as Array<{ userId: string }>;
+
+    if (participantRows.length === 0) return { ok: false, code: "VALIDATION_ERROR", message: "No participants to draw from" };
+
+    const pool = participantRows.map((row) => row.userId);
+    const winnerCount = Math.min(eventRow.winnerCount, pool.length);
+    const selectedIds: string[] = [];
+    const remaining = [...pool];
+    for (let i = 0; i < winnerCount; i++) {
+      const idx = Math.floor(Math.random() * remaining.length);
+      selectedIds.push(remaining[idx]!);
+      remaining.splice(idx, 1);
+    }
+
+    const now = this.now();
+    const stmts = selectedIds.map((userId) =>
+      this.rawDb
+        .prepare("INSERT INTO event_raffle_winners (id, event_id, user_id, drawn_at) VALUES (?1, ?2, ?3, ?4)")
+        .bind(this.deps.createId?.() ?? nanoid(), eventId, userId, now),
+    );
+    stmts.push(
+      this.rawDb
+        .prepare("UPDATE events SET signup_locked = 1, updated_at = ?1 WHERE id = ?2")
+        .bind(now, eventId),
+    );
+    await this.rawDb.batch(stmts);
+
+    const winners = (await (this.db as any)
+      .select({ id: eventRaffleWinners.id, eventId: eventRaffleWinners.eventId, userId: eventRaffleWinners.userId, drawnAt: eventRaffleWinners.drawnAt })
+      .from(eventRaffleWinners)
+      .where(eq(eventRaffleWinners.eventId, eventId))) as RaffleWinnerRow[];
+
+    await this.deps.writeAuditLog({
+      entityType: "event",
+      action: "raffle_draw",
+      actorId,
+      entityId: eventId,
+      diffTitle: eventRow.title,
+      detailText: JSON.stringify({ winner_count: winners.length, winner_user_ids: selectedIds }),
+    });
+
+    await this.deps.publishEntityChanged({
+      entityType: "event",
+      entityId: eventId,
+      hint: "raffle_drawn",
+    });
+
+    return { ok: true, winners };
+  }
+
+  async hasRaffleWinners(eventId: string): Promise<boolean> {
+    const result = await this.rawDb
+      .prepare("SELECT id FROM event_raffle_winners WHERE event_id = ?1 LIMIT 1")
+      .bind(eventId)
+      .all?.();
+    const rows = Array.isArray(result) ? result : result?.results;
+    return Array.isArray(rows) && rows.length > 0;
+  }
+
+  private async attachRaffleWinners<T extends { id: string; type: string }>(eventPayloads: T[]): Promise<(T & { raffle_winners?: Array<{ id: string; event_id: string; user_id: string; drawn_at: string }> })[]> {
+    const raffleIds = eventPayloads.filter((e) => e.type === "raffle").map((e) => e.id);
+    if (raffleIds.length === 0) return eventPayloads;
+
+    const placeholders = raffleIds.map((_, i) => `?${i + 1}`).join(", ");
+    const result = await this.rawDb
+      .prepare(`SELECT id, event_id, user_id, drawn_at FROM event_raffle_winners WHERE event_id IN (${placeholders})`)
+      .bind(...raffleIds)
+      .all?.();
+    const rawRows = ((result as { results?: unknown[] } | undefined)?.results ?? []) as Array<{ id: string; event_id: string; user_id: string; drawn_at: string }>;
+    const rows: RaffleWinnerRow[] = rawRows.map((r) => ({ id: r.id, eventId: r.event_id, userId: r.user_id, drawnAt: r.drawn_at }));
+
+    const winnersByEvent = new Map<string, RaffleWinnerRow[]>();
+    for (const row of rows) {
+      const list = winnersByEvent.get(row.eventId) ?? [];
+      list.push(row);
+      winnersByEvent.set(row.eventId, list);
+    }
+
+    return eventPayloads.map((e) => {
+      if (e.type !== "raffle") return e;
+      return { ...e, raffle_winners: (winnersByEvent.get(e.id) ?? []).map(toRaffleWinnerPayload) };
+    });
+  }
+
   private validateDateRange(startAt: string | null | undefined, endAt: string | null | undefined) {
     if (startAt && endAt && endAt <= startAt) {
       throw new EventServiceValidationError("end_at must be after start_at");
@@ -952,6 +1093,13 @@ export class EventService {
     if (!data.end_at) throw new EventServiceValidationError("Poll events require end_at");
     if (!data.poll) throw new EventServiceValidationError("Poll events require poll settings");
     if (data.recurrence_rule) throw new EventServiceValidationError("Poll events cannot recur");
+  }
+
+  private validateRaffleEventInput(data: CreateEventInput) {
+    if (data.type !== "raffle") return;
+    if (!data.end_at) throw new EventServiceValidationError("Raffle events require end_at");
+    if (!data.winner_count || data.winner_count < 1) throw new EventServiceValidationError("Raffle events require winner_count");
+    if (data.recurrence_rule) throw new EventServiceValidationError("Raffle events cannot recur");
   }
 
   private validatePollEventUpdate(existing: EventRow, data: UpdateEventInput, effectiveEndAt: string | null) {
@@ -1078,6 +1226,7 @@ export class EventService {
     lastGeneratedDate: events.lastGeneratedDate,
     generationCount: events.generationCount,
     visibilityOffsetMinutes: events.visibilityOffsetMinutes,
+    winnerCount: events.winnerCount,
     createdAt: events.createdAt,
     updatedAt: events.updatedAt,
   } as const;
@@ -1139,7 +1288,9 @@ export class EventService {
 
     const total = Number(countRow[0]?.count ?? 0);
 
-    const data = await this.attachPolls(rows.map(toEventPayload), params.viewerId ?? null, params.canManage ?? false);
+    const data = await this.attachRaffleWinners(
+      await this.attachPolls(rows.map(toEventPayload), params.viewerId ?? null, params.canManage ?? false),
+    );
     return {
       data,
       total,
@@ -1159,7 +1310,19 @@ export class EventService {
       .where(eq(eventParticipants.eventId, eventId))) as EventParticipantRow[];
 
     const [eventWithPoll] = await this.attachPolls([toEventPayload(eventRow)], viewerId ?? null, canManage);
-    return { ...eventWithPoll, participants: participants.map(toParticipantPayload) };
+
+    const raffleWinners = eventRow.type === "raffle"
+      ? ((await this.db
+          .select({ id: eventRaffleWinners.id, eventId: eventRaffleWinners.eventId, userId: eventRaffleWinners.userId, drawnAt: eventRaffleWinners.drawnAt })
+          .from(eventRaffleWinners)
+          .where(eq(eventRaffleWinners.eventId, eventId))) as RaffleWinnerRow[])
+      : [];
+
+    return {
+      ...eventWithPoll,
+      participants: participants.map(toParticipantPayload),
+      raffle_winners: raffleWinners.map(toRaffleWinnerPayload),
+    };
   }
 
   async batchDetails(ids: string[], viewerId?: string | null, canManage = false) {
@@ -1173,7 +1336,9 @@ export class EventService {
       .from(eventParticipants)
       .where(inArray(eventParticipants.eventId, ids))) as EventParticipantRow[];
 
-    const eventsWithPolls = await this.attachPolls(eventRows.map(toEventPayload), viewerId ?? null, canManage);
+    const eventsWithPolls = await this.attachRaffleWinners(
+      await this.attachPolls(eventRows.map(toEventPayload), viewerId ?? null, canManage),
+    );
 
     return eventsWithPolls.map((row) => ({
       ...row,

@@ -33,6 +33,12 @@ export function archiveAnnouncement(id: string): Promise<{ ok: true }> {
   });
 }
 
+export function deleteAnnouncement(id: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/announcements/${id}/permanent`, {
+    method: "DELETE",
+  });
+}
+
 export async function uploadAnnouncementImages(
   announcementId: string,
   files: File[],

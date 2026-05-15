@@ -4,13 +4,7 @@ import { NumberTicker } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
 import { Badge, Button, Group, RingProgress, Stack, Text } from "@mantine/core";
 import { MemberRoleAvatar } from "../shared/MemberRoleAvatar";
-import { CalendarEventIcon, SwordsIcon } from "@portal/components/icons";
-import {
-  IconArrowRight,
-  IconClock,
-  IconFriends,
-  IconTargetArrow,
-} from "@tabler/icons-react";
+import { ArrowRightIcon, CalendarEventIcon, ClockIcon, FriendsIcon, SwordsIcon, TargetArrowIcon } from "@portal/components/icons";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarEventOutlined } from "../../utils/icons";
@@ -22,9 +16,9 @@ import {
 } from "./shared";
 
 const ICON_COMPONENT_MAP: Record<string, React.ReactNode> = {
-  TargetOutlined: <IconTargetArrow size={12} />,
+  TargetOutlined: <TargetArrowIcon size={12} />,
   SwordsOutlined: <SwordsIcon size={12} />,
-  TeamOutlined: <IconFriends size={12} />,
+  TeamOutlined: <FriendsIcon size={12} />,
   CalendarEventOutlined: <CalendarEventIcon size={12} />,
 };
 
@@ -109,7 +103,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                           {t(`common:eventType.${item.item.type}`)}
                         </Badge>
                         <Group gap={4}>
-                          <IconClock size={12} style={{ opacity: 0.6 }} />
+                          <ClockIcon size={12} style={{ opacity: 0.6 }} />
                           <Text size="xs" c="dimmed">
                             {startDate.toLocaleTimeString(i18n.language, { hour: "2-digit", minute: "2-digit", hour12: false })}
                           </Text>
@@ -144,7 +138,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                       style={{ minWidth: 32, padding: "4px 8px" }}
                       aria-label={t("card.upcomingEvents.viewEvent")}
                     >
-                      <IconArrowRight size={16} />
+                      <ArrowRightIcon size={16} />
                     </Button>
                   </Group>
                 </div>

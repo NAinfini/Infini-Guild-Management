@@ -138,6 +138,13 @@ wikiRoutes.delete("/articles/:id", async (c) => {
   return handleResult(c, result);
 });
 
+wikiRoutes.delete("/articles/:id/permanent", async (c) => {
+  const sessionUser = await requirePermission(c, "wiki.articles.delete");
+  if (sessionUser instanceof Response) return sessionUser;
+  const result = await getService(c).permanentDeleteArticle(sessionUser.id, c.req.param("id"));
+  return handleResult(c, result);
+});
+
 wikiRoutes.post("/articles/:id/images", async (c) => {
   const sessionUser = await requireWikiArticlesEdit(c);
   if (sessionUser instanceof Response) return sessionUser;

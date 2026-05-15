@@ -7,6 +7,7 @@
   "tab.history": "History",
   "tab.analytics": "Analytics",
   "active.event": "Guild war event",
+  "active.eventArchived": "Archived",
   "active.initTeams": "Initialize Teams",
   "active.pool": "Pool",
   "history.table.name": "War Name",

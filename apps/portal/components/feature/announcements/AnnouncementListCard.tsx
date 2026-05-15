@@ -3,8 +3,7 @@ import { PushpinOutlined } from "@portal/utils/icons";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
 import { Alert, Badge, Button, Group, HoverCard, Indicator, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
-import { PlusIcon } from "@portal/components/icons";
-import { IconArchive, IconCalendarTime, IconCircleCheck, IconFileText } from "@tabler/icons-react";
+import { ArchiveIcon, CalendarTimeIcon, CircleCheckIcon, FileTextIcon, PlusIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -19,13 +18,13 @@ function formatDateTime(iso: string | null): string {
 function statusIcon(value: Announcement["status"]): ReactNode {
   switch (value) {
     case "draft":
-      return <IconFileText size={14} style={{ color: "var(--mantine-color-dimmed)" }} />;
+      return <FileTextIcon size={14} style={{ color: "var(--mantine-color-dimmed)" }} />;
     case "scheduled":
-      return <IconCalendarTime size={14} style={{ color: "var(--mantine-color-blue-filled)" }} />;
+      return <CalendarTimeIcon size={14} style={{ color: "var(--mantine-color-blue-filled)" }} />;
     case "published":
-      return <IconCircleCheck size={14} style={{ color: "var(--mantine-color-green-filled)" }} />;
+      return <CircleCheckIcon size={14} style={{ color: "var(--mantine-color-green-filled)" }} />;
     case "archived":
-      return <IconArchive size={14} style={{ color: "var(--mantine-color-red-filled)" }} />;
+      return <ArchiveIcon size={14} style={{ color: "var(--mantine-color-red-filled)" }} />;
     default:
       return null;
   }
@@ -34,15 +33,15 @@ function statusIcon(value: Announcement["status"]): ReactNode {
 function statusThemeIconProps(value: Announcement["status"]): { color: string; icon: ReactNode } {
   switch (value) {
     case "draft":
-      return { color: "gray", icon: <IconFileText size={18} /> };
+      return { color: "gray", icon: <FileTextIcon size={18} /> };
     case "scheduled":
-      return { color: "blue", icon: <IconCalendarTime size={18} /> };
+      return { color: "blue", icon: <CalendarTimeIcon size={18} /> };
     case "published":
-      return { color: "green", icon: <IconCircleCheck size={18} /> };
+      return { color: "green", icon: <CircleCheckIcon size={18} /> };
     case "archived":
-      return { color: "yellow", icon: <IconArchive size={18} /> };
+      return { color: "yellow", icon: <ArchiveIcon size={18} /> };
     default:
-      return { color: "gray", icon: <IconFileText size={18} /> };
+      return { color: "gray", icon: <FileTextIcon size={18} /> };
   }
 }
 
@@ -139,7 +138,7 @@ export function AnnouncementListCard({
                             return (
                               <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                                 <HoverCard.Target>
-                                  <span style={{ display: "inline-flex", lineHeight: 0 }}>{statusIcon(item.status)}</span>
+                                  <span style={{ display: "inline-flex", lineHeight: 0 }} data-animate-icon-trigger>{statusIcon(item.status)}</span>
                                 </HoverCard.Target>
                                 <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                                   <Group gap={10} wrap="nowrap" align="flex-start">

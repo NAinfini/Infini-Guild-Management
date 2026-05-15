@@ -12,7 +12,8 @@ import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { fetchEventDetailBatch, fetchEventsList, type EventDetailResponse } from "../../services/EventService";
 import { fetchGuildWarHistory, fetchGuildWarHistoryBatch } from "../../services/GuildWarService";
 import { queryKeys } from "../../api/query-keys";
-import { fetchUsersList, fetchUsersStats } from "../../services/UserService";
+import { fetchAllUsersListWithOptions, fetchUsersStats } from "../../services/UserService";
+import type { UsersListResponse } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import { PageLayout } from "../layout/PageLayout";
@@ -66,7 +67,7 @@ function buildUpcomingEventRow(
   upcomingEventDetailById: Map<string, EventDetailResponse>,
   participantsByEventId: Map<
     string,
-    { user: Awaited<ReturnType<typeof fetchUsersList>>["data"][number]["user"]; profile: Awaited<ReturnType<typeof fetchUsersList>>["data"][number]["profile"] }[]
+    { user: UsersListResponse["data"][number]["user"]; profile: UsersListResponse["data"][number]["profile"] }[]
   >,
   currentUserId: string | undefined,
 ): DashboardUpcomingEventRow {
@@ -140,7 +141,7 @@ export function DashboardPage() {
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
-    queryFn: fetchUsersList,
+    queryFn: () => fetchAllUsersListWithOptions(),
     staleTime: 10 * 60_000,
   });
 

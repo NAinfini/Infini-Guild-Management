@@ -97,6 +97,13 @@ announcementsRoutes.delete("/:id", async (c) => {
   return handleResult(c, result);
 });
 
+announcementsRoutes.delete("/:id/permanent", async (c) => {
+  const sessionUser = await requirePermission(c, "announcements.delete");
+  if (sessionUser instanceof Response) return sessionUser;
+  const result = await getService(c).permanentDelete(sessionUser.id, c.req.param("id"));
+  return handleResult(c, result);
+});
+
 announcementsRoutes.post("/:id/images", async (c) => {
   const sessionUser = await requireAnnouncementEdit(c);
   if (sessionUser instanceof Response) return sessionUser;

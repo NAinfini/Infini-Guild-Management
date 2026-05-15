@@ -20,5 +20,6 @@ export {
   fetchUsersStats,
   fetchUsersList,
   fetchUsersListWithOptions,
+  fetchAllUsersListWithOptions,
 } from "../api/queries/users";
 export type { UsersListResponse, UsersStatsResponse } from "../api/queries/users";

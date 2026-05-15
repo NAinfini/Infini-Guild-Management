@@ -5,34 +5,30 @@ import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
 import { PortalCard } from "../../shared/PortalCard";
 import {
+  ArchiveIcon,
+  ArchiveOffIcon,
+  CalendarEventIcon,
+  ChartBarIcon,
+  ClockIcon,
   CopyIcon,
   DotsIcon,
-  PencilIcon,
-  RefreshCwIcon,
-  SwordsIcon,
-  CalendarEventIcon,
-  TrashIcon,
-  UserPlusIcon,
-  PinIcon,
+  FriendsIcon,
+  GiftIcon,
   LockIcon,
-  ArchiveIcon,
+  LockOpenIcon,
+  PencilIcon,
+  PinIcon,
+  PinnedOffIcon,
+  RefreshCwIcon,
+  Sparkles2Icon,
+  SparklesIcon,
+  SwordsIcon,
+  TargetArrowIcon,
+  TrashIcon,
+  UserMinusIcon,
+  UserPlusIcon,
+  UsersIcon,
 } from "@portal/components/icons";
-import {
-  IconArchive,
-  IconArchiveOff,
-  IconChartBar,
-  IconClock,
-  IconFriends,
-  IconLock,
-  IconLockOpen,
-  IconPin,
-  IconPinnedOff,
-  IconSparkles,
-  IconSparkles2,
-  IconTargetArrow,
-  IconUserMinus,
-  IconUsers,
-} from "@tabler/icons-react";
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type EventTypeFilter } from "../../../utils/event-navigation";
@@ -46,14 +42,16 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   guild_war: "red",
   social: "grape",
   poll: "teal",
+  raffle: "pink",
   other: "gray",
 };
 
 const EVENT_TYPE_ICONS: Record<string, React.ReactNode> = {
-  weekly_mission: <IconTargetArrow size={12} />,
+  weekly_mission: <TargetArrowIcon size={12} />,
   guild_war: <SwordsIcon size={12} />,
-  social: <IconFriends size={12} />,
-  poll: <IconChartBar size={12} />,
+  social: <FriendsIcon size={12} />,
+  poll: <ChartBarIcon size={12} />,
+  raffle: <GiftIcon size={12} />,
   other: <CalendarEventIcon size={12} />,
 };
 
@@ -68,7 +66,7 @@ function formatLocalDate(startAt: string, locale: string): string {
 
 function formatLocalTime(startAt: string, endAt: string | null, locale: string): string {
   const start = new Date(startAt);
-  const timeOpts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+  const timeOpts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit", hour12: true };
   const startTime = start.toLocaleTimeString(locale, timeOpts);
   if (!endAt) return startTime;
   const end = new Date(endAt);
@@ -90,7 +88,7 @@ function EventStatusIndicator({ children, color, icon, title, description }: Eve
   return (
     <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
       <HoverCard.Target>
-        <span className="event-card__status-icon">{children}</span>
+        <span className="event-card__status-icon" data-animate-icon-trigger>{children}</span>
       </HoverCard.Target>
       <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
         <Group gap={10} wrap="nowrap" align="flex-start">
@@ -146,6 +144,8 @@ type EventCardsViewProps = {
   onAddParticipant: (eventId: string, userId: string) => void;
   onRemoveParticipant: (eventId: string, userId: string) => void;
   onVotePoll?: (eventId: string, optionIds: string[]) => void;
+  onDrawRaffle?: (eventId: string) => void;
+  drawRafflePending?: boolean;
 };
 
 export function EventCardsView({
@@ -181,6 +181,8 @@ export function EventCardsView({
   onAddParticipant,
   onRemoveParticipant,
   onVotePoll,
+  onDrawRaffle,
+  drawRafflePending,
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
@@ -216,7 +218,18 @@ export function EventCardsView({
     <>
       <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={12}>
         {events.map((event) => {
-          const members = eventMembersMap.get(event.id) ?? [];
+          const participantMembers = eventMembersMap.get(event.id) ?? [];
+          const isPoll = event.type === "poll";
+          const isRaffle = event.type === "raffle";
+          const hasEnded = event.end_at != null && new Date(event.end_at) < new Date();
+          const raffleHasDrawn = isRaffle && (event.raffle_winners?.length ?? 0) > 0;
+          const pollVoterMembers = isPoll && event.poll
+            ? (() => {
+                const voterIds = new Set(event.poll.options.flatMap((o) => o.voter_ids));
+                return allUsers.filter((e) => voterIds.has(e.user.id));
+              })()
+            : [];
+          const members = isPoll ? pollVoterMembers : participantMembers;
           const joinedCount = members.length;
           const flag = eventFlags.get(event.id);
           const typeColor = EVENT_TYPE_COLORS[event.type] ?? "gray";
@@ -224,15 +237,8 @@ export function EventCardsView({
           const isJoined = currentUserId ? members.some((m) => m.user.id === currentUserId) : false;
           const isFocused = focusedEventId === event.id;
           const isArchived = Boolean(event.archived_at);
-          const hasEnded = event.end_at != null && new Date(event.end_at) < new Date();
-          const isPoll = event.type === "poll";
           const visibleMembers = members.length > 10 ? members.slice(0, 9) : members.slice(0, 10);
           const hiddenMembersCount = members.length > 10 ? members.length - visibleMembers.length : 0;
-          const pollStatusLabel = hasEnded
-            ? t("poll.status.closed")
-            : event.poll?.has_voted
-              ? t("poll.status.voted")
-              : t("poll.status.open");
           const participantActionDisabled = joinPending || leavePending || isArchived || (!isJoined && (event.signup_locked || isFull || hasEnded));
           const statusIndicators = (
             <>
@@ -253,7 +259,7 @@ export function EventCardsView({
                   title={t("tooltip.pinned.title")}
                   description={t("tooltip.pinned.desc")}
                 >
-                  <IconPin size={16} style={{ color: "var(--mantine-color-yellow-6)" }} />
+                  <PinIcon size={16} style={{ color: "var(--mantine-color-yellow-6)" }} />
                 </EventStatusIndicator>
               ) : null}
               {event.signup_locked ? (
@@ -263,7 +269,7 @@ export function EventCardsView({
                   title={t("tooltip.locked.title")}
                   description={t("tooltip.locked.desc")}
                 >
-                  <IconLock size={16} style={{ color: "var(--mantine-color-red-6)" }} />
+                  <LockIcon size={16} style={{ color: "var(--mantine-color-red-6)" }} />
                 </EventStatusIndicator>
               ) : null}
               {event.archived_at ? (
@@ -273,27 +279,27 @@ export function EventCardsView({
                   title={t("tooltip.archived.title")}
                   description={t("tooltip.archived.desc")}
                 >
-                  <IconArchive size={16} style={{ opacity: 0.5 }} />
+                  <ArchiveIcon size={16} style={{ opacity: 0.5 }} />
                 </EventStatusIndicator>
               ) : null}
               {flag === "NEW" ? (
                 <EventStatusIndicator
                   color="green"
-                  icon={<IconSparkles size={16} />}
+                  icon={<SparklesIcon size={16} />}
                   title={t("tooltip.new.title")}
                   description={t("tooltip.new.desc")}
                 >
-                  <IconSparkles size={16} style={{ color: "var(--mantine-color-green-6)" }} />
+                  <SparklesIcon size={16} style={{ color: "var(--mantine-color-green-6)" }} />
                 </EventStatusIndicator>
               ) : null}
               {flag === "UPDATED" ? (
                 <EventStatusIndicator
                   color="blue"
-                  icon={<IconSparkles2 size={16} />}
+                  icon={<Sparkles2Icon size={16} />}
                   title={t("tooltip.updated.title")}
                   description={t("tooltip.updated.desc")}
                 >
-                  <IconSparkles2 size={16} style={{ color: "var(--mantine-color-blue-6)" }} />
+                  <Sparkles2Icon size={16} style={{ color: "var(--mantine-color-blue-6)" }} />
                 </EventStatusIndicator>
               ) : null}
             </>
@@ -315,15 +321,28 @@ export function EventCardsView({
                   </Badge>
                 </div>
                 <div className="event-card__header-right">
-                  <div className="event-card__capacity">
-                    <IconUsers
-                      size={15}
-                      className="event-card__icon-muted"
-                    />
-                    <Text size="sm" fw={600} className="event-card__capacity-text">
-                      {joinedCount} / {event.capacity ?? "∞"}
-                    </Text>
-                  </div>
+                  {canInteract && !isPoll ? (
+                    <div className="event-card__header-actions" onClick={(e) => e.stopPropagation()}>
+                      <DepthButton
+                        onClick={() => onCopyMentions(event)}
+                        type="secondary"
+                        size="sm"
+                        disabled={members.length === 0}
+                        tooltip={t("card.copyMentions")}
+                        iconOnly
+                        before={<CopyIcon size={14} />}
+                      />
+                      <div className="event-card__capacity">
+                        <UsersIcon size={13} />
+                        <span>{joinedCount}/{event.capacity ?? "∞"}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="event-card__capacity">
+                      <UsersIcon size={13} />
+                      <span>{joinedCount}/{event.capacity ?? "∞"}</span>
+                    </div>
+                  )}
                   {canManage ? (
                     <InfiniMenu position="bottom-end">
                       <InfiniMenu.Target>
@@ -339,20 +358,20 @@ export function EventCardsView({
                           {t("menu.duplicate")}
                         </InfiniMenu.Item>
                         <InfiniMenu.Item
-                          leftSection={event.pinned ? <IconPinnedOff size={14} /> : <IconPin size={14} />}
+                          leftSection={event.pinned ? <PinnedOffIcon size={14} /> : <PinIcon size={14} />}
                           onClick={() => onTogglePinEvent(event)}
                         >
                           {event.pinned ? t("menu.unpin") : t("menu.pin")}
                         </InfiniMenu.Item>
                         <InfiniMenu.Item
-                          leftSection={event.signup_locked ? <IconLockOpen size={14} /> : <IconLock size={14} />}
+                          leftSection={event.signup_locked ? <LockOpenIcon size={14} /> : <LockIcon size={14} />}
                           onClick={() => onToggleLockEvent(event)}
                         >
                           {event.signup_locked ? t("menu.unlockSignup") : t("menu.lockSignup")}
                         </InfiniMenu.Item>
                         <InfiniMenu.Divider />
                         <InfiniMenu.Item
-                          leftSection={event.archived_at ? <IconArchiveOff size={14} /> : <IconArchive size={14} />}
+                          leftSection={event.archived_at ? <ArchiveOffIcon size={14} /> : <ArchiveIcon size={14} />}
                           onClick={() => event.archived_at ? onUnarchiveEvent(event.id) : setArchiveConfirmEvent(event)}
                         >
                           {event.archived_at ? t("menu.unarchive") : t("menu.archive")}
@@ -380,11 +399,9 @@ export function EventCardsView({
                   </div>
 
                   {/* Description preview */}
-                  {event.description ? (
-                    <Text size="xs" c="dimmed" lineClamp={1} className="event-card__description">
-                      {event.description}
-                    </Text>
-                  ) : null}
+                  <Text size="xs" c="dimmed" lineClamp={1} className="event-card__description">
+                    {event.description || t("card.noDescription")}
+                  </Text>
 
                   {/* Date & Time */}
                   <Group gap={6} align="center" wrap="nowrap">
@@ -393,60 +410,72 @@ export function EventCardsView({
                       {formatLocalDate(event.start_at, i18n.language)}
                     </Text>
                     <Text size="xs" c="dimmed">·</Text>
-                    <IconClock size={14} className="event-card__icon-muted" />
+                    <ClockIcon size={14} className="event-card__icon-muted" />
                     <Text size="xs" className="event-card__time-text">
                       {formatLocalTime(event.start_at, event.end_at, i18n.language)}
                     </Text>
                   </Group>
 
-                  {/* ── Members & Capacity ── */}
-                  {isPoll ? (
-                    <div className="event-card__poll-status">
-                      <IconChartBar size={16} className="event-card__icon-muted" />
-                      <Text size="sm" fw={700}>{pollStatusLabel}</Text>
+                  {/* ── Members ── */}
+                  {raffleHasDrawn ? (
+                    <div className="event-card__raffle-winners">
+                      <div className="event-card__raffle-winners-icon">
+                        <GiftIcon size={14} />
+                      </div>
+                      <div className="event-card__members-left">
+                        <EventCardAvatarStrip
+                          members={members}
+                          visibleMembers={visibleMembers}
+                          hiddenMembersCount={hiddenMembersCount}
+                        />
+                      </div>
+                    </div>
+                  ) : isPoll && hasEnded ? (
+                    <div className="event-card__poll-ended">
+                      <div className="event-card__poll-ended-icon">
+                        <ChartBarIcon size={14} />
+                      </div>
+                      <div className="event-card__members-left">
+                        <EventCardAvatarStrip
+                          members={members}
+                          visibleMembers={visibleMembers}
+                          hiddenMembersCount={hiddenMembersCount}
+                        />
+                      </div>
                     </div>
                   ) : (
-                  <div className="event-card__members-bar">
-                    <div className="event-card__members-left">
-                      <EventCardAvatarStrip
-                        members={members}
-                        visibleMembers={visibleMembers}
-                        hiddenMembersCount={hiddenMembersCount}
-                      />
+                    <div className="event-card__members-bar">
+                      <div className="event-card__members-left">
+                        <EventCardAvatarStrip
+                          members={members}
+                          visibleMembers={visibleMembers}
+                          hiddenMembersCount={hiddenMembersCount}
+                        />
+                      </div>
                     </div>
-                  </div>
                   )}
 
-                  {/* ── Actions ── */}
+                  {/* ── Footer: Sign-up button ── */}
                   {canInteract && !isPoll ? (
-                  <div className="event-card__actions" onClick={(e) => e.stopPropagation()}>
-                    <DepthToggle
-                      pressed={isJoined}
-                      onToggle={(joined) => {
-                        if (joined) {
-                          onJoinEvent(event.id);
-                        } else {
-                          onLeaveEvent(event.id);
-                        }
-                      }}
-                      type="primary"
-                      size="xs"
-                      disabled={participantActionDisabled}
-                      tooltip={isJoined ? t("button.leave") : t("button.join")}
-                    >
-                      {isJoined ? <IconUserMinus size={14} /> : <UserPlusIcon size={14} />}
-                      {isJoined ? t("button.leave") : t("button.join")}
-                    </DepthToggle>
-                    <DepthButton
-                      onClick={() => onCopyMentions(event)}
-                      type="secondary"
-                      size="sm"
-                      disabled={members.length === 0}
-                      tooltip={t("card.copyMentions")}
-                      iconOnly
-                      before={<CopyIcon size={14} />}
-                    />
-                  </div>
+                    <div className="event-card__footer" onClick={(e) => e.stopPropagation()}>
+                      <DepthToggle
+                        pressed={isJoined}
+                        onToggle={(joined) => {
+                          if (joined) {
+                            onJoinEvent(event.id);
+                          } else {
+                            onLeaveEvent(event.id);
+                          }
+                        }}
+                        type="primary"
+                        size="xs"
+                        disabled={participantActionDisabled}
+                        tooltip={isJoined ? t("button.leave") : t("button.join")}
+                      >
+                        {isJoined ? <UserMinusIcon size={14} /> : <UserPlusIcon size={14} />}
+                        {isJoined ? t("button.leave") : t("button.join")}
+                      </DepthToggle>
+                    </div>
                   ) : null}
                 </Stack>
               </div>
@@ -483,6 +512,8 @@ export function EventCardsView({
         onRemoveParticipant={onRemoveParticipant}
         onVotePoll={onVotePoll}
         votePending={votePending}
+        onDrawRaffle={onDrawRaffle}
+        drawRafflePending={drawRafflePending}
       />
 
       {/* ── Archive Confirmation Modal ── */}

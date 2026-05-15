@@ -108,7 +108,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                     onClick={() =>
                       modals.openConfirmModal({
                         title: t("confirm.deleteAvatar.title"),
-                        children: <Text size="sm">{t("confirm.deleteAvatar.description")}</Text>,
+                        children: <Text size="sm">{t("confirm.deleteAvatar.description", { username: member.user.username })}</Text>,
                         labels: { confirm: t("media.removeAvatar"), cancel: t("common:cancel") },
                         confirmProps: { color: "red" },
                         onConfirm: onDeleteAvatar,
@@ -251,7 +251,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                   onClick={() =>
                     modals.openConfirmModal({
                       title: t("confirm.deleteAudio.title"),
-                      children: <Text size="sm">{t("confirm.deleteAudio.description")}</Text>,
+                      children: <Text size="sm">{t("confirm.deleteAudio.description", { username: member.user.username })}</Text>,
                       labels: { confirm: t("media.removeAudio"), cancel: t("common:cancel") },
                       confirmProps: { color: "red" },
                       onConfirm: onDeleteAudio,

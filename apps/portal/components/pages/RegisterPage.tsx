@@ -1,25 +1,27 @@
-import type { MemberProfile, User } from "@guild/shared";
 import { registerSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { BubbleBackground, GlassEffect, GradientText, LampHeading, MagneticElement } from "@portal/components/effects";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { ArrowLeftIcon, EyeIcon, EyeOffIcon } from "@portal/components/icons";
-import { IconKeyboard } from "@tabler/icons-react";
+import { ArrowLeftIcon, EyeIcon, EyeOffIcon, KeyboardIcon } from "@portal/components/icons";
 import { Alert, Anchor, Loader, Stack, Text, TextInput } from "@mantine/core";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
-import { apiRequest, isApiRequestError } from "../../api/client";
 import { queryKeys } from "../../api/query-keys";
+import {
+  checkUsername,
+  isApiRequestError,
+  register as requestRegister,
+  verifyInvite,
+} from "../../services/AuthService";
 import { useAuthStore } from "../../stores/auth";
 import { useSiteConfigStore } from "../../stores/site-config";
 import "./AuthPages.css";
 
-type AuthSessionResponse = { user: User; profile: MemberProfile };
 type RegisterFormValues = z.infer<typeof registerSchema>;
 type FieldErrorMap = Record<string, string>;
 
@@ -70,7 +72,7 @@ export function RegisterPage() {
 
   const inviteQuery = useQuery({
     queryKey: queryKeys.auth.verifyInvite(inviteCode),
-    queryFn: () => apiRequest<{ valid: boolean }>(`/api/auth/verify-invite/${encodeURIComponent(inviteCode)}`),
+    queryFn: () => verifyInvite(inviteCode),
     retry: false,
     staleTime: 60_000,
   });
@@ -103,20 +105,11 @@ export function RegisterPage() {
   const usernameAvailabilityQuery = useQuery({
     queryKey: queryKeys.auth.usernameAvailability(debouncedUsername),
     enabled: debouncedUsername.length >= 3,
-    queryFn: () =>
-      apiRequest<{ available: boolean; reason?: string }>(
-        `/api/auth/check-username?username=${encodeURIComponent(debouncedUsername)}`,
-      ),
+    queryFn: () => checkUsername(debouncedUsername),
   });
 
   const registerMutation = useMutation({
-    mutationFn: async (values: RegisterFormValues) => {
-      await apiRequest<{ user: User }>(`/api/auth/register/${inviteCode}`, {
-        method: "POST",
-        bodyJson: values,
-      });
-      return apiRequest<AuthSessionResponse>("/api/auth/me");
-    },
+    mutationFn: (values: RegisterFormValues) => requestRegister(inviteCode, values),
     onSuccess: (session) => {
       setSession(session.user, session.profile);
       void navigate({ to: "/" });
@@ -250,7 +243,7 @@ export function RegisterPage() {
                     />
                     <div className="login-page__password-actions">
                       {isCapsLockOn ? (
-                        <IconKeyboard size={18} className="login-page__caps-icon" />
+                        <KeyboardIcon size={18} className="login-page__caps-icon" />
                       ) : null}
                       <button
                         type="button"
@@ -281,7 +274,7 @@ export function RegisterPage() {
                     />
                     <div className="login-page__password-actions">
                       {isCapsLockOn ? (
-                        <IconKeyboard size={18} className="login-page__caps-icon" />
+                        <KeyboardIcon size={18} className="login-page__caps-icon" />
                       ) : null}
                       <button
                         type="button"

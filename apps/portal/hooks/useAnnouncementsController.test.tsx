@@ -8,6 +8,7 @@ import { useAnnouncementsController } from "./useAnnouncementsController";
 const serviceMocks = vi.hoisted(() => ({
   archiveAnnouncement: vi.fn(),
   createAnnouncement: vi.fn(),
+  deleteAnnouncement: vi.fn(),
   fetchAnnouncement: vi.fn(),
   fetchAnnouncements: vi.fn(),
   updateAnnouncement: vi.fn(),
@@ -17,6 +18,7 @@ const serviceMocks = vi.hoisted(() => ({
 vi.mock("../services/AnnouncementService", () => ({
   archiveAnnouncement: serviceMocks.archiveAnnouncement,
   createAnnouncement: serviceMocks.createAnnouncement,
+  deleteAnnouncement: serviceMocks.deleteAnnouncement,
   fetchAnnouncement: serviceMocks.fetchAnnouncement,
   fetchAnnouncements: serviceMocks.fetchAnnouncements,
   updateAnnouncement: serviceMocks.updateAnnouncement,
@@ -85,5 +87,58 @@ describe("useAnnouncementsController", () => {
 
     await waitFor(() => expect(serviceMocks.createAnnouncement).toHaveBeenCalled());
     expect(serviceMocks.createAnnouncement.mock.calls[0]?.[0]).not.toHaveProperty("expires_at");
+  });
+
+  it("keeps the announcement detail empty after deleting the selected announcement", async () => {
+    const announcements = [
+      {
+        id: "announcement-1",
+        title: "First",
+        body_json: "{}",
+        pinned: false,
+        status: "published",
+        publish_at: null,
+        expires_at: null,
+        archived_at: null,
+        created_by: "user-1",
+        updated_by: null,
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        id: "announcement-2",
+        title: "Second",
+        body_json: "{}",
+        pinned: false,
+        status: "published",
+        publish_at: null,
+        expires_at: null,
+        archived_at: null,
+        created_by: "user-1",
+        updated_by: null,
+        created_at: "2026-01-02T00:00:00.000Z",
+        updated_at: "2026-01-02T00:00:00.000Z",
+      },
+    ];
+    serviceMocks.fetchAnnouncements.mockResolvedValue({ data: announcements, total: announcements.length });
+    serviceMocks.fetchAnnouncement.mockResolvedValue(announcements[0]);
+    serviceMocks.deleteAnnouncement.mockResolvedValue({ ok: true });
+
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.selectedId).toBe("announcement-2"));
+
+    act(() => {
+      result.current.setSelectedId("announcement-1");
+    });
+    await waitFor(() => expect(result.current.selectedId).toBe("announcement-1"));
+
+    act(() => {
+      result.current.handleDelete();
+    });
+
+    await waitFor(() => expect(serviceMocks.deleteAnnouncement).toHaveBeenCalled());
+    expect(serviceMocks.deleteAnnouncement.mock.calls[0]?.[0]).toBe("announcement-1");
+    await waitFor(() => expect(result.current.selectedId).toBeNull());
   });
 });
