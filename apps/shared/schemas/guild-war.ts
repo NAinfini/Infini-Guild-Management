@@ -40,7 +40,8 @@ export const updateWarHistorySchema = createWarHistorySchema.partial();
 
 export const warTeamSchema = z.object({
   id: z.string(),
-  war_history_id: z.string(),
+  war_history_id: z.string().nullable(),
+  event_id: z.string().nullable(),
   team_name: z.string(),
   sort_order: z.number().int(),
   notes: z.string().nullable(),
@@ -106,9 +107,27 @@ export const updateGuildWarRoleTagsSchema = z.object({
   ).min(1).max(100),
 });
 
+export const concludeWarPayloadSchema = z.object({
+  event_id: z.string(),
+  war_info: z.object({
+    enemy_name: z.string().max(L.warEnemyName.max).optional(),
+    result: z.enum(WAR_RESULTS),
+    duration_minutes: z.number().positive().nullable().optional(),
+    own_stats: z.record(z.string(), z.number().int().nullable()).optional(),
+    enemy_stats: z.record(z.string(), z.number().int().nullable()).optional(),
+  }),
+  member_stats: z.array(
+    z.object({
+      user_id: z.string(),
+      stats: z.record(z.string(), z.number().int()),
+    }),
+  ).optional(),
+});
+
 const guildWarActivePoolMemberSchema = z.object({
   id: z.string(),
-  warHistoryId: z.string(),
+  warHistoryId: z.string().nullable(),
+  eventId: z.string().nullable(),
   userId: z.string(),
 });
 

@@ -263,6 +263,7 @@ export function ConcludeWarModal({
             leftSection={<FlagIcon size={16} />}
             onClick={handleSubmit}
             loading={pending}
+            disabled={!warInfo.result}
           >
             {t("conclude.submit")}
           </Button>

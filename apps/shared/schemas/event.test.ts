@@ -108,6 +108,20 @@ describe("event schemas", () => {
     }).success).toBe(false);
   });
 
+  it("rejects events where end_at is before start_at", () => {
+    expect(createEventSchema.safeParse({
+      type: "social",
+      title: "Guild Run",
+      start_at: "2026-05-07T21:00:00.000Z",
+      end_at: "2026-05-07T19:00:00.000Z",
+    }).success).toBe(false);
+
+    expect(updateEventSchema.safeParse({
+      start_at: "2026-05-07T21:00:00.000Z",
+      end_at: "2026-05-07T19:00:00.000Z",
+    }).success).toBe(false);
+  });
+
   it("parses poll detail and vote payloads", () => {
     expect(eventPollSchema.parse({
       results_visibility: "always",

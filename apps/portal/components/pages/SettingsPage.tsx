@@ -143,7 +143,7 @@ export function SettingsPage() {
       title: t("reset.confirmTitle"),
       children: <Text size="sm">{t("reset.confirm")}</Text>,
       confirmProps: { color: "red" },
-      labels: { confirm: t("reset.button"), cancel: "" },
+      labels: { confirm: t("reset.button"), cancel: t("common:action.cancel") },
       onConfirm: () => {
         resetPreferences();
         setTheme("light");

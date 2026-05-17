@@ -25,7 +25,14 @@ type AudioContextWindow = Window & {
 const SIGNAL_DEDUPE_MS = 10_000;
 const SIGNAL_TONE_MS = 120;
 
-function resolveSignalPayload(message: PushMessage): PushSignalPayload | null {
+function resolveHintMessage(hint: string, t: (key: string, options?: Record<string, unknown>) => string): string {
+  const key = `notification.hint.${hint}`;
+  const translated = t(key, { defaultValue: "" });
+  if (translated && translated !== key) return translated;
+  return hint.replace(/_/g, " ");
+}
+
+function resolveSignalPayload(message: PushMessage, t: (key: string, options?: Record<string, unknown>) => string): PushSignalPayload | null {
   if (message.type === "announcement_published") {
     return {
       key: `announcement:${message.announcement_id}`,
@@ -42,7 +49,7 @@ function resolveSignalPayload(message: PushMessage): PushSignalPayload | null {
         return {
           key: `event:${message.entity_id}:${message.hint}`,
           titleKey: "notification.type.eventReminder",
-          message: message.hint.replace(/_/g, " "),
+          message: resolveHintMessage(message.hint, t),
           color: "yellow",
           frequencyHz: 660,
         };
@@ -50,7 +57,7 @@ function resolveSignalPayload(message: PushMessage): PushSignalPayload | null {
         return {
           key: `wiki:${message.entity_id}:${message.hint}`,
           titleKey: "notification.type.wiki",
-          message: message.hint.replace(/_/g, " "),
+          message: resolveHintMessage(message.hint, t),
           color: "blue",
           frequencyHz: 660,
         };
@@ -58,7 +65,7 @@ function resolveSignalPayload(message: PushMessage): PushSignalPayload | null {
         return {
           key: `member:${message.entity_id}:${message.hint}`,
           titleKey: "notification.type.memberOnline",
-          message: message.hint.replace(/_/g, " "),
+          message: resolveHintMessage(message.hint, t),
           color: "yellow",
           frequencyHz: 660,
         };
@@ -124,7 +131,7 @@ export function useNotificationPresentation(options: UseNotificationPresentation
       return;
     }
 
-    const payload = resolveSignalPayload(lastSignalMessage);
+    const payload = resolveSignalPayload(lastSignalMessage, t);
     if (!payload) {
       return;
     }

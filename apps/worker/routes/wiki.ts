@@ -14,7 +14,7 @@ import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { WikiService } from "../services/WikiService";
-import { buildError, handleResult, parseBoolean, parsePage } from "./_shared";
+import { buildError, handleResult, parseBoolean, parsePage, safeFormData } from "./_shared";
 
 export const wikiRoutes = new Hono();
 
@@ -149,7 +149,9 @@ wikiRoutes.post("/articles/:id/images", async (c) => {
   const sessionUser = await requireWikiArticlesEdit(c);
   if (sessionUser instanceof Response) return sessionUser;
 
-  const form = await c.req.formData();
+  const formOrError = await safeFormData(c);
+  if (formOrError instanceof Response) return formOrError;
+  const form = formOrError;
   const files: File[] = [];
   const single = form.get("file");
   if (single instanceof File) files.push(single);

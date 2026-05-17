@@ -13,6 +13,7 @@
   "search.aria.usernameOnly": "按用户名搜索",
   "filter.class.placeholder": "筛选职业",
   "filter.class.aria": "按职业筛选成员",
+  "filter.toggle": "筛选开关",
   "sort.aria": "成员排序",
   "sort.powerDesc": "战力（降序）",
   "sort.usernameAsc": "用户名（A-Z）",

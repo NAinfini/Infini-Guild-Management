@@ -136,6 +136,10 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
     const map = new Map<
       string,
       {
+        username: string;
+        power: number;
+        classes: string[];
+        titleHtml: string | null;
         teamName: string;
         roleTag: string | null;
         kills: number;
@@ -151,7 +155,13 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
     for (const team of orderedTeams) {
       const teamName = (teamDraftNames[team.id] ?? team.team_name).trim() || team.team_name;
       for (const member of team.members) {
+        const userData = userDataMap.get(member.user_id);
+        const fullUser = (usersData ?? []).find((u) => u.user.id === member.user_id);
         map.set(member.user_id, {
+          username: userData?.username ?? member.user_id,
+          power: userData?.power ?? 0,
+          classes: fullUser?.profile.classes ?? (userData?.class ? [userData.class] : []),
+          titleHtml: fullUser?.profile.title_html ?? null,
           teamName,
           roleTag: member.role_tag ?? null,
           kills: member.stats?.kills ?? 0,
@@ -167,7 +177,13 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
 
     for (const member of pool) {
       if (!map.has(member.userId)) {
+        const userData = userDataMap.get(member.userId);
+        const fullUser = (usersData ?? []).find((u) => u.user.id === member.userId);
         map.set(member.userId, {
+          username: userData?.username ?? member.userId,
+          power: userData?.power ?? 0,
+          classes: fullUser?.profile.classes ?? (userData?.class ? [userData.class] : []),
+          titleHtml: fullUser?.profile.title_html ?? null,
           teamName: "Pool",
           roleTag: null,
           kills: 0, deaths: 0, assists: 0, damage: 0, healing: 0, buildingDamage: 0, credits: 0,
@@ -176,7 +192,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
     }
 
     return map;
-  }, [orderedTeams, pool, teamDraftNames]);
+  }, [orderedTeams, pool, teamDraftNames, userDataMap, usersData]);
 
   const dragColumns = useMemo<DragMemberColumn[]>(() => {
     const teamColumns = orderedTeams.map((team) => ({

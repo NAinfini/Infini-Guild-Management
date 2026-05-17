@@ -13,6 +13,7 @@
   "search.aria.usernameOnly": "Search by username",
   "filter.class.placeholder": "Filter class",
   "filter.class.aria": "Filter roster by class",
+  "filter.toggle": "Toggle filters",
   "sort.aria": "Sort roster",
   "sort.powerDesc": "Power (desc)",
   "sort.usernameAsc": "Username (A-Z)",

@@ -5,7 +5,7 @@ type AnalyticsMode = "player" | "rankings" | "teams" | "radar";
 type AnalyticsMetricKey = string;
 type AnalyticsAggregation = "total" | "average" | "best" | "median";
 export type AnalyticsDatePreset = "5" | "10" | "20" | "all";
-type HistoryViewMode = "table" | "chart";
+export type HistoryViewMode = "table" | "chart";
 type TeamAggregation = "total" | "average";
 type ModifierWeights = Record<string, number>;
 

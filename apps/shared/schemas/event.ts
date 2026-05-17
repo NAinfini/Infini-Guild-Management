@@ -91,6 +91,9 @@ const eventMutationSchema = z.object({
 });
 
 export const createEventSchema = eventMutationSchema.superRefine((value, ctx) => {
+  if (value.end_at && value.end_at <= value.start_at) {
+    ctx.addIssue({ code: "custom", path: ["end_at"], message: "end_at must be after start_at" });
+  }
   if (value.type === "poll") {
     if (!value.end_at) {
       ctx.addIssue({ code: "custom", path: ["end_at"], message: "Poll events require end_at" });
@@ -128,6 +131,9 @@ export const updateEventSchema = eventMutationSchema.partial().extend({
   archived_at: z.string().datetime().nullable().optional(),
   recurrence_scope: z.enum(["this", "future", "all"]).optional(),
 }).superRefine((value, ctx) => {
+  if (value.start_at && value.end_at && value.end_at <= value.start_at) {
+    ctx.addIssue({ code: "custom", path: ["end_at"], message: "end_at must be after start_at" });
+  }
   if (value.type === "poll") {
     if (value.end_at === undefined) {
       ctx.addIssue({ code: "custom", path: ["end_at"], message: "Poll events require end_at" });

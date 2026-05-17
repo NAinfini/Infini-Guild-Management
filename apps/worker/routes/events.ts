@@ -17,7 +17,6 @@ import { writeAuditLog } from "../services/audit";
 import { users } from "../db/schema";
 import {
   EventService,
-  EventServiceValidationError,
   toEventPayload,
   toParticipantPayload,
   toRaffleWinnerPayload,
@@ -62,15 +61,15 @@ function collectFiles(form: FormData): File[] {
   return files;
 }
 
-async function parseCreateEventRequest(c: Context): Promise<{ body: unknown; files: File[] }> {
+async function parseCreateEventRequest(c: Context): Promise<{ body: unknown; files: File[] } | Response> {
   const ct = c.req.header("content-type") ?? "";
   if (ct.includes("multipart/form-data")) {
     const form = await c.req.formData();
     const raw = form.get("data");
-    if (typeof raw !== "string" || !raw.trim()) throw new EventServiceValidationError("Missing data payload");
-    try { return { body: JSON.parse(raw), files: collectFiles(form) }; } catch { throw new EventServiceValidationError("Invalid JSON body"); }
+    if (typeof raw !== "string" || !raw.trim()) return buildError(c, "VALIDATION_ERROR", "Missing data payload");
+    try { return { body: JSON.parse(raw), files: collectFiles(form) }; } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
   }
-  try { return { body: await c.req.json(), files: [] }; } catch { throw new EventServiceValidationError("Invalid JSON body"); }
+  try { return { body: await c.req.json(), files: [] }; } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
 }
 
 async function materializeRecurringSeries(c: Context, _templateId: string): Promise<void> {
@@ -134,15 +133,14 @@ eventsRoutes.get("/:id", async (c) => {
 eventsRoutes.post("/", async (c) => {
   const sessionUser = await requireEventCreate(c);
   if (sessionUser instanceof Response) return sessionUser;
-  try {
-    const { body, files } = await parseCreateEventRequest(c);
-    const parsed = createEventSchema.safeParse(body);
-    if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid create event payload", parsed.error.flatten());
-    return c.json(toEventPayload(await getEventService(c).createEvent(sessionUser.id, parsed.data, files)), 201);
-  } catch (e) {
-    if (e instanceof EventServiceValidationError) return buildError(c, "VALIDATION_ERROR", e.message);
-    throw e;
-  }
+  const parsed_req = await parseCreateEventRequest(c);
+  if (parsed_req instanceof Response) return parsed_req;
+  const { body, files } = parsed_req;
+  const parsed = createEventSchema.safeParse(body);
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid create event payload", parsed.error.flatten());
+  const result = await getEventService(c).createEvent(sessionUser.id, parsed.data, files);
+  if (!result.ok) return buildError(c, result.code, result.message);
+  return c.json(toEventPayload(result.data), 201);
 });
 
 eventsRoutes.patch("/:id", async (c) => {
@@ -155,12 +153,9 @@ eventsRoutes.patch("/:id", async (c) => {
   if (body instanceof Response) return body;
   const parsed = updateEventSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid update event payload", parsed.error.flatten());
-  try {
-    return c.json(toEventPayload(await svc.updateEvent(sessionUser.id, existing.id, existing, parsed.data)));
-  } catch (e) {
-    if (e instanceof EventServiceValidationError) return buildError(c, "VALIDATION_ERROR", e.message);
-    throw e;
-  }
+  const result = await svc.updateEvent(sessionUser.id, existing.id, existing, parsed.data);
+  if (!result.ok) return buildError(c, result.code, result.message);
+  return c.json(toEventPayload(result.data));
 });
 
 eventsRoutes.delete("/:id", async (c) => {
@@ -189,13 +184,9 @@ eventsRoutes.post("/:id/images", async (c) => {
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Event not found");
-  try {
-    const { keys, attachments } = await svc.uploadEventImages(sessionUser.id, existing.id, existing, collectFiles(await c.req.formData()));
-    return c.json({ keys, attachments });
-  } catch (e) {
-    if (e instanceof EventServiceValidationError) return buildError(c, "VALIDATION_ERROR", e.message);
-    throw e;
-  }
+  const result = await svc.uploadEventImages(sessionUser.id, existing.id, existing, collectFiles(await c.req.formData()));
+  if (!result.ok) return buildError(c, result.code, result.message);
+  return c.json(result.data);
 });
 
 eventsRoutes.post("/:id/join", async (c) => {
@@ -267,12 +258,9 @@ eventsRoutes.post("/templates", async (c) => {
   if (body instanceof Response) return body;
   const parsed = createTemplateSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid template payload", parsed.error.flatten());
-  try {
-    return c.json(toTemplatePayload(await getEventService(c).createTemplate(sessionUser.id, parsed.data)), 201);
-  } catch (e) {
-    if (e instanceof EventServiceValidationError) return buildError(c, "VALIDATION_ERROR", e.message);
-    throw e;
-  }
+  const result = await getEventService(c).createTemplate(sessionUser.id, parsed.data);
+  if (!result.ok) return buildError(c, result.code, result.message);
+  return c.json(toTemplatePayload(result.data), 201);
 });
 
 eventsRoutes.patch("/templates/:id", async (c) => {
@@ -285,12 +273,9 @@ eventsRoutes.patch("/templates/:id", async (c) => {
   if (body instanceof Response) return body;
   const parsed = updateTemplateSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid template update payload", parsed.error.flatten());
-  try {
-    return c.json(toTemplatePayload(await svc.updateTemplate(sessionUser.id, existing.id, existing, parsed.data)));
-  } catch (e) {
-    if (e instanceof EventServiceValidationError) return buildError(c, "VALIDATION_ERROR", e.message);
-    throw e;
-  }
+  const result = await svc.updateTemplate(sessionUser.id, existing.id, existing, parsed.data);
+  if (!result.ok) return buildError(c, result.code, result.message);
+  return c.json(toTemplatePayload(result.data));
 });
 
 eventsRoutes.post("/templates/:id/pause", async (c) => {

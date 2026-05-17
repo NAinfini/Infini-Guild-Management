@@ -78,6 +78,7 @@ export const queryKeys = {
     analytics: (warIdsKey: string) => [...queryKeys.guildWar.all, "analytics", warIdsKey] as const,
     analyticsDetails: (warIdsKey: string) => [...queryKeys.guildWar.all, "analytics-details", warIdsKey] as const,
     analyticsDetailsAll: () => [...queryKeys.guildWar.all, "analytics-details"] as const,
+    concludedEventIds: () => [...queryKeys.guildWar.all, "concluded-event-ids"] as const,
   },
   wiki: {
     all: ["wiki"] as const,

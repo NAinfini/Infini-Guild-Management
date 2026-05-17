@@ -53,6 +53,7 @@ export function useEventsMutations({
   const invalidateEventsAndDashboard = async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
     await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.guildWar.events() });
   };
 
   const resetAttachmentItems = useCallback(() => {

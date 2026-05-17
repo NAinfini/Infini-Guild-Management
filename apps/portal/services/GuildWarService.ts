@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import {
   batchUpdateGuildWarMemberStats,
   batchDeleteGuildWarHistory,
+  concludeGuildWar,
   deleteGuildWarHistory,
   moveGuildWarMember,
   saveGuildWarTeams as saveGuildWarTeamsMutation,
@@ -16,6 +17,7 @@ import {
   downloadGuildWarExport,
   fetchGuildWarActive,
   fetchGuildWarAnalytics,
+  fetchGuildWarConcludedEventIds,
   fetchGuildWarHistory,
   fetchGuildWarHistoryBatch,
   fetchGuildWarHistoryDetail,
@@ -24,10 +26,12 @@ import {
 export {
   batchDeleteGuildWarHistory,
   batchUpdateGuildWarMemberStats,
+  concludeGuildWar,
   deleteGuildWarHistory,
   downloadGuildWarExport,
   fetchGuildWarActive,
   fetchGuildWarAnalytics,
+  fetchGuildWarConcludedEventIds,
   fetchGuildWarHistory,
   fetchGuildWarHistoryBatch,
   fetchGuildWarHistoryDetail,
@@ -36,6 +40,9 @@ export {
   updateGuildWarRoleTag,
   updateGuildWarRoleTags,
 };
+
+export const guildWarQueryKeys = queryKeys.guildWar;
+export const usersQueryKeys = queryKeys.users;
 
 export const ANALYTICS_SELECTION_SOFT_CAP = 10;
 const ANALYTICS_SELECTION_HARD_CAP = 20;

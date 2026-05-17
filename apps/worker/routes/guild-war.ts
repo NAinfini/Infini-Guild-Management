@@ -1,4 +1,5 @@
 import {
+  concludeWarPayloadSchema,
   createWarHistorySchema,
   moveGuildWarMemberSchema,
   saveTeamsPayloadSchema,
@@ -13,7 +14,7 @@ import type { Bindings } from "../index";
 import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
-import { GuildWarService, toWarHistoryPayload } from "../services/GuildWarService";
+import { GuildWarService } from "../services/GuildWarService";
 import { buildError, handleResult, parsePage } from "./_shared";
 
 export const guildWarRoutes = new Hono();
@@ -43,6 +44,11 @@ guildWarRoutes.get("/active", async (c) => {
   return handleResult(c, result);
 });
 
+guildWarRoutes.get("/concluded-event-ids", async (c) => {
+  const ids = await getService(c).getConcludedEventIds();
+  return c.json({ data: ids });
+});
+
 guildWarRoutes.post("/save-teams", async (c) => {
   const user = await requireGuildWarTeamsEdit(c);
   if (user instanceof Response) return user;
@@ -53,8 +59,7 @@ guildWarRoutes.post("/save-teams", async (c) => {
   const etagFromHeader = c.req.header("If-Match");
   const conditionalEtag = etagFromHeader && etagFromHeader !== "*" ? etagFromHeader : undefined;
   const result = await getService(c).saveTeams(user.id, parsed.data, conditionalEtag);
-  if (!result.ok) return buildError(c, result.code, result.message, result.details);
-  return c.json(toWarHistoryPayload(result.data));
+  return handleResult(c, result);
 });
 
 guildWarRoutes.post("/move", async (c) => {
@@ -78,6 +83,17 @@ guildWarRoutes.patch("/role-tag", async (c) => {
   const parsed = updateGuildWarRoleTagsSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role tag update payload", parsed.error.flatten());
   const result = await getService(c).setRoleTags(user.id, parsed.data.event_id, parsed.data.updates);
+  return handleResult(c, result);
+});
+
+guildWarRoutes.post("/conclude", async (c) => {
+  const user = await requireGuildWarTeamsEdit(c);
+  if (user instanceof Response) return user;
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const parsed = concludeWarPayloadSchema.safeParse(body);
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid conclude payload", parsed.error.flatten());
+  const result = await getService(c).concludeWar(user.id, parsed.data.event_id, parsed.data.war_info, parsed.data.member_stats);
   return handleResult(c, result);
 });
 
@@ -156,17 +172,6 @@ guildWarRoutes.post("/history/batch-delete", async (c) => {
   return handleResult(c, result);
 });
 
-guildWarRoutes.patch("/history/:id/member-stats/:userId", async (c) => {
-  const user = await requireGuildWarHistoryEditor(c);
-  if (user instanceof Response) return user;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
-  const parsed = updateMemberStatsSchema.safeParse(body);
-  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid member stats payload", parsed.error.flatten());
-  const result = await getService(c).updateMemberStats(user.id, c.req.param("id"), c.req.param("userId"), parsed.data);
-  return handleResult(c, result);
-});
-
 guildWarRoutes.patch("/history/:id/member-stats/batch", async (c) => {
   const user = await requireGuildWarHistoryEditor(c);
   if (user instanceof Response) return user;
@@ -182,6 +187,17 @@ guildWarRoutes.patch("/history/:id/member-stats/batch", async (c) => {
     if (!statsParsed.success) return buildError(c, "VALIDATION_ERROR", `Invalid stats for user ${entry.user_id}`, statsParsed.error.flatten());
   }
   const result = await getService(c).batchUpdateMemberStats(user.id, c.req.param("id"), updates);
+  return handleResult(c, result);
+});
+
+guildWarRoutes.patch("/history/:id/member-stats/:userId", async (c) => {
+  const user = await requireGuildWarHistoryEditor(c);
+  if (user instanceof Response) return user;
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const parsed = updateMemberStatsSchema.safeParse(body);
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid member stats payload", parsed.error.flatten());
+  const result = await getService(c).updateMemberStats(user.id, c.req.param("id"), c.req.param("userId"), parsed.data);
   return handleResult(c, result);
 });
 

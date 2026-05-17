@@ -22,6 +22,7 @@ import {
 } from "../services/AnnouncementService";
 import { queryKeys } from "../api/query-keys";
 import { useEffectivePermissions } from "./useEffectivePermissions";
+import { toIsoOrUndefined } from "../utils/iso-dates";
 
 function buildAnnouncementImageUrl(key: string): string {
   if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:")) return key;
@@ -33,13 +34,6 @@ function buildAnnouncementImageUrl(key: string): string {
 const message = {
   success: (text: string) => notifications.show({ color: "green", message: text, autoClose: 3000 }),
 };
-
-function toIsoOrUndefined(value: string): string | undefined {
-  if (!value.trim()) return undefined;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return undefined;
-  return date.toISOString();
-}
 
 function toDateTimePickerValue(iso: string | null): string {
   if (!iso) return "";

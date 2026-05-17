@@ -8,7 +8,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
+  ActionIcon,
   Button,
+  Collapse,
   Group,
   MultiSelect,
   Select,
@@ -17,8 +19,9 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { useDebouncedValue, useLocalStorage } from "@mantine/hooks";
+import { useDebouncedValue, useDisclosure, useLocalStorage } from "@mantine/hooks";
 import { SearchIcon } from "@portal/components/icons";
+import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { motion } from "motion/react";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FocusEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -122,6 +125,8 @@ export function RosterPage() {
   const selectedRef = useRef(selected);
   const [windowWidth, setWindowWidth] = useState(() => typeof window === "undefined" ? 1920 : window.innerWidth);
   const virtualScrollRef = useRef<HTMLDivElement | null>(null);
+  const [filtersOpen, { toggle: toggleFilters }] = useDisclosure(false);
+  const isMobile = windowWidth < 768;
 
   useEffect(() => {
     const onResize = () => setWindowWidth(window.innerWidth);
@@ -302,41 +307,89 @@ export function RosterPage() {
     <PageLayout title={t("title")} subtitle={t("subtitle")} className="roster-page">
       <PortalCard className="roster-filter-card" interactive={false}>
         <div className="roster-filter-padding">
-        <Group wrap="wrap" gap="md" className="roster-filter-controls">
-          <TextInput
-            className="roster-search-input"
-            value={search}
-            placeholder={t("search.placeholder.usernameOnly")}
-            aria-label={t("search.aria.usernameOnly")}
-            onChange={(event) => setSearch(event.currentTarget.value)}
-            leftSection={<SearchIcon size={14} />}
-          />
-          <MultiSelect
-            className="roster-class-select"
-            value={classFilter}
-            onChange={setClassFilter}
-            data={CLASS_NAMES.map((className) => ({ value: className, label: className }))}
-            placeholder={t("filter.class.placeholder")}
-            aria-label={t("filter.class.aria")}
-            clearable
-            searchable
-          />
-          <Select
-            className="roster-sort-select"
-            value={sortMode}
-            aria-label={t("sort.aria")}
-            onChange={(value) => { if (value) setSortMode(value as RosterSortMode); }}
-            data={[
-              { value: "power", label: t("sort.powerDesc") },
-              { value: "username", label: t("sort.usernameAsc") },
-              { value: "class", label: t("sort.class") },
-            ]}
-          />
-          {audioControlContent}
-          <Text size="sm" c="dimmed" className="roster-count-text">
-            {t("count.showing", { visible: renderedRows.length, total: sortedRows.length })}
-          </Text>
-        </Group>
+          {isMobile ? (
+            <>
+              <Group gap="xs" wrap="nowrap" align="center">
+                <TextInput
+                  className="roster-search-input"
+                  value={search}
+                  placeholder={t("search.placeholder.usernameOnly")}
+                  aria-label={t("search.aria.usernameOnly")}
+                  onChange={(event) => setSearch(event.currentTarget.value)}
+                  leftSection={<SearchIcon size={14} />}
+                  style={{ flex: 1 }}
+                />
+                <ActionIcon variant={filtersOpen ? "filled" : "default"} size="lg" onClick={toggleFilters} aria-label={t("filter.toggle")}>
+                  <IconAdjustmentsHorizontal size={18} />
+                </ActionIcon>
+                <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                  {renderedRows.length}/{sortedRows.length}
+                </Text>
+              </Group>
+              <Collapse in={filtersOpen}>
+                <Group wrap="wrap" gap={6} mt={6} className="roster-filter-controls">
+                  <MultiSelect
+                    className="roster-class-select"
+                    value={classFilter}
+                    onChange={setClassFilter}
+                    data={CLASS_NAMES.map((className) => ({ value: className, label: className }))}
+                    placeholder={t("filter.class.placeholder")}
+                    aria-label={t("filter.class.aria")}
+                    clearable
+                    searchable
+                  />
+                  <Select
+                    className="roster-sort-select"
+                    value={sortMode}
+                    aria-label={t("sort.aria")}
+                    onChange={(value) => { if (value) setSortMode(value as RosterSortMode); }}
+                    data={[
+                      { value: "power", label: t("sort.powerDesc") },
+                      { value: "username", label: t("sort.usernameAsc") },
+                      { value: "class", label: t("sort.class") },
+                    ]}
+                  />
+                  {audioControlContent}
+                </Group>
+              </Collapse>
+            </>
+          ) : (
+            <Group wrap="wrap" gap="md" className="roster-filter-controls">
+              <TextInput
+                className="roster-search-input"
+                value={search}
+                placeholder={t("search.placeholder.usernameOnly")}
+                aria-label={t("search.aria.usernameOnly")}
+                onChange={(event) => setSearch(event.currentTarget.value)}
+                leftSection={<SearchIcon size={14} />}
+              />
+              <MultiSelect
+                className="roster-class-select"
+                value={classFilter}
+                onChange={setClassFilter}
+                data={CLASS_NAMES.map((className) => ({ value: className, label: className }))}
+                placeholder={t("filter.class.placeholder")}
+                aria-label={t("filter.class.aria")}
+                clearable
+                searchable
+              />
+              <Select
+                className="roster-sort-select"
+                value={sortMode}
+                aria-label={t("sort.aria")}
+                onChange={(value) => { if (value) setSortMode(value as RosterSortMode); }}
+                data={[
+                  { value: "power", label: t("sort.powerDesc") },
+                  { value: "username", label: t("sort.usernameAsc") },
+                  { value: "class", label: t("sort.class") },
+                ]}
+              />
+              {audioControlContent}
+              <Text size="sm" c="dimmed" className="roster-count-text">
+                {t("count.showing", { visible: renderedRows.length, total: sortedRows.length })}
+              </Text>
+            </Group>
+          )}
         </div>
       </PortalCard>
 

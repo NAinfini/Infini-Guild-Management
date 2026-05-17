@@ -13,7 +13,7 @@ import { modals } from "@mantine/modals";
 import { getCoreRowModel, getSortedRowModel, useReactTable } from "@portal/components/shared/InfiniTable";
 import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { activeGame } from "@guild/shared/games";
@@ -27,6 +27,46 @@ export type AnalyticsMetricKey = string;
 type EditableMetricKey = string;
 type MemberStatDraft = Record<string, number>;
 const EDITABLE_METRIC_KEYS: string[] = activeGame.war.memberStats.map((s) => s.key);
+
+function EditableStatCell({ value, onChange, decimalScale }: {
+  value: number;
+  onChange: (value: string | number) => void;
+  decimalScale?: number;
+}) {
+  const [editing, setEditing] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.select();
+  }, [editing]);
+
+  if (!editing) {
+    return (
+      <Text
+        size="xs"
+        style={{ cursor: "pointer", padding: "4px 6px", borderRadius: 4, minWidth: 40 }}
+        onClick={() => setEditing(true)}
+      >
+        {decimalScale != null ? value.toFixed(decimalScale) : value}
+      </Text>
+    );
+  }
+
+  return (
+    <NumberInput
+      ref={inputRef}
+      hideControls
+      min={0}
+      size="xs"
+      value={value}
+      onChange={(v) => { onChange(v); }}
+      onBlur={() => setEditing(false)}
+      onKeyDown={(e) => { if (e.key === "Enter") setEditing(false); }}
+      decimalScale={decimalScale}
+      autoFocus
+    />
+  );
+}
 
 export type HistoryMemberStatsUpdate = {
   userId: string;
@@ -526,10 +566,7 @@ export function WarHistoryTab({
       accessorFn: (row) => row.stats?.kills ?? 0,
       cell: ({ row }) =>
         canManage ? (
-          <NumberInput
-            hideControls
-            min={0}
-            size="xs"
+          <EditableStatCell
             value={row.original.stats?.kills ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "kills", value)}
           />
@@ -541,10 +578,7 @@ export function WarHistoryTab({
       accessorFn: (row) => row.stats?.deaths ?? 0,
       cell: ({ row }) =>
         canManage ? (
-          <NumberInput
-            hideControls
-            min={0}
-            size="xs"
+          <EditableStatCell
             value={row.original.stats?.deaths ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "deaths", value)}
           />
@@ -556,10 +590,7 @@ export function WarHistoryTab({
       accessorFn: (row) => row.stats?.assists ?? 0,
       cell: ({ row }) =>
         canManage ? (
-          <NumberInput
-            hideControls
-            min={0}
-            size="xs"
+          <EditableStatCell
             value={row.original.stats?.assists ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "assists", value)}
           />
@@ -588,10 +619,7 @@ export function WarHistoryTab({
       accessorFn: (row) => row.stats?.damage ?? 0,
       cell: ({ row }) =>
         canManage ? (
-          <NumberInput
-            hideControls
-            min={0}
-            size="xs"
+          <EditableStatCell
             value={row.original.stats?.damage ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "damage", value)}
             decimalScale={2}
@@ -604,10 +632,7 @@ export function WarHistoryTab({
       accessorFn: (row) => row.stats?.healing ?? 0,
       cell: ({ row }) =>
         canManage ? (
-          <NumberInput
-            hideControls
-            min={0}
-            size="xs"
+          <EditableStatCell
             value={row.original.stats?.healing ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "healing", value)}
             decimalScale={2}
@@ -620,10 +645,7 @@ export function WarHistoryTab({
       accessorFn: (row) => row.stats?.building_damage ?? 0,
       cell: ({ row }) =>
         canManage ? (
-          <NumberInput
-            hideControls
-            min={0}
-            size="xs"
+          <EditableStatCell
             value={row.original.stats?.building_damage ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "building_damage", value)}
             decimalScale={2}
@@ -636,10 +658,7 @@ export function WarHistoryTab({
       accessorFn: (row) => row.stats?.credits ?? 0,
       cell: ({ row }) =>
         canManage ? (
-          <NumberInput
-            hideControls
-            min={0}
-            size="xs"
+          <EditableStatCell
             value={row.original.stats?.credits ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "credits", value)}
           />
@@ -651,10 +670,7 @@ export function WarHistoryTab({
       accessorFn: (row) => row.stats?.damage_taken ?? 0,
       cell: ({ row }) =>
         canManage ? (
-          <NumberInput
-            hideControls
-            min={0}
-            size="xs"
+          <EditableStatCell
             value={row.original.stats?.damage_taken ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, "damage_taken", value)}
             decimalScale={2}

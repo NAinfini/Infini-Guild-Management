@@ -1,9 +1,9 @@
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { PortalCard } from "../../shared/PortalCard";
 import { ActionIcon, Group, HoverCard, SegmentedControl, Select, Text, TextInput, ThemeIcon } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { CalendarOffIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
+import { FilterToolbar } from "../../shared/FilterToolbar";
 
 type GalleryFiltersCardProps = {
   typeFilter: "image" | "video" | undefined;
@@ -70,10 +70,21 @@ export function GalleryFiltersCard({
     }
   };
 
+  const hasActiveFilters = Boolean(typeFilter) || Boolean(dateFrom) || Boolean(dateTo) || Boolean(search.trim());
+
   return (
-    <PortalCard interactive={false}>
-      <div style={{ padding: "1.2rem" }}>
-        <Group gap={8} wrap="wrap" className="gallery-filters-card__row">
+    <FilterToolbar
+      active={hasActiveFilters}
+      primary={
+        <TextInput
+          value={search}
+          onChange={(event) => onSearchChange(event.currentTarget.value)}
+          placeholder={t("filter.searchPlaceholder")}
+          aria-label={t("aria.searchCaption")}
+        />
+      }
+      filters={
+        <>
           <Select
             clearable
             placeholder={filterTypeLabel}
@@ -94,46 +105,45 @@ export function GalleryFiltersCard({
               { value: "asc", label: t("sort.oldest") },
             ]}
           />
-          <TextInput
-            type="date"
-            value={dateFrom}
-            onChange={(event) => onDateFromChange(event.currentTarget.value)}
-            style={{ width: 170 }}
-            aria-label={t("aria.dateFrom")}
-          />
-          <TextInput
-            type="date"
-            value={dateTo}
-            onChange={(event) => onDateToChange(event.currentTarget.value)}
-            style={{ width: 170 }}
-            aria-label={t("aria.dateTo")}
-          />
-          <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-            <HoverCard.Target>
-              <ActionIcon variant="subtle" onClick={onClearDates} disabled={!dateFrom && !dateTo} aria-label={t("aria.clearDates")}>
-                <CalendarOffIcon size={18} />
-              </ActionIcon>
-            </HoverCard.Target>
-            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-              <Group gap={10} wrap="nowrap" align="flex-start">
-                <ThemeIcon variant="light" color="orange" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                  <CalendarOffIcon size={16} />
-                </ThemeIcon>
-                <div style={{ minWidth: 0 }}>
-                  <Text size="sm" fw={700} lh={1.3}>{t("hovercard.clearDates.title")}</Text>
-                  <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.clearDates.desc")}</Text>
-                </div>
-              </Group>
-            </HoverCard.Dropdown>
-          </HoverCard>
-          <TextInput
-            style={{ width: 220 }}
-            value={search}
-            onChange={(event) => onSearchChange(event.currentTarget.value)}
-            placeholder={t("filter.searchPlaceholder")}
-            aria-label={t("aria.searchCaption")}
-          />
-          <Group gap={8} wrap="wrap" className="gallery-filters-card__actions">
+          <Group gap={4} wrap="nowrap">
+            <TextInput
+              type="date"
+              value={dateFrom}
+              onChange={(event) => onDateFromChange(event.currentTarget.value)}
+              style={{ width: 150 }}
+              aria-label={t("aria.dateFrom")}
+            />
+            <TextInput
+              type="date"
+              value={dateTo}
+              onChange={(event) => onDateToChange(event.currentTarget.value)}
+              style={{ width: 150 }}
+              aria-label={t("aria.dateTo")}
+            />
+            <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+              <HoverCard.Target>
+                <ActionIcon variant="subtle" onClick={onClearDates} disabled={!dateFrom && !dateTo} aria-label={t("aria.clearDates")}>
+                  <CalendarOffIcon size={18} />
+                </ActionIcon>
+              </HoverCard.Target>
+              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                <Group gap={10} wrap="nowrap" align="flex-start">
+                  <ThemeIcon variant="light" color="orange" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                    <CalendarOffIcon size={16} />
+                  </ThemeIcon>
+                  <div style={{ minWidth: 0 }}>
+                    <Text size="sm" fw={700} lh={1.3}>{t("hovercard.clearDates.title")}</Text>
+                    <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.clearDates.desc")}</Text>
+                  </div>
+                </Group>
+              </HoverCard.Dropdown>
+            </HoverCard>
+          </Group>
+        </>
+      }
+      actions={
+        (canModerate || canUpload) ? (
+          <Group gap={8} wrap="wrap">
             {canModerate ? (
               <DepthButton
                 onClick={() => { void handleBulkDeleteConfirm(); }}
@@ -150,8 +160,8 @@ export function GalleryFiltersCard({
               </DepthButton>
             ) : null}
           </Group>
-        </Group>
-      </div>
-    </PortalCard>
+        ) : null
+      }
+    />
   );
 }

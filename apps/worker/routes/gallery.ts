@@ -13,7 +13,7 @@ import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { GalleryService } from "../services/GalleryService";
-import { buildError, handleResult, requireSessionUser } from "./_shared";
+import { buildError, handleResult, requireSessionUser, safeFormData } from "./_shared";
 
 export const galleryRoutes = new Hono();
 
@@ -87,7 +87,9 @@ galleryRoutes.post("/images", async (c) => {
   const sessionUser = await requireGalleryUploader(c);
   if (sessionUser instanceof Response) return sessionUser;
 
-  const form = await c.req.formData();
+  const formOrError = await safeFormData(c);
+  if (formOrError instanceof Response) return formOrError;
+  const form = formOrError;
   const files: File[] = [];
   const captionsRaw = form.getAll("captions");
   const single = form.get("file");

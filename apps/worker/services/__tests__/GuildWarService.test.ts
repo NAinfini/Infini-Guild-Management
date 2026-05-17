@@ -42,6 +42,7 @@ describe("GuildWarService helpers", () => {
     const payload = toTeamPayload({
       id: "team-1",
       warHistoryId: "war-1",
+      eventId: null,
       teamName: "Alpha",
       sortOrder: 0,
       notes: null,
@@ -117,13 +118,10 @@ describe("GuildWarService helpers", () => {
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),
       rawDb: { prepare, batch } as never,
     });
-    vi.spyOn(service, "ensureWarHistoryForEvent").mockResolvedValue({
-      ...historyRow,
-      updatedAt: "2026-03-08T12:00:00.000Z",
-    });
-    vi.spyOn(service, "getTeamsForHistory").mockResolvedValue([
-      { id: "team-1", warHistoryId: "war-1", teamName: "Alpha", sortOrder: 0, notes: null, isLocked: false },
+    vi.spyOn(service, "getTeamsForEvent").mockResolvedValue([
+      { id: "team-1", warHistoryId: null, eventId: "event-1", teamName: "Alpha", sortOrder: 0, notes: null, isLocked: false },
     ]);
+    vi.spyOn(service, "getMembersForTeams").mockResolvedValue([]);
 
     const result = await service.moveMembers("mod-1", "event-1", [
       { user_id: "u-1", to: "team-1" },
@@ -148,19 +146,16 @@ describe("GuildWarService helpers", () => {
     const writeAuditLog = vi.fn().mockResolvedValue(undefined);
     const select = vi.fn((fields: Record<string, unknown>) => ({
       from: vi.fn(() => ({
-        innerJoin: vi.fn(() => ({
-          where: vi.fn().mockResolvedValue([
-            { id: "member-1", userId: "u-1" },
-            { id: "member-2", userId: "u-2" },
-          ]),
-        })),
         where: vi.fn().mockResolvedValue(
           "username" in fields
             ? [
                 { id: "u-1", username: "Alpha" },
                 { id: "u-2", username: "Beta" },
               ]
-            : [],
+            : [
+                { id: "member-1", userId: "u-1" },
+                { id: "member-2", userId: "u-2" },
+              ],
         ),
       })),
     }));
@@ -170,18 +165,11 @@ describe("GuildWarService helpers", () => {
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),
       rawDb: { prepare, batch } as never,
     });
-    vi.spyOn(service, "getLatestWarHistory").mockResolvedValue({
-      ...historyRow,
-      updatedAt: "2026-03-08T12:00:00.000Z",
-    });
+    vi.spyOn(service, "getTeamsForEvent").mockResolvedValue([
+      { id: "team-1", warHistoryId: null, eventId: "event-1", teamName: "Alpha", sortOrder: 0, notes: null, isLocked: false },
+    ]);
 
-    const result = await (service as unknown as {
-      setRoleTags(
-        actorId: string,
-        eventId: string,
-        updates: Array<{ user_id: string; role_tag: string | null }>,
-      ): Promise<{ ok: true; data: { ok: true; updated: number } }>;
-    }).setRoleTags("mod-1", "event-1", [
+    const result = await service.setRoleTags("mod-1", "event-1", [
       { user_id: "u-1", role_tag: "tank" },
       { user_id: "u-2", role_tag: null },
     ]);

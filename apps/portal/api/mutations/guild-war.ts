@@ -1,4 +1,5 @@
 import {
+  concludeWarPayloadSchema,
   moveGuildWarMemberSchema,
   saveTeamsPayloadSchema,
   updateGuildWarRoleTagsSchema,
@@ -15,13 +16,22 @@ export type MoveGuildWarMemberPayload = z.input<typeof moveGuildWarMemberSchema>
 export type UpdateGuildWarRoleTagsPayload = z.input<typeof updateGuildWarRoleTagsSchema>;
 export type UpdateGuildWarMemberStatsPayload = z.input<typeof updateMemberStatsSchema>;
 export type UpdateWarHistoryPayload = z.input<typeof updateWarHistorySchema>;
+export type ConcludeWarPayload = z.input<typeof concludeWarPayloadSchema>;
 
-export function saveGuildWarTeams(payload: SaveTeamsPayload, etag?: string): Promise<WarHistory> {
+export function saveGuildWarTeams(payload: SaveTeamsPayload, etag?: string): Promise<{ ok: true }> {
   const bodyJson = saveTeamsPayloadSchema.parse(payload);
-  return apiRequest<WarHistory>("/api/guild-war/save-teams", {
+  return apiRequest<{ ok: true }>("/api/guild-war/save-teams", {
     method: "POST",
     bodyJson,
     ifMatch: etag,
+  });
+}
+
+export function concludeGuildWar(payload: ConcludeWarPayload): Promise<{ war_history_id: string }> {
+  const bodyJson = concludeWarPayloadSchema.parse(payload);
+  return apiRequest<{ war_history_id: string }>("/api/guild-war/conclude", {
+    method: "POST",
+    bodyJson,
   });
 }
 

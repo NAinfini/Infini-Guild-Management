@@ -467,7 +467,7 @@ export function EventCardsView({
                             onLeaveEvent(event.id);
                           }
                         }}
-                        type="primary"
+                        type={isJoined ? "danger" : "success"}
                         size="xs"
                         disabled={participantActionDisabled}
                         tooltip={isJoined ? t("button.leave") : t("button.join")}

@@ -7,6 +7,25 @@ import { useTranslation } from "react-i18next";
 import { parseAvailabilityRanges } from "../../utils/availability";
 import "./MemberCard.css";
 
+const BADGE_SANITIZE_OPTIONS = {
+  ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
+  ALLOWED_ATTR: ["style"],
+};
+
+const MemberBadge = memo(function MemberBadge({ badge }: { badge: UserBadge }) {
+  const sanitizedHtml = useMemo(
+    () => DOMPurify.sanitize(badge.label_html, BADGE_SANITIZE_OPTIONS),
+    [badge.label_html],
+  );
+  return (
+    <span
+      className="member-card__badge"
+      style={{ "--badge-color": badge.color } as React.CSSProperties}
+      dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+    />
+  );
+});
+
 type MemberCardProps = {
   user: User;
   profile: MemberProfile;
@@ -146,17 +165,7 @@ export const MemberCard = memo(function MemberCard({
             {profile.video_urls.length}
           </span>
           {badges?.map((badge) => (
-            <span
-              key={badge.id}
-              className="member-card__badge"
-              style={{ "--badge-color": badge.color } as React.CSSProperties}
-              dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(badge.label_html, {
-                  ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
-                  ALLOWED_ATTR: ["style"],
-                }),
-              }}
-            />
+            <MemberBadge key={badge.id} badge={badge} />
           ))}
         </div>
 

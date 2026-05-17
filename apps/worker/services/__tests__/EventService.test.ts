@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { EventService, EventServiceValidationError, parseAttachments } from "../EventService";
+import { EventService, parseAttachments } from "../EventService";
 
 function createEventRow(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -101,7 +101,9 @@ describe("worker EventService", () => {
         entityId: "evt-1",
       }),
     );
-    expect(parseAttachments(created.attachments)).toEqual(["events/evt-1/images/poster.png"]);
+    expect(created).toEqual(expect.objectContaining({ ok: true }));
+    const createdData = (created as { ok: true; data: { attachments: string } }).data;
+    expect(parseAttachments(createdData.attachments)).toEqual(["events/evt-1/images/poster.png"]);
   });
 
   it("updates event auto-archive settings", async () => {
@@ -145,12 +147,11 @@ describe("worker EventService", () => {
       },
     );
 
-    await expect(
-      service.updateEvent("mod-1", "evt-1", createEventRow(), {
-        start_at: "2026-03-20T21:00:00.000Z",
-        end_at: "2026-03-20T20:00:00.000Z",
-      }),
-    ).rejects.toBeInstanceOf(EventServiceValidationError);
+    const result = await service.updateEvent("mod-1", "evt-1", createEventRow(), {
+      start_at: "2026-03-20T21:00:00.000Z",
+      end_at: "2026-03-20T20:00:00.000Z",
+    });
+    expect(result).toEqual(expect.objectContaining({ ok: false, code: "VALIDATION_ERROR" }));
   });
 
   it("uploads additional event images and merges them with existing attachments", async () => {
@@ -181,7 +182,7 @@ describe("worker EventService", () => {
       [new File(["image"], "new.png", { type: "image/png" })],
     );
 
-    expect(result.attachments).toEqual(["events/existing.png", "events/evt-1/images/new.png"]);
+    expect((result as { ok: true; data: { attachments: string[] } }).data.attachments).toEqual(["events/existing.png", "events/evt-1/images/new.png"]);
     expect(updateSet).toHaveBeenCalledWith(
       expect.objectContaining({
         attachments: JSON.stringify(["events/existing.png", "events/evt-1/images/new.png"]),
@@ -418,19 +419,18 @@ describe("worker EventService", () => {
       now: () => "2026-03-08T12:00:00.000Z",
     });
 
-    await expect(
-      service.updateEvent("mod-1", "evt-1", createEventRow({ type: "poll", endAt: "2026-03-20T21:00:00.000Z" }), {
-        type: "poll",
-        title: "Next activity?",
-        start_at: "2026-03-20T19:00:00.000Z",
-        end_at: "2026-03-20T21:00:00.000Z",
-        poll: {
-          options: ["Dungeon", "Raid"],
-          results_visibility: "after_vote",
-          show_voter_names: false,
-        },
-      }),
-    ).rejects.toBeInstanceOf(EventServiceValidationError);
+    const result = await service.updateEvent("mod-1", "evt-1", createEventRow({ type: "poll", endAt: "2026-03-20T21:00:00.000Z" }), {
+      type: "poll",
+      title: "Next activity?",
+      start_at: "2026-03-20T19:00:00.000Z",
+      end_at: "2026-03-20T21:00:00.000Z",
+      poll: {
+        options: ["Dungeon", "Raid"],
+        results_visibility: "after_vote",
+        show_voter_names: false,
+      },
+    });
+    expect(result).toEqual(expect.objectContaining({ ok: false, code: "VALIDATION_ERROR" }));
   });
 
   it("applies search, pinned, locked, and all-status filters when listing events", async () => {

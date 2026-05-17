@@ -15,7 +15,8 @@ type WarTeamMember = {
 
 type WarTeam = {
   id: string;
-  war_history_id: string;
+  war_history_id: string | null;
+  event_id: string | null;
   team_name: string;
   sort_order: number;
   notes: string | null;
@@ -62,6 +63,10 @@ export function fetchGuildWarActive(eventId?: string): Promise<GuildWarActiveRes
   const query = new URLSearchParams();
   if (eventId) query.set("event_id", eventId);
   return apiRequest<GuildWarActiveResponse>(`/api/guild-war/active${query.size > 0 ? `?${query.toString()}` : ""}`);
+}
+
+export function fetchGuildWarConcludedEventIds(): Promise<{ data: string[] }> {
+  return apiRequest<{ data: string[] }>("/api/guild-war/concluded-event-ids");
 }
 
 export function fetchGuildWarHistory(params: {

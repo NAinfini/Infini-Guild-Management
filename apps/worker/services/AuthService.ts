@@ -34,7 +34,7 @@ export type AuthServiceDeps = {
 // --- Helpers ---
 
 function toUserPayload(user: UserRow, extra?: { permissions: Record<Permission, boolean> }) {
-  return userSchema.parse({
+  const result = userSchema.safeParse({
     id: user.id,
     username: user.username,
     role: user.role,
@@ -44,10 +44,14 @@ function toUserPayload(user: UserRow, extra?: { permissions: Record<Permission, 
     created_at: user.createdAt,
     updated_at: user.updatedAt,
   });
+  if (!result.success) {
+    throw new Error(`Invalid user data for id=${user.id}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
+  }
+  return result.data;
 }
 
 function toProfilePayload(profile: ProfileRow) {
-  return memberProfileSchema.parse({
+  const result = memberProfileSchema.safeParse({
     id: profile.id, user_id: profile.userId, power: profile.power,
     classes: parseStringArray(profile.classes), title_html: profile.titleHtml, bio: profile.bio,
     avatar_key: profile.avatarKey ?? null, images: parseStringArray(profile.images), audio_key: profile.audioKey, video_urls: parseStringArray(profile.videoUrls),
@@ -55,6 +59,10 @@ function toProfilePayload(profile: ProfileRow) {
     notes: profile.notes,
     created_at: profile.createdAt, updated_at: profile.updatedAt,
   });
+  if (!result.success) {
+    throw new Error(`Invalid profile data for user_id=${profile.userId}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
+  }
+  return result.data;
 }
 
 const USER_COLS = { id: users.id, username: users.username, role: users.role, isActive: users.isActive, deletedAt: users.deletedAt, createdAt: users.createdAt, updatedAt: users.updatedAt } as const;

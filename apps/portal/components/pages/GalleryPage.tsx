@@ -240,10 +240,9 @@ export function GalleryPage() {
   }, []);
 
   const openLightboxAt = (index: number) => {
-    if (index < 0 || index >= rows.length) {
-      return;
-    }
-    const target = rows[index];
+    if (rows.length === 0) return;
+    const clampedIndex = Math.max(0, Math.min(index, rows.length - 1));
+    const target = rows[clampedIndex];
     if (!target) {
       return;
     }

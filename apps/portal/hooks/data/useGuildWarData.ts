@@ -5,6 +5,7 @@ import {
 } from "../../services/EventService";
 import {
   fetchGuildWarActive,
+  fetchGuildWarConcludedEventIds,
   fetchGuildWarHistory,
   fetchGuildWarHistoryDetail,
 } from "../../services/GuildWarService";
@@ -31,6 +32,12 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
         limit: 100,
         type: "guild_war",
       }),
+    staleTime: 10 * 60_000,
+  });
+
+  const concludedEventIdsQuery = useQuery({
+    queryKey: queryKeys.guildWar.concludedEventIds(),
+    queryFn: () => fetchGuildWarConcludedEventIds(),
     staleTime: 10 * 60_000,
   });
 
@@ -70,6 +77,7 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
 
   return {
     warEventsQuery,
+    concludedEventIdsQuery,
     selectedEventDetailQuery,
     activeQuery,
     historyQuery,

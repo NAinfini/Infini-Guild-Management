@@ -1,5 +1,6 @@
 import type { PushMessage } from "@guild/shared";
 import { create } from "zustand";
+import { isIsoDate, toIsoOrNow } from "../utils/iso-dates";
 
 export type NotificationFeature = "announcements" | "members";
 
@@ -28,17 +29,9 @@ const MAX_PUSH_ENTRIES = 80;
 const FEATURES: NotificationFeature[] = ["announcements", "members"];
 const ENTRY_TYPES: PushNotificationEntryType[] = ["announcement_published", "member_online", "event_changed", "wiki_changed", "member_joined"];
 
-function isIsoDate(value: string): boolean {
-  return Number.isFinite(Date.parse(value));
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
 function emptyFeatureState(lastSeenAt?: string): FeatureState {
   return {
-    lastSeenAt: lastSeenAt && isIsoDate(lastSeenAt) ? lastSeenAt : nowIso(),
+    lastSeenAt: toIsoOrNow(lastSeenAt),
     latestUpdatedAt: null,
     hasNew: false,
   };
@@ -98,7 +91,11 @@ function isPushEntryType(value: unknown): value is PushNotificationEntryType {
   return typeof value === "string" && ENTRY_TYPES.includes(value as PushNotificationEntryType);
 }
 
-function toIsoOrNow(value: unknown): string {
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function sanitizeUnknownIso(value: unknown): string {
   if (typeof value === "string" && isIsoDate(value)) {
     return value;
   }
@@ -130,7 +127,7 @@ function sanitizePushEntries(raw: unknown): PushNotificationEntry[] {
       type: value.type,
       title: value.title,
       message: value.message,
-      occurredAt: toIsoOrNow(value.occurredAt),
+      occurredAt: sanitizeUnknownIso(value.occurredAt),
       readAt: typeof value.readAt === "string" && isIsoDate(value.readAt) ? value.readAt : null,
     });
 
@@ -182,13 +179,13 @@ function createEntryFromPush(message: PushMessage): PushNotificationEntry | null
       type: "announcement_published",
       title: "Announcement Published",
       message: message.title,
-      occurredAt: toIsoOrNow(message.published_at),
+      occurredAt: sanitizeUnknownIso(message.published_at),
       readAt: null,
     };
   }
 
   if (message.type === "entity_changed") {
-    const occurredAt = toIsoOrNow(message.updated_at);
+    const occurredAt = sanitizeUnknownIso(message.updated_at);
     if (message.entity_type === "wiki" && message.hint === "article_created") {
       return {
         id: `wiki:${message.entity_id}:${message.hint}`,

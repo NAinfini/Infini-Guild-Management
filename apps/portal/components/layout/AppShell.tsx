@@ -201,6 +201,7 @@ export function AppShell() {
           case "event":
             void queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
             void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+            void queryClient.invalidateQueries({ queryKey: queryKeys.guildWar.events() });
             break;
           case "wiki":
             void queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });

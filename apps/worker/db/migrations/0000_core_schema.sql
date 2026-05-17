@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS events (
   description TEXT,
   start_at TEXT NOT NULL,
   end_at TEXT,
-  capacity INTEGER,
+  capacity INTEGER CHECK (capacity > 0),
   pinned INTEGER NOT NULL DEFAULT 0,
   signup_locked INTEGER NOT NULL DEFAULT 0,
   visible_at TEXT,
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS events (
   last_generated_date TEXT,
   generation_count INTEGER NOT NULL DEFAULT 0,
   visibility_offset_minutes INTEGER,
-  winner_count INTEGER,
+  winner_count INTEGER CHECK (winner_count > 0),
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -155,11 +155,13 @@ CREATE TABLE IF NOT EXISTS war_history (
 
 CREATE TABLE IF NOT EXISTS war_teams (
   id TEXT PRIMARY KEY NOT NULL,
-  war_history_id TEXT NOT NULL REFERENCES war_history(id) ON DELETE CASCADE,
+  war_history_id TEXT REFERENCES war_history(id) ON DELETE CASCADE,
+  event_id TEXT REFERENCES events(id) ON DELETE CASCADE,
   team_name TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
-  is_locked INTEGER NOT NULL DEFAULT 0
+  is_locked INTEGER NOT NULL DEFAULT 0,
+  CHECK (event_id IS NOT NULL OR war_history_id IS NOT NULL)
 );
 
 CREATE TABLE IF NOT EXISTS war_team_members (
@@ -175,9 +177,11 @@ CREATE TABLE IF NOT EXISTS war_team_members (
 
 CREATE TABLE IF NOT EXISTS war_pool_members (
   id TEXT PRIMARY KEY NOT NULL,
-  war_history_id TEXT NOT NULL REFERENCES war_history(id) ON DELETE CASCADE,
+  war_history_id TEXT REFERENCES war_history(id) ON DELETE CASCADE,
+  event_id TEXT REFERENCES events(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id),
-  UNIQUE(war_history_id, user_id)
+  UNIQUE(war_history_id, user_id),
+  CHECK (event_id IS NOT NULL OR war_history_id IS NOT NULL)
 );
 
 CREATE TABLE IF NOT EXISTS war_templates (
@@ -358,6 +362,8 @@ CREATE INDEX IF NOT EXISTS idx_war_history_created
 -- war_teams
 CREATE INDEX IF NOT EXISTS idx_war_teams_history_sort
   ON war_teams(war_history_id, sort_order, id);
+CREATE INDEX IF NOT EXISTS idx_war_teams_event_sort
+  ON war_teams(event_id, sort_order, id);
 
 -- war_team_members
 CREATE UNIQUE INDEX IF NOT EXISTS ux_war_team_members_team_user
@@ -370,6 +376,10 @@ CREATE INDEX IF NOT EXISTS idx_war_team_members_user
 -- war_pool_members
 CREATE UNIQUE INDEX IF NOT EXISTS ux_war_pool_members_history_user
   ON war_pool_members(war_history_id, user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_war_pool_members_event_user
+  ON war_pool_members(event_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_war_pool_members_event
+  ON war_pool_members(event_id);
 
 -- war_templates
 CREATE INDEX IF NOT EXISTS idx_war_templates_source_event

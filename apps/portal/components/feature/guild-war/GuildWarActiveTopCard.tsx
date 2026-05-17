@@ -1,6 +1,6 @@
-import { ActionIcon, Group, Select, Stack, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Button, Group, Select, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
-import { ChevronLeftIcon, ChevronRightIcon, FlagIcon } from "@portal/components/icons";
+import { ChevronLeftIcon, ChevronRightIcon, FlagIcon, PlusIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { DepthButton } from "../../shared/DepthButton";
 
@@ -20,6 +20,8 @@ type GuildWarActiveTopCardProps = {
   onConcludeWar?: () => void;
   concludeWarLabel?: string;
   concludeWarDisabled?: boolean;
+  concludeWarDisabledReason?: string;
+  onAddTeam?: () => void;
 };
 
 export function GuildWarActiveTopCard({
@@ -38,6 +40,8 @@ export function GuildWarActiveTopCard({
   onConcludeWar,
   concludeWarLabel,
   concludeWarDisabled,
+  concludeWarDisabledReason,
+  onAddTeam,
 }: GuildWarActiveTopCardProps) {
   const { t } = useTranslation("guild-war");
   return (
@@ -71,16 +75,34 @@ export function GuildWarActiveTopCard({
               onChange={(value) => onSelectedEventIdChange(value ?? "")}
               data={eventOptions}
             />
-            {canManage && onConcludeWar ? (
-              <DepthButton
-                type="danger"
+            {canManage && onAddTeam ? (
+              <Button
+                variant="default"
                 size="xs"
-                before={<FlagIcon size={16} />}
-                onClick={onConcludeWar}
-                disabled={concludeWarDisabled}
+                leftSection={<PlusIcon size={16} />}
+                onClick={onAddTeam}
               >
-                {concludeWarLabel ?? t("active.concludeWar")}
-              </DepthButton>
+                {t("active.addTeam")}
+              </Button>
+            ) : null}
+            {canManage && onConcludeWar ? (
+              <Tooltip
+                label={concludeWarDisabledReason}
+                disabled={!concludeWarDisabled || !concludeWarDisabledReason}
+                withArrow
+              >
+                <span>
+                  <DepthButton
+                    type="danger"
+                    size="xs"
+                    before={<FlagIcon size={16} />}
+                    onClick={onConcludeWar}
+                    disabled={concludeWarDisabled}
+                  >
+                    {concludeWarLabel ?? t("active.concludeWar")}
+                  </DepthButton>
+                </span>
+              </Tooltip>
             ) : null}
           </Group>
         </Stack>

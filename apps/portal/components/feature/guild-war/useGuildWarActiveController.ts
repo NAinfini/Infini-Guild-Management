@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GuildWarActiveResponse } from "@guild/shared";
 import { useBeforeUnloadPrompt } from "../../../hooks/useBeforeUnloadPrompt";
 import type { GuildWarService } from "../../../services/GuildWarService";
@@ -27,6 +27,21 @@ export function useGuildWarActiveController({ selectedEventId, activeData, guild
   const [activeDragItemId, setActiveDragItemId] = useState<string | null>(null);
   const [undoMove, setUndoMove] = useState<UndoMove | null>(null);
   const [undoRemainingSec, setUndoRemainingSec] = useState(0);
+  const commitTimeoutRef = useRef<number | null>(null);
+
+  const clearCommitTimeout = useCallback(() => {
+    if (commitTimeoutRef.current !== null) {
+      window.clearTimeout(commitTimeoutRef.current);
+      commitTimeoutRef.current = null;
+    }
+  }, []);
+
+  const wrappedSetUndoMove = useCallback((value: UndoMove | null) => {
+    if (!value) {
+      clearCommitTimeout();
+    }
+    setUndoMove(value);
+  }, [clearCommitTimeout]);
   const [teamDraftNames, setTeamDraftNames] = useState<Record<string, string>>({});
   const [teamDraftNotes, setTeamDraftNotes] = useState<Record<string, string>>({});
   const [teamDraftLocks, setTeamDraftLocks] = useState<Record<string, boolean>>({});
@@ -144,7 +159,8 @@ export function useGuildWarActiveController({ selectedEventId, activeData, guild
     activeDragItemId,
     setActiveDragItemId,
     undoMove,
-    setUndoMove,
+    setUndoMove: wrappedSetUndoMove,
+    commitTimeoutRef,
     undoRemainingSec,
     teamDraftNames,
     setTeamDraftNames,

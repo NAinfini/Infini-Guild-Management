@@ -1,11 +1,9 @@
-import { DndContext, DragOverlay, closestCenter, useDroppable, type DragEndEvent, type DragStartEvent, type Modifier } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { DndContext, DragOverlay, pointerWithin, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent, type Modifier } from "@dnd-kit/core";
 import { ActionIcon, Badge, Card, Group, HoverCard, Stack, Text, TextInput, ThemeIcon } from "@mantine/core";
-import { UserIcon, ShieldIcon, BoltIcon, CopyIcon, ChevronUpIcon, ChevronDownIcon, LockIcon, UnlockIcon, UserPlusIcon } from "@portal/components/icons";
+import { UserIcon, ShieldIcon, BoltIcon, CopyIcon, ChevronUpIcon, ChevronDownIcon, LockIcon, UnlockIcon, UserPlusIcon, TrashIcon } from "@portal/components/icons";
 import { PortalCard } from "../../shared/PortalCard";
-import { memo, useState, useMemo } from "react";
-import type { ComponentProps, CSSProperties, MouseEvent, ReactNode } from "react";
+import { memo, useState, useMemo, useRef, useCallback } from "react";
+import type { ComponentProps, CSSProperties, MouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
 
@@ -50,12 +48,10 @@ type GuildWarDragBoardProps = {
   onDragEnd: (event: DragEndEvent) => void;
   teamStatusContentByContainerId?: Record<string, ReactNode>;
   disabled?: boolean;
-  onTeamContextMenu?: (containerId: string, event: MouseEvent<HTMLDivElement>) => void;
-  onMemberContextMenu?: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
-  onPoolContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
   onCopyTeamMentions?: (containerId: string) => void;
   onToggleLock?: (containerId: string) => void;
   onMoveTeam?: (containerId: string, direction: "up" | "down") => void;
+  onDeleteTeam?: (containerId: string) => void;
   lockedTeamIds?: Set<string>;
   teamCount?: number;
   teamIndexMap?: Map<string, number>;
@@ -64,7 +60,9 @@ type GuildWarDragBoardProps = {
 };
 
 
-const SortableMemberCard = memo(function SortableMemberCard(props: {
+const DRAG_HOLD_MS = 150;
+
+const DraggableMemberCard = memo(function DraggableMemberCard(props: {
   itemId: string;
   domId: string;
   username: string;
@@ -76,24 +74,47 @@ const SortableMemberCard = memo(function SortableMemberCard(props: {
   userId: string;
   onSelect: (event: MouseEvent<HTMLButtonElement>) => void;
   onOpen?: () => void;
-  onContextMenu?: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: props.itemId,
     disabled: props.disabled,
   });
   const { t } = useTranslation("guild-war");
+  const [holding, setHolding] = useState(false);
+  const holdTimerRef = useRef<number | null>(null);
 
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.6 : 1,
-  };
+  const clearHold = useCallback(() => {
+    setHolding(false);
+    if (holdTimerRef.current !== null) {
+      window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  }, []);
+
+  const handlePointerDown = useCallback((e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (props.disabled) return;
+    setHolding(true);
+    holdTimerRef.current = window.setTimeout(() => {
+      holdTimerRef.current = null;
+    }, DRAG_HOLD_MS);
+    // Forward to dnd-kit listener
+    const dndHandler = listeners?.onPointerDown;
+    if (dndHandler) (dndHandler as (e: unknown) => void)(e);
+  }, [props.disabled, listeners]);
+
+  const handlePointerUp = useCallback(() => {
+    clearHold();
+  }, [clearHold]);
+
+  const style: CSSProperties = isDragging
+    ? { opacity: 0, pointerEvents: "none" }
+    : {};
   const classNames = [
     "guild-war-member-card",
     props.disabled ? "guild-war-member-card--disabled" : "",
     props.selected ? "guild-war-member-card--selected" : "",
     !props.selected && props.isMatched ? "guild-war-member-card--matched" : "",
+    holding && !isDragging ? "guild-war-member-card--holding" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -107,17 +128,16 @@ const SortableMemberCard = memo(function SortableMemberCard(props: {
       className={classNames}
       onClick={props.onSelect}
       onDoubleClick={props.onOpen}
-      onContextMenu={(e) => {
-        if (props.onContextMenu) {
-          e.preventDefault();
-          props.onContextMenu(props.userId, e);
-        }
-      }}
       aria-label={t("active.aria.selectMember", { username: props.username })}
       disabled={props.disabled}
       {...attributes}
       {...listeners}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={clearHold}
+      onPointerLeave={clearHold}
     >
+      <div className="guild-war-member-card__progress" />
       <Stack gap={2}>
         <Text size="sm" fw={500}>{props.username}</Text>
         <Group gap={8} wrap="nowrap">
@@ -132,24 +152,22 @@ const SortableMemberCard = memo(function SortableMemberCard(props: {
 function DroppableMemberColumn(props: {
   column: DragMemberColumn;
   canDrag: boolean;
-  emptyText: string;
   statusContent?: ReactNode;
   selectedUserIds: Set<string>;
   activeSearch: string;
   toMemberDomId: (itemId: string) => string;
   onSelectMember: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
   onOpenMember?: (userId: string) => void;
-  onTeamContextMenu?: (containerId: string, event: MouseEvent<HTMLDivElement>) => void;
-  onMemberContextMenu?: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
-  onPoolContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
   onCopyTeamMentions?: (containerId: string) => void;
   onToggleLock?: (containerId: string) => void;
   onMoveTeam?: (containerId: string, direction: "up" | "down") => void;
+  onDeleteTeam?: (containerId: string) => void;
   isLocked?: boolean;
   teamIndex?: number;
   teamCount?: number;
   onAddToPool?: () => void;
   onDraftNameChange?: (containerId: string, value: string) => void;
+  isDragActive?: boolean;
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `container:${props.column.containerId}`,
@@ -187,20 +205,12 @@ function DroppableMemberColumn(props: {
   return (
     <PortalCard
       interactive={false}
-      className={`guild-war-column-card ${isOver ? "guild-war-column-card--over" : ""}`}
+      className={`guild-war-column-card${isOver ? " guild-war-column-card--over" : ""}${props.isDragActive && !isOver ? " guild-war-column-card--drag-active" : ""}`}
       style={{ overflow: "visible" }}
     >
       <div
         ref={setNodeRef}
-        onContextMenu={(e) => {
-          if (props.column.containerId === "pool" && props.onPoolContextMenu) {
-            e.preventDefault();
-            props.onPoolContextMenu(e);
-          } else if (props.column.containerId !== "pool" && props.onTeamContextMenu) {
-            e.preventDefault();
-            props.onTeamContextMenu(props.column.containerId, e);
-          }
-        }}
+        style={{ display: "flex", flexDirection: "column", flex: 1 }}
       >
       <Stack gap={8} mb="sm" className="guild-war-column-header">
         <Group gap={8} justify="space-between" wrap="nowrap">
@@ -328,6 +338,26 @@ function DroppableMemberColumn(props: {
                 </HoverCard.Dropdown>
               </HoverCard>
             ) : null}
+            {isTeamColumn && props.onDeleteTeam ? (
+              <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                <HoverCard.Target>
+                  <ActionIcon size="sm" variant="subtle" color="red" onClick={() => props.onDeleteTeam?.(props.column.containerId)} aria-label={t("menu.team.delete")}>
+                    <TrashIcon size={14} />
+                  </ActionIcon>
+                </HoverCard.Target>
+                <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                  <Group gap={10} wrap="nowrap" align="flex-start">
+                    <ThemeIcon variant="light" color="red" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                      <TrashIcon size={16} />
+                    </ThemeIcon>
+                    <div style={{ minWidth: 0 }}>
+                      <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.deleteTeam.title")}</Text>
+                      <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.deleteTeam.desc")}</Text>
+                    </div>
+                  </Group>
+                </HoverCard.Dropdown>
+              </HoverCard>
+            ) : null}
             {isPoolColumn && props.onAddToPool ? (
               <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                 <HoverCard.Target>
@@ -406,13 +436,9 @@ function DroppableMemberColumn(props: {
         </Group>
         {props.statusContent ? <div className="guild-war-column-header-status">{props.statusContent}</div> : null}
       </Stack>
-        <SortableContext items={sortedMembers.map((member) => member.itemId)} strategy={verticalListSortingStrategy}>
-          <Stack className="guild-war-column-stack" gap={8}>
-            {sortedMembers.length === 0 ? (
-              <EmptyState title={props.emptyText} />
-            ) : (
-              sortedMembers.map((member) => (
-                <SortableMemberCard
+          <div className="guild-war-column-stack">
+            {sortedMembers.map((member) => (
+                <DraggableMemberCard
                   key={member.itemId}
                   itemId={member.itemId}
                   domId={props.toMemberDomId(member.itemId)}
@@ -428,14 +454,26 @@ function DroppableMemberColumn(props: {
                   }
                   onSelect={(event) => props.onSelectMember(member.userId, event)}
                   onOpen={props.onOpenMember ? () => props.onOpenMember?.(member.userId) : undefined}
-                  onContextMenu={props.onMemberContextMenu}
                 />
-              ))
-            )}
-          </Stack>
-        </SortableContext>
+              ))}
+          </div>
       </div>
     </PortalCard>
+  );
+}
+
+function TrashDropZone({ visible }: { visible: boolean }) {
+  const { t } = useTranslation("guild-war");
+  const { setNodeRef, isOver } = useDroppable({ id: "trash-zone" });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`guild-war-trash-zone ${visible ? "guild-war-trash-zone--visible" : ""} ${isOver ? "guild-war-trash-zone--over" : ""}`}
+    >
+      <TrashIcon size={18} />
+      <Text size="sm" fw={500}>{t("active.trashZone")}</Text>
+    </div>
   );
 }
 
@@ -470,12 +508,10 @@ export function GuildWarDragBoard({
   onDragEnd,
   teamStatusContentByContainerId,
   disabled,
-  onTeamContextMenu,
-  onMemberContextMenu,
-  onPoolContextMenu,
   onCopyTeamMentions,
   onToggleLock,
   onMoveTeam,
+  onDeleteTeam,
   lockedTeamIds,
   teamCount,
   teamIndexMap,
@@ -494,29 +530,30 @@ export function GuildWarDragBoard({
     <>
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={pointerWithin}
         onDragStart={onDragStart}
         onDragCancel={onDragCancel}
         onDragEnd={onDragEnd}
       >
         <div className={`guild-war-dnd-split ${disabled ? "guild-war-dnd-split--disabled" : ""}`}>
           <div className="guild-war-dnd-pool">
-            {poolColumn ? (
-              <DroppableMemberColumn
-                column={poolColumn}
-                canDrag={canDrag}
-                emptyText={emptyText}
-                statusContent={activePoolStatus}
-                selectedUserIds={selectedUserIds}
-                activeSearch={activeSearch}
-                toMemberDomId={toMemberDomId}
-                onSelectMember={onSelectMember}
-                onOpenMember={onOpenMember}
-                onPoolContextMenu={onPoolContextMenu}
-                onMemberContextMenu={onMemberContextMenu}
-                onAddToPool={onAddToPool}
-              />
-            ) : null}
+            <div className="guild-war-column-card-wrap">
+              {poolColumn ? (
+                <DroppableMemberColumn
+                  column={poolColumn}
+                  canDrag={canDrag}
+                  statusContent={activePoolStatus}
+                  selectedUserIds={selectedUserIds}
+                  activeSearch={activeSearch}
+                  toMemberDomId={toMemberDomId}
+                  onSelectMember={onSelectMember}
+                  onOpenMember={onOpenMember}
+                  onAddToPool={onAddToPool}
+                  isDragActive={Boolean(activeDragItem)}
+                />
+              ) : null}
+              <TrashDropZone visible={Boolean(activeDragItem)} />
+            </div>
           </div>
 
           <div className="guild-war-dnd-teams-wrap">
@@ -526,29 +563,28 @@ export function GuildWarDragBoard({
                   key={column.containerId}
                   column={column}
                   canDrag={canDrag}
-                  emptyText={emptyText}
                   statusContent={teamStatusContentByContainerId?.[column.containerId] ?? null}
                   selectedUserIds={selectedUserIds}
                   activeSearch={activeSearch}
                   toMemberDomId={toMemberDomId}
                   onSelectMember={onSelectMember}
                   onOpenMember={onOpenMember}
-                  onTeamContextMenu={onTeamContextMenu}
-                  onMemberContextMenu={onMemberContextMenu}
                   onCopyTeamMentions={onCopyTeamMentions}
                   onToggleLock={onToggleLock}
                   onMoveTeam={onMoveTeam}
+                  onDeleteTeam={onDeleteTeam}
                   isLocked={lockedTeamIds?.has(column.containerId)}
                   teamIndex={teamIndexMap?.get(column.containerId)}
                   teamCount={teamCount}
                   onDraftNameChange={onDraftNameChange}
+                  isDragActive={Boolean(activeDragItem)}
                 />
               ))}
             </Stack>
           </div>
         </div>
 
-        <DragOverlay modifiers={[snapCenterToCursor]}>
+        <DragOverlay modifiers={[snapCenterToCursor]} dropAnimation={null}>
           {activeDragItem ? (
             <Card withBorder p="sm">
               <Stack gap={2}>

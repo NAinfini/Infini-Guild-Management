@@ -9,6 +9,7 @@ import {
   users,
 } from "../db/schema";
 import { escapeLikePattern } from "./helpers";
+import { err, ok, type ServiceErr, type ServiceResult } from "./result";
 
 type QueryChain = Promise<unknown[]> & {
   limit: (n: number) => Promise<unknown[]>;
@@ -125,13 +126,6 @@ type PollJoinedRow = {
 const MAX_EVENT_ATTACHMENTS = 5;
 const MAX_EVENT_IMAGE_BYTES = 5 * 1024 * 1024;
 
-export class EventServiceValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "EventServiceValidationError";
-  }
-}
-
 type EventServiceDeps = {
   getEventById: (eventId: string) => Promise<EventRow | null>;
   getUsername: (userId: string) => Promise<string | null>;
@@ -175,7 +169,7 @@ export function parseAttachments(value: string | null | undefined): string[] {
 }
 
 export function toEventPayload(row: EventRow) {
-  return eventSchema.parse({
+  const result = eventSchema.safeParse({
     id: row.id,
     type: row.type,
     title: row.title,
@@ -200,28 +194,40 @@ export function toEventPayload(row: EventRow) {
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   });
+  if (!result.success) {
+    throw new Error(`Invalid event data for id=${row.id}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
+  }
+  return result.data;
 }
 
 export function toParticipantPayload(row: EventParticipantRow) {
-  return eventParticipantSchema.parse({
+  const result = eventParticipantSchema.safeParse({
     id: row.id,
     event_id: row.eventId,
     user_id: row.userId,
     joined_at: row.joinedAt,
   });
+  if (!result.success) {
+    throw new Error(`Invalid participant data for id=${row.id}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
+  }
+  return result.data;
 }
 
 export function toRaffleWinnerPayload(row: RaffleWinnerRow) {
-  return eventRaffleWinnerSchema.parse({
+  const result = eventRaffleWinnerSchema.safeParse({
     id: row.id,
     event_id: row.eventId,
     user_id: row.userId,
     drawn_at: row.drawnAt,
   });
+  if (!result.success) {
+    throw new Error(`Invalid raffle winner data for id=${row.id}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
+  }
+  return result.data;
 }
 
 export function toTemplatePayload(row: EventRow) {
-  return recurringTemplateSchema.parse({
+  const result = recurringTemplateSchema.safeParse({
     id: row.id,
     type: row.type,
     title: row.title,
@@ -240,6 +246,10 @@ export function toTemplatePayload(row: EventRow) {
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   });
+  if (!result.success) {
+    throw new Error(`Invalid template data for id=${row.id}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
+  }
+  return result.data;
 }
 
 export class EventService {
@@ -255,16 +265,21 @@ export class EventService {
     this.deps = deps;
   }
 
-  async createEvent(actorId: string, data: CreateEventInput, files: File[] = []) {
-    this.validateDateRange(data.start_at, data.end_at);
-    this.validatePollEventInput(data);
-    this.validateRaffleEventInput(data);
+  async createEvent(actorId: string, data: CreateEventInput, files: File[] = []): Promise<ServiceResult<EventRow>> {
+    const dateErr = this.validateDateRange(data.start_at, data.end_at);
+    if (dateErr) return dateErr;
+    const pollErr = this.validatePollEventInput(data);
+    if (pollErr) return pollErr;
+    const raffleErr = this.validateRaffleEventInput(data);
+    if (raffleErr) return raffleErr;
 
     const eventId = this.deps.createId?.() ?? nanoid();
-    const uploadedAttachments = await this.storeImages(eventId, files, 0);
+    const imageResult = await this.storeImages(eventId, files, 0);
+    if ("ok" in imageResult && !imageResult.ok) return imageResult;
+    const uploadedAttachments = imageResult as string[];
     const attachments = [...(data.attachments ?? []), ...uploadedAttachments];
     if (attachments.length > MAX_EVENT_ATTACHMENTS) {
-      throw new EventServiceValidationError(`Max ${MAX_EVENT_ATTACHMENTS} attachments per event`);
+      return err("VALIDATION_ERROR", `Max ${MAX_EVENT_ATTACHMENTS} attachments per event`);
     }
 
     const recurrenceRuleJson = data.recurrence_rule
@@ -323,14 +338,16 @@ export class EventService {
       }),
     });
 
-    return created;
+    return ok(created);
   }
 
-  async updateEvent(actorId: string, eventId: string, existing: EventRow, data: UpdateEventInput) {
+  async updateEvent(actorId: string, eventId: string, existing: EventRow, data: UpdateEventInput): Promise<ServiceResult<EventRow>> {
     const effectiveStartAt = data.start_at ?? existing.startAt;
     const effectiveEndAt = data.end_at !== undefined ? data.end_at : existing.endAt;
-    this.validateDateRange(effectiveStartAt, effectiveEndAt);
-    this.validatePollEventUpdate(existing, data, effectiveEndAt);
+    const dateErr = this.validateDateRange(effectiveStartAt, effectiveEndAt);
+    if (dateErr) return dateErr;
+    const pollUpdateErr = this.validatePollEventUpdate(existing, data, effectiveEndAt);
+    if (pollUpdateErr) return pollUpdateErr;
 
     const patch: Record<string, unknown> = {
       updatedAt: this.now(),
@@ -354,13 +371,14 @@ export class EventService {
     }
 
     if ((existing.type === "poll" || data.type === "poll") && data.poll && await this.pollHasVotes(eventId) && await this.pollOptionsChanged(eventId, data.poll.options)) {
-      throw new EventServiceValidationError("Poll options cannot be changed after voting starts");
+      return err("VALIDATION_ERROR", "Poll options cannot be changed after voting starts");
     }
 
     await this.db.update(events).set(patch).where(eq(events.id, eventId));
 
     if ((existing.type === "poll" || data.type === "poll") && data.poll) {
-      await this.updatePoll(eventId, data.poll);
+      const pollErr = await this.updatePoll(eventId, data.poll);
+      if (pollErr) return pollErr;
     }
 
     const updated = await this.deps.getEventById(eventId);
@@ -377,7 +395,7 @@ export class EventService {
       detailText: JSON.stringify(this.buildUpdateDiff(existing, data)),
     });
 
-    return updated;
+    return ok(updated);
   }
 
   async archiveEvent(actorId: string, eventId: string, existing: EventRow) {
@@ -421,13 +439,15 @@ export class EventService {
     });
   }
 
-  async uploadEventImages(actorId: string, eventId: string, existing: EventRow, files: File[]) {
+  async uploadEventImages(actorId: string, eventId: string, existing: EventRow, files: File[]): Promise<ServiceResult<{ keys: string[]; attachments: string[] }>> {
     if (files.length === 0) {
-      throw new EventServiceValidationError("No files provided");
+      return err("VALIDATION_ERROR", "No files provided");
     }
 
     const existingAttachments = parseAttachments(existing.attachments);
-    const keys = await this.storeImages(eventId, files, existingAttachments.length);
+    const imageResult = await this.storeImages(eventId, files, existingAttachments.length);
+    if ("ok" in imageResult && !imageResult.ok) return imageResult;
+    const keys = imageResult as string[];
     const attachments = [...existingAttachments, ...keys].slice(0, MAX_EVENT_ATTACHMENTS);
 
     await this.db
@@ -447,7 +467,7 @@ export class EventService {
       detailText: JSON.stringify({ keys }),
     });
 
-    return { keys, attachments };
+    return ok({ keys, attachments });
   }
 
   // ── Participant Operations ──
@@ -766,8 +786,9 @@ export class EventService {
     recurrence_rule: unknown;
     visibility_offset_minutes?: number | null;
     auto_archive?: boolean;
-  }): Promise<EventRow> {
-    this.validateDateRange(data.start_at, data.end_at);
+  }): Promise<ServiceResult<EventRow>> {
+    const dateErr = this.validateDateRange(data.start_at, data.end_at);
+    if (dateErr) return dateErr;
 
     const templateId = this.deps.createId?.() ?? nanoid();
     const recurrenceRuleJson = JSON.stringify(data.recurrence_rule);
@@ -808,7 +829,7 @@ export class EventService {
       detailText: JSON.stringify({ recurrence_rule: data.recurrence_rule }),
     });
 
-    return created;
+    return ok(created);
   }
 
   async updateTemplate(actorId: string, templateId: string, existing: EventRow, data: {
@@ -821,10 +842,11 @@ export class EventService {
     recurrence_rule?: unknown;
     visibility_offset_minutes?: number | null;
     auto_archive?: boolean;
-  }): Promise<EventRow> {
+  }): Promise<ServiceResult<EventRow>> {
     const effectiveStartAt = data.start_at ?? existing.startAt;
     const effectiveEndAt = data.end_at !== undefined ? data.end_at : existing.endAt;
-    this.validateDateRange(effectiveStartAt, effectiveEndAt);
+    const dateErr = this.validateDateRange(effectiveStartAt, effectiveEndAt);
+    if (dateErr) return dateErr;
 
     const patch: Record<string, unknown> = { updatedAt: this.now() };
     if (data.type !== undefined) patch.type = data.type;
@@ -866,7 +888,7 @@ export class EventService {
       await this.deps.materializeRecurringSeries(templateId);
     }
 
-    return updated;
+    return ok(updated);
   }
 
   async pauseTemplate(actorId: string, templateId: string, existing: EventRow): Promise<void> {
@@ -1082,34 +1104,38 @@ export class EventService {
     });
   }
 
-  private validateDateRange(startAt: string | null | undefined, endAt: string | null | undefined) {
+  private validateDateRange(startAt: string | null | undefined, endAt: string | null | undefined): ServiceErr | null {
     if (startAt && endAt && endAt <= startAt) {
-      throw new EventServiceValidationError("end_at must be after start_at");
+      return err("VALIDATION_ERROR", "end_at must be after start_at");
     }
+    return null;
   }
 
-  private validatePollEventInput(data: CreateEventInput) {
-    if (data.type !== "poll") return;
-    if (!data.end_at) throw new EventServiceValidationError("Poll events require end_at");
-    if (!data.poll) throw new EventServiceValidationError("Poll events require poll settings");
-    if (data.recurrence_rule) throw new EventServiceValidationError("Poll events cannot recur");
+  private validatePollEventInput(data: CreateEventInput): ServiceErr | null {
+    if (data.type !== "poll") return null;
+    if (!data.end_at) return err("VALIDATION_ERROR", "Poll events require end_at");
+    if (!data.poll) return err("VALIDATION_ERROR", "Poll events require poll settings");
+    if (data.recurrence_rule) return err("VALIDATION_ERROR", "Poll events cannot recur");
+    return null;
   }
 
-  private validateRaffleEventInput(data: CreateEventInput) {
-    if (data.type !== "raffle") return;
-    if (!data.end_at) throw new EventServiceValidationError("Raffle events require end_at");
-    if (!data.winner_count || data.winner_count < 1) throw new EventServiceValidationError("Raffle events require winner_count");
-    if (data.recurrence_rule) throw new EventServiceValidationError("Raffle events cannot recur");
+  private validateRaffleEventInput(data: CreateEventInput): ServiceErr | null {
+    if (data.type !== "raffle") return null;
+    if (!data.end_at) return err("VALIDATION_ERROR", "Raffle events require end_at");
+    if (!data.winner_count || data.winner_count < 1) return err("VALIDATION_ERROR", "Raffle events require winner_count");
+    if (data.recurrence_rule) return err("VALIDATION_ERROR", "Raffle events cannot recur");
+    return null;
   }
 
-  private validatePollEventUpdate(existing: EventRow, data: UpdateEventInput, effectiveEndAt: string | null) {
+  private validatePollEventUpdate(existing: EventRow, data: UpdateEventInput, effectiveEndAt: string | null): ServiceErr | null {
     const effectiveType = data.type ?? existing.type;
     if (effectiveType !== "poll") {
-      if (data.poll) throw new EventServiceValidationError("Only poll events can include poll settings");
-      return;
+      if (data.poll) return err("VALIDATION_ERROR", "Only poll events can include poll settings");
+      return null;
     }
-    if (!effectiveEndAt) throw new EventServiceValidationError("Poll events require end_at");
-    if (data.recurrence_rule) throw new EventServiceValidationError("Poll events cannot recur");
+    if (!effectiveEndAt) return err("VALIDATION_ERROR", "Poll events require end_at");
+    if (data.recurrence_rule) return err("VALIDATION_ERROR", "Poll events cannot recur");
+    return null;
   }
 
   private async createPoll(eventId: string, poll: NonNullable<CreateEventInput["poll"]>) {
@@ -1125,7 +1151,7 @@ export class EventService {
     await this.rawDb.batch([pollStmt, ...optionStmts]);
   }
 
-  private async updatePoll(eventId: string, poll: NonNullable<CreateEventInput["poll"]>) {
+  private async updatePoll(eventId: string, poll: NonNullable<CreateEventInput["poll"]>): Promise<ServiceErr | null> {
     const hasVotes = await this.pollHasVotes(eventId);
     const now = this.now();
     const stmts = [
@@ -1141,9 +1167,10 @@ export class EventService {
           .bind(this.deps.createId?.() ?? nanoid(), eventId, label.trim(), index, now),
       ));
     } else if (await this.pollOptionsChanged(eventId, poll.options)) {
-      throw new EventServiceValidationError("Poll options cannot be changed after voting starts");
+      return err("VALIDATION_ERROR", "Poll options cannot be changed after voting starts");
     }
     await this.rawDb.batch(stmts);
+    return null;
   }
 
   private async pollOptionsChanged(eventId: string, nextOptions: string[]): Promise<boolean> {
@@ -1168,22 +1195,22 @@ export class EventService {
     return Array.isArray(rows) ? rows as PollOptionRow[] : [];
   }
 
-  private async storeImages(eventId: string, files: File[], existingAttachmentCount: number) {
+  private async storeImages(eventId: string, files: File[], existingAttachmentCount: number): Promise<string[] | ServiceErr> {
     if (files.length === 0) {
       return [];
     }
 
     if (existingAttachmentCount + files.length > MAX_EVENT_ATTACHMENTS) {
-      throw new EventServiceValidationError(`Max ${MAX_EVENT_ATTACHMENTS} attachments per event`);
+      return err("VALIDATION_ERROR", `Max ${MAX_EVENT_ATTACHMENTS} attachments per event`);
     }
 
     const keys: string[] = [];
     for (const file of files) {
       if (!file.type.startsWith("image/")) {
-        throw new EventServiceValidationError(`Invalid file type: ${file.name}`);
+        return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
       }
       if (file.size > MAX_EVENT_IMAGE_BYTES) {
-        throw new EventServiceValidationError(`File too large: ${file.name}`);
+        return err("VALIDATION_ERROR", `File too large: ${file.name}`);
       }
       const key = this.deps.createImageKey?.(eventId) ?? `events/${eventId}/images/${Date.now()}_${nanoid()}`;
       await this.media.put(key, await file.arrayBuffer(), {

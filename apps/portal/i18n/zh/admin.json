@@ -695,5 +695,6 @@
   "badges.confirmDelete.description": "徽章「{{name}}」及其所有分配将被永久删除。",
   "badges.preview": "预览",
   "badges.noMembers": "此徽章暂无已分配成员。",
-  "badges.searchMembers": "搜索成员..."
+  "badges.searchMembers": "搜索成员...",
+  "badges.aria.selectColor": "选择徽章颜色 {{color}}"
 }

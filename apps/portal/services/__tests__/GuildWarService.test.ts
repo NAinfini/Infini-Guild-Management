@@ -16,7 +16,8 @@ function mockJsonResponse(data: unknown, status = 200) {
 const baseTeams = [
   {
     id: "team-1",
-    war_history_id: "war-1",
+    war_history_id: null,
+    event_id: "event-1",
     team_name: "Alpha",
     sort_order: 0,
     notes: null,
@@ -62,7 +63,7 @@ describe("GuildWarService", () => {
     const payload = service.buildSaveTeamsPayload({
       eventId: "event-1",
       teams: baseTeams,
-      pool: [{ id: "pool-1", warHistoryId: "war-1", userId: "u-9" }],
+      pool: [{ id: "pool-1", warHistoryId: null, eventId: "event-1", userId: "u-9" }],
       teamDraftNames: { "team-1": " Alpha Prime " },
       teamDraftNotes: { "team-1": " Burst comp " },
       teamDraftLocks: { "team-1": true },

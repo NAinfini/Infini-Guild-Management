@@ -51,6 +51,14 @@ export async function parseJsonBody(c: Context, schema?: ZodTypeAny): Promise<un
   return body;
 }
 
+export async function safeFormData(c: Context): Promise<FormData | Response> {
+  try {
+    return await c.req.formData();
+  } catch {
+    return buildError(c, "VALIDATION_ERROR", "Invalid or missing form data");
+  }
+}
+
 export async function requireSessionUser(c: Context) {
   const user = await getRequestUser(c);
   return user ?? buildError(c, "UNAUTHORIZED", "Authentication required");

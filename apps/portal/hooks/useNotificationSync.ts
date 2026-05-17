@@ -10,6 +10,7 @@ import { nanoid } from "nanoid";
 import { useCallback, useEffect, useRef } from "react";
 import { apiRequest } from "../api/client";
 import { useNotificationStore } from "../stores/notifications";
+import { isIsoDate, toIsoOrNow } from "../utils/iso-dates";
 
 type UseNotificationSyncOptions = {
   enabled?: boolean;
@@ -25,10 +26,6 @@ const WS_CLOSE_UNAUTHORIZED = 4401;
 
 type UsersListResponse = PaginatedResponse<{ user: User; profile: MemberProfile }>;
 
-function isIsoDate(value: string): boolean {
-  return Number.isFinite(Date.parse(value));
-}
-
 function getLatestIso(values: Array<string | null | undefined>): string | null {
   let latest: string | null = null;
   let latestTimestamp = Number.NEGATIVE_INFINITY;
@@ -43,13 +40,6 @@ function getLatestIso(values: Array<string | null | undefined>): string | null {
     }
   }
   return latest;
-}
-
-function toIsoOrNow(value: string | undefined): string {
-  if (value && isIsoDate(value)) {
-    return value;
-  }
-  return new Date().toISOString();
 }
 
 export function useNotificationSync(options: UseNotificationSyncOptions = {}) {

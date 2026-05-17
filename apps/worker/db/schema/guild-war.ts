@@ -37,7 +37,8 @@ export const warTeams = sqliteTable(
   "war_teams",
   {
     id: text("id").primaryKey(),
-    warHistoryId: text("war_history_id").notNull().references(() => warHistory.id, { onDelete: "cascade" }),
+    warHistoryId: text("war_history_id").references(() => warHistory.id, { onDelete: "cascade" }),
+    eventId: text("event_id").references(() => events.id, { onDelete: "cascade" }),
     teamName: text("team_name").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
     notes: text("notes"),
@@ -45,6 +46,7 @@ export const warTeams = sqliteTable(
   },
   (table) => ({
     idxHistorySort: index("idx_war_teams_history_sort").on(table.warHistoryId, table.sortOrder, table.id),
+    idxEventSort: index("idx_war_teams_event_sort").on(table.eventId, table.sortOrder, table.id),
   }),
 );
 
@@ -70,11 +72,14 @@ export const warPoolMembers = sqliteTable(
   "war_pool_members",
   {
     id: text("id").primaryKey(),
-    warHistoryId: text("war_history_id").notNull().references(() => warHistory.id, { onDelete: "cascade" }),
+    warHistoryId: text("war_history_id").references(() => warHistory.id, { onDelete: "cascade" }),
+    eventId: text("event_id").references(() => events.id, { onDelete: "cascade" }),
     userId: text("user_id").notNull().references(() => users.id),
   },
   (table) => ({
     uxHistoryUser: uniqueIndex("ux_war_pool_members_history_user").on(table.warHistoryId, table.userId),
+    uxEventUser: uniqueIndex("ux_war_pool_members_event_user").on(table.eventId, table.userId),
+    idxEvent: index("idx_war_pool_members_event").on(table.eventId),
   }),
 );
 

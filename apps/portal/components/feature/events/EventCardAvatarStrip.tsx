@@ -71,7 +71,7 @@ export function EventCardAvatarStrip({ members, visibleMembers, hiddenMembersCou
         </span>
       ) : null}
       {visibleMembers.map((member) => (
-        <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={avatarSize} withTooltip={false} />
+        <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={avatarSize} />
       ))}
       {hiddenMembersCount > 0 ? (
         <Text size="xs" c="dimmed" fw={700} className="event-card__avatar-overflow">+{hiddenMembersCount}</Text>

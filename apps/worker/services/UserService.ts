@@ -121,7 +121,7 @@ function sanitizeTitleHtml(html: string): string {
 }
 
 function toUserPayload(user: UserRow) {
-  return userSchema.parse({
+  const result = userSchema.safeParse({
     id: user.id,
     username: user.username,
     role: user.role,
@@ -131,10 +131,14 @@ function toUserPayload(user: UserRow) {
     created_at: user.createdAt,
     updated_at: user.updatedAt,
   });
+  if (!result.success) {
+    throw new Error(`Invalid user data for id=${user.id}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
+  }
+  return result.data;
 }
 
 function toProfilePayload(profile: ProfileRow, options: { includeNotes: boolean; includePrivate: boolean }) {
-  return memberProfileSchema.parse({
+  const result = memberProfileSchema.safeParse({
     id: profile.id,
     user_id: profile.userId,
     power: profile.power,
@@ -152,6 +156,10 @@ function toProfilePayload(profile: ProfileRow, options: { includeNotes: boolean;
     created_at: profile.createdAt,
     updated_at: profile.updatedAt,
   });
+  if (!result.success) {
+    throw new Error(`Invalid profile data for user_id=${profile.userId}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
+  }
+  return result.data;
 }
 
 function buildProfilePatch(
