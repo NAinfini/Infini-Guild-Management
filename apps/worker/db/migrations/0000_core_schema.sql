@@ -4,7 +4,7 @@
 CREATE TABLE IF NOT EXISTS roles (
   id TEXT PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
-  level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 3),
+  level INTEGER NOT NULL CHECK (level >= 1),
   color TEXT,
   is_builtin INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -476,9 +476,9 @@ CREATE INDEX IF NOT EXISTS idx_member_badge_assignments_user
 -- ===== ROLE BASELINE DATA =====
 
 INSERT OR IGNORE INTO roles (id, name, level, color, is_builtin) VALUES
-  ('admin', 'Admin', 3, 'red', 1),
-  ('moderator', 'Moderator', 2, 'blue', 1),
-  ('member', 'Member', 1, 'gray', 1);
+  ('admin', 'Admin', 999, 'red', 1),
+  ('moderator', 'Moderator', 500, 'blue', 1),
+  ('member', 'Member', 100, 'gray', 1);
 
 INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   -- admin (full access)

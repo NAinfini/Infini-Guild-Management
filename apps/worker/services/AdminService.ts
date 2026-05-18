@@ -316,14 +316,16 @@ export class AdminService {
   async createRole(actorId: string, input: { id?: string; name: string; level: number; color?: string; permissions?: Record<string, boolean> }): Promise<ServiceResult<unknown>> {
     const roleId = (input.id?.trim() || `custom_${this.deps.generateId().toLowerCase()}`).toLowerCase();
     if ((ROLES as readonly string[]).includes(roleId)) return err("CONFLICT", "Built-in role ids are reserved");
-    if (input.level > 2) return err("VALIDATION_ERROR", "Custom role level must be 1 or 2");
+    const actorRole = await this.getActorRoleLevel(actorId);
+    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
+    if (input.level >= actorRole.level) return err("VALIDATION_ERROR", `Role level must be below your own (${actorRole.level})`);
 
     const existing = (await this.deps.db.select({ id: roles.id }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (existing) return err("CONFLICT", "Role id already exists");
     await this.deps.db.insert(roles).values({ id: roleId, name: input.name.trim(), level: input.level, color: input.color ?? null, isBuiltin: false });
     const permissionRecord = emptyPermissionRecord();
     for (const perm of PERMISSIONS) permissionRecord[perm] = Boolean(input.permissions?.[perm]);
-    permissionRecord["admin.roles.manage"] = false;
+    if (actorRole.roleId !== "admin") permissionRecord["admin.roles.manage"] = false;
     await replaceRolePermissions(this.deps.rawDb, roleId, permissionRecord);
     clearPermissionCache(roleId);
     await this.deps.writeAuditLog({ entityType: "role", action: "create", actorId, entityId: roleId, diffTitle: input.name.trim(), detailText: JSON.stringify({ name: input.name.trim(), level: input.level, color: input.color ?? null, permissions: permissionRecord }) });
@@ -336,8 +338,17 @@ export class AdminService {
 
     const existing = (await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (!existing) return err("NOT_FOUND", "Role not found");
-    if (existing.isBuiltin && input.level !== undefined && input.level !== existing.level) return err("CONFLICT", "Built-in role level is fixed");
-    if (!existing.isBuiltin && input.level !== undefined && input.level > 2) return err("VALIDATION_ERROR", "Custom role level must be 1 or 2");
+    const actorRole = await this.getActorRoleLevel(actorId);
+    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
+    if (existing.level >= actorRole.level && !existing.isBuiltin) return err("FORBIDDEN", "Cannot edit a role at or above your own level");
+    if (existing.isBuiltin) {
+      if (input.name !== undefined) return err("CONFLICT", "Built-in role name is fixed");
+      if (input.level !== undefined && input.level !== existing.level) return err("CONFLICT", "Built-in role level is fixed");
+      if (input.permissions) return err("CONFLICT", "Built-in role permissions are fixed");
+    }
+    if (!existing.isBuiltin && input.level !== undefined) {
+      if (input.level >= actorRole.level) return err("VALIDATION_ERROR", `Role level must be below your own (${actorRole.level})`);
+    }
     const roleUpdatePayload: { name?: string; level?: number; color?: string | null; updatedAt: string } = { updatedAt: this.now().toISOString() };
     if (input.name !== undefined) roleUpdatePayload.name = input.name.trim();
     if (input.level !== undefined) roleUpdatePayload.level = input.level;
@@ -347,7 +358,7 @@ export class AdminService {
       const currentPermissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
       const nextPermissionRecord = parsePermissionRecord(currentPermissionRows);
       for (const perm of PERMISSIONS) if (Object.prototype.hasOwnProperty.call(input.permissions, perm)) nextPermissionRecord[perm] = Boolean(input.permissions[perm]);
-      if (roleId !== "admin") nextPermissionRecord["admin.roles.manage"] = false;
+      if (actorRole.roleId !== "admin") nextPermissionRecord["admin.roles.manage"] = false;
       await replaceRolePermissions(this.deps.rawDb, roleId, nextPermissionRecord);
       clearPermissionCache(roleId);
     }
@@ -362,9 +373,12 @@ export class AdminService {
 
   async deleteRole(actorId: string, roleId: string): Promise<ServiceResult<void>> {
 
-    const existing = (await this.deps.db.select({ id: roles.id, isBuiltin: roles.isBuiltin, name: roles.name }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
+    const existing = (await this.deps.db.select({ id: roles.id, isBuiltin: roles.isBuiltin, name: roles.name, level: roles.level }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (!existing) return err("NOT_FOUND", "Role not found");
     if (existing.isBuiltin) return err("CONFLICT", "Built-in roles cannot be deleted");
+    const actorRole = await this.getActorRoleLevel(actorId);
+    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
+    if (existing.level >= actorRole.level) return err("FORBIDDEN", "Cannot delete a role at or above your own level");
     const assignedCountRow = (await this.deps.db.select({ count: sql<number>`count(*)` }).from(users).where(and(eq(users.role, roleId), isNull(users.deletedAt))).limit(1))[0];
     const assignedCount = Number(assignedCountRow?.count ?? 0);
     if (assignedCount > 0) return err("CONFLICT", "Role is assigned to users", { assigned_user_count: assignedCount });
@@ -432,6 +446,11 @@ export class AdminService {
     }
     await this.deps.writeAuditLog({ entityType: "analytics_settings", action: "update", actorId, entityId: "default", diffTitle: "Analytics", detailText: Object.keys(diff).length > 0 ? JSON.stringify(diff) : null });
     return ok(settings);
+  }
+
+  private async getActorRoleLevel(actorId: string): Promise<{ roleId: string; level: number } | null> {
+    const row = (await this.deps.db.select({ roleId: roles.id, level: roles.level }).from(roles).innerJoin(users, eq(users.role, roles.id)).where(eq(users.id, actorId)).limit(1))[0];
+    return row ?? null;
   }
 
   private now() {

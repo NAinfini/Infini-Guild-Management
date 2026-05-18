@@ -59,7 +59,7 @@ export const rolePermissionsSchema = z.record(permissionKeySchema, z.boolean());
 export const adminRoleSchema = z.object({
   id: z.string(),
   name: z.string(),
-  level: z.number().int().min(1).max(3),
+  level: z.number().int().min(1).max(999),
   color: z.string().nullable(),
   is_builtin: z.boolean(),
   created_at: z.string(),
@@ -76,7 +76,7 @@ export const createRoleSchema = z.object({
     .regex(/^[a-z0-9_-]+$/)
     .optional(),
   name: z.string().min(1).max(80),
-  level: z.number().int().min(1).max(3),
+  level: z.number().int().min(1).max(998),
   color: colorSchema.nullable().optional(),
   permissions: rolePermissionsSchema.optional(),
 });
@@ -84,7 +84,7 @@ export const createRoleSchema = z.object({
 export const updateRoleSchema = z
   .object({
     name: z.string().min(1).max(80).optional(),
-    level: z.number().int().min(1).max(3).optional(),
+    level: z.number().int().min(1).max(998).optional(),
     color: colorSchema.nullable().optional(),
     permissions: rolePermissionsSchema.optional(),
   })

@@ -8,6 +8,7 @@ import {
   ColorSwatch,
   Group,
   HoverCard,
+  NumberInput,
   Skeleton,
   ScrollArea,
   Stack,
@@ -288,7 +289,7 @@ export function AdminRolesSection({
 
     const created = await onCreateRole({
       name,
-      level: 2,
+      level: 100,
       color: null,
       permissions: emptyPermissions,
     });
@@ -455,6 +456,16 @@ export function AdminRolesSection({
                         style={{ flex: 1, minWidth: 120, maxWidth: 200 }}
                         disabled={selectedRole.is_builtin}
                       />
+                      <NumberInput
+                        size="sm"
+                        label={t("roles.field.level")}
+                        value={selectedDraft.level}
+                        onChange={(value) => updateDraftField(selectedRole.id, "level", typeof value === "number" ? value : selectedDraft.level)}
+                        min={1}
+                        max={998}
+                        style={{ width: 100 }}
+                        disabled={selectedRole.is_builtin}
+                      />
                       <ColorInput
                         size="sm"
                         format="hex"
@@ -462,7 +473,6 @@ export function AdminRolesSection({
                         value={selectedDraft.color}
                         onChange={(value) => updateDraftField(selectedRole.id, "color", value)}
                         style={{ width: 160 }}
-                        disabled={selectedRole.is_builtin}
                         swatches={[
                           "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
                           "#3b82f6", "#6366f1", "#a855f7", "#ec4899", "#64748b",
@@ -519,8 +529,7 @@ export function AdminRolesSection({
                         </Text>
                         <div className="admin-roles-perm-grid">
                           {category.permissions.map((permission) => {
-                            const isAdminRole = selectedRole.id === "admin";
-                            const isReadOnly = isAdminRole;
+                            const isReadOnly = selectedRole.is_builtin;
                             const isGranted = Boolean(selectedDraft.permissions[permission]);
                             const meta = PERM_META[permission] ?? DEFAULT_META;
                             const tooltipText = t(`roles.tooltip.${permission}`, { defaultValue: "" });
