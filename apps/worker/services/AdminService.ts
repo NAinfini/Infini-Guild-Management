@@ -170,11 +170,17 @@ export class AdminService {
     if (targetIds.length === 0) return ok({ updated: 0 });
     if (newRoleId === "admin") return err("FORBIDDEN", "Cannot assign builtin admin role via API");
 
-    const roleExists = (await this.deps.db.select({ id: roles.id }).from(roles).where(eq(roles.id, newRoleId)).limit(1))[0];
-    if (!roleExists) return err("NOT_FOUND", "Role not found");
+    const actorRole = await this.getActorRoleLevel(actorId);
+    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
+    const newRole = (await this.deps.db.select({ id: roles.id, level: roles.level }).from(roles).where(eq(roles.id, newRoleId)).limit(1))[0];
+    if (!newRole) return err("NOT_FOUND", "Role not found");
+    if (newRole.level >= actorRole.level) return err("FORBIDDEN", "Cannot assign a role at or above your own level");
     const existingUsers = await this.deps.db.select({ id: users.id, username: users.username, role: users.role }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
-    const adminTargets = existingUsers.filter((u) => u.role === "admin");
-    if (adminTargets.length > 0) return err("FORBIDDEN", "Cannot change the role of admin users");
+    const userRoleIds = [...new Set(existingUsers.map((u) => u.role))];
+    const userRoleLevels = userRoleIds.length > 0 ? await this.deps.db.select({ id: roles.id, level: roles.level }).from(roles).where(inArray(roles.id, userRoleIds)) : [];
+    const roleLevelMap = new Map(userRoleLevels.map((r) => [r.id, r.level]));
+    const protectedUsers = existingUsers.filter((u) => (roleLevelMap.get(u.role) ?? 0) >= actorRole.level);
+    if (protectedUsers.length > 0) return err("FORBIDDEN", "Cannot change the role of users at or above your own level");
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
       await this.deps.db.update(users).set({ role: newRoleId, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
@@ -188,9 +194,14 @@ export class AdminService {
   async batchDeactivate(actorId: string, userIds: string[]): Promise<ServiceResult<{ updated: number }>> {
     const targetIds = userIds.filter((id) => id !== actorId);
     if (targetIds.length === 0) return ok({ updated: 0 });
+    const actorRole = await this.getActorRoleLevel(actorId);
+    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
     const existingUsers = await this.deps.db.select({ id: users.id, username: users.username, role: users.role }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
-    const adminTargets = existingUsers.filter((u) => u.role === "admin");
-    if (adminTargets.length > 0) return err("FORBIDDEN", "Cannot deactivate admin users");
+    const userRoleIds = [...new Set(existingUsers.map((u) => u.role))];
+    const userRoleLevels = userRoleIds.length > 0 ? await this.deps.db.select({ id: roles.id, level: roles.level }).from(roles).where(inArray(roles.id, userRoleIds)) : [];
+    const roleLevelMap = new Map(userRoleLevels.map((r) => [r.id, r.level]));
+    const protectedUsers = existingUsers.filter((u) => (roleLevelMap.get(u.role) ?? 0) >= actorRole.level);
+    if (protectedUsers.length > 0) return err("FORBIDDEN", "Cannot deactivate users at or above your own level");
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
       await this.deps.db.update(users).set({ isActive: false, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
@@ -217,9 +228,14 @@ export class AdminService {
   async batchDelete(actorId: string, userIds: string[]): Promise<ServiceResult<{ updated: number }>> {
     const targetIds = userIds.filter((id) => id !== actorId);
     if (targetIds.length === 0) return ok({ updated: 0 });
+    const actorRole = await this.getActorRoleLevel(actorId);
+    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
     const existingUsers = await this.deps.db.select({ id: users.id, username: users.username, role: users.role }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
-    const adminTargets = existingUsers.filter((u) => u.role === "admin");
-    if (adminTargets.length > 0) return err("FORBIDDEN", "Cannot delete admin users");
+    const userRoleIds = [...new Set(existingUsers.map((u) => u.role))];
+    const userRoleLevels = userRoleIds.length > 0 ? await this.deps.db.select({ id: roles.id, level: roles.level }).from(roles).where(inArray(roles.id, userRoleIds)) : [];
+    const roleLevelMap = new Map(userRoleLevels.map((r) => [r.id, r.level]));
+    const protectedUsers = existingUsers.filter((u) => (roleLevelMap.get(u.role) ?? 0) >= actorRole.level);
+    if (protectedUsers.length > 0) return err("FORBIDDEN", "Cannot delete users at or above your own level");
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
       const now = this.now().toISOString();
@@ -257,11 +273,15 @@ export class AdminService {
     if (targetUserId === actorId) return err("CONFLICT", "You cannot change your own role");
     if (newRoleId === "admin") return err("FORBIDDEN", "Cannot assign builtin admin role via API");
 
-    const roleExists = (await this.deps.db.select({ id: roles.id }).from(roles).where(eq(roles.id, newRoleId)).limit(1))[0];
-    if (!roleExists) return err("NOT_FOUND", "Role not found");
+    const actorRole = await this.getActorRoleLevel(actorId);
+    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
+    const newRole = (await this.deps.db.select({ id: roles.id, level: roles.level }).from(roles).where(eq(roles.id, newRoleId)).limit(1))[0];
+    if (!newRole) return err("NOT_FOUND", "Role not found");
+    if (newRole.level >= actorRole.level) return err("FORBIDDEN", "Cannot assign a role at or above your own level");
     const target = (await this.deps.db.select({ id: users.id, role: users.role, deletedAt: users.deletedAt, username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     if (!target || target.deletedAt !== null) return err("NOT_FOUND", "User not found");
-    if (target.role === "admin") return err("FORBIDDEN", "Cannot change the role of an admin user");
+    const targetCurrentRole = (await this.deps.db.select({ level: roles.level }).from(roles).where(eq(roles.id, target.role)).limit(1))[0];
+    if (targetCurrentRole && targetCurrentRole.level >= actorRole.level) return err("FORBIDDEN", "Cannot change the role of a user at or above your own level");
     await this.deps.db.update(users).set({ role: newRoleId, updatedAt: this.now().toISOString() }).where(eq(users.id, targetUserId));
     await this.deps.db.delete(sessions).where(eq(sessions.userId, targetUserId));
     await this.deps.writeAuditLog({ entityType: "user", action: "update_role", actorId, entityId: targetUserId, diffTitle: target.username, detailText: JSON.stringify({ role: { from: target.role, to: newRoleId } }) });
@@ -270,9 +290,12 @@ export class AdminService {
 
   async deactivateUser(actorId: string, targetUserId: string, reason?: string): Promise<ServiceResult<void>> {
     if (targetUserId === actorId) return err("CONFLICT", "You cannot deactivate yourself");
+    const actorRole = await this.getActorRoleLevel(actorId);
+    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
     const target = (await this.deps.db.select({ id: users.id, isActive: users.isActive, deletedAt: users.deletedAt, username: users.username, role: users.role }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     if (!target || target.deletedAt !== null) return err("NOT_FOUND", "User not found");
-    if (target.role === "admin") return err("FORBIDDEN", "Cannot deactivate an admin user");
+    const targetRoleLevel = (await this.deps.db.select({ level: roles.level }).from(roles).where(eq(roles.id, target.role)).limit(1))[0];
+    if (targetRoleLevel && targetRoleLevel.level >= actorRole.level) return err("FORBIDDEN", "Cannot deactivate a user at or above your own level");
     if (!target.isActive) return err("CONFLICT", "User already deactivated");
     const nowIso = this.now().toISOString();
     await this.deps.rawDb.batch([
@@ -295,8 +318,12 @@ export class AdminService {
   async resetPassword(actorId: string, targetUserId: string, temporaryPasswordInput?: string): Promise<ServiceResult<{ temporary_password: string }>> {
     const temporaryPassword = temporaryPasswordInput ?? this.deps.generateTemporaryPassword();
     if (temporaryPassword.length < 8) return err("VALIDATION_ERROR", "temporary_password must be at least 8 characters");
-    const target = (await this.deps.db.select({ id: users.id, deletedAt: users.deletedAt, username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
+    const actorRole = await this.getActorRoleLevel(actorId);
+    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
+    const target = (await this.deps.db.select({ id: users.id, deletedAt: users.deletedAt, username: users.username, role: users.role }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     if (!target || target.deletedAt !== null) return err("NOT_FOUND", "User not found");
+    const targetRoleLevel = (await this.deps.db.select({ level: roles.level }).from(roles).where(eq(roles.id, target.role)).limit(1))[0];
+    if (targetRoleLevel && targetRoleLevel.level >= actorRole.level) return err("FORBIDDEN", "Cannot reset password for a user at or above your own level");
     const passwordHash = await this.deps.createPasswordHash(temporaryPassword);
     await this.deps.db.update(userAuthPassword).set({ passwordHash: passwordHash.passwordHash, salt: passwordHash.salt, updatedAt: this.now().toISOString() }).where(eq(userAuthPassword.userId, targetUserId));
     await this.deps.db.delete(sessions).where(eq(sessions.userId, targetUserId));

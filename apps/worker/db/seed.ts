@@ -230,9 +230,9 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   // ════════════════════════════════════════════
 
   const roleRows: Array<typeof roles.$inferInsert> = [
-    { id: "admin", name: "Admin", level: 3, color: "red", isBuiltin: true },
-    { id: "moderator", name: "Moderator", level: 2, color: "blue", isBuiltin: true },
-    { id: "member", name: "Member", level: 1, color: "gray", isBuiltin: true },
+    { id: "admin", name: "Admin", level: 999, color: "red", isBuiltin: true },
+    { id: "moderator", name: "Moderator", level: 500, color: "blue", isBuiltin: true },
+    { id: "member", name: "Member", level: 100, color: "gray", isBuiltin: true },
   ];
   await batchInsert(db, roles, roleRows, 3);
 

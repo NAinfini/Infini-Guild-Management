@@ -71,7 +71,10 @@ adminRoutes.get("/invite-links", async (c) => {
   const sessionUser = await requirePermission(c, "admin.invite.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).listInviteLinks(parseBoolean(c.req.query("include_expired")) ?? false, parseBoolean(c.req.query("include_revoked")) ?? false);
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
+  if (!result.ok) return buildError(c, result.code, result.message, result.details);
+  const canManage = sessionUser.permissions.has("admin.invite.manage");
+  const data = canManage ? result.data : (result.data as Record<string, unknown>[]).map(({ code: _, ...rest }) => ({ ...rest, code: "••••••••" }));
+  return c.json(data);
 });
 
 adminRoutes.get("/invite-links/stats", async (c) => {
