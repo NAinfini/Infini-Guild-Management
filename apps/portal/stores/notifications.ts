@@ -1,4 +1,5 @@
 import type { PushMessage } from "@guild/shared";
+import i18n from "i18next";
 import { create } from "zustand";
 import { isIsoDate, toIsoOrNow } from "../utils/iso-dates";
 
@@ -177,7 +178,7 @@ function createEntryFromPush(message: PushMessage): PushNotificationEntry | null
     return {
       id: `announcement:${message.announcement_id}`,
       type: "announcement_published",
-      title: "Announcement Published",
+      title: i18n.t("common:notification.title.announcement_published", { defaultValue: "Announcement Published" }),
       message: message.title,
       occurredAt: sanitizeUnknownIso(message.published_at),
       readAt: null,
@@ -190,18 +191,21 @@ function createEntryFromPush(message: PushMessage): PushNotificationEntry | null
       return {
         id: `wiki:${message.entity_id}:${message.hint}`,
         type: "wiki_changed",
-        title: "New Wiki Article",
-        message: message.hint.replace(/_/g, " "),
+        title: i18n.t("common:notification.title.article_created", { defaultValue: "New Wiki Article" }),
+        message: i18n.t("common:notification.hint.article_created"),
         occurredAt,
         readAt: null,
       };
     }
     if (message.entity_type === "member_profile" && message.hint === "member_joined") {
+      const name = message.display_name;
       return {
         id: `member:${message.entity_id}:${message.hint}`,
         type: "member_joined",
-        title: "New Member Joined",
-        message: message.hint.replace(/_/g, " "),
+        title: i18n.t("common:notification.hint.member_joined"),
+        message: name
+          ? i18n.t("common:notification.member_joined_message", { name, defaultValue: "{{name}} joined the guild" })
+          : i18n.t("common:notification.hint.member_joined"),
         occurredAt,
         readAt: null,
       };

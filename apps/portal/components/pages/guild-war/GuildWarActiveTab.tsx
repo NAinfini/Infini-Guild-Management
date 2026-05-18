@@ -1,9 +1,10 @@
 import { ArrowLeftIcon } from "@portal/components/icons";
 import type { SensorDescriptor, SensorOptions } from "@dnd-kit/core";
-import { Alert, Button, Card, Group, Modal, MultiSelect, Skeleton, Stack, Text } from "@mantine/core";
+import { Button, Card, Group, Modal, MultiSelect, Skeleton, Stack, Text } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
 import { useQueryClient } from "@tanstack/react-query";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "../../../hooks/useAppError";
 import { concludeGuildWar, guildWarQueryKeys, moveGuildWarMember, usersQueryKeys } from "../../../services/GuildWarService";
@@ -227,6 +228,58 @@ export function GuildWarActiveTab({
    
   }, [undoMoveRef]);
 
+  // --- Undo notification toast ---
+  const UNDO_NOTIFICATION_ID = "guild-war-undo-move";
+  const undoCancelRef = useRef(() => activeController.setUndoMove(null));
+  undoCancelRef.current = () => activeController.setUndoMove(null);
+  const undoNotificationShownRef = useRef(false);
+
+  useEffect(() => {
+    if (!activeController.undoMove || activeController.undoRemainingSec <= 0) {
+      if (undoNotificationShownRef.current) {
+        notifications.hide(UNDO_NOTIFICATION_ID);
+        undoNotificationShownRef.current = false;
+      }
+      return;
+    }
+    const undoText = activeController.undoMove.moves.length === 1
+      ? t("active.undo.single", {
+          userId: guildWarDrag.resolveUsername(activeController.undoMove.moves[0]?.userId ?? "-"),
+          to: guildWarDrag.resolveTeamName(activeController.undoMove.moves[0]?.to ?? "-"),
+          seconds: activeController.undoRemainingSec,
+        })
+      : t("active.undo.multi", {
+          count: activeController.undoMove.moves.length,
+          seconds: activeController.undoRemainingSec,
+        });
+    const payload = {
+      id: UNDO_NOTIFICATION_ID,
+      color: "blue" as const,
+      autoClose: false as const,
+      withCloseButton: false,
+      message: (
+        <Group justify="space-between" align="center" wrap="wrap" gap="xs">
+          <Text size="sm">{undoText}</Text>
+          <Button
+            size="xs"
+            variant="light"
+            color="red"
+            leftSection={<ArrowLeftIcon size={16} />}
+            onClick={() => undoCancelRef.current()}
+          >
+            {t("active.undo.cancel")}
+          </Button>
+        </Group>
+      ),
+    };
+    if (undoNotificationShownRef.current) {
+      notifications.update(payload);
+    } else {
+      notifications.show(payload);
+      undoNotificationShownRef.current = true;
+    }
+  }, [activeController.undoMove, activeController.undoRemainingSec, guildWarDrag, t]);
+
   return (
     <Stack gap={12} style={{ display: "flex" }}>
       <Suspense fallback={<Card><Stack gap={10} p="md"><Skeleton height={32} width="40%" /><Skeleton height={32} /><Group gap={8}><Skeleton height={32} width="30%" /><Skeleton height={32} width="30%" /></Group></Stack></Card>}>
@@ -259,36 +312,6 @@ export function GuildWarActiveTab({
           onAddTeam={canManageActive && selectedEventId ? guildWarDrag.handleAddTeam : undefined}
         />
       </Suspense>
-
-      {activeController.undoMove && activeController.undoRemainingSec > 0 ? (
-        <Alert color="blue" variant="light">
-          <Group justify="space-between" align="center" wrap="wrap" gap="xs">
-            <Text size="sm">
-              {activeController.undoMove.moves.length === 1
-                ? t("active.undo.single", {
-                    userId: guildWarDrag.resolveUsername(activeController.undoMove.moves[0]?.userId ?? "-"),
-                    to: guildWarDrag.resolveTeamName(activeController.undoMove.moves[0]?.to ?? "-"),
-                    seconds: activeController.undoRemainingSec,
-                  })
-                : t("active.undo.multi", {
-                    count: activeController.undoMove.moves.length,
-                    seconds: activeController.undoRemainingSec,
-                  })}
-            </Text>
-            <Button
-              size="xs"
-              variant="light"
-              color="red"
-              leftSection={<ArrowLeftIcon size={16} />}
-              onClick={() => {
-                activeController.setUndoMove(null);
-              }}
-            >
-              {t("active.undo.cancel")}
-            </Button>
-          </Group>
-        </Alert>
-      ) : null}
 
       <Suspense fallback={<Card><Group gap={12} p="md" align="flex-start">{Array.from({ length: 4 }).map((_, i) => <Stack key={i} gap={8} style={{ flex: 1 }}><Skeleton height={24} width="60%" /><Skeleton height={60} /><Skeleton height={60} /><Skeleton height={60} /></Stack>)}</Group></Card>}>
         <LazyGuildWarDragBoard

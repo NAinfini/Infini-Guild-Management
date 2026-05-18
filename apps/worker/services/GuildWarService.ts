@@ -312,14 +312,24 @@ export class GuildWarService {
       }
     }
 
-    await rawDb.batch(stmts);
+    try {
+      await rawDb.batch(stmts);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return err("SERVER_ERROR", `Failed to conclude war: ${msg}`);
+    }
 
-    await this.deps.writeAuditLog({
-      entityType: "guild_war_history", action: "conclude", actorId, entityId: historyId,
-      diffTitle: warName,
-      detailText: JSON.stringify({ event_id: eventId, result: warInfo.result, team_count: teams.length, member_count: members.length }),
-    });
-    await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: eventId, hint: "war_concluded" });
+    try {
+      await this.deps.writeAuditLog({
+        entityType: "guild_war_history", action: "conclude", actorId, entityId: historyId,
+        diffTitle: warName,
+        detailText: JSON.stringify({ event_id: eventId, result: warInfo.result, team_count: teams.length, member_count: members.length }),
+      });
+      await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: eventId, hint: "war_concluded" });
+    } catch (_postBatchErr) {
+      // Non-critical: the war conclusion already succeeded in D1.
+      // Audit log and push notification failures must not produce a 500.
+    }
     return ok({ war_history_id: historyId });
   }
 

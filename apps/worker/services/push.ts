@@ -27,7 +27,7 @@ function resolveEnvAndCtx(source: Context | Bindings): { env: Bindings; waitUnti
 
 export function publishEntityChanged(
   source: Context | Bindings,
-  payload: { entityType: string; entityId: string; hint: string },
+  payload: { entityType: string; entityId: string; hint: string; displayName?: string },
 ): Promise<void> {
   const { env, waitUntil } = resolveEnvAndCtx(source);
   const task = publishPushMessage(env, {
@@ -36,6 +36,7 @@ export function publishEntityChanged(
     entity_id: payload.entityId,
     updated_at: new Date().toISOString(),
     hint: payload.hint,
+    ...(payload.displayName ? { display_name: payload.displayName } : {}),
   });
   waitUntil?.(task);
   return task;

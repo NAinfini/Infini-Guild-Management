@@ -63,6 +63,7 @@ export type EntityChangedPushMessage = {
   entity_id: string;
   updated_at: string;
   hint: string;
+  display_name?: string;
 };
 
 export type MemberOnlinePushMessage = {
