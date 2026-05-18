@@ -14,7 +14,7 @@ import { Hono } from "hono";
 import { customAlphabet, nanoid } from "nanoid";
 import type { Bindings } from "../index";
 import { requirePermission } from "../middleware/rbac";
-import { writeAuditLog } from "../services/audit";
+import { writeAuditLog, writeAuditLogDurable } from "../services/audit";
 import { AdminService, type MediaLike } from "../services/AdminService";
 import { AdminAuditService, AuditLogQueryError } from "../services/AdminAuditService";
 import { createPasswordHash } from "../services/auth";
@@ -38,6 +38,7 @@ function getAdminService(c: Context) {
     db,
     media: env.MEDIA as unknown as MediaLike,
     writeAuditLog: (input) => writeAuditLog(c, input),
+    writeAuditLogDurable: (input) => writeAuditLogDurable(c, input),
     createPasswordHash,
     generateId: () => nanoid(),
     generateInviteCode: () => generateInviteCode(),

@@ -1,4 +1,5 @@
 import {
+  HIGH_RISK_PERMISSIONS,
   PERMISSIONS,
   ROLES,
   adminRoleSchema,
@@ -103,6 +104,7 @@ type AdminServiceDeps = {
   db: DrizzleDb;
   media: MediaLike;
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
+  writeAuditLogDurable: (input: AuditLogInput) => Promise<void>;
   createPasswordHash: (password: string) => Promise<{ passwordHash: string; salt: string }>;
   generateId: () => string;
   generateInviteCode: () => string;
@@ -175,6 +177,7 @@ export class AdminService {
     const newRole = (await this.deps.db.select({ id: roles.id, level: roles.level }).from(roles).where(eq(roles.id, newRoleId)).limit(1))[0];
     if (!newRole) return err("NOT_FOUND", "Role not found");
     if (newRole.level >= actorRole.level) return err("FORBIDDEN", "Cannot assign a role at or above your own level");
+    if (actorRole.roleId !== "admin" && await this.roleHasHighRiskPermissions(newRoleId)) return err("FORBIDDEN", "Only admin can assign roles containing high-risk permissions");
     const existingUsers = await this.deps.db.select({ id: users.id, username: users.username, role: users.role }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
     const userRoleIds = [...new Set(existingUsers.map((u) => u.role))];
     const userRoleLevels = userRoleIds.length > 0 ? await this.deps.db.select({ id: roles.id, level: roles.level }).from(roles).where(inArray(roles.id, userRoleIds)) : [];
@@ -187,7 +190,7 @@ export class AdminService {
       await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
     }
     const usernames = existingUsers.map((r) => r.username);
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_role_update", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, new_role: newRoleId, count: existingUsers.length }) });
+    await this.deps.writeAuditLogDurable({ entityType: "user", action: "batch_role_update", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, new_role: newRoleId, count: existingUsers.length }) });
     return ok({ updated: existingUsers.length });
   }
 
@@ -208,7 +211,7 @@ export class AdminService {
       await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
     }
     const usernames = existingUsers.map((r) => r.username);
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_deactivate", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
+    await this.deps.writeAuditLogDurable({ entityType: "user", action: "batch_deactivate", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
     return ok({ updated: existingUsers.length });
   }
 
@@ -243,7 +246,7 @@ export class AdminService {
       await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
     }
     const usernames = existingUsers.map((r) => r.username);
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_delete", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
+    await this.deps.writeAuditLogDurable({ entityType: "user", action: "batch_delete", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
     return ok({ updated: existingUsers.length });
   }
 
@@ -278,13 +281,14 @@ export class AdminService {
     const newRole = (await this.deps.db.select({ id: roles.id, level: roles.level }).from(roles).where(eq(roles.id, newRoleId)).limit(1))[0];
     if (!newRole) return err("NOT_FOUND", "Role not found");
     if (newRole.level >= actorRole.level) return err("FORBIDDEN", "Cannot assign a role at or above your own level");
+    if (actorRole.roleId !== "admin" && await this.roleHasHighRiskPermissions(newRoleId)) return err("FORBIDDEN", "Only admin can assign roles containing high-risk permissions");
     const target = (await this.deps.db.select({ id: users.id, role: users.role, deletedAt: users.deletedAt, username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     if (!target || target.deletedAt !== null) return err("NOT_FOUND", "User not found");
     const targetCurrentRole = (await this.deps.db.select({ level: roles.level }).from(roles).where(eq(roles.id, target.role)).limit(1))[0];
     if (targetCurrentRole && targetCurrentRole.level >= actorRole.level) return err("FORBIDDEN", "Cannot change the role of a user at or above your own level");
     await this.deps.db.update(users).set({ role: newRoleId, updatedAt: this.now().toISOString() }).where(eq(users.id, targetUserId));
     await this.deps.db.delete(sessions).where(eq(sessions.userId, targetUserId));
-    await this.deps.writeAuditLog({ entityType: "user", action: "update_role", actorId, entityId: targetUserId, diffTitle: target.username, detailText: JSON.stringify({ role: { from: target.role, to: newRoleId } }) });
+    await this.deps.writeAuditLogDurable({ entityType: "user", action: "update_role", actorId, entityId: targetUserId, diffTitle: target.username, detailText: JSON.stringify({ role: { from: target.role, to: newRoleId } }) });
     return ok(undefined);
   }
 
@@ -302,7 +306,7 @@ export class AdminService {
       this.deps.rawDb.prepare("UPDATE users SET is_active = 0, updated_at = ?1 WHERE id = ?2").bind(nowIso, targetUserId),
       this.deps.rawDb.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(targetUserId),
     ]);
-    await this.deps.writeAuditLog({ entityType: "user", action: "deactivate", actorId, entityId: targetUserId, diffTitle: target.username, detailText: JSON.stringify({ reason: reason ?? null }) });
+    await this.deps.writeAuditLogDurable({ entityType: "user", action: "deactivate", actorId, entityId: targetUserId, diffTitle: target.username, detailText: JSON.stringify({ reason: reason ?? null }) });
     return ok(undefined);
   }
 
@@ -327,7 +331,7 @@ export class AdminService {
     const passwordHash = await this.deps.createPasswordHash(temporaryPassword);
     await this.deps.db.update(userAuthPassword).set({ passwordHash: passwordHash.passwordHash, salt: passwordHash.salt, updatedAt: this.now().toISOString() }).where(eq(userAuthPassword.userId, targetUserId));
     await this.deps.db.delete(sessions).where(eq(sessions.userId, targetUserId));
-    await this.deps.writeAuditLog({ entityType: "user_auth", action: "reset_password", actorId, entityId: targetUserId, diffTitle: target.username });
+    await this.deps.writeAuditLogDurable({ entityType: "user_auth", action: "reset_password", actorId, entityId: targetUserId, diffTitle: target.username });
     return ok({ temporary_password: temporaryPassword });
   }
 
@@ -355,7 +359,7 @@ export class AdminService {
     if (actorRole.roleId !== "admin") permissionRecord["admin.roles.manage"] = false;
     await replaceRolePermissions(this.deps.rawDb, roleId, permissionRecord);
     clearPermissionCache(roleId);
-    await this.deps.writeAuditLog({ entityType: "role", action: "create", actorId, entityId: roleId, diffTitle: input.name.trim(), detailText: JSON.stringify({ name: input.name.trim(), level: input.level, color: input.color ?? null, permissions: permissionRecord }) });
+    await this.deps.writeAuditLogDurable({ entityType: "role", action: "create", actorId, entityId: roleId, diffTitle: input.name.trim(), detailText: JSON.stringify({ name: input.name.trim(), level: input.level, color: input.color ?? null, permissions: permissionRecord }) });
     const created = (await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (!created) return err("SERVER_ERROR", "Failed to create role");
     return ok(adminRoleSchema.parse({ id: created.id, name: created.name, level: created.level, color: created.color, is_builtin: created.isBuiltin, created_at: created.createdAt, updated_at: created.updatedAt, permissions: permissionRecord, assigned_user_count: 0 }));
@@ -394,7 +398,7 @@ export class AdminService {
     const permissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
     const assignedCountRow = (await this.deps.db.select({ count: sql<number>`count(*)` }).from(users).where(and(eq(users.role, roleId), isNull(users.deletedAt))).limit(1))[0];
     const assignedCount = Number(assignedCountRow?.count ?? 0);
-    await this.deps.writeAuditLog({ entityType: "role", action: "update", actorId, entityId: roleId, diffTitle: updatedRole.name, detailText: JSON.stringify({ fields: input, assigned_user_count: assignedCount }) });
+    await this.deps.writeAuditLogDurable({ entityType: "role", action: "update", actorId, entityId: roleId, diffTitle: updatedRole.name, detailText: JSON.stringify({ fields: input, assigned_user_count: assignedCount }) });
     return ok(adminRoleSchema.parse({ id: updatedRole.id, name: updatedRole.name, level: updatedRole.level, color: updatedRole.color, is_builtin: updatedRole.isBuiltin, created_at: updatedRole.createdAt, updated_at: updatedRole.updatedAt, permissions: parsePermissionRecord(permissionRows), assigned_user_count: assignedCount }));
   }
 
@@ -411,7 +415,7 @@ export class AdminService {
     if (assignedCount > 0) return err("CONFLICT", "Role is assigned to users", { assigned_user_count: assignedCount });
     await this.deps.db.delete(roles).where(eq(roles.id, roleId));
     clearPermissionCache(roleId);
-    await this.deps.writeAuditLog({ entityType: "role", action: "delete", actorId, entityId: roleId, diffTitle: existing.name });
+    await this.deps.writeAuditLogDurable({ entityType: "role", action: "delete", actorId, entityId: roleId, diffTitle: existing.name });
     return ok(undefined);
   }
 
@@ -478,6 +482,11 @@ export class AdminService {
   private async getActorRoleLevel(actorId: string): Promise<{ roleId: string; level: number } | null> {
     const row = (await this.deps.db.select({ roleId: roles.id, level: roles.level }).from(roles).innerJoin(users, eq(users.role, roles.id)).where(eq(users.id, actorId)).limit(1))[0];
     return row ?? null;
+  }
+
+  private async roleHasHighRiskPermissions(roleId: string): Promise<boolean> {
+    const rows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+    return rows.some((r) => r.granted && (HIGH_RISK_PERMISSIONS as readonly string[]).includes(r.permission));
   }
 
   private now() {

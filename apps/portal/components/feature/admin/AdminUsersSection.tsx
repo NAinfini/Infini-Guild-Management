@@ -1,7 +1,9 @@
 import { PortalCard } from "../../shared/PortalCard";
 import type { AdminRole } from "@guild/shared";
 import {
+  ActionIcon,
   Alert,
+  Badge,
   Group,
   Skeleton,
   Progress,
@@ -12,6 +14,7 @@ import {
   Title,
 } from "@mantine/core";
 import { CopyIcon, EyeIcon, KeyIcon, PlayIcon, PlayerPauseIcon, SearchIcon, TrashIcon, UserPlusIcon } from "@portal/components/icons";
+import { IconDotsVertical } from "@tabler/icons-react";
 import {
   InfiniTable,
   getCoreRowModel,
@@ -20,7 +23,7 @@ import {
   useReactTable,
 } from "@portal/components/shared/InfiniTable";
 import type { ColumnDef, PaginationState, SortingState } from "@portal/components/shared/InfiniTable";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useClipboard } from "@mantine/hooks";
 import { type ContextMenuItemOptions, useContextMenu } from "mantine-contextmenu";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -107,10 +110,36 @@ export function AdminUsersSection({
 
   const selectedIdSet = useMemo(() => new Set(selectedUserIds), [selectedUserIds]);
   const usersById = useMemo(() => new Map(userRows.map((row) => [row.user.id, row])), [userRows]);
+  const contextMenuRef = useRef<(userId: string, event: ReactMouseEvent<HTMLTableRowElement>) => void>(() => {});
+
+  const allColumns = useMemo(() => {
+    if (!isAdmin) return userColumns;
+    const actionColumn: ColumnDef<AdminUserRow, unknown> = {
+      header: "",
+      id: "actions",
+      size: 40,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            contextMenuRef.current(row.original.user.id, e as unknown as ReactMouseEvent<HTMLTableRowElement>);
+          }}
+          aria-label={t("member.action.menu")}
+        >
+          <IconDotsVertical size={16} />
+        </ActionIcon>
+      ),
+    };
+    return [...userColumns, actionColumn];
+  }, [userColumns, isAdmin, t]);
 
   const table = useReactTable({
     data: userRows,
-    columns: userColumns,
+    columns: allColumns,
     state: { sorting, pagination },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
@@ -337,6 +366,8 @@ export function AdminUsersSection({
     showContextMenu(items)(event);
   };
 
+  contextMenuRef.current = handleRowContextMenu;
+
   return (
     <Stack gap={12}>
       {heading}
@@ -366,7 +397,7 @@ export function AdminUsersSection({
             </Group>
           ) : null}
 
-          <PortalCard interactive={false}>
+          <PortalCard interactive={false} className="admin-member-table-desktop">
             <ScrollArea type="auto" style={{ padding: "1.2rem" }}>
               <InfiniTable
                 table={table}
@@ -381,6 +412,48 @@ export function AdminUsersSection({
               <TablePagination table={table} />
             </ScrollArea>
           </PortalCard>
+
+          <div className="admin-member-cards-mobile">
+            {table.getRowModel().rows.map((row) => {
+              const u = row.original.user;
+              const p = row.original.profile;
+              const roleDef = roles.find((r) => r.id === u.role);
+              return (
+                <PortalCard key={u.id} interactive className={`admin-member-card${selectedIdSet.has(u.id) ? " admin-member-card--selected" : ""}`}>
+                  <div style={{ padding: "0.8rem 1rem" }} onClick={() => onOpenMemberDetail(u.id)}>
+                    <Group justify="space-between" wrap="nowrap" gap={8}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <Text fw={600} size="sm" truncate>{u.username}</Text>
+                        <Group gap={6} mt={2}>
+                          <Badge size="xs" color={roleDef?.color ?? "blue"}>{u.role}</Badge>
+                          {u.is_active
+                            ? <Badge size="xs" color="green">{t("member.status.active")}</Badge>
+                            : <Badge size="xs" color="red">{t("member.status.inactive")}</Badge>
+                          }
+                          {p.classes[0] ? <Text size="xs" c="dimmed">{p.classes[0]}</Text> : null}
+                        </Group>
+                      </div>
+                      {isAdmin ? (
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRowContextMenu(u.id, e as unknown as ReactMouseEvent<HTMLTableRowElement>);
+                          }}
+                          aria-label={t("member.action.menu")}
+                        >
+                          <IconDotsVertical size={16} />
+                        </ActionIcon>
+                      ) : null}
+                    </Group>
+                  </div>
+                </PortalCard>
+              );
+            })}
+            <TablePagination table={table} />
+          </div>
         </>
       ) : null}
     </Stack>

@@ -27,6 +27,33 @@
   -webkit-user-select: none;
 }
 
+/* ── Responsive member table / cards ── */
+
+.admin-member-cards-mobile {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .admin-member-table-desktop {
+    display: none;
+  }
+
+  .admin-member-cards-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .admin-member-card {
+    cursor: pointer;
+  }
+
+  .admin-member-card--selected {
+    outline: 2px solid var(--color-primary, #3b82f6);
+    outline-offset: -2px;
+  }
+}
+
 /* ── Roles: wiki-like split layout ── */
 
 .admin-roles-layout {

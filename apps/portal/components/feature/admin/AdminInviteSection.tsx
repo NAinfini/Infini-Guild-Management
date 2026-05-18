@@ -11,7 +11,7 @@ import {
   useReactTable,
 } from "@portal/components/shared/InfiniTable";
 import type { ColumnDef, PaginationState, SortingState } from "@portal/components/shared/InfiniTable";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { modals } from "@mantine/modals";
@@ -32,6 +32,8 @@ type AdminInviteSectionProps = {
   inviteExpiresAt: string;
   onInviteExpiresAtChange: (value: string) => void;
   onCreateInvite: () => void;
+  createInvitePending: boolean;
+  createInviteSuccess: boolean;
   inviteStatsLoading: boolean;
   inviteStats: InviteStats | null;
   inviteLinksLoading: boolean;
@@ -52,6 +54,8 @@ export function AdminInviteSection({
   inviteExpiresAt,
   onInviteExpiresAtChange,
   onCreateInvite,
+  createInvitePending,
+  createInviteSuccess,
   inviteStatsLoading,
   inviteStats,
   inviteLinksLoading,
@@ -71,6 +75,12 @@ export function AdminInviteSection({
   const [createModalOpen, createModalHandlers] = useDisclosure(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
+
+  useEffect(() => {
+    if (createInviteSuccess && createModalOpen) {
+      createModalHandlers.close();
+    }
+  }, [createInviteSuccess, createModalOpen, createModalHandlers]);
 
   const handleCopyInviteLink = (row: InviteRow) => {
     void copyPlainText(`${window.location.origin}/register/${row.code}`);
@@ -361,9 +371,10 @@ export function AdminInviteSection({
           <Button
             fullWidth
             leftSection={<PlusIcon size={16} />}
+            loading={createInvitePending}
+            disabled={createInvitePending}
             onClick={() => {
               onCreateInvite();
-              createModalHandlers.close();
             }}
           >
             {t("invite.create")}

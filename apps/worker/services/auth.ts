@@ -197,28 +197,35 @@ export async function verifyPassword(password: string, salt: string, passwordHas
   }
 }
 
+async function hashSessionToken(token: string): Promise<string> {
+  const data = textEncoder.encode(token);
+  const hash = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
+  return bytesToBase64(new Uint8Array(hash));
+}
+
 export async function createSession(
   c: Context,
   userId: string,
   options: { stayLoggedIn?: boolean } = {},
 ): Promise<{ sessionId: string; expiresAt: string }> {
   const db = getDb(c);
-  const sessionId = nanoid();
+  const rawToken = nanoid();
+  const hashedToken = await hashSessionToken(rawToken);
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
   const stayLoggedIn = options.stayLoggedIn === true;
 
   await db.insert(sessions).values({
-    id: sessionId,
+    id: hashedToken,
     userId,
     expiresAt,
   });
 
-  setSessionCookies(c, sessionId, {
+  setSessionCookies(c, rawToken, {
     expiresAt,
     stayLoggedIn,
   });
 
-  return { sessionId, expiresAt };
+  return { sessionId: hashedToken, expiresAt };
 }
 
 export async function resolveSession(c: Context, options: { freshPermissions?: boolean } = {}): Promise<ResolvedSession | null> {
@@ -255,11 +262,12 @@ async function loadPermissionRows(
 }
 
 async function resolveSessionUncached(c: Context, options: { freshPermissions: boolean }): Promise<ResolvedSession | null> {
-  const sessionId = getCookie(c, SESSION_COOKIE_NAME);
-  if (!sessionId) {
+  const rawToken = getCookie(c, SESSION_COOKIE_NAME);
+  if (!rawToken) {
     return null;
   }
 
+  const hashedToken = await hashSessionToken(rawToken);
   const db = getDb(c);
   const row = (
     await db
@@ -274,7 +282,7 @@ async function resolveSessionUncached(c: Context, options: { freshPermissions: b
       })
       .from(sessions)
       .innerJoin(users, eq(sessions.userId, users.id))
-      .where(eq(sessions.id, sessionId))
+      .where(eq(sessions.id, hashedToken))
       .limit(1)
   )[0];
 
@@ -311,7 +319,7 @@ async function resolveSessionUncached(c: Context, options: { freshPermissions: b
   if (remainingMs < renewalThresholdMs) {
     const nextExpiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
     await db.update(sessions).set({ expiresAt: nextExpiresAt }).where(eq(sessions.id, row.sessionId));
-    setSessionCookies(c, row.sessionId, {
+    setSessionCookies(c, rawToken, {
       expiresAt: nextExpiresAt,
       stayLoggedIn,
     });
@@ -331,10 +339,11 @@ async function resolveSessionUncached(c: Context, options: { freshPermissions: b
 }
 
 export async function destroySession(c: Context, sessionId?: string): Promise<void> {
-  const targetSessionId = sessionId ?? getCookie(c, SESSION_COOKIE_NAME);
-  if (targetSessionId) {
+  const rawToken = sessionId ?? getCookie(c, SESSION_COOKIE_NAME);
+  if (rawToken) {
     const db = getDb(c);
-    await db.delete(sessions).where(eq(sessions.id, targetSessionId));
+    const hashed = await hashSessionToken(rawToken);
+    await db.delete(sessions).where(eq(sessions.id, hashed));
   }
   clearSessionCookie(c);
 }

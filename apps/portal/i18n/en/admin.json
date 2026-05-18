@@ -119,6 +119,7 @@
   "member.status.active": "active",
   "member.status.inactive": "inactive",
   "member.action.detail": "Detail",
+  "member.action.menu": "Actions",
   "member.action.openDetailAria": "Open detail for {{username}}",
   "member.create.usernamePlaceholder": "Username (3-50, letters/numbers/_)",
   "member.create.usernameAria": "New member username",

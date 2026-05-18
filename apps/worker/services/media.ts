@@ -1,6 +1,40 @@
 ﻿import type { Context } from "hono";
 import type { Bindings } from "../index";
 
+const MAGIC_BYTES: Record<string, { offset: number; bytes: number[] }[]> = {
+  "image/jpeg": [{ offset: 0, bytes: [0xFF, 0xD8, 0xFF] }],
+  "image/png": [{ offset: 0, bytes: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] }],
+  "image/webp": [{ offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] }, { offset: 8, bytes: [0x57, 0x45, 0x42, 0x50] }],
+  "image/gif": [{ offset: 0, bytes: [0x47, 0x49, 0x46, 0x38] }],
+  "audio/ogg": [{ offset: 0, bytes: [0x4F, 0x67, 0x67, 0x53] }],
+  "audio/webm": [{ offset: 0, bytes: [0x1A, 0x45, 0xDF, 0xA3] }],
+  "audio/mp4": [{ offset: 4, bytes: [0x66, 0x74, 0x79, 0x70] }],
+  "audio/mpeg": [{ offset: 0, bytes: [0xFF, 0xFB] }, { offset: 0, bytes: [0xFF, 0xF3] }, { offset: 0, bytes: [0xFF, 0xF2] }, { offset: 0, bytes: [0x49, 0x44, 0x33] }],
+  "audio/wav": [{ offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] }, { offset: 8, bytes: [0x57, 0x41, 0x56, 0x45] }],
+};
+
+export function validateMagicBytes(buffer: ArrayBuffer, declaredType: string): boolean {
+  const signatures = MAGIC_BYTES[declaredType];
+  if (!signatures) return true;
+  const view = new Uint8Array(buffer);
+  return signatures.every(({ offset, bytes }) => {
+    if (view.length < offset + bytes.length) return false;
+    return bytes.every((b, i) => view[offset + i] === b);
+  });
+}
+
+function detectContentTypeFromBytes(buffer: ArrayBuffer): string | null {
+  const view = new Uint8Array(buffer);
+  for (const [mime, signatures] of Object.entries(MAGIC_BYTES)) {
+    const match = signatures.every(({ offset, bytes }) => {
+      if (view.length < offset + bytes.length) return false;
+      return bytes.every((b, i) => view[offset + i] === b);
+    });
+    if (match) return mime;
+  }
+  return null;
+}
+
 function getMediaBucket(c: Context): R2Bucket {
   const env = c.env as Bindings;
   return env.MEDIA;
@@ -25,8 +59,11 @@ function sanitizeFilename(file: File, fallbackExt: string): string {
 export async function storeProfileImage(c: Context, userId: string, file: File): Promise<string> {
   const name = sanitizeFilename(file, ".webp");
   const key = `members/${userId}/images/${name}`;
-  await getMediaBucket(c).put(key, await file.arrayBuffer(), {
-    httpMetadata: { contentType: normalizeContentType(file, "application/octet-stream") },
+  const buffer = await file.arrayBuffer();
+  if (!validateMagicBytes(buffer, file.type)) throw new Error(`File bytes do not match declared type: ${file.type}`);
+  const contentType = detectContentTypeFromBytes(buffer) ?? normalizeContentType(file, "application/octet-stream");
+  await getMediaBucket(c).put(key, buffer, {
+    httpMetadata: { contentType },
   });
   return key;
 }
@@ -34,8 +71,11 @@ export async function storeProfileImage(c: Context, userId: string, file: File):
 export async function storeProfileAudio(c: Context, userId: string, file: File): Promise<string> {
   const name = sanitizeFilename(file, ".opus");
   const key = `members/${userId}/audio/${name}`;
-  await getMediaBucket(c).put(key, await file.arrayBuffer(), {
-    httpMetadata: { contentType: normalizeContentType(file, "audio/ogg") },
+  const buffer = await file.arrayBuffer();
+  if (!validateMagicBytes(buffer, file.type)) throw new Error(`File bytes do not match declared type: ${file.type}`);
+  const contentType = detectContentTypeFromBytes(buffer) ?? normalizeContentType(file, "audio/ogg");
+  await getMediaBucket(c).put(key, buffer, {
+    httpMetadata: { contentType },
   });
   return key;
 }

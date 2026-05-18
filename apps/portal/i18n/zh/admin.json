@@ -119,6 +119,7 @@
   "member.status.active": "启用",
   "member.status.inactive": "停用",
   "member.action.detail": "详情",
+  "member.action.menu": "操作",
   "member.action.openDetailAria": "打开 {{username}} 的详情",
   "member.create.usernamePlaceholder": "用户名（3-50，字母/数字/下划线）",
   "member.create.usernameAria": "新成员用户名",

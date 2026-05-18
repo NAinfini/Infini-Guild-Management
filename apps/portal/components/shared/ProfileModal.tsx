@@ -4,8 +4,8 @@ import { Group, Modal, Stack, Text } from "@mantine/core";
 import { PencilIcon } from "@portal/components/icons";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import DOMPurify from "dompurify";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
+import { sanitizeTitleHtml } from "../../utils/sanitize";
 import styles from "./ProfileModal.module.css";
 
 type ProfileModalProps = {
@@ -39,11 +39,7 @@ export function ProfileModal({
   const [avatarError, setAvatarError] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const safeTitleHtml = useMemo(
-    () =>
-      DOMPurify.sanitize(profile?.title_html ?? "", {
-        ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
-        ALLOWED_ATTR: ["style"],
-      }),
+    () => sanitizeTitleHtml(profile?.title_html ?? ""),
     [profile?.title_html],
   );
   const avatarUrl = profile?.avatar_key ? resolveMediaUrl(profile.avatar_key) : null;

@@ -84,6 +84,7 @@ export function AdminStatusTab({
   const isAdmin = userCanViewStatus(user);
   const loadErrorMessage = tc("loadError");
   const heading = <Title order={2} style={{ margin: 0, fontSize: 16 }}>{t("tab.status")}</Title>;
+  const showTestConsole = import.meta.env.DEV;
   const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
   const [runningSet, setRunningSet] = useState<Set<string>>(new Set());
   const [resultMap, setResultMap] = useState<Map<string, EndpointResult>>(new Map());
@@ -386,7 +387,8 @@ export function AdminStatusTab({
         </PortalCard>
       </SimpleGrid>
 
-      {/* ── API Test Console ────────────────────────── */}
+      {/* ── API Test Console (dev only) ────────────────────────── */}
+      {showTestConsole ? (
       <div className="api-console">
         <div className="api-console__header">
           <div className="api-console__header-left">
@@ -447,9 +449,12 @@ export function AdminStatusTab({
           ))}
         </div>
       </div>
+      ) : null}
 
-      {/* ── Debug Console ─────────────────────────── */}
+      {/* ── Debug Console (dev only) ─────────────────────────── */}
+      {showTestConsole ? (
       <AdminApiDebugConsole logs={debugLogs} onClear={clearDebug} />
+      ) : null}
     </Stack>
   );
 }

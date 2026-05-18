@@ -5,6 +5,7 @@ import DOMPurify from "dompurify";
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { parseAvailabilityRanges } from "../../utils/availability";
+import { sanitizeTitleHtml } from "../../utils/sanitize";
 import "./MemberCard.css";
 
 const BADGE_SANITIZE_OPTIONS = {
@@ -102,11 +103,7 @@ export const MemberCard = memo(function MemberCard({
   const [avatarBroken, setAvatarBroken] = useState(false);
 
   const titleHtml = useMemo(
-    () =>
-      DOMPurify.sanitize(profile.title_html ?? "", {
-        ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
-        ALLOWED_ATTR: ["style"],
-      }),
+    () => sanitizeTitleHtml(profile.title_html ?? ""),
     [profile.title_html],
   );
 

@@ -98,6 +98,8 @@ guildWarRoutes.post("/conclude", async (c) => {
 });
 
 guildWarRoutes.get("/export", async (c) => {
+  const user = await requireGuildWarHistoryEditor(c);
+  if (user instanceof Response) return user;
   const format = (c.req.query("format") ?? "csv").trim().toLowerCase();
   if (format !== "csv" && format !== "json") return buildError(c, "VALIDATION_ERROR", "format must be csv or json");
   const result = await getService(c).exportHistory(format, { dateFrom: c.req.query("date_from"), dateTo: c.req.query("date_to"), eventId: c.req.query("event_id") });

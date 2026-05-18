@@ -1,6 +1,6 @@
 import { type AdminRole } from "@guild/shared";
 import { SettingsIcon } from "@portal/components/icons";
-import { useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Alert,
   Badge,
@@ -66,9 +66,17 @@ export function AdminPage() {
   const user = useAuthStore((state) => state.user);
   const { isModerator, canManage: canManagePermission } = useEffectivePermissions();
   const { showError } = useAppError();
-  const { member: memberSearchParam } = useSearch({ strict: false }) as { member?: string };
+  const { member: memberSearchParam, tab: tabSearchParam } = useSearch({ strict: false }) as { member?: string; tab?: string };
+  const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState("member");
+  type AdminTab = "member" | "invite" | "audit" | "roles" | "badges" | "status";
+  const [activeTab, setActiveTab] = useState(tabSearchParam || "member");
+  const handleTabChange = useCallback((value: string | null) => {
+    if (!value) return;
+    setActiveTab(value);
+    const tab = value === "member" ? undefined : (value as AdminTab);
+    void navigate({ to: "/admin", search: (prev) => ({ ...prev, tab }), replace: true });
+  }, [navigate]);
   const [memberSearch, setMemberSearch] = useState("");
 
   const {
@@ -163,9 +171,9 @@ export function AdminPage() {
 
   useEffect(() => {
     if (!canManageBadges && activeTab === "badges") {
-      setActiveTab("member");
+      handleTabChange("member");
     }
-  }, [activeTab, canManageBadges]);
+  }, [activeTab, canManageBadges, handleTabChange]);
 
   const {
     setMemberDetailId,
@@ -294,7 +302,7 @@ export function AdminPage() {
 
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<SettingsIcon size={22} />} className="admin-page">
-      <Tabs value={activeTab} onChange={(value) => value && setActiveTab(value)}>
+      <Tabs value={activeTab} onChange={handleTabChange}>
         <Tabs.List>
           <Tabs.Tab value="member">{t("tab.member")}</Tabs.Tab>
           <Tabs.Tab value="invite">{t("tab.invite")}</Tabs.Tab>
@@ -362,6 +370,8 @@ export function AdminPage() {
               inviteExpiresAt={invite.expiresAt}
               onInviteExpiresAtChange={setInviteExpiresAt}
               onCreateInvite={() => createInviteMutation.mutate()}
+              createInvitePending={createInviteMutation.isPending}
+              createInviteSuccess={createInviteMutation.isSuccess}
               inviteStatsLoading={inviteStatsQuery.isLoading}
               inviteStats={inviteStatsQuery.data ?? null}
               inviteLinksLoading={inviteLinksQuery.isLoading}

@@ -1,6 +1,8 @@
 import { Badge, Group, Modal, Stack, Text } from "@mantine/core";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { BoltIcon } from "@portal/components/icons";
+import { sanitizeTitleHtml } from "../../../utils/sanitize";
 
 type ActiveMemberDetail = {
   username: string;
@@ -32,6 +34,10 @@ export function WarMemberDetailModal({
   onClose,
 }: WarMemberDetailModalProps) {
   const { t } = useTranslation("guild-war");
+  const safeTitleHtml = useMemo(
+    () => (activeDetail?.titleHtml ? sanitizeTitleHtml(activeDetail.titleHtml) : ""),
+    [activeDetail?.titleHtml],
+  );
   return (
     <Modal
       opened={open}
@@ -42,8 +48,8 @@ export function WarMemberDetailModal({
     >
       {activeDetail ? (
         <Stack gap={12}>
-          {activeDetail.titleHtml ? (
-            <Text size="sm" c="dimmed" dangerouslySetInnerHTML={{ __html: activeDetail.titleHtml }} />
+          {safeTitleHtml ? (
+            <Text size="sm" c="dimmed" dangerouslySetInnerHTML={{ __html: safeTitleHtml }} />
           ) : null}
 
           <Group gap={8} wrap="wrap">
