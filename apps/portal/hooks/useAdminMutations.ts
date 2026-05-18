@@ -65,7 +65,7 @@ export function useAdminMutations({
   };
 
   const updateRoleMutation = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: "admin" | "moderator" | "member" }) =>
+    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
       updateAdminUserRole(userId, role),
     onSuccess: async () => {
       notifySuccess(t("message.roleUpdated"));
@@ -122,7 +122,7 @@ export function useAdminMutations({
   });
 
   const batchRoleMutation = useMutation({
-    mutationFn: ({ userIds, newRole }: { userIds: string[]; newRole: "member" | "moderator" }) =>
+    mutationFn: ({ userIds, newRole }: { userIds: string[]; newRole: string }) =>
       batchUpdateAdminUserRole({
         user_ids: userIds,
         new_role: newRole,
@@ -228,7 +228,7 @@ export function useAdminMutations({
         notes: form.notes || null,
       });
       try {
-        await updateAdminUserRole(userId, form.role as "admin" | "moderator" | "member");
+        await updateAdminUserRole(userId, form.role);
       } catch {
         throw new Error("Profile saved but role update failed");
       }
@@ -339,7 +339,7 @@ export function useAdminMutations({
     });
   };
 
-  const handleBatchRole = async (userIds: string[], role: "member" | "moderator") => {
+  const handleBatchRole = async (userIds: string[], role: string) => {
     const targetIds = getCappedUserIds(userIds);
     const names = resolveNames(targetIds);
     const confirmed = await confirmBatchAction(

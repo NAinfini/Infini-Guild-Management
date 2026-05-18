@@ -40,7 +40,7 @@ export function deleteAdminInviteLink(id: string): Promise<{ ok: true }> {
 
 export function updateAdminUserRole(
   userId: string,
-  role: "admin" | "moderator" | "member",
+  role: string,
 ): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/admin/users/${userId}/role`, {
     method: "PATCH",

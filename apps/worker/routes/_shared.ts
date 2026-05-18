@@ -1,9 +1,11 @@
-import { ERROR_STATUS, type ErrorCode, type StandardErrorResponse } from "@guild/shared";
+import { ERROR_STATUS, LIMITS, type ErrorCode, type StandardErrorResponse } from "@guild/shared";
 import type { Context } from "hono";
 import type { ZodTypeAny } from "zod";
 import { getRequestUser } from "../middleware/rbac";
 
 type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
+
+export const MEDIA_CACHE_CONTROL = `private, max-age=${LIMITS.cache.mediaMaxAgeSeconds}`;
 
 export function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {
   const requestId = (c.get("requestId") as string | undefined) ?? crypto.randomUUID();

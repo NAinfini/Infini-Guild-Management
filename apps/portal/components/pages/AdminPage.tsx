@@ -249,11 +249,16 @@ export function AdminPage() {
       header: t("member.table.role"),
       id: "role",
       accessorFn: (row) => row.user.role,
-      cell: ({ row }) => (
-        <Badge color={row.original.user.role === "admin" ? "red" : row.original.user.role === "moderator" ? "yellow" : "blue"}>
-          {t(`role.${row.original.user.role}`)}
-        </Badge>
-      ),
+      cell: ({ row }) => {
+        const roleId = row.original.user.role;
+        const roleDef = rolesQuery.data?.find((r) => r.id === roleId);
+        const color = roleDef?.color ?? "blue";
+        return (
+          <Badge color={color}>
+            {t(`role.${roleId}`)}
+          </Badge>
+        );
+      },
     },
     {
       header: t("member.table.active"),
@@ -480,6 +485,7 @@ export function AdminPage() {
             })
           }
           saveProfilePending={updateMemberProfileMutation.isPending}
+          roles={rolesQuery.data ?? []}
           mediaTab={
             selectedMemberDetail ? (
               <Suspense fallback={suspenseFallback}>

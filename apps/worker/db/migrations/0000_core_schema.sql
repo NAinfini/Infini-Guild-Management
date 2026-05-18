@@ -4,7 +4,7 @@
 CREATE TABLE IF NOT EXISTS roles (
   id TEXT PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
-  level INTEGER NOT NULL,
+  level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 3),
   color TEXT,
   is_builtin INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),

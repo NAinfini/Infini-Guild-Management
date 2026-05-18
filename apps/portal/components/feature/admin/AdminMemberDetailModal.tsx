@@ -1,4 +1,4 @@
-import { CLASS_NAMES } from "@guild/shared";
+import { CLASS_NAMES, type AdminRole } from "@guild/shared";
 import { PortalCard } from "../../shared/PortalCard";
 import {
   Badge,
@@ -45,6 +45,7 @@ type AdminMemberDetailModalProps = {
   onSaveProfile: (member: AdminUserRow) => void;
   saveProfilePending: boolean;
   mediaTab: ReactNode;
+  roles: AdminRole[];
 };
 
 function FieldSection({ label, children }: { label: string; children: ReactNode }) {
@@ -67,6 +68,7 @@ export function AdminMemberDetailModal({
   onSaveProfile,
   saveProfilePending,
   mediaTab,
+  roles,
 }: AdminMemberDetailModalProps) {
   const { t } = useTranslation("admin");
 
@@ -104,11 +106,11 @@ export function AdminMemberDetailModal({
                         <Select
                           value={form.role}
                           onChange={(value) => { if (value) onFormChange({ role: value }); }}
-                          data={[
-                            { value: "admin", label: t("role.admin") },
-                            { value: "moderator", label: t("role.moderator") },
-                            { value: "member", label: t("role.member") },
-                          ]}
+                          data={roles
+                            .slice()
+                            .sort((a, b) => a.level - b.level)
+                            .map((r) => ({ value: r.id, label: r.name }))
+                          }
                           size="sm"
                         />
                       </FieldSection>

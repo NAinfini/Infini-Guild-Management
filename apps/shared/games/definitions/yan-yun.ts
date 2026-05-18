@@ -70,6 +70,7 @@ export const yanYunGame: GameDefinition = {
     ],
     mvpCategories: ["damage", "healing", "damage_taken", "building_damage"],
     defaultTeamNames: ["Alpha", "Bravo"],
+    captainRoleTag: "Captain",
     modifierWeights: {
       kda: 0.30,
       towers: 0.10,

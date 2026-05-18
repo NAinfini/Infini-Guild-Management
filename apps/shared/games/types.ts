@@ -57,6 +57,7 @@ export interface WarConfig {
   mvpCategories: readonly string[];
   defaultTeamNames: readonly string[];
   modifierWeights: Record<string, number>;
+  captainRoleTag: string;
 }
 
 export interface GameDefinition {

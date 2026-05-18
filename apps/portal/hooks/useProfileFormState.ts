@@ -1,27 +1,11 @@
 import { CLASS_NAMES, type MemberProfile } from "@guild/shared";
+import { isAllowedVideoUrl } from "@guild/shared/utils/video";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import { notifyWarning } from "../utils/notifications";
-
-function isAllowedVideoUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    const host = url.hostname.toLowerCase();
-    return (
-      host.includes("youtube.com") ||
-      host.includes("youtu.be") ||
-      host.includes("bilibili.com") ||
-      host.includes("vimeo.com") ||
-      host.includes("tiktok.com") ||
-      host.includes("douyin.com")
-    );
-  } catch {
-    return false;
-  }
-}
 
 type UseProfileFormStateParams = {
   profile: MemberProfile | null | undefined;

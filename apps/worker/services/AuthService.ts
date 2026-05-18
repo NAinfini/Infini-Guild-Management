@@ -1,6 +1,4 @@
 import {
-  MEMBER_DEFAULT_PERMISSIONS,
-  MODERATOR_DEFAULT_PERMISSIONS,
   PERMISSIONS,
   memberProfileSchema,
   permissionSetToRecord,
@@ -80,18 +78,12 @@ export class AuthService {
   }
 
   private async resolveUserPermissions(roleId: string): Promise<{ permissions: Record<Permission, boolean> }> {
-    if (roleId === "admin") {
-      return { permissions: Object.fromEntries(PERMISSIONS.map((p) => [p, true])) as Record<Permission, boolean> };
-    }
-
-    const defaults: ReadonlySet<Permission> = roleId === "moderator" ? MODERATOR_DEFAULT_PERMISSIONS : roleId === "member" ? MEMBER_DEFAULT_PERMISSIONS : new Set();
-    const perms = new Set<Permission>(defaults);
+    const perms = new Set<Permission>();
     const permRows = await this.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
     for (const row of permRows) {
       if (!(PERMISSIONS as readonly string[]).includes(row.permission)) continue;
       const p = row.permission as Permission;
       if (row.granted) perms.add(p);
-      else perms.delete(p);
     }
 
     return { permissions: permissionSetToRecord(perms) };

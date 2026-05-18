@@ -1,9 +1,5 @@
 import {
-  MODERATOR_DEFAULT_PERMISSIONS,
-  MEMBER_DEFAULT_PERMISSIONS,
   PERMISSIONS,
-  isBuiltinRole,
-  type BuiltinRole,
   type Permission,
   type RoleId,
 } from "@guild/shared";
@@ -26,7 +22,7 @@ type ContextWithSessionCache = Context & {
 export type SessionUser = {
   id: string;
   roleId: RoleId;
-  role: BuiltinRole;
+  role: string;
   permissions: ReadonlySet<Permission>;
 };
 
@@ -78,27 +74,15 @@ function isSecureRequest(c: Context): boolean {
 }
 
 function buildPermissionSet(
-  roleId: RoleId,
   permissionRows: Array<{ permission: string; granted: boolean } | null>,
 ): ReadonlySet<Permission> {
   const perms = new Set<Permission>();
-
-  if (roleId === "admin") {
-    for (const p of PERMISSIONS) perms.add(p);
-    return perms;
-  }
-
-  const defaults = roleId === "moderator" ? MODERATOR_DEFAULT_PERMISSIONS : roleId === "member" ? MEMBER_DEFAULT_PERMISSIONS : null;
-  if (defaults) {
-    for (const p of defaults) perms.add(p);
-  }
 
   for (const row of permissionRows) {
     if (row === null) continue;
     if (!(PERMISSIONS as readonly string[]).includes(row.permission)) continue;
     const p = row.permission as Permission;
     if (row.granted) perms.add(p);
-    else perms.delete(p);
   }
 
   return perms;
@@ -252,9 +236,6 @@ async function loadPermissionRows(
   roleId: RoleId,
   options: { freshPermissions: boolean },
 ): Promise<Array<{ permission: string; granted: boolean }>> {
-  if (roleId === "admin") {
-    return [];
-  }
   if (!options.freshPermissions) {
     const cached = permissionRowsCache.get(roleId);
     if (cached && cached.expiresAtMs > Date.now()) {
@@ -319,8 +300,8 @@ async function resolveSessionUncached(c: Context, options: { freshPermissions: b
   const user: SessionUser = {
     id: row.userId,
     roleId: row.roleId,
-    role: isBuiltinRole(row.roleId) ? row.roleId : "member",
-    permissions: buildPermissionSet(row.roleId, permissionRows),
+    role: row.roleId,
+    permissions: buildPermissionSet(permissionRows),
   };
 
   const stayLoggedIn = getCookie(c, SESSION_MODE_COOKIE_NAME) === "1";

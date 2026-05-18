@@ -29,15 +29,6 @@ function createContext() {
   };
 }
 
-function createDb(row: Record<string, unknown>) {
-  const limit = vi.fn().mockResolvedValue([row]);
-  const where = vi.fn(() => ({ limit }));
-  const innerJoin = vi.fn(() => ({ where }));
-  const from = vi.fn(() => ({ innerJoin, where }));
-  const select = vi.fn(() => ({ from }));
-  return { db: { select }, calls: { select } };
-}
-
 describe("resolveSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -48,8 +39,8 @@ describe("resolveSession", () => {
     });
   });
 
-  it("does not request role permission rows for admin sessions", async () => {
-    const { db, calls } = createDb({
+  it("loads permission rows from database for admin sessions", async () => {
+    const sessionRow = {
       sessionId: "sess-1",
       expiresAt: "2099-01-01T00:00:00.000Z",
       sessionCreatedAt: "2026-05-01T00:00:00.000Z",
@@ -57,14 +48,23 @@ describe("resolveSession", () => {
       roleId: "admin",
       isActive: true,
       deletedAt: null,
-    });
-    mocks.drizzle.mockReturnValue(db);
+    };
+    const permissionRows = [{ permission: "admin.users.view", granted: true }];
+    const limit = vi.fn().mockResolvedValue([sessionRow]);
+    const where = vi
+      .fn()
+      .mockReturnValueOnce({ limit })
+      .mockResolvedValueOnce(permissionRows);
+    const innerJoin = vi.fn(() => ({ where }));
+    const from = vi.fn(() => ({ innerJoin, where }));
+    const select = vi.fn(() => ({ from }));
+    mocks.drizzle.mockReturnValue({ select });
 
     const resolved = await resolveSession(createContext() as never);
 
     expect(resolved?.user.roleId).toBe("admin");
-    expect(calls.select).toHaveBeenCalledTimes(1);
-    expect(calls.select).toHaveBeenCalledWith(expect.not.objectContaining({ permissionsJson: expect.anything() }));
+    expect(resolved?.user.permissions.has("admin.users.view")).toBe(true);
+    expect(select).toHaveBeenCalledTimes(2);
   });
 
   it("caches non-admin permission rows for read session resolution and bypasses cache for fresh permission checks", async () => {

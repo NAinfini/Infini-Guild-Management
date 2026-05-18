@@ -8,6 +8,30 @@ function safeUrl(value: string): URL | null {
 
 const DIRECT_VIDEO_EXTENSIONS = [".mp4", ".webm", ".ogg", ".ogv", ".mov", ".m4v"];
 
+export const EMBEDDABLE_VIDEO_HOSTS = [
+  "youtube.com",
+  "youtu.be",
+  "bilibili.com",
+  "vimeo.com",
+  "tiktok.com",
+] as const;
+
+export const ALLOWED_VIDEO_HOSTS = [
+  ...EMBEDDABLE_VIDEO_HOSTS,
+  "douyin.com",
+] as const;
+
+export const EMBED_FRAME_SOURCES = [
+  "https://www.youtube-nocookie.com",
+  "https://player.bilibili.com",
+  "https://player.vimeo.com",
+  "https://www.tiktok.com",
+] as const;
+
+function hostMatches(host: string, candidates: readonly string[]): boolean {
+  return candidates.some((h) => host.includes(h));
+}
+
 export function isDirectPlayableVideoUrl(url: string): boolean {
   const parsed = safeUrl(url);
   if (!parsed) {
@@ -27,20 +51,15 @@ export function isEmbeddableVideoUrl(url: string): boolean {
   if (host.includes("douyin.com")) {
     return false;
   }
-  return (
-    host.includes("youtube.com") ||
-    host.includes("youtu.be") ||
-    host.includes("bilibili.com") ||
-    host.includes("vimeo.com") ||
-    host.includes("tiktok.com")
-  );
+  return hostMatches(host, EMBEDDABLE_VIDEO_HOSTS);
 }
 
-/**
- * Validates that a URL is an allowed gallery video URL.
- * Only URLs from known embeddable hosts are accepted; arbitrary URLs are rejected
- * to prevent SSRF / iframe injection via the gallery lightbox.
- */
+export function isAllowedVideoUrl(url: string): boolean {
+  const parsed = safeUrl(url);
+  if (!parsed) return false;
+  return hostMatches(parsed.hostname.toLowerCase(), ALLOWED_VIDEO_HOSTS);
+}
+
 export function isAllowedGalleryVideoUrl(url: string): boolean {
   return isEmbeddableVideoUrl(url);
 }

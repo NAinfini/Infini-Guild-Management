@@ -9,7 +9,7 @@ import { publishEntityChanged } from "../services/push";
 import { deleteMediaObject, storeProfileAudio, storeProfileImage } from "../services/media";
 import { UserService } from "../services/UserService";
 import { BadgeService } from "../services/BadgeService";
-import { buildError, parseBoolean, parseJsonBody, parsePage } from "./_shared";
+import { buildError, MEDIA_CACHE_CONTROL, parseBoolean, parseJsonBody, parsePage } from "./_shared";
 
 export const usersRoutes = new Hono();
 
@@ -61,7 +61,7 @@ usersRoutes.get("/image", async (c) => {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
-  headers.set("Cache-Control", "private, max-age=300");
+  headers.set("Cache-Control", MEDIA_CACHE_CONTROL);
   headers.set("ETag", object.httpEtag);
 
   return new Response(object.body, { headers });

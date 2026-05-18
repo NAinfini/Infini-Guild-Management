@@ -23,7 +23,7 @@ import {
   toTemplatePayload,
 } from "../services/EventService";
 import { publishEntityChanged } from "../services/push";
-import { buildError, parseBoolean, parseJsonBody, parsePage, requireSessionUser } from "./_shared";
+import { buildError, MEDIA_CACHE_CONTROL, parseBoolean, parseJsonBody, parsePage, requireSessionUser } from "./_shared";
 
 export const eventsRoutes = new Hono();
 
@@ -118,7 +118,7 @@ eventsRoutes.get("/image", async (c) => {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
-  headers.set("Cache-Control", "private, max-age=300");
+  headers.set("Cache-Control", MEDIA_CACHE_CONTROL);
   headers.set("ETag", object.httpEtag);
 
   return new Response(object.body, { headers });

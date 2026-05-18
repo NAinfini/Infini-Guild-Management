@@ -13,7 +13,7 @@ import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishAnnouncementPublished, publishEntityChanged } from "../services/push";
 import { AnnouncementService } from "../services/AnnouncementService";
-import { buildError, handleResult, parseBoolean, parsePage, safeFormData } from "./_shared";
+import { buildError, handleResult, MEDIA_CACHE_CONTROL, parseBoolean, parsePage, safeFormData } from "./_shared";
 
 export const announcementsRoutes = new Hono();
 
@@ -53,7 +53,7 @@ announcementsRoutes.get("/image", async (c) => {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
-  headers.set("Cache-Control", "private, max-age=300");
+  headers.set("Cache-Control", MEDIA_CACHE_CONTROL);
   headers.set("ETag", object.httpEtag);
   return new Response(object.body, { headers });
 });

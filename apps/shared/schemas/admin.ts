@@ -3,6 +3,7 @@ import { PERMISSIONS } from "../constants/roles";
 
 const usernameSchema = z.string().min(1).max(50).regex(/^[a-zA-Z0-9_一-鿿]+$/);
 const permissionKeySchema = z.enum(PERMISSIONS);
+const colorSchema = z.string().min(1).max(32).regex(/^[a-zA-Z0-9#()., %]+$/);
 
 export const inviteLinkSchema = z.object({
   id: z.string(),
@@ -76,7 +77,7 @@ export const createRoleSchema = z.object({
     .optional(),
   name: z.string().min(1).max(80),
   level: z.number().int().min(1).max(3),
-  color: z.string().min(1).max(32).nullable().optional(),
+  color: colorSchema.nullable().optional(),
   permissions: rolePermissionsSchema.optional(),
 });
 
@@ -84,7 +85,7 @@ export const updateRoleSchema = z
   .object({
     name: z.string().min(1).max(80).optional(),
     level: z.number().int().min(1).max(3).optional(),
-    color: z.string().min(1).max(32).nullable().optional(),
+    color: colorSchema.nullable().optional(),
     permissions: rolePermissionsSchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {

@@ -19,7 +19,7 @@ import { Alert, Button, Card, Group, Modal, Progress, Stack, Text } from "@manti
 import DOMPurify from "dompurify";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { common, createLowlight } from "lowlight";
-import { Bilibili } from "./tiptap-ext-bilibili";
+import { Bilibili, isValidBilibiliUrl } from "./tiptap-ext-bilibili";
 import { SearchReplace } from "./tiptap-ext-search-replace";
 
 import { TipTapEditorToolbar } from "./TipTapEditorToolbar";
@@ -512,7 +512,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
     const insertVideo = () => {
       const url = videoUrl.trim();
       if (!url) return;
-      if (url.includes("bilibili.com")) {
+      if (isValidBilibiliUrl(url)) {
         (editor.commands as Record<string, Function>).setBilibiliVideo({ src: url });
       } else {
         editor.commands.setYoutubeVideo({ src: url });

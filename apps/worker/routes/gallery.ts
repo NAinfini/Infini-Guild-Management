@@ -13,7 +13,7 @@ import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { GalleryService } from "../services/GalleryService";
-import { buildError, handleResult, requireSessionUser, safeFormData } from "./_shared";
+import { buildError, handleResult, MEDIA_CACHE_CONTROL, requireSessionUser, safeFormData } from "./_shared";
 
 export const galleryRoutes = new Hono();
 
@@ -64,7 +64,7 @@ galleryRoutes.get("/image", async (c) => {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
-  headers.set("Cache-Control", "private, max-age=300");
+  headers.set("Cache-Control", MEDIA_CACHE_CONTROL);
   headers.set("ETag", object.httpEtag);
 
   return new Response(object.body, { headers });

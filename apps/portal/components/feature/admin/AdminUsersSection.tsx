@@ -37,11 +37,11 @@ type AdminUsersSectionProps = {
   onOpenCreateMember: () => void;
   selectedUserIds: string[];
   batchSelectionLimit: number;
-  onBatchRole: (userIds: string[], role: "member" | "moderator") => void;
+  onBatchRole: (userIds: string[], role: string) => void;
   onBatchActivate: (userIds: string[]) => void;
   onBatchDeactivate: (userIds: string[]) => void;
   onBatchDelete: (userIds: string[]) => void;
-  onSingleRoleChange: (userId: string, role: "admin" | "moderator" | "member") => void;
+  onSingleRoleChange: (userId: string, role: string) => void;
   onSingleActivate: (userId: string) => void;
   onSingleDeactivate: (userId: string) => void;
   onSingleResetPassword: (userId: string) => void;
@@ -214,7 +214,7 @@ export function AdminUsersSection({
             if (role.id === "admin") {
               return;
             }
-            onBatchRole(nextContextUserIds, role.id as "member" | "moderator");
+            onBatchRole(nextContextUserIds, role.id);
             return;
           }
 
@@ -222,7 +222,7 @@ export function AdminUsersSection({
             return;
           }
 
-          onSingleRoleChange(contextSingleUserId, role.id as "admin" | "moderator" | "member");
+          onSingleRoleChange(contextSingleUserId, role.id);
         },
         title: role.name,
       }));

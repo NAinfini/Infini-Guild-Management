@@ -61,6 +61,9 @@ export const LIMITS = {
     credentials: { maxRequests: 5, windowMs: 60_000 },
     reads: { maxRequests: 120, windowMs: 60_000 },
   },
+  cache: {
+    mediaMaxAgeSeconds: 300,
+  },
 } as const;
 
 export type Limits = typeof LIMITS;
