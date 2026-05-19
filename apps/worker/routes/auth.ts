@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { createPasswordHash, createSession, destroySession, resolveSession, verifyPassword } from "../services/auth";
 import { AuthService } from "../services/AuthService";
+import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { buildError, handleResult } from "./_shared";
 
@@ -22,6 +23,7 @@ function getService(c: Context): AuthService {
     createSession: async (userId, opts) => { await createSession(c, userId, opts); },
     destroySession: (sessionId) => destroySession(c, sessionId),
     publishEntityChanged: (payload) => publishEntityChanged(c, payload),
+    writeAuditLog: (input) => writeAuditLog(c, input),
   });
 }
 

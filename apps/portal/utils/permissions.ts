@@ -27,6 +27,22 @@ export function canManageRoles(roles: AdminRole[], roleId: string): boolean {
   return hasAnyPermission(roles, roleId, ["admin.roles.manage"]);
 }
 
+export function canViewUsers(roles: AdminRole[], roleId: string): boolean {
+  return hasAnyPermission(roles, roleId, ["admin.users.view"]);
+}
+
+export function canViewInvites(roles: AdminRole[], roleId: string): boolean {
+  return hasAnyPermission(roles, roleId, ["admin.invite.view"]);
+}
+
+export function canViewAudit(roles: AdminRole[], roleId: string): boolean {
+  return hasAnyPermission(roles, roleId, ["admin.audit.view"]);
+}
+
+export function canViewRoles(roles: AdminRole[], roleId: string): boolean {
+  return hasAnyPermission(roles, roleId, ["admin.roles.view", "admin.roles.manage"]);
+}
+
 export function canViewStatus(roles: AdminRole[], roleId: string): boolean {
   return hasAnyPermission(roles, roleId, ["admin.status.view"]);
 }

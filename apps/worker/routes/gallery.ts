@@ -1,9 +1,7 @@
 import {
   ALLOWED_IMAGE_TYPES,
   FILE_SIZE_LIMITS,
-  createGalleryCommentSchema,
   createGalleryItemSchema,
-  updateGalleryCommentSchema,
 } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
@@ -141,50 +139,5 @@ galleryRoutes.post("/batch-delete", async (c) => {
   if (ids.length === 0) return c.json({ ok: true, deleted: 0 });
   if (ids.length > 50) return buildError(c, "VALIDATION_ERROR", "Maximum 50 ids per batch request");
   const result = await getService(c).batchDelete(sessionUser.id, ids);
-  return handleResult(c, result);
-});
-
-galleryRoutes.post("/:id/like", async (c) => {
-  const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
-  const result = await getService(c).likeItem(sessionUser.id, c.req.param("id"));
-  if (!result.ok) return buildError(c, result.code, result.message, result.details);
-  return c.json(result.data, result.data.already_liked ? 200 : 201);
-});
-
-galleryRoutes.get("/:id/comments", async (c) => {
-  const cursor = parsePositiveInt(c.req.query("cursor"), 0);
-  const limit = Math.min(100, Math.max(1, parsePositiveInt(c.req.query("limit"), 50)));
-  const result = await getService(c).listComments(c.req.param("id"), cursor, limit);
-  return handleResult(c, result);
-});
-
-galleryRoutes.post("/:id/comments", async (c) => {
-  const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
-  const parsed = createGalleryCommentSchema.safeParse(body);
-  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid comment", parsed.error.flatten());
-  const result = await getService(c).createComment(sessionUser.id, c.req.param("id"), parsed.data.body);
-  if (!result.ok) return buildError(c, result.code, result.message, result.details);
-  return c.json(result.data, 201);
-});
-
-galleryRoutes.patch("/:id/comments/:commentId", async (c) => {
-  const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
-  const parsed = updateGalleryCommentSchema.safeParse(body);
-  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid comment update", parsed.error.flatten());
-  const result = await getService(c).updateComment(sessionUser.id, c.req.param("commentId"), parsed.data.body);
-  return handleResult(c, result);
-});
-
-galleryRoutes.delete("/:id/comments/:commentId", async (c) => {
-  const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
-  const result = await getService(c).deleteComment(sessionUser.id, sessionUser.permissions.has("gallery.manage"), c.req.param("commentId"));
   return handleResult(c, result);
 });

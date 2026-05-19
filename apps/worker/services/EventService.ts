@@ -420,13 +420,15 @@ export class EventService {
   async destroyEvent(actorId: string, eventId: string, existing: EventRow) {
     const now = this.now();
     await this.rawDb.batch([
-      this.rawDb.prepare("UPDATE war_templates SET source_event_id = NULL WHERE source_event_id = ?1").bind(eventId),
       this.rawDb.prepare("UPDATE war_history SET event_id = NULL, updated_at = ?1 WHERE event_id = ?2").bind(now, eventId),
       this.rawDb.prepare("DELETE FROM event_raffle_winners WHERE event_id = ?1").bind(eventId),
       this.rawDb.prepare("DELETE FROM event_poll_votes WHERE event_id = ?1").bind(eventId),
       this.rawDb.prepare("DELETE FROM event_poll_options WHERE event_id = ?1").bind(eventId),
       this.rawDb.prepare("DELETE FROM event_polls WHERE event_id = ?1").bind(eventId),
       this.rawDb.prepare("DELETE FROM event_participants WHERE event_id = ?1").bind(eventId),
+      this.rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id IN (SELECT id FROM war_teams WHERE event_id = ?1)").bind(eventId),
+      this.rawDb.prepare("DELETE FROM war_teams WHERE event_id = ?1").bind(eventId),
+      this.rawDb.prepare("DELETE FROM war_pool_members WHERE event_id = ?1").bind(eventId),
       this.rawDb.prepare("DELETE FROM events WHERE id = ?1").bind(eventId),
     ]);
 

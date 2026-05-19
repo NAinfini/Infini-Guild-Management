@@ -678,6 +678,29 @@ export class GuildWarService {
   async createHistory(actorId: string, input: CreateWarHistoryInput): Promise<ServiceResult<unknown>> {
     const historyId = nanoid();
     await this.db.insert(warHistory).values({ id: historyId, eventId: input.event_id ?? null, warName: input.war_name, enemyName: input.enemy_name ?? null, result: input.result ?? null, ownStats: input.own_stats ?? null, enemyStats: input.enemy_stats ?? null, notes: input.notes ?? null, createdBy: actorId });
+    if (input.event_id) {
+      const teams = await this.getTeamsForEvent(input.event_id);
+      const members = await this.getMembersForTeams(teams.map((team) => team.id));
+      const pool = await this.getPoolMembersForEvent(input.event_id);
+      if (teams.length > 0 || pool.length > 0) {
+        await this.replaceHistoryTeams(historyId, {
+          teams: teams.map((team) => ({
+            team_name: team.teamName,
+            sort_order: team.sortOrder,
+            notes: team.notes ?? undefined,
+            is_locked: team.isLocked,
+            members: members
+              .filter((member) => member.warTeamId === team.id)
+              .map((member) => ({
+                user_id: member.userId,
+                role_tag: member.roleTag ?? undefined,
+                sort_order: member.sortOrder,
+              })),
+          })),
+          pool_members: pool.map((member) => ({ user_id: member.userId })),
+        });
+      }
+    }
     const created = await this.getWarHistoryById(historyId);
     if (!created) return err("SERVER_ERROR", "Failed to create war history");
     await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "create", actorId, entityId: historyId, diffTitle: created.warName });

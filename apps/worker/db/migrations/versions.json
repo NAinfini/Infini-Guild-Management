@@ -2,5 +2,7 @@
   "mode": "v1-dev-baseline",
   "current_version": "1.x-dev",
   "baseline_schema": "0000_core_schema.sql",
-  "compat_migrations": []
+  "compat_migrations": [
+    "0001_remove_gallery_social_tables.sql"
+  ]
 }

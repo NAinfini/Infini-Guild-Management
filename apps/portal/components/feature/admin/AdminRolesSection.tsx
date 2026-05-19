@@ -15,7 +15,6 @@ import {
   Text,
   TextInput,
   ThemeIcon,
-  Title,
   UnstyledButton,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
@@ -221,7 +220,7 @@ function isRoleDraftDirty(role: AdminRole, draft: RoleDraft | undefined): boolea
     return true;
   }
 
-  if (draft.color.trim() !== (role.color ?? "")) {
+  if (draft.color.trim() !== normalizeColor(role.color)) {
     return true;
   }
 
@@ -250,9 +249,7 @@ export function AdminRolesSection({
   const user = useAuthStore((state) => state.user);
   const isAdmin = userCanManageRoles(user);
   const loadErrorMessage = tc("loadError");
-  const heading = <Title order={2} style={{ margin: 0, fontSize: 16 }}>{t("tab.roles")}</Title>;
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
-  const [newRoleName, setNewRoleName] = useState("");
   const [drafts, setDrafts] = useState<Record<string, RoleDraft>>({});
 
   const emptyPermissions = useMemo(() => buildEmptyPermissions(), []);
@@ -271,7 +268,6 @@ export function AdminRolesSection({
   if (!isAdmin) {
     return (
       <Stack gap={12}>
-        {heading}
         <Alert color="yellow" title={t("adminOnly")} />
       </Stack>
     );
@@ -282,23 +278,14 @@ export function AdminRolesSection({
   const isDirty = selectedRole && selectedDraft ? isRoleDraftDirty(selectedRole, selectedDraft) : false;
 
   const handleCreateRole = async () => {
-    const name = newRoleName.trim();
-    if (!name) {
-      return;
-    }
+    const name = `Role-${Math.random().toString(36).slice(2, 6)}`;
 
-    const created = await onCreateRole({
+    await onCreateRole({
       name,
       level: 100,
       color: null,
       permissions: emptyPermissions,
     });
-
-    if (!created) {
-      return;
-    }
-
-    setNewRoleName("");
   };
 
   const handleDeleteRole = async (role: AdminRole) => {
@@ -360,7 +347,6 @@ export function AdminRolesSection({
 
   return (
     <Stack gap={12}>
-      {heading}
       {rolesLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
       {rolesError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
 
@@ -369,10 +355,22 @@ export function AdminRolesSection({
           {/* ── Left panel: role list ── */}
           <div className="admin-roles-sidebar">
             <div className="admin-roles-sidebar-header">
-              <Text fw={700} size="sm">{t("roles.listTitle")}</Text>
+              <Group gap={8} justify="space-between" wrap="nowrap">
+                <Text fw={700} size="sm">{t("roles.listTitle")}</Text>
+                <ActionIcon
+                  size="sm"
+                  variant="filled"
+                  color="blue"
+                  onClick={() => { void handleCreateRole(); }}
+                  loading={createRolePending}
+                  aria-label={t("roles.create")}
+                >
+                  <PlusIcon size={14} />
+                </ActionIcon>
+              </Group>
             </div>
 
-            <ScrollArea className="admin-roles-sidebar-scroll" type="auto" scrollbarSize={6}>
+            <ScrollArea className="admin-roles-sidebar-scroll" type="auto" scrollbarSize={6} style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
               <Stack gap={4} p={8}>
                 {roles.map((role) => {
                   const isSelected = role.id === selectedRoleId;
@@ -402,7 +400,21 @@ export function AdminRolesSection({
                           ) : null}
                           {role.is_builtin ? (
                             <Badge size="xs" variant="light" color="blue">{t("roles.builtin")}</Badge>
-                          ) : null}
+                          ) : (
+                            <ActionIcon
+                              size="xs"
+                              variant="subtle"
+                              color="red"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleDeleteRole(role);
+                              }}
+                              loading={deleteRolePending}
+                              aria-label={t("roles.delete")}
+                            >
+                              <XIcon size={12} />
+                            </ActionIcon>
+                          )}
                         </Group>
                       </Group>
                     </UnstyledButton>
@@ -410,34 +422,6 @@ export function AdminRolesSection({
                 })}
               </Stack>
             </ScrollArea>
-
-            {/* Add new role */}
-            <div className="admin-roles-sidebar-footer">
-              <Group gap={6} wrap="nowrap">
-                <TextInput
-                  size="xs"
-                  placeholder={t("roles.placeholder.name")}
-                  value={newRoleName}
-                  onChange={(event) => setNewRoleName(event.currentTarget.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      void handleCreateRole();
-                    }
-                  }}
-                  style={{ flex: 1 }}
-                />
-                <ActionIcon
-                  size="sm"
-                  variant="filled"
-                  color="blue"
-                  onClick={() => { void handleCreateRole(); }}
-                  loading={createRolePending}
-                  disabled={!newRoleName.trim()}
-                >
-                  <PlusIcon size={14} />
-                </ActionIcon>
-              </Group>
-            </div>
           </div>
 
           {/* ── Right panel: permissions ── */}
@@ -463,6 +447,7 @@ export function AdminRolesSection({
                         onChange={(value) => updateDraftField(selectedRole.id, "level", typeof value === "number" ? value : selectedDraft.level)}
                         min={1}
                         max={998}
+                        hideControls
                         style={{ width: 100 }}
                         disabled={selectedRole.is_builtin}
                       />

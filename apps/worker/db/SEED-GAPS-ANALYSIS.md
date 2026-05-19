@@ -56,8 +56,8 @@ Added 2 active sessions (admin + mod_1).
 | Wiki Categories | 8 (3 top + 5 sub) | ✅ Excellent | Nested tree structure |
 | Wiki Articles | 8 | ✅ Excellent | Rich TipTap content, articles in sub-categories |
 | Gallery Items | 28 (20 images + 8 videos) | ✅ Good | Pagination exercised |
-| Gallery Likes | ~100+ | ✅ Good | Varied engagement |
-| Gallery Comments | ~40+ | ✅ Good | Realistic comments |
+| Gallery Likes | Removed | N/A | Gallery social engagement was removed from product scope |
+| Gallery Comments | Removed | N/A | Gallery social engagement was removed from product scope |
 | Invite Links | 3 | ✅ Excellent | Active, expired, revoked |
 | Sessions | 2 | ✅ Good | Admin + mod_1 |
 | Audit Log | 10 | ✅ Excellent | Varied actions |

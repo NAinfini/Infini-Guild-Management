@@ -6,8 +6,7 @@ import { Command } from "cmdk";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../../api/query-keys";
-import { fetchSearchData } from "../../services/SearchService";
-import { useSiteConfigStore } from "../../stores/site-config";
+import { searchGlobal, type SearchResult } from "../../services/SearchService";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import {
   CalendarOutlined,
@@ -23,8 +22,7 @@ type SearchItem = {
   id: string;
   title: string;
   subtitle: string;
-  body?: string;
-  category: "user" | "event" | "announcement" | "wiki" | "gallery" | "war";
+  category: SearchResult["type"];
   role?: string;
   to: string;
   entityId?: string;
@@ -43,7 +41,6 @@ function normalizeSearchText(value: string): string {
 export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
   const navigate = useNavigate();
   const { t } = useTranslation("common");
-  const features = useSiteConfigStore((s) => s.features);
   const [open, openHandlers] = useDisclosure(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery] = useDebouncedValue(query, 300);
@@ -54,73 +51,22 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
 
   useHotkeys([["mod+k", openHandlers.toggle]]);
 
+  const normalizedQuery = normalizeSearchText(debouncedQuery);
   const searchDataQuery = useQuery({
-    queryKey: queryKeys.cmdk.searchData(),
-    enabled: open,
+    queryKey: queryKeys.cmdk.search(normalizedQuery),
+    enabled: open && normalizedQuery.length >= 2,
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      const searchData = await fetchSearchData(features);
-
-      const userItems: SearchItem[] = searchData.users.map((entry) => ({
-        id: `user-${entry.user.id}`,
-        title: entry.user.username,
-        subtitle: `${entry.user.role} - ${entry.profile.classes.join(", ") || t("noClass")}`,
-        category: "user",
-        role: entry.user.role,
-        to: "/roster",
-      }));
-
-      const eventItems: SearchItem[] = searchData.events.map((entry) => ({
-        id: `event-${entry.id}`,
+      const response = await searchGlobal(normalizedQuery, RESULT_LIMIT);
+      return response.data.map((entry): SearchItem => ({
+        id: `${entry.type}-${entry.id}`,
         title: entry.title,
-        subtitle: entry.type,
-        category: "event",
-        to: "/events",
-        entityId: entry.id,
+        subtitle: entry.subtitle,
+        category: entry.type,
+        role: entry.role,
+        to: entry.to,
+        entityId: entry.entity_id,
       }));
-
-      const announcementItems: SearchItem[] = searchData.announcements.map((entry) => ({
-        id: `announcement-${entry.id}`,
-        title: entry.title,
-        subtitle: entry.status,
-        body: entry.body_json,
-        category: "announcement",
-        to: "/announcements",
-      }));
-
-      const wikiItems: SearchItem[] = searchData.wikiArticles.map((entry) => ({
-        id: `wiki-${entry.id}`,
-        title: entry.title,
-        subtitle: entry.slug,
-        body: entry.body_json,
-        category: "wiki",
-        to: "/wiki",
-      }));
-
-      const warItems: SearchItem[] = searchData.warHistory.map((entry) => ({
-        id: `war-${entry.id}`,
-        title: entry.war_name,
-        subtitle: `${entry.result ?? t("unknown")} - ${entry.created_at.slice(0, 10)}`,
-        category: "war",
-        to: "/guild-war",
-      }));
-
-      const galleryItems: SearchItem[] = searchData.galleryItems.map((entry) => ({
-        id: `gallery-${entry.id}`,
-        title: entry.caption ?? entry.url.split("/").pop() ?? entry.id,
-        subtitle: entry.type,
-        category: "gallery",
-        to: "/gallery",
-      }));
-
-      return [
-        ...userItems,
-        ...eventItems,
-        ...announcementItems,
-        ...wikiItems,
-        ...warItems,
-        ...galleryItems,
-      ];
     },
   });
 
@@ -128,18 +74,8 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
   const loading = searchDataQuery.isLoading;
 
   const visibleItems = useMemo(() => {
-    const normalized = normalizeSearchText(debouncedQuery);
-    if (!normalized) {
-      return items.slice(0, RESULT_LIMIT);
-    }
-
-    return items
-      .filter((item) => {
-        const haystack = `${item.title} ${item.subtitle} ${item.body ?? ""} ${item.category}`.toLowerCase();
-        return haystack.includes(normalized);
-      })
-      .slice(0, RESULT_LIMIT);
-  }, [debouncedQuery, items]);
+    return items.slice(0, RESULT_LIMIT);
+  }, [items]);
 
   const groupedItems = useMemo(() => {
     const groups = new Map<SearchItem["category"], SearchItem[]>();
@@ -266,7 +202,7 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
 
           <Command.List style={{ maxHeight: 360, overflow: "auto" }}>
             {loading || queryIsDebouncing ? <Text c="dimmed">{t("message.loading")}</Text> : null}
-            {!loading && visibleItems.length === 0 ? <Command.Empty>{t("cmdk.noResults")}</Command.Empty> : null}
+            {!loading && normalizedQuery.length >= 2 && visibleItems.length === 0 ? <Command.Empty>{t("cmdk.noResults")}</Command.Empty> : null}
 
             {query.length === 0 && recentSearches.length > 0 ? (
               <Command.Group heading={t("cmdk.recent")}>
@@ -291,7 +227,7 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
                 {group.map((item) => (
                   <Command.Item
                     key={item.id}
-                    value={`${item.category} ${item.title} ${item.subtitle} ${item.body ?? ""}`}
+                    value={`${item.category} ${item.title} ${item.subtitle}`}
                     onSelect={() => onSelectItem(item)}
                     style={{
                       borderRadius: 8,

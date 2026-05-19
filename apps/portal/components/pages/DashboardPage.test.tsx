@@ -1,9 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
   buildDashboardUpcomingEventsQueryParams,
   orderDashboardUpcomingRows,
 } from "./DashboardPage";
+import { fetchDashboardSummary } from "../../services/DashboardService";
+
+vi.mock("../../api/client", () => ({
+  apiRequest: vi.fn(async (path: string) => ({ path })),
+}));
+
+const { apiRequest } = await import("../../api/client");
 
 describe("DashboardPage upcoming event query", () => {
   it("requests the next seven days of unarchived upcoming events", () => {
@@ -36,5 +43,11 @@ describe("DashboardPage upcoming event query", () => {
       "may-09",
       "may-11",
     ]);
+  });
+
+  it("fetches dashboard through one purpose-built summary endpoint", async () => {
+    await fetchDashboardSummary();
+
+    expect(apiRequest).toHaveBeenCalledWith("/api/dashboard/summary");
   });
 });

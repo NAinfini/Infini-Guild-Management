@@ -11,7 +11,7 @@ import {
   Stack,
   Text,
   TextInput,
-  Title,
+
 } from "@mantine/core";
 import { CopyIcon, EyeIcon, KeyIcon, PlayIcon, PlayerPauseIcon, SearchIcon, TrashIcon, UserPlusIcon } from "@portal/components/icons";
 import { IconDotsVertical } from "@tabler/icons-react";
@@ -102,7 +102,6 @@ export function AdminUsersSection({
   const { t: tc } = useTranslation("common");
   const clipboard = useClipboard();
   const loadErrorMessage = tc("loadError");
-  const heading = <Title order={2} m={0} fz={16}>{t("tab.member")}</Title>;
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
@@ -370,7 +369,6 @@ export function AdminUsersSection({
 
   return (
     <Stack gap={12}>
-      {heading}
       {usersLoading ? <Stack gap={8}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
       {usersError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
       {!usersLoading && !usersError ? (

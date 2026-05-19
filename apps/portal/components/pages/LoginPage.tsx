@@ -133,8 +133,11 @@ export function LoginPage() {
         }
         return;
       }
-      const messageText = error instanceof Error ? error.message : t("invalidCredentials");
-      setSubmitError(messageText);
+      if (isApiRequestError(error) && error.status === 401) {
+        setSubmitError(t("invalidCredentials"));
+        return;
+      }
+      setSubmitError(error instanceof Error ? error.message : t("invalidCredentials"));
     },
   });
 

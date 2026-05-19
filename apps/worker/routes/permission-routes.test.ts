@@ -84,4 +84,26 @@ describe("route permission mapping", () => {
     expect(mocks.requirePermission).not.toHaveBeenCalled();
     expect(galleryDeleteItem).toHaveBeenCalledWith("u-1", true, "item-1");
   });
+
+  it("requires guildwar.teams.edit for team save route", async () => {
+    const { guildWarRoutes } = await import("./guild-war");
+    const response = new Response("blocked", { status: 418 });
+    mocks.requirePermission.mockResolvedValueOnce(response);
+
+    const result = await guildWarRoutes.request("/save-teams", { method: "POST" });
+
+    expect(result.status).toBe(418);
+    expect(mocks.requirePermission).toHaveBeenCalledWith(expect.anything(), "guildwar.teams.edit");
+  });
+
+  it("requires guildwar.history.edit for history member stat updates", async () => {
+    const { guildWarRoutes } = await import("./guild-war");
+    const response = new Response("blocked", { status: 418 });
+    mocks.requirePermission.mockResolvedValueOnce(response);
+
+    const result = await guildWarRoutes.request("/history/war-1/member-stats/user-1", { method: "PATCH" });
+
+    expect(result.status).toBe(418);
+    expect(mocks.requirePermission).toHaveBeenCalledWith(expect.anything(), "guildwar.history.edit");
+  });
 });

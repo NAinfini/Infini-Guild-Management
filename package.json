@@ -11,7 +11,7 @@
     "build": "vite build --config apps/portal/vite.config.ts",
     "dev:worker": "wrangler dev --config apps/worker/wrangler.jsonc --persist-to apps/worker/.wrangler/state",
     "build:worker": "wrangler deploy --dry-run --config apps/worker/wrangler.jsonc",
-    "deploy:staging": "wrangler deploy --config apps/worker/wrangler.jsonc --env staging",
+    "deploy:staging": "node scripts/check-worker-config.mjs --env=staging && wrangler deploy --config apps/worker/wrangler.jsonc --env staging",
     "typecheck:shared": "tsc --noEmit -p tsconfig.json",
     "typecheck:portal": "tsc --noEmit -p tsconfig.json",
     "typecheck:worker": "tsc --noEmit -p tsconfig.json",

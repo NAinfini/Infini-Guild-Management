@@ -9,7 +9,7 @@ import type {
   warTeamMemberSchema,
 } from "../schemas/guild-war";
 import type { wikiCategorySchema, wikiArticleSchema } from "../schemas/wiki";
-import type { galleryItemSchema, galleryCommentSchema } from "../schemas/gallery";
+import type { galleryItemSchema } from "../schemas/gallery";
 import type {
   inviteLinkSchema,
   inviteLinkStatsSchema,
@@ -34,7 +34,6 @@ export type GuildWarActiveResponse = z.infer<typeof guildWarActiveResponseSchema
 export type WikiCategory = z.infer<typeof wikiCategorySchema>;
 export type WikiArticle = z.infer<typeof wikiArticleSchema>;
 export type GalleryItem = z.infer<typeof galleryItemSchema>;
-export type GalleryComment = z.infer<typeof galleryCommentSchema>;
 export type InviteLink = z.infer<typeof inviteLinkSchema>;
 export type InviteLinkStats = z.infer<typeof inviteLinkStatsSchema>;
 export type AuditLogEntry = z.infer<typeof auditLogSchema>;

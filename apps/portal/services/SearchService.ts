@@ -1,2 +1,2 @@
-export { fetchSearchData } from "../api/queries/search";
-export type { SearchDataResponse, SearchDataUserEntry } from "../api/queries/search";
+export { searchGlobal } from "../api/queries/search";
+export type { SearchResponse, SearchResult, SearchResultType } from "../api/queries/search";

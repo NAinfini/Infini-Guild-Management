@@ -1,5 +1,5 @@
 // Domain: Guild War
-// Tables: warHistory, warTeams, warTeamMembers, warPoolMembers, warTemplates
+// Tables: warHistory, warTeams, warTeamMembers, warPoolMembers
 // Dependencies: auth.users, events.events
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { activeGame } from "@guild/shared/games";
@@ -80,24 +80,5 @@ export const warPoolMembers = sqliteTable(
     uxHistoryUser: uniqueIndex("ux_war_pool_members_history_user").on(table.warHistoryId, table.userId),
     uxEventUser: uniqueIndex("ux_war_pool_members_event_user").on(table.eventId, table.userId),
     idxEvent: index("idx_war_pool_members_event").on(table.eventId),
-  }),
-);
-
-export const warTemplates = sqliteTable(
-  "war_templates",
-  {
-    id: text("id").primaryKey(),
-    templateName: text("template_name").notNull(),
-    description: text("description"),
-    templateType: text("template_type").notNull().default("structure"),
-    sourceEventId: text("source_event_id").references(() => events.id),
-    payloadJson: text("payload_json").notNull(),
-    createdBy: text("created_by").notNull().references(() => users.id),
-    createdAt: text("created_at").notNull().default(nowUtc),
-    updatedAt: text("updated_at").notNull().default(nowUtc),
-  },
-  (table) => ({
-    idxSourceEvent: index("idx_war_templates_source_event").on(table.sourceEventId),
-    idxUpdatedAt: index("idx_war_templates_updated_at").on(table.updatedAt),
   }),
 );

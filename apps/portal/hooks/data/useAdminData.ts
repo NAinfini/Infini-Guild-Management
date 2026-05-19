@@ -9,7 +9,14 @@ import {
 } from "../../services/AdminService";
 import { queryKeys } from "../../api/query-keys";
 import { fetchAllUsersListWithOptions } from "../../services/UserService";
-import { canViewStatus, canExportAudit } from "../../utils/permissions";
+import {
+  canExportAudit,
+  canViewAudit,
+  canViewInvites,
+  canViewRoles,
+  canViewStatus,
+  canViewUsers,
+} from "../../utils/permissions";
 
 type UseAdminDataOptions = {
   isModerator: boolean;
@@ -38,13 +45,17 @@ export function useAdminData(options: UseAdminDataOptions) {
   });
 
   const roles = rolesQuery.data ?? [];
+  const hasUsersViewPermission = canViewUsers(roles, userRole);
+  const hasInviteViewPermission = canViewInvites(roles, userRole);
+  const hasAuditViewPermission = canViewAudit(roles, userRole);
+  const hasRolesViewPermission = canViewRoles(roles, userRole);
   const hasStatusViewPermission = canViewStatus(roles, userRole);
   const hasAuditExportPermission = canExportAudit(roles, userRole);
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
     queryFn: () => fetchAllUsersListWithOptions(),
-    enabled: isModerator,
+    enabled: hasUsersViewPermission,
     staleTime: 10 * 60_000,
   });
 
@@ -55,14 +66,14 @@ export function useAdminData(options: UseAdminDataOptions) {
         include_expired: true,
         include_revoked: true,
       }),
-    enabled: isModerator,
+    enabled: hasInviteViewPermission,
     staleTime: 5 * 60_000,
   });
 
   const inviteStatsQuery = useQuery({
     queryKey: queryKeys.admin.inviteStats(),
     queryFn: fetchAdminInviteStats,
-    enabled: isModerator,
+    enabled: hasInviteViewPermission,
     staleTime: 5 * 60_000,
   });
 
@@ -76,7 +87,7 @@ export function useAdminData(options: UseAdminDataOptions) {
         start_at: auditDateFrom ? `${auditDateFrom}T00:00:00.000Z` : undefined,
         end_at: auditDateTo ? `${auditDateTo}T23:59:59.999Z` : undefined,
       }),
-    enabled: isModerator,
+    enabled: hasAuditViewPermission,
     placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
   });
@@ -103,5 +114,13 @@ export function useAdminData(options: UseAdminDataOptions) {
     auditMonthsQuery,
     rolesQuery,
     statusQuery,
+    permissions: {
+      canViewUsers: hasUsersViewPermission,
+      canViewInvites: hasInviteViewPermission,
+      canViewAudit: hasAuditViewPermission,
+      canViewRoles: hasRolesViewPermission,
+      canViewStatus: hasStatusViewPermission,
+      canExportAudit: hasAuditExportPermission,
+    },
   };
 }

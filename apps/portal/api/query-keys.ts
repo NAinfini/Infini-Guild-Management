@@ -49,6 +49,7 @@ export const queryKeys = {
   },
   dashboard: {
     all: ["dashboard"] as const,
+    summary: () => [...queryKeys.dashboard.all, "summary"] as const,
     upcomingEvents: (nowIso: string) => [...queryKeys.dashboard.all, "upcoming-events", nowIso] as const,
     wars: () => [...queryKeys.dashboard.all, "wars"] as const,
     lastWarDetail: (warId: string) => [...queryKeys.dashboard.all, "last-war-detail", warId] as const,
@@ -95,6 +96,6 @@ export const queryKeys = {
   },
   cmdk: {
     all: ["cmdk"] as const,
-    searchData: () => [...queryKeys.cmdk.all, "search-data"] as const,
+    search: (query: string) => [...queryKeys.cmdk.all, "search", query] as const,
   },
 } as const;

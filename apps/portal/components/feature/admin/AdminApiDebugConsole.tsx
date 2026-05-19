@@ -23,6 +23,10 @@ function dotCls(status: number | null): string {
   return "api-debug__row-dot--warn";
 }
 
+function isOptionalSkip(entry: DebugLogEntry): boolean {
+  return entry.skipped === true && entry.error === null;
+}
+
 function statusRowCls(status: number | null): string {
   if (status === null) return "api-debug__row-status--err";
   if (status >= 200 && status < 300) return "api-debug__row-status--ok";
@@ -31,7 +35,7 @@ function statusRowCls(status: number | null): string {
 }
 
 function isError(entry: DebugLogEntry): boolean {
-  return entry.status === null || entry.status >= 400;
+  return !isOptionalSkip(entry) && (entry.status === null || entry.status >= 400);
 }
 
 function isSlow(entry: DebugLogEntry): boolean {
@@ -59,13 +63,13 @@ function DebugRow({ entry }: { entry: DebugLogEntry }) {
         onClick={hasBody ? () => setExpanded((p) => !p) : undefined}
         style={hasBody ? undefined : { cursor: "default" }}
       >
-        <span className={`api-debug__row-dot ${dotCls(entry.status)}`} />
+        <span className={`api-debug__row-dot ${isOptionalSkip(entry) ? "api-debug__row-dot--warn" : dotCls(entry.status)}`} />
         <span className={`api-debug__row-method api-debug__row-method--${entry.method}`}>
           {entry.method}
         </span>
         <span className="api-debug__row-path">{entry.path}</span>
-        <span className={`api-debug__row-status ${statusRowCls(entry.status)}`}>
-          {entry.status ?? "ERR"}
+        <span className={`api-debug__row-status ${isOptionalSkip(entry) ? "api-debug__row-status--warn" : statusRowCls(entry.status)}`}>
+          {entry.status ?? (isOptionalSkip(entry) ? "N/A" : "ERR")}
         </span>
         <span className="api-debug__row-latency">{entry.latencyMs}ms</span>
         <span className="api-debug__row-time">{formatTime(entry.ranAt)}</span>

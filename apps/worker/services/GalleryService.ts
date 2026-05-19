@@ -1,11 +1,8 @@
-import {
-  galleryCommentSchema,
-  galleryItemSchema,
-} from "@guild/shared";
+import { galleryItemSchema } from "@guild/shared";
 import { and, asc, desc, eq, gte, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { galleryComments, galleryItems, galleryLikes, users } from "../db/schema";
+import { galleryItems, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern } from "./helpers";
 
@@ -22,9 +19,6 @@ export type GalleryRow = {
   uploadedBy: string;
   uploadedByName: string | null;
   createdAt: string;
-  likeCount?: number;
-  commentCount?: number;
-  isLiked?: boolean | number | null;
 };
 
 type EntityChangedInput = { entityType: string; entityId: string; hint: string };
@@ -39,19 +33,10 @@ export type GalleryServiceDeps = {
 // --- Helpers ---
 
 export function toGalleryPayload(row: GalleryRow) {
-  const isLiked = row.isLiked === null || row.isLiked === undefined ? false : Boolean(row.isLiked);
   return galleryItemSchema.parse({
     id: row.id, type: row.type, url: row.url, caption: row.caption,
     uploaded_by: row.uploadedBy, uploaded_by_name: row.uploadedByName,
-    like_count: row.likeCount ?? 0, comment_count: row.commentCount ?? 0,
-    is_liked: isLiked, created_at: row.createdAt,
-  });
-}
-
-function toCommentPayload(row: { id: string; galleryItemId: string; userId: string; username: string | null; body: string; createdAt: string; updatedAt: string }) {
-  return galleryCommentSchema.parse({
-    id: row.id, gallery_item_id: row.galleryItemId, user_id: row.userId,
-    username: row.username, body: row.body, created_at: row.createdAt, updated_at: row.updatedAt,
+    created_at: row.createdAt,
   });
 }
 
@@ -68,22 +53,13 @@ export class GalleryService {
 
   // --- Private helpers ---
 
-  async getItemById(itemId: string, currentUserId?: string): Promise<GalleryRow | null> {
+  async getItemById(itemId: string): Promise<GalleryRow | null> {
     const row = (await this.db.select({
       id: galleryItems.id, type: galleryItems.type, url: galleryItems.url, caption: galleryItems.caption,
       uploadedBy: galleryItems.uploadedBy, uploadedByName: users.username, createdAt: galleryItems.createdAt,
-      likeCount: sql<number>`(SELECT COUNT(*) FROM gallery_likes WHERE gallery_item_id = ${galleryItems.id})`,
-      commentCount: sql<number>`(SELECT COUNT(*) FROM gallery_comments WHERE gallery_item_id = ${galleryItems.id})`,
-      isLiked: currentUserId
-        ? sql<number>`EXISTS(SELECT 1 FROM gallery_likes WHERE gallery_item_id = ${galleryItems.id} AND user_id = ${currentUserId})`
-        : sql<number>`0`,
     }).from(galleryItems).leftJoin(users, eq(users.id, galleryItems.uploadedBy)).where(eq(galleryItems.id, itemId)).limit(1))[0];
     if (!row) return null;
-    return { ...row, isLiked: Boolean(row.isLiked) };
-  }
-
-  private async getCommentById(commentId: string) {
-    return (await this.db.select({ id: galleryComments.id, galleryItemId: galleryComments.galleryItemId, userId: galleryComments.userId, username: users.username, body: galleryComments.body, createdAt: galleryComments.createdAt, updatedAt: galleryComments.updatedAt }).from(galleryComments).leftJoin(users, eq(users.id, galleryComments.userId)).where(eq(galleryComments.id, commentId)).limit(1))[0] ?? null;
+    return row;
   }
 
   // --- Public methods ---
@@ -111,27 +87,7 @@ export class GalleryService {
       return ok({ data: [], next_cursor: null });
     }
 
-    const itemIds = pageRows.map((r) => r.id);
-    const [likeCounts, commentCounts, likedSet] = await Promise.all([
-      this.db.select({ galleryItemId: galleryLikes.galleryItemId, count: sql<number>`count(*)` }).from(galleryLikes).where(inArray(galleryLikes.galleryItemId, itemIds)).groupBy(galleryLikes.galleryItemId),
-      this.db.select({ galleryItemId: galleryComments.galleryItemId, count: sql<number>`count(*)` }).from(galleryComments).where(inArray(galleryComments.galleryItemId, itemIds)).groupBy(galleryComments.galleryItemId),
-      opts.currentUserId
-        ? this.db.select({ galleryItemId: galleryLikes.galleryItemId }).from(galleryLikes).where(and(inArray(galleryLikes.galleryItemId, itemIds), eq(galleryLikes.userId, opts.currentUserId)))
-        : Promise.resolve([]),
-    ]);
-
-    const likeCountMap = new Map(likeCounts.map((r) => [r.galleryItemId, Number(r.count)]));
-    const commentCountMap = new Map(commentCounts.map((r) => [r.galleryItemId, Number(r.count)]));
-    const likedItemIds = new Set(likedSet.map((r) => r.galleryItemId));
-
-    const enrichedRows: GalleryRow[] = pageRows.map((r) => ({
-      ...r,
-      likeCount: likeCountMap.get(r.id) ?? 0,
-      commentCount: commentCountMap.get(r.id) ?? 0,
-      isLiked: likedItemIds.has(r.id),
-    }));
-
-    return ok({ data: enrichedRows.map(toGalleryPayload), next_cursor: hasMore ? String(opts.cursor + opts.limit) : null });
+    return ok({ data: pageRows.map(toGalleryPayload), next_cursor: hasMore ? String(opts.cursor + opts.limit) : null });
   }
 
   async uploadImages(actorId: string, files: Array<{ data: ArrayBuffer; contentType: string; name: string }>, captions: Array<string | null>): Promise<ServiceResult<unknown[]>> {
@@ -166,7 +122,9 @@ export class GalleryService {
     const existing = await this.getItemById(itemId);
     if (!existing) return err("NOT_FOUND", "Gallery item not found");
     if (existing.uploadedBy !== actorId && !canDeleteAny) return err("FORBIDDEN", "Cannot delete this gallery item");
-    await this.db.delete(galleryItems).where(eq(galleryItems.id, itemId));
+    await this.deps.rawDb.batch([
+      this.deps.rawDb.prepare("DELETE FROM gallery_items WHERE id = ?1").bind(itemId),
+    ]);
     if (existing.type === "image") await this.deps.media.delete(existing.url);
     await this.deps.writeAuditLog({ entityType: "gallery_item", action: "delete", actorId, entityId: itemId, diffTitle: existing.caption });
     await this.deps.publishEntityChanged({ entityType: "gallery", entityId: itemId, hint: "item_deleted" });
@@ -179,8 +137,6 @@ export class GalleryService {
     const itemIds = items.map((item) => item.id);
     const placeholders = itemIds.map(() => "?").join(",");
     await this.deps.rawDb.batch([
-      this.deps.rawDb.prepare(`DELETE FROM gallery_comments WHERE gallery_item_id IN (${placeholders})`).bind(...itemIds),
-      this.deps.rawDb.prepare(`DELETE FROM gallery_likes WHERE gallery_item_id IN (${placeholders})`).bind(...itemIds),
       this.deps.rawDb.prepare(`DELETE FROM gallery_items WHERE id IN (${placeholders})`).bind(...itemIds),
     ]);
     for (const item of items) {
@@ -189,56 +145,5 @@ export class GalleryService {
     await this.deps.writeAuditLog({ entityType: "gallery_item", action: "batch_delete", actorId, entityId: itemIds.join(","), diffTitle: `${items.length} items`, detailText: JSON.stringify({ count: items.length, ids: itemIds }) });
     await this.deps.publishEntityChanged({ entityType: "gallery", entityId: "batch", hint: "items_deleted" });
     return ok({ ok: true, deleted: items.length });
-  }
-
-  async likeItem(actorId: string, itemId: string): Promise<ServiceResult<{ ok: true; already_liked: boolean }>> {
-    const existing = await this.getItemById(itemId);
-    if (!existing) return err("NOT_FOUND", "Gallery item not found");
-    try {
-      await this.db.insert(galleryLikes).values({ id: nanoid(), galleryItemId: itemId, userId: actorId });
-    } catch (e: unknown) {
-      if (e instanceof Error && e.message.includes("UNIQUE")) return ok({ ok: true, already_liked: true });
-      throw e;
-    }
-    return ok({ ok: true, already_liked: false });
-  }
-
-  async listComments(itemId: string, cursor: number, limit: number): Promise<ServiceResult<{ data: unknown[]; next_cursor: string | null }>> {
-    const item = await this.db.select({ id: galleryItems.id }).from(galleryItems).where(eq(galleryItems.id, itemId)).limit(1);
-    if (item.length === 0) return err("NOT_FOUND", "Gallery item not found");
-    const rows = await this.db.select({ id: galleryComments.id, galleryItemId: galleryComments.galleryItemId, userId: galleryComments.userId, username: users.username, body: galleryComments.body, createdAt: galleryComments.createdAt, updatedAt: galleryComments.updatedAt }).from(galleryComments).leftJoin(users, eq(users.id, galleryComments.userId)).where(eq(galleryComments.galleryItemId, itemId)).orderBy(asc(galleryComments.createdAt), asc(galleryComments.id)).limit(limit + 1).offset(cursor);
-    const hasMore = rows.length > limit;
-    const pageRows = hasMore ? rows.slice(0, limit) : rows;
-    return ok({ data: pageRows.map(toCommentPayload), next_cursor: hasMore ? String(cursor + limit) : null });
-  }
-
-  async createComment(actorId: string, itemId: string, body: string): Promise<ServiceResult<unknown>> {
-    const existing = await this.getItemById(itemId);
-    if (!existing) return err("NOT_FOUND", "Gallery item not found");
-    const commentId = nanoid();
-    await this.db.insert(galleryComments).values({ id: commentId, galleryItemId: itemId, userId: actorId, body });
-    const comment = await this.getCommentById(commentId);
-    if (!comment) return err("SERVER_ERROR", "Failed to create comment");
-    await this.deps.writeAuditLog({ entityType: "gallery_comment", action: "create", actorId, entityId: commentId, detailText: JSON.stringify({ gallery_item_id: itemId }) });
-    return ok(toCommentPayload(comment));
-  }
-
-  async updateComment(actorId: string, commentId: string, body: string): Promise<ServiceResult<unknown>> {
-    const existing = (await this.db.select({ id: galleryComments.id, userId: galleryComments.userId }).from(galleryComments).where(eq(galleryComments.id, commentId)).limit(1))[0];
-    if (!existing) return err("NOT_FOUND", "Comment not found");
-    if (existing.userId !== actorId) return err("FORBIDDEN", "You can only edit your own comments");
-    await this.db.update(galleryComments).set({ body, updatedAt: new Date().toISOString() }).where(eq(galleryComments.id, commentId));
-    const updated = await this.getCommentById(commentId);
-    if (!updated) return err("SERVER_ERROR", "Failed to update comment");
-    return ok(toCommentPayload(updated));
-  }
-
-  async deleteComment(actorId: string, canManage: boolean, commentId: string): Promise<ServiceResult<{ ok: true }>> {
-    const existing = (await this.db.select({ id: galleryComments.id, userId: galleryComments.userId, galleryItemId: galleryComments.galleryItemId }).from(galleryComments).where(eq(galleryComments.id, commentId)).limit(1))[0];
-    if (!existing) return err("NOT_FOUND", "Comment not found");
-    if (existing.userId !== actorId && !canManage) return err("FORBIDDEN", "Cannot delete this comment");
-    await this.db.delete(galleryComments).where(eq(galleryComments.id, commentId));
-    await this.deps.writeAuditLog({ entityType: "gallery_comment", action: "delete", actorId, entityId: commentId, detailText: JSON.stringify({ gallery_item_id: existing.galleryItemId }) });
-    return ok({ ok: true });
   }
 }

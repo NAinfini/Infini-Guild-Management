@@ -131,7 +131,7 @@ function parseDetailData(
 type ActionColor = "blue" | "green" | "red" | "yellow" | "grape" | "cyan" | "orange" | "gray";
 
 function getActionColor(action: string): ActionColor {
-  if (action === "create" || action === "init" || action === "admin_create_member" || action === "create_video") return "green";
+  if (action === "create" || action === "init" || action === "admin_create_member" || action === "create_video" || action === "register" || action === "complete") return "green";
   if (action === "delete" || action === "remove_by_moderator" || action === "batch_remove_by_moderator" || action === "batch_delete") return "red";
   if (action === "update" || action === "role_change" || action === "password_reset" || action === "update_role" || action === "batch_role_update" || action === "batch_update" || action === "set_role_tag" || action === "change_username") return "blue";
   if (action === "archive" || action === "pause" || action === "deactivate" || action === "batch_deactivate") return "yellow";
@@ -155,11 +155,12 @@ function getEntityColor(entityType: string): ActionColor {
   if (entityType === "invite_link") return "orange";
   if (entityType === "role") return "yellow";
   if (entityType === "guild_war" || entityType === "guild_war_history" || entityType === "guild_war_member_stats") return "red";
-  if (entityType === "gallery" || entityType === "gallery_item" || entityType === "gallery_comment") return "grape";
+  if (entityType === "gallery" || entityType === "gallery_item") return "grape";
   if (entityType === "wiki_article" || entityType === "wiki_category") return "cyan";
   if (entityType === "audit_log_export" || entityType === "audit_archive_export") return "gray";
-  if (entityType === "member_badge") return "grape";
+  if (entityType === "member_badge" || entityType === "badge") return "grape";
   if (entityType === "analytics_settings") return "blue";
+  if (entityType === "seed" || entityType === "system") return "gray";
   return "gray";
 }
 

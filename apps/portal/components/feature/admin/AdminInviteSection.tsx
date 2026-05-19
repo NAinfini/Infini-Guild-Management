@@ -1,5 +1,5 @@
 import type { InviteLink } from "@guild/shared";
-import { Alert, Badge, Button, Group, HoverCard, Loader, Modal, NumberInput, SegmentedControl, Skeleton, Stack, Text, TextInput, ThemeIcon, Title } from "@mantine/core";
+import { Alert, Badge, Button, Group, HoverCard, Loader, Modal, NumberInput, SegmentedControl, Skeleton, Stack, Text, TextInput, ThemeIcon } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
 import { AlertTriangleIcon, BanIcon, CircleCheckIcon, CircleXIcon, CopyIcon, InfoCircleIcon, PlusIcon, TrashIcon } from "@portal/components/icons";
 import { DepthButton } from "@portal/components/shared/DepthButton";
@@ -279,7 +279,6 @@ export function AdminInviteSection({
 
   return (
     <Stack gap={12}>
-      <Title order={2} style={{ margin: 0, fontSize: 16 }}>{t("tab.invite")}</Title>
       {/* Toolbar card: segment + stats + search + create button */}
       <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>

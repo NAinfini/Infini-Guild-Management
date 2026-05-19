@@ -52,8 +52,18 @@ vi.mock("../../services/AdminService", () => ({
 }));
 
 vi.mock("../../utils/permissions", () => ({
-  canExportAudit: () => true,
-  canViewStatus: () => true,
+  canExportAudit: (roles: Array<{ id: string; permissions: Record<string, boolean> }>, roleId: string) =>
+    roles.some((role) => role.id === roleId && role.permissions["admin.audit.export"] === true),
+  canViewAudit: (roles: Array<{ id: string; permissions: Record<string, boolean> }>, roleId: string) =>
+    roles.some((role) => role.id === roleId && role.permissions["admin.audit.view"] === true),
+  canViewInvites: (roles: Array<{ id: string; permissions: Record<string, boolean> }>, roleId: string) =>
+    roles.some((role) => role.id === roleId && role.permissions["admin.invite.view"] === true),
+  canViewRoles: (roles: Array<{ id: string; permissions: Record<string, boolean> }>, roleId: string) =>
+    roles.some((role) => role.id === roleId && role.permissions["admin.roles.view"] === true),
+  canViewStatus: (roles: Array<{ id: string; permissions: Record<string, boolean> }>, roleId: string) =>
+    roles.some((role) => role.id === roleId && role.permissions["admin.status.view"] === true),
+  canViewUsers: (roles: Array<{ id: string; permissions: Record<string, boolean> }>, roleId: string) =>
+    roles.some((role) => role.id === roleId && role.permissions["admin.users.view"] === true),
 }));
 
 vi.mock("../../stores/auth", () => ({
@@ -175,7 +185,19 @@ describe("portal data hooks", () => {
   });
 
   it("loads admin data through service exports when permissions allow it", async () => {
-    serviceMocks.fetchRoles.mockResolvedValueOnce([]);
+    serviceMocks.fetchRoles.mockResolvedValueOnce([
+      {
+        id: "admin",
+        permissions: {
+          "admin.audit.export": true,
+          "admin.audit.view": true,
+          "admin.invite.view": true,
+          "admin.roles.view": true,
+          "admin.status.view": true,
+          "admin.users.view": true,
+        },
+      },
+    ]);
     serviceMocks.fetchAllUsersListWithOptions.mockResolvedValueOnce({ data: [] });
     serviceMocks.fetchAdminInviteLinks.mockResolvedValueOnce([]);
     serviceMocks.fetchAdminInviteStats.mockResolvedValueOnce({});
@@ -220,5 +242,41 @@ describe("portal data hooks", () => {
       end_at: "2026-03-08T23:59:59.999Z",
     });
     expect(serviceMocks.fetchAdminStatus).toHaveBeenCalled();
+  });
+
+  it("does not fetch unrelated admin sections without exact permissions", async () => {
+    serviceMocks.fetchRoles.mockResolvedValueOnce([
+      {
+        id: "status-only",
+        permissions: {
+          "admin.status.view": true,
+        },
+      },
+    ]);
+    serviceMocks.fetchAdminStatus.mockResolvedValueOnce({});
+
+    const { result } = renderHook(
+      () =>
+        useAdminData({
+          isModerator: true,
+          userRole: "status-only",
+          auditPage: 1,
+          auditSearch: "",
+          auditDateFrom: "",
+          auditDateTo: "",
+        }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.rolesQuery.isSuccess).toBe(true);
+      expect(result.current.statusQuery.isSuccess).toBe(true);
+    });
+
+    expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminInviteLinks).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminInviteStats).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminAuditLog).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminAuditArchiveMonths).not.toHaveBeenCalled();
   });
 });

@@ -70,23 +70,22 @@
 .admin-roles-sidebar {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
   border-right: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 94%, transparent);
 }
 
 .admin-roles-sidebar-header {
   padding: 12px 14px;
+  flex-shrink: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
 }
 
 .admin-roles-sidebar-scroll {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
-}
-
-.admin-roles-sidebar-footer {
-  padding: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  overflow: hidden;
 }
 
 .admin-roles-sidebar-item {
@@ -169,7 +168,7 @@
   .admin-roles-sidebar {
     border-right: none;
     border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
-    max-height: 200px;
+    max-height: 280px;
   }
 
   .admin-roles-detail {

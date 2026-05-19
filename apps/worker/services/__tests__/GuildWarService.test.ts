@@ -182,4 +182,44 @@ describe("GuildWarService helpers", () => {
       detailText: expect.stringContaining("\"count\":2"),
     }));
   });
+
+  it("copies event team assignments when creating history from an event", async () => {
+    const values = vi.fn().mockResolvedValue(undefined);
+    const service = new GuildWarService({ insert: vi.fn(() => ({ values })) } as never, {
+      media: { get: vi.fn() },
+      writeAuditLog: vi.fn().mockResolvedValue(undefined),
+      publishEntityChanged: vi.fn().mockResolvedValue(undefined),
+      rawDb: {} as never,
+    });
+    vi.spyOn(service, "getWarHistoryById").mockImplementation(async (warId) => ({ ...historyRow, id: warId }));
+    vi.spyOn(service, "getTeamsForEvent").mockResolvedValue([
+      { id: "event-team-1", warHistoryId: null, eventId: "event-1", teamName: "Alpha", sortOrder: 0, notes: "front", isLocked: true },
+    ]);
+    vi.spyOn(service, "getMembersForTeams").mockResolvedValue([
+      { id: "member-1", warTeamId: "event-team-1", userId: "user-1", roleTag: "tank", sortOrder: 0, stats: null, note: null },
+    ]);
+    vi.spyOn(service, "getPoolMembersForEvent").mockResolvedValue([
+      { id: "pool-1", warHistoryId: null, eventId: "event-1", userId: "user-2" },
+    ]);
+    const replaceHistoryTeams = vi.spyOn(service, "replaceHistoryTeams").mockResolvedValue(undefined);
+
+    const result = await service.createHistory("admin-1", {
+      event_id: "event-1",
+      war_name: "[systemtest] War",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(replaceHistoryTeams).toHaveBeenCalledWith(expect.any(String), {
+      teams: [
+        {
+          team_name: "Alpha",
+          sort_order: 0,
+          notes: "front",
+          is_locked: true,
+          members: [{ user_id: "user-1", role_tag: "tank", sort_order: 0 }],
+        },
+      ],
+      pool_members: [{ user_id: "user-2" }],
+    });
+  });
 });

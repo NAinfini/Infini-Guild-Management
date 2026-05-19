@@ -24,6 +24,7 @@ function createMockDeps(inviteChanges: number) {
     verifyPassword: vi.fn(),
     createSession: vi.fn().mockResolvedValue(undefined),
     destroySession: vi.fn().mockResolvedValue(undefined),
+    writeAuditLog: vi.fn().mockResolvedValue(undefined),
   };
 }
 

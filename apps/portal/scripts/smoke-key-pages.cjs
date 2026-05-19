@@ -27,7 +27,6 @@ const STATIC_PAGE_API_CHECKS = [
   { page: "Announcements", path: "/api/announcements?page=1&limit=10&status=archived" },
   { page: "GuildWar", path: "/api/guild-war/history?limit=5" },
   { page: "GuildWar", path: "/api/guild-war/analytics" },
-  { page: "GuildWar", path: "/api/guild-war/templates" },
   { page: "Gallery", path: "/api/gallery?limit=20" },
   { page: "Wiki", path: "/api/wiki/categories" },
   { page: "Wiki", path: "/api/wiki/articles?page=1&limit=10" },

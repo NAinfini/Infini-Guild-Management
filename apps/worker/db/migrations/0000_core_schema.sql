@@ -184,18 +184,6 @@ CREATE TABLE IF NOT EXISTS war_pool_members (
   CHECK (event_id IS NOT NULL OR war_history_id IS NOT NULL)
 );
 
-CREATE TABLE IF NOT EXISTS war_templates (
-  id TEXT PRIMARY KEY NOT NULL,
-  template_name TEXT NOT NULL,
-  description TEXT,
-  template_type TEXT NOT NULL DEFAULT 'structure',
-  source_event_id TEXT REFERENCES events(id),
-  payload_json TEXT NOT NULL,
-  created_by TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
-
 CREATE TABLE IF NOT EXISTS wiki_categories (
   id TEXT PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
@@ -228,23 +216,6 @@ CREATE TABLE IF NOT EXISTS gallery_items (
   caption TEXT,
   uploaded_by TEXT NOT NULL REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
-
-CREATE TABLE IF NOT EXISTS gallery_likes (
-  id TEXT PRIMARY KEY NOT NULL,
-  gallery_item_id TEXT NOT NULL REFERENCES gallery_items(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  UNIQUE(gallery_item_id, user_id)
-);
-
-CREATE TABLE IF NOT EXISTS gallery_comments (
-  id TEXT PRIMARY KEY NOT NULL,
-  gallery_item_id TEXT NOT NULL REFERENCES gallery_items(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  body TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS invite_links (
@@ -381,12 +352,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_war_pool_members_event_user
 CREATE INDEX IF NOT EXISTS idx_war_pool_members_event
   ON war_pool_members(event_id);
 
--- war_templates
-CREATE INDEX IF NOT EXISTS idx_war_templates_source_event
-  ON war_templates(source_event_id);
-CREATE INDEX IF NOT EXISTS idx_war_templates_updated_at
-  ON war_templates(updated_at);
-
 -- wiki
 CREATE INDEX IF NOT EXISTS idx_wiki_categories_parent_sort
   ON wiki_categories(parent_id, sort_order, name, id);
@@ -404,12 +369,6 @@ CREATE INDEX IF NOT EXISTS idx_gallery_items_uploaded_by
   ON gallery_items(uploaded_by, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_gallery_items_type_created
   ON gallery_items(type, created_at, id);
-CREATE UNIQUE INDEX IF NOT EXISTS ux_gallery_likes_item_user
-  ON gallery_likes(gallery_item_id, user_id);
-CREATE INDEX IF NOT EXISTS idx_gallery_comments_item_created
-  ON gallery_comments(gallery_item_id, created_at, id);
-CREATE INDEX IF NOT EXISTS idx_gallery_comments_user_id
-  ON gallery_comments(user_id);
 
 -- invite_links
 CREATE INDEX IF NOT EXISTS idx_invite_links_created
@@ -498,7 +457,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('admin', 'admin.analytics.view', 1),
   ('admin', 'admin.analytics.manage', 1),
   ('admin', 'guildwar.teams.edit', 1),
-  ('admin', 'guildwar.templates', 1),
+
   ('admin', 'guildwar.history.edit', 1),
   ('admin', 'events.create', 1),
   ('admin', 'events.edit', 1),
@@ -535,7 +494,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('moderator', 'admin.analytics.view', 1),
   ('moderator', 'admin.analytics.manage', 0),
   ('moderator', 'guildwar.teams.edit', 1),
-  ('moderator', 'guildwar.templates', 1),
+
   ('moderator', 'guildwar.history.edit', 1),
   ('moderator', 'events.create', 1),
   ('moderator', 'events.edit', 1),
@@ -572,7 +531,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('member', 'admin.analytics.view', 0),
   ('member', 'admin.analytics.manage', 0),
   ('member', 'guildwar.teams.edit', 0),
-  ('member', 'guildwar.templates', 0),
+
   ('member', 'guildwar.history.edit', 0),
   ('member', 'events.create', 0),
   ('member', 'events.edit', 0),

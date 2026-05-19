@@ -50,6 +50,10 @@ function statusCls(status: number | null): string {
   return "api-ep__status--err";
 }
 
+function isOptionalSkip(result: EndpointResult | null): boolean {
+  return result?.skipped === true && result.error === null;
+}
+
 function progressColor(allPassed: boolean, hasFail: boolean): string {
   if (hasFail) return "#ef4444";
   if (allPassed) return "#10b981";
@@ -74,8 +78,8 @@ function EndpointRow({
       <div className="api-ep__right">
         {result ? (
           <>
-            <span className={`api-ep__status ${statusCls(result.status)}`}>
-              {result.status ?? "ERR"}
+            <span className={`api-ep__status ${isOptionalSkip(result) ? "api-ep__status--warn" : statusCls(result.status)}`}>
+              {result.status ?? (isOptionalSkip(result) ? "N/A" : "ERR")}
             </span>
             <span className="api-ep__latency">{result.latencyMs}ms</span>
           </>
@@ -104,11 +108,11 @@ export function ApiTestCategory({
   const catTotal = category.endpoints.length;
   const allPassed = catDone === catTotal && catDone > 0 && category.endpoints.every((ep) => {
     const r = resultMap.get(epKey(ep));
-    return r && r.status !== null && r.status >= 200 && r.status < 400;
+    return r && (isOptionalSkip(r) || r.status !== null && r.status >= 200 && r.status < 400);
   });
   const hasFail = category.endpoints.some((ep) => {
     const r = resultMap.get(epKey(ep));
-    return r && (r.status === null || r.status >= 400);
+    return r && !isOptionalSkip(r) && (r.status === null || r.status >= 400);
   });
   const pct = catTotal > 0 ? Math.round((catDone / catTotal) * 100) : 0;
 

@@ -27,6 +27,7 @@ export type AuthServiceDeps = {
   createSession: (userId: string, opts?: { stayLoggedIn?: boolean }) => Promise<void>;
   destroySession: (sessionId?: string) => Promise<void>;
   publishEntityChanged?: (input: { entityType: string; entityId: string; hint: string; displayName?: string }) => Promise<void>;
+  writeAuditLog: (input: { entityType: string; action: string; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null }) => Promise<void>;
 };
 
 // --- Helpers ---
@@ -169,6 +170,7 @@ export class AuthService {
     const createdUser = (await this.db.select(USER_COLS).from(users).where(eq(users.id, userId)).limit(1))[0];
     if (!createdUser) return err("SERVER_ERROR", "Failed to load created user");
     await this.deps.createSession(userId);
+    await this.deps.writeAuditLog({ entityType: "user", action: "register", actorId: userId, entityId: userId, diffTitle: username, detailText: JSON.stringify({ invite_code: inviteCode }) });
     await this.deps.publishEntityChanged?.({ entityType: "member_profile", entityId: userId, hint: "member_joined", displayName: createdUser.username });
     const extra = await this.resolveUserPermissions("member");
     return ok({ user: toUserPayload(createdUser, extra) });

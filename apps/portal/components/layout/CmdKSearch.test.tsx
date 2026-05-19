@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CmdKSearch } from "./CmdKSearch";
 
 const navigateMock = vi.hoisted(() => vi.fn());
-const fetchSearchDataMock = vi.hoisted(() => vi.fn());
+const searchMock = vi.hoisted(() => vi.fn());
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -41,7 +41,7 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 vi.mock("../../services/SearchService", () => ({
-  fetchSearchData: fetchSearchDataMock,
+  searchGlobal: searchMock,
 }));
 
 function createWrapper(queryClient: QueryClient) {
@@ -57,13 +57,11 @@ function createWrapper(queryClient: QueryClient) {
 describe("CmdKSearch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchSearchDataMock.mockResolvedValue({
-      users: [],
-      events: [],
-      announcements: [],
-      wikiArticles: [{ id: "wiki-1", title: "war history", slug: "war-history", body_json: "archive" }],
-      warHistory: [{ id: "war-1", war_name: "Guild War", result: "win", created_at: "2026-03-01T10:00:00.000Z" }],
-      galleryItems: [],
+    searchMock.mockResolvedValue({
+      data: [
+        { id: "war-1", title: "Guild War", subtitle: "win - 2026-03-01", type: "war", to: "/guild-war" },
+        { id: "wiki-1", title: "war history", subtitle: "war-history", type: "wiki", to: "/wiki" },
+      ],
     });
   });
 
@@ -87,6 +85,7 @@ describe("CmdKSearch", () => {
       expect(screen.getAllByText("Guild War").length).toBeGreaterThan(0);
     });
 
+    expect(searchMock).toHaveBeenCalledWith("war", 24);
     expect(
       screen.getByText((_, element) => element?.textContent === "war history"),
     ).toBeInTheDocument();

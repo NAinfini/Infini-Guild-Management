@@ -2,6 +2,7 @@ import type { HeartbeatAckMessage, HeartbeatMessage, PushMessage } from "@guild/
 
 const STALE_TIMEOUT_MS = 90_000;
 const SWEEP_INTERVAL_MS = 60_000;
+export const MAX_WEBSOCKET_CONNECTIONS = 1500;
 
 export class WebSocketDO {
   constructor(private readonly state: DurableObjectState) {}
@@ -53,7 +54,7 @@ export class WebSocketDO {
       return new Response("Expected websocket", { status: 426 });
     }
 
-    if (this.state.getWebSockets().length >= 500) {
+    if (this.state.getWebSockets().length >= MAX_WEBSOCKET_CONNECTIONS) {
       return new Response("Too many connections", { status: 503 });
     }
 

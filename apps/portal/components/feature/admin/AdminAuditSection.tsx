@@ -1,5 +1,5 @@
 import type { AuditLogEntry } from "@guild/shared";
-import { Button, Group, Stack, TextInput, Title } from "@mantine/core";
+import { Button, Group, Stack, TextInput } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
@@ -68,11 +68,9 @@ export function AdminAuditSection({
         canViewStatus(rolesData, user.role)),
   );
   const loadErrorMessage = tc("loadError");
-  const heading = <Title order={2} style={{ margin: 0, fontSize: 16 }}>{t("tab.audit")}</Title>;
 
   return (
     <Stack gap={12}>
-      {heading}
       <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Group wrap="wrap" gap={8}>

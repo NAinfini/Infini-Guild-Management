@@ -75,7 +75,7 @@ export function AdminPage() {
     if (!value) return;
     setActiveTab(value);
     const tab = value === "member" ? undefined : (value as AdminTab);
-    void navigate({ to: "/admin", search: (prev) => ({ ...prev, tab }), replace: true });
+    void navigate({ to: "/admin", search: (prev) => ({ ...prev, tab }), replace: true, viewTransition: false });
   }, [navigate]);
   const [memberSearch, setMemberSearch] = useState("");
 

@@ -281,6 +281,28 @@ describe("worker EventService", () => {
     expect(bind).toHaveBeenCalledWith("evt-1", "u-1", "u-2");
   });
 
+  it("removes active guild-war team data when destroying an event", async () => {
+    const batch = vi.fn().mockResolvedValue([]);
+    const prepare = vi.fn((sql: string) => ({
+      bind: vi.fn((...bindings: unknown[]) => ({ sql, bindings })),
+    }));
+    const service = new EventService({} as never, { prepare, batch } as never, { put: vi.fn() } as never, {
+      getEventById: vi.fn(),
+      getUsername: vi.fn().mockResolvedValue(null),
+      materializeRecurringSeries: vi.fn(),
+      writeAuditLog: vi.fn().mockResolvedValue(undefined),
+      publishEntityChanged: vi.fn().mockResolvedValue(undefined),
+      now: () => "2026-03-08T12:00:00.000Z",
+    });
+
+    await service.destroyEvent("mod-1", "evt-1", createEventRow());
+
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM war_team_members"));
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM war_teams WHERE event_id"));
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM war_pool_members WHERE event_id"));
+    expect(batch).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects leaving archived events", async () => {
     const db = {
       select: vi.fn(),

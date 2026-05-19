@@ -1,4 +1,18 @@
-﻿import type { Context, Next } from "hono";
+import type { Context, Next } from "hono";
+
+const MAX_ETAG_BYTES = 64 * 1024;
+const SKIP_PATH_PREFIXES = [
+  "/api/users",
+  "/api/gallery",
+  "/api/admin/audit",
+  "/api/search",
+  "/api/dashboard/summary",
+];
+const SKIP_PATH_SUFFIXES = [
+  "/batch",
+  "/batch-details",
+  "/export",
+];
 
 function toHex(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -15,13 +29,18 @@ async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
 }
 
 function parseIfNoneMatch(value: string | undefined): string[] {
-  if (!value) {
-    return [];
-  }
+  if (!value) return [];
   return value
     .split(",")
     .map((tag) => tag.trim())
     .filter((tag) => tag.length > 0);
+}
+
+export function shouldApplyEtag(path: string, contentLength: string | null): boolean {
+  if (SKIP_PATH_PREFIXES.some((prefix) => path.startsWith(prefix))) return false;
+  if (SKIP_PATH_SUFFIXES.some((suffix) => path.endsWith(suffix))) return false;
+  const parsedLength = Number.parseInt(contentLength ?? "", 10);
+  return !Number.isFinite(parsedLength) || parsedLength <= MAX_ETAG_BYTES;
 }
 
 export async function etagMiddleware(c: Context, next: Next): Promise<void> {
@@ -41,8 +60,15 @@ export async function etagMiddleware(c: Context, next: Next): Promise<void> {
   if (!contentType.toLowerCase().includes("application/json")) {
     return;
   }
+  if (!shouldApplyEtag(c.req.path, currentResponse.headers.get("Content-Length"))) {
+    return;
+  }
 
   const payloadBuffer = await currentResponse.clone().arrayBuffer();
+  if (payloadBuffer.byteLength > MAX_ETAG_BYTES) {
+    return;
+  }
+
   const etag = `"${await sha256Hex(payloadBuffer)}"`;
   const requestEtags = parseIfNoneMatch(c.req.header("If-None-Match"));
 
@@ -53,9 +79,6 @@ export async function etagMiddleware(c: Context, next: Next): Promise<void> {
     return;
   }
 
-  if (currentResponse.status === 200 && c.req.method === "GET") {
-    currentResponse.headers.set("Cache-Control", "private, no-cache, must-revalidate");
-  }
-
+  currentResponse.headers.set("Cache-Control", "private, no-cache, must-revalidate");
   c.header("ETag", etag);
 }

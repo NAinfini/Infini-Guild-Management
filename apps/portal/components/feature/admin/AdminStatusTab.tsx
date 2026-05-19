@@ -7,7 +7,6 @@ import {
   SimpleGrid,
   Stack,
   Text,
-  Title,
 } from "@mantine/core";
 import { ProgressButton } from "@portal/components/effects";
 import { PortalCard } from "../../shared/PortalCard";
@@ -25,11 +24,14 @@ import {
   buildApiCategories,
   buildCleanupSteps,
   captureContextFromResponse,
+  countStaleSystemTestArtifacts,
   createInitialTestRunContext,
+  filterApiCategoriesForPermissions,
   nextLogId,
   prepareEndpointRequest,
   readRetryAfterSeconds,
   runEndpointTest,
+  STALE_ARTIFACT_PROBES,
   truncateJson,
   waitWithAbort,
   type CategoryDef,
@@ -78,13 +80,15 @@ export function AdminStatusTab({
 }: AdminStatusTabProps) {
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
-  const apiCategories = useMemo(() => buildApiCategories(t), [t]);
   const user = useAuthStore((state) => state.user);
+  const apiCategories = useMemo(() => buildApiCategories(t), [t]);
+  const visibleApiCategories = useMemo(
+    () => filterApiCategoriesForPermissions(apiCategories, user?.permissions),
+    [apiCategories, user?.permissions],
+  );
   const setSuppressed = useNotificationStore((state) => state.setSuppressed);
   const isAdmin = userCanViewStatus(user);
   const loadErrorMessage = tc("loadError");
-  const heading = <Title order={2} style={{ margin: 0, fontSize: 16 }}>{t("tab.status")}</Title>;
-  const showTestConsole = import.meta.env.DEV;
   const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
   const [runningSet, setRunningSet] = useState<Set<string>>(new Set());
   const [resultMap, setResultMap] = useState<Map<string, EndpointResult>>(new Map());
@@ -164,6 +168,7 @@ export function AdminStatusTab({
         error: result.error,
         body: result.body,
         ranAt: result.ranAt,
+        skipped: result.skipped,
       });
     }
 
@@ -243,6 +248,55 @@ export function AdminStatusTab({
     }
   }, [pushLog]);
 
+  const runStaleArtifactScan = useCallback(async (signal: AbortSignal) => {
+    for (const probe of STALE_ARTIFACT_PROBES) {
+      if (signal.aborted) break;
+      const started = performance.now();
+      const ranAt = new Date().toISOString();
+      try {
+        const response = await fetch(probe.path, { method: "GET", credentials: "include", signal });
+        const latencyMs = Math.round(performance.now() - started);
+        const raw = await response.text();
+        let parsed: unknown = null;
+        let body = raw;
+        if (raw && (response.headers.get("content-type") ?? "").includes("json")) {
+          parsed = JSON.parse(raw) as unknown;
+          body = JSON.stringify(parsed, null, 2);
+        }
+        const staleCount = response.ok ? countStaleSystemTestArtifacts(probe.label, parsed) : 0;
+        pushLog({
+          id: nextLogId(),
+          category: "Stale Data",
+          label: `Stale [systemtest] ${probe.label}`,
+          method: "GET",
+          path: probe.path,
+          status: response.status,
+          latencyMs,
+          error: response.ok && staleCount === 0 ? null : response.ok ? `${staleCount} stale artifact(s) need manual cleanup` : `${response.status} ${response.statusText}`,
+          body: response.ok
+            ? truncateJson(JSON.stringify({ stale_count: staleCount, manual_cleanup_required: staleCount > 0 }, null, 2))
+            : truncateJson(body),
+          ranAt,
+        });
+      } catch (err) {
+        if (signal.aborted) break;
+        const latencyMs = Math.round(performance.now() - started);
+        pushLog({
+          id: nextLogId(),
+          category: "Stale Data",
+          label: `Stale [systemtest] ${probe.label}`,
+          method: "GET",
+          path: probe.path,
+          status: null,
+          latencyMs,
+          error: err instanceof Error ? err.message : "Unknown error",
+          body: "",
+          ranAt,
+        });
+      }
+    }
+  }, [pushLog]);
+
   const runCategory = useCallback(async (category: CategoryDef) => {
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -253,11 +307,12 @@ export function AdminStatusTab({
       await runCategoryInternal(category, controller.signal);
       if (!controller.signal.aborted) {
         await runCleanup(controller.signal);
+        await runStaleArtifactScan(controller.signal);
       }
     } finally {
       setSuppressed(false);
     }
-  }, [clearRunConsole, runCategoryInternal, runCleanup, setSuppressed]);
+  }, [clearRunConsole, runCategoryInternal, runCleanup, runStaleArtifactScan, setSuppressed]);
 
   const runAllCategories = useCallback(async () => {
     abortRef.current?.abort();
@@ -269,18 +324,19 @@ export function AdminStatusTab({
     setRunningAll(true);
     setSuppressed(true);
     try {
-      for (const cat of apiCategories) {
+      for (const cat of visibleApiCategories) {
         if (controller.signal.aborted) break;
         await runCategoryInternal(cat, controller.signal);
       }
       if (!controller.signal.aborted) {
         await runCleanup(controller.signal);
+        await runStaleArtifactScan(controller.signal);
       }
     } finally {
       setRunningAll(false);
       setSuppressed(false);
     }
-  }, [clearRunConsole, runCategoryInternal, runCleanup, setSuppressed]);
+  }, [clearRunConsole, runCategoryInternal, runCleanup, runStaleArtifactScan, setSuppressed, visibleApiCategories]);
 
   const clearDebug = useCallback(() => {
     setDebugLogs([]);
@@ -291,26 +347,25 @@ export function AdminStatusTab({
   if (!isAdmin) {
     return (
       <Stack gap={12}>
-        {heading}
         <Alert color="yellow" title={t("adminOnly")} />
       </Stack>
     );
   }
 
-  const totalEndpoints = apiCategories.reduce((sum, cat) => sum + cat.endpoints.length, 0);
+  const totalEndpoints = visibleApiCategories.reduce((sum, cat) => sum + cat.endpoints.length, 0);
   const completedEndpoints = Math.min(resultMap.size, totalEndpoints);
   const progressPercent = totalEndpoints > 0 ? (completedEndpoints / totalEndpoints) * 100 : 0;
 
   let passedEndpoints = 0;
   let failedEndpoints = 0;
   for (const [, r] of resultMap) {
-    if (r.status !== null && r.status >= 200 && r.status < 400) passedEndpoints++;
+    if (r.skipped && r.error === null) passedEndpoints++;
+    else if (r.status !== null && r.status >= 200 && r.status < 400) passedEndpoints++;
     else failedEndpoints++;
   }
 
   return (
     <Stack gap={16}>
-      {heading}
 
       {/* ── System Health ─────────────────────────── */}
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
@@ -387,8 +442,7 @@ export function AdminStatusTab({
         </PortalCard>
       </SimpleGrid>
 
-      {/* ── API Test Console (dev only) ────────────────────────── */}
-      {showTestConsole ? (
+      {/* ── API Test Console ────────────────────────── */}
       <div className="api-console">
         <div className="api-console__header">
           <div className="api-console__header-left">
@@ -438,7 +492,7 @@ export function AdminStatusTab({
         </div>
 
         <div className="api-cat-list">
-          {apiCategories.map((cat) => (
+          {visibleApiCategories.map((cat) => (
             <ApiTestCategory
               key={cat.key}
               category={cat}
@@ -449,12 +503,9 @@ export function AdminStatusTab({
           ))}
         </div>
       </div>
-      ) : null}
 
-      {/* ── Debug Console (dev only) ─────────────────────────── */}
-      {showTestConsole ? (
+      {/* ── Debug Console ─────────────────────────── */}
       <AdminApiDebugConsole logs={debugLogs} onClear={clearDebug} />
-      ) : null}
     </Stack>
   );
 }

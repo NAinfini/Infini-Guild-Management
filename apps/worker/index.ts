@@ -15,9 +15,11 @@ import { resolveSession, type SessionUser } from "./services/auth";
 import { adminRoutes } from "./routes/admin";
 import { announcementsRoutes } from "./routes/announcements";
 import { authRoutes } from "./routes/auth";
+import { dashboardRoutes } from "./routes/dashboard";
 import { eventsRoutes } from "./routes/events";
 import { galleryRoutes } from "./routes/gallery";
 import { guildWarRoutes } from "./routes/guild-war";
+import { searchRoutes } from "./routes/search";
 import { usersRoutes } from "./routes/users";
 import { wikiRoutes } from "./routes/wiki";
 import { badgeRoutes } from "./routes/badges";
@@ -241,6 +243,8 @@ app.get("/ws", async (c) => {
 });
 
 app.route("/api/auth", authRoutes);
+app.route("/api/dashboard", dashboardRoutes);
+app.route("/api/search", searchRoutes);
 app.route("/api/users", usersRoutes);
 app.route("/api/events", eventsRoutes);
 app.route("/api/announcements", announcementsRoutes);

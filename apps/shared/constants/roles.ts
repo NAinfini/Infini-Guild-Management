@@ -20,7 +20,6 @@ export const PERMISSIONS = [
   "admin.roles.view",
   "admin.roles.manage",
   "guildwar.teams.edit",
-  "guildwar.templates",
   "guildwar.history.edit",
   "events.create",
   "events.edit",

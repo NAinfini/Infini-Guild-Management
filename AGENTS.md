@@ -248,7 +248,7 @@ Drizzle schema is modular — each domain is a separate file in `apps/worker/db/
 | `announcements.ts` | `announcements` | Announcements |
 | `guild-war.ts` | `war_history`, `war_teams`, `war_team_members`, `war_pool_members`, `war_templates` | Guild War |
 | `wiki.ts` | `wiki_categories`, `wiki_articles` | Wiki |
-| `gallery.ts` | `gallery_items`, `gallery_likes`, `gallery_comments` | Gallery |
+| `gallery.ts` | `gallery_items` | Gallery |
 | `audit.ts` | `audit_log` | Audit Log |
 
 SQL migrations are in `apps/worker/db/migrations/`. The core schema is `0000_core_schema.sql`.

@@ -10,9 +10,7 @@ import {
   eventParticipants,
   eventRaffleWinners,
   events,
-  galleryComments,
   galleryItems,
-  galleryLikes,
   inviteLinks,
   memberBadgeAssignments,
   memberBadges,
@@ -27,7 +25,6 @@ import {
   warPoolMembers,
   warTeamMembers,
   warTeams,
-  warTemplates,
   wikiArticles,
   wikiCategories,
 } from "./schema";
@@ -37,15 +34,12 @@ import { createPasswordHash } from "../services/auth";
 const ALL_TABLES = [
   "audit_log",
   "error_log",
-  "gallery_comments",
-  "gallery_likes",
   "gallery_items",
   "wiki_articles",
   "wiki_categories",
   "war_pool_members",
   "war_team_members",
   "war_teams",
-  "war_templates",
   "war_history",
   "event_raffle_winners",
   "event_poll_votes",
@@ -98,7 +92,6 @@ const ROLE_PERMISSION_KEYS = [
   "admin.analytics.view",
   "admin.analytics.manage",
   "guildwar.teams.edit",
-  "guildwar.templates",
   "guildwar.history.edit",
   "events.create",
   "events.edit",
@@ -128,7 +121,6 @@ const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
   "admin.roles.view",
   "admin.analytics.view",
   "guildwar.teams.edit",
-  "guildwar.templates",
   "guildwar.history.edit",
   "events.create",
   "events.edit",
@@ -414,18 +406,18 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   await batchInsert(db, memberBadges, badgeRows, 4);
 
   const badgeAssignmentRows: Array<typeof memberBadgeAssignments.$inferInsert> = [
-    // Veteran badge — admin, all mods, and first 5 members
+    // Veteran badge - admin, all mods, and first 5 members
     ...([adminId, ...moderatorIds, ...memberIds.slice(0, 5)].map((userId) => ({
       badgeId: badgeRows[0].id,
       userId,
       assignedBy: adminId,
       assignedAt: addDays(now, -30),
     }))),
-    // War Hero — top performers
+    // War Hero - top performers
     { badgeId: badgeRows[1].id, userId: memberIds[0], assignedBy: adminId, assignedAt: addDays(now, -14) },
     { badgeId: badgeRows[1].id, userId: memberIds[2], assignedBy: adminId, assignedAt: addDays(now, -14) },
     { badgeId: badgeRows[1].id, userId: moderatorIds[0], assignedBy: adminId, assignedAt: addDays(now, -14) },
-    // Top Contributor — active wiki/gallery users
+    // Top Contributor - active wiki/gallery users
     { badgeId: badgeRows[2].id, userId: memberIds[1], assignedBy: moderatorIds[0], assignedAt: addDays(now, -7) },
     { badgeId: badgeRows[2].id, userId: memberIds[4], assignedBy: moderatorIds[0], assignedAt: addDays(now, -7) },
     // Event MVP
@@ -448,7 +440,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   const pendingRaffleEventId = nanoid();
 
   const eventRows: Array<typeof events.$inferInsert> = [
-    // [0] weekly_mission — future, pinned, with attachments
+    // [0] weekly_mission - future, pinned, with attachments
     {
       id: nanoid(),
       type: "weekly_mission",
@@ -468,12 +460,12 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [1] weekly_mission — future, updated by mod
+    // [1] weekly_mission - future, updated by mod
     {
       id: nanoid(),
       type: "weekly_mission",
       title: "Weekly Mission Beta",
-      description: "Secondary weekly mission — updated by mod",
+      description: "Secondary weekly mission - updated by mod",
       startAt: addDays(now, 3),
       endAt: addDays(addHours(now, 2), 3),
       capacity: 12,
@@ -487,7 +479,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [2] guild_war — active future war #1
+    // [2] guild_war - active future war #1
     {
       id: nanoid(),
       type: "guild_war",
@@ -507,7 +499,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [3] guild_war — active future war #2, updated
+    // [3] guild_war - active future war #2, updated
     {
       id: nanoid(),
       type: "guild_war",
@@ -526,7 +518,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [4] social — future
+    // [4] social - future
     {
       id: nanoid(),
       type: "social",
@@ -545,12 +537,12 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [5] social — future, created by mod
+    // [5] social - future, created by mod
     {
       id: nanoid(),
       type: "social",
       title: "Movie Night",
-      description: "Watch together event — no signup needed",
+      description: "Watch together event - no signup needed",
       startAt: addDays(now, 4),
       endAt: addDays(addHours(now, 3), 4),
       capacity: null,
@@ -564,7 +556,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [6] weekly_mission — archived (past)
+    // [6] weekly_mission - archived (past)
     {
       id: nanoid(),
       type: "weekly_mission",
@@ -583,12 +575,12 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [7] guild_war — ARCHIVED war (past, finished)
+    // [7] guild_war - ARCHIVED war (past, finished)
     {
       id: nanoid(),
       type: "guild_war",
       title: "Archived War Event",
-      description: "Old war that finished — still accessible for history entry",
+      description: "Old war that finished - still accessible for history entry",
       startAt: addDays(now, -21),
       endAt: addDays(addHours(now, 3), -21),
       capacity: 20,
@@ -602,12 +594,12 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [8] other — locked signup
+    // [8] other - locked signup
     {
       id: nanoid(),
       type: "other",
       title: "Locked Recruitment Drive",
-      description: "Signup is locked — mod-only additions",
+      description: "Signup is locked - mod-only additions",
       startAt: addDays(now, 6),
       endAt: addDays(addHours(now, 4), 6),
       capacity: 5,
@@ -621,7 +613,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [9] social — near-full capacity
+    // [9] social - near-full capacity
     {
       id: nanoid(),
       type: "social",
@@ -640,11 +632,11 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [10] weekly_mission — past, not archived
+    // [10] weekly_mission - past, not archived
     {
       id: nanoid(),
       type: "weekly_mission",
-      title: "Past Mission — Completed",
+      title: "Past Mission - Completed",
       description: "Already happened last week",
       startAt: addDays(now, -7),
       endAt: addDays(addHours(now, 2), -7),
@@ -659,11 +651,11 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [11] guild_war — far future
+    // [11] guild_war - far future
     {
       id: nanoid(),
       type: "guild_war",
-      title: "Guild War #3 — Far Future",
+      title: "Guild War #3 - Far Future",
       description: "Scheduled far out",
       startAt: addDays(now, 30),
       endAt: addDays(addHours(now, 3), 30),
@@ -678,7 +670,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [12] other — no end time
+    // [12] other - no end time
     {
       id: nanoid(),
       type: "other",
@@ -697,11 +689,11 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [13] social — archived, old
+    // [13] social - archived, old
     {
       id: nanoid(),
       type: "social",
-      title: "Archived Social — Old",
+      title: "Archived Social - Old",
       description: "Happened months ago",
       startAt: addDays(now, -60),
       endAt: addDays(addHours(now, 2), -60),
@@ -716,7 +708,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [14] poll — open, results after vote
+    // [14] poll - open, results after vote
     {
       id: openPollEventId,
       type: "poll",
@@ -735,7 +727,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [15] poll — hidden results until close
+    // [15] poll - hidden results until close
     {
       id: hiddenPollEventId,
       type: "poll",
@@ -754,7 +746,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [16] poll — closed
+    // [16] poll - closed
     {
       id: closedPollEventId,
       type: "poll",
@@ -773,7 +765,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [17] raffle — drawn (ended, winners selected)
+    // [17] raffle - drawn (ended, winners selected)
     {
       id: drawnRaffleEventId,
       type: "raffle",
@@ -793,7 +785,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       instanceDate: null,
       winnerCount: 3,
     },
-    // [18] raffle — pending (still open for signup)
+    // [18] raffle - pending (still open for signup)
     {
       id: pendingRaffleEventId,
       type: "raffle",
@@ -813,7 +805,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       instanceDate: null,
       winnerCount: 2,
     },
-    // [19] weekly_mission — recurring template (isSeriesParent)
+    // [19] weekly_mission - recurring template (isSeriesParent)
     {
       id: nanoid(),
       type: "weekly_mission",
@@ -834,7 +826,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       lastGeneratedDate: addDays(now, -4),
       generationCount: 8,
     },
-    // [20] guild_war — recurring template (isSeriesParent)
+    // [20] guild_war - recurring template (isSeriesParent)
     {
       id: nanoid(),
       type: "guild_war",
@@ -855,12 +847,12 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       lastGeneratedDate: addDays(now, -10),
       generationCount: 4,
     },
-    // [21] social — recurring template (isSeriesParent)
+    // [21] social - recurring template (isSeriesParent)
     {
       id: nanoid(),
       type: "social",
       title: "Monthly Guild Meeting",
-      description: "First Sunday of every month — mandatory attendance",
+      description: "First Sunday of every month - mandatory attendance",
       startAt: addDays(now, 10),
       endAt: addDays(addHours(now, 1), 10),
       capacity: null,
@@ -876,7 +868,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       lastGeneratedDate: addDays(now, -25),
       generationCount: 3,
     },
-    // [22] other — auto-archive enabled, past end
+    // [22] other - auto-archive enabled, past end
     {
       id: nanoid(),
       type: "other",
@@ -896,12 +888,12 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       isSeriesParent: false,
       instanceDate: null,
     },
-    // [23] guild_war — second archived war (to test multiple archived wars in dropdown)
+    // [23] guild_war - second archived war (to test multiple archived wars in dropdown)
     {
       id: nanoid(),
       type: "guild_war",
       title: "Archived War Event #2",
-      description: "Another old war that finished — history entry pending",
+      description: "Another old war that finished - history entry pending",
       startAt: addDays(now, -35),
       endAt: addDays(addHours(now, 3), -35),
       capacity: 20,
@@ -1163,7 +1155,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       ownStats: { kills: 42, towers: 7, base_hp: 58, credits: 14200, distance: 5100 },
       enemyStats: { kills: 31, towers: 4, base_hp: 0, credits: 10500, distance: 4200 },
       durationMinutes: 38,
-      notes: "Clean sweep — great coordination",
+      notes: "Clean sweep - great coordination",
       createdBy: adminId,
       updatedBy: moderatorIds[0],
     },
@@ -1180,7 +1172,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       createdBy: moderatorIds[1],
       updatedBy: null,
     },
-    // War Session E — linked to second archived war event [23]
+    // War Session E - linked to second archived war event [23]
     {
       id: nanoid(),
       eventId: eventRows[23].id,
@@ -1190,7 +1182,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       ownStats: { kills: 35, towers: 5, base_hp: 60, credits: 13000, distance: 4700 },
       enemyStats: { kills: 28, towers: 3, base_hp: 0, credits: 9800, distance: 4000 },
       durationMinutes: 45,
-      notes: "Older match — good for history browsing",
+      notes: "Older match - good for history browsing",
       createdBy: adminId,
       updatedBy: null,
     },
@@ -1255,57 +1247,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   }
 
   // ════════════════════════════════════════════
-  // ── War Templates ──
-  // ════════════════════════════════════════════
-
-  const warTemplateRows: Array<typeof warTemplates.$inferInsert> = [
-    {
-      id: nanoid(),
-      templateName: "Standard 2-Team Setup",
-      description: "Default two-team structure for regular guild wars",
-      templateType: "structure",
-      sourceEventId: eventRows[2].id,
-      payloadJson: JSON.stringify({
-        teams: [
-          { teamName: "Alpha Team", sortOrder: 0, notes: null },
-          { teamName: "Bravo Team", sortOrder: 1, notes: null },
-        ],
-      }),
-      createdBy: adminId,
-    },
-    {
-      id: nanoid(),
-      templateName: "3-Team Tournament",
-      description: "Three-team setup for tournament-style wars",
-      templateType: "structure",
-      sourceEventId: null,
-      payloadJson: JSON.stringify({
-        teams: [
-          { teamName: "Vanguard", sortOrder: 0, notes: "Frontline push" },
-          { teamName: "Sentinel", sortOrder: 1, notes: "Tower defense" },
-          { teamName: "Reserve", sortOrder: 2, notes: "Flex/rotation" },
-        ],
-      }),
-      createdBy: moderatorIds[0],
-    },
-    {
-      id: nanoid(),
-      templateName: "Practice Session",
-      description: "Lightweight template for scrimmages",
-      templateType: "structure",
-      sourceEventId: null,
-      payloadJson: JSON.stringify({
-        teams: [
-          { teamName: "Team A", sortOrder: 0, notes: null },
-          { teamName: "Team B", sortOrder: 1, notes: null },
-        ],
-      }),
-      createdBy: moderatorIds[1],
-    },
-  ];
-  await batchInsert(db, warTemplates, warTemplateRows, 3);
-
-  // ════════════════════════════════════════════
   // ── Wiki ──
   // ════════════════════════════════════════════
 
@@ -1365,10 +1306,10 @@ export async function seedDatabase(env: Bindings): Promise<void> {
         heading(2, "Core Principles"),
         bulletList("Focus on one primary stat before branching out", "Synergy between skills matters more than raw numbers", "Always test builds in practice mode before committing resources"),
         heading(2, "Class Categories"),
-        para(bold("鸣金"), txt(" — Ranged DPS with high burst potential. Best paired with 破竹 for sustained damage.")),
-        para(bold("牵丝"), txt(" — Support/healer class. Essential for guild war compositions.")),
-        para(bold("破竹"), txt(" — Melee DPS with strong AoE. Versatile in both PvE and PvP.")),
-        para(bold("裂石"), txt(" — Tank class with crowd control. Anchors the frontline in wars.")),
+        para(bold("鸣金"), txt(" - Ranged DPS with high burst potential. Best paired with 破竹 for sustained damage.")),
+        para(bold("牵丝"), txt(" - Support/healer class. Essential for guild war compositions.")),
+        para(bold("破竹"), txt(" - Melee DPS with strong AoE. Versatile in both PvE and PvP.")),
+        para(bold("裂石"), txt(" - Tank class with crowd control. Anchors the frontline in wars.")),
       ),
       sortOrder: 0,
       archivedAt: null,
@@ -1403,8 +1344,8 @@ export async function seedDatabase(env: Bindings): Promise<void> {
         heading(2, "Key Responsibilities"),
         bulletList("Keep frontline alive during tower pushes", "Provide buffs before major engagements", "Call out enemy flanks and cooldown windows", "Prioritize healing tanks over DPS in sustained fights"),
         heading(2, "Recommended Builds"),
-        para(bold("牵丝玉"), txt(" — Pure healing focus. Best for defensive compositions.")),
-        para(bold("牵丝霖"), txt(" — Hybrid support with shields. Better for aggressive pushes.")),
+        para(bold("牵丝玉"), txt(" - Pure healing focus. Best for defensive compositions.")),
+        para(bold("牵丝霖"), txt(" - Hybrid support with shields. Better for aggressive pushes.")),
       ),
       sortOrder: 0,
       archivedAt: null,
@@ -1546,79 +1487,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       revokedAt: null,
     },
   ]);
-
-  // ── Gallery likes ──
-  const galleryLikeRows: Array<typeof galleryLikes.$inferInsert> = [];
-  for (let itemIdx = 0; itemIdx < galleryItemRows.length; itemIdx++) {
-    const likeCount = ((itemIdx * 3 + 2) % memberIds.length) + 1;
-    for (let likerIdx = 0; likerIdx < Math.min(likeCount, memberIds.length); likerIdx++) {
-      galleryLikeRows.push({
-        id: nanoid(),
-        galleryItemId: galleryItemRows[itemIdx].id!,
-        userId: memberIds[likerIdx],
-      });
-    }
-  }
-  for (const modId of moderatorIds) {
-    for (const item of galleryItemRows.slice(0, 4)) {
-      galleryLikeRows.push({
-        id: nanoid(),
-        galleryItemId: item.id!,
-        userId: modId,
-      });
-    }
-  }
-  await batchInsert(db, galleryLikes, galleryLikeRows);
-
-  // ── Gallery comments ──
-  const commentBodies = [
-    "Great shot!",
-    "Love the composition",
-    "How did you get this angle?",
-    "Nice work 👍",
-    "This is amazing",
-    "Can you share your settings?",
-    "Beautiful colors",
-    "Impressive!",
-    "More of this please",
-    "Top tier content",
-    "Wow, stunning!",
-    "Keep it up",
-  ];
-  const galleryCommentRows: Array<typeof galleryComments.$inferInsert> = [];
-  for (let itemIdx = 0; itemIdx < galleryItemRows.length; itemIdx++) {
-    const commentCount = (itemIdx % 4) + 1;
-    for (let commentIdx = 0; commentIdx < commentCount; commentIdx++) {
-      galleryCommentRows.push({
-        id: nanoid(),
-        galleryItemId: galleryItemRows[itemIdx].id!,
-        userId: memberIds[(itemIdx + commentIdx + 1) % memberIds.length],
-        body: commentBodies[(itemIdx * 3 + commentIdx) % commentBodies.length],
-      });
-    }
-  }
-  galleryCommentRows.push(
-    {
-      id: nanoid(),
-      galleryItemId: galleryItemRows[0].id!,
-      userId: adminId,
-      body: "Excellent submission, pinning this!",
-    },
-    {
-      id: nanoid(),
-      galleryItemId: galleryItemRows[2].id!,
-      userId: moderatorIds[0],
-      body: "Featured in this week's highlights",
-    },
-    {
-      id: nanoid(),
-      galleryItemId: galleryItemRows[5].id!,
-      userId: moderatorIds[1],
-      body: "Great contribution to the gallery",
-    },
-  );
-  await batchInsert(db, galleryComments, galleryCommentRows);
-
   // ════════════════════════════════════════════
   // ── Sessions ──
   // ════════════════════════════════════════════
@@ -1733,16 +1601,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     },
     {
       id: nanoid(),
-      entityType: "war_template",
-      action: "create",
-      actorId: adminId,
-      entityId: warTemplateRows[0].id,
-      diffTitle: "Created war template: Standard 2-Team Setup",
-      detailText: JSON.stringify({ templateName: warTemplateRows[0].templateName }),
-      createdAt: addHours(now, -2),
-    },
-    {
-      id: nanoid(),
       entityType: "seed",
       action: "complete",
       actorId: adminId,
@@ -1758,10 +1616,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
           wikiCategories: categoryRows.length + subCategoryRows.length,
           wikiArticles: articleRows.length,
           galleryItems: galleryItemRows.length,
-          galleryLikes: galleryLikeRows.length,
-          galleryComments: galleryCommentRows.length,
           warHistory: warHistoryRows.length,
-          warTemplates: warTemplateRows.length,
           badges: badgeRows.length,
           badgeAssignments: badgeAssignmentRows.length,
         },
