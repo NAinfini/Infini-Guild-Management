@@ -70,7 +70,6 @@ export type TestRunContext = {
   createdPollEventId: string | null;
   createdRaffleEventId: string | null;
   createdTemplateId: string | null;
-  /** Snapshot of target user's profile before modification, for cleanup restore */
   targetProfileSnapshot: { bio: string | null; classes: string[] } | null;
 };
 
@@ -197,6 +196,10 @@ export function isProfileMediaKey(value: string | null): value is string {
   return typeof value === "string" && value.startsWith("members/");
 }
 
+export function disposableMemberId(context: TestRunContext): string | null {
+  return context.adminCreatedUserId ?? context.registeredUserId;
+}
+
 export function toIso(hoursFromNow: number): string {
   return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
 }
@@ -271,6 +274,7 @@ export function readRetryAfterSeconds(payload: unknown): number | null {
 
 export function buildCleanupSteps(ctx: TestRunContext): CleanupStep[] {
   const cleanupSteps: CleanupStep[] = [];
+  const disposableUserId = disposableMemberId(ctx);
 
   if (ctx.createdBadgeId) {
     cleanupSteps.push({
@@ -413,23 +417,20 @@ export function buildCleanupSteps(ctx: TestRunContext): CleanupStep[] {
       clearContext: { createdRoleId: null },
     });
   }
-  if (ctx.meId && ctx.targetProfileSnapshot) {
+  if (disposableUserId && ctx.targetProfileSnapshot) {
     cleanupSteps.push({
       label: "Cleanup: Restore Profile",
       method: "PATCH",
-      path: `/api/users/${encodeURIComponent(ctx.meId)}/profile`,
-      jsonBody: {
-        bio: ctx.targetProfileSnapshot.bio,
-        classes: ctx.targetProfileSnapshot.classes,
-      },
+      path: `/api/users/${encodeURIComponent(disposableUserId)}/profile`,
+      jsonBody: ctx.targetProfileSnapshot,
       clearContext: { targetProfileSnapshot: null },
     });
   }
-  if (ctx.meId && ctx.uploadedImageKey) {
+  if (disposableUserId && ctx.uploadedImageKey) {
     cleanupSteps.push({
       label: "Cleanup: Test Image",
       method: "DELETE",
-      path: `/api/users/${encodeURIComponent(ctx.meId)}/media/images`,
+      path: `/api/users/${encodeURIComponent(disposableUserId)}/media/images`,
       jsonBody: { keys: [ctx.uploadedImageKey] },
       clearContext: { uploadedImageKey: null },
     });
@@ -870,10 +871,18 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   if (path.includes("/api/users/:id")) {
     const selfOnly =
       endpoint.path.includes("/change-password") ||
-      endpoint.path.includes("/change-username") ||
+      endpoint.path.includes("/change-username");
+    const profileOrMedia =
       endpoint.path.includes("/media/") ||
       endpoint.path.includes("/profile");
-    const userId = selfOnly ? context.meId : context.targetUserId ?? context.meId;
+    const userId = selfOnly
+      ? context.meId
+      : profileOrMedia
+        ? (context.adminCreatedUserId ?? context.registeredUserId)
+        : (context.adminCreatedUserId ?? context.registeredUserId);
+    if (!selfOnly && !userId) {
+      return { path, missing: "test member id (create/register a disposable member first)" };
+    }
     const next = replacePathParam(path, ":id", userId);
     if (!next) {
       return { path, missing: "user id" };
@@ -913,10 +922,10 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   }
 
   if (path.includes("/api/events/") && path.includes(":userId")) {
-    const participantId = context.eventParticipantUserId ?? context.targetUserId ?? context.meId;
+    const participantId = context.eventParticipantUserId ?? disposableMemberId(context);
     const next = replacePathParam(path, ":userId", participantId);
     if (!next) {
-      return { path, missing: "participant user id" };
+      return { path, missing: "test member id" };
     }
     path = next;
   }
@@ -958,7 +967,11 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   }
 
   if (path.includes("/api/guild-war/history/") && path.includes(":userId")) {
-    const next = replacePathParam(path, ":userId", context.warMemberUserId ?? context.targetUserId ?? context.meId);
+    const memberId = context.warMemberUserId ?? disposableMemberId(context);
+    if (!memberId) {
+      return { path, missing: "test member id" };
+    }
+    const next = replacePathParam(path, ":userId", memberId);
     if (!next) {
       return { path, missing: "guild war member user id" };
     }
@@ -1093,9 +1106,12 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     return skipEndpoint(endpoint.path, `Missing ${resolved.missing}`);
   }
   const path = resolved.path;
+  const testMemberId = disposableMemberId(context);
 
   if (endpoint.method === "DELETE") {
     switch (endpoint.path) {
+      case "/api/events/:id/leave":
+        return skipEndpoint(path, "Join/leave uses the current session user; browser smoke run preserves the active admin account", true);
       case "/api/users/:id/media/avatar":
         return { path };
       case "/api/users/:id/media/audio":
@@ -1106,11 +1122,11 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         }
         return buildJsonRequest(path, { keys: [context.uploadedImageKey] });
       case "/api/events/:id/participants":
-        if (!context.eventParticipantUserId && !context.targetUserId && !context.meId) {
-          return skipEndpoint(path, "Missing participant user id");
+        if (!context.eventParticipantUserId && !testMemberId) {
+          return skipEndpoint(path, "Missing test member id");
         }
         return buildJsonRequest(path, {
-          user_ids: [context.eventParticipantUserId ?? context.targetUserId ?? context.meId],
+          user_ids: [context.eventParticipantUserId ?? testMemberId],
         });
       default:
         return { path };
@@ -1200,13 +1216,16 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     case "POST /api/events/:id/images":
       return buildFormRequest(path, [["file", createTinyPngFile()]]);
 
+    case "POST /api/events/:id/join":
+      return skipEndpoint(path, "Join/leave uses the current session user; browser smoke run preserves the active admin account", true);
+
     case "POST /api/events/:id/participants":
     case "POST /api/events/:id/participants?fixture=raffle":
-      if (!context.targetUserId && !context.meId) {
-        return skipEndpoint(path, "Missing participant user id");
+      if (!testMemberId) {
+        return skipEndpoint(path, "Missing test member id");
       }
       return buildJsonRequest(path, {
-        user_ids: [context.targetUserId ?? context.meId],
+        user_ids: [testMemberId],
       });
 
     case "POST /api/events/templates":
@@ -1262,8 +1281,8 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       if (!context.createdGuildWarEventId && !context.createdEventId && !context.eventId && !context.warEventId) {
         return skipEndpoint(path, "Missing event id for guild war teams");
       }
-      if (!context.targetUserId && !context.meId) {
-        return skipEndpoint(path, "Missing user id for guild war teams");
+      if (!testMemberId) {
+        return skipEndpoint(path, "Missing test member id for guild war teams");
       }
       return buildJsonRequest(path, {
         event_id: context.createdGuildWarEventId ?? context.createdEventId ?? context.eventId ?? context.warEventId,
@@ -1274,35 +1293,33 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
             is_locked: false,
             members: [
               {
-                user_id: context.targetUserId ?? context.meId,
+                user_id: testMemberId,
                 sort_order: 0,
               },
             ],
           },
         ],
-        pool_members: context.meId && context.meId !== context.targetUserId
-          ? [{ user_id: context.meId }]
-          : [],
+        pool_members: [],
       });
 
     case "POST /api/guild-war/move":
       if (!context.createdGuildWarEventId && !context.createdEventId && !context.eventId && !context.warEventId) {
         return skipEndpoint(path, "Missing event id for guild war move");
       }
-      if (!context.warMemberUserId && !context.targetUserId && !context.meId) {
-        return skipEndpoint(path, "Missing member user id for guild war move");
+      if (!context.warMemberUserId && !testMemberId) {
+        return skipEndpoint(path, "Missing test member id for guild war move");
       }
       return buildJsonRequest(path, {
         event_id: context.createdGuildWarEventId ?? context.createdEventId ?? context.eventId ?? context.warEventId,
-        moves: [{ user_id: context.meId && context.meId !== context.warMemberUserId ? context.meId : context.warMemberUserId ?? context.targetUserId ?? context.meId, to: "pool" }],
+        moves: [{ user_id: context.warMemberUserId ?? testMemberId, to: "pool" }],
       });
 
     case "POST /api/guild-war/conclude":
       if (!context.createdGuildWarEventId && !context.createdEventId) {
         return skipEndpoint(path, "Missing created event id for guild war conclude");
       }
-      if (!context.warMemberUserId && !context.targetUserId && !context.meId) {
-        return skipEndpoint(path, "Missing member user id for guild war conclude");
+      if (!context.warMemberUserId && !testMemberId) {
+        return skipEndpoint(path, "Missing test member id for guild war conclude");
       }
       return buildJsonRequest(path, {
         event_id: context.createdGuildWarEventId ?? context.createdEventId,
@@ -1315,7 +1332,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         },
         member_stats: [
           {
-            user_id: context.warMemberUserId ?? context.targetUserId ?? context.meId,
+            user_id: context.warMemberUserId ?? testMemberId,
             stats: { kills: 1 },
           },
         ],
@@ -1325,12 +1342,12 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       if (!context.createdGuildWarEventId && !context.createdEventId && !context.eventId && !context.warEventId) {
         return skipEndpoint(path, "Missing event id for role tag");
       }
-      if (!context.warMemberUserId && !context.targetUserId && !context.meId) {
-        return skipEndpoint(path, "Missing active war member user id for role tag");
+      if (!context.warMemberUserId && !testMemberId) {
+        return skipEndpoint(path, "Missing test member id for role tag");
       }
       return buildJsonRequest(path, {
         event_id: context.createdGuildWarEventId ?? context.createdEventId ?? context.eventId ?? context.warEventId,
-        updates: [{ user_id: context.warMemberUserId ?? context.targetUserId ?? context.meId, role_tag: "DPS" }],
+        updates: [{ user_id: context.warMemberUserId ?? testMemberId, role_tag: "DPS" }],
       });
 
     case "POST /api/guild-war/history":
@@ -1349,8 +1366,8 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       if (!context.createdConcludedWarHistoryId) {
         return skipEndpoint(path, "Missing concluded war history id for member stats update");
       }
-      if (!context.warMemberUserId && !context.targetUserId && !context.meId) {
-        return skipEndpoint(path, "Missing war member user id for member stats update");
+      if (!context.warMemberUserId && !testMemberId) {
+        return skipEndpoint(path, "Missing test member id for member stats update");
       }
       return buildJsonRequest(path, {
         stats: { kills: 1 },
@@ -1530,11 +1547,11 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       }
 
     case "PATCH /api/guild-war/history/:id/member-stats/batch":
-      if (!context.createdConcludedWarHistoryId || (!context.warMemberUserId && !context.targetUserId && !context.meId)) {
-        return skipEndpoint(path, "Missing war history id or member user id");
+      if (!context.createdConcludedWarHistoryId || (!context.warMemberUserId && !testMemberId)) {
+        return skipEndpoint(path, "Missing war history id or test member id");
       }
       return buildJsonRequest(path, {
-        updates: [{ user_id: context.warMemberUserId ?? context.targetUserId ?? context.meId, stats: { stats: { kills: 2 } } }],
+        updates: [{ user_id: context.warMemberUserId ?? testMemberId, stats: { stats: { kills: 2 } } }],
       });
 
     case "POST /api/badges":
@@ -1551,19 +1568,19 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/badges/:id/assign":
-      if (!context.targetUserId && !context.meId) {
-        return skipEndpoint(path, "Missing user id for badge assign");
+      if (!testMemberId) {
+        return skipEndpoint(path, "Missing test member id for badge assign");
       }
       return buildJsonRequest(path, {
-        user_ids: [context.targetUserId ?? context.meId],
+        user_ids: [testMemberId],
       });
 
     case "POST /api/badges/:id/unassign":
-      if (!context.targetUserId && !context.meId) {
-        return skipEndpoint(path, "Missing user id for badge unassign");
+      if (!testMemberId) {
+        return skipEndpoint(path, "Missing test member id for badge unassign");
       }
       return buildJsonRequest(path, {
-        user_ids: [context.targetUserId ?? context.meId],
+        user_ids: [testMemberId],
       });
 
     default:
@@ -1666,11 +1683,6 @@ export function captureContextFromResponse(
     const profileImageKey = firstImage ?? null;
     next.userImageKey = isProfileMediaKey(profileImageKey) ? profileImageKey : next.userImageKey;
     next.userAudioKey = readString(profile?.audio_key) ?? next.userAudioKey;
-    if (profile && !next.targetProfileSnapshot) {
-      const bio = typeof profile.bio === "string" ? profile.bio : null;
-      const classes = Array.isArray(profile.classes) ? profile.classes.filter((c): c is string => typeof c === "string") : [];
-      next.targetProfileSnapshot = { bio, classes };
-    }
     return next;
   }
 
@@ -1868,7 +1880,7 @@ export function captureContextFromResponse(
   }
 
   if (endpoint.path === "/api/guild-war/save-teams") {
-    next.warMemberUserId = next.targetUserId ?? next.meId ?? next.warMemberUserId;
+    next.warMemberUserId = disposableMemberId(next) ?? next.warMemberUserId;
     return next;
   }
 

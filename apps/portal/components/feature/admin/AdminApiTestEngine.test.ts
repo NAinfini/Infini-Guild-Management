@@ -43,31 +43,15 @@ describe("AdminApiTestEngine cleanup planning", () => {
     ]);
   });
 
-  it("builds user cleanup with restore, media removal, and batch deletion", () => {
+  it("builds user cleanup with batch deletion", () => {
     const steps = buildCleanupSteps(contextWith({
       meId: "admin-1",
-      targetProfileSnapshot: { bio: "existing bio", classes: ["mage"] },
-      uploadedImageKey: "systemtest-image-key",
       registeredUserId: "registered-1",
       adminCreatedUserId: "created-1",
       adminCreatedUserPassword: "TempPass123!",
     }));
 
     expect(steps).toEqual([
-      {
-        label: "Cleanup: Restore Profile",
-        method: "PATCH",
-        path: "/api/users/admin-1/profile",
-        jsonBody: { bio: "existing bio", classes: ["mage"] },
-        clearContext: { targetProfileSnapshot: null },
-      },
-      {
-        label: "Cleanup: Test Image",
-        method: "DELETE",
-        path: "/api/users/admin-1/media/images",
-        jsonBody: { keys: ["systemtest-image-key"] },
-        clearContext: { uploadedImageKey: null },
-      },
       {
         label: "Cleanup: Registered User",
         method: "PATCH",
@@ -171,7 +155,7 @@ describe("AdminApiTestEngine request preparation", () => {
     });
     expect(createdCtx.createdGuildWarEventId).toBe("guild-war-event");
 
-    const ctx = { ...createdCtx, targetUserId: "user-1", warMemberUserId: "user-1" };
+    const ctx = { ...createdCtx, adminCreatedUserId: "user-1", warMemberUserId: "user-1" };
     expect(parseJsonBody(prepareEndpointRequest(
       { label: "Save Teams", method: "POST", path: "/api/guild-war/save-teams" },
       ctx,
@@ -187,7 +171,7 @@ describe("AdminApiTestEngine request preparation", () => {
       warHistoryId: "seed-war",
       createdWarHistoryId: "manual-war",
       createdConcludedWarHistoryId: "concluded-war",
-      targetUserId: "user-1",
+      adminCreatedUserId: "user-1",
     });
 
     const resolved = resolveEndpointPath(
@@ -389,10 +373,10 @@ describe("AdminApiTestEngine request preparation", () => {
     );
     expect(parseJsonBody(raffleCreate)).toMatchObject({ type: "raffle", winner_count: 1 });
 
-    const raffleCtx = contextWith({ createdRaffleEventId: "raffle-1", targetUserId: "user-1" });
-    expect(resolveEndpointPath(
-      { label: "Raffle Participant", method: "POST", path: "/api/events/:id/participants?fixture=raffle" },
-      raffleCtx,
+    const raffleCtx = contextWith({ createdRaffleEventId: "raffle-1", adminCreatedUserId: "user-1" });
+      expect(resolveEndpointPath(
+        { label: "Raffle Participant", method: "POST", path: "/api/events/:id/participants?fixture=raffle" },
+        raffleCtx,
     ).path).toBe("/api/events/raffle-1/participants");
     expect(parseJsonBody(prepareEndpointRequest(
       { label: "Raffle Participant", method: "POST", path: "/api/events/:id/participants?fixture=raffle" },
@@ -466,6 +450,180 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(result.status).toBeNull();
     expect(result.error).toBeNull();
     expect(result.body).toContain("Requires current user password");
+  });
+
+  it("never targets the active admin account for profile or media mutation smoke tests", () => {
+    const protectedUserEndpoints = [
+      { label: "Update Profile", method: "PATCH" as const, path: "/api/users/:id/profile" },
+      { label: "Upload Image", method: "POST" as const, path: "/api/users/:id/media/images" },
+      { label: "Delete Image", method: "DELETE" as const, path: "/api/users/:id/media/images" },
+      { label: "Upload Avatar", method: "POST" as const, path: "/api/users/:id/media/avatar" },
+      { label: "Delete Avatar", method: "DELETE" as const, path: "/api/users/:id/media/avatar" },
+      { label: "Upload Audio", method: "POST" as const, path: "/api/users/:id/media/audio" },
+      { label: "Delete Audio", method: "DELETE" as const, path: "/api/users/:id/media/audio" },
+    ];
+
+    for (const endpoint of protectedUserEndpoints) {
+      const prepared = prepareEndpointRequest(endpoint, contextWith({
+        meId: "real-admin",
+        targetUserId: "seeded-member",
+        uploadedImageKey: "members/real-admin/images/systemtest.png",
+      }));
+
+      expect(prepared.path).toBe(endpoint.path);
+      expect(prepared.skipReason).toContain("test member");
+    }
+
+    for (const endpoint of protectedUserEndpoints) {
+      const prepared = prepareEndpointRequest(endpoint, contextWith({
+        meId: "real-admin",
+        targetUserId: "seeded-member",
+        adminCreatedUserId: "disposable-member",
+        uploadedImageKey: "members/disposable-member/images/systemtest.png",
+      }));
+
+      expect(prepared.path).toContain("/api/users/disposable-member/");
+      expect(prepared.path).not.toContain("real-admin");
+      expect(prepared.path).not.toContain("seeded-member");
+      expect(prepared.skipReason).toBeUndefined();
+    }
+  });
+
+  it("does not resolve user-id routes to the active admin account", () => {
+    const detail = prepareEndpointRequest(
+      { label: "Get User", method: "GET", path: "/api/users/:id" },
+      contextWith({ meId: "real-admin" }),
+    );
+    const safeDetail = prepareEndpointRequest(
+      { label: "Get User", method: "GET", path: "/api/users/:id" },
+      contextWith({ meId: "real-admin", adminCreatedUserId: "disposable-member" }),
+    );
+    const password = prepareEndpointRequest(
+      { label: "Change Password", method: "POST", path: "/api/users/:id/change-password" },
+      contextWith({ meId: "real-admin", adminCreatedUserId: "disposable-member" }),
+    );
+
+    expect(detail.path).toBe("/api/users/:id");
+    expect(detail.skipReason).toContain("test member");
+    expect(safeDetail.path).toBe("/api/users/disposable-member");
+    expect(password.path).toBe("/api/users/real-admin/change-password");
+    expect(password.skipReason).toContain("Requires current user password");
+  });
+
+  it("cleans up profile media against disposable members only", () => {
+    expect(buildCleanupSteps(contextWith({
+      meId: "real-admin",
+      targetProfileSnapshot: { bio: "admin bio", classes: ["admin-class"] },
+      uploadedImageKey: "members/real-admin/images/systemtest.png",
+    }))).toEqual([]);
+
+    const steps = buildCleanupSteps(contextWith({
+      meId: "real-admin",
+      registeredUserId: "disposable-member",
+      targetProfileSnapshot: { bio: "test bio", classes: ["test-class"] },
+      uploadedImageKey: "members/disposable-member/images/systemtest.png",
+    }));
+
+    expect(steps).toContainEqual({
+      label: "Cleanup: Restore Profile",
+      method: "PATCH",
+      path: "/api/users/disposable-member/profile",
+      jsonBody: { bio: "test bio", classes: ["test-class"] },
+      clearContext: { targetProfileSnapshot: null },
+    });
+    expect(steps).toContainEqual({
+      label: "Cleanup: Test Image",
+      method: "DELETE",
+      path: "/api/users/disposable-member/media/images",
+      jsonBody: { keys: ["members/disposable-member/images/systemtest.png"] },
+      clearContext: { uploadedImageKey: null },
+    });
+    expect(steps.map((step) => step.path)).not.toContain("/api/users/real-admin/profile");
+    expect(steps.map((step) => step.path)).not.toContain("/api/users/real-admin/media/images");
+  });
+
+  it("uses disposable members for participant, guild-war, and badge mutation payloads", () => {
+    const unsafeContext = contextWith({
+      meId: "real-admin",
+      targetUserId: "seeded-member",
+      createdEventId: "event-1",
+      createdGuildWarEventId: "war-event-1",
+      createdConcludedWarHistoryId: "war-history-1",
+      badgeId: "badge-1",
+    });
+
+    const mutationEndpoints = [
+      { label: "Add Participant", method: "POST" as const, path: "/api/events/:id/participants" },
+      { label: "Remove Participant", method: "DELETE" as const, path: "/api/events/:id/participants" },
+      { label: "Join Event", method: "POST" as const, path: "/api/events/:id/join" },
+      { label: "Leave Event", method: "DELETE" as const, path: "/api/events/:id/leave" },
+      { label: "Save Teams", method: "POST" as const, path: "/api/guild-war/save-teams" },
+      { label: "Move Member", method: "POST" as const, path: "/api/guild-war/move" },
+      { label: "Conclude", method: "POST" as const, path: "/api/guild-war/conclude" },
+      { label: "Role Tag", method: "PATCH" as const, path: "/api/guild-war/role-tag" },
+      { label: "Member Stats", method: "PATCH" as const, path: "/api/guild-war/history/:id/member-stats/:userId" },
+      { label: "Batch Member Stats", method: "PATCH" as const, path: "/api/guild-war/history/:id/member-stats/batch" },
+      { label: "Assign Badge", method: "POST" as const, path: "/api/badges/:id/assign" },
+      { label: "Unassign Badge", method: "POST" as const, path: "/api/badges/:id/unassign" },
+    ];
+
+    for (const endpoint of mutationEndpoints) {
+      const prepared = prepareEndpointRequest(endpoint, unsafeContext);
+
+      if (endpoint.path.includes("/join") || endpoint.path.includes("/leave")) {
+        expect(prepared.skipReason).toContain("current session user");
+      } else {
+        expect(prepared.skipReason).toContain("test member");
+      }
+      expect(prepared.body).toBeUndefined();
+    }
+
+    const safeContext = contextWith({
+      ...unsafeContext,
+      adminCreatedUserId: "disposable-member",
+    });
+
+    for (const endpoint of mutationEndpoints) {
+      const prepared = prepareEndpointRequest(endpoint, safeContext);
+
+      expect(prepared.path).not.toContain("real-admin");
+      expect(prepared.path).not.toContain("seeded-member");
+      if (prepared.body) {
+        expect(prepared.body).not.toContain("real-admin");
+        expect(prepared.body).not.toContain("seeded-member");
+      }
+      if (endpoint.path.includes("/join") || endpoint.path.includes("/leave")) {
+        expect(prepared.skipReason).toContain("current session user");
+        expect(prepared.body).toBeUndefined();
+      } else if (endpoint.path.includes(":userId")) {
+        expect(prepared.skipReason).toBeUndefined();
+        expect(prepared.path).toContain("disposable-member");
+      } else {
+        expect(prepared.skipReason).toBeUndefined();
+        expect(prepared.body).toContain("disposable-member");
+      }
+    }
+  });
+
+  it("keeps guild-war captured member context on the disposable member", () => {
+    const next = captureContextFromResponse(
+      contextWith({
+        meId: "real-admin",
+        targetUserId: "seeded-member",
+        adminCreatedUserId: "disposable-member",
+      }),
+      { label: "Save Teams", method: "POST", path: "/api/guild-war/save-teams" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-05-18T00:00:00.000Z",
+        parsedJson: { ok: true },
+      },
+    );
+
+    expect(next.warMemberUserId).toBe("disposable-member");
   });
 
   it("covers every actionable worker route in the smoke registry", () => {
