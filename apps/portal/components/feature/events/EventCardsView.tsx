@@ -419,21 +419,9 @@ export function EventCardsView({
                   {/* ── Members ── */}
                   {raffleHasDrawn ? (
                     <div className="event-card__raffle-winners">
-                      <div className="event-card__raffle-winners-icon">
+                      <div className="event-card__raffle-winners-badge">
                         <GiftIcon size={14} />
-                      </div>
-                      <div className="event-card__members-left">
-                        <EventCardAvatarStrip
-                          members={members}
-                          visibleMembers={visibleMembers}
-                          hiddenMembersCount={hiddenMembersCount}
-                        />
-                      </div>
-                    </div>
-                  ) : isPoll && hasEnded ? (
-                    <div className="event-card__poll-ended">
-                      <div className="event-card__poll-ended-icon">
-                        <ChartBarIcon size={14} />
+                        <span>{t("raffle.detail.winnersLabel")}</span>
                       </div>
                       <div className="event-card__members-left">
                         <EventCardAvatarStrip

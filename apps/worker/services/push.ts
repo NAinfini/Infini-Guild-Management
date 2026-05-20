@@ -1,4 +1,5 @@
 import type { PushMessage } from "@guild/shared";
+import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import type { Context } from "hono";
 import type { Bindings } from "../index";
 import { logger } from "../utils/logger";
@@ -27,7 +28,7 @@ function resolveEnvAndCtx(source: Context | Bindings): { env: Bindings; waitUnti
 
 export function publishEntityChanged(
   source: Context | Bindings,
-  payload: { entityType: string; entityId: string; hint: string; displayName?: string },
+  payload: { entityType: PushEntityType; entityId: string; hint: PushHint; displayName?: string },
 ): Promise<void> {
   const { env, waitUntil } = resolveEnvAndCtx(source);
   const task = publishPushMessage(env, {

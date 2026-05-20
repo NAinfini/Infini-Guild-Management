@@ -2,6 +2,7 @@ import { ActionIcon, Badge, Button, Group, HoverCard, NumberInput, Select, Skele
 import { CalendarOffIcon } from "@portal/components/icons";
 import { InfiniTable, useReactTable } from "@portal/components/shared/InfiniTable";
 import { useTranslation } from "react-i18next";
+import { resolveResultTagColor } from "@portal/utils/guild-war";
 import { EmptyState } from "../../shared/EmptyState";
 import { PortalCard } from "../../shared/PortalCard";
 import type { HistorySummaryRow } from "./WarHistoryTab";
@@ -33,13 +34,11 @@ type WarHistoryTableProps = {
   onBulkDelete: () => void;
 };
 
-function resolveResultTagColor(result: string | null | undefined): string {
-  const normalized = (result ?? "").toLowerCase();
-  if (normalized.includes("win") || normalized.includes("胜")) return "green";
-  if (normalized.includes("loss") || normalized.includes("lose") || normalized.includes("负")) return "red";
-  if (normalized.includes("draw") || normalized.includes("平")) return "blue";
-  return "gray";
-}
+const ROW_BG_BY_COLOR: Record<string, { backgroundColor: string } | undefined> = {
+  green: { backgroundColor: "color-mix(in srgb, var(--mantine-color-green-light, #dcfce7) 35%, transparent)" },
+  red: { backgroundColor: "color-mix(in srgb, var(--mantine-color-red-light, #fee2e2) 35%, transparent)" },
+  blue: { backgroundColor: "color-mix(in srgb, var(--mantine-color-blue-light, #dbeafe) 35%, transparent)" },
+};
 
 export function WarHistoryTable({
   historyDateFrom,
@@ -154,14 +153,7 @@ export function WarHistoryTable({
                       if (selectedHistoryIds.has(row.original.id)) classes.push("war-history-row-selected");
                       return classes.length > 0 ? classes.join(" ") : undefined;
                     }}
-                    rowStyle={(row) => {
-                      const result = row.original.result;
-                      const color = resolveResultTagColor(result);
-                      if (color === "green") return { backgroundColor: "color-mix(in srgb, var(--mantine-color-green-light, #dcfce7) 35%, transparent)" };
-                      if (color === "red") return { backgroundColor: "color-mix(in srgb, var(--mantine-color-red-light, #fee2e2) 35%, transparent)" };
-                      if (color === "blue") return { backgroundColor: "color-mix(in srgb, var(--mantine-color-blue-light, #dbeafe) 35%, transparent)" };
-                      return undefined;
-                    }}
+                    rowStyle={(row) => ROW_BG_BY_COLOR[resolveResultTagColor(row.original.result)]}
                   />
                 ) : (
                   <div className="war-history-list-empty">

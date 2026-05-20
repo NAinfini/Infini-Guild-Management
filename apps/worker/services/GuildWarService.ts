@@ -8,6 +8,8 @@ import {
   warTeamMemberSchema,
   warTeamSchema,
 } from "@guild/shared";
+import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { activeGame } from "@guild/shared/games";
 import { and, asc, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -77,7 +79,7 @@ export type WarTemplateSnapshot = {
 
 type ModifierBreakdown = { factor: string; ratio: number; weight: number; contribution: number };
 
-type AuditLogInput = { entityType: string; action: string; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
+type AuditLogInput = { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
 type SaveTeamsInput = z.infer<typeof saveTeamsPayloadSchema>;
 type MoveMembersInput = Array<{ user_id: string; to: string }>;
 type RoleTagUpdatesInput = Array<{ user_id: string; role_tag: string | null }>;
@@ -88,7 +90,7 @@ type UpdateWarHistoryInput = z.infer<typeof updateWarHistorySchema>;
 export type GuildWarServiceDeps = {
   media: { get(key: string): Promise<{ text(): Promise<string> } | null> };
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
-  publishEntityChanged: (input: { entityType: string; entityId: string; hint: string }) => Promise<void>;
+  publishEntityChanged: (input: { entityType: PushEntityType; entityId: string; hint: PushHint }) => Promise<void>;
   rawDb: D1Database;
 };
 
@@ -326,9 +328,10 @@ export class GuildWarService {
         detailText: JSON.stringify({ event_id: eventId, result: warInfo.result, team_count: teams.length, member_count: members.length }),
       });
       await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: eventId, hint: "war_concluded" });
-    } catch (_postBatchErr) {
+    } catch (postBatchErr) {
       // Non-critical: the war conclusion already succeeded in D1.
       // Audit log and push notification failures must not produce a 500.
+      console.error("concludeWar post-batch failed", { error: String(postBatchErr), eventId });
     }
     return ok({ war_history_id: historyId });
   }

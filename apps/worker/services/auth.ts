@@ -32,6 +32,7 @@ type ResolvedSession = {
   user: SessionUser;
 };
 
+// Cloudflare Workers caps PBKDF2 at 10,000 iterations (runtime limit).
 const PBKDF2_ITERATIONS = 10_000;
 const PBKDF2_KEY_LENGTH_BITS = 256;
 const PBKDF2_SALT_BYTES = 16;

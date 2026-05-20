@@ -7,7 +7,6 @@ import {
   filterApiCategoriesForPermissions,
   prepareEndpointRequest,
   resolveEndpointPath,
-  runEndpointTest,
   type TestRunContext,
 } from "./AdminApiTestEngine";
 
@@ -166,6 +165,15 @@ describe("AdminApiTestEngine request preparation", () => {
     ))).toMatchObject({ event_id: "guild-war-event" });
   });
 
+  it("runs guild-war move before save-teams so conclude keeps a team member", () => {
+    const endpointKeys = buildApiCategories((key) => key)
+      .find((category) => category.key === "guildWar")
+      ?.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`) ?? [];
+
+    expect(endpointKeys.indexOf("POST /api/guild-war/move")).toBeLessThan(endpointKeys.indexOf("POST /api/guild-war/save-teams"));
+    expect(endpointKeys.indexOf("POST /api/guild-war/save-teams")).toBeLessThan(endpointKeys.indexOf("POST /api/guild-war/conclude"));
+  });
+
   it("uses concluded history for member stats requests", () => {
     const ctx = contextWith({
       warHistoryId: "seed-war",
@@ -294,7 +302,6 @@ describe("AdminApiTestEngine request preparation", () => {
     );
 
     expect(next.registeredUserId).toBe("registered-1");
-    expect(next.targetUserId).toBe("registered-1");
   });
 
   it("keeps manually created history available after concluded history batch-delete", () => {
@@ -431,27 +438,6 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(raffleCreated.createdRaffleEventId).toBe("raffle-1");
   });
 
-  it("represents credential-change routes as optional production checks", async () => {
-    const endpointKeys = buildApiCategories((key) => key)
-      .find((category) => category.key === "users")
-      ?.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`) ?? [];
-
-    expect(endpointKeys).toContain("POST /api/users/:id/change-password");
-    expect(endpointKeys).toContain("POST /api/users/:id/change-username");
-
-    const result = await runEndpointTest(
-      { label: "Change Password", method: "POST", path: "/api/users/:id/change-password" },
-      prepareEndpointRequest(
-        { label: "Change Password", method: "POST", path: "/api/users/:id/change-password" },
-        contextWith({ meId: "admin-1" }),
-      ),
-    );
-
-    expect(result.status).toBeNull();
-    expect(result.error).toBeNull();
-    expect(result.body).toContain("Requires current user password");
-  });
-
   it("never targets the active admin account for profile or media mutation smoke tests", () => {
     const protectedUserEndpoints = [
       { label: "Update Profile", method: "PATCH" as const, path: "/api/users/:id/profile" },
@@ -466,7 +452,6 @@ describe("AdminApiTestEngine request preparation", () => {
     for (const endpoint of protectedUserEndpoints) {
       const prepared = prepareEndpointRequest(endpoint, contextWith({
         meId: "real-admin",
-        targetUserId: "seeded-member",
         uploadedImageKey: "members/real-admin/images/systemtest.png",
       }));
 
@@ -477,7 +462,6 @@ describe("AdminApiTestEngine request preparation", () => {
     for (const endpoint of protectedUserEndpoints) {
       const prepared = prepareEndpointRequest(endpoint, contextWith({
         meId: "real-admin",
-        targetUserId: "seeded-member",
         adminCreatedUserId: "disposable-member",
         uploadedImageKey: "members/disposable-member/images/systemtest.png",
       }));
@@ -498,16 +482,9 @@ describe("AdminApiTestEngine request preparation", () => {
       { label: "Get User", method: "GET", path: "/api/users/:id" },
       contextWith({ meId: "real-admin", adminCreatedUserId: "disposable-member" }),
     );
-    const password = prepareEndpointRequest(
-      { label: "Change Password", method: "POST", path: "/api/users/:id/change-password" },
-      contextWith({ meId: "real-admin", adminCreatedUserId: "disposable-member" }),
-    );
-
     expect(detail.path).toBe("/api/users/:id");
     expect(detail.skipReason).toContain("test member");
     expect(safeDetail.path).toBe("/api/users/disposable-member");
-    expect(password.path).toBe("/api/users/real-admin/change-password");
-    expect(password.skipReason).toContain("Requires current user password");
   });
 
   it("cleans up profile media against disposable members only", () => {
@@ -545,7 +522,6 @@ describe("AdminApiTestEngine request preparation", () => {
   it("uses disposable members for participant, guild-war, and badge mutation payloads", () => {
     const unsafeContext = contextWith({
       meId: "real-admin",
-      targetUserId: "seeded-member",
       createdEventId: "event-1",
       createdGuildWarEventId: "war-event-1",
       createdConcludedWarHistoryId: "war-history-1",
@@ -571,11 +547,11 @@ describe("AdminApiTestEngine request preparation", () => {
       const prepared = prepareEndpointRequest(endpoint, unsafeContext);
 
       if (endpoint.path.includes("/join") || endpoint.path.includes("/leave")) {
-        expect(prepared.skipReason).toContain("current session user");
+        expect(prepared.skipReason).toBeUndefined();
       } else {
         expect(prepared.skipReason).toContain("test member");
+        expect(prepared.body).toBeUndefined();
       }
-      expect(prepared.body).toBeUndefined();
     }
 
     const safeContext = contextWith({
@@ -593,7 +569,7 @@ describe("AdminApiTestEngine request preparation", () => {
         expect(prepared.body).not.toContain("seeded-member");
       }
       if (endpoint.path.includes("/join") || endpoint.path.includes("/leave")) {
-        expect(prepared.skipReason).toContain("current session user");
+        expect(prepared.skipReason).toBeUndefined();
         expect(prepared.body).toBeUndefined();
       } else if (endpoint.path.includes(":userId")) {
         expect(prepared.skipReason).toBeUndefined();
@@ -609,7 +585,6 @@ describe("AdminApiTestEngine request preparation", () => {
     const next = captureContextFromResponse(
       contextWith({
         meId: "real-admin",
-        targetUserId: "seeded-member",
         adminCreatedUserId: "disposable-member",
       }),
       { label: "Save Teams", method: "POST", path: "/api/guild-war/save-teams" },
@@ -633,7 +608,6 @@ describe("AdminApiTestEngine request preparation", () => {
       "GET /api/health",
       "GET /api/site-config",
       "POST /api/auth/login",
-      "POST /api/auth/logout",
       "GET /api/auth/check-username?username=test",
       "GET /api/auth/verify-invite/:code",
       "POST /api/auth/register/:inviteCode",
@@ -651,8 +625,6 @@ describe("AdminApiTestEngine request preparation", () => {
       "DELETE /api/users/:id/media/avatar",
       "POST /api/users/:id/media/audio",
       "DELETE /api/users/:id/media/audio",
-      "POST /api/users/:id/change-password",
-      "POST /api/users/:id/change-username",
       "GET /api/events?page=1&limit=5",
       "POST /api/events",
       "POST /api/events?fixture=poll",
@@ -752,8 +724,6 @@ describe("AdminApiTestEngine request preparation", () => {
       "GET /api/admin/analytics-settings",
       "PATCH /api/admin/analytics-settings",
       "GET /api/admin/audit-archive/months",
-      "GET /api/admin/audit-archive/download",
-      "GET /api/admin/audit-archive/download/file",
       "GET /api/admin/audit-log?page=1&limit=5",
       "GET /api/admin/audit-log/export?format=json",
       "GET /api/admin/error-log?page=1&limit=5",
@@ -762,27 +732,13 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(expectedRoutes.filter((route) => !endpointKeys.has(route))).toEqual([]);
   });
 
-  it("orders user image retrieval after test upload and tracks logout as an optional production check", async () => {
+  it("orders user image retrieval after test upload", () => {
     const categories = buildApiCategories((key) => key);
-    const authPaths = categories.find((category) => category.key === "auth")?.endpoints.map((endpoint) => endpoint.path);
     const userEndpointKeys = categories.find((category) => category.key === "users")
       ?.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`) ?? [];
 
-    expect(authPaths).toContain("/api/auth/logout");
     expect(userEndpointKeys.indexOf("POST /api/users/:id/media/images")).toBeLessThan(userEndpointKeys.indexOf("GET /api/users/image"));
     expect(userEndpointKeys.indexOf("GET /api/users/image")).toBeLessThan(userEndpointKeys.indexOf("DELETE /api/users/:id/media/images"));
-
-    const result = await runEndpointTest(
-      { label: "Logout", method: "POST", path: "/api/auth/logout" },
-      prepareEndpointRequest(
-        { label: "Logout", method: "POST", path: "/api/auth/logout" },
-        contextWith({ meId: "admin-1" }),
-      ),
-    );
-
-    expect(result.status).toBeNull();
-    expect(result.error).toBeNull();
-    expect(result.body).toContain("Logout is tested by dedicated auth flows");
   });
 
   it("creates a disposable invite before registration so seeded invite counters are not mutated", () => {
@@ -938,8 +894,6 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys).toContain("GET /api/dashboard/summary");
     expect(endpointKeys).toContain("GET /api/search?q=systemtest&limit=5");
     expect(endpointKeys).toContain("GET /api/guild-war/concluded-event-ids");
-    expect(endpointKeys).toContain("GET /api/admin/audit-archive/download");
-    expect(endpointKeys).toContain("GET /api/admin/audit-archive/download/file");
   });
 
   it("covers destructive website actions using test-created fixture IDs", () => {
@@ -1000,17 +954,4 @@ describe("AdminApiTestEngine request preparation", () => {
     ))).toEqual({ ids: ["concluded-war"] });
   });
 
-  it("treats missing audit archive download fixtures as an optional non-error result", async () => {
-    const result = await runEndpointTest(
-      { label: "Download Archive", method: "GET", path: "/api/admin/audit-archive/download" },
-      prepareEndpointRequest(
-        { label: "Download Archive", method: "GET", path: "/api/admin/audit-archive/download" },
-        createInitialTestRunContext(),
-      ),
-    );
-
-    expect(result.status).toBeNull();
-    expect(result.error).toBeNull();
-    expect(result.body).toContain("No archived audit month");
-  });
 });

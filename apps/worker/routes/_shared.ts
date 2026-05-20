@@ -1,11 +1,38 @@
 import { ERROR_STATUS, LIMITS, type ErrorCode, type StandardErrorResponse } from "@guild/shared";
+import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import type { ZodTypeAny } from "zod";
+import type { Bindings } from "../index";
 import { getRequestUser } from "../middleware/rbac";
 
 type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
 
 export const MEDIA_CACHE_CONTROL = `private, max-age=${LIMITS.cache.mediaMaxAgeSeconds}`;
+
+export function getDb(c: Context) {
+  return drizzle((c.env as Bindings).DB);
+}
+
+export function collectFiles(form: FormData): File[] {
+  const files: File[] = [];
+  const single = form.get("file");
+  if (single instanceof File) files.push(single);
+  for (const item of form.getAll("files")) {
+    if (item instanceof File) files.push(item);
+  }
+  return files;
+}
+
+export async function serveR2Object(c: Context, key: string, notFoundMessage: string): Promise<Response> {
+  const object = await (c.env as Bindings).MEDIA.get(key);
+  if (!object?.body) return buildError(c, "NOT_FOUND", notFoundMessage);
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
+  headers.set("Cache-Control", MEDIA_CACHE_CONTROL);
+  headers.set("ETag", object.httpEtag);
+  return new Response(object.body, { headers });
+}
 
 export function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {
   const requestId = (c.get("requestId") as string | undefined) ?? crypto.randomUUID();

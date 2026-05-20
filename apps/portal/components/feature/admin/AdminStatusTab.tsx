@@ -39,7 +39,7 @@ import {
   type EndpointResult,
   type TestRunContext,
 } from "./AdminApiTestEngine";
-import { ApiTestCategory } from "./AdminApiTestCategory";
+import { ApiTestCategory, epKey } from "./AdminApiTestCategory";
 import { AdminApiDebugConsole } from "./AdminApiDebugConsole";
 import "./AdminApiTest.css";
 
@@ -107,7 +107,7 @@ export function AdminStatusTab({
   }, []);
 
   const runCategoryInternal = useCallback(async (category: CategoryDef, signal: AbortSignal) => {
-    const epKeys = category.endpoints.map((ep) => `${ep.method}-${ep.path}`);
+    const epKeys = category.endpoints.map((ep) => epKey(category.key, ep));
     setRunningSet((prev) => {
       const next = new Set(prev);
       for (const k of epKeys) next.add(k);
@@ -116,7 +116,7 @@ export function AdminStatusTab({
 
     for (const ep of category.endpoints) {
       if (signal.aborted) break;
-      const key = `${ep.method}-${ep.path}`;
+      const key = epKey(category.key, ep);
       const prepared = prepareEndpointRequest(ep, contextRef.current);
 
       const requestGapMs = ep.method === "GET" ? API_TEST_GAP_GET_MS : API_TEST_GAP_MUTATION_MS;

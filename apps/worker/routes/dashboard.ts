@@ -1,8 +1,6 @@
 import { activeGame } from "@guild/shared/games";
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
-import type { Context } from "hono";
 import {
   eventParticipants,
   events,
@@ -12,20 +10,16 @@ import {
   warTeamMembers,
   warTeams,
 } from "../db/schema";
-import type { Bindings } from "../index";
 import { getRequestUser } from "../middleware/rbac";
 import { parseStringArray } from "../services/helpers";
 import { toEventPayload, type EventRow } from "../services/EventService";
 import { toWarHistoryPayload } from "../services/GuildWarService";
+import { getDb } from "./_shared";
 
 export const dashboardRoutes = new Hono();
 
 const UPCOMING_EVENT_LIMIT = 20;
 const RECENT_WAR_LIMIT = 4;
-
-function getDb(c: Context) {
-  return drizzle((c.env as Bindings).DB);
-}
 
 function weekWindow(now = new Date()): { start: string; end: string } {
   const end = new Date(now);
@@ -106,6 +100,7 @@ dashboardRoutes.get("/summary", async (c) => {
             role: users.role,
             classes: memberProfiles.classes,
             power: memberProfiles.power,
+            avatarKey: memberProfiles.avatarKey,
           })
           .from(eventParticipants)
           .innerJoin(users, eq(users.id, eventParticipants.userId))
@@ -141,6 +136,7 @@ dashboardRoutes.get("/summary", async (c) => {
       role: row.role,
       classes: parseStringArray(row.classes ?? "[]"),
       power: Number(row.power ?? 0),
+      avatar_key: row.avatarKey ?? null,
     });
     participantsByEvent.set(row.eventId, list);
   }

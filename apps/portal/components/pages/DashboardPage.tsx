@@ -74,7 +74,7 @@ function participantToDashboardMember(participant: DashboardSummaryEvent["partic
       classes: participant.classes as DashboardMember["profile"]["classes"],
       title_html: null,
       bio: null,
-      avatar_key: null,
+      avatar_key: participant.avatar_key,
       images: [],
       audio_key: null,
       video_urls: [],

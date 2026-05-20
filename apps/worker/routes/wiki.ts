@@ -6,7 +6,6 @@ import {
   updateWikiCategorySchema,
   updateWikiArticleSchema,
 } from "@guild/shared";
-import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
@@ -14,13 +13,13 @@ import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { WikiService } from "../services/WikiService";
-import { buildError, handleResult, MEDIA_CACHE_CONTROL, parseBoolean, parsePage, safeFormData } from "./_shared";
+import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
 
 export const wikiRoutes = new Hono();
 
 function getService(c: Context): WikiService {
   const env = c.env as Bindings;
-  return new WikiService(drizzle(env.DB), {
+  return new WikiService(getDb(c), {
     media: env.MEDIA,
     writeAuditLog: (input) => writeAuditLog(c, input),
     publishEntityChanged: (payload) => publishEntityChanged(c, payload),
@@ -36,15 +35,7 @@ wikiRoutes.get("/image", async (c) => {
   if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
   if (!key.startsWith("wiki/")) return buildError(c, "FORBIDDEN", "Invalid wiki image key");
 
-  const object = await (c.env as Bindings).MEDIA.get(key);
-  if (!object?.body) return buildError(c, "NOT_FOUND", "Wiki image not found");
-
-  const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
-  headers.set("Cache-Control", MEDIA_CACHE_CONTROL);
-  headers.set("ETag", object.httpEtag);
-  return new Response(object.body, { headers });
+  return serveR2Object(c, key, "Wiki image not found");
 });
 
 // --- Category routes ---
@@ -57,8 +48,8 @@ wikiRoutes.get("/categories", async (c) => {
 wikiRoutes.post("/categories", async (c) => {
   const sessionUser = await requireWikiCategoriesManage(c);
   if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = createWikiCategorySchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki category payload", parsed.error.flatten());
   const result = await getService(c).createCategory(sessionUser.id, parsed.data);
@@ -69,8 +60,8 @@ wikiRoutes.post("/categories", async (c) => {
 wikiRoutes.patch("/categories/:id", async (c) => {
   const sessionUser = await requireWikiCategoriesManage(c);
   if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = updateWikiCategorySchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki category payload", parsed.error.flatten());
   const result = await getService(c).updateCategory(sessionUser.id, c.req.param("id"), parsed.data);
@@ -109,8 +100,8 @@ wikiRoutes.get("/articles/:slug", async (c) => {
 wikiRoutes.post("/articles", async (c) => {
   const sessionUser = await requireWikiArticlesCreate(c);
   if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = createWikiArticleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki article payload", parsed.error.flatten());
   const result = await getService(c).createArticle(sessionUser.id, parsed.data);
@@ -121,8 +112,8 @@ wikiRoutes.post("/articles", async (c) => {
 wikiRoutes.patch("/articles/:id", async (c) => {
   const sessionUser = await requireWikiArticlesEdit(c);
   if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = updateWikiArticleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki article payload", parsed.error.flatten());
   const ifMatchHeader = c.req.header("If-Match");
@@ -152,10 +143,7 @@ wikiRoutes.post("/articles/:id/images", async (c) => {
   const formOrError = await safeFormData(c);
   if (formOrError instanceof Response) return formOrError;
   const form = formOrError;
-  const files: File[] = [];
-  const single = form.get("file");
-  if (single instanceof File) files.push(single);
-  for (const item of form.getAll("files")) { if (item instanceof File) files.push(item); }
+  const files = collectFiles(form);
 
   if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
   for (const file of files) {

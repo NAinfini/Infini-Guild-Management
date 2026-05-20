@@ -2,6 +2,9 @@ import { drizzle } from "drizzle-orm/d1";
 import { errorLog } from "../db/schema/error-log";
 import { logger } from "../utils/logger";
 
+const ERROR_MESSAGE_MAX_LENGTH = 2000;
+const ERROR_STACK_MAX_LENGTH = 4000;
+
 export type ErrorLogInput = {
   source: "request" | "cron" | "push" | "audit";
   level?: "error" | "warn";
@@ -23,11 +26,11 @@ export async function writeErrorLog(
       id: crypto.randomUUID(),
       source: input.source,
       level: input.level ?? "error",
-      message: input.message.slice(0, 2000),
+      message: input.message.slice(0, ERROR_MESSAGE_MAX_LENGTH),
       requestPath: input.requestPath,
       requestMethod: input.requestMethod,
       requestId: input.requestId,
-      stack: input.stack?.slice(0, 4000),
+      stack: input.stack?.slice(0, ERROR_STACK_MAX_LENGTH),
       context: input.context
         ? JSON.stringify(input.context)
         : null,

@@ -4,6 +4,7 @@ import { modals } from "@mantine/modals";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
+import { resolveEventMediaUrl } from "@portal/utils/media";
 import {
   CalendarEventIcon,
   ChartBarIcon,
@@ -33,18 +34,6 @@ function formatLocalTime(startAt: string, endAt: string | null, locale: string):
   const end = new Date(endAt);
   const endTime = end.toLocaleTimeString(locale, timeOpts);
   return `${startTime} - ${endTime}`;
-}
-
-function resolveEventAttachmentUrl(key: string): string {
-  if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:")) {
-    return key;
-  }
-  if (typeof window === "undefined") {
-    return `/api/events/image?key=${encodeURIComponent(key)}`;
-  }
-  const url = new URL("/api/events/image", window.location.origin);
-  url.searchParams.set("key", key);
-  return url.toString();
 }
 
 function resolveVoterEntries(voterIds: string[], allUsers: MemberEntry[]): MemberEntry[] {
@@ -460,7 +449,7 @@ export function EventDetailModal({
 
           {event.attachments && event.attachments.length > 0 ? (
             <Grid.Col span={{ base: 12, md: 7 }}>
-              <MediaGallery images={event.attachments} resolveMediaUrl={resolveEventAttachmentUrl} labels={mediaLabels} />
+              <MediaGallery images={event.attachments} resolveMediaUrl={resolveEventMediaUrl} labels={mediaLabels} />
             </Grid.Col>
           ) : null}
         </Grid>

@@ -33,18 +33,24 @@ type LastWarCardProps = {
   onOpenHistory: (warName: string) => void;
 };
 
+const RESULT_COLOR: Record<string, string> = {
+  win: "var(--color-success, #22c55e)",
+  loss: "var(--color-danger, #ef4444)",
+  draw: "var(--color-warning, #f59e0b)",
+};
+
+const RESULT_LABEL_KEY: Record<string, string> = {
+  win: "card.lastWar.result.victory",
+  loss: "card.lastWar.result.defeat",
+  draw: "card.lastWar.result.draw",
+};
+
 function resultColor(result: string | null): string {
-  if (result === "win") return "var(--color-success, #22c55e)";
-  if (result === "loss") return "var(--color-danger, #ef4444)";
-  if (result === "draw") return "var(--color-warning, #f59e0b)";
-  return "color-mix(in srgb, var(--color-text, #111827) 50%, transparent)";
+  return (result && RESULT_COLOR[result]) ?? "color-mix(in srgb, var(--color-text, #111827) 50%, transparent)";
 }
 
 function resultLabel(result: string | null, t: (key: string) => string): string {
-  if (result === "win") return t("card.lastWar.result.victory");
-  if (result === "loss") return t("card.lastWar.result.defeat");
-  if (result === "draw") return t("card.lastWar.result.draw");
-  return t("card.lastWar.result.pending");
+  return t((result && RESULT_LABEL_KEY[result]) ?? "card.lastWar.result.pending");
 }
 
 function MvpChip({ entry, icon }: { entry: DashboardLastWarMvpEntry; icon: React.ReactNode }) {

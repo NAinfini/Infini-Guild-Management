@@ -1,4 +1,6 @@
 import { memberBadgeSchema } from "@guild/shared";
+import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
@@ -7,8 +9,8 @@ import { memberBadgeAssignments, memberBadges } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
-type AuditLogInput = { entityType: string; action: string; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
-type EntityChangedInput = { entityType: string; entityId: string; hint: string };
+type AuditLogInput = { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
+type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: PushHint };
 
 export type BadgeServiceDeps = {
   writeAuditLog: (input: AuditLogInput) => Promise<void>;

@@ -137,9 +137,8 @@ describe("GET /api/health", () => {
     const res = await app.request("/api/health", undefined, mockEnv);
     expect(res.status).toBe(503);
 
-    const body = (await res.json()) as { ok: boolean; db: string };
+    const body = (await res.json()) as { ok: boolean };
     expect(body.ok).toBe(false);
-    expect(body.db).toBe("unreachable");
   });
 });
 

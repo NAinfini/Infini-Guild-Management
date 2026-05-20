@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
 import { EVENT_TYPES } from "../constants/event-types";
+import { RECURRENCE_FREQUENCIES, RECURRENCE_SCOPES, POLL_RESULTS_VISIBILITIES } from "../constants/events";
 
 const L = LIMITS.content;
 
 const recurrenceRuleSchema = z.object({
-  frequency: z.enum(["daily", "weekly", "monthly"]),
+  frequency: z.enum(RECURRENCE_FREQUENCIES),
   interval: z.number().int().positive(),
   daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
   dayOfMonth: z.number().int().min(1).max(31).optional(),
@@ -13,7 +14,7 @@ const recurrenceRuleSchema = z.object({
   endDate: z.string().datetime().optional(),
 });
 const eventAttachmentsSchema = z.array(z.string().min(1)).max(L.eventAttachments.max);
-export const pollResultsVisibilitySchema = z.enum(["always", "after_vote", "after_close"]);
+export const pollResultsVisibilitySchema = z.enum(POLL_RESULTS_VISIBILITIES);
 
 export const eventPollOptionSchema = z.object({
   id: z.string(),
@@ -129,7 +130,7 @@ export const updateEventSchema = eventMutationSchema.partial().extend({
   pinned: z.boolean().optional(),
   signup_locked: z.boolean().optional(),
   archived_at: z.string().datetime().nullable().optional(),
-  recurrence_scope: z.enum(["this", "future", "all"]).optional(),
+  recurrence_scope: z.enum(RECURRENCE_SCOPES).optional(),
 }).superRefine((value, ctx) => {
   if (value.start_at && value.end_at && value.end_at <= value.start_at) {
     ctx.addIssue({ code: "custom", path: ["end_at"], message: "end_at must be after start_at" });

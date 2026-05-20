@@ -31,7 +31,7 @@ export type Bindings = {
   ASSETS: Fetcher;
   PORTAL_ORIGIN?: string;
   ENVIRONMENT?: string;
-  SIGNING_SECRET?: string;
+  SIGNING_SECRET: string;
   SITE_NAME: string;
   SITE_LOGO_URL: string;
   FEATURES?: string;
@@ -149,10 +149,10 @@ app.get("/api/health", async (c) => {
   try {
     const result = await env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>();
     if (!result || result.ok !== 1) {
-      return c.json({ ok: false, db: "unhealthy", request_id: c.get("requestId") }, 503);
+      return c.json({ ok: false, request_id: c.get("requestId") }, 503);
     }
   } catch {
-    return c.json({ ok: false, db: "unreachable", request_id: c.get("requestId") }, 503);
+    return c.json({ ok: false, request_id: c.get("requestId") }, 503);
   }
   return c.json({ ok: true, request_id: c.get("requestId") });
 });

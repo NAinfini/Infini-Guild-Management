@@ -108,7 +108,7 @@ export function NotificationPopover({
                     <Stack gap={4} align="flex-start">
                       <Group gap={8} wrap="nowrap">
                         <Text fw={600}>{item.title}</Text>
-                        {item.type === "announcement_published" ? (
+                        {item.type === "announcement_published" || item.type === "announcement_changed" ? (
                           <Badge variant="light" color="blue">
                             {t("notification.type.announcement")}
                           </Badge>
@@ -120,9 +120,21 @@ export function NotificationPopover({
                           <Badge variant="light" color="teal">
                             {t("notification.type.wiki")}
                           </Badge>
-                        ) : item.type === "member_joined" ? (
+                        ) : item.type === "member_joined" || item.type === "member_changed" ? (
                           <Badge variant="light" color="green">
                             {t("notification.type.memberOnline")}
+                          </Badge>
+                        ) : item.type === "gallery_changed" ? (
+                          <Badge variant="light" color="cyan">
+                            {t("notification.type.gallery")}
+                          </Badge>
+                        ) : item.type === "guild_war_changed" ? (
+                          <Badge variant="light" color="red">
+                            {t("notification.type.guildWar")}
+                          </Badge>
+                        ) : item.type === "badge_changed" ? (
+                          <Badge variant="light" color="violet">
+                            {t("notification.type.badge")}
                           </Badge>
                         ) : null}
                       </Group>

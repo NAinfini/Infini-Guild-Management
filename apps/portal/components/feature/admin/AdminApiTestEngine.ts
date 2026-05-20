@@ -19,7 +19,6 @@ export type TestRunContext = {
   meId: string | null;
   meUsername: string | null;
   registerInviteCode: string | null;
-  targetUserId: string | null;
   userImageKey: string | null;
   userAudioKey: string | null;
   eventId: string | null;
@@ -62,7 +61,6 @@ export type TestRunContext = {
   createdWikiCategoryId: string | null;
   createdWikiArticleId: string | null;
   createdWarHistoryId: string | null;
-  createdSaveTeamsHistoryId: string | null;
   createdGuildWarEventId: string | null;
   createdRoleId: string | null;
   createdBadgeId: string | null;
@@ -122,7 +120,6 @@ export function createInitialTestRunContext(): TestRunContext {
     meId: null,
     meUsername: null,
     registerInviteCode: null,
-    targetUserId: null,
     userImageKey: null,
     userAudioKey: null,
     eventId: null,
@@ -164,7 +161,6 @@ export function createInitialTestRunContext(): TestRunContext {
     createdWikiCategoryId: null,
     createdWikiArticleId: null,
     createdWarHistoryId: null,
-    createdSaveTeamsHistoryId: null,
     createdGuildWarEventId: null,
     createdRoleId: null,
     createdBadgeId: null,
@@ -331,7 +327,6 @@ export function buildCleanupSteps(ctx: TestRunContext): CleanupStep[] {
       path: `/api/guild-war/history/${encodeURIComponent(ctx.createdWarHistoryId)}`,
       clearContext: {
         createdWarHistoryId: null,
-        ...(ctx.createdSaveTeamsHistoryId === ctx.createdWarHistoryId ? { createdSaveTeamsHistoryId: null } : {}),
       },
     });
   }
@@ -341,14 +336,6 @@ export function buildCleanupSteps(ctx: TestRunContext): CleanupStep[] {
       method: "DELETE",
       path: `/api/guild-war/history/${encodeURIComponent(ctx.createdConcludedWarHistoryId)}`,
       clearContext: { createdConcludedWarHistoryId: null },
-    });
-  }
-  if (ctx.createdSaveTeamsHistoryId && ctx.createdSaveTeamsHistoryId !== ctx.createdWarHistoryId) {
-    cleanupSteps.push({
-      label: "Cleanup: Save-Teams History",
-      method: "DELETE",
-      path: `/api/guild-war/history/${encodeURIComponent(ctx.createdSaveTeamsHistoryId)}`,
-      clearContext: { createdSaveTeamsHistoryId: null },
     });
   }
   if (ctx.createdTemplateId) {
@@ -528,7 +515,6 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.verifyInvite"), method: "GET", path: "/api/auth/verify-invite/:code" },
         { label: t("status.api.ep.register"), method: "POST", path: "/api/auth/register/:inviteCode" },
         { label: t("status.api.ep.login"), method: "POST", path: "/api/auth/login" },
-        { label: t("status.api.ep.logout"), method: "POST", path: "/api/auth/logout" },
       ],
     },
     {
@@ -546,8 +532,6 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.deleteAvatar"), method: "DELETE", path: "/api/users/:id/media/avatar" },
         { label: t("status.api.ep.uploadAudio"), method: "POST", path: "/api/users/:id/media/audio" },
         { label: t("status.api.ep.deleteAudio"), method: "DELETE", path: "/api/users/:id/media/audio" },
-        { label: t("status.api.ep.changePassword"), method: "POST", path: "/api/users/:id/change-password" },
-        { label: t("status.api.ep.changeUsername"), method: "POST", path: "/api/users/:id/change-username" },
       ],
     },
     {
@@ -556,10 +540,10 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       endpoints: [
         { label: t("status.api.ep.listEvents"), method: "GET", path: "/api/events?page=1&limit=5" },
         { label: t("status.api.ep.createEvent"), method: "POST", path: "/api/events" },
-        { label: t("status.api.ep.pollVote"), method: "POST", path: "/api/events?fixture=poll" },
+        { label: t("status.api.ep.createPollEvent"), method: "POST", path: "/api/events?fixture=poll" },
         { label: t("status.api.ep.getEvent"), method: "GET", path: "/api/events/:id?fixture=poll" },
         { label: t("status.api.ep.pollVote"), method: "POST", path: "/api/events/:id/poll/vote" },
-        { label: t("status.api.ep.raffleDraw"), method: "POST", path: "/api/events?fixture=raffle" },
+        { label: t("status.api.ep.createRaffleEvent"), method: "POST", path: "/api/events?fixture=raffle" },
         { label: t("status.api.ep.addParticipant"), method: "POST", path: "/api/events/:id/participants?fixture=raffle" },
         { label: t("status.api.ep.raffleDraw"), method: "POST", path: "/api/events/:id/raffle/draw" },
         { label: t("status.api.ep.getEvent"), method: "GET", path: "/api/events/:id" },
@@ -614,13 +598,13 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.activeWar"), method: "GET", path: "/api/guild-war/active" },
         { label: t("status.api.ep.concludedEventIds"), method: "GET", path: "/api/guild-war/concluded-event-ids" },
         { label: t("status.api.ep.createEvent"), method: "POST", path: "/api/events?fixture=guild-war" },
+        { label: t("status.api.ep.moveMember"), method: "POST", path: "/api/guild-war/move" },
         { label: t("status.api.ep.saveTeams"), method: "POST", path: "/api/guild-war/save-teams" },
         { label: t("status.api.ep.updateRoleTag"), method: "PATCH", path: "/api/guild-war/role-tag" },
         { label: t("status.api.ep.exportGuildWar"), method: "GET", path: "/api/guild-war/export?format=json" },
         { label: t("status.api.ep.warHistory"), method: "GET", path: "/api/guild-war/history?page=1&limit=5" },
         { label: t("status.api.ep.historyDetail"), method: "GET", path: "/api/guild-war/history/:id" },
         { label: t("status.api.ep.batchHistoryDetails"), method: "POST", path: "/api/guild-war/history/batch" },
-        { label: t("status.api.ep.moveMember"), method: "POST", path: "/api/guild-war/move" },
         { label: t("status.api.ep.createHistory"), method: "POST", path: "/api/guild-war/history" },
         { label: t("status.api.ep.analytics"), method: "GET", path: "/api/guild-war/analytics" },
         { label: t("status.api.ep.concludeWar"), method: "POST", path: "/api/guild-war/conclude" },
@@ -681,8 +665,6 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.auditLog"), method: "GET", path: "/api/admin/audit-log?page=1&limit=5" },
         { label: t("status.api.ep.auditLogExport"), method: "GET", path: "/api/admin/audit-log/export?format=json" },
         { label: t("status.api.ep.archiveMonths"), method: "GET", path: "/api/admin/audit-archive/months" },
-        { label: t("status.api.ep.archiveDownload"), method: "GET", path: "/api/admin/audit-archive/download" },
-        { label: t("status.api.ep.archiveDownloadFile"), method: "GET", path: "/api/admin/audit-archive/download/file" },
       ],
     },
     {
@@ -869,18 +851,8 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   }
 
   if (path.includes("/api/users/:id")) {
-    const selfOnly =
-      endpoint.path.includes("/change-password") ||
-      endpoint.path.includes("/change-username");
-    const profileOrMedia =
-      endpoint.path.includes("/media/") ||
-      endpoint.path.includes("/profile");
-    const userId = selfOnly
-      ? context.meId
-      : profileOrMedia
-        ? (context.adminCreatedUserId ?? context.registeredUserId)
-        : (context.adminCreatedUserId ?? context.registeredUserId);
-    if (!selfOnly && !userId) {
+    const userId = context.adminCreatedUserId ?? context.registeredUserId;
+    if (!userId) {
       return { path, missing: "test member id (create/register a disposable member first)" };
     }
     const next = replacePathParam(path, ":id", userId);
@@ -1094,9 +1066,6 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
 export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext): PreparedEndpointRequest {
   const resolved = resolveEndpointPath(endpoint, context);
   if (resolved.missing) {
-    if (endpoint.path.includes("/change-password") || endpoint.path.includes("/change-username")) {
-      return skipEndpoint(endpoint.path, "Requires current user password", true);
-    }
     if (endpoint.path === "/api/admin/audit-archive/download") {
       return skipEndpoint(endpoint.path, "No archived audit month is available in this environment", true);
     }
@@ -1111,7 +1080,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
   if (endpoint.method === "DELETE") {
     switch (endpoint.path) {
       case "/api/events/:id/leave":
-        return skipEndpoint(path, "Join/leave uses the current session user; browser smoke run preserves the active admin account", true);
+        return { path };
       case "/api/users/:id/media/avatar":
         return { path };
       case "/api/users/:id/media/audio":
@@ -1173,12 +1142,6 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     case "POST /api/users/:id/media/audio":
       return buildFormRequest(path, [["file", createTinyAudioFile()]]);
 
-    case "POST /api/users/:id/change-password":
-      return skipEndpoint(path, "Requires current user password", true);
-
-    case "POST /api/users/:id/change-username":
-      return skipEndpoint(path, "Requires current user password", true);
-
     case "POST /api/events":
     case "POST /api/events?fixture=guild-war":
     case "POST /api/events?fixture=poll":
@@ -1217,7 +1180,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       return buildFormRequest(path, [["file", createTinyPngFile()]]);
 
     case "POST /api/events/:id/join":
-      return skipEndpoint(path, "Join/leave uses the current session user; browser smoke run preserves the active admin account", true);
+      return { path };
 
     case "POST /api/events/:id/participants":
     case "POST /api/events/:id/participants?fixture=raffle":
@@ -1495,9 +1458,6 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         };
       }
 
-    case "POST /api/auth/logout":
-      return skipEndpoint(path, "Logout is tested by dedicated auth flows; browser smoke run preserves the active admin session", true);
-
     case "POST /api/users/:id/media/avatar":
       return buildFormRequest(path, [["file", createTinyPngFile()]]);
 
@@ -1604,8 +1564,8 @@ export function captureContextFromResponse(
     if (endpoint.path === "/api/guild-war/history/:id" && next.createdWarHistoryId === next.warHistoryId) {
       next.createdWarHistoryId = null;
     }
-    if (endpoint.path === "/api/guild-war/history/:id" && next.createdSaveTeamsHistoryId === next.warHistoryId) {
-      next.createdSaveTeamsHistoryId = null;
+    if (endpoint.path === "/api/guild-war/history/:id" && next.createdWarHistoryId === next.warHistoryId) {
+      next.createdWarHistoryId = null;
     }
     if (endpoint.path === "/api/guild-war/history/:id" && next.createdConcludedWarHistoryId === next.warHistoryId) {
       next.createdConcludedWarHistoryId = null;
@@ -1689,9 +1649,6 @@ export function captureContextFromResponse(
   if (endpoint.path === "/api/auth/register/:inviteCode") {
     const userId = readString(payload.user_id) ?? readString((isRecord(payload.user) ? payload.user : null)?.id);
     next.registeredUserId = userId ?? next.registeredUserId;
-    if (userId && userId !== next.meId) {
-      next.targetUserId = next.targetUserId ?? userId;
-    }
     next.registeredUsername = readString((isRecord(payload.user) ? payload.user : null)?.username) ?? next.registeredUsername;
     return next;
   }
@@ -1707,12 +1664,7 @@ export function captureContextFromResponse(
       });
       const first = (firstCandidate ?? firstArrayItem(payload.data)) ?? null;
       if (!first) return next;
-      const user = isRecord(first.user) ? first.user : null;
       const profile = isRecord(first.profile) ? first.profile : null;
-      const firstUserId = readString(user?.id);
-      if (firstUserId && firstUserId !== next.meId) {
-        next.targetUserId = firstUserId;
-      }
       const images = Array.isArray(profile?.images) ? profile.images : [];
       const firstImage = images.find((item): item is string => typeof item === "string");
       const profileImageKey = firstImage ?? null;
@@ -1723,12 +1675,7 @@ export function captureContextFromResponse(
   }
 
   if (endpoint.path === "/api/users/:id") {
-    const user = isRecord(payload.user) ? payload.user : null;
     const profile = isRecord(payload.profile) ? payload.profile : null;
-    const userId = readString(user?.id);
-    if (userId && userId !== next.meId) {
-      next.targetUserId = userId;
-    }
     const images = Array.isArray(profile?.images) ? profile.images : [];
     const firstImage = images.find((item): item is string => typeof item === "string");
     const profileImageKey = firstImage ?? null;

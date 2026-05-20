@@ -69,6 +69,38 @@ function resolveSignalPayload(message: PushMessage, t: (key: string, options?: R
           color: "yellow",
           frequencyHz: 660,
         };
+      case "announcement":
+        return {
+          key: `announcement:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.announcement",
+          message: resolveHintMessage(message.hint, t),
+          color: "blue",
+          frequencyHz: 660,
+        };
+      case "gallery":
+        return {
+          key: `gallery:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.gallery",
+          message: resolveHintMessage(message.hint, t),
+          color: "blue",
+          frequencyHz: 660,
+        };
+      case "guild_war":
+        return {
+          key: `guild_war:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.guildWar",
+          message: resolveHintMessage(message.hint, t),
+          color: "yellow",
+          frequencyHz: 660,
+        };
+      case "member_badge":
+        return {
+          key: `badge:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.badge",
+          message: resolveHintMessage(message.hint, t),
+          color: "yellow",
+          frequencyHz: 660,
+        };
     }
   }
 

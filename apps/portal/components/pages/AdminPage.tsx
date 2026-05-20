@@ -230,7 +230,7 @@ export function AdminPage() {
   }, [rolesQuery.data, t]);
   const auditRows = auditLogQuery.data?.data ?? [];
 
-  const userColumns: TanStackColumnDef<(typeof userRows)[number], unknown>[] = [
+  const userColumns = useMemo((): TanStackColumnDef<(typeof userRows)[number], unknown>[] => [
     {
       header: t("member.table.username"),
       id: "username",
@@ -274,7 +274,7 @@ export function AdminPage() {
       accessorFn: (row) => row.user.is_active,
       cell: ({ row }) => (row.original.user.is_active ? <Badge color="green">{t("member.status.active")}</Badge> : <Badge color="red">{t("member.status.inactive")}</Badge>),
     },
-  ];
+  ], [t, isAdmin, rolesQuery.data]);
 
   usePageHeaderActions(null);
   useLoadWarningToast(

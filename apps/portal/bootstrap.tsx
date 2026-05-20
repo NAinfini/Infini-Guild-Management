@@ -7,7 +7,6 @@ import { ContextMenuProvider } from "mantine-contextmenu";
 import "mantine-contextmenu/styles.css";
 import React, { StrictMode } from "react";
 import type { Root } from "react-dom/client";
-import "@gfazioli/mantine-split-pane/styles.css";
 import "./i18n";
 import { ErrorBoundary } from "./components/effects/ErrorBoundary";
 import { PortalThemeProvider } from "./providers/ThemeProvider";

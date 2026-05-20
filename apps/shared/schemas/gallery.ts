@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { isAllowedGalleryVideoUrl } from "../utils/video";
+import { GALLERY_ITEM_TYPES } from "../constants/gallery";
 
 export const galleryItemSchema = z.object({
   id: z.string(),
-  type: z.enum(["image", "video"]),
+  type: z.enum(GALLERY_ITEM_TYPES),
   url: z.string(),
   caption: z.string().max(200).nullable(),
   uploaded_by: z.string(),
@@ -13,7 +14,7 @@ export const galleryItemSchema = z.object({
 
 export const createGalleryItemSchema = z
   .object({
-    type: z.enum(["image", "video"]),
+    type: z.enum(GALLERY_ITEM_TYPES),
     url: z.string().url("url must be a valid URL"),
     caption: z.string().max(200).optional(),
   })

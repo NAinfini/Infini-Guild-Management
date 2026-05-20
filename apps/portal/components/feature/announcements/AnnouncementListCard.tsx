@@ -8,6 +8,8 @@ import { format } from "date-fns";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import type { AnnouncementStatus } from "@guild/shared/constants/announcements";
+
 function formatDateTime(iso: string | null): string {
   if (!iso) return "-";
   const date = new Date(iso);
@@ -15,35 +17,19 @@ function formatDateTime(iso: string | null): string {
   return format(date, "yyyy-MM-dd HH:mm");
 }
 
-function statusIcon(value: Announcement["status"]): ReactNode {
-  switch (value) {
-    case "draft":
-      return <FileTextIcon size={14} style={{ color: "var(--mantine-color-dimmed)" }} />;
-    case "scheduled":
-      return <CalendarTimeIcon size={14} style={{ color: "var(--mantine-color-blue-filled)" }} />;
-    case "published":
-      return <CircleCheckIcon size={14} style={{ color: "var(--mantine-color-green-filled)" }} />;
-    case "archived":
-      return <ArchiveIcon size={14} style={{ color: "var(--mantine-color-red-filled)" }} />;
-    default:
-      return null;
-  }
-}
+const STATUS_ICON = {
+  draft: <FileTextIcon size={14} style={{ color: "var(--mantine-color-dimmed)" }} />,
+  scheduled: <CalendarTimeIcon size={14} style={{ color: "var(--mantine-color-blue-filled)" }} />,
+  published: <CircleCheckIcon size={14} style={{ color: "var(--mantine-color-green-filled)" }} />,
+  archived: <ArchiveIcon size={14} style={{ color: "var(--mantine-color-red-filled)" }} />,
+} satisfies Record<AnnouncementStatus, ReactNode>;
 
-function statusThemeIconProps(value: Announcement["status"]): { color: string; icon: ReactNode } {
-  switch (value) {
-    case "draft":
-      return { color: "gray", icon: <FileTextIcon size={18} /> };
-    case "scheduled":
-      return { color: "blue", icon: <CalendarTimeIcon size={18} /> };
-    case "published":
-      return { color: "green", icon: <CircleCheckIcon size={18} /> };
-    case "archived":
-      return { color: "yellow", icon: <ArchiveIcon size={18} /> };
-    default:
-      return { color: "gray", icon: <FileTextIcon size={18} /> };
-  }
-}
+const STATUS_THEME = {
+  draft: { color: "gray", icon: <FileTextIcon size={18} /> },
+  scheduled: { color: "blue", icon: <CalendarTimeIcon size={18} /> },
+  published: { color: "green", icon: <CircleCheckIcon size={18} /> },
+  archived: { color: "yellow", icon: <ArchiveIcon size={18} /> },
+} satisfies Record<AnnouncementStatus, { color: string; icon: ReactNode }>;
 
 type AnnouncementListCardProps = {
   title: ReactNode;
@@ -134,11 +120,11 @@ export function AnnouncementListCard({
                             <Text fw={600}>{item.title}</Text>
                           {item.pinned ? <PushpinOutlined className="announcement-item-pin" /> : null}
                           {canEdit || item.status === "archived" ? (() => {
-                            const { color, icon } = statusThemeIconProps(item.status);
+                            const { color, icon } = STATUS_THEME[item.status];
                             return (
                               <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                                 <HoverCard.Target>
-                                  <span style={{ display: "inline-flex", lineHeight: 0 }} data-animate-icon-trigger>{statusIcon(item.status)}</span>
+                                  <span style={{ display: "inline-flex", lineHeight: 0 }} data-animate-icon-trigger>{STATUS_ICON[item.status]}</span>
                                 </HoverCard.Target>
                                 <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                                   <Group gap={10} wrap="nowrap" align="flex-start">

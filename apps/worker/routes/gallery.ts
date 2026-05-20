@@ -3,7 +3,6 @@ import {
   FILE_SIZE_LIMITS,
   createGalleryItemSchema,
 } from "@guild/shared";
-import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
@@ -11,14 +10,11 @@ import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { GalleryService } from "../services/GalleryService";
-import { buildError, handleResult, MEDIA_CACHE_CONTROL, requireSessionUser, safeFormData } from "./_shared";
+import { buildError, collectFiles, getDb, handleResult, parseJsonBody, requireSessionUser, safeFormData, serveR2Object } from "./_shared";
 
 export const galleryRoutes = new Hono();
 
-function getDb(c: Context) {
-  const env = c.env as Bindings;
-  return drizzle(env.DB);
-}
+const GALLERY_CAPTION_MAX_LENGTH = 200;
 
 function getService(c: Context): GalleryService {
   const env = c.env as Bindings;
@@ -56,16 +52,7 @@ galleryRoutes.get("/image", async (c) => {
   if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
   if (!key.startsWith("gallery/")) return buildError(c, "FORBIDDEN", "Invalid gallery media key");
 
-  const object = await (c.env as Bindings).MEDIA.get(key);
-  if (!object?.body) return buildError(c, "NOT_FOUND", "Gallery media not found");
-
-  const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
-  headers.set("Cache-Control", MEDIA_CACHE_CONTROL);
-  headers.set("ETag", object.httpEtag);
-
-  return new Response(object.body, { headers });
+  return serveR2Object(c, key, "Gallery media not found");
 });
 
 galleryRoutes.get("/", async (c) => {
@@ -88,11 +75,8 @@ galleryRoutes.post("/images", async (c) => {
   const formOrError = await safeFormData(c);
   if (formOrError instanceof Response) return formOrError;
   const form = formOrError;
-  const files: File[] = [];
   const captionsRaw = form.getAll("captions");
-  const single = form.get("file");
-  if (single instanceof File) files.push(single);
-  for (const item of form.getAll("files")) { if (item instanceof File) files.push(item); }
+  const files = collectFiles(form);
 
   if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
   for (const file of files) {
@@ -101,7 +85,7 @@ galleryRoutes.post("/images", async (c) => {
   }
 
   const captions = files.map((_, i) => { const raw = captionsRaw[i]; return typeof raw === "string" && raw.trim() ? raw.trim() : null; });
-  if (captions.find((c) => c !== null && c.length > 200)) return buildError(c, "VALIDATION_ERROR", "caption must be 200 characters or less");
+  if (captions.find((c) => c !== null && c.length > GALLERY_CAPTION_MAX_LENGTH)) return buildError(c, "VALIDATION_ERROR", `caption must be ${GALLERY_CAPTION_MAX_LENGTH} characters or less`);
 
   const fileData = await Promise.all(files.map(async (f) => ({ data: await f.arrayBuffer(), contentType: f.type || "application/octet-stream", name: f.name })));
   const result = await getService(c).uploadImages(sessionUser.id, fileData, captions);
@@ -112,8 +96,8 @@ galleryRoutes.post("/images", async (c) => {
 galleryRoutes.post("/videos", async (c) => {
   const sessionUser = await requireGalleryUploader(c);
   if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = createGalleryItemSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid gallery video payload", parsed.error.flatten());
   if (parsed.data.type !== "video") return buildError(c, "VALIDATION_ERROR", "type must be video for this endpoint");
@@ -132,8 +116,8 @@ galleryRoutes.delete("/:id", async (c) => {
 galleryRoutes.post("/batch-delete", async (c) => {
   const sessionUser = await requirePermission(c, "gallery.delete");
   if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
   const ids = (body as { ids: string[] }).ids.filter((id) => typeof id === "string" && id.length > 0);
   if (ids.length === 0) return c.json({ ok: true, deleted: 0 });

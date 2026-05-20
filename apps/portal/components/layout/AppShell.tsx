@@ -1,4 +1,5 @@
 import { type PushMessage } from "@guild/shared";
+import type { PushEntityType } from "@guild/shared/constants/push-hints";
 import { ScrollProgress } from "@portal/components/effects";
 import { Alert, AppShell as MantineAppShell } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
@@ -41,6 +42,16 @@ function isWikiPath(pathname: string): boolean {
 }
 
 const HAS_VIEW_TRANSITIONS = typeof document !== "undefined" && "startViewTransition" in document;
+
+const ENTITY_QUERY_KEYS = {
+  announcement: [queryKeys.announcements.all],
+  event: [queryKeys.events.all, queryKeys.dashboard.all, queryKeys.guildWar.events()],
+  wiki: [queryKeys.wiki.all],
+  gallery: [queryKeys.gallery.all],
+  guild_war: [queryKeys.guildWar.all],
+  member_profile: [queryKeys.users.all, queryKeys.myProfile.all],
+  member_badge: [],
+} satisfies Record<PushEntityType, readonly (readonly string[])[]>;
 
 function AnimatedOutlet({ pathname, enabled }: { pathname: string; enabled: boolean }) {
   const [animKey, setAnimKey] = useState(0);
@@ -194,28 +205,11 @@ export function AppShell() {
     (message: PushMessage) => {
       if (message.type === "entity_changed") {
         void queryClient.invalidateQueries({ queryKey: queryKeys.cmdk.all });
-        switch (message.entity_type) {
-          case "announcement":
-            void queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
-            break;
-          case "event":
-            void queryClient.invalidateQueries({ queryKey: queryKeys.events.all });
-            void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-            void queryClient.invalidateQueries({ queryKey: queryKeys.guildWar.events() });
-            break;
-          case "wiki":
-            void queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
-            break;
-          case "gallery":
-            void queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
-            break;
-          case "guild_war":
-            void queryClient.invalidateQueries({ queryKey: queryKeys.guildWar.all });
-            break;
-          case "member_profile":
-            void queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
-            void queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.all });
-            break;
+        const keys = ENTITY_QUERY_KEYS[message.entity_type];
+        if (keys) {
+          for (const key of keys) {
+            void queryClient.invalidateQueries({ queryKey: key });
+          }
         }
       }
       if (message.type === "announcement_published") {
@@ -319,10 +313,7 @@ export function AppShell() {
     [markFeatureAsRead],
   );
 
-  const displayPushEntries = useMemo(
-    () => pushEntries.filter((entry) => entry.type !== "member_online"),
-    [pushEntries],
-  );
+  const displayPushEntries = pushEntries;
 
   const pushHasUnread = useMemo(
     () => displayPushEntries.some((entry) => entry.readAt === null),
@@ -333,7 +324,7 @@ export function AppShell() {
     (entryId: string, type: string) => {
       markPushAsRead(entryId);
 
-      if (type === "announcement_published") {
+      if (type === "announcement_published" || type === "announcement_changed") {
         markFeatureAsRead("announcements");
         void navigate({ to: "/announcements" });
         return;
@@ -349,8 +340,23 @@ export function AppShell() {
         return;
       }
 
-      if (type === "member_joined") {
+      if (type === "member_joined" || type === "member_changed") {
         markFeatureAsRead("members");
+        void navigate({ to: "/roster" });
+        return;
+      }
+
+      if (type === "gallery_changed") {
+        void navigate({ to: "/gallery" });
+        return;
+      }
+
+      if (type === "guild_war_changed") {
+        void navigate({ to: "/guild-war" });
+        return;
+      }
+
+      if (type === "badge_changed") {
         void navigate({ to: "/roster" });
         return;
       }

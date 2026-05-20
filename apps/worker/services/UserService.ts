@@ -13,6 +13,8 @@ import {
   type Permission,
   type Role,
 } from "@guild/shared";
+import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
@@ -82,12 +84,12 @@ export type ListUsersParams = {
   includeTotal?: boolean;
 };
 
-type EntityChangedInput = { entityType: string; entityId: string; hint: string };
+type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: PushHint };
 
 export type UserServiceDeps = {
   writeAuditLog: (input: {
-    entityType: string;
-    action: string;
+    entityType: AuditEntityType;
+    action: AuditAction;
     actorId: string;
     entityId: string;
     diffTitle?: string | null;

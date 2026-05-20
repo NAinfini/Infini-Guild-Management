@@ -3,20 +3,13 @@ import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
 import { Badge } from "@mantine/core";
 import type { ColumnDef } from "@tanstack/react-table";
+import { resolveResultTagColor } from "@portal/utils/guild-war";
 import type { HistorySummaryRow } from "../../components/feature/guild-war/WarHistoryTab";
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "-";
   return format(date, "yyyy-MM-dd HH:mm");
-}
-
-function resolveResultTagColor(result: string | null | undefined): string {
-  const normalized = (result ?? "").toLowerCase();
-  if (normalized.includes("win") || normalized.includes("胜")) return "green";
-  if (normalized.includes("loss") || normalized.includes("lose") || normalized.includes("负")) return "red";
-  if (normalized.includes("draw") || normalized.includes("平")) return "blue";
-  return "gray";
 }
 
 type UseGuildWarHistoryParams = {

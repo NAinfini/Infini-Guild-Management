@@ -8,7 +8,6 @@ import {
   updateRoleSchema,
 } from "@guild/shared";
 import { desc, eq, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { customAlphabet, nanoid } from "nanoid";
@@ -19,17 +18,12 @@ import { AdminService, type MediaLike } from "../services/AdminService";
 import { AdminAuditService, AuditLogQueryError } from "../services/AdminAuditService";
 import { createPasswordHash } from "../services/auth";
 import { errorLog } from "../db/schema/error-log";
-import { buildError, parseBoolean, parseJsonBody } from "./_shared";
+import { buildError, getDb, handleResult, parseBoolean, parseJsonBody, parsePage } from "./_shared";
 
-const generateInviteCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 8);
+const generateInviteCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 16);
 const generateTemporaryPassword = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", 12);
 
 export const adminRoutes = new Hono();
-
-function getDb(c: Context) {
-  const env = c.env as Bindings;
-  return drizzle(env.DB);
-}
 
 function getAdminService(c: Context) {
   const env = c.env as Bindings;
@@ -56,7 +50,7 @@ function getAdminAuditService(c: Context) {
     media: env.MEDIA as unknown as MediaLike,
     writeAuditLog: (input) => writeAuditLog(c, input),
     generateId: () => nanoid(),
-    signingSecret: env.SIGNING_SECRET ?? "",
+    signingSecret: env.SIGNING_SECRET,
   });
 }
 
@@ -72,9 +66,9 @@ adminRoutes.get("/invite-links", async (c) => {
   const sessionUser = await requirePermission(c, "admin.invite.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).listInviteLinks(parseBoolean(c.req.query("include_expired")) ?? false, parseBoolean(c.req.query("include_revoked")) ?? false);
-  if (!result.ok) return buildError(c, result.code, result.message, result.details);
+  if (!result.ok) return handleResult(c, result);
   const canManage = sessionUser.permissions.has("admin.invite.manage");
-  const data = canManage ? result.data : (result.data as Record<string, unknown>[]).map(({ code: _, ...rest }) => ({ ...rest, code: "••••••••" }));
+  const data = canManage ? result.data : (result.data as Record<string, unknown>[]).map(({ code: _, ...rest }) => ({ ...rest, code: "••••••••••••••••" }));
   return c.json(data);
 });
 
@@ -82,7 +76,7 @@ adminRoutes.get("/invite-links/stats", async (c) => {
   const sessionUser = await requirePermission(c, "admin.invite.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).getInviteLinkStats();
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result);
 });
 
 adminRoutes.post("/invite-links", async (c) => {
@@ -93,21 +87,23 @@ adminRoutes.post("/invite-links", async (c) => {
   const parsed = createInviteLinkSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid invite payload", parsed.error.flatten());
   const result = await getAdminService(c).createInviteLink(sessionUser.id, parsed.data.max_uses, parsed.data.expires_at ?? null);
-  return result.ok ? c.json(result.data, 201) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result, 201);
 });
 
 adminRoutes.delete("/invite-links/:id", async (c) => {
   const sessionUser = await requirePermission(c, "admin.invite.manage");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).revokeInviteLink(sessionUser.id, c.req.param("id"));
-  return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
+  if (!result.ok) return handleResult(c, result);
+  return c.json({ ok: true });
 });
 
 adminRoutes.delete("/invite-links/:id/permanent", async (c) => {
   const sessionUser = await requirePermission(c, "admin.invite.manage");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).deleteInviteLink(sessionUser.id, c.req.param("id"));
-  return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
+  if (!result.ok) return handleResult(c, result);
+  return c.json({ ok: true });
 });
 
 // User Management
@@ -119,7 +115,7 @@ adminRoutes.patch("/users/batch/role", async (c) => {
   const parsed = batchRoleChangeSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid batch role payload", parsed.error.flatten());
   const result = await getAdminService(c).batchUpdateRole(sessionUser.id, parsed.data.user_ids, parsed.data.new_role);
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result);
 });
 
 adminRoutes.patch("/users/batch/deactivate", async (c) => {
@@ -130,7 +126,7 @@ adminRoutes.patch("/users/batch/deactivate", async (c) => {
   const parsed = batchDeactivateSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid batch deactivate payload", parsed.error.flatten());
   const result = await getAdminService(c).batchDeactivate(sessionUser.id, parsed.data.user_ids);
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result);
 });
 
 adminRoutes.patch("/users/batch/reactivate", async (c) => {
@@ -141,7 +137,7 @@ adminRoutes.patch("/users/batch/reactivate", async (c) => {
   const parsed = batchDeactivateSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid batch reactivate payload", parsed.error.flatten());
   const result = await getAdminService(c).batchReactivate(sessionUser.id, parsed.data.user_ids);
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result);
 });
 
 adminRoutes.patch("/users/batch/delete", async (c) => {
@@ -152,7 +148,7 @@ adminRoutes.patch("/users/batch/delete", async (c) => {
   const parsed = batchDeactivateSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid batch delete payload", parsed.error.flatten());
   const result = await getAdminService(c).batchDelete(sessionUser.id, parsed.data.user_ids);
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result);
 });
 
 adminRoutes.post("/users", async (c) => {
@@ -163,7 +159,8 @@ adminRoutes.post("/users", async (c) => {
   const parsed = createAdminMemberSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid create member payload", parsed.error.flatten());
   const result = await getAdminService(c).createMember(sessionUser.id, parsed.data.username);
-  return result.ok ? c.json({ ok: true, ...result.data }, 201) : buildError(c, result.code, result.message, result.details);
+  if (!result.ok) return handleResult(c, result);
+  return c.json({ ok: true, ...result.data }, 201);
 });
 
 adminRoutes.patch("/users/:id/role", async (c) => {
@@ -174,7 +171,8 @@ adminRoutes.patch("/users/:id/role", async (c) => {
   const parsed = batchRoleChangeSchema.shape.new_role.safeParse((body as { role?: unknown }).role);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role payload", parsed.error.flatten());
   const result = await getAdminService(c).updateUserRole(sessionUser.id, c.req.param("id"), parsed.data);
-  return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
+  if (!result.ok) return handleResult(c, result);
+  return c.json({ ok: true });
 });
 
 adminRoutes.patch("/users/:id/deactivate", async (c) => {
@@ -185,7 +183,8 @@ adminRoutes.patch("/users/:id/deactivate", async (c) => {
   const reason = (body as { reason?: unknown }).reason;
   if (reason !== undefined && typeof reason !== "string") return buildError(c, "VALIDATION_ERROR", "reason must be a string when provided");
   const result = await getAdminService(c).deactivateUser(sessionUser.id, c.req.param("id"), typeof reason === "string" ? reason : undefined);
-  return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
+  if (!result.ok) return handleResult(c, result);
+  return c.json({ ok: true });
 });
 
 adminRoutes.patch("/users/:id/reactivate", async (c) => {
@@ -196,7 +195,8 @@ adminRoutes.patch("/users/:id/reactivate", async (c) => {
   const reason = (body as { reason?: unknown }).reason;
   if (reason !== undefined && typeof reason !== "string") return buildError(c, "VALIDATION_ERROR", "reason must be a string when provided");
   const result = await getAdminService(c).reactivateUser(sessionUser.id, c.req.param("id"), typeof reason === "string" ? reason : undefined);
-  return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
+  if (!result.ok) return handleResult(c, result);
+  return c.json({ ok: true });
 });
 
 adminRoutes.post("/users/:id/reset-password", async (c) => {
@@ -207,7 +207,8 @@ adminRoutes.post("/users/:id/reset-password", async (c) => {
   const temporaryPasswordInput = (body as { temporary_password?: unknown }).temporary_password;
   if (temporaryPasswordInput !== undefined && typeof temporaryPasswordInput !== "string") return buildError(c, "VALIDATION_ERROR", "temporary_password must be a string when provided");
   const result = await getAdminService(c).resetPassword(sessionUser.id, c.req.param("id"), typeof temporaryPasswordInput === "string" ? temporaryPasswordInput : undefined);
-  return result.ok ? c.json({ ok: true, ...result.data }) : buildError(c, result.code, result.message, result.details);
+  if (!result.ok) return handleResult(c, result);
+  return c.json({ ok: true, ...result.data });
 });
 
 // Roles
@@ -215,7 +216,7 @@ adminRoutes.get("/roles", async (c) => {
   const sessionUser = await requirePermission(c, "admin.roles.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).listRoles();
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result);
 });
 
 adminRoutes.post("/roles", async (c) => {
@@ -226,7 +227,7 @@ adminRoutes.post("/roles", async (c) => {
   const parsed = createRoleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role payload", parsed.error.flatten());
   const result = await getAdminService(c).createRole(sessionUser.id, { ...parsed.data, color: parsed.data.color ?? undefined });
-  return result.ok ? c.json(result.data, 201) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result, 201);
 });
 
 adminRoutes.patch("/roles/:id", async (c) => {
@@ -237,14 +238,15 @@ adminRoutes.patch("/roles/:id", async (c) => {
   const parsed = updateRoleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role update payload", parsed.error.flatten());
   const result = await getAdminService(c).updateRole(sessionUser.id, c.req.param("id"), parsed.data);
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result);
 });
 
 adminRoutes.delete("/roles/:id", async (c) => {
   const sessionUser = await requirePermission(c, "admin.roles.manage");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).deleteRole(sessionUser.id, c.req.param("id"));
-  return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message, result.details);
+  if (!result.ok) return handleResult(c, result);
+  return c.json({ ok: true });
 });
 
 // Status
@@ -252,7 +254,7 @@ adminRoutes.get("/status", async (c) => {
   const sessionUser = await requirePermission(c, "admin.status.view", { freshPermissions: false });
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).getStatus();
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result);
 });
 
 // Analytics Settings
@@ -260,7 +262,7 @@ adminRoutes.get("/analytics-settings", async (c) => {
   const sessionUser = await requirePermission(c, "admin.analytics.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).getAnalyticsSettings();
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result);
 });
 
 adminRoutes.patch("/analytics-settings", async (c) => {
@@ -271,7 +273,7 @@ adminRoutes.patch("/analytics-settings", async (c) => {
   const parsed = analyticsSettingsSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid analytics settings payload", parsed.error.flatten());
   const result = await getAdminService(c).updateAnalyticsSettings(sessionUser.id, parsed.data);
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result);
 });
 
 // Audit Archive
@@ -279,7 +281,7 @@ adminRoutes.get("/audit-archive/months", async (c) => {
   const sessionUser = await requirePermission(c, "admin.audit.view");
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminAuditService(c).listArchiveMonths();
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result);
 });
 
 adminRoutes.get("/audit-archive/download", async (c) => {
@@ -288,7 +290,7 @@ adminRoutes.get("/audit-archive/download", async (c) => {
   const month = c.req.query("month");
   if (!month) return buildError(c, "VALIDATION_ERROR", "month query parameter required");
   const result = await getAdminAuditService(c).getArchiveDownloadLinks(sessionUser.id, month, (token) => buildArchiveDownloadUrl(c, token));
-  return result.ok ? c.json(result.data) : buildError(c, result.code, result.message, result.details);
+  return handleResult(c, result);
 });
 
 adminRoutes.get("/audit-archive/download/file", async (c) => {
@@ -347,9 +349,8 @@ adminRoutes.get("/error-log", async (c) => {
   if (sessionUser instanceof Response) return sessionUser;
 
   const db = getDb(c);
-  const pageRaw = Number.parseInt(c.req.query("page") ?? "", 10);
+  const page = parsePage(c.req.query("page"), 1);
   const limitRaw = Number.parseInt(c.req.query("limit") ?? "", 10);
-  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
   const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : 50;
   const sourceFilter = c.req.query("source");
 
@@ -373,6 +374,6 @@ adminRoutes.get("/error-log", async (c) => {
     total,
     page,
     limit,
-    total_pages: Math.ceil(total / limit),
+    total_pages: Math.max(1, Math.ceil(total / limit)),
   });
 });

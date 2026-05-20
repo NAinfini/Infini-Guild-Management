@@ -1,7 +1,5 @@
 import { and, desc, eq, isNull, like, or, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
-import type { Context } from "hono";
 import {
   announcements,
   events,
@@ -11,8 +9,7 @@ import {
   warHistory,
   wikiArticles,
 } from "../db/schema";
-import type { Bindings } from "../index";
-import { requireSessionUser } from "./_shared";
+import { getDb, requireSessionUser } from "./_shared";
 import { escapeLikePattern } from "../services/helpers";
 
 type SearchResultType = "user" | "event" | "announcement" | "wiki" | "gallery" | "war";
@@ -33,10 +30,6 @@ const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 50;
 
 export const searchRoutes = new Hono();
-
-function getDb(c: Context) {
-  return drizzle((c.env as Bindings).DB);
-}
 
 function parseLimit(value: string | undefined): number {
   const parsed = Number.parseInt(value ?? "", 10);

@@ -142,7 +142,6 @@ export default defineConfig(({ mode }) => {
         "react-dom",
         "@mantine/core",
         "@mantine/hooks",
-        "@gfazioli/mantine-split-pane",
         "mantine-contextmenu",
       ],
     },

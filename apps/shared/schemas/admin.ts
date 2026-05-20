@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PERMISSIONS } from "../constants/roles";
+import { AUDIT_ENTITY_TYPES, AUDIT_ACTIONS } from "../constants/audit";
 
 const usernameSchema = z.string().min(1).max(50).regex(/^[a-zA-Z0-9_一-鿿]+$/);
 const permissionKeySchema = z.enum(PERMISSIONS);
@@ -31,8 +32,8 @@ export const createInviteLinkSchema = z.object({
 
 export const auditLogSchema = z.object({
   id: z.string(),
-  entity_type: z.string(),
-  action: z.string(),
+  entity_type: z.enum(AUDIT_ENTITY_TYPES),
+  action: z.enum(AUDIT_ACTIONS),
   actor_id: z.string(),
   entity_id: z.string(),
   diff_title: z.string().nullable(),

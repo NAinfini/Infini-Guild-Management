@@ -1561,7 +1561,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     },
     {
       id: nanoid(),
-      entityType: "invite",
+      entityType: "invite_link",
       action: "revoke",
       actorId: adminId,
       entityId: "SEEDREVOKED",
@@ -1582,7 +1582,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     {
       id: nanoid(),
       entityType: "gallery",
-      action: "upload",
+      action: "upload_images",
       actorId: memberIds[2],
       entityId: galleryItemRows[2].id!,
       diffTitle: "Uploaded strategy reference image",

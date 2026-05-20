@@ -1,4 +1,5 @@
 ﻿import type { z } from "zod";
+import type { PushEntityType, PushHint } from "../constants/push-hints";
 import type { userSchema, memberProfileSchema } from "../schemas/user";
 import type { eventSchema, eventParticipantSchema, eventPollSchema, eventRaffleWinnerSchema, recurringTemplateSchema } from "../schemas/event";
 import type { announcementSchema } from "../schemas/announcement";
@@ -58,10 +59,10 @@ export type CursorResponse<T> = {
 
 export type EntityChangedPushMessage = {
   type: "entity_changed";
-  entity_type: string;
+  entity_type: PushEntityType;
   entity_id: string;
   updated_at: string;
-  hint: string;
+  hint: PushHint;
   display_name?: string;
 };
 

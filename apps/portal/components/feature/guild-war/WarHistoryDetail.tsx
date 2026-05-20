@@ -9,6 +9,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { CrownOutlined, ShieldOutlined, SwordsOutlined, TargetOutlined } from "@portal/utils/icons";
+import { resolveResultTagColor } from "@portal/utils/guild-war";
 import { InfiniTable, useReactTable } from "@portal/components/shared/InfiniTable";
 import ReactEChartsCore from "echarts-for-react/esm/core";
 import { BarChart, LineChart } from "echarts/charts";
@@ -36,14 +37,6 @@ echarts.use([
   TooltipComponent,
   CanvasRenderer,
 ]);
-
-function resolveResultTagColor(result: string | null | undefined): string {
-  const normalized = (result ?? "").toLowerCase();
-  if (normalized.includes("win") || normalized.includes("胜")) return "green";
-  if (normalized.includes("loss") || normalized.includes("lose") || normalized.includes("负")) return "red";
-  if (normalized.includes("draw") || normalized.includes("平")) return "blue";
-  return "gray";
-}
 
 type WarHistoryDetailProps = {
   opened: boolean;

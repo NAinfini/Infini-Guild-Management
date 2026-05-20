@@ -6,7 +6,6 @@ import {
   updateEventSchema,
   updateTemplateSchema,
 } from "@guild/shared";
-import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -23,18 +22,13 @@ import {
   toTemplatePayload,
 } from "../services/EventService";
 import { publishEntityChanged } from "../services/push";
-import { buildError, MEDIA_CACHE_CONTROL, parseBoolean, parseJsonBody, parsePage, requireSessionUser } from "./_shared";
+import { buildError, collectFiles, getDb, parseBoolean, parseJsonBody, parsePage, requireSessionUser, serveR2Object } from "./_shared";
 
 export const eventsRoutes = new Hono();
 
-function getDb(c: Context) {
-  return drizzle((c.env as Bindings).DB);
-}
-
 function getEventService(c: Context) {
-  const env = c.env as Bindings;
   const db = getDb(c);
-  const svc: EventService = new EventService(db as never, env.DB as never, env.MEDIA as never, {
+  const svc: EventService = new EventService(db as never, (c.env as Bindings).DB as never, (c.env as Bindings).MEDIA as never, {
     getEventById: (eventId) => svc.getEventById(eventId),
     getUsername: async (userId) => {
       const row = (await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1))[0];
@@ -52,14 +46,6 @@ async function requireEventEdit(c: Context) { return requirePermission(c, "event
 async function requireEventArchive(c: Context) { return requirePermission(c, "events.archive"); }
 async function requireEventDelete(c: Context) { return requirePermission(c, "events.delete"); }
 async function requireEventTemplates(c: Context) { return requirePermission(c, "events.templates"); }
-
-function collectFiles(form: FormData): File[] {
-  const files: File[] = [];
-  const single = form.get("file");
-  if (single instanceof File) files.push(single);
-  for (const item of form.getAll("files")) { if (item instanceof File) files.push(item); }
-  return files;
-}
 
 async function parseCreateEventRequest(c: Context): Promise<{ body: unknown; files: File[] } | Response> {
   const ct = c.req.header("content-type") ?? "";
@@ -111,17 +97,7 @@ eventsRoutes.get("/image", async (c) => {
   const key = c.req.query("key");
   if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
   if (!key.startsWith("events/")) return buildError(c, "FORBIDDEN", "Invalid event image key");
-
-  const object = await (c.env as Bindings).MEDIA.get(key);
-  if (!object?.body) return buildError(c, "NOT_FOUND", "Event image not found");
-
-  const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
-  headers.set("Cache-Control", MEDIA_CACHE_CONTROL);
-  headers.set("ETag", object.httpEtag);
-
-  return new Response(object.body, { headers });
+  return serveR2Object(c, key, "Event image not found");
 });
 
 eventsRoutes.get("/:id", async (c) => {

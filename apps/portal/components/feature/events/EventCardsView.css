@@ -206,52 +206,29 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 8px 10px;
+  padding: 10px 8px 10px;
   border: 1px solid color-mix(in srgb, #ec4899 22%, transparent);
   border-radius: 8px;
   background: color-mix(in srgb, #ec4899 6%, transparent);
 }
 
-.event-card__raffle-winners-icon {
+.event-card__raffle-winners-badge {
   position: absolute;
-  top: -8px;
+  top: -11px;
   left: -6px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
+  gap: 4px;
+  padding: 2px 8px 2px 5px;
+  border-radius: 10px;
   background: var(--mantine-color-pink-5, #ec4899);
   color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.event-card__poll-ended {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 8px 10px;
-  border: 1px solid color-mix(in srgb, #14b8a6 22%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, #14b8a6 6%, transparent);
-}
-
-.event-card__poll-ended-icon {
-  position: absolute;
-  top: -8px;
-  left: -6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--mantine-color-teal-5, #14b8a6);
-  color: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  z-index: 1;
 }
 
 .event-card__members-left {

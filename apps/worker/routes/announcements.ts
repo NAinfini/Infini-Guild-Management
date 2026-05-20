@@ -5,7 +5,6 @@ import {
   hasAnyPermission,
   updateAnnouncementSchema,
 } from "@guild/shared";
-import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
@@ -13,13 +12,13 @@ import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishAnnouncementPublished, publishEntityChanged } from "../services/push";
 import { AnnouncementService } from "../services/AnnouncementService";
-import { buildError, handleResult, MEDIA_CACHE_CONTROL, parseBoolean, parsePage, safeFormData } from "./_shared";
+import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
 
 export const announcementsRoutes = new Hono();
 
 function getService(c: Context): AnnouncementService {
   const env = c.env as Bindings;
-  return new AnnouncementService(drizzle(env.DB), {
+  return new AnnouncementService(getDb(c), {
     media: env.MEDIA,
     writeAuditLog: (input) => writeAuditLog(c, input),
     publishEntityChanged: (input) => publishEntityChanged(c, input),
@@ -46,16 +45,7 @@ announcementsRoutes.get("/image", async (c) => {
   const key = c.req.query("key");
   if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
   if (!key.startsWith("announcement/")) return buildError(c, "FORBIDDEN", "Invalid announcement image key");
-
-  const object = await (c.env as Bindings).MEDIA.get(key);
-  if (!object?.body) return buildError(c, "NOT_FOUND", "Announcement image not found");
-
-  const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
-  headers.set("Cache-Control", MEDIA_CACHE_CONTROL);
-  headers.set("ETag", object.httpEtag);
-  return new Response(object.body, { headers });
+  return serveR2Object(c, key, "Announcement image not found");
 });
 
 announcementsRoutes.get("/:id", async (c) => {
@@ -68,8 +58,8 @@ announcementsRoutes.get("/:id", async (c) => {
 announcementsRoutes.post("/", async (c) => {
   const sessionUser = await requireAnnouncementCreate(c);
   if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = createAnnouncementSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid announcement payload", parsed.error.flatten());
   const result = await getService(c).create(sessionUser.id, parsed.data);
@@ -80,8 +70,8 @@ announcementsRoutes.post("/", async (c) => {
 announcementsRoutes.patch("/:id", async (c) => {
   const sessionUser = await requireAnnouncementEdit(c);
   if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = updateAnnouncementSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid announcement payload", parsed.error.flatten());
   const ifMatchHeader = c.req.header("If-Match");
@@ -111,10 +101,7 @@ announcementsRoutes.post("/:id/images", async (c) => {
   const formOrError = await safeFormData(c);
   if (formOrError instanceof Response) return formOrError;
   const form = formOrError;
-  const files: File[] = [];
-  const single = form.get("file");
-  if (single instanceof File) files.push(single);
-  for (const item of form.getAll("files")) { if (item instanceof File) files.push(item); }
+  const files = collectFiles(form);
 
   if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
   for (const file of files) {

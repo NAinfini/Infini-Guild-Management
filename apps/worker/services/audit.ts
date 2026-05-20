@@ -4,10 +4,11 @@ import { nanoid } from "nanoid";
 import { auditLog } from "../db/schema";
 import type { Bindings } from "../index";
 import { createLogger } from "../utils/logger";
+import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 
-type WriteAuditLogInput = {
-  entityType: string;
-  action: string;
+export type WriteAuditLogInput = {
+  entityType: AuditEntityType;
+  action: AuditAction;
   actorId: string;
   entityId: string;
   diffTitle?: string | null;

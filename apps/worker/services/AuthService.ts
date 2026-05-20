@@ -5,6 +5,8 @@ import {
   userSchema,
   type Permission,
 } from "@guild/shared";
+import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
@@ -26,8 +28,8 @@ export type AuthServiceDeps = {
   verifyPassword: (password: string, salt: string, hash: string) => Promise<boolean>;
   createSession: (userId: string, opts?: { stayLoggedIn?: boolean }) => Promise<void>;
   destroySession: (sessionId?: string) => Promise<void>;
-  publishEntityChanged?: (input: { entityType: string; entityId: string; hint: string; displayName?: string }) => Promise<void>;
-  writeAuditLog: (input: { entityType: string; action: string; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null }) => Promise<void>;
+  publishEntityChanged?: (input: { entityType: PushEntityType; entityId: string; hint: PushHint; displayName?: string }) => Promise<void>;
+  writeAuditLog: (input: { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null }) => Promise<void>;
 };
 
 // --- Helpers ---
@@ -106,6 +108,8 @@ export class AuthService {
   async login(username: string, password: string, stayLoggedIn: boolean): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
     const account = (await this.db.select({ ...USER_COLS, passwordHash: userAuthPassword.passwordHash, salt: userAuthPassword.salt }).from(users).innerJoin(userAuthPassword, eq(users.id, userAuthPassword.userId)).where(eq(users.username, username)).limit(1))[0];
     if (!account || !account.isActive || account.deletedAt !== null) {
+      // Run password derivation with a dummy salt to prevent timing-based username enumeration
+      await this.deps.verifyPassword(password, "AAAAAAAAAAAAAAAAAAAAAA==", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
       logger.warn("Login failed: invalid credentials or inactive account", { username });
       return err("UNAUTHORIZED", "Invalid credentials");
     }

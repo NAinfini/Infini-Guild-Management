@@ -39,8 +39,8 @@ const CATEGORY_ICONS: Record<string, ComponentType<{ size?: number }>> = {
   adminErrorLog: AlertTriangleIcon,
 };
 
-function epKey(ep: EndpointDef): string {
-  return `${ep.method}-${ep.path}`;
+export function epKey(catKey: string, ep: EndpointDef): string {
+  return `${catKey}:${ep.method}-${ep.path}`;
 }
 
 function statusCls(status: number | null): string {
@@ -103,15 +103,15 @@ export function ApiTestCategory({
 }) {
   const [open, setOpen] = useState(false);
 
-  const catRunning = category.endpoints.some((ep) => runningSet.has(epKey(ep)));
-  const catDone = category.endpoints.filter((ep) => resultMap.has(epKey(ep))).length;
+  const catRunning = category.endpoints.some((ep) => runningSet.has(epKey(category.key, ep)));
+  const catDone = category.endpoints.filter((ep) => resultMap.has(epKey(category.key, ep))).length;
   const catTotal = category.endpoints.length;
   const allPassed = catDone === catTotal && catDone > 0 && category.endpoints.every((ep) => {
-    const r = resultMap.get(epKey(ep));
+    const r = resultMap.get(epKey(category.key, ep));
     return r && (isOptionalSkip(r) || r.status !== null && r.status >= 200 && r.status < 400);
   });
   const hasFail = category.endpoints.some((ep) => {
-    const r = resultMap.get(epKey(ep));
+    const r = resultMap.get(epKey(category.key, ep));
     return r && !isOptionalSkip(r) && (r.status === null || r.status >= 400);
   });
   const pct = catTotal > 0 ? Math.round((catDone / catTotal) * 100) : 0;
@@ -119,7 +119,7 @@ export function ApiTestCategory({
   let avgLatency = 0;
   let latencyCount = 0;
   for (const ep of category.endpoints) {
-    const r = resultMap.get(epKey(ep));
+    const r = resultMap.get(epKey(category.key, ep));
     if (r) {
       avgLatency += r.latencyMs;
       latencyCount++;
@@ -202,10 +202,10 @@ export function ApiTestCategory({
         <div className="api-cat__endpoints">
           {category.endpoints.map((ep) => (
             <EndpointRow
-              key={epKey(ep)}
+              key={epKey(category.key, ep)}
               endpoint={ep}
-              running={runningSet.has(epKey(ep))}
-              result={resultMap.get(epKey(ep)) ?? null}
+              running={runningSet.has(epKey(category.key, ep))}
+              result={resultMap.get(epKey(category.key, ep)) ?? null}
             />
           ))}
         </div>

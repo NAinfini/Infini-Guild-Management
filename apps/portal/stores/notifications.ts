@@ -13,7 +13,16 @@ type FeatureState = {
 
 type FeatureMap = Record<NotificationFeature, FeatureState>;
 
-type PushNotificationEntryType = "announcement_published" | "member_online" | "event_changed" | "wiki_changed" | "member_joined";
+type PushNotificationEntryType =
+  | "announcement_published"
+  | "announcement_changed"
+  | "event_changed"
+  | "wiki_changed"
+  | "gallery_changed"
+  | "guild_war_changed"
+  | "badge_changed"
+  | "member_joined"
+  | "member_changed";
 
 type PushNotificationEntry = {
   id: string;
@@ -28,7 +37,17 @@ const FEATURE_STORAGE_KEY = "portal:last_seen";
 const PUSH_STORAGE_KEY = "portal:push-notification-center";
 const MAX_PUSH_ENTRIES = 80;
 const FEATURES: NotificationFeature[] = ["announcements", "members"];
-const ENTRY_TYPES: PushNotificationEntryType[] = ["announcement_published", "member_online", "event_changed", "wiki_changed", "member_joined"];
+const ENTRY_TYPES: PushNotificationEntryType[] = [
+  "announcement_published",
+  "announcement_changed",
+  "event_changed",
+  "wiki_changed",
+  "gallery_changed",
+  "guild_war_changed",
+  "badge_changed",
+  "member_joined",
+  "member_changed",
+];
 
 function emptyFeatureState(lastSeenAt?: string): FeatureState {
   return {
@@ -173,6 +192,13 @@ function isNewerThanLastSeen(lastSeenAt: string, latestUpdatedAt: string | null)
   return Date.parse(latestUpdatedAt) > Date.parse(lastSeenAt);
 }
 
+function resolveHintText(hint: string): string {
+  const key = `common:notification.hint.${hint}`;
+  const translated = i18n.t(key, { defaultValue: "" });
+  if (translated && translated !== key) return translated;
+  return hint.replace(/_/g, " ");
+}
+
 function createEntryFromPush(message: PushMessage): PushNotificationEntry | null {
   if (message.type === "announcement_published") {
     return {
@@ -187,28 +213,90 @@ function createEntryFromPush(message: PushMessage): PushNotificationEntry | null
 
   if (message.type === "entity_changed") {
     const occurredAt = sanitizeUnknownIso(message.updated_at);
-    if (message.entity_type === "wiki" && message.hint === "article_created") {
-      return {
-        id: `wiki:${message.entity_id}:${message.hint}`,
-        type: "wiki_changed",
-        title: i18n.t("common:notification.title.article_created", { defaultValue: "New Wiki Article" }),
-        message: i18n.t("common:notification.hint.article_created"),
-        occurredAt,
-        readAt: null,
-      };
-    }
-    if (message.entity_type === "member_profile" && message.hint === "member_joined") {
-      const name = message.display_name;
-      return {
-        id: `member:${message.entity_id}:${message.hint}`,
-        type: "member_joined",
-        title: i18n.t("common:notification.hint.member_joined"),
-        message: name
-          ? i18n.t("common:notification.member_joined_message", { name, defaultValue: "{{name}} joined the guild" })
-          : i18n.t("common:notification.hint.member_joined"),
-        occurredAt,
-        readAt: null,
-      };
+    const hintMessage = resolveHintText(message.hint);
+
+    switch (message.entity_type) {
+      case "wiki": {
+        const titleKey = message.hint === "article_created" ? "article_created" : "wiki_updated";
+        return {
+          id: `wiki:${message.entity_id}:${message.hint}`,
+          type: "wiki_changed",
+          title: i18n.t(`common:notification.title.${titleKey}`),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
+      }
+      case "event":
+        return {
+          id: `event:${message.entity_id}:${message.hint}`,
+          type: "event_changed",
+          title: i18n.t("common:notification.title.event_updated"),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
+      case "member_profile": {
+        if (message.hint === "member_joined") {
+          const name = message.display_name;
+          return {
+            id: `member:${message.entity_id}:${message.hint}`,
+            type: "member_joined",
+            title: i18n.t("common:notification.hint.member_joined"),
+            message: name
+              ? i18n.t("common:notification.member_joined_message", { name, defaultValue: "{{name}} joined the guild" })
+              : i18n.t("common:notification.hint.member_joined"),
+            occurredAt,
+            readAt: null,
+          };
+        }
+        return {
+          id: `member:${message.entity_id}:${message.hint}`,
+          type: "member_changed",
+          title: i18n.t("common:notification.title.member_updated"),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
+      }
+      case "announcement": {
+        const announcementTitleKey = `announcement_${message.hint.replace("announcement_", "")}`;
+        return {
+          id: `announcement:${message.entity_id}:${message.hint}`,
+          type: "announcement_changed",
+          title: i18n.t(`common:notification.title.${announcementTitleKey}`, { defaultValue: i18n.t("common:notification.type.announcement") }),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
+      }
+      case "gallery":
+        return {
+          id: `gallery:${message.entity_id}:${message.hint}`,
+          type: "gallery_changed",
+          title: i18n.t("common:notification.title.gallery_updated"),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
+      case "guild_war":
+        return {
+          id: `guild_war:${message.entity_id}:${message.hint}`,
+          type: "guild_war_changed",
+          title: i18n.t("common:notification.title.guild_war_updated"),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
+      case "member_badge":
+        return {
+          id: `badge:${message.entity_id}:${message.hint}`,
+          type: "badge_changed",
+          title: i18n.t("common:notification.title.badge_updated"),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
     }
   }
 

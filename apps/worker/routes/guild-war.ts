@@ -7,7 +7,6 @@ import {
   updateGuildWarRoleTagsSchema,
   updateWarHistorySchema,
 } from "@guild/shared";
-import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
@@ -15,14 +14,9 @@ import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { GuildWarService } from "../services/GuildWarService";
-import { buildError, handleResult, parsePage } from "./_shared";
+import { buildError, getDb, handleResult, parsePage, parseJsonBody } from "./_shared";
 
 export const guildWarRoutes = new Hono();
-
-function getDb(c: Context) {
-  const env = c.env as Bindings;
-  return drizzle(env.DB);
-}
 
 function getService(c: Context): GuildWarService {
   const env = c.env as Bindings;
@@ -52,8 +46,8 @@ guildWarRoutes.get("/concluded-event-ids", async (c) => {
 guildWarRoutes.post("/save-teams", async (c) => {
   const user = await requireGuildWarTeamsEdit(c);
   if (user instanceof Response) return user;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = saveTeamsPayloadSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid save teams payload", parsed.error.flatten());
   const etagFromHeader = c.req.header("If-Match");
@@ -65,8 +59,8 @@ guildWarRoutes.post("/save-teams", async (c) => {
 guildWarRoutes.post("/move", async (c) => {
   const user = await requireGuildWarTeamsEdit(c);
   if (user instanceof Response) return user;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = moveGuildWarMemberSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid move payload", parsed.error.flatten());
   const etagFromHeader = c.req.header("If-Match");
@@ -78,8 +72,8 @@ guildWarRoutes.post("/move", async (c) => {
 guildWarRoutes.patch("/role-tag", async (c) => {
   const user = await requireGuildWarTeamsEdit(c);
   if (user instanceof Response) return user;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = updateGuildWarRoleTagsSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role tag update payload", parsed.error.flatten());
   const result = await getService(c).setRoleTags(user.id, parsed.data.event_id, parsed.data.updates);
@@ -89,8 +83,8 @@ guildWarRoutes.patch("/role-tag", async (c) => {
 guildWarRoutes.post("/conclude", async (c) => {
   const user = await requireGuildWarTeamsEdit(c);
   if (user instanceof Response) return user;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = concludeWarPayloadSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid conclude payload", parsed.error.flatten());
   const result = await getService(c).concludeWar(user.id, parsed.data.event_id, parsed.data.war_info, parsed.data.member_stats);
@@ -116,8 +110,8 @@ guildWarRoutes.get("/history", async (c) => {
 });
 
 guildWarRoutes.post("/history/batch", async (c) => {
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
   const ids = ((body as { ids: string[] }).ids).filter((id) => typeof id === "string" && id.length > 0);
   if (ids.length === 0) return c.json({ data: [] });
@@ -134,8 +128,8 @@ guildWarRoutes.get("/history/:id", async (c) => {
 guildWarRoutes.post("/history", async (c) => {
   const user = await requireGuildWarHistoryEditor(c);
   if (user instanceof Response) return user;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = createWarHistorySchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid war history payload", parsed.error.flatten());
   const result = await getService(c).createHistory(user.id, parsed.data);
@@ -146,8 +140,8 @@ guildWarRoutes.post("/history", async (c) => {
 guildWarRoutes.patch("/history/:id", async (c) => {
   const user = await requireGuildWarHistoryEditor(c);
   if (user instanceof Response) return user;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = updateWarHistorySchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid war history payload", parsed.error.flatten());
   const result = await getService(c).updateHistory(user.id, c.req.param("id"), parsed.data);
@@ -164,8 +158,8 @@ guildWarRoutes.delete("/history/:id", async (c) => {
 guildWarRoutes.post("/history/batch-delete", async (c) => {
   const user = await requireGuildWarHistoryEditor(c);
   if (user instanceof Response) return user;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
   const ids = ((body as { ids: string[] }).ids).filter((id) => typeof id === "string" && id.length > 0);
   if (ids.length === 0) return c.json({ ok: true, deleted: 0 });
@@ -177,8 +171,8 @@ guildWarRoutes.post("/history/batch-delete", async (c) => {
 guildWarRoutes.patch("/history/:id/member-stats/batch", async (c) => {
   const user = await requireGuildWarHistoryEditor(c);
   if (user instanceof Response) return user;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { updates?: unknown }).updates)) return buildError(c, "VALIDATION_ERROR", "Body must contain an updates array");
   const updates = (body as { updates: Array<{ user_id: string; stats: unknown }> }).updates;
   if (updates.length === 0) return c.json({ data: [] });
@@ -195,8 +189,8 @@ guildWarRoutes.patch("/history/:id/member-stats/batch", async (c) => {
 guildWarRoutes.patch("/history/:id/member-stats/:userId", async (c) => {
   const user = await requireGuildWarHistoryEditor(c);
   if (user instanceof Response) return user;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = updateMemberStatsSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid member stats payload", parsed.error.flatten());
   const result = await getService(c).updateMemberStats(user.id, c.req.param("id"), c.req.param("userId"), parsed.data);

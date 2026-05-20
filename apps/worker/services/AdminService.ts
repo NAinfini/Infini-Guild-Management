@@ -8,6 +8,7 @@ import {
   type Permission,
   type AdminRole,
 } from "@guild/shared";
+import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import { activeGame } from "@guild/shared/games";
 import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
@@ -92,8 +93,8 @@ export function parseAnalyticsInput(record: Record<string, unknown>): AnalyticsS
 }
 
 type AuditLogInput = {
-  entityType: string;
-  action: string;
+  entityType: AuditEntityType;
+  action: AuditAction;
   actorId: string;
   entityId: string;
   diffTitle?: string | null;

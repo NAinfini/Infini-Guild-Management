@@ -1,4 +1,6 @@
 import { createEventSchema, eventParticipantSchema, eventSchema, recurringTemplateSchema, updateEventSchema, eventRaffleWinnerSchema } from "@guild/shared";
+import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, like, lte, or, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
@@ -53,8 +55,8 @@ type MediaLike = {
 };
 
 type AuditLogInput = {
-  entityType: string;
-  action: string;
+  entityType: AuditEntityType;
+  action: AuditAction;
   actorId: string;
   entityId: string;
   diffTitle?: string | null;
@@ -131,7 +133,7 @@ type EventServiceDeps = {
   getUsername: (userId: string) => Promise<string | null>;
   materializeRecurringSeries: (templateId: string) => Promise<void>;
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
-  publishEntityChanged: (payload: { entityType: string; entityId: string; hint: string }) => Promise<void>;
+  publishEntityChanged: (payload: { entityType: PushEntityType; entityId: string; hint: PushHint }) => Promise<void>;
   now?: () => string;
   createId?: () => string;
   createImageKey?: (eventId: string) => string;
@@ -481,6 +483,9 @@ export class EventService {
     const participantId = this.deps.createId?.() ?? nanoid();
     const eventRow = await this.deps.getEventById(eventId);
     if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
+    if (eventRow.visibleAt && new Date(eventRow.visibleAt) > new Date(this.deps.now?.() ?? new Date().toISOString())) {
+      return { ok: false, code: "NOT_FOUND", message: "Event not found" };
+    }
     if (eventRow.type === "poll") {
       return { ok: false, code: "CONFLICT", message: "Poll events do not support signups" };
     }

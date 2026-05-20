@@ -3,10 +3,10 @@ import { useDebouncedValue, useDisclosure, useHotkeys, useLocalStorage } from "@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../../api/query-keys";
-import { searchGlobal, type SearchResult } from "../../services/SearchService";
+import { searchGlobal, type SearchResult, type SearchResultType } from "../../services/SearchService";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import {
   CalendarOutlined,
@@ -37,6 +37,26 @@ const isMac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform
 function normalizeSearchText(value: string): string {
   return value.trim().toLowerCase();
 }
+
+const CATEGORY_LABEL_KEY = {
+  user: "cmdk.category.members",
+  event: "cmdk.category.events",
+  announcement: "cmdk.category.announcements",
+  wiki: "cmdk.category.wiki",
+  gallery: "cmdk.category.gallery",
+  war: "cmdk.category.guildWar",
+} as const satisfies Record<SearchResultType, string>;
+
+const CATEGORY_ICON = {
+  user: <UserOutlined />,
+  event: <CalendarOutlined />,
+  announcement: <NotificationOutlined />,
+  wiki: <FileSearchOutlined />,
+  gallery: <PictureOutlined />,
+  war: <TeamOutlined />,
+} satisfies Record<SearchResultType, ReactNode>;
+
+const ROLE_BADGE_COLOR: Record<string, string> = { admin: "red", moderator: "orange" };
 
 export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
   const navigate = useNavigate();
@@ -111,54 +131,11 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
     void navigate({ to: item.to });
   };
 
-  const categoryLabel = (category: SearchItem["category"]) => {
-    switch (category) {
-      case "user":
-        return t("cmdk.category.members");
-      case "event":
-        return t("cmdk.category.events");
-      case "announcement":
-        return t("cmdk.category.announcements");
-      case "wiki":
-        return t("cmdk.category.wiki");
-      case "gallery":
-        return t("cmdk.category.gallery");
-      case "war":
-        return t("cmdk.category.guildWar");
-      default:
-        return category;
-    }
-  };
+  const categoryLabel = (category: SearchItem["category"]) => t(CATEGORY_LABEL_KEY[category]);
 
-  const categoryIcon = (category: SearchItem["category"]) => {
-    switch (category) {
-      case "user":
-        return <UserOutlined />;
-      case "event":
-        return <CalendarOutlined />;
-      case "announcement":
-        return <NotificationOutlined />;
-      case "wiki":
-        return <FileSearchOutlined />;
-      case "gallery":
-        return <PictureOutlined />;
-      case "war":
-        return <TeamOutlined />;
-      default:
-        return <SearchOutlined />;
-    }
-  };
+  const categoryIcon = (category: SearchItem["category"]) => CATEGORY_ICON[category];
 
-  const roleBadgeColor = (role: string | undefined): string => {
-    switch (role) {
-      case "admin":
-        return "red";
-      case "moderator":
-        return "orange";
-      default:
-        return "blue";
-    }
-  };
+  const roleBadgeColor = (role: string | undefined): string => ROLE_BADGE_COLOR[role ?? ""] ?? "blue";
 
   return (
     <>

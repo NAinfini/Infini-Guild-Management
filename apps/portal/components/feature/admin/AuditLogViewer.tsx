@@ -1,4 +1,5 @@
 import type { AuditLogEntry } from "@guild/shared";
+import type { AuditAction, AuditEntityType } from "@guild/shared/constants/audit";
 import { Alert, Badge, Group, NumberInput, Pagination, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
 import { ArrowRightIcon, ChevronDownIcon } from "@portal/components/icons";
 import { useMemo, useState } from "react";
@@ -130,39 +131,79 @@ function parseDetailData(
 
 type ActionColor = "blue" | "green" | "red" | "yellow" | "grape" | "cyan" | "orange" | "gray";
 
-function getActionColor(action: string): ActionColor {
-  if (action === "create" || action === "init" || action === "admin_create_member" || action === "create_video" || action === "register" || action === "complete") return "green";
-  if (action === "delete" || action === "remove_by_moderator" || action === "batch_remove_by_moderator" || action === "batch_delete") return "red";
-  if (action === "update" || action === "role_change" || action === "password_reset" || action === "update_role" || action === "batch_role_update" || action === "batch_update" || action === "set_role_tag" || action === "change_username") return "blue";
-  if (action === "archive" || action === "pause" || action === "deactivate" || action === "batch_deactivate") return "yellow";
-  if (action === "join" || action === "add_by_moderator" || action === "batch_add_by_moderator" || action === "vote") return "cyan";
-  if (action === "leave") return "orange";
-  if (action === "upload" || action === "upload_images") return "grape";
-  if (action === "resume" || action === "reactivate" || action === "unarchive" || action === "batch_reactivate") return "green";
-  if (action === "change_password" || action === "reset_password") return "orange";
-  if (action === "revoke") return "red";
-  if (action === "assign" || action === "unassign") return "grape";
-  if (action === "save_teams" || action === "move_member") return "blue";
-  if (action.startsWith("export") || action.startsWith("download")) return "gray";
-  return "blue";
-}
+const ACTION_COLOR_MAP = {
+  create: "green",
+  init: "green",
+  admin_create_member: "green",
+  create_video: "green",
+  register: "green",
+  complete: "green",
+  resume: "green",
+  reactivate: "green",
+  batch_reactivate: "green",
+  delete: "red",
+  batch_remove_by_moderator: "red",
+  batch_delete: "red",
+  revoke: "red",
+  update: "blue",
+  update_role: "blue",
+  batch_role_update: "blue",
+  batch_update: "blue",
+  set_role_tag: "blue",
+  change_username: "blue",
+  save_teams: "blue",
+  move_member: "blue",
+  conclude: "blue",
+  archive: "yellow",
+  pause: "yellow",
+  deactivate: "yellow",
+  batch_deactivate: "yellow",
+  join: "cyan",
+  batch_add_by_moderator: "cyan",
+  vote: "cyan",
+  leave: "orange",
+  change_password: "orange",
+  reset_password: "orange",
+  upload_images: "grape",
+  upload_avatar: "grape",
+  upload_audio: "grape",
+  assign: "grape",
+  unassign: "grape",
+  delete_images: "grape",
+  delete_avatar: "grape",
+  delete_audio: "grape",
+  export_filtered_csv: "gray",
+  export_filtered_json: "gray",
+  download_raw_ndjson_gz: "gray",
+  raffle_draw: "cyan",
+} satisfies Record<AuditAction, ActionColor>;
 
-function getEntityColor(entityType: string): ActionColor {
-  if (entityType === "event" || entityType === "event_participant" || entityType === "event_poll_vote") return "blue";
-  if (entityType === "recurring_template") return "grape";
-  if (entityType === "announcement") return "cyan";
-  if (entityType === "user" || entityType === "member_profile" || entityType === "user_auth") return "green";
-  if (entityType === "invite_link") return "orange";
-  if (entityType === "role") return "yellow";
-  if (entityType === "guild_war" || entityType === "guild_war_history" || entityType === "guild_war_member_stats") return "red";
-  if (entityType === "gallery" || entityType === "gallery_item") return "grape";
-  if (entityType === "wiki_article" || entityType === "wiki_category") return "cyan";
-  if (entityType === "audit_log_export" || entityType === "audit_archive_export") return "gray";
-  if (entityType === "member_badge" || entityType === "badge") return "grape";
-  if (entityType === "analytics_settings") return "blue";
-  if (entityType === "seed" || entityType === "system") return "gray";
-  return "gray";
-}
+const ENTITY_COLOR_MAP = {
+  event: "blue",
+  event_participant: "blue",
+  event_poll_vote: "blue",
+  analytics_settings: "blue",
+  recurring_template: "grape",
+  gallery: "grape",
+  gallery_item: "grape",
+  member_badge: "grape",
+  badge: "grape",
+  announcement: "cyan",
+  wiki_article: "cyan",
+  wiki_category: "cyan",
+  user: "green",
+  member_profile: "green",
+  user_auth: "green",
+  invite_link: "orange",
+  role: "yellow",
+  guild_war: "red",
+  guild_war_history: "red",
+  guild_war_member_stats: "red",
+  audit_log_export: "gray",
+  audit_archive_export: "gray",
+  seed: "gray",
+  wiki: "cyan",
+} satisfies Record<AuditEntityType, ActionColor>;
 
 function formatRelativeTime(iso: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -265,8 +306,8 @@ export function AuditLogViewer({
       detailData,
       formattedTime: formatDateTime(row.created_at),
       relativeTime: formatRelativeTime(row.created_at, t),
-      actionColor: getActionColor(row.action),
-      entityColor: getEntityColor(row.entity_type),
+      actionColor: ACTION_COLOR_MAP[row.action],
+      entityColor: ENTITY_COLOR_MAP[row.entity_type],
     };
   }), [auditRows, t, maskIdentifier, formatDateTime, isAdmin, userMap]);
 

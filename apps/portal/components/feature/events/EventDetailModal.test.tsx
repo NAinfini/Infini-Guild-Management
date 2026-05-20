@@ -4,7 +4,6 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { ButtonHTMLAttributes } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { EventDetailModal } from "./EventDetailModal";
 
@@ -13,12 +12,6 @@ vi.mock("react-i18next", () => ({
     t: (key: string) => key,
     i18n: { language: "en" },
   }),
-}));
-
-vi.mock("../../shared/PortalActionButton", () => ({
-  PortalActionButton: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => (
-    <button {...props}>{children}</button>
-  ),
 }));
 
 vi.mock("@portal/components/shared/MediaGallery", () => ({
