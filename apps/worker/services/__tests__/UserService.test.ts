@@ -85,49 +85,33 @@ describe("UserService", () => {
       .mockReturnValueOnce({
         from: vi.fn(() => ({
           where: vi.fn(() => ({
-            limit: vi.fn().mockResolvedValue([{ role: "member", deletedAt: null }]),
-          })),
-        })),
-      })
-      .mockReturnValueOnce({
-        from: vi.fn(() => ({
-          leftJoin: vi.fn(() => ({
-            where: vi.fn(() => ({
-              limit: vi.fn().mockResolvedValue([
-                {
-                  userId: "u-1",
-                  username: "Alpha",
-                  role: "member",
-                  isActive: true,
-                  deletedAt: null,
-                  userCreatedAt: "2026-03-08T12:00:00.000Z",
-                  userUpdatedAt: "2026-03-08T12:00:00.000Z",
-                  profileId: "profile-1",
-                  profileUserId: "u-1",
-                  power: 0,
-                  classes: "[]",
-                  titleHtml: null,
-                  bio: null,
-                  images: JSON.stringify(["one.png", "two.png", "keep.png"]),
-                  avatarKey: null,
-                  audioKey: null,
-                  videoUrls: "[]",
-                  availability: null,
-                  vacationStart: null,
-                  vacationEnd: null,
-                  notes: null,
-                  profileCreatedAt: "2026-03-08T12:00:00.000Z",
-                  profileUpdatedAt: "2026-03-08T12:00:00.000Z",
-                },
-              ]),
-            })),
+            limit: vi.fn().mockResolvedValue([{ role: "member", deletedAt: null, username: "Alpha" }]),
           })),
         })),
       })
       .mockReturnValueOnce({
         from: vi.fn(() => ({
           where: vi.fn(() => ({
-            limit: vi.fn().mockResolvedValue([{ id: "profile-1" }]),
+            limit: vi.fn().mockResolvedValue([
+              {
+                id: "profile-1",
+                userId: "u-1",
+                power: 0,
+                classes: "[]",
+                titleHtml: null,
+                bio: null,
+                images: JSON.stringify(["one.png", "two.png", "keep.png"]),
+                avatarKey: null,
+                audioKey: null,
+                videoUrls: "[]",
+                availability: null,
+                vacationStart: null,
+                vacationEnd: null,
+                notes: null,
+                createdAt: "2026-03-08T12:00:00.000Z",
+                updatedAt: "2026-03-08T12:00:00.000Z",
+              },
+            ]),
           })),
         })),
       });
@@ -147,5 +131,40 @@ describe("UserService", () => {
     expect(deps.deleteMediaObject).toHaveBeenCalledTimes(2);
     expect(updateSet).toHaveBeenCalledTimes(1);
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ images: JSON.stringify(["keep.png"]) }));
+  });
+
+  it("returns validation errors from profile image storage without throwing", async () => {
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn().mockResolvedValue([{ role: "member", deletedAt: null, username: "Alpha" }]),
+          })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn().mockResolvedValue([{ userId: "u-1", images: "[]", avatarKey: null }]),
+          })),
+        })),
+      });
+    const deps = createDeps();
+    deps.storeProfileImage.mockRejectedValue(new Error("File bytes do not match declared type: image/png"));
+    const service = new UserService({ select } as never, deps);
+    const file = new File([new Uint8Array([1, 2, 3])], "bad.png", { type: "image/png" });
+
+    const result = await service.uploadProfileImages(
+      { id: "u-1", role: "member", permissions: new Set() },
+      "u-1",
+      [file],
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      message: "File bytes do not match declared type: image/png",
+    });
   });
 });

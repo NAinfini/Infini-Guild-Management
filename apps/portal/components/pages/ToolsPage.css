@@ -76,6 +76,18 @@
   line-height: 1.5;
 }
 
+.tool-card__external-icon {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 6px;
+  opacity: 0.5;
+}
+
+a.tool-card__btn {
+  text-decoration: none;
+  color: inherit;
+}
+
 .sandbox {
   display: flex;
   flex-direction: column;
@@ -368,11 +380,11 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: 100%;
-  padding: 12px 24px;
+  align-self: center;
+  padding: 8px 32px;
   border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #fff;
   background: var(--color-primary, #3b82f6);

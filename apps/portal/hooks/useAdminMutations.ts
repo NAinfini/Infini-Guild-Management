@@ -33,6 +33,8 @@ type AuditFilterState = {
   search: string;
   dateFrom: string;
   dateTo: string;
+  entityType: string;
+  actorId: string;
 };
 
 type UseAdminMutationsParams = {
@@ -182,6 +184,8 @@ export function useAdminMutations({
         search: auditFilter.search.trim() || undefined,
         start_at: auditFilter.dateFrom ? `${auditFilter.dateFrom}T00:00:00.000Z` : undefined,
         end_at: auditFilter.dateTo ? `${auditFilter.dateTo}T23:59:59.999Z` : undefined,
+        entity_type: auditFilter.entityType || undefined,
+        actor_id: auditFilter.actorId || undefined,
       }),
     onSuccess: (blob, format) => {
       const startLabel = auditExportDatePart(auditFilter.dateFrom);

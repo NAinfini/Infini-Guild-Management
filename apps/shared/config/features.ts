@@ -5,6 +5,7 @@ export interface FeatureFlags {
   gallery: boolean;
   wiki: boolean;
   tools: boolean;
+  equipmentCalc: boolean;
 }
 
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
@@ -14,4 +15,5 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   gallery: true,
   wiki: true,
   tools: true,
+  equipmentCalc: true,
 };

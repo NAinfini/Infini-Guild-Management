@@ -7,6 +7,7 @@ import type { useGuildWarMutations } from "../../../hooks/guild-war/useGuildWarM
 import type { useGuildWarData } from "../../../hooks/data/useGuildWarData";
 import type { HistoryViewMode } from "../../../stores/guildWar";
 import type { EChartsThemeConfig } from "../../../theme/echarts";
+import { useWarHistoryTabController } from "../../../hooks/guild-war/useWarHistoryTabController";
 
 const LazyWarHistoryTab = lazy(() =>
   import("../../feature/guild-war/WarHistoryTab").then((mod) => ({ default: mod.WarHistoryTab })),
@@ -62,6 +63,22 @@ export function GuildWarHistoryTabWrapper({
   initialSearch,
 }: GuildWarHistoryTabWrapperProps) {
   const { t } = useTranslation("guild-war");
+  const historyRows = historyQuery.data?.data ?? [];
+  const historyDetail = historyDetailQuery.data ?? null;
+  const controller = useWarHistoryTabController({
+    initialSearch,
+    historyRows,
+    historyPage,
+    historyPerPage,
+    historyColumns: guildWarHistory.historyColumns,
+    historyDetail,
+    canManage: canManageActive,
+    saveMemberStatsPending: guildWarMutations.updateMemberStatsMutation.isPending,
+    onSelectHistoryId: setSelectedHistoryId,
+    onSaveMemberStats: guildWarMutations.saveHistoryMemberStats,
+    onDeleteHistory: (id) => guildWarMutations.deleteHistoryMutation.mutate(id),
+    onBulkDeleteHistory: (ids) => guildWarMutations.batchDeleteHistoryMutation.mutate(ids),
+  });
 
   return (
     <Suspense
@@ -95,24 +112,18 @@ export function GuildWarHistoryTabWrapper({
         canManage={canManageActive}
         historyLoading={historyQuery.isLoading}
         historyError={historyQuery.isError}
-        historyRows={historyQuery.data?.data ?? []}
+        historyRows={historyRows}
         historyTotalPages={historyQuery.data?.total_pages ?? 1}
         historyPage={historyPage}
         historyPerPage={historyPerPage}
         onHistoryPageChange={setHistoryPage}
         onHistoryPerPageChange={setHistoryPerPage}
-        historyColumns={guildWarHistory.historyColumns}
-        onSelectHistoryId={setSelectedHistoryId}
         historyDetailLoading={historyDetailQuery.isLoading}
         historyDetailError={historyDetailQuery.isError}
-        historyDetail={historyDetailQuery.data ?? null}
+        historyDetail={historyDetail}
         historyMvp={guildWarHistory.historyMvp}
-        historyMissingSlotsByUserId={guildWarHistory.historyMissingSlotsByUserId}
-        onSaveMemberStats={guildWarMutations.saveHistoryMemberStats}
         saveMemberStatsPending={guildWarMutations.updateMemberStatsMutation.isPending}
-        onDeleteHistory={(id) => guildWarMutations.deleteHistoryMutation.mutate(id)}
         deleteHistoryPending={guildWarMutations.deleteHistoryMutation.isPending}
-        onBulkDeleteHistory={(ids) => guildWarMutations.batchDeleteHistoryMutation.mutate(ids)}
         bulkDeleteHistoryPending={guildWarMutations.batchDeleteHistoryMutation.isPending}
         historyDetailTitle={t("history.detail")}
         loadErrorMessage={t("common:loadError")}
@@ -122,7 +133,7 @@ export function GuildWarHistoryTabWrapper({
         hashToPaletteColor={hashToPaletteColor}
         getMetricLabel={(metric) => t(getMetricLabelKey(metric))}
         metricValueOrNullFromWarMember={metricValueOrNullFromWarMember}
-        initialSearch={initialSearch}
+        controller={controller}
       />
     </Suspense>
   );

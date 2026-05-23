@@ -14,7 +14,7 @@ import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { GuildWarService } from "../services/GuildWarService";
-import { buildError, getDb, handleResult, parsePage, parseJsonBody } from "./_shared";
+import { buildError, getDb, handleResult, parsePage, parseJsonBody, requireSessionUser } from "./_shared";
 
 export const guildWarRoutes = new Hono();
 
@@ -34,6 +34,8 @@ async function requireGuildWarHistoryEditor(c: Context) { return requirePermissi
 // --- Routes ---
 
 guildWarRoutes.get("/active", async (c) => {
+  const user = await requireSessionUser(c);
+  if (user instanceof Response) return user;
   const result = await getService(c).getActive(c.req.query("event_id"));
   return handleResult(c, result);
 });
@@ -103,6 +105,8 @@ guildWarRoutes.get("/export", async (c) => {
 });
 
 guildWarRoutes.get("/history", async (c) => {
+  const user = await requireSessionUser(c);
+  if (user instanceof Response) return user;
   const page = parsePage(c.req.query("page"), 1);
   const limit = Math.min(100, parsePage(c.req.query("limit"), 20));
   const result = await getService(c).listHistory(page, limit, { dateFrom: c.req.query("date_from"), dateTo: c.req.query("date_to") });
@@ -110,6 +114,8 @@ guildWarRoutes.get("/history", async (c) => {
 });
 
 guildWarRoutes.post("/history/batch", async (c) => {
+  const user = await requireSessionUser(c);
+  if (user instanceof Response) return user;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
@@ -121,6 +127,8 @@ guildWarRoutes.post("/history/batch", async (c) => {
 });
 
 guildWarRoutes.get("/history/:id", async (c) => {
+  const user = await requireSessionUser(c);
+  if (user instanceof Response) return user;
   const result = await getService(c).getHistoryDetail(c.req.param("id"));
   return handleResult(c, result);
 });
@@ -198,6 +206,8 @@ guildWarRoutes.patch("/history/:id/member-stats/:userId", async (c) => {
 });
 
 guildWarRoutes.get("/analytics", async (c) => {
+  const user = await requireSessionUser(c);
+  if (user instanceof Response) return user;
   const warIdsRaw = c.req.queries("war_ids") ?? [];
   const userIdsRaw = c.req.queries("user_ids") ?? [];
   const warIds = warIdsRaw.flatMap((item) => item.split(",")).map((item) => item.trim()).filter(Boolean);

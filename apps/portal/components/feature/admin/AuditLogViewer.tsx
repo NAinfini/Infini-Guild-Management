@@ -176,6 +176,9 @@ const ACTION_COLOR_MAP = {
   export_filtered_json: "gray",
   download_raw_ndjson_gz: "gray",
   raffle_draw: "cyan",
+  rollback: "red",
+  upload: "green",
+  upload_icon: "grape",
 } satisfies Record<AuditAction, ActionColor>;
 
 const ENTITY_COLOR_MAP = {
@@ -188,6 +191,7 @@ const ENTITY_COLOR_MAP = {
   gallery_item: "grape",
   member_badge: "grape",
   badge: "grape",
+  game_data: "grape",
   announcement: "cyan",
   wiki_article: "cyan",
   wiki_category: "cyan",
@@ -274,42 +278,45 @@ export function AuditLogViewer({
   const totalPages = Math.max(1, Math.ceil(auditTotal / Math.max(1, auditPageSize)));
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const resolveEntityType = (raw: string) =>
-    t(`audit.entityType.${raw}`, { defaultValue: raw });
+  const rows = useMemo(() => {
+    const resolveEntityType = (raw: string) =>
+      t(`audit.entityType.${raw}`, { defaultValue: raw });
 
-  const resolveAction = (raw: string) =>
-    t(`audit.action.${raw}`, { defaultValue: raw });
+    const resolveAction = (raw: string) =>
+      t(`audit.action.${raw}`, { defaultValue: raw });
 
-  const resolveActor = (actorId: string) => {
-    if (userMap?.has(actorId)) return userMap.get(actorId)!;
-    return maskIdentifier(actorId, isAdmin);
-  };
-
-  const rows = useMemo(() => auditRows.map((row) => {
-    const detailData = parseDetailData(row.detail_text, t, userMap);
-    const resolvedAction = resolveAction(row.action);
-    const resolvedEntityType = resolveEntityType(row.entity_type);
-    const resolvedActor = resolveActor(String(row.actor_id ?? ""));
-
-    const { summary, entityName, targetName } = buildSummaryParts(
-      row, resolvedAction, resolvedEntityType, resolvedActor, detailData,
-    );
-
-    return {
-      ...row,
-      resolvedEntityType,
-      resolvedAction,
-      resolvedActor,
-      summary,
-      entityName,
-      targetName,
-      detailData,
-      formattedTime: formatDateTime(row.created_at),
-      relativeTime: formatRelativeTime(row.created_at, t),
-      actionColor: ACTION_COLOR_MAP[row.action],
-      entityColor: ENTITY_COLOR_MAP[row.entity_type],
+    const resolveActor = (actorId: string, actorUsername?: string | null) => {
+      if (actorUsername) return actorUsername;
+      if (userMap?.has(actorId)) return userMap.get(actorId)!;
+      return maskIdentifier(actorId, isAdmin);
     };
-  }), [auditRows, t, maskIdentifier, formatDateTime, isAdmin, userMap]);
+
+    return auditRows.map((row) => {
+      const detailData = parseDetailData(row.detail_text, t, userMap);
+      const resolvedAction = resolveAction(row.action);
+      const resolvedEntityType = resolveEntityType(row.entity_type);
+      const resolvedActor = resolveActor(String(row.actor_id ?? ""), row.actor_username);
+
+      const { summary, entityName, targetName } = buildSummaryParts(
+        row, resolvedAction, resolvedEntityType, resolvedActor, detailData,
+      );
+
+      return {
+        ...row,
+        resolvedEntityType,
+        resolvedAction,
+        resolvedActor,
+        summary,
+        entityName,
+        targetName,
+        detailData,
+        formattedTime: formatDateTime(row.created_at),
+        relativeTime: formatRelativeTime(row.created_at, t),
+        actionColor: ACTION_COLOR_MAP[row.action],
+        entityColor: ENTITY_COLOR_MAP[row.entity_type],
+      };
+    });
+  }, [auditRows, t, maskIdentifier, formatDateTime, isAdmin, userMap]);
 
   return (
     <Stack gap={12}>

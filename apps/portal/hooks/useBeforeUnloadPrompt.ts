@@ -8,7 +8,7 @@ export function useBeforeUnloadPrompt(enabled: boolean) {
 
   useBlocker({
     disabled: !enabled,
-    enableBeforeUnload: enabled,
+    enableBeforeUnload: false,
     shouldBlockFn: async () => {
       if (!enabled) return false;
       const confirmed = await new Promise<boolean>((resolve) => {

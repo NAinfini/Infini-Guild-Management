@@ -1,6 +1,5 @@
 import {
   Alert,
-  Avatar,
   Collapse,
   Group,
   HoverCard,
@@ -13,14 +12,12 @@ import {
   Switch,
   Table,
   Text,
-  TextInput,
   ThemeIcon,
   UnstyledButton,
 } from "@mantine/core";
 import {
   ChevronDownIcon,
   ChevronUpIcon,
-  CheckIcon,
   SwordsIcon,
   HeartIcon,
   HammerIcon,
@@ -32,7 +29,6 @@ import {
   TrophyIcon,
   AdjustmentsIcon,
   CopyIcon,
-  SearchIcon,
 } from "@portal/components/icons";
 import { BarChart, LineChart, RadarChart } from "echarts/charts";
 import {
@@ -44,11 +40,12 @@ import {
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import ReactEChartsCore from "echarts-for-react/esm/core";
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import type { EChartsThemeConfig } from "../../../theme/echarts";
-import { GuildWarService } from "../../../services/GuildWarService";
-import { useGuildWarAnalytics } from "../../../hooks/guild-war/useGuildWarAnalytics";
+import type { GuildWarAnalyticsController } from "../../../hooks/guild-war/useGuildWarAnalytics";
+import { GuildWarAnalyticsChartPanel } from "./GuildWarAnalyticsChartPanel";
+import { GuildWarAnalyticsListBox, UserListBoxItem } from "./GuildWarAnalyticsListBox";
 
 echarts.use([
   BarChart,
@@ -76,9 +73,7 @@ type AnalyticsAggregation = "total" | "average" | "best" | "median";
 type AnalyticsDatePreset = "5" | "10" | "20" | "all";
 
 type GuildWarAnalyticsTabProps = {
-  historyRows: Array<{ id: string; war_name: string; created_at: string }>;
-  chartPalette: string[];
-  guildWarService: GuildWarService;
+  analytics: GuildWarAnalyticsController;
   chartThemeName: string;
   chartThemeConfig: EChartsThemeConfig;
   loadErrorMessage: string;
@@ -100,91 +95,13 @@ const ANALYTICS_METRIC_OPTIONS: Array<{
   { value: "kda", labelKey: "analytics.metric.kda", Icon: TrophyIcon },
 ];
 
-type ListBoxItem = { value: string; label: string; Icon?: ComponentType<{ size?: number }> };
-
-function ListBox({
-  items,
-  selected,
-  onChange,
-  maxSelect,
-  searchable,
-  searchPlaceholder,
-  renderItem,
-}: {
-  items: ListBoxItem[];
-  selected: string[];
-  onChange: (values: string[]) => void;
-  maxSelect?: number;
-  searchable?: boolean;
-  searchPlaceholder?: string;
-  renderItem?: (item: ListBoxItem, checked: boolean) => React.ReactNode;
-}) {
-  const [search, setSearch] = useState("");
-  const filtered = useMemo(() => {
-    if (!search) return items;
-    const lower = search.toLowerCase();
-    return items.filter((item) => item.label.toLowerCase().includes(lower));
-  }, [items, search]);
-
-  const toggle = (value: string) => {
-    if (selected.includes(value)) {
-      onChange(selected.filter((v) => v !== value));
-    } else {
-      if (maxSelect && selected.length >= maxSelect) return;
-      onChange([...selected, value]);
-    }
-  };
-
-  return (
-    <div className="gwa-listbox">
-      {searchable ? (
-        <TextInput
-          size="xs"
-          placeholder={searchPlaceholder}
-          value={search}
-          onChange={(e) => setSearch(e.currentTarget.value)}
-          leftSection={<SearchIcon size={12} />}
-          className="gwa-listbox__search"
-        />
-      ) : null}
-      <div className="gwa-listbox__items">
-        {filtered.map((item) => {
-          const checked = selected.includes(item.value);
-          return (
-            <UnstyledButton
-              key={item.value}
-              onClick={() => toggle(item.value)}
-              className={`gwa-listbox__item ${checked ? "gwa-listbox__item--selected" : ""}`}
-            >
-              {renderItem ? (
-                renderItem(item, checked)
-              ) : (
-                <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
-                  <Group gap={8}>
-                    {item.Icon ? <item.Icon size={14} /> : null}
-                    <span className="gwa-listbox__item-label">{item.label}</span>
-                  </Group>
-                  {checked ? <CheckIcon size={12} /> : null}
-                </Group>
-              )}
-            </UnstyledButton>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export function GuildWarAnalyticsTab({
-  historyRows,
-  chartPalette,
-  guildWarService,
+  analytics,
   chartThemeName,
   chartThemeConfig,
   loadErrorMessage,
 }: GuildWarAnalyticsTabProps) {
   const { t } = useTranslation("guild-war");
-  const analytics = useGuildWarAnalytics({ historyRows, chartPalette, guildWarService });
   const [normExpanded, setNormExpanded] = useState(false);
   const [tableExpanded, setTableExpanded] = useState(false);
   const [chartExpanded, setChartExpanded] = useState(false);
@@ -266,7 +183,7 @@ export function GuildWarAnalyticsTab({
                 {/* War selection */}
                 <div className="gwa-sidebar__section">
                   <div className="gwa-toolbar__label">{t("analytics.toolbar.warSet")}</div>
-                  <ListBox
+                  <GuildWarAnalyticsListBox
                     items={analytics.analyticsWarOptions}
                     selected={analytics.analyticsSelectedWarIds}
                     onChange={analytics.setAnalyticsSelectedWarIds}
@@ -279,7 +196,7 @@ export function GuildWarAnalyticsTab({
                 {analytics.analyticsMode === "player" || analytics.analyticsMode === "radar" ? (
                   <div className="gwa-sidebar__section">
                     <div className="gwa-toolbar__label">{t("analytics.selectMembers")}</div>
-                    <ListBox
+                    <GuildWarAnalyticsListBox
                       items={analytics.analyticsSelectableUserIds.map((userId) => ({
                         value: userId,
                         label: analytics.analyticsUserIdToUsername.get(userId) ?? userId,
@@ -289,17 +206,7 @@ export function GuildWarAnalyticsTab({
                       maxSelect={5}
                       searchable
                       searchPlaceholder={t("analytics.selectMembers")}
-                      renderItem={(item, checked) => (
-                        <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
-                          <Group gap={8}>
-                            <Avatar size={20} radius="xl">
-                              {item.label.slice(0, 2).toUpperCase()}
-                            </Avatar>
-                            <span className="gwa-listbox__item-label">{item.label}</span>
-                          </Group>
-                          {checked ? <CheckIcon size={12} /> : null}
-                        </Group>
-                      )}
+                      renderItem={(item, checked) => <UserListBoxItem item={item} checked={checked} />}
                     />
                     {analytics.analyticsSelectedUsers.length >= analytics.selectionSoftCap ? (
                       <Text size="xs" c="dimmed">
@@ -315,7 +222,7 @@ export function GuildWarAnalyticsTab({
                 {analytics.analyticsMode === "teams" ? (
                   <div className="gwa-sidebar__section">
                     <div className="gwa-toolbar__label">{t("analytics.selectTeams")}</div>
-                    <ListBox
+                    <GuildWarAnalyticsListBox
                       items={analytics.analyticsTeamOptions.map((team) => ({
                         value: team,
                         label: team,
@@ -382,59 +289,19 @@ export function GuildWarAnalyticsTab({
             ) : null}
 
             {/* ── Center: Chart ── */}
-            <div className="gwa-main">
-              <div className="gwa-chart">
-                <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                  <HoverCard.Target>
-                    <UnstyledButton
-                      onClick={() => setChartExpanded(!chartExpanded)}
-                      className="gwa-chart__expand"
-                      aria-label={chartExpanded ? t("analytics.aria.collapseChart") : t("analytics.aria.expandChart")}
-                    >
-                      {chartExpanded ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
-                          <line x1="14" y1="10" x2="21" y2="3" /><line x1="3" y1="21" x2="10" y2="14" />
-                        </svg>
-                      ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
-                          <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-                        </svg>
-                      )}
-                    </UnstyledButton>
-                  </HoverCard.Target>
-                  <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                    <Group gap={10} wrap="nowrap" align="flex-start">
-                      <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                        {chartExpanded ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
-                      </ThemeIcon>
-                      <div style={{ minWidth: 0 }}>
-                        <Text size="sm" fw={700} lh={1.3} mb={4}>{chartExpanded ? t("hovercard.collapseChart.title") : t("hovercard.expandChart.title")}</Text>
-                        <Text size="xs" c="dimmed" lh={1.5}>{chartExpanded ? t("hovercard.collapseChart.desc") : t("hovercard.expandChart.desc")}</Text>
-                      </div>
-                    </Group>
-                  </HoverCard.Dropdown>
-                </HoverCard>
-                {analytics.analyticsMode === "radar" && analytics.analyticsRadarOption ? (
-                  <ReactEChartsCore
-                    key={`radar-${analytics.analyticsSelectedUsers.join(",")}-${analytics.analyticsSelectedMetrics.join(",")}`}
-                    echarts={echarts}
-                    theme={chartThemeName}
-                    option={analytics.analyticsRadarOption}
-                    style={{ width: "100%", height: chartExpanded ? 560 : 420 }}
-                  />
-                ) : (
-                  <ReactEChartsCore
-                    key={`${analytics.analyticsSelectedUsers.join(",")}-${analytics.analyticsSelectedMetrics.join(",")}`}
-                    echarts={echarts}
-                    theme={chartThemeName}
-                    option={analytics.analyticsChartOption}
-                    style={{ width: "100%", height: chartExpanded ? 560 : 420 }}
-                  />
-                )}
-              </div>
-            </div>
+            <GuildWarAnalyticsChartPanel
+              ReactEChartsCore={ReactEChartsCore}
+              echarts={echarts}
+              themeName={chartThemeName}
+              chartOption={analytics.analyticsChartOption}
+              radarOption={analytics.analyticsRadarOption}
+              mode={analytics.analyticsMode}
+              selectedUsers={analytics.analyticsSelectedUsers}
+              selectedMetrics={analytics.analyticsSelectedMetrics}
+              expanded={chartExpanded}
+              onToggleExpanded={() => setChartExpanded(!chartExpanded)}
+              t={t}
+            />
 
             {/* ── Right sidebar: metrics + options + data table ── */}
             {!chartExpanded ? (
@@ -442,7 +309,7 @@ export function GuildWarAnalyticsTab({
                 {/* Metric selector */}
                 <div className="gwa-sidebar__section">
                   <div className="gwa-toolbar__label">{t("analytics.metrics.title")}</div>
-                  <ListBox
+                  <GuildWarAnalyticsListBox
                     items={metricOptions}
                     selected={analytics.analyticsSelectedMetrics}
                     onChange={(values) =>

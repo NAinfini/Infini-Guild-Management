@@ -58,5 +58,7 @@
   "dice.history": "History",
   "dice.clearHistory": "Clear",
   "dice.noHistory": "No rolls yet. Hit Roll!",
-  "dice.result": "{{count}}d{{sides}} → {{results}} = {{total}}"
+  "dice.result": "{{count}}d{{sides}} → {{results}} = {{total}}",
+  "equipCalc.title": "Equipment Calculator",
+  "equipCalc.description": "Plan and optimize your gear builds"
 }

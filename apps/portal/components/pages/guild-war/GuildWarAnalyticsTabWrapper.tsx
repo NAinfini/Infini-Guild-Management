@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { GuildWarService } from "../../../services/GuildWarService";
 import type { useGuildWarData } from "../../../hooks/data/useGuildWarData";
 import type { EChartsThemeConfig } from "../../../theme/echarts";
+import { useGuildWarAnalytics } from "../../../hooks/guild-war/useGuildWarAnalytics";
 
 const LazyGuildWarAnalyticsTab = lazy(() =>
   import("../../feature/guild-war/GuildWarAnalyticsTab").then((mod) => ({ default: mod.GuildWarAnalyticsTab })),
@@ -25,6 +26,11 @@ export function GuildWarAnalyticsTabWrapper({
   chartThemeConfig,
 }: GuildWarAnalyticsTabWrapperProps) {
   const { t } = useTranslation("guild-war");
+  const analytics = useGuildWarAnalytics({
+    historyRows: historyQuery.data?.data ?? [],
+    chartPalette,
+    guildWarService,
+  });
 
   return (
     <Suspense
@@ -39,9 +45,7 @@ export function GuildWarAnalyticsTabWrapper({
       }
     >
       <LazyGuildWarAnalyticsTab
-        historyRows={historyQuery.data?.data ?? []}
-        chartPalette={chartPalette}
-        guildWarService={guildWarService}
+        analytics={analytics}
         chartThemeName={chartThemeName}
         chartThemeConfig={chartThemeConfig}
         loadErrorMessage={t("common:loadError")}

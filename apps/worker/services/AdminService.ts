@@ -1,7 +1,7 @@
 import {
   HIGH_RISK_PERMISSIONS,
   PERMISSIONS,
-  ROLES,
+  BUILTIN_ROLES,
   adminRoleSchema,
   inviteLinkSchema,
   inviteLinkStatsSchema,
@@ -13,7 +13,7 @@ import { activeGame } from "@guild/shared/games";
 import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { inviteLinks, rolePermissions, roles, sessions, userAuthPassword, users } from "../db/schema";
-import { ok, err, type ServiceResult } from "./result";
+import { ok, err, type ServiceResult, type ServiceErr } from "./result";
 import type { MediaLike } from "./AdminAuditService";
 import { clearPermissionCache } from "./auth";
 
@@ -173,18 +173,13 @@ export class AdminService {
     if (targetIds.length === 0) return ok({ updated: 0 });
     if (newRoleId === "admin") return err("FORBIDDEN", "Cannot assign builtin admin role via API");
 
-    const actorRole = await this.getActorRoleLevel(actorId);
-    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
     const newRole = (await this.deps.db.select({ id: roles.id, level: roles.level }).from(roles).where(eq(roles.id, newRoleId)).limit(1))[0];
     if (!newRole) return err("NOT_FOUND", "Role not found");
+    const guard = await this.assertBatchActionAllowed(actorId, targetIds);
+    if (!guard.ok) return guard.error;
+    const { actorRole, existingUsers } = guard;
     if (newRole.level >= actorRole.level) return err("FORBIDDEN", "Cannot assign a role at or above your own level");
     if (actorRole.roleId !== "admin" && await this.roleHasHighRiskPermissions(newRoleId)) return err("FORBIDDEN", "Only admin can assign roles containing high-risk permissions");
-    const existingUsers = await this.deps.db.select({ id: users.id, username: users.username, role: users.role }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
-    const userRoleIds = [...new Set(existingUsers.map((u) => u.role))];
-    const userRoleLevels = userRoleIds.length > 0 ? await this.deps.db.select({ id: roles.id, level: roles.level }).from(roles).where(inArray(roles.id, userRoleIds)) : [];
-    const roleLevelMap = new Map(userRoleLevels.map((r) => [r.id, r.level]));
-    const protectedUsers = existingUsers.filter((u) => (roleLevelMap.get(u.role) ?? 0) >= actorRole.level);
-    if (protectedUsers.length > 0) return err("FORBIDDEN", "Cannot change the role of users at or above your own level");
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
       await this.deps.db.update(users).set({ role: newRoleId, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
@@ -198,14 +193,9 @@ export class AdminService {
   async batchDeactivate(actorId: string, userIds: string[]): Promise<ServiceResult<{ updated: number }>> {
     const targetIds = userIds.filter((id) => id !== actorId);
     if (targetIds.length === 0) return ok({ updated: 0 });
-    const actorRole = await this.getActorRoleLevel(actorId);
-    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
-    const existingUsers = await this.deps.db.select({ id: users.id, username: users.username, role: users.role }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
-    const userRoleIds = [...new Set(existingUsers.map((u) => u.role))];
-    const userRoleLevels = userRoleIds.length > 0 ? await this.deps.db.select({ id: roles.id, level: roles.level }).from(roles).where(inArray(roles.id, userRoleIds)) : [];
-    const roleLevelMap = new Map(userRoleLevels.map((r) => [r.id, r.level]));
-    const protectedUsers = existingUsers.filter((u) => (roleLevelMap.get(u.role) ?? 0) >= actorRole.level);
-    if (protectedUsers.length > 0) return err("FORBIDDEN", "Cannot deactivate users at or above your own level");
+    const guard = await this.assertBatchActionAllowed(actorId, targetIds);
+    if (!guard.ok) return guard.error;
+    const { existingUsers } = guard;
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
       await this.deps.db.update(users).set({ isActive: false, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
@@ -232,14 +222,9 @@ export class AdminService {
   async batchDelete(actorId: string, userIds: string[]): Promise<ServiceResult<{ updated: number }>> {
     const targetIds = userIds.filter((id) => id !== actorId);
     if (targetIds.length === 0) return ok({ updated: 0 });
-    const actorRole = await this.getActorRoleLevel(actorId);
-    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
-    const existingUsers = await this.deps.db.select({ id: users.id, username: users.username, role: users.role }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
-    const userRoleIds = [...new Set(existingUsers.map((u) => u.role))];
-    const userRoleLevels = userRoleIds.length > 0 ? await this.deps.db.select({ id: roles.id, level: roles.level }).from(roles).where(inArray(roles.id, userRoleIds)) : [];
-    const roleLevelMap = new Map(userRoleLevels.map((r) => [r.id, r.level]));
-    const protectedUsers = existingUsers.filter((u) => (roleLevelMap.get(u.role) ?? 0) >= actorRole.level);
-    if (protectedUsers.length > 0) return err("FORBIDDEN", "Cannot delete users at or above your own level");
+    const guard = await this.assertBatchActionAllowed(actorId, targetIds);
+    if (!guard.ok) return guard.error;
+    const { existingUsers } = guard;
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
       const now = this.now().toISOString();
@@ -347,7 +332,7 @@ export class AdminService {
 
   async createRole(actorId: string, input: { id?: string; name: string; level: number; color?: string; permissions?: Record<string, boolean> }): Promise<ServiceResult<unknown>> {
     const roleId = (input.id?.trim() || `custom_${this.deps.generateId().toLowerCase()}`).toLowerCase();
-    if ((ROLES as readonly string[]).includes(roleId)) return err("CONFLICT", "Built-in role ids are reserved");
+    if ((BUILTIN_ROLES as readonly string[]).includes(roleId)) return err("CONFLICT", "Built-in role ids are reserved");
     const actorRole = await this.getActorRoleLevel(actorId);
     if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
     if (input.level >= actorRole.level) return err("VALIDATION_ERROR", `Role level must be below your own (${actorRole.level})`);
@@ -478,6 +463,35 @@ export class AdminService {
     }
     await this.deps.writeAuditLog({ entityType: "analytics_settings", action: "update", actorId, entityId: "default", diffTitle: "Analytics", detailText: Object.keys(diff).length > 0 ? JSON.stringify(diff) : null });
     return ok(settings);
+  }
+
+  private async assertBatchActionAllowed(
+    actorId: string,
+    targetIds: string[],
+  ): Promise<
+    | { ok: true; actorRole: { level: number; roleId: string }; existingUsers: { id: string; username: string; role: string }[] }
+    | { ok: false; error: ServiceErr }
+  > {
+    const actorRole = await this.getActorRoleLevel(actorId);
+    if (!actorRole) return { ok: false, error: err("FORBIDDEN", "Could not resolve actor role") };
+
+    const existingUsers = await this.deps.db
+      .select({ id: users.id, username: users.username, role: users.role })
+      .from(users)
+      .where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
+
+    const userRoleIds = [...new Set(existingUsers.map((u) => u.role))];
+    const userRoleLevels = userRoleIds.length > 0
+      ? await this.deps.db.select({ id: roles.id, level: roles.level }).from(roles).where(inArray(roles.id, userRoleIds))
+      : [];
+    const roleLevelMap = new Map(userRoleLevels.map((r) => [r.id, r.level]));
+    const protectedUsers = existingUsers.filter((u) => (roleLevelMap.get(u.role) ?? 0) >= actorRole.level);
+
+    if (protectedUsers.length > 0) {
+      return { ok: false, error: err("FORBIDDEN", "Cannot modify users at or above your own level") };
+    }
+
+    return { ok: true, actorRole, existingUsers };
   }
 
   private async getActorRoleLevel(actorId: string): Promise<{ roleId: string; level: number } | null> {

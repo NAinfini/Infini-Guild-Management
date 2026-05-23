@@ -3,6 +3,8 @@ import {
   Badge,
   Group,
   Modal,
+  SegmentedControl,
+  Select,
   Skeleton,
   Stack,
   Text,
@@ -61,6 +63,8 @@ type WarHistoryDetailProps = {
   onSaveMemberStats: () => void;
   onDeleteHistory: () => void;
   onExport: (format: "csv" | "json") => void;
+  onHistoryViewModeChange: (value: HistoryViewMode) => void;
+  onHistoryChartMetricChange: (value: AnalyticsMetricKey) => void;
   chartThemeName: string;
   chartThemeConfig: EChartsThemeConfig;
   chartPalette: string[];
@@ -92,6 +96,8 @@ export function WarHistoryDetail({
   onSaveMemberStats,
   onDeleteHistory,
   onExport,
+  onHistoryViewModeChange,
+  onHistoryChartMetricChange,
   chartThemeName,
   chartThemeConfig,
   chartPalette,
@@ -203,6 +209,31 @@ export function WarHistoryDetail({
             </div>
 
             {/* Stats table or chart */}
+            <Group justify="space-between" align="center">
+              <SegmentedControl
+                value={historyViewMode}
+                onChange={(value) => onHistoryViewModeChange(value as HistoryViewMode)}
+                data={[
+                  { value: "table", label: t("history.view.table") },
+                  { value: "chart", label: t("history.view.chart") },
+                ]}
+              />
+              {historyViewMode === "chart" ? (
+                <Select
+                  value={historyChartMetric}
+                  onChange={(value) => {
+                    if (value) onHistoryChartMetricChange(value);
+                  }}
+                  data={detailTable
+                    .getAllLeafColumns()
+                    .filter((column) => !["user_id", "role_tag", "missing"].includes(column.id))
+                    .map((column) => ({ value: column.id, label: String(column.columnDef.header ?? column.id) }))}
+                  aria-label={t("history.chartMetric")}
+                  style={{ width: 220 }}
+                  allowDeselect={false}
+                />
+              ) : null}
+            </Group>
             {historyViewMode === "table" ? (
               <div className="war-history-detail-table-wrap">
                 <InfiniTable table={detailTable} />

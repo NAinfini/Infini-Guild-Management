@@ -2,7 +2,7 @@ import { auditLogSchema } from "@guild/shared";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import { and, desc, eq, gte, like, lte, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import { auditLog } from "../db/schema";
+import { auditLog, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern } from "./helpers";
 import { parsePage } from "../routes/_shared";
@@ -53,6 +53,7 @@ type AuditLogRow = {
   entityType: string;
   action: string;
   actorId: string;
+  actorUsername: string | null;
   entityId: string;
   diffTitle: string | null;
   detailText: string | null;
@@ -148,6 +149,7 @@ function serializeAuditLogRow(row: AuditLogRow) {
     entity_type: row.entityType,
     action: row.action,
     actor_id: row.actorId,
+    actor_username: row.actorUsername,
     entity_id: row.entityId,
     diff_title: row.diffTitle,
     detail_text: row.detailText,
@@ -348,12 +350,14 @@ export class AdminAuditService {
           entityType: auditLog.entityType,
           action: auditLog.action,
           actorId: auditLog.actorId,
+          actorUsername: users.username,
           entityId: auditLog.entityId,
           diffTitle: auditLog.diffTitle,
           detailText: auditLog.detailText,
           createdAt: auditLog.createdAt,
         })
         .from(auditLog)
+        .leftJoin(users, eq(auditLog.actorId, users.id))
         .where(where)
         .orderBy(desc(auditLog.createdAt))
         .limit(query.limit)
@@ -383,12 +387,14 @@ export class AdminAuditService {
         entityType: auditLog.entityType,
         action: auditLog.action,
         actorId: auditLog.actorId,
+        actorUsername: users.username,
         entityId: auditLog.entityId,
         diffTitle: auditLog.diffTitle,
         detailText: auditLog.detailText,
         createdAt: auditLog.createdAt,
       })
       .from(auditLog)
+      .leftJoin(users, eq(auditLog.actorId, users.id))
       .where(where)
       .orderBy(desc(auditLog.createdAt));
     const serializedRows = rows.map(serializeAuditLogRow);
@@ -429,9 +435,9 @@ export class AdminAuditService {
       };
     }
 
-    const header = ["id", "entity_type", "action", "actor_id", "entity_id", "diff_title", "detail_text", "created_at"].join(",");
+    const header = ["id", "entity_type", "action", "actor_id", "actor_username", "entity_id", "diff_title", "detail_text", "created_at"].join(",");
     const lines = serializedRows.map((row) =>
-      [csvCell(row.id), csvCell(row.entity_type), csvCell(row.action), csvCell(row.actor_id), csvCell(row.entity_id), csvCell(row.diff_title), csvCell(row.detail_text), csvCell(row.created_at)].join(","),
+      [csvCell(row.id), csvCell(row.entity_type), csvCell(row.action), csvCell(row.actor_id), csvCell(row.actor_username ?? null), csvCell(row.entity_id), csvCell(row.diff_title), csvCell(row.detail_text), csvCell(row.created_at)].join(","),
     );
 
     return {

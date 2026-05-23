@@ -27,11 +27,14 @@ import {
   warTeams,
   wikiArticles,
   wikiCategories,
+  gameData,
 } from "./schema";
+import seedGameData from "@guild/shared/calculator/seed-data.json";
 import type { Bindings } from "../index";
 import { createPasswordHash } from "../services/auth";
 
 const ALL_TABLES = [
+  "game_data",
   "audit_log",
   "error_log",
   "gallery_items",
@@ -110,6 +113,8 @@ const ROLE_PERMISSION_KEYS = [
   "wiki.articles.archive",
   "wiki.articles.delete",
   "wiki.categories.manage",
+  "admin.badges.manage",
+  "admin.gameData.manage",
 ] as const;
 
 const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
@@ -1624,4 +1629,14 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       createdAt: addHours(now, -1),
     },
   ]);
+
+  // ════════════════════════════════════════════
+  // ── Game Data ──
+  // ════════════════════════════════════════════
+
+  await db.insert(gameData).values({
+    data: JSON.stringify(seedGameData),
+    version: seedGameData.version,
+    uploadedBy: adminId,
+  });
 }

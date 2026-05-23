@@ -6,6 +6,8 @@ export type AuditFilterState = {
   search: string;
   dateFrom: string;
   dateTo: string;
+  entityType: string;
+  actorId: string;
 };
 
 type AuditFilterAction =
@@ -13,7 +15,9 @@ type AuditFilterAction =
   | { type: "SET_SEARCH"; value: string }
   | { type: "SET_DATE_FROM"; value: string }
   | { type: "SET_DATE_TO"; value: string }
-  | { type: "SET_DATE_RANGE"; from: string; to: string; page: number };
+  | { type: "SET_DATE_RANGE"; from: string; to: string; page: number }
+  | { type: "SET_ENTITY_TYPE"; value: string }
+  | { type: "SET_ACTOR_ID"; value: string };
 
 function auditFilterReducer(state: AuditFilterState, action: AuditFilterAction): AuditFilterState {
   switch (action.type) {
@@ -22,6 +26,8 @@ function auditFilterReducer(state: AuditFilterState, action: AuditFilterAction):
     case "SET_DATE_FROM": return { ...state, dateFrom: action.value };
     case "SET_DATE_TO": return { ...state, dateTo: action.value };
     case "SET_DATE_RANGE": return { ...state, dateFrom: action.from, dateTo: action.to, page: action.page };
+    case "SET_ENTITY_TYPE": return { ...state, entityType: action.value, page: 1 };
+    case "SET_ACTOR_ID": return { ...state, actorId: action.value, page: 1 };
   }
 }
 
@@ -31,6 +37,8 @@ export function useAdminAuditFilter() {
     search: "",
     dateFrom: format(subDays(new Date(), 1), "yyyy-MM-dd"),
     dateTo: format(new Date(), "yyyy-MM-dd"),
+    entityType: "",
+    actorId: "",
   }));
 
   const setAuditDatePreset = (preset: "1d" | "7d" | "1m") => {
@@ -53,5 +61,7 @@ export function useAdminAuditFilter() {
     setAuditDateRange: (from: string, to: string, page = 1) =>
       dispatch({ type: "SET_DATE_RANGE", from, to, page }),
     setAuditDatePreset,
+    setAuditEntityType: (value: string) => dispatch({ type: "SET_ENTITY_TYPE", value }),
+    setAuditActorId: (value: string) => dispatch({ type: "SET_ACTOR_ID", value }),
   };
 }

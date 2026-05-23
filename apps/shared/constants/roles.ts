@@ -1,4 +1,4 @@
-export const ROLES = ["admin", "moderator", "member"] as const;
+export const BUILTIN_ROLES = ["admin", "moderator", "member"] as const;
 
 export type Role = string;
 export type RoleId = string;
@@ -39,6 +39,7 @@ export const PERMISSIONS = [
   "wiki.articles.delete",
   "wiki.categories.manage",
   "admin.badges.manage",
+  "admin.gameData.manage",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

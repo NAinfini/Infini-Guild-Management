@@ -9,3 +9,4 @@ export * from "./gallery";
 export * from "./badges";
 export * from "./audit";
 export * from "./error-log";
+export * from "./game-data";

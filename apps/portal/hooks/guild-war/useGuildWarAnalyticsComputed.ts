@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { activeGame } from "@guild/shared/games";
 import type { AnalyticsAggregation, AnalyticsMetricKey, AnalyticsTableColumn } from "./useGuildWarAnalytics";
-import { hashToPaletteColor } from "./useGuildWarAnalytics";
+import { aggregateValues, computeStdDev, hashToPaletteColor } from "@portal/utils/guild-war-analytics";
 
 type WarDetail = {
   id: string;
@@ -61,34 +61,6 @@ type UseGuildWarAnalyticsComputedParams = {
     modifier: number,
   ) => number;
 };
-
-function computeStdDev(values: number[]): number {
-  if (values.length < 2) return 0;
-  const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
-  const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
-  return Number(Math.sqrt(variance).toFixed(2));
-}
-
-function aggregateValues(values: number[], aggregation: AnalyticsAggregation): number {
-  if (values.length === 0) {
-    return 0;
-  }
-  if (aggregation === "best") {
-    return Math.max(...values);
-  }
-  if (aggregation === "median") {
-    const sorted = [...values].sort((left, right) => left - right);
-    const middle = Math.floor(sorted.length / 2);
-    if (sorted.length % 2 === 0) {
-      return Number(((sorted[middle - 1] + sorted[middle]) / 2).toFixed(2));
-    }
-    return sorted[middle] ?? 0;
-  }
-  if (aggregation === "average") {
-    return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2));
-  }
-  return values.reduce((sum, value) => sum + value, 0);
-}
 
 export function useGuildWarAnalyticsComputed({
   analyticsMode,

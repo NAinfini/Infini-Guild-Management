@@ -477,6 +477,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('admin', 'wiki.articles.delete', 1),
   ('admin', 'wiki.categories.manage', 1),
   ('admin', 'admin.badges.manage', 1),
+  ('admin', 'admin.gameData.manage', 1),
   -- moderator (limited access)
   ('moderator', 'admin.users.view', 1),
   ('moderator', 'admin.users.edit', 1),
@@ -514,6 +515,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('moderator', 'wiki.articles.delete', 1),
   ('moderator', 'wiki.categories.manage', 1),
   ('moderator', 'admin.badges.manage', 0),
+  ('moderator', 'admin.gameData.manage', 0),
   -- member (minimal access)
   ('member', 'admin.users.view', 0),
   ('member', 'admin.users.edit', 0),
@@ -550,4 +552,17 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('member', 'wiki.articles.archive', 0),
   ('member', 'wiki.articles.delete', 0),
   ('member', 'wiki.categories.manage', 0),
-  ('member', 'admin.badges.manage', 0);
+  ('member', 'admin.badges.manage', 0),
+  ('member', 'admin.gameData.manage', 0);
+
+-- ===== GAME DATA (Equipment Calculator) =====
+
+CREATE TABLE IF NOT EXISTS game_data (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  data TEXT NOT NULL,
+  version TEXT NOT NULL,
+  uploaded_by TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_game_data_created_at ON game_data(created_at);

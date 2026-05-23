@@ -1,0 +1,552 @@
+import { Checkbox, Badge, Group, HoverCard, NumberInput, Text, ThemeIcon } from "@mantine/core";
+import { modals } from "@mantine/modals";
+import { useDisclosure } from "@mantine/hooks";
+import { activeGame } from "@guild/shared/games";
+import { CircleCheckIcon, AlertTriangleIcon } from "@portal/components/icons";
+import {
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@portal/components/shared/InfiniTable";
+import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type {
+  HistoryDetailData,
+  HistoryMemberStat,
+  HistoryMemberStatsUpdate,
+  HistorySummaryRow,
+} from "@portal/components/feature/guild-war/WarHistoryTab";
+
+type EditableMetricKey = string;
+type MemberStatDraft = Record<string, number>;
+
+const EDITABLE_METRIC_KEYS: string[] = activeGame.war.memberStats.map((stat) => stat.key);
+
+type EditableStatCellProps = {
+  value: number;
+  onChange: (value: string | number) => void;
+  decimalScale?: number;
+};
+
+function EditableStatCell({ value, onChange, decimalScale }: EditableStatCellProps) {
+  const [editing, setEditing] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  if (!editing) {
+    return (
+      <Text
+        size="xs"
+        style={{ cursor: "pointer", padding: "4px 6px", borderRadius: 4, minWidth: 40 }}
+        onClick={() => setEditing(true)}
+      >
+        {decimalScale != null ? value.toFixed(decimalScale) : value}
+      </Text>
+    );
+  }
+
+  return (
+    <NumberInput
+      ref={inputRef}
+      hideControls
+      min={0}
+      size="xs"
+      value={value}
+      onChange={(nextValue) => {
+        onChange(nextValue);
+      }}
+      onBlur={() => setEditing(false)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          setEditing(false);
+        }
+      }}
+      decimalScale={decimalScale}
+      autoFocus
+    />
+  );
+}
+
+function toDraftMetricValue(value: string | number | null | undefined): number {
+  const numericValue = Number(value ?? 0);
+  if (!Number.isFinite(numericValue)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(numericValue));
+}
+
+function createMemberDraft(row: HistoryMemberStat): MemberStatDraft {
+  return Object.fromEntries(
+    EDITABLE_METRIC_KEYS.map((key) => [key, toDraftMetricValue(row.stats?.[key])]),
+  );
+}
+
+function createDraftMap(rows: HistoryMemberStat[]): Record<string, MemberStatDraft> {
+  const draftMap: Record<string, MemberStatDraft> = {};
+  for (const row of rows) {
+    draftMap[row.user_id] = createMemberDraft(row);
+  }
+  return draftMap;
+}
+
+type UseWarHistoryTabControllerParams = {
+  initialSearch?: string;
+  historyRows: HistorySummaryRow[];
+  historyPage: number;
+  historyPerPage: number;
+  historyColumns: ColumnDef<HistorySummaryRow, unknown>[];
+  historyDetail: HistoryDetailData | null;
+  canManage: boolean;
+  saveMemberStatsPending: boolean;
+  onSelectHistoryId: (historyId: string) => void;
+  onSaveMemberStats: (updates: HistoryMemberStatsUpdate[]) => Promise<void>;
+  onDeleteHistory: (historyId: string) => void;
+  onBulkDeleteHistory: (ids: string[]) => void;
+};
+
+export function useWarHistoryTabController({
+  initialSearch,
+  historyRows,
+  historyPage,
+  historyPerPage,
+  historyColumns,
+  historyDetail,
+  canManage,
+  saveMemberStatsPending,
+  onSelectHistoryId,
+  onSaveMemberStats,
+  onDeleteHistory,
+  onBulkDeleteHistory,
+}: UseWarHistoryTabControllerParams) {
+  const { t } = useTranslation("guild-war");
+  const [historySearch, setHistorySearch] = useState(initialSearch ?? "");
+  const [detailModalOpen, detailModalHandlers] = useDisclosure(false);
+  const [highlightRowId, setHighlightRowId] = useState<string | null>(null);
+  const [summarySorting, setSummarySorting] = useState<SortingState>([]);
+  const [detailSorting, setDetailSorting] = useState<SortingState>([]);
+  const [memberStatsBaseline, setMemberStatsBaseline] = useState<Record<string, MemberStatDraft>>({});
+  const [memberStatsDraft, setMemberStatsDraft] = useState<Record<string, MemberStatDraft>>({});
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setSelectedHistoryIds(new Set());
+  }, [historyPage, historyPerPage]);
+
+  useEffect(() => {
+    setHistorySearch(initialSearch ?? "");
+  }, [initialSearch]);
+
+  useEffect(() => {
+    if (!initialSearch) {
+      return;
+    }
+    const matchingRow = historyRows.find((row) => row.war_name === initialSearch);
+    if (matchingRow) {
+      setHighlightRowId(matchingRow.id);
+      const timeoutId = window.setTimeout(() => setHighlightRowId(null), 1200);
+      return () => window.clearTimeout(timeoutId);
+    }
+    return undefined;
+  }, [initialSearch, historyRows]);
+
+  const historyDetailId = historyDetail?.id ?? null;
+  useEffect(() => {
+    if (!detailModalOpen || !historyDetail) {
+      return;
+    }
+
+    const nextBaseline = createDraftMap(historyDetail.member_stats);
+    setMemberStatsBaseline(nextBaseline);
+    const nextDraft: Record<string, MemberStatDraft> = {};
+    for (const [userId, draft] of Object.entries(nextBaseline)) {
+      nextDraft[userId] = { ...draft };
+    }
+    setMemberStatsDraft(nextDraft);
+  }, [detailModalOpen, historyDetail, historyDetailId]);
+
+  const filteredHistoryRows = useMemo(() => {
+    const keyword = historySearch.trim().toLowerCase();
+    if (!keyword) {
+      return historyRows;
+    }
+    return historyRows.filter((row) => (
+      row.war_name.toLowerCase().includes(keyword)
+      || (row.enemy_name ?? "").toLowerCase().includes(keyword)
+      || (row.result ?? "").toLowerCase().includes(keyword)
+      || row.created_at.toLowerCase().includes(keyword)
+      || String(row.own_stats?.kills ?? "").includes(keyword)
+      || String(row.enemy_stats?.kills ?? "").includes(keyword)
+    ));
+  }, [historyRows, historySearch]);
+
+  const pendingMemberStatUpdates = useMemo<HistoryMemberStatsUpdate[]>(() => {
+    if (!canManage || !historyDetail) {
+      return [];
+    }
+
+    const updates: HistoryMemberStatsUpdate[] = [];
+    for (const row of historyDetail.member_stats) {
+      const draft = memberStatsDraft[row.user_id];
+      const baseline = memberStatsBaseline[row.user_id];
+      if (!draft || !baseline) {
+        continue;
+      }
+
+      const payload: Partial<Record<EditableMetricKey, number>> = {};
+      for (const key of EDITABLE_METRIC_KEYS) {
+        if (draft[key] !== baseline[key]) {
+          payload[key] = draft[key];
+        }
+      }
+
+      if (Object.keys(payload).length > 0) {
+        updates.push({ userId: row.user_id, payload });
+      }
+    }
+
+    return updates;
+  }, [canManage, historyDetail, memberStatsBaseline, memberStatsDraft]);
+
+  const hasUnsavedMemberChanges = pendingMemberStatUpdates.length > 0;
+
+  const confirmDiscardUnsavedChanges = useCallback(async (): Promise<boolean> => {
+    if (!hasUnsavedMemberChanges) {
+      return true;
+    }
+    return await new Promise<boolean>((resolve) => {
+      modals.openConfirmModal({
+        title: t("history.unsavedChanges"),
+        children: t("history.unsavedExitConfirm"),
+        labels: {
+          cancel: t("common:action.cancel"),
+          confirm: t("history.discardChanges"),
+        },
+        confirmProps: { color: "yellow" },
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+        closeOnConfirm: true,
+        closeOnCancel: true,
+        centered: true,
+      });
+    });
+  }, [hasUnsavedMemberChanges, t]);
+
+  const requestCloseDetailModal = useCallback(async () => {
+    if (saveMemberStatsPending) {
+      return;
+    }
+    const confirmed = await confirmDiscardUnsavedChanges();
+    if (!confirmed) {
+      return;
+    }
+    detailModalHandlers.close();
+    setMemberStatsBaseline({});
+    setMemberStatsDraft({});
+  }, [confirmDiscardUnsavedChanges, detailModalHandlers, saveMemberStatsPending]);
+
+  const handleSaveMemberStats = useCallback(async () => {
+    if (!canManage || pendingMemberStatUpdates.length === 0) {
+      return;
+    }
+    await onSaveMemberStats(pendingMemberStatUpdates);
+    const nextBaseline: Record<string, MemberStatDraft> = {};
+    for (const [userId, draft] of Object.entries(memberStatsDraft)) {
+      nextBaseline[userId] = { ...draft };
+    }
+    setMemberStatsBaseline(nextBaseline);
+  }, [canManage, memberStatsDraft, onSaveMemberStats, pendingMemberStatUpdates]);
+
+  const handleDeleteHistory = useCallback(async () => {
+    if (!canManage || !historyDetail) {
+      return;
+    }
+    const confirmed = await new Promise<boolean>((resolve) => {
+      modals.openConfirmModal({
+        title: t("history.deleteConfirmTitle"),
+        children: t("history.deleteConfirmDescription", { name: historyDetail.war_name }),
+        labels: {
+          cancel: t("common:action.cancel"),
+          confirm: t("common:action.delete"),
+        },
+        confirmProps: { color: "red" },
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+        closeOnConfirm: true,
+        closeOnCancel: true,
+        centered: true,
+      });
+    });
+    if (confirmed) {
+      onDeleteHistory(historyDetail.id);
+      detailModalHandlers.close();
+      setMemberStatsBaseline({});
+      setMemberStatsDraft({});
+    }
+  }, [canManage, detailModalHandlers, historyDetail, onDeleteHistory, t]);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (!canManage || selectedHistoryIds.size === 0) {
+      return;
+    }
+    const confirmed = await new Promise<boolean>((resolve) => {
+      modals.openConfirmModal({
+        title: t("history.bulkDeleteConfirmTitle"),
+        children: t("history.bulkDeleteConfirmDescription", { count: selectedHistoryIds.size }),
+        labels: {
+          cancel: t("common:action.cancel"),
+          confirm: t("common:action.delete"),
+        },
+        confirmProps: { color: "red" },
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+        closeOnConfirm: true,
+        closeOnCancel: true,
+        centered: true,
+      });
+    });
+    if (confirmed) {
+      onBulkDeleteHistory(Array.from(selectedHistoryIds));
+      setSelectedHistoryIds(new Set());
+    }
+  }, [canManage, onBulkDeleteHistory, selectedHistoryIds, t]);
+
+  const toggleHistorySelection = useCallback((id: string) => {
+    setSelectedHistoryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const allFilteredSelected = filteredHistoryRows.length > 0
+    && filteredHistoryRows.every((row) => selectedHistoryIds.has(row.id));
+
+  const toggleSelectAll = useCallback(() => {
+    if (allFilteredSelected) {
+      setSelectedHistoryIds(new Set());
+    } else {
+      setSelectedHistoryIds(new Set(filteredHistoryRows.map((row) => row.id)));
+    }
+  }, [allFilteredSelected, filteredHistoryRows]);
+
+  const updateDraftMetric = useCallback((userId: string, key: EditableMetricKey, value: string | number) => {
+    const nextValue = toDraftMetricValue(value);
+    setMemberStatsDraft((current) => {
+      const existing = current[userId];
+      if (!existing || existing[key] === nextValue) {
+        return current;
+      }
+      return {
+        ...current,
+        [userId]: {
+          ...existing,
+          [key]: nextValue,
+        },
+      };
+    });
+  }, []);
+
+  const detailRows = useMemo<HistoryMemberStat[]>(() => {
+    if (!historyDetail) {
+      return [];
+    }
+    return historyDetail.member_stats.map((row) => {
+      const draft = memberStatsDraft[row.user_id];
+      if (!draft) {
+        return row;
+      }
+      return {
+        ...row,
+        stats: {
+          ...row.stats,
+          ...draft,
+        },
+      };
+    });
+  }, [historyDetail, memberStatsDraft]);
+
+  const handleSelectHistoryId = useCallback(async (historyId: string) => {
+    const confirmed = await confirmDiscardUnsavedChanges();
+    if (!confirmed) {
+      return;
+    }
+    onSelectHistoryId(historyId);
+    detailModalHandlers.open();
+  }, [confirmDiscardUnsavedChanges, detailModalHandlers, onSelectHistoryId]);
+
+  const summaryColumnsWithSelect = useMemo<ColumnDef<HistorySummaryRow, unknown>[]>(() => {
+    if (!canManage) {
+      return historyColumns;
+    }
+    const checkboxColumn: ColumnDef<HistorySummaryRow, unknown> = {
+      id: "_select",
+      size: 40,
+      enableSorting: false,
+      header: () => (
+        <Checkbox
+          size="xs"
+          checked={allFilteredSelected}
+          indeterminate={selectedHistoryIds.size > 0 && !allFilteredSelected}
+          onChange={toggleSelectAll}
+          onClick={(event) => event.stopPropagation()}
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          size="xs"
+          checked={selectedHistoryIds.has(row.original.id)}
+          onChange={() => toggleHistorySelection(row.original.id)}
+          onClick={(event) => event.stopPropagation()}
+        />
+      ),
+    };
+    return [checkboxColumn, ...historyColumns];
+  }, [
+    allFilteredSelected,
+    canManage,
+    historyColumns,
+    selectedHistoryIds,
+    toggleHistorySelection,
+    toggleSelectAll,
+  ]);
+
+  const summaryTable = useReactTable({
+    data: filteredHistoryRows,
+    columns: summaryColumnsWithSelect,
+    state: { sorting: summarySorting },
+    onSortingChange: setSummarySorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getRowId: (row) => row.id,
+  });
+
+  const detailColumns = useMemo<ColumnDef<HistoryMemberStat, unknown>[]>(() => [
+    {
+      header: t("history.table.user"),
+      id: "user_id",
+      accessorKey: "user_id",
+      cell: ({ row }) => row.original.username ?? row.original.user_id,
+    },
+    {
+      header: t("history.table.role"),
+      id: "role_tag",
+      accessorFn: (row) => row.role_tag ?? "",
+      cell: ({ row }) => row.original.role_tag ?? "-",
+    },
+    ...EDITABLE_METRIC_KEYS.map((metricKey): ColumnDef<HistoryMemberStat, unknown> => ({
+      header: t(`history.table.${metricKey === "building_damage" ? "building" : metricKey === "damage_taken" ? "damageTaken" : metricKey}`),
+      id: metricKey,
+      accessorFn: (row) => row.stats?.[metricKey] ?? 0,
+      cell: ({ row }) =>
+        canManage ? (
+          <EditableStatCell
+            value={row.original.stats?.[metricKey] ?? 0}
+            onChange={(value) => updateDraftMetric(row.original.user_id, metricKey, value)}
+            decimalScale={["damage", "healing", "building_damage", "damage_taken"].includes(metricKey) ? 2 : undefined}
+          />
+        ) : (row.original.stats?.[metricKey] ?? "-"),
+    })),
+    {
+      header: t("analytics.metric.kda"),
+      id: "kda",
+      enableSorting: true,
+      accessorFn: (row) => {
+        const kills = row.stats?.kills ?? 0;
+        const deaths = row.stats?.deaths ?? 0;
+        const assists = row.stats?.assists ?? 0;
+        return (kills + assists) / Math.max(1, deaths);
+      },
+      cell: ({ row }) => {
+        const kills = row.original.stats?.kills ?? 0;
+        const deaths = row.original.stats?.deaths ?? 0;
+        const assists = row.original.stats?.assists ?? 0;
+        return ((kills + assists) / Math.max(1, deaths)).toFixed(2);
+      },
+    },
+    {
+      header: t("history.table.missing"),
+      id: "missing",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const stats = row.original.stats;
+        const hasAnyData = stats !== null
+          && stats !== undefined
+          && Object.values(stats).some((value) => value !== null && value !== 0);
+        return hasAnyData ? (
+          <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+            <HoverCard.Target>
+              <Badge data-animate-icon-trigger color="green" style={{ cursor: "default" }}>{t("history.table.complete")}</Badge>
+            </HoverCard.Target>
+            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+              <Group gap={10} wrap="nowrap" align="flex-start">
+                <ThemeIcon variant="light" color="green" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <CircleCheckIcon size={16} />
+                </ThemeIcon>
+                <div style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.statusComplete.title")}</Text>
+                  <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.statusComplete.desc")}</Text>
+                </div>
+              </Group>
+            </HoverCard.Dropdown>
+          </HoverCard>
+        ) : (
+          <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+            <HoverCard.Target>
+              <Badge data-animate-icon-trigger color="yellow" style={{ cursor: "default" }}>{t("history.table.missing")}</Badge>
+            </HoverCard.Target>
+            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+              <Group gap={10} wrap="nowrap" align="flex-start">
+                <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <AlertTriangleIcon size={16} />
+                </ThemeIcon>
+                <div style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.statusMissing.title")}</Text>
+                  <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.statusMissing.desc")}</Text>
+                </div>
+              </Group>
+            </HoverCard.Dropdown>
+          </HoverCard>
+        );
+      },
+    },
+  ], [canManage, t, updateDraftMetric]);
+
+  const detailTable = useReactTable({
+    data: detailRows,
+    columns: detailColumns,
+    state: { sorting: detailSorting },
+    onSortingChange: setDetailSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getRowId: (row) => row.id,
+  });
+
+  return {
+    historySearch,
+    setHistorySearch,
+    detailModalOpen,
+    filteredHistoryRows,
+    selectedHistoryIds,
+    summaryTable,
+    detailTable,
+    highlightRowId,
+    hasUnsavedMemberChanges,
+    handleSelectHistoryId,
+    handleBulkDelete,
+    handleSaveMemberStats,
+    handleDeleteHistory,
+    requestCloseDetailModal,
+  };
+}
+
+export type WarHistoryTabController = ReturnType<typeof useWarHistoryTabController>;

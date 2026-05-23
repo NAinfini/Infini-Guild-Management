@@ -12,7 +12,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useLocalStorage } from "@mantine/hooks";
-import { BoldIcon, CopyIcon, DiceFiveFilledIcon, ItalicIcon, LetterSpacingIcon, PaletteIcon, StrikethroughIcon, TextSizeIcon, TrashIcon, UnderlineIcon, WrenchIcon } from "@portal/components/icons";
+import { BoldIcon, CopyIcon, DiceFiveFilledIcon, ItalicIcon, LetterSpacingIcon, PaletteIcon, StrikethroughIcon, SwordsIcon, TextSizeIcon, TrashIcon, UnderlineIcon, WrenchIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { useDisclosure } from "@mantine/hooks";
 import { notifySuccess } from "../../utils/notifications";
@@ -21,8 +21,13 @@ import { copyPlainText } from "../../utils/copy";
 import { FormatPainterOutlined } from "../../utils/icons";
 import { PageLayout } from "../layout/PageLayout";
 import "./ToolsPage.css";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DOMPurify from "dompurify";
+import { useSiteConfigStore } from "@portal/stores/site-config";
+
+const LazyEquipmentCalcModal = lazy(() =>
+  import("../equipment-calc/EquipmentCalcModal").then((m) => ({ default: m.EquipmentCalcModal })),
+);
 
 const PRESET_COLORS = ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"];
 
@@ -42,6 +47,8 @@ export function ToolsPage() {
   const isExternalView = useExternalView();
   const [sandboxOpened, sandboxHandlers] = useDisclosure(false);
   const [diceOpened, diceHandlers] = useDisclosure(false);
+  const [equipCalcOpened, equipCalcHandlers] = useDisclosure(false);
+  const equipCalcEnabled = useSiteConfigStore((s) => s.features.equipmentCalc);
 
   const [titleText, setTitleText] = useState(() => t("sandbox.defaultTitle"));
   const [color, setColor] = useState("#1f6feb");
@@ -168,6 +175,16 @@ export function ToolsPage() {
       description: t("dice.description"),
       onOpen: diceHandlers.open,
     },
+    // Equipment calculator — in-house tool (see docs/plans/2026-05-21-equipment-calculator-design.md)
+    ...(equipCalcEnabled
+      ? [{
+          key: "equipCalc",
+          icon: <SwordsIcon size={28} />,
+          title: t("equipCalc.title"),
+          description: t("equipCalc.description"),
+          onOpen: equipCalcHandlers.open,
+        }]
+      : []),
   ];
 
   return (
@@ -461,6 +478,12 @@ export function ToolsPage() {
           </div>
         </div>
       </Modal>
+
+      {equipCalcEnabled && (
+        <Suspense>
+          <LazyEquipmentCalcModal opened={equipCalcOpened} onClose={equipCalcHandlers.close} />
+        </Suspense>
+      )}
     </PageLayout>
   );
 }

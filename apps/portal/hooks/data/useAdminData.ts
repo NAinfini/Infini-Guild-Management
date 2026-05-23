@@ -9,14 +9,7 @@ import {
 } from "../../services/AdminService";
 import { queryKeys } from "../../api/query-keys";
 import { fetchAllUsersListWithOptions } from "../../services/UserService";
-import {
-  canExportAudit,
-  canViewAudit,
-  canViewInvites,
-  canViewRoles,
-  canViewStatus,
-  canViewUsers,
-} from "../../utils/permissions";
+import { getAdminCapabilities } from "../../utils/permissions";
 
 type UseAdminDataOptions = {
   isModerator: boolean;
@@ -25,6 +18,8 @@ type UseAdminDataOptions = {
   auditSearch: string;
   auditDateFrom: string;
   auditDateTo: string;
+  auditEntityType: string;
+  auditActorId: string;
 };
 
 export function useAdminData(options: UseAdminDataOptions) {
@@ -35,6 +30,8 @@ export function useAdminData(options: UseAdminDataOptions) {
     auditSearch,
     auditDateFrom,
     auditDateTo,
+    auditEntityType,
+    auditActorId,
   } = options;
 
   const rolesQuery = useQuery({
@@ -45,17 +42,12 @@ export function useAdminData(options: UseAdminDataOptions) {
   });
 
   const roles = rolesQuery.data ?? [];
-  const hasUsersViewPermission = canViewUsers(roles, userRole);
-  const hasInviteViewPermission = canViewInvites(roles, userRole);
-  const hasAuditViewPermission = canViewAudit(roles, userRole);
-  const hasRolesViewPermission = canViewRoles(roles, userRole);
-  const hasStatusViewPermission = canViewStatus(roles, userRole);
-  const hasAuditExportPermission = canExportAudit(roles, userRole);
+  const permissions = getAdminCapabilities(roles, userRole);
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
     queryFn: () => fetchAllUsersListWithOptions(),
-    enabled: hasUsersViewPermission,
+    enabled: permissions.canViewUsers,
     staleTime: 10 * 60_000,
   });
 
@@ -66,19 +58,19 @@ export function useAdminData(options: UseAdminDataOptions) {
         include_expired: true,
         include_revoked: true,
       }),
-    enabled: hasInviteViewPermission,
+    enabled: permissions.canViewInvites,
     staleTime: 5 * 60_000,
   });
 
   const inviteStatsQuery = useQuery({
     queryKey: queryKeys.admin.inviteStats(),
     queryFn: fetchAdminInviteStats,
-    enabled: hasInviteViewPermission,
+    enabled: permissions.canViewInvites,
     staleTime: 5 * 60_000,
   });
 
   const auditLogQuery = useQuery({
-    queryKey: queryKeys.admin.auditLog(auditPage, auditSearch, auditDateFrom, auditDateTo),
+    queryKey: queryKeys.admin.auditLog(auditPage, auditSearch, auditDateFrom, auditDateTo, auditEntityType || undefined, auditActorId || undefined),
     queryFn: () =>
       fetchAdminAuditLog({
         page: auditPage,
@@ -86,8 +78,10 @@ export function useAdminData(options: UseAdminDataOptions) {
         search: auditSearch.trim() || undefined,
         start_at: auditDateFrom ? `${auditDateFrom}T00:00:00.000Z` : undefined,
         end_at: auditDateTo ? `${auditDateTo}T23:59:59.999Z` : undefined,
+        entity_type: auditEntityType || undefined,
+        actor_id: auditActorId || undefined,
       }),
-    enabled: hasAuditViewPermission,
+    enabled: permissions.canViewAudit,
     placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
   });
@@ -95,14 +89,14 @@ export function useAdminData(options: UseAdminDataOptions) {
   const auditMonthsQuery = useQuery({
     queryKey: queryKeys.admin.auditMonths(),
     queryFn: fetchAdminAuditArchiveMonths,
-    enabled: hasAuditExportPermission,
+    enabled: permissions.canExportAudit,
     staleTime: 10 * 60_000,
   });
 
   const statusQuery = useQuery({
     queryKey: queryKeys.admin.status(),
     queryFn: fetchAdminStatus,
-    enabled: hasStatusViewPermission,
+    enabled: permissions.canViewStatus,
     staleTime: 5 * 60_000,
   });
 
@@ -114,13 +108,6 @@ export function useAdminData(options: UseAdminDataOptions) {
     auditMonthsQuery,
     rolesQuery,
     statusQuery,
-    permissions: {
-      canViewUsers: hasUsersViewPermission,
-      canViewInvites: hasInviteViewPermission,
-      canViewAudit: hasAuditViewPermission,
-      canViewRoles: hasRolesViewPermission,
-      canViewStatus: hasStatusViewPermission,
-      canExportAudit: hasAuditExportPermission,
-    },
+    permissions,
   };
 }

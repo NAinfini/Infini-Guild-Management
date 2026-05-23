@@ -6,6 +6,16 @@ import type { Bindings } from "../index";
 import { createLogger } from "../utils/logger";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 
+const dbCache = new WeakMap<object, ReturnType<typeof drizzle>>();
+function getDb(d1: D1Database): ReturnType<typeof drizzle> {
+  let db = dbCache.get(d1);
+  if (!db) {
+    db = drizzle(d1);
+    dbCache.set(d1, db);
+  }
+  return db;
+}
+
 export type WriteAuditLogInput = {
   entityType: AuditEntityType;
   action: AuditAction;
@@ -17,7 +27,7 @@ export type WriteAuditLogInput = {
 
 export async function writeAuditLog(c: Context, input: WriteAuditLogInput): Promise<void> {
   const env = c.env as Bindings;
-  const db = drizzle(env.DB);
+  const db = getDb(env.DB);
   const log = createLogger(c.get("requestId") as string | undefined);
   const task = db.insert(auditLog).values({
     id: nanoid(),
@@ -35,7 +45,7 @@ export async function writeAuditLog(c: Context, input: WriteAuditLogInput): Prom
 
 export async function writeAuditLogDurable(c: Context, input: WriteAuditLogInput): Promise<void> {
   const env = c.env as Bindings;
-  const db = drizzle(env.DB);
+  const db = getDb(env.DB);
   await db.insert(auditLog).values({
     id: nanoid(),
     entityType: input.entityType,

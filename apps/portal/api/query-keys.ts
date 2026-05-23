@@ -94,6 +94,11 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.badges.all, "detail", id] as const,
     assignments: (id: string) => [...queryKeys.badges.all, "assignments", id] as const,
   },
+  gameData: {
+    all: ["game-data"] as const,
+    latest: () => [...queryKeys.gameData.all, "latest"] as const,
+    versions: () => [...queryKeys.gameData.all, "versions"] as const,
+  },
   cmdk: {
     all: ["cmdk"] as const,
     search: (query: string) => [...queryKeys.cmdk.all, "search", query] as const,

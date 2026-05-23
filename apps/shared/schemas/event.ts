@@ -91,12 +91,24 @@ const eventMutationSchema = z.object({
   winner_count: z.number().int().positive().optional(),
 });
 
-export const createEventSchema = eventMutationSchema.superRefine((value, ctx) => {
-  if (value.end_at && value.end_at <= value.start_at) {
+function refineEventRules(
+  value: {
+    type?: string;
+    start_at?: string;
+    end_at?: string;
+    poll?: unknown;
+    capacity?: unknown;
+    recurrence_rule?: unknown;
+    winner_count?: unknown;
+  },
+  ctx: z.RefinementCtx,
+  isUpdate: boolean,
+): void {
+  if (value.start_at && value.end_at && value.end_at <= value.start_at) {
     ctx.addIssue({ code: "custom", path: ["end_at"], message: "end_at must be after start_at" });
   }
   if (value.type === "poll") {
-    if (!value.end_at) {
+    if (isUpdate ? value.end_at === undefined : !value.end_at) {
       ctx.addIssue({ code: "custom", path: ["end_at"], message: "Poll events require end_at" });
     }
     if (!value.poll) {
@@ -108,60 +120,32 @@ export const createEventSchema = eventMutationSchema.superRefine((value, ctx) =>
     if (value.recurrence_rule !== undefined) {
       ctx.addIssue({ code: "custom", path: ["recurrence_rule"], message: "Poll events cannot recur" });
     }
-  } else if (value.poll !== undefined) {
+  } else if (isUpdate ? (value.type !== undefined && value.poll !== undefined) : value.poll !== undefined) {
     ctx.addIssue({ code: "custom", path: ["poll"], message: "Only poll events can include poll settings" });
   }
   if (value.type === "raffle") {
-    if (!value.end_at) {
+    if (isUpdate ? value.end_at === undefined : !value.end_at) {
       ctx.addIssue({ code: "custom", path: ["end_at"], message: "Raffle events require end_at" });
     }
-    if (!value.winner_count) {
+    if (!isUpdate && !value.winner_count) {
       ctx.addIssue({ code: "custom", path: ["winner_count"], message: "Raffle events require winner_count" });
     }
     if (value.recurrence_rule !== undefined) {
       ctx.addIssue({ code: "custom", path: ["recurrence_rule"], message: "Raffle events cannot recur" });
     }
-  } else if (value.winner_count !== undefined) {
+  } else if (isUpdate ? (value.type !== undefined && value.winner_count !== undefined) : value.winner_count !== undefined) {
     ctx.addIssue({ code: "custom", path: ["winner_count"], message: "Only raffle events can include winner_count" });
   }
-});
+}
+
+export const createEventSchema = eventMutationSchema.superRefine((v, ctx) => refineEventRules(v, ctx, false));
 
 export const updateEventSchema = eventMutationSchema.partial().extend({
   pinned: z.boolean().optional(),
   signup_locked: z.boolean().optional(),
   archived_at: z.string().datetime().nullable().optional(),
   recurrence_scope: z.enum(RECURRENCE_SCOPES).optional(),
-}).superRefine((value, ctx) => {
-  if (value.start_at && value.end_at && value.end_at <= value.start_at) {
-    ctx.addIssue({ code: "custom", path: ["end_at"], message: "end_at must be after start_at" });
-  }
-  if (value.type === "poll") {
-    if (value.end_at === undefined) {
-      ctx.addIssue({ code: "custom", path: ["end_at"], message: "Poll events require end_at" });
-    }
-    if (!value.poll) {
-      ctx.addIssue({ code: "custom", path: ["poll"], message: "Poll events require poll settings" });
-    }
-    if (value.capacity !== undefined) {
-      ctx.addIssue({ code: "custom", path: ["capacity"], message: "Poll events do not use capacity" });
-    }
-    if (value.recurrence_rule !== undefined) {
-      ctx.addIssue({ code: "custom", path: ["recurrence_rule"], message: "Poll events cannot recur" });
-    }
-  } else if (value.type !== undefined && value.poll !== undefined) {
-    ctx.addIssue({ code: "custom", path: ["poll"], message: "Only poll events can include poll settings" });
-  }
-  if (value.type === "raffle") {
-    if (value.end_at === undefined) {
-      ctx.addIssue({ code: "custom", path: ["end_at"], message: "Raffle events require end_at" });
-    }
-    if (value.recurrence_rule !== undefined) {
-      ctx.addIssue({ code: "custom", path: ["recurrence_rule"], message: "Raffle events cannot recur" });
-    }
-  } else if (value.type !== undefined && value.winner_count !== undefined) {
-    ctx.addIssue({ code: "custom", path: ["winner_count"], message: "Only raffle events can include winner_count" });
-  }
-});
+}).superRefine((v, ctx) => refineEventRules(v, ctx, true));
 
 export const eventParticipantSchema = z.object({
   id: z.string(),

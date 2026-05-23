@@ -108,7 +108,7 @@ adminRoutes.delete("/invite-links/:id/permanent", async (c) => {
 
 // User Management
 adminRoutes.patch("/users/batch/role", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.role");
+  const sessionUser = await requirePermission(c, "admin.users.role", { freshPermissions: true });
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -141,7 +141,7 @@ adminRoutes.patch("/users/batch/reactivate", async (c) => {
 });
 
 adminRoutes.patch("/users/batch/delete", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.delete");
+  const sessionUser = await requirePermission(c, "admin.users.delete", { freshPermissions: true });
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -164,7 +164,7 @@ adminRoutes.post("/users", async (c) => {
 });
 
 adminRoutes.patch("/users/:id/role", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.role");
+  const sessionUser = await requirePermission(c, "admin.users.role", { freshPermissions: true });
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -200,7 +200,7 @@ adminRoutes.patch("/users/:id/reactivate", async (c) => {
 });
 
 adminRoutes.post("/users/:id/reset-password", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.password");
+  const sessionUser = await requirePermission(c, "admin.users.password", { freshPermissions: true });
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -220,7 +220,7 @@ adminRoutes.get("/roles", async (c) => {
 });
 
 adminRoutes.post("/roles", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.roles.manage");
+  const sessionUser = await requirePermission(c, "admin.roles.manage", { freshPermissions: true });
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -231,7 +231,7 @@ adminRoutes.post("/roles", async (c) => {
 });
 
 adminRoutes.patch("/roles/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.roles.manage");
+  const sessionUser = await requirePermission(c, "admin.roles.manage", { freshPermissions: true });
   if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
@@ -242,7 +242,7 @@ adminRoutes.patch("/roles/:id", async (c) => {
 });
 
 adminRoutes.delete("/roles/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.roles.manage");
+  const sessionUser = await requirePermission(c, "admin.roles.manage", { freshPermissions: true });
   if (sessionUser instanceof Response) return sessionUser;
   const result = await getAdminService(c).deleteRole(sessionUser.id, c.req.param("id"));
   if (!result.ok) return handleResult(c, result);

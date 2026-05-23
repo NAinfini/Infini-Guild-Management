@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { PERMISSIONS } from "../constants/roles";
 import { AUDIT_ENTITY_TYPES, AUDIT_ACTIONS } from "../constants/audit";
+import { LIMITS } from "../config/limits";
 
-const usernameSchema = z.string().min(1).max(50).regex(/^[a-zA-Z0-9_一-鿿]+$/);
+const L_admin = LIMITS.content;
+const usernameSchema = z.string().min(L_admin.username.min).max(L_admin.username.max).regex(/^[a-zA-Z0-9_一-鿿]+$/);
 const permissionKeySchema = z.enum(PERMISSIONS);
 const colorSchema = z.string().min(1).max(32).regex(/^[a-zA-Z0-9#()., %]+$/);
 
@@ -35,6 +37,7 @@ export const auditLogSchema = z.object({
   entity_type: z.enum(AUDIT_ENTITY_TYPES),
   action: z.enum(AUDIT_ACTIONS),
   actor_id: z.string(),
+  actor_username: z.string().nullable().optional(),
   entity_id: z.string(),
   diff_title: z.string().nullable(),
   detail_text: z.string().nullable(),

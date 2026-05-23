@@ -131,3 +131,7 @@ export { UserCircleIcon } from "./UserCircleIcon";
 export { UserMinusIcon } from "./UserMinusIcon";
 export { WifiIcon } from "./WifiIcon";
 export { Sparkles2Icon } from "./Sparkles2Icon";
+export { RingsIcon } from "./RingsIcon";
+export { PendantIcon } from "./PendantIcon";
+export { BootIcon } from "./BootIcon";
+export { GauntletIcon } from "./GauntletIcon";

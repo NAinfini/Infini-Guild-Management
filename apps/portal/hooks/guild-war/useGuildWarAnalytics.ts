@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { activeGame } from "@guild/shared/games";
 import {
   ANALYTICS_SELECTION_SOFT_CAP,
   GuildWarService,
@@ -13,101 +12,26 @@ import { useGuildWarStore, type AnalyticsDatePreset } from "../../stores/guildWa
 import { copyPlainText } from "../../utils/copy";
 import { useGuildWarAnalyticsComputed } from "./useGuildWarAnalyticsComputed";
 import { notifySuccess, notifyWarning } from "../../utils/notifications";
+import {
+  getMetricLabelKey,
+  hashToPaletteColor,
+  metricValueFromWarMember,
+  metricValueOrNullFromWarMember,
+  normalizeMetricValue,
+  type AnalyticsAggregation,
+  type AnalyticsMetricKey,
+} from "../../utils/guild-war-analytics";
 
 const message = {
   success: (content: string) => notifySuccess(content),
   warning: (content: string) => notifyWarning(content),
 };
 
-type AnalyticsMetricKey = string;
-type AnalyticsAggregation = "total" | "average" | "best" | "median";
-
 type AnalyticsTableColumn = {
   title: string;
   key: string;
   dataIndex?: string;
 };
-
-const METRIC_LABEL_MAP: Record<string, string> = Object.fromEntries(
-  activeGame.war.memberStats.map((s) => [s.key, s.label.replace(/^guild-war:/, "")]),
-);
-
-export function getMetricLabelKey(metric: AnalyticsMetricKey): string {
-  if (metric === "kda") return "analytics.metric.kda";
-  return METRIC_LABEL_MAP[metric] ?? metric;
-}
-
-export function metricValueFromWarMember(
-  row: {
-    stats: Record<string, number | null> | null;
-  },
-  metric: AnalyticsMetricKey,
-): number {
-  const s = row.stats ?? {};
-  const computedDef = activeGame.war.computedStats?.find((c) => c.key === metric);
-  if (computedDef) {
-    const resolved: Record<string, number> = {};
-    for (const stat of activeGame.war.memberStats) {
-      resolved[stat.key] = s[stat.key] ?? 0;
-    }
-    return computedDef.compute(resolved);
-  }
-  return s[metric] ?? 0;
-}
-
-export function metricValueOrNullFromWarMember(
-  row: {
-    stats: Record<string, number | null> | null;
-  },
-  metric: AnalyticsMetricKey,
-): number | null {
-  const computedDef = activeGame.war.computedStats?.find((c) => c.key === metric);
-  if (computedDef) {
-    const s = row.stats ?? {};
-    const hasAny = activeGame.war.memberStats.some((stat) => s[stat.key] !== null && s[stat.key] !== undefined);
-    if (!hasAny) return null;
-    return metricValueFromWarMember(row, metric);
-  }
-  const value = row.stats?.[metric];
-  return value === null || value === undefined ? null : value;
-}
-
-const LOWER_IS_BETTER_METRICS: Set<string> = new Set(
-  [
-    ...activeGame.war.memberStats.filter((s) => s.lowerIsBetter).map((s) => s.key),
-    ...(activeGame.war.computedStats?.filter((s) => s.lowerIsBetter).map((s) => s.key) ?? []),
-  ],
-);
-
-export function normalizeMetricValue(
-  rawValue: number,
-  metric: AnalyticsMetricKey,
-  durationMinutes: number | null,
-  referenceDuration: number,
-  modifier: number,
-): number {
-  let timeNormalized = rawValue;
-  if (durationMinutes !== null && durationMinutes > 0) {
-    timeNormalized = (rawValue / durationMinutes) * referenceDuration;
-  }
-  if (modifier !== 1 && modifier > 0) {
-    if (LOWER_IS_BETTER_METRICS.has(metric)) {
-      timeNormalized = timeNormalized / modifier;
-    } else {
-      timeNormalized = timeNormalized * modifier;
-    }
-  }
-  return Number(timeNormalized.toFixed(2));
-}
-
-export function hashToPaletteColor(value: string, palette: string[]): string {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash << 5) - hash + value.charCodeAt(index);
-    hash |= 0;
-  }
-  return palette[Math.abs(hash) % palette.length] ?? "var(--ant-color-primary)";
-}
 
 type UseGuildWarAnalyticsParams = {
   historyRows: Array<{ id: string; war_name: string; created_at: string }>;
@@ -389,5 +313,15 @@ export function useGuildWarAnalytics({
     selectionSoftCap: ANALYTICS_SELECTION_SOFT_CAP,
   };
 }
+
+export type GuildWarAnalyticsController = ReturnType<typeof useGuildWarAnalytics>;
+
+export {
+  getMetricLabelKey,
+  hashToPaletteColor,
+  metricValueFromWarMember,
+  metricValueOrNullFromWarMember,
+  normalizeMetricValue,
+};
 
 export type { AnalyticsMetricKey, AnalyticsAggregation, AnalyticsTableColumn };

@@ -2,11 +2,9 @@
 
 # Infini Guild Management Portal
 
-**Your guild deserves better than a spreadsheet.**
+**A self-hosted guild portal for rosters, events, war planning, wiki content, media, and staff tools.**
 
-A modular, full-stack guild portal that adapts to **any game** — powered by a single config file.
-
-Roster. Events. War analytics. Wiki. Gallery. All in one place.
+Built as one Cloudflare Worker plus one React app, with shared TypeScript contracts across the stack.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)](https://www.typescriptlang.org/)
@@ -19,71 +17,110 @@ Roster. Events. War analytics. Wiki. Gallery. All in one place.
 
 ---
 
-## Why This Exists
+## Overview
 
-Most guild tools are either game-locked SaaS platforms you can't customize, or a mess of Google Sheets and Discord bots held together with duct tape.
+Infini Guild Management is a full-stack portal for running a game guild without spreading core data across spreadsheets, Discord pins, and one-off tools.
 
-This project is different. It's a **complete, self-hosted guild portal** where every game-specific detail — classes, stats, war objectives, roles — lives in a single TypeScript file. Change that file, and you have a portal for an entirely different game. No fork gymnastics, no ripping out hardcoded values.
+The app is designed around a shared game definition. Classes, roles, member stats, event types, war metrics, and labels live in TypeScript configuration instead of being hardcoded throughout the frontend and backend. That keeps the project adaptable when the guild changes games or needs a different ruleset.
 
-> **TL;DR** — One config file. Any game. Full-stack. Deploy to Cloudflare for free.
+The deployment model is also simple: the React portal is built into static assets and served by the Cloudflare Worker that runs the API. One deploy gives you one URL for the whole portal.
 
----
+## Features
 
-## What You Get
-
-| Module | What It Does |
-|---|---|
-| **Member Roster** | Profiles with classes, stats, bio, media gallery, availability grid |
-| **Events** | Recurring events, capacity limits, sign-up locking, participant tracking |
-| **Announcements** | Rich text editor, draft/scheduled/published/archived lifecycle, pinning |
-| **Guild War** | War history, drag & drop team builder, per-member stats, full analytics suite |
-| **War Analytics** | Normalization, computed metrics (KDA etc.), heatmaps, contribution charts, radar |
-| **Wiki** | Hierarchical categories, rich text articles |
-| **Gallery** | Cloud-backed media uploads with captions |
-| **Admin Console** | Role & permission management, invite links, audit log with R2 archival |
-| **Quick Search** | `Cmd+K` / `Ctrl+K` across all content |
-| **Realtime** | WebSocket push for live event and war updates |
-| **i18n** | English + Chinese out of the box, extensible |
-| **Feature Flags** | Toggle any module on/off without code changes |
-
----
+| Area | Included |
+| --- | --- |
+| Member roster | Member profiles, classes, stats, bio, media, and availability |
+| Events | Recurring events, capacity limits, signup locking, and participant tracking |
+| Announcements | Rich text drafts, scheduled publishing, archive states, and pinning |
+| Guild war | War history, team builder, member stats, templates, and analytics |
+| Wiki | Categories and rich text articles for guild knowledge |
+| Gallery | Cloud-backed media uploads with captions |
+| Admin console | Roles, permissions, invite links, audit logs, and system status |
+| Tools | Title styling, dice roller, and the in-progress equipment calculator |
+| Search | `Cmd+K` / `Ctrl+K` command search across portal content |
+| Realtime | WebSocket updates through Cloudflare Durable Objects |
+| Localization | English and Chinese translations |
+| Feature flags | Per-module switches through shared config or Worker vars |
 
 ## Architecture
 
-```
+```text
 apps/
-├── shared/     Zod schemas, types, game definitions, API registry
-│                 ↕ shared contract
-├── worker/     Cloudflare Worker — Hono API + D1 + R2 + Durable Objects
-│                 ↕ serves
-└── portal/     React SPA — TanStack Router + Mantine UI
+├── shared/   Zod schemas, shared types, constants, game config, API contracts
+├── worker/   Hono API on Cloudflare Workers, D1, R2, Durable Objects
+└── portal/   React SPA with TanStack Router, TanStack Query, Mantine, Zustand
 ```
 
-Everything shares one TypeScript codebase. The worker serves the portal as static assets — **one deploy, one URL**.
-
----
+The shared package is the contract layer. Backend routes validate with shared Zod schemas, frontend queries consume the same inferred types, and game-specific behavior is centralized instead of duplicated.
 
 ## Tech Stack
 
-| | |
-|---|---|
-| **Frontend** | React 19 · Vite 8 · TanStack Router & Query · Mantine 8 · Tailwind CSS 4 · Zustand 5 |
-| **Editor** | TipTap 3 (rich text) · ECharts 5 (charts) |
-| **Backend** | Hono on Cloudflare Workers · Drizzle ORM · D1 (SQLite) · R2 (object storage) |
-| **Realtime** | Cloudflare Durable Objects (WebSocket) |
-| **Validation** | Zod 4 — shared between frontend and backend |
-| **Forms** | react-hook-form + Zod resolvers |
-| **i18n** | i18next + react-i18next |
+| Layer | Stack |
+| --- | --- |
+| Frontend | React 19, Vite 8, TanStack Router, TanStack Query, Mantine 8, Tailwind CSS 4, Zustand 5 |
+| Rich content and charts | TipTap 3, ECharts 5 |
+| Backend | Hono on Cloudflare Workers, Drizzle ORM, Cloudflare D1 |
+| Storage | Cloudflare R2 for media and audit archives |
+| Realtime | Cloudflare Durable Objects with WebSocket connections |
+| Validation | Zod 4 shared by frontend and backend |
+| Forms | react-hook-form with Zod resolvers |
+| Localization | i18next and react-i18next |
 
----
+## Quick Start
 
-## Make It Yours — 5 Steps
+### Prerequisites
 
-All game-specific config lives in one file. Here's how to adapt it:
+- Node.js 20+
+- pnpm 10+
+- A Cloudflare account for deployed environments
 
-### Step 1 — Define your game
+Local development does not require a Cloudflare account.
 
-Copy `apps/shared/games/definitions/yan-yun.ts` and fill in your game's details:
+### Run Locally
+
+```bash
+pnpm install
+pnpm dev
+```
+
+`pnpm dev` rebuilds the local D1 database, starts the Worker and portal dev servers, and seeds mock data.
+
+Open `http://localhost:5173` and sign in with one of the seeded accounts:
+
+| Username | Password | Role |
+| --- | --- | --- |
+| `admin` | `admin123` | admin |
+| `mod_1` | `moderator123` | moderator |
+| `member_01` | `member1234` | member |
+
+## Common Commands
+
+| Command | Purpose |
+| --- | --- |
+| `pnpm dev` | Rebuild local DB, start Worker and portal, seed data |
+| `pnpm dev:all` | Start Worker and portal without rebuilding or seeding |
+| `pnpm dev:worker` | Start the Worker API at `http://127.0.0.1:8787` |
+| `pnpm dev:portal` | Start the Vite portal dev server |
+| `pnpm build` | Build the portal SPA |
+| `pnpm build:worker` | Dry-run a Worker deployment |
+| `pnpm typecheck` | Run TypeScript checking for the workspace |
+| `pnpm lint` | Run ESLint for portal and worker code |
+| `pnpm test` | Run Vitest |
+| `pnpm test:worker` | Run seeded Worker integration tests |
+| `pnpm smoke:pages` | Smoke-test key portal pages with Worker and portal running |
+| `pnpm db:generate` | Generate Drizzle migrations |
+| `pnpm db:studio` | Open Drizzle Studio |
+| `pnpm db:mock:rebuild` | Drop and recreate the local D1 database |
+| `pnpm db:mock:init` | Apply migrations to the local D1 database |
+| `pnpm db:mock:seed` | Seed local data through the running Worker |
+
+## Adapting the Portal to Another Game
+
+Most game-specific behavior starts in the active game definition. Copy the existing game file, edit the values, then export your definition as the active game.
+
+### 1. Create a game definition
+
+Copy `apps/shared/games/definitions/yan-yun.ts` to a new file, for example:
 
 ```typescript
 // apps/shared/games/definitions/my-game.ts
@@ -94,20 +131,20 @@ export const myGame: GameDefinition = {
   name: "My Game",
 
   classes: [
-    { id: "warrior", label: "Warrior", colorGroup: "red",   role: "tank" },
-    { id: "mage",    label: "Mage",    colorGroup: "blue",  role: "dps" },
-    { id: "priest",  label: "Priest",  colorGroup: "green", role: "healer" },
+    { id: "warrior", label: "Warrior", colorGroup: "red", role: "tank" },
+    { id: "mage", label: "Mage", colorGroup: "blue", role: "dps" },
+    { id: "priest", label: "Priest", colorGroup: "green", role: "healer" },
   ],
 
   classColorMapping: {
     warrior: "var(--mantine-color-red-6)",
-    mage:    "var(--mantine-color-blue-6)",
-    priest:  "var(--mantine-color-green-6)",
+    mage: "var(--mantine-color-blue-6)",
+    priest: "var(--mantine-color-green-6)",
   },
 
   roles: [
-    { id: "tank",   label: "Tank",   color: "blue",  avatarColor: "#4dabf7", icon: "IconShield" },
-    { id: "dps",    label: "DPS",    color: "red",   avatarColor: "#ff6b6b", icon: "IconSword" },
+    { id: "tank", label: "Tank", color: "blue", avatarColor: "#4dabf7", icon: "IconShield" },
+    { id: "dps", label: "DPS", color: "red", avatarColor: "#ff6b6b", icon: "IconSword" },
     { id: "healer", label: "Healer", color: "green", avatarColor: "#51cf66", icon: "IconHeart" },
   ],
   defaultRole: "dps",
@@ -124,9 +161,9 @@ export const myGame: GameDefinition = {
       { key: "score", label: "guild-war:conclude.score", hasBothSides: true },
     ],
     memberStats: [
-      { key: "kills",   label: "guild-war:stats.kills",   aggregations: ["total", "average", "best"] },
-      { key: "deaths",  label: "guild-war:stats.deaths",  aggregations: ["total", "average", "best"], lowerIsBetter: true },
-      { key: "damage",  label: "guild-war:stats.damage",  aggregations: ["total", "average", "best"] },
+      { key: "kills", label: "guild-war:stats.kills", aggregations: ["total", "average", "best"] },
+      { key: "deaths", label: "guild-war:stats.deaths", aggregations: ["total", "average", "best"], lowerIsBetter: true },
+      { key: "damage", label: "guild-war:stats.damage", aggregations: ["total", "average", "best"] },
       { key: "healing", label: "guild-war:stats.healing", aggregations: ["total", "average", "best"] },
     ],
     computedStats: [
@@ -143,55 +180,57 @@ export const myGame: GameDefinition = {
 
   eventTypes: [
     { id: "guild_war", label: "Guild War", icon: "IconSwords", color: "red" },
-    { id: "raid",      label: "Raid",      icon: "IconTarget", color: "orange" },
-    { id: "social",    label: "Social",    icon: "IconUsers",  color: "blue" },
+    { id: "raid", label: "Raid", icon: "IconTarget", color: "orange" },
+    { id: "social", label: "Social", icon: "IconUsers", color: "blue" },
   ],
 };
 ```
 
-### Step 2 — Activate it
+### 2. Make it active
 
 ```typescript
 // apps/shared/games/index.ts
 export { myGame as activeGame } from "./definitions/my-game";
 ```
 
-### Step 3 — Add translations
+### 3. Add translations
 
-Update the `label` keys in your i18n files:
+Add labels used by the game definition to the relevant i18n files, such as:
+
 - `apps/portal/i18n/en/guild-war.json`
 - `apps/portal/i18n/zh/guild-war.json`
 
-### Step 4 — Brand it
+### 4. Update branding
 
-In `apps/worker/wrangler.jsonc`:
+Set the site name, logo path, and portal origin in `apps/worker/wrangler.jsonc`:
 
 ```jsonc
 "vars": {
   "SITE_NAME": "Your Guild Name",
-  "SITE_LOGO_URL": "/your-logo.webp",  // place in apps/portal/public/
+  "SITE_LOGO_URL": "/your-logo.webp",
   "PORTAL_ORIGIN": "https://your-domain.com"
 }
 ```
 
-Replace `apps/portal/public/guild-logo.webp` with your guild's logo.
+Place the logo under `apps/portal/public/`, or replace the existing `guild-logo.webp`.
 
-### Step 5 — Toggle features (optional)
+### 5. Toggle optional modules
 
-In `apps/shared/config/features.ts`, turn off what you don't need:
+Feature defaults live in `apps/shared/config/features.ts`:
 
 ```typescript
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   announcements: true,
   events: true,
-  guildWar: false,  // don't need war tracking? gone.
+  guildWar: false,
   gallery: true,
   wiki: true,
   tools: true,
+  equipmentCalc: true,
 };
 ```
 
-Or override per-environment without code changes — add `FEATURES` to your `wrangler.jsonc` vars:
+You can also override feature flags per environment with the `FEATURES` Worker variable:
 
 ```jsonc
 "vars": {
@@ -199,151 +238,94 @@ Or override per-environment without code changes — add `FEATURES` to your `wra
 }
 ```
 
----
+## Deployment
 
-## Quick Start
-
-### Prerequisites
-
-- Node.js 20+
-- pnpm 10+
-- Cloudflare account (for production — local dev works without one)
-
-### Run locally
+### Staging
 
 ```bash
-pnpm install
-pnpm dev          # starts worker + portal + auto-seeds DB
-```
+# 1. Create a staging D1 database and R2 bucket in Cloudflare.
 
-That's it. Open `http://localhost:5173` and log in:
+# 2. Fill in apps/worker/wrangler.jsonc [env.staging] with the staging IDs and PORTAL_ORIGIN.
 
-| Username | Password | Role |
-|---|---|---|
-| `admin` | `admin123` | admin |
-| `mod_1` | `moderator123` | moderator |
-| `member_01` | `member1234` | member |
-
-### Commands
-
-| Command | What |
-|---|---|
-| `pnpm dev` | Start everything (worker + portal + seed) |
-| `pnpm dev:worker` | Worker API only (`http://127.0.0.1:8787`) |
-| `pnpm dev:portal` | Portal only (Vite proxies API) |
-| `pnpm build` | Build portal SPA |
-| `pnpm build:worker` | Dry-run worker deploy |
-| `pnpm typecheck` | TypeScript check |
-| `pnpm test` | Run tests |
-| `pnpm lint` | Lint |
-| `pnpm db:generate` | Generate Drizzle migrations |
-| `pnpm db:studio` | Open Drizzle Studio |
-| `pnpm db:mock:rebuild` | Drop + recreate local DB |
-| `pnpm db:mock:reset` | Drop local DB only |
-| `pnpm db:mock:init` | Apply migrations (keep data) |
-| `pnpm db:mock:seed` | Seed mock data (worker must be running) |
-
----
-
-## Deploy to Staging
-
-```bash
-# 1. Create a separate D1 database and R2 bucket for staging on the Cloudflare dashboard
-
-# 2. Update apps/worker/wrangler.jsonc [env.staging] with your staging D1 ID and PORTAL_ORIGIN
-
-# 3. Run migrations against the staging database
+# 3. Apply migrations to staging.
 wrangler d1 migrations apply guild-portal-db-staging --config apps/worker/wrangler.jsonc --env staging
 
-# 4. Deploy to staging (workers.dev subdomain)
+# 4. Deploy to staging.
 pnpm deploy:staging
 ```
 
-Staging uses a separate D1 database and R2 bucket. `workers_dev = true` gives you a `*.workers.dev` URL without a custom domain.
+Staging uses separate D1 and R2 bindings. `workers_dev = true` gives the staging Worker a `*.workers.dev` URL without requiring a custom domain.
 
----
-
-## Deploy to Production
+### Production
 
 ```bash
-# 1. Create D1 database + R2 bucket on Cloudflare dashboard
+# 1. Create the production D1 database and R2 bucket in Cloudflare.
 
-# 2. Update wrangler.jsonc with production IDs and secrets
+# 2. Fill in wrangler.jsonc with production IDs and secrets.
 
-# 3. Run migrations
+# 3. Apply migrations.
 wrangler d1 migrations apply <your-db> --config apps/worker/wrangler.jsonc
 
-# 4. Ship it
+# 4. Deploy the Worker and bundled portal assets.
 wrangler deploy --config apps/worker/wrangler.jsonc
 ```
-
-The portal SPA is bundled as static assets and served from the Worker — one deployment, one URL, no separate hosting.
-
----
 
 ## Environment Variables
 
 ### Worker (`apps/worker/wrangler.jsonc`)
 
 | Variable | Description |
-|---|---|
-| `ENVIRONMENT` | `development` or `production` |
+| --- | --- |
+| `ENVIRONMENT` | `development`, `staging`, or `production` |
 | `PORTAL_ORIGIN` | Allowed CORS origin |
-| `SIGNING_SECRET` | HMAC secret for audit archive tokens |
-| `SITE_NAME` | Guild name in the UI |
-| `SITE_LOGO_URL` | Path to logo image |
-| `FEATURES` | JSON object to override feature flags (e.g. `{"guildWar":false}`) |
+| `SIGNING_SECRET` | HMAC secret for audit archive download tokens |
+| `SITE_NAME` | Guild name shown in the UI |
+| `SITE_LOGO_URL` | Path to the logo image served by the portal |
+| `FEATURES` | JSON object that overrides feature flags, such as `{"guildWar":false}` |
 
 ### Portal (`apps/portal/.env.local`)
 
 | Variable | Default | Description |
-|---|---|---|
-| `VITE_WORKER_API_ORIGIN` | `http://127.0.0.1:8787` | Dev proxy target |
+| --- | --- | --- |
+| `VITE_WORKER_API_ORIGIN` | `http://127.0.0.1:8787` | Worker API origin used by the Vite dev proxy |
 
----
+## API Overview
 
-## API
-
-All endpoints under `/api/`. Session-based auth via HTTP-only cookies.
+All API routes live under `/api/`. Authentication uses HTTP-only session cookies.
 
 | Route | Description |
-|---|---|
-| `/api/auth` | Login, register (invite-only), session management |
-| `/api/users` | Roster, profiles, media uploads |
-| `/api/events` | Events, recurrence, sign-ups |
-| `/api/announcements` | Rich text announcements |
-| `/api/guild-war` | War history, teams, stats, analytics |
-| `/api/wiki` | Categories + articles |
-| `/api/gallery` | Media uploads |
-| `/api/admin` | Users, roles, invites, audit log |
-| `/ws` | WebSocket (Durable Object) |
+| --- | --- |
+| `/api/auth` | Login, invite registration, session checks, username checks |
+| `/api/users` | Member roster, profile data, and profile media |
+| `/api/events` | Events, recurrence, signups, votes, and participants |
+| `/api/announcements` | Rich text announcements and publishing states |
+| `/api/guild-war` | War history, teams, stats, analytics, and templates |
+| `/api/wiki` | Wiki categories and articles |
+| `/api/gallery` | Gallery items and media uploads |
+| `/api/admin` | Users, roles, invites, audit logs, and status |
+| `/api/game-data` | Equipment calculator game data and admin-managed versions |
+| `/ws` | WebSocket endpoint backed by a Durable Object |
 
-**Roles:** `admin` > `moderator` > `member` (custom roles supported)
+Roles are ordered as `admin` > `moderator` > `member`. Custom roles are supported through the admin console.
 
-**Rate limits:** Auth 5/min · Mutations 80/min · Uploads 20/min
+Rate limits are applied by route group: auth, mutations, uploads, and API reads each have separate limits.
 
----
+## Security Notes
 
-## Security
-
-- HttpOnly cookie sessions — no client-side tokens
-- RBAC on client and server
-- CSRF via `X-Requested-With` header
-- Password max 128 chars (PBKDF2 DoS prevention)
-- DOMPurify strict allowlist for all HTML
-- Generic login errors — no username enumeration
-- Full security headers (HSTS, CSP, X-Frame-Options DENY, nosniff)
-
----
+- Sessions are stored in HTTP-only cookies.
+- Client-side RBAC is for UX; backend RBAC remains authoritative.
+- Mutating requests require the `X-Requested-With` CSRF header.
+- Password input is capped at 128 characters to prevent PBKDF2 abuse.
+- Rich text HTML is sanitized before display.
+- Login errors are generic to avoid username enumeration.
+- Security headers include HSTS, CSP, `X-Frame-Options: DENY`, and `nosniff`.
 
 ## Scheduled Jobs
 
-| Schedule | What |
-|---|---|
-| Daily 00:00 UTC | Generate event instances, clean sessions, archive audit, delete orphaned media |
-| Every 15 min | Auto-archive past events, publish scheduled announcements |
-
----
+| Schedule | Jobs |
+| --- | --- |
+| Daily at 00:00 UTC | Generate future event instances, clean sessions, archive audit logs, remove orphaned media |
+| Every 15 minutes | Auto-archive past events, publish scheduled announcements, expire old announcements |
 
 ## License
 

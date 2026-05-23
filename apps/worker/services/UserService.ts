@@ -107,6 +107,10 @@ export type UserServiceDeps = {
 // --- Helpers ---
 
 const TITLE_HTML_ALLOWED_TAGS = new Set(["span", "b", "strong", "i", "em", "u", "br"]);
+const UPLOAD_VALIDATION_ERROR_PREFIXES = [
+  "File bytes do not match declared type:",
+  "Unsupported file type:",
+];
 
 function sanitizeTitleHtml(html: string): string {
   return html.replace(/<(\/?)(\w+)(\s[^>]*)?(\/?)>/gi, (_match, slash: string, tagName: string, attrs: string | undefined) => {
@@ -120,6 +124,17 @@ function sanitizeTitleHtml(html: string): string {
     }
     return `<${slash}${tagName.toLowerCase()}${styleAttr}>`;
   });
+}
+
+async function captureUploadValidation<T>(operation: () => Promise<T>): Promise<ServiceResult<T>> {
+  try {
+    return ok(await operation());
+  } catch (error) {
+    if (error instanceof Error && UPLOAD_VALIDATION_ERROR_PREFIXES.some((prefix) => error.message.startsWith(prefix))) {
+      return err("VALIDATION_ERROR", error.message);
+    }
+    throw error;
+  }
 }
 
 function toUserPayload(user: UserRow) {
@@ -313,19 +328,19 @@ export class UserService {
   }
 
   private async ensureProfile(userId: string): Promise<ProfileRow> {
-    const existing = await this.loadUserWithProfile(userId);
-    if (existing?.profile.userId === userId) {
-      const present = (
-        await this.db.select({ id: memberProfiles.id }).from(memberProfiles).where(eq(memberProfiles.userId, userId)).limit(1)
-      )[0];
-      if (present) return existing.profile;
-    }
+    const row = (
+      await this.db.select().from(memberProfiles).where(eq(memberProfiles.userId, userId)).limit(1)
+    )[0];
+    if (row) return row;
+    // Profile missing — shouldn't happen post-registration but handle gracefully
     await this.db.insert(memberProfiles).values({
       id: nanoid(), userId, power: 0, classes: "[]", images: "[]", videoUrls: "[]",
     });
-    const refreshed = await this.loadUserWithProfile(userId);
-    if (!refreshed) throw new Error("Failed to create profile");
-    return refreshed.profile;
+    const created = (
+      await this.db.select().from(memberProfiles).where(eq(memberProfiles.userId, userId)).limit(1)
+    )[0];
+    if (!created) throw new Error("Failed to create profile");
+    return created;
   }
 
   private async syncProfileClassLookup(userId: string, classesJson: string): Promise<void> {
@@ -465,7 +480,9 @@ export class UserService {
     if (existing.length + avatarCount + files.length > IMAGE_QUOTAS.profile)
       return err("CONFLICT", "Profile image quota exceeded");
 
-    const keys: string[] = await Promise.all(files.map((file) => this.deps.storeProfileImage(targetUserId, file)));
+    const stored = await captureUploadValidation(() => Promise.all(files.map((file) => this.deps.storeProfileImage(targetUserId, file))));
+    if (!stored.ok) return stored;
+    const keys: string[] = stored.data;
 
     await this.db.update(memberProfiles)
       .set({ images: JSON.stringify([...existing, ...keys]), updatedAt: new Date().toISOString() })
@@ -520,7 +537,9 @@ export class UserService {
     if (existing.length + avatarCount + 1 - avatarCount > IMAGE_QUOTAS.profile)
       return err("CONFLICT", "Profile image quota exceeded");
 
-    const key = await this.deps.storeProfileImage(targetUserId, file);
+    const stored = await captureUploadValidation(() => this.deps.storeProfileImage(targetUserId, file));
+    if (!stored.ok) return stored;
+    const key = stored.data;
     if (profile.avatarKey) await this.deps.deleteMediaObject(profile.avatarKey);
 
     await this.db.update(memberProfiles)
@@ -564,7 +583,9 @@ export class UserService {
       return err("VALIDATION_ERROR", `Audio exceeds ${FILE_SIZE_LIMITS.profileAudio} bytes`);
 
     const profile = await this.ensureProfile(targetUserId);
-    const key = await this.deps.storeProfileAudio(targetUserId, audioFile);
+    const stored = await captureUploadValidation(() => this.deps.storeProfileAudio(targetUserId, audioFile));
+    if (!stored.ok) return stored;
+    const key = stored.data;
     if (profile.audioKey) await this.deps.deleteMediaObject(profile.audioKey);
 
     await this.db.update(memberProfiles)

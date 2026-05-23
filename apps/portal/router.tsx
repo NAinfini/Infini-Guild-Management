@@ -406,7 +406,7 @@ const wikiSlugRoute = createRoute({
 
 const ADMIN_SEARCH_SCHEMA = z.object({
   member: z.string().optional(),
-  tab: z.enum(["member", "invite", "audit", "roles", "badges", "status"]).optional(),
+  tab: z.enum(["member", "invite", "audit", "roles", "badges", "status", "gameData"]).optional(),
 });
 
 const adminRoute = createRoute({

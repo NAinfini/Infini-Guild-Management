@@ -1,30 +1,15 @@
-import { type AdminRole } from "@guild/shared";
 import { SettingsIcon } from "@portal/components/icons";
-import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Alert,
-  Badge,
   Card,
   Group,
   Skeleton,
   Stack,
   Tabs,
 } from "@mantine/core";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy } from "react";
 import { useTranslation } from "react-i18next";
-import { useAdminData } from "../../hooks/data/useAdminData";
-import { useAdminAuditFilter } from "../../hooks/useAdminAuditFilter";
-import { useAdminBadgesController } from "../../hooks/useAdminBadgesController";
-import { useAdminInviteController } from "../../hooks/useAdminInviteController";
-import { useAdminMemberDetail } from "../../hooks/useAdminMemberDetail";
-import { useAdminMutations } from "../../hooks/useAdminMutations";
-import { useAdminStatusController } from "../../hooks/useAdminStatusController";
-import { usePageHeaderActions } from "../../context/PageHeaderContext";
-import { useAppError } from "../../hooks/useAppError";
-import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
-import { copyPlainText } from "../../utils/copy";
-import { useAuthStore } from "../../stores/auth";
-import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
+import { useAdminPageController } from "../../hooks/useAdminPageController";
 import { PageLayout } from "../layout/PageLayout";
 import { ErrorBoundary } from "@portal/components/effects";
 import "./AdminPage.css";
@@ -47,6 +32,9 @@ const LazyAdminRolesSection = lazy(() =>
 const LazyAdminBadgesSection = lazy(() =>
   import("../feature/admin/AdminBadgesSection").then((mod) => ({ default: mod.AdminBadgesSection })),
 );
+const LazyAdminGameDataSection = lazy(() =>
+  import("../feature/admin/AdminGameDataSection").then((mod) => ({ default: mod.AdminGameDataSection })),
+);
 const LazyAdminMemberDetailModal = lazy(() =>
   import("../feature/admin/AdminMemberDetailModal").then((mod) => ({ default: mod.AdminMemberDetailModal })),
 );
@@ -57,236 +45,87 @@ const LazyCreateMemberModal = lazy(() =>
   import("../feature/admin/CreateMemberModal").then((mod) => ({ default: mod.CreateMemberModal })),
 );
 
-const BATCH_SELECTION_LIMIT = 50;
-
-import type { ColumnDef as TanStackColumnDef } from "@tanstack/react-table";
-
 export function AdminPage() {
   const { t } = useTranslation("admin");
-  const user = useAuthStore((state) => state.user);
-  const { isModerator, canManage: canManagePermission } = useEffectivePermissions();
-  const { showError } = useAppError();
-  const { member: memberSearchParam, tab: tabSearchParam } = useSearch({ strict: false }) as { member?: string; tab?: string };
-  const navigate = useNavigate();
-
-  type AdminTab = "member" | "invite" | "audit" | "roles" | "badges" | "status";
-  const [activeTab, setActiveTab] = useState(tabSearchParam || "member");
-  const handleTabChange = useCallback((value: string | null) => {
-    if (!value) return;
-    setActiveTab(value);
-    const tab = value === "member" ? undefined : (value as AdminTab);
-    void navigate({ to: "/admin", search: (prev) => ({ ...prev, tab }), replace: true, viewTransition: false });
-  }, [navigate]);
-  const [memberSearch, setMemberSearch] = useState("");
-
   const {
+    activeTab,
     auditFilter,
-    setAuditPage,
-    setAuditSearch,
-    setAuditDateFrom,
-    setAuditDateTo,
-    setAuditDatePreset,
-  } = useAdminAuditFilter();
-
-  const {
-    usersQuery,
-    inviteLinksQuery,
-    inviteStatsQuery,
     auditLogQuery,
     auditMonthsQuery,
-    rolesQuery,
-    statusQuery,
-  } = useAdminData({
-    isModerator,
-    userRole: user?.role ?? "member",
-    auditPage: auditFilter.page,
-    auditSearch: auditFilter.search,
-    auditDateFrom: auditFilter.dateFrom,
-    auditDateTo: auditFilter.dateTo,
-  });
-  const inviteController = useAdminInviteController({
-    inviteLinks: inviteLinksQuery.data ?? [],
-  });
-
-  const userRowsRaw = usersQuery.data?.data ?? [];
-  const userMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const row of userRowsRaw) {
-      map.set(row.user.id, row.user.username);
-    }
-    return map;
-  }, [userRowsRaw]);
-  const resolveUsername = useCallback((id: string) => userMap.get(id), [userMap]);
-
-  const adminMutations = useAdminMutations({
-    invite: inviteController.invite,
-    auditFilter,
-    batchSelectionLimit: BATCH_SELECTION_LIMIT,
-    showError,
-    resolveUsername,
-  });
-  const {
+    auditRows,
+    badgesController,
+    batchSelectionLimit,
+    batchProgress,
+    batchRoleMutation,
+    batchReactivateMutation,
+    batchDeactivateMutation,
+    batchDeleteMutation,
+    closeMemberDetail,
+    createInviteMutation,
+    createMember,
+    createMemberModalHandlers,
+    createMemberModalOpen,
+    createMemberMutation,
+    createRoleConfig,
+    createRoleMutation,
+    deactivateMutation,
     invite,
     inviteRows,
+    inviteLinksQuery,
+    inviteStatsQuery,
     isInviteInactive,
-    setInviteVisibility,
-    setInviteMaxUses,
-    setInviteExpiresAt,
-    setInviteSearch,
-  } = inviteController;
-  const {
-    selectedUserIds,
-    batchProgress,
-    isBatchPending,
-    updateRoleMutation,
-    deactivateMutation,
-    reactivateMutation,
-    resetPasswordMutation,
-    createMemberMutation,
-    batchRoleMutation,
-    batchDeleteMutation,
-    batchDeactivateMutation,
-    batchReactivateMutation,
-    createInviteMutation,
-    exportAuditLogMutation,
-    revokeInviteMutation,
+    canAccessAdmin,
     deleteInviteMutation,
-    updateMemberProfileMutation,
-    createRoleMutation,
-    updateRoleConfigMutation,
+    deleteRoleConfig,
     deleteRoleMutation,
-    applyUserSelection,
-    handleBatchRole,
+    exportAuditLogMutation,
     handleBatchActivate,
     handleBatchDeactivate,
     handleBatchDelete,
-    createRoleConfig,
-    updateRoleConfig,
-    deleteRoleConfig,
-  } = adminMutations;
-
-  const isAdmin = canManagePermission(["admin.roles.manage"]) || canManagePermission(["admin.status.view"]);
-  const canManageBadges = canManagePermission(["admin.badges.manage"]);
-  const badgesController = useAdminBadgesController(canManageBadges);
-
-  useEffect(() => {
-    if (!canManageBadges && activeTab === "badges") {
-      handleTabChange("member");
-    }
-  }, [activeTab, canManageBadges, handleTabChange]);
-
-  const {
-    setMemberDetailId,
-    memberDetailForm,
-    setMemberDetailForm,
-    selectedMemberDetail,
-    createMemberModalOpen,
-    createMemberModalHandlers,
-    memberMediaController,
-  } = useAdminMemberDetail({
-    usersData: usersQuery.data?.data,
-    memberSearchParam,
-    showError,
-  });
-
-  const { statusLatencyMs, statusHealthLogs } = useAdminStatusController({
-    statusQuery,
-    activeTab,
+    handleBatchRole,
+    handleCopyConfigSummary,
+    handleTabChange,
     isAdmin,
-  });
-
-  const userRows = useMemo(() => {
-    const q = memberSearch.trim().toLowerCase();
-    if (!q) return userRowsRaw;
-    return userRowsRaw.filter((row) => {
-      return (
-        row.user.username.toLowerCase().includes(q) ||
-        (row.profile.notes ?? "").toLowerCase().includes(q) ||
-        row.user.role.toLowerCase().includes(q) ||
-        row.profile.classes.some((cls) => cls.toLowerCase().includes(q))
-      );
-    });
-  }, [userRowsRaw, memberSearch]);
-
-  const rolesWithExternal = useMemo((): AdminRole[] => {
-    const apiRoles = rolesQuery.data ?? [];
-    const now = new Date().toISOString();
-    const externalRole: AdminRole = {
-      id: "external",
-      name: t("role.external"),
-      level: 0,
-      color: null,
-      is_builtin: true,
-      created_at: now,
-      updated_at: now,
-      permissions: Object.fromEntries(
-        apiRoles[0]
-          ? Object.keys(apiRoles[0].permissions).map((k) => [k, false])
-          : [],
-      ) as AdminRole["permissions"],
-      assigned_user_count: 0,
-    };
-    return [...apiRoles, externalRole];
-  }, [rolesQuery.data, t]);
-  const auditRows = auditLogQuery.data?.data ?? [];
-
-  const userColumns = useMemo((): TanStackColumnDef<(typeof userRows)[number], unknown>[] => [
-    {
-      header: t("member.table.username"),
-      id: "username",
-      accessorFn: (row) => row.user.username,
-    },
-    {
-      header: t("member.table.class"),
-      id: "class",
-      accessorFn: (row) => row.profile.classes[0] ?? "",
-      cell: ({ row }) => row.original.profile.classes[0] ?? "-",
-    },
-    {
-      header: t("member.table.power"),
-      id: "power",
-      accessorFn: (row) => row.profile.power,
-    },
-    {
-      header: t("member.table.notes"),
-      id: "notes",
-      enableSorting: false,
-      cell: ({ row }) => (isAdmin ? row.original.profile.notes ?? "-" : t("member.table.restricted")),
-    },
-    {
-      header: t("member.table.role"),
-      id: "role",
-      accessorFn: (row) => row.user.role,
-      cell: ({ row }) => {
-        const roleId = row.original.user.role;
-        const roleDef = rolesQuery.data?.find((r) => r.id === roleId);
-        const color = roleDef?.color ?? "blue";
-        return (
-          <Badge color={color}>
-            {t(`role.${roleId}`)}
-          </Badge>
-        );
-      },
-    },
-    {
-      header: t("member.table.active"),
-      id: "active",
-      accessorFn: (row) => row.user.is_active,
-      cell: ({ row }) => (row.original.user.is_active ? <Badge color="green">{t("member.status.active")}</Badge> : <Badge color="red">{t("member.status.inactive")}</Badge>),
-    },
-  ], [t, isAdmin, rolesQuery.data]);
-
-  usePageHeaderActions(null);
-  useLoadWarningToast(
-    usersQuery.isError ||
-      inviteLinksQuery.isError ||
-      inviteStatsQuery.isError ||
-      auditLogQuery.isError ||
-      auditMonthsQuery.isError ||
-      rolesQuery.isError ||
-      statusQuery.isError,
-    t("common:loadErrorRetry"),
-  );
+    isBatchPending,
+    isModerator,
+    memberDetailForm,
+    memberMediaController,
+    memberSearch,
+    patchMemberDetailForm,
+    reactivateMutation,
+    resetPasswordMutation,
+    revokeInviteMutation,
+    rolesQuery,
+    rolesWithExternal,
+    saveSelectedMemberProfile,
+    selectedMemberDetail,
+    selectedUserIds,
+    setAuditDateFrom,
+    setAuditDatePreset,
+    setAuditDateTo,
+    setAuditPage,
+    setAuditSearch,
+    setInviteExpiresAt,
+    setInviteMaxUses,
+    setInviteSearch,
+    setInviteVisibility,
+    setMemberDetailId,
+    setMemberSearch,
+    statusHealthLogs,
+    statusLatencyMs,
+    statusQuery,
+    tabAccess,
+    updateRoleMutation,
+    updateMemberProfileMutation,
+    updateRoleConfigMutation,
+    applyUserSelection,
+    updateRoleConfig,
+    userColumns,
+    userMap,
+    userRows,
+    userRowsRaw,
+    usersQuery,
+  } = useAdminPageController();
   const suspenseFallback = (
     <Card withBorder p="md">
       <Stack gap={10}>
@@ -296,22 +135,24 @@ export function AdminPage() {
     </Card>
   );
 
-  if (!isModerator) {
+  if (!canAccessAdmin) {
     return <Alert color="red" title={t("forbidden")} />;
   }
 
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<SettingsIcon size={22} />} className="admin-page">
-      <Tabs value={activeTab} onChange={handleTabChange}>
-        <Tabs.List>
-          <Tabs.Tab value="member">{t("tab.member")}</Tabs.Tab>
-          <Tabs.Tab value="invite">{t("tab.invite")}</Tabs.Tab>
-          <Tabs.Tab value="audit">{t("tab.audit")}</Tabs.Tab>
-          <Tabs.Tab value="roles">{t("tab.roles")}</Tabs.Tab>
-          {canManageBadges ? <Tabs.Tab value="badges">{t("tab.badges")}</Tabs.Tab> : null}
-          <Tabs.Tab value="status">{t("tab.status")}</Tabs.Tab>
+        <Tabs value={activeTab} onChange={handleTabChange}>
+          <Tabs.List>
+          {tabAccess.member ? <Tabs.Tab value="member">{t("tab.member")}</Tabs.Tab> : null}
+          {tabAccess.invite ? <Tabs.Tab value="invite">{t("tab.invite")}</Tabs.Tab> : null}
+          {tabAccess.audit ? <Tabs.Tab value="audit">{t("tab.audit")}</Tabs.Tab> : null}
+          {tabAccess.roles ? <Tabs.Tab value="roles">{t("tab.roles")}</Tabs.Tab> : null}
+          {tabAccess.badges ? <Tabs.Tab value="badges">{t("tab.badges")}</Tabs.Tab> : null}
+          {tabAccess.gameData ? <Tabs.Tab value="gameData">{t("tab.gameData")}</Tabs.Tab> : null}
+          {tabAccess.status ? <Tabs.Tab value="status">{t("tab.status")}</Tabs.Tab> : null}
         </Tabs.List>
 
+        {tabAccess.member ? (
         <Tabs.Panel value="member" pt="sm">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
@@ -321,7 +162,7 @@ export function AdminPage() {
               isAdmin={isAdmin}
               onOpenCreateMember={createMemberModalHandlers.open}
               selectedUserIds={selectedUserIds}
-              batchSelectionLimit={BATCH_SELECTION_LIMIT}
+              batchSelectionLimit={batchSelectionLimit}
               onBatchRole={handleBatchRole}
               onBatchActivate={handleBatchActivate}
               onBatchDeactivate={handleBatchDeactivate}
@@ -358,7 +199,9 @@ export function AdminPage() {
           </Suspense>
           </ErrorBoundary>
         </Tabs.Panel>
+        ) : null}
 
+        {tabAccess.invite ? (
         <Tabs.Panel value="invite" pt="sm">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
@@ -390,7 +233,9 @@ export function AdminPage() {
           </Suspense>
           </ErrorBoundary>
         </Tabs.Panel>
+        ) : null}
 
+        {tabAccess.audit ? (
         <Tabs.Panel value="audit" pt="sm">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
@@ -421,7 +266,9 @@ export function AdminPage() {
           </Suspense>
           </ErrorBoundary>
         </Tabs.Panel>
+        ) : null}
 
+        {tabAccess.roles ? (
         <Tabs.Panel value="roles" pt="sm">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
@@ -439,8 +286,9 @@ export function AdminPage() {
           </Suspense>
           </ErrorBoundary>
         </Tabs.Panel>
+        ) : null}
 
-        {canManageBadges ? (
+        {tabAccess.badges ? (
           <Tabs.Panel value="badges" pt="sm">
             <ErrorBoundary>
             <Suspense fallback={suspenseFallback}>
@@ -453,23 +301,22 @@ export function AdminPage() {
           </Tabs.Panel>
         ) : null}
 
+        {tabAccess.gameData ? (
+          <Tabs.Panel value="gameData" pt="sm">
+            <ErrorBoundary>
+            <Suspense fallback={suspenseFallback}>
+              <LazyAdminGameDataSection />
+            </Suspense>
+            </ErrorBoundary>
+          </Tabs.Panel>
+        ) : null}
+
+        {tabAccess.status ? (
         <Tabs.Panel value="status" pt="sm">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminStatusTab
-              onCopyConfigSummary={() => {
-                const data = statusQuery.data;
-                if (!data) return;
-                const lines = [
-                  `DB: ${data.db}`,
-                  `R2: ${data.r2}`,
-                  `WS: ${data.ws}`,
-                  `Crons: ${data.crons}`,
-                  statusLatencyMs !== null ? `Latency: ${statusLatencyMs}ms` : null,
-                  `Checked: ${new Date().toISOString()}`,
-                ].filter(Boolean);
-                void copyPlainText(lines.join("\n"));
-              }}
+              onCopyConfigSummary={handleCopyConfigSummary}
               canCopyConfigSummary={Boolean(statusQuery.data)}
               statusLatencyMs={statusLatencyMs}
               statusLoading={statusQuery.isLoading}
@@ -480,20 +327,16 @@ export function AdminPage() {
           </Suspense>
           </ErrorBoundary>
         </Tabs.Panel>
+        ) : null}
       </Tabs>
       <Suspense fallback={null}>
         <LazyAdminMemberDetailModal
           open={Boolean(selectedMemberDetail)}
           member={selectedMemberDetail}
           form={memberDetailForm}
-          onClose={() => setMemberDetailId(null)}
-          onFormChange={(patch) => setMemberDetailForm((prev) => ({ ...prev, ...patch }))}
-          onSaveProfile={(member) =>
-            updateMemberProfileMutation.mutate({
-              userId: member.user.id,
-              form: memberDetailForm,
-            })
-          }
+          onClose={closeMemberDetail}
+          onFormChange={patchMemberDetailForm}
+          onSaveProfile={saveSelectedMemberProfile}
           saveProfilePending={updateMemberProfileMutation.isPending}
           roles={rolesQuery.data ?? []}
           mediaTab={
@@ -535,10 +378,7 @@ export function AdminPage() {
         <LazyCreateMemberModal
           opened={createMemberModalOpen}
           onClose={createMemberModalHandlers.close}
-          onCreateMember={async (data) => {
-            const result = await createMemberMutation.mutateAsync(data);
-            return result;
-          }}
+          onCreateMember={createMember}
           creating={createMemberMutation.isPending}
         />
       </Suspense>

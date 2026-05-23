@@ -23,6 +23,7 @@ import { searchRoutes } from "./routes/search";
 import { usersRoutes } from "./routes/users";
 import { wikiRoutes } from "./routes/wiki";
 import { badgeRoutes } from "./routes/badges";
+import { gameDataRoutes } from "./routes/game-data";
 
 export type Bindings = {
   DB: D1Database;
@@ -92,6 +93,9 @@ function isUploadPath(path: string): boolean {
     return true;
   }
   if (path.includes("/wiki/articles/") && path.endsWith("/images")) {
+    return true;
+  }
+  if (path.includes("/game-data/") && path.endsWith("/icons")) {
     return true;
   }
   return (
@@ -232,6 +236,17 @@ app.get("/ws", async (c) => {
     return c.text("Expected websocket", 426);
   }
 
+  // Validate origin to prevent cross-origin WebSocket hijacking
+  const origin = c.req.header("Origin");
+  if (!origin) {
+    return c.json({ error_code: "FORBIDDEN", message: "Origin header required", request_id: c.get("requestId") }, 403);
+  }
+  const portalOrigin = c.env.PORTAL_ORIGIN;
+  const selfOrigin = new URL(c.req.url).origin;
+  if (origin !== selfOrigin && (!portalOrigin || origin !== portalOrigin)) {
+    return c.json({ error_code: "FORBIDDEN", message: "Origin not allowed", request_id: c.get("requestId") }, 403);
+  }
+
   const session = await resolveSession(c);
   if (!session) {
     return c.json({ error_code: "UNAUTHORIZED", message: "Authentication required", request_id: c.get("requestId") }, 401);
@@ -252,6 +267,7 @@ app.route("/api/guild-war", guildWarRoutes);
 app.route("/api/wiki", wikiRoutes);
 app.route("/api/gallery", galleryRoutes);
 app.route("/api/badges", badgeRoutes);
+app.route("/api/game-data", gameDataRoutes);
 app.route("/api/admin", adminRoutes);
 
 export default {
