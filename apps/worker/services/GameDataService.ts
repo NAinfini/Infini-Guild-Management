@@ -29,15 +29,14 @@ export class GameDataService {
     this.deps = deps;
   }
 
-  async getLatest(): Promise<ServiceResult<{ data: GameDataInput; version: string; schemaVersion: number }>> {
-    // Try latest row first (avoids fetching all 5 large JSON blobs)
+  async getLatest(): Promise<ServiceResult<{ data: GameDataInput; version: string; schemaVersion: number } | null>> {
     const [latest] = await this.db
       .select({ id: gameData.id, data: gameData.data, version: gameData.version })
       .from(gameData)
       .orderBy(desc(gameData.createdAt))
       .limit(1);
 
-    if (!latest) return err("NOT_FOUND", "No game data available");
+    if (!latest) return ok(null);
 
     const parsed = this.parseStoredGameData(latest.data);
     if (!parsed.ok) return parsed;

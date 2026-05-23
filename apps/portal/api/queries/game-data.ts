@@ -1,6 +1,6 @@
 import { apiRequest } from "../client";
 
-export function fetchGameData(): Promise<{ data: unknown; version: string; schemaVersion: number }> {
+export function fetchGameData(): Promise<{ data: unknown; version: string; schemaVersion: number } | null> {
   return apiRequest("/api/game-data");
 }
 

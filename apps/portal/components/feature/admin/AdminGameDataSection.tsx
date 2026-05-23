@@ -210,7 +210,7 @@ export function AdminGameDataSection() {
     );
   }
 
-  const { version, schemaVersion } = gameDataQuery.data;
+  const { version, schemaVersion } = gameDataQuery.data!;
   const currentVersionUploadedBy = recentVersions.find((v) => v.version === version)?.uploaded_by ?? "-";
   const currentVersionUpdatedAt = recentVersions.find((v) => v.version === version)?.created_at ?? null;
 
