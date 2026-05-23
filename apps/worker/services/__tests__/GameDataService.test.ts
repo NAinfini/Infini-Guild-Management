@@ -46,15 +46,14 @@ function withMissingMainStat(slotId: keyof typeof seedGameData.slotRules.mainSta
 }
 
 describe("GameDataService getLatest missing data", () => {
-  it("returns NOT_FOUND when no game data has been uploaded", async () => {
+  it("returns null when no game data has been uploaded", async () => {
     const service = createServiceWithRows([]);
 
     const result = await service.getLatest();
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.code).toBe("NOT_FOUND");
-      expect(result.message).toBe("No game data available");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toBeNull();
     }
   });
 });
@@ -140,10 +139,9 @@ describe("GameDataService getLatest regression cases", () => {
 
     const secondResult = await serviceWithoutData.getLatest();
 
-    expect(secondResult.ok).toBe(false);
-    if (!secondResult.ok) {
-      expect(secondResult.code).toBe("NOT_FOUND");
-      expect(secondResult.message).toBe("No game data available");
+    expect(secondResult.ok).toBe(true);
+    if (secondResult.ok) {
+      expect(secondResult.data).toBeNull();
     }
   });
 });
