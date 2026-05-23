@@ -22,6 +22,7 @@ const REFERENCE_DEFAULT_LOADOUTS = [
   { classId: "裂石钧（纯唐）", damage: 248748, rate: 26.15, excelRate: 26.16, expectedDps: 17768 },
   { classId: "牵丝霖", damage: 894632, rate: 23.39, excelRate: 23.39, expectedDps: 4970 },
   { classId: "牵丝玉", damage: 1850090, rate: 21.32, excelRate: 21.32, expectedDps: 24343 },
+  { classId: "牵丝翊", damage: 1606741, rate: 16, excelRate: 16, expectedDps: 14905 },
 ];
 
 describe("equipment calculator engine", () => {
@@ -63,6 +64,7 @@ describe("equipment calculator engine", () => {
       { classId: "鸣金影", damage: 2054516, rate: 23.77, excelRate: 23.77, expectedDps: 27014 },
       { classId: "牵丝霖", damage: 979293, rate: 25.6, excelRate: 25.61, expectedDps: 5441 },
       { classId: "裂石钧（纯唐）", damage: 270155, rate: 28.4, excelRate: 28.4, expectedDps: 19297 },
+      { classId: "牵丝翊", damage: 1723681, rate: 17.17, excelRate: 17.16, expectedDps: 15990 },
     ];
 
     for (const expected of EARLY_SEASON_CASES) {
@@ -92,6 +94,7 @@ describe("equipment calculator engine", () => {
       { classId: "裂石钧（纯唐）", setId: "飞隼", damage: 260943, rate: 27.43, excelRate: 27.43, expectedDps: 18639 },
       { classId: "牵丝霖", setId: "飞隼", damage: 985554, rate: 25.76, excelRate: 25.76, expectedDps: 5475 },
       { classId: "牵丝玉", setId: "玉斗", damage: 1977339, rate: 22.79, excelRate: 22.79, expectedDps: 26018 },
+      { classId: "牵丝翊", setId: "时雨", damage: 1639710, rate: 16.33, excelRate: 16.33, expectedDps: 15211 },
     ];
 
     for (const expected of ALT_SET_CASES) {
@@ -117,6 +120,7 @@ describe("equipment calculator engine", () => {
       { classId: "裂石威", xinfas: ["易水歌", "山河绝韵", "穿喉决", "断石之构"], damage: 2785795, rate: 24.26, excelRate: 24.26, expectedDps: 25914 },
       { classId: "裂石钧", xinfas: ["易水歌", "霜天白夜", "孤忠不辞", "断石之构"], damage: 2469167, rate: 28.48, excelRate: 28.48, expectedDps: 33367 },
       { classId: "牵丝玉", xinfas: ["易水歌", "花上月令", "纵地摘星", "春雷篇"], damage: 1924730, rate: 22.18, excelRate: 22.18, expectedDps: 25325 },
+      { classId: "牵丝翊", xinfas: ["花上月令", "春雷篇", "纵地摘星", "断石之构"], damage: 1678292, rate: 16.71, excelRate: 16.72, expectedDps: 15569 },
     ];
 
     for (const expected of ALT_XINFA_CASES) {
