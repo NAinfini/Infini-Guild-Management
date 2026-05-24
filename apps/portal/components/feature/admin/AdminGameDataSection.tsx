@@ -211,8 +211,9 @@ export function AdminGameDataSection() {
   }
 
   const { version, schemaVersion } = gameDataQuery.data!;
-  const currentVersionUploadedBy = recentVersions.find((v) => v.version === version)?.uploaded_by ?? "-";
-  const currentVersionUpdatedAt = recentVersions.find((v) => v.version === version)?.created_at ?? null;
+  const currentVersionEntry = recentVersions.find((v) => v.version === version);
+  const currentVersionUploadedBy = currentVersionEntry?.uploaded_by_name ?? currentVersionEntry?.uploaded_by ?? "-";
+  const currentVersionUpdatedAt = currentVersionEntry?.created_at ?? null;
 
   return (
     <Stack gap={18} className="admin-game-data">
@@ -375,7 +376,7 @@ export function AdminGameDataSection() {
                     </Group>
                   </Table.Td>
                   <Table.Td>
-                    <Text size="sm">{v.uploaded_by}</Text>
+                    <Text size="sm">{v.uploaded_by_name ?? v.uploaded_by}</Text>
                   </Table.Td>
                   <Table.Td>
                     <Text size="sm">{new Date(v.created_at).toLocaleString()}</Text>
@@ -384,7 +385,7 @@ export function AdminGameDataSection() {
                   <Table.Td>
                     {v.version !== version ? (
                       <DepthButton
-                        type="secondary"
+                        type="warning"
                         size="sm"
                         className="admin-game-data__rollback-btn"
                         onClick={() => handleRollback(v.id)}

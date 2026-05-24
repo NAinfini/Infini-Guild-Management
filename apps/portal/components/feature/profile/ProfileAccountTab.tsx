@@ -1,6 +1,6 @@
 import { PortalCard } from "../../shared/PortalCard";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { Button, Grid, Group, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
+import { Grid, Group, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
 import { SaveIcon, LogOutIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
@@ -111,7 +111,7 @@ export function ProfileAccountTab({
                 autoComplete="new-password"
                 aria-label={t("account.aria.confirmNewPassword")}
               />
-              <Button type="submit" size="sm" loading={changePasswordPending} leftSection={<SaveIcon size={14} />}>{changePasswordLabel}</Button>
+              <DepthButton htmlType="submit" type="primary" size="sm" loading={changePasswordPending} before={<SaveIcon size={14} />}>{changePasswordLabel}</DepthButton>
             </Stack>
             </form>
           </PortalCard>
@@ -136,14 +136,14 @@ export function ProfileAccountTab({
                 aria-label={t("account.aria.newUsername")}
                 error={usernameError}
               />
-              <Button size="sm" onClick={handleChangeUsername} loading={changeUsernamePending} disabled={isUsernameInvalid} leftSection={<SaveIcon size={14} />}>{changeUsernameLabel}</Button>
+              <DepthButton type="primary" size="sm" onClick={handleChangeUsername} loading={changeUsernamePending} disabled={isUsernameInvalid} before={<SaveIcon size={14} />}>{changeUsernameLabel}</DepthButton>
             </Stack>
           </PortalCard>
         </Grid.Col>
       </Grid>
 
       <Group>
-        <DepthButton type="danger" size="sm" onClick={onLogout} before={<LogOutIcon size={14} />}>
+        <DepthButton type="warning" size="sm" onClick={onLogout} before={<LogOutIcon size={14} />}>
           {t("action.logout")}
         </DepthButton>
       </Group>

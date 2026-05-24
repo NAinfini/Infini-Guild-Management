@@ -155,7 +155,7 @@ export function GalleryFiltersCard({
               </DepthButton>
             ) : null}
             {canUpload ? (
-              <DepthButton onClick={onAddMedia} type="success" size="sm">
+              <DepthButton onClick={onAddMedia} type="primary" size="sm">
                 {addMediaLabel}
               </DepthButton>
             ) : null}

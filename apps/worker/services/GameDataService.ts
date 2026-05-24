@@ -3,6 +3,7 @@ import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit
 import { desc, eq, inArray, not } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { gameData } from "../db/schema/game-data";
+import { users } from "../db/schema/auth";
 import { ok, err, type ServiceResult } from "./result";
 import { validateUploadBytes } from "./media";
 
@@ -44,19 +45,21 @@ export class GameDataService {
     return ok({ data: parsed.data, version: parsed.data.version, schemaVersion: parsed.data.schemaVersion });
   }
 
-  async getVersions(): Promise<ServiceResult<{ id: number; version: string; uploaded_by: string; created_at: string }[]>> {
+  async getVersions(): Promise<ServiceResult<{ id: number; version: string; uploaded_by: string; uploaded_by_name: string | null; created_at: string }[]>> {
     const rows = await this.db
       .select({
         id: gameData.id,
         version: gameData.version,
         uploadedBy: gameData.uploadedBy,
+        uploadedByName: users.username,
         createdAt: gameData.createdAt,
       })
       .from(gameData)
+      .leftJoin(users, eq(users.id, gameData.uploadedBy))
       .orderBy(desc(gameData.createdAt))
       .limit(MAX_VERSIONS);
 
-    return ok(rows.map((r) => ({ id: r.id, version: r.version, uploaded_by: r.uploadedBy, created_at: r.createdAt })));
+    return ok(rows.map((r) => ({ id: r.id, version: r.version, uploaded_by: r.uploadedBy, uploaded_by_name: r.uploadedByName, created_at: r.createdAt })));
   }
 
   async upload(jsonString: string, uploadedBy: string): Promise<ServiceResult<{ version: string; id: number }>> {

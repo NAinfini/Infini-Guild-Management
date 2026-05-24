@@ -137,7 +137,7 @@ export function CreateMemberModal({
             </DepthButton>
             <DepthButton
               onClick={() => { void handleCreate(); }}
-              type="success"
+              type="primary"
               size="sm"
               before={<UserPlusIcon size={16} />}
               disabled={!username.trim() || creating}

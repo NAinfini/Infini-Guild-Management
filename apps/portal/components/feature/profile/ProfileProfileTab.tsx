@@ -142,7 +142,7 @@ export function ProfileProfileTab({
                   onChange={(value) => onClassDraftChange(value ?? "")}
                   onSearchChange={(value) => onClassDraftChange(value)}
                 />
-                <Button onClick={onAddClass} leftSection={<PlusIcon size={16} />}>{t("action.add")}</Button>
+                <DepthButton type="primary" onClick={onAddClass} before={<PlusIcon size={16} />}>{t("action.add")}</DepthButton>
               </Group>
               {classList.length > 0 && (
                 <DndContext sensors={classSensors} collisionDetection={closestCenter} onDragEnd={onClassDragEnd}>

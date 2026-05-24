@@ -168,7 +168,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
         <Stack gap={8}>
           <Group justify="space-between">
             <Text fw={600}>{t("badges.title")}</Text>
-            <DepthButton type="secondary" size="sm" onClick={startCreate} aria-label={t("badges.action.create")}>
+            <DepthButton type="primary" size="sm" onClick={startCreate} aria-label={t("badges.action.create")}>
               <PlusIcon size={16} />
             </DepthButton>
           </Group>

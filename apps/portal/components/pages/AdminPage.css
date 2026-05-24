@@ -163,6 +163,8 @@
   .admin-roles-layout {
     grid-template-columns: 1fr;
     min-height: unset;
+    max-height: none;
+    overflow: visible;
   }
 
   .admin-roles-sidebar {

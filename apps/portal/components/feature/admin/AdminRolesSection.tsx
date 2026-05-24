@@ -430,14 +430,14 @@ export function AdminRolesSection({
               <Stack gap={16}>
                 {/* Role header */}
                 <div className="admin-roles-detail-header">
-                  <Group justify="space-between" align="center" wrap="nowrap">
-                    <Group gap={10} align="center" wrap="nowrap" style={{ minWidth: 0 }}>
+                  <Group justify="space-between" align="flex-end" wrap="wrap">
+                    <Group gap={10} align="flex-end" wrap="wrap" style={{ minWidth: 0, flex: 1 }}>
                       <TextInput
                         size="sm"
                         label={t("roles.field.name")}
                         value={selectedRole.is_builtin ? t(`role.${selectedRole.id}`, { defaultValue: selectedDraft.name }) : selectedDraft.name}
                         onChange={(event) => updateDraftField(selectedRole.id, "name", event.currentTarget.value)}
-                        style={{ flex: 1, minWidth: 120, maxWidth: 200 }}
+                        style={{ flex: 1, minWidth: 100, maxWidth: 200 }}
                         disabled={selectedRole.is_builtin}
                       />
                       <NumberInput
@@ -448,7 +448,7 @@ export function AdminRolesSection({
                         min={1}
                         max={998}
                         hideControls
-                        style={{ width: 100 }}
+                        style={{ width: 80 }}
                         disabled={selectedRole.is_builtin}
                       />
                       <ColorInput
@@ -457,19 +457,17 @@ export function AdminRolesSection({
                         label={t("roles.field.color")}
                         value={selectedDraft.color}
                         onChange={(value) => updateDraftField(selectedRole.id, "color", value)}
-                        style={{ width: 160 }}
+                        style={{ flex: 1, minWidth: 120, maxWidth: 160 }}
                         swatches={[
                           "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
                           "#3b82f6", "#6366f1", "#a855f7", "#ec4899", "#64748b",
                         ]}
                       />
-                      <Group gap={6} mt={22}>
-                        <Badge variant="light" color="teal" size="sm">
-                          {t("roles.assignedCount", { count: selectedRole.assigned_user_count })}
-                        </Badge>
-                      </Group>
+                      <Badge variant="light" color="teal" size="sm">
+                        {t("roles.assignedCount", { count: selectedRole.assigned_user_count })}
+                      </Badge>
                     </Group>
-                    <Group gap={8} mt={22}>
+                    <Group gap={8}>
                       {!selectedRole.is_builtin ? (
                         <ActionIcon
                           color="red"

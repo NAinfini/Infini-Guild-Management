@@ -65,7 +65,7 @@ export function WikiArticleListCard({
             <Text fw={600}>{title}</Text>
             {canEdit ? (
               <Group gap={6}>
-                <DepthButton type="secondary" size="sm" onClick={onCreateArticle} tooltip={{ label: createLabel, withArrow: true }}>
+                <DepthButton type="primary" size="sm" onClick={onCreateArticle} tooltip={{ label: createLabel, withArrow: true }}>
                     <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                       <PlusIcon size={16} />
                     </span>

@@ -13,6 +13,7 @@ import {
 } from "@mantine/core";
 import { TrashIcon } from "@portal/components/icons";
 import { formatDistanceToNow } from "date-fns";
+import { zhCN } from "date-fns/locale";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../shared/EmptyState";
 
@@ -44,7 +45,8 @@ export function NotificationPopover({
   onClearHistory,
   onEntryClick,
 }: NotificationPopoverProps) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
+  const dateFnsLocale = i18n.language === "zh" ? zhCN : undefined;
 
   return (
     <Popover width={420} position="bottom-end" shadow="md" withArrow trapFocus onClose={onClose}>
@@ -145,7 +147,7 @@ export function NotificationPopover({
                       </Group>
                     </Stack>
                     <Text c="dimmed" className="app-header-notification-time">
-                      {formatDistanceToNow(new Date(item.occurredAt), { addSuffix: true })}
+                      {formatDistanceToNow(new Date(item.occurredAt), { addSuffix: true, locale: dateFnsLocale })}
                     </Text>
                   </div>
                 </UnstyledButton>

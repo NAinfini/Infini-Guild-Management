@@ -74,7 +74,7 @@ export function AnnouncementListCard({
             {canEdit && onCreate ? (
               <DepthButton
                 onClick={() => onCreate()}
-                type="secondary"
+                type="primary"
                 size="sm"
                 before={<PlusIcon size={16} />}
               >

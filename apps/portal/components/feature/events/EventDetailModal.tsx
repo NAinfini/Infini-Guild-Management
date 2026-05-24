@@ -358,7 +358,7 @@ export function EventDetailModal({
                     </Group>
                     {showMemberAction ? (
                       <DepthButton
-                        type={isJoined ? "danger" : "primary"}
+                        type={isJoined ? "danger" : "success"}
                         size="sm"
                         onClick={() => {
                           if (isJoined) {
