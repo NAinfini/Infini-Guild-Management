@@ -20,6 +20,7 @@
     "test:worker": "concurrently -k -s first -n worker,test \"pnpm dev:worker\" \"node apps/worker/tests/run-seeded-tests.cjs\"",
     "smoke:pages": "concurrently -k -s first -n worker,portal,smoke \"pnpm dev:worker\" \"pnpm dev:portal\" \"node apps/portal/scripts/smoke-key-pages.cjs\"",
     "lint": "eslint apps/portal apps/worker",
+    "check:secrets": "node scripts/check-no-secrets.mjs",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate --config apps/worker/drizzle.config.ts",
     "db:studio": "drizzle-kit studio --config apps/worker/drizzle.config.ts",
