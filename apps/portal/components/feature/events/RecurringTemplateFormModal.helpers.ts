@@ -54,6 +54,30 @@ export function extractTimeFromIso(iso: string | null): string {
   return `${hours}:${minutes}`;
 }
 
+// Map a local weekday (0-6, Sun-Sat) at a given local time-of-day to the
+// corresponding UTC weekday. Used when persisting `daysOfWeek` so the backend
+// cron (which works purely in UTC) picks the same wall-clock day the user saw.
+export function localWeekdayToUtc(localDay: number, time: string): number {
+  const [hh, mm] = time.split(":").map(Number);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return localDay;
+  // Build a Date for the upcoming `localDay` at hh:mm in local time, then read its UTC day.
+  const base = new Date();
+  const diff = (localDay - base.getDay() + 7) % 7;
+  base.setDate(base.getDate() + diff);
+  base.setHours(hh, mm, 0, 0);
+  return base.getUTCDay();
+}
+
+// Inverse of localWeekdayToUtc: given a stored UTC weekday + the template's
+// UTC start_at, derive the local weekday the user originally selected.
+export function utcWeekdayToLocal(utcDay: number, startAtIso: string): number {
+  const start = new Date(startAtIso);
+  if (Number.isNaN(start.getTime())) return utcDay;
+  // Day-of-week shift between local and UTC for this specific instant (in {-1, 0, +1}).
+  const shift = ((start.getDay() - start.getUTCDay()) % 7 + 7) % 7;
+  return (utcDay + shift) % 7;
+}
+
 export function computeDurationFromIso(startIso: string | null, endIso: string | null): { value: number; unit: DurationUnit } {
   if (!startIso || !endIso) return { value: 2, unit: "hours" };
   const startMs = Date.parse(startIso);
@@ -90,6 +114,10 @@ export function addDuration(startIso: string, durationValue: number, durationUni
 export function buildFormState(template: RecurringTemplate | null): RecurringTemplateFormState {
   const duration = computeDurationFromIso(template?.start_at ?? null, template?.end_at ?? null);
   const totalMinutes = template?.visibility_offset_minutes ?? null;
+  const storedDays = template?.recurrence_rule?.daysOfWeek ?? [1, 3, 5];
+  const localDays = template?.start_at
+    ? storedDays.map((d) => utcWeekdayToLocal(d, template.start_at))
+    : storedDays;
   return {
     title: template?.title ?? "",
     eventType: (template?.type as (typeof EVENT_TYPES)[number]) ?? ("" as (typeof EVENT_TYPES)[number]),
@@ -100,7 +128,7 @@ export function buildFormState(template: RecurringTemplate | null): RecurringTem
     capacity: template?.capacity === null ? "" : String(template?.capacity ?? ""),
     recurrenceFreq: template?.recurrence_rule?.frequency ?? "weekly",
     recurrenceInterval: String(template?.recurrence_rule?.interval ?? 1),
-    recurrenceDays: template?.recurrence_rule?.daysOfWeek ?? [1, 3, 5],
+    recurrenceDays: localDays,
     recurrenceMonthDay: template?.recurrence_rule?.dayOfMonth ? String(template.recurrence_rule.dayOfMonth) : "1",
     recurrenceEndMode: template?.recurrence_rule?.endDate
       ? "date"

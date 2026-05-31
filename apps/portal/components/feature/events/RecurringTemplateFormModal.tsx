@@ -19,7 +19,7 @@ import { DepthButton } from "@portal/components/shared/DepthButton";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
-import { addDuration, buildFormState, timeToTodayIso, WEEKDAY_KEYS, type DurationUnit, type RecurrenceEndMode, type RecurrenceFreq, type RecurringTemplateFormPayload, type RecurringTemplateFormState } from "./RecurringTemplateFormModal.helpers";
+import { addDuration, buildFormState, localWeekdayToUtc, timeToTodayIso, WEEKDAY_KEYS, type DurationUnit, type RecurrenceEndMode, type RecurrenceFreq, type RecurringTemplateFormPayload, type RecurringTemplateFormState } from "./RecurringTemplateFormModal.helpers";
 
 export type { RecurringTemplateFormPayload } from "./RecurringTemplateFormModal.helpers";
 
@@ -116,7 +116,9 @@ export function RecurringTemplateFormModal({
       recurrence_rule: {
         frequency: recurrenceFreq,
         interval: Math.max(1, Number.parseInt(recurrenceInterval || "1", 10)),
-        daysOfWeek: recurrenceFreq === "weekly" ? recurrenceDays : undefined,
+        daysOfWeek: recurrenceFreq === "weekly"
+          ? Array.from(new Set(recurrenceDays.map((d) => localWeekdayToUtc(d, startTime)))).sort((a, b) => a - b)
+          : undefined,
         dayOfMonth: recurrenceFreq === "monthly" ? Math.max(1, Math.min(31, Number.parseInt(recurrenceMonthDay || "1", 10))) : undefined,
         endAfter: recurrenceEndMode === "count" ? Math.max(1, Number.parseInt(recurrenceEndCount || "1", 10)) : undefined,
         endDate: recurrenceEndMode === "date" && recurrenceEndDate.trim() ? new Date(recurrenceEndDate).toISOString() : undefined,

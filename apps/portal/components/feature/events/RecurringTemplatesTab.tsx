@@ -17,6 +17,7 @@ const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed"
 function buildRecurrenceSummary(
   t: (key: string, opts?: Record<string, unknown>) => string,
   rule: RecurringTemplate["recurrence_rule"],
+  startAtIso: string,
 ): string {
   if (!rule) return "";
   const freq = rule.frequency;
@@ -25,7 +26,11 @@ function buildRecurrenceSummary(
     return t("recurring.summary.daily", { interval });
   }
   if (freq === "weekly") {
+    const start = new Date(startAtIso);
+    const validStart = !Number.isNaN(start.getTime());
+    const shift = validStart ? ((start.getDay() - start.getUTCDay()) % 7 + 7) % 7 : 0;
     const dayNames = (rule.daysOfWeek ?? [])
+      .map((d) => (d + shift) % 7)
       .sort((a, b) => a - b)
       .map((d) => t(WEEKDAY_KEYS[d] ?? "weekday.sun"))
       .join(", ");
@@ -230,7 +235,7 @@ export function RecurringTemplatesTab({
                             <Text size="xs" c="dimmed">{time}</Text>
                           </Group>
                           <Text size="xs" c="dimmed">
-                            {buildRecurrenceSummary(t, template.recurrence_rule)}
+                            {buildRecurrenceSummary(t, template.recurrence_rule, template.start_at)}
                           </Text>
                           {template.capacity != null && (
                             <Group gap={4} align="center">
