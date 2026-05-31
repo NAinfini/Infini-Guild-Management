@@ -154,12 +154,14 @@ export function computeHorizon(now: Date): Date {
   return horizon;
 }
 
-export async function runEventInstanceGenerationCron(env: Bindings): Promise<void> {
+export async function runEventInstanceGenerationCron(env: Bindings, options: { templateId?: string } = {}): Promise<void> {
   const db = drizzle(env.DB);
   const now = new Date();
   const MAX_CATCHUP = 10;
 
-  // Fetch all active templates (is_series_parent = true, not archived, has recurrence_rule)
+  // Fetch active templates (is_series_parent = true, not archived, has recurrence_rule).
+  // When `templateId` is provided (request-triggered materialization), scope to that
+  // one series instead of scanning every template.
   const templates = await db
     .select({
       id: events.id,
@@ -183,6 +185,7 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
         eq(events.isSeriesParent, true),
         isNull(events.archivedAt),
         not(isNull(events.recurrenceRule)),
+        ...(options.templateId ? [eq(events.id, options.templateId)] : []),
       ),
     );
 

@@ -1,10 +1,10 @@
 import { auditLogSchema } from "@guild/shared";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
-import { and, desc, eq, gte, like, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, lte, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { auditLog, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
-import { escapeLikePattern } from "./helpers";
+import { escapeLikePattern, likeEscaped } from "./helpers";
 import { parsePage } from "../routes/_shared";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
@@ -129,10 +129,10 @@ function buildAuditLogWhere(query: ResolvedAuditLogQuery): SQL<unknown> {
     const pattern = `%${escapeLikePattern(query.search)}%`;
     filters.push(
       or(
-        like(auditLog.action, pattern),
-        like(auditLog.entityId, pattern),
-        like(auditLog.diffTitle, pattern),
-        like(auditLog.detailText, pattern),
+        likeEscaped(auditLog.action, pattern),
+        likeEscaped(auditLog.entityId, pattern),
+        likeEscaped(auditLog.diffTitle, pattern),
+        likeEscaped(auditLog.detailText, pattern),
       )!,
     );
   }

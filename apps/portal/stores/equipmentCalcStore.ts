@@ -207,30 +207,6 @@ export const useEquipmentCalcStore = create<EquipmentCalcState>()(
       }),
       merge: (persisted, current) => {
         const stored = persisted as Partial<EquipmentCalcState> | undefined;
-        if (stored?.pool) {
-          // New-format data exists, use it
-          return { ...current, ...stored };
-        }
-        // Check for old-format keys
-        try {
-          const oldPool = localStorage.getItem("equipCalc.pool");
-          if (oldPool) {
-            const migrated = {
-              pool: JSON.parse(oldPool) as Equipment[],
-              loadouts: JSON.parse(localStorage.getItem("equipCalc.loadouts") ?? "[]") as Loadout[],
-              activeLoadoutId: JSON.parse(localStorage.getItem("equipCalc.activeLoadout") ?? "null") as string | null,
-              schemaVersion: JSON.parse(localStorage.getItem("equipCalc.schemaVersion") ?? "1") as number,
-            };
-            // Clean up old keys
-            localStorage.removeItem("equipCalc.pool");
-            localStorage.removeItem("equipCalc.loadouts");
-            localStorage.removeItem("equipCalc.activeLoadout");
-            localStorage.removeItem("equipCalc.schemaVersion");
-            return { ...current, ...migrated };
-          }
-        } catch {
-          // Old keys unreadable, fall through to defaults
-        }
         return { ...current, ...stored };
       },
     },

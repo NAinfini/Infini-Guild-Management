@@ -1,5 +1,6 @@
 import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
+import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
 import { PortalCard } from "@portal/components/shared/PortalCard";
 import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, UsersIcon } from "@portal/components/icons";
 import { Badge, Group, HoverCard, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
@@ -26,11 +27,8 @@ function buildRecurrenceSummary(
     return t("recurring.summary.daily", { interval });
   }
   if (freq === "weekly") {
-    const start = new Date(startAtIso);
-    const validStart = !Number.isNaN(start.getTime());
-    const shift = validStart ? ((start.getDay() - start.getUTCDay()) % 7 + 7) % 7 : 0;
     const dayNames = (rule.daysOfWeek ?? [])
-      .map((d) => (d + shift) % 7)
+      .map((d) => utcWeekdayToLocal(d, startAtIso))
       .sort((a, b) => a - b)
       .map((d) => t(WEEKDAY_KEYS[d] ?? "weekday.sun"))
       .join(", ");

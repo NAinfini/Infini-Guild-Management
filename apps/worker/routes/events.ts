@@ -58,8 +58,8 @@ async function parseCreateEventRequest(c: Context): Promise<{ body: unknown; fil
   try { return { body: await c.req.json(), files: [] }; } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
 }
 
-async function materializeRecurringSeries(c: Context, _templateId: string): Promise<void> {
-  await runEventInstanceGenerationCron(c.env as Bindings);
+async function materializeRecurringSeries(c: Context, templateId: string): Promise<void> {
+  await runEventInstanceGenerationCron(c.env as Bindings, { templateId });
 }
 
 // --- Routes ---

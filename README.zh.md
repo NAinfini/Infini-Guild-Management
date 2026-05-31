@@ -202,7 +202,7 @@ export { myGame as activeGame } from "./definitions/my-game";
 
 ### 4. 修改品牌信息
 
-在 `apps/worker/wrangler.jsonc` 中设置站点名称、Logo 路径和前端来源：
+在本地 `apps/worker/wrangler.jsonc` 中设置站点名称、Logo 路径和前端来源（先从 `wrangler.example.jsonc` 复制）：
 
 ```jsonc
 "vars": {
@@ -245,7 +245,8 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
 ```bash
 # 1. 在 Cloudflare 创建 staging 专用的 D1 数据库和 R2 bucket。
 
-# 2. 在 apps/worker/wrangler.jsonc 的 [env.staging] 中填写 staging ID 和 PORTAL_ORIGIN。
+# 2. 复制 apps/worker/wrangler.example.jsonc → apps/worker/wrangler.jsonc，
+#    在 [env.staging] 中填写 staging ID 和 PORTAL_ORIGIN。
 
 # 3. 对 staging 数据库应用迁移。
 wrangler d1 migrations apply guild-portal-db-staging --config apps/worker/wrangler.jsonc --env staging
@@ -261,18 +262,19 @@ Staging 使用独立的 D1 和 R2 绑定。`workers_dev = true` 会给 staging W
 ```bash
 # 1. 在 Cloudflare 创建生产 D1 数据库和 R2 bucket。
 
-# 2. 在 wrangler.jsonc 中填写生产 ID 和密钥。
+# 2. 在 wrangler.jsonc [env.production] 中填写生产 ID。
+#    设置密钥：wrangler secret put SIGNING_SECRET --env production
 
 # 3. 应用迁移。
-wrangler d1 migrations apply <your-db> --config apps/worker/wrangler.jsonc
+wrangler d1 migrations apply <your-db> --config apps/worker/wrangler.jsonc --env production
 
 # 4. 部署 Worker 和打包后的前端资源。
-wrangler deploy --config apps/worker/wrangler.jsonc
+wrangler deploy --config apps/worker/wrangler.jsonc --env production
 ```
 
 ## 环境变量
 
-### Worker (`apps/worker/wrangler.jsonc`)
+### Worker (`apps/worker/wrangler.example.jsonc`)
 
 | 变量 | 说明 |
 | --- | --- |

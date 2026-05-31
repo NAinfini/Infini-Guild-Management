@@ -1,7 +1,7 @@
 import { createEventSchema, eventSchema, recurringTemplateSchema, updateEventSchema } from "@guild/shared";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
-import { and, asc, eq, gte, inArray, isNotNull, isNull, like, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
 import {
@@ -9,7 +9,7 @@ import {
   eventRaffleWinners,
   events,
 } from "../../db/schema";
-import { escapeLikePattern } from "../helpers";
+import { escapeLikePattern, likeEscaped } from "../helpers";
 import { err, ok, type ServiceErr, type ServiceResult } from "../result";
 import { toParticipantPayload, type EventParticipantRow } from "./EventParticipantService";
 import {
@@ -557,7 +557,7 @@ export class EventCrudService {
     const search = params.search?.trim();
     if (search) {
       const pattern = `%${escapeLikePattern(search)}%`;
-      filters.push(or(like(events.title, pattern), like(events.description, pattern))!);
+      filters.push(or(likeEscaped(events.title, pattern), likeEscaped(events.description, pattern))!);
     }
     if (params.startAfter) filters.push(gte(events.startAt, params.startAfter));
     if (params.startBefore) filters.push(lte(events.startAt, params.startBefore));

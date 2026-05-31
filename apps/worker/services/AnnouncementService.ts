@@ -3,12 +3,12 @@ import {
 } from "@guild/shared";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
-import { and, desc, eq, inArray, like, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { announcements } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
-import { escapeLikePattern } from "./helpers";
+import { escapeLikePattern, likeEscaped } from "./helpers";
 
 // --- Types ---
 
@@ -98,7 +98,7 @@ export class AnnouncementService {
     if (opts.pinned !== undefined) filters.push(eq(announcements.pinned, opts.pinned));
     if (opts.search) {
       const pattern = `%${escapeLikePattern(opts.search)}%`;
-      filters.push(or(like(announcements.title, pattern), like(announcements.bodyJson, pattern))!);
+      filters.push(or(likeEscaped(announcements.title, pattern), likeEscaped(announcements.bodyJson, pattern))!);
     }
 
     const whereClause = and(...filters);

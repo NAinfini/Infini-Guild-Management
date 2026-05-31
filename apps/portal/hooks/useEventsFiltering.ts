@@ -23,7 +23,7 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   const routeSearch = useSearch({ strict: false }) as EventsRouteSearch;
   const eventType = routeSearch.type;
   const searchQuery = routeSearch.search ?? "";
-  const eventStatus = routeSearch.status ?? (routeSearch.archived ? "archived" : "active");
+  const eventStatus = routeSearch.status ?? "active";
   const archivedOnly = eventStatus === "archived";
   const pinnedOnly = routeSearch.pinned ?? false;
   const lockedOnly = routeSearch.locked ?? false;
@@ -61,11 +61,11 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   }, [updateSearch]);
 
   const setArchivedOnly = useCallback((value: boolean) => {
-    updateSearch({ status: value ? "archived" : undefined, archived: undefined });
+    updateSearch({ status: value ? "archived" : undefined });
   }, [updateSearch]);
 
   const setEventStatus = useCallback((value: EventStatusFilter) => {
-    updateSearch({ status: value === "active" ? undefined : value, archived: undefined });
+    updateSearch({ status: value === "active" ? undefined : value });
   }, [updateSearch]);
 
   const setPinnedOnly = useCallback((value: boolean) => {
@@ -208,7 +208,6 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
       search: undefined,
       type: undefined,
       status: undefined,
-      archived: undefined,
       pinned: undefined,
       locked: undefined,
       eventId: undefined,

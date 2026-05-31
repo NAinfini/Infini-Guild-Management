@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  EVENTS_ROUTE_SEARCH_SCHEMA,
   buildEventWorkbenchSearch,
   sanitizeEventsRouteSearch,
 } from "./event-navigation";
@@ -24,7 +23,6 @@ describe("event navigation", () => {
       sanitizeEventsRouteSearch({
         search: "   ",
         type: undefined,
-        archived: false,
         pinned: false,
         locked: false,
         eventId: "   ",
@@ -55,13 +53,6 @@ describe("event navigation", () => {
       eventId: "event-42",
       view: "month",
     });
-  });
-
-  it("normalizes legacy archived search into explicit status", () => {
-    expect(EVENTS_ROUTE_SEARCH_SCHEMA.parse({ archived: "true" })).toEqual({
-      archived: true,
-    });
-    expect(sanitizeEventsRouteSearch({ archived: true })).toEqual({ status: "archived" });
   });
 
   it("keeps all status explicit because it changes server filtering", () => {

@@ -1,0 +1,147 @@
+{
+  "name": "infini-guild-worker",
+  "main": "index.ts",
+  "alias": {
+    "@guild/shared": "../shared/index.ts",
+    "@guild/shared/*": "../shared/*"
+  },
+  "compatibility_date": "2025-01-01",
+  "placement": {
+    "mode": "smart"
+  },
+  "assets": {
+    "directory": "../portal/dist",
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "vars": {
+    "ENVIRONMENT": "development",
+    "PORTAL_ORIGIN": "http://localhost:5173",
+    "SITE_NAME": "YOUR_SITE_NAME",
+    "SITE_LOGO_URL": "/guild-logo.webp"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "guild-portal-db",
+      "database_id": "local-dev",
+      "migrations_dir": "db/migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "guild-portal-media"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "WS",
+        "class_name": "WebSocketDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["WebSocketDO"]
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "0 0 * * *",
+      "*/15 * * * *"
+    ]
+  },
+
+  // ── Production environment ──────────────────────────────────────────
+  // Deploy with: wrangler deploy --env production
+  // Secrets (set via `wrangler secret put --env production`):
+  //   SIGNING_SECRET
+  "env": {
+    "production": {
+      "workers_dev": false,
+      "routes": [
+        { "pattern": "YOUR_DOMAIN.com", "custom_domain": true }
+      ],
+      "assets": {
+        "directory": "../portal/dist",
+        "not_found_handling": "single-page-application",
+        "binding": "ASSETS",
+        "run_worker_first": true
+      },
+      "vars": {
+        "ENVIRONMENT": "production",
+        "PORTAL_ORIGIN": "https://YOUR_DOMAIN.com",
+        "SITE_NAME": "YOUR_SITE_NAME",
+        "SITE_LOGO_URL": "/guild-logo.webp"
+      },
+      "r2_buckets": [
+        {
+          "binding": "MEDIA",
+          "bucket_name": "YOUR_R2_BUCKET_NAME"
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "YOUR_D1_DATABASE_NAME",
+          "database_id": "YOUR_D1_DATABASE_ID",
+          "migrations_dir": "db/migrations"
+        }
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "WS",
+            "class_name": "WebSocketDO"
+          }
+        ]
+      }
+    },
+
+    // ── Staging environment ────────────────────────────────────────────
+    // Deploy with: wrangler deploy --env staging
+    // Secrets (set via `wrangler secret put --env staging`):
+    //   SIGNING_SECRET
+    "staging": {
+      "workers_dev": true,
+      "assets": {
+        "directory": "../portal/dist",
+        "not_found_handling": "single-page-application",
+        "binding": "ASSETS",
+        "run_worker_first": true
+      },
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "PORTAL_ORIGIN": "https://YOUR_STAGING_DOMAIN.com",
+        "SITE_NAME": "YOUR_SITE_NAME",
+        "SITE_LOGO_URL": "/guild-logo.webp"
+      },
+      "r2_buckets": [
+        {
+          "binding": "MEDIA",
+          "bucket_name": "YOUR_STAGING_R2_BUCKET_NAME"
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "YOUR_STAGING_D1_DATABASE_NAME",
+          "database_id": "YOUR_STAGING_D1_DATABASE_ID",
+          "migrations_dir": "db/migrations"
+        }
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "WS",
+            "class_name": "WebSocketDO"
+          }
+        ]
+      }
+    }
+  }
+}

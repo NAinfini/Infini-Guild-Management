@@ -12,8 +12,6 @@ export type EventsRouteSearch = {
   search?: string;
   type?: EventTypeFilter;
   status?: EventStatusFilter;
-  /** Legacy URL param kept only for existing shared links. Use status instead. */
-  archived?: boolean;
   pinned?: boolean;
   locked?: boolean;
   view?: EventWorkbenchViewMode;
@@ -42,7 +40,6 @@ export const EVENTS_ROUTE_SEARCH_SCHEMA = z.object({
     (val) => (typeof val === "string" && (EVENT_STATUS_FILTERS as readonly string[]).includes(val) ? val : undefined),
     z.enum(EVENT_STATUS_FILTERS).optional(),
   ),
-  archived: z.preprocess(parseBooleanSearchValue, z.boolean().optional()),
   pinned: z.preprocess(parseBooleanSearchValue, z.boolean().optional()),
   locked: z.preprocess(parseBooleanSearchValue, z.boolean().optional()),
   view: z.preprocess(
@@ -53,14 +50,13 @@ export const EVENTS_ROUTE_SEARCH_SCHEMA = z.object({
 });
 
 export function sanitizeEventsRouteSearch(search: EventsRouteSearch): EventsRouteSearch {
-  const status = search.status ?? (search.archived ? "archived" : undefined);
   const sanitized: EventsRouteSearch = {};
   const normalizedSearch = normalizeOptionalString(search.search);
   const normalizedEventId = normalizeOptionalString(search.eventId);
 
   if (normalizedSearch) sanitized.search = normalizedSearch;
   if (search.type?.trim()) sanitized.type = search.type;
-  if (status && status !== "active") sanitized.status = status;
+  if (search.status && search.status !== "active") sanitized.status = search.status;
   if (search.pinned) sanitized.pinned = true;
   if (search.locked) sanitized.locked = true;
   if (search.view) sanitized.view = search.view;

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Pre-commit secret & config scanner.
+# Wired via `core.hooksPath = .githooks` (set by the package.json "prepare" script).
+# Bypass in an emergency with `git commit --no-verify`.
+node scripts/check-no-secrets.mjs || exit 1

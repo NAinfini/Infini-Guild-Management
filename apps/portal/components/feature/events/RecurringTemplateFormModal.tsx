@@ -117,7 +117,7 @@ export function RecurringTemplateFormModal({
         frequency: recurrenceFreq,
         interval: Math.max(1, Number.parseInt(recurrenceInterval || "1", 10)),
         daysOfWeek: recurrenceFreq === "weekly"
-          ? Array.from(new Set(recurrenceDays.map((d) => localWeekdayToUtc(d, startTime)))).sort((a, b) => a - b)
+          ? Array.from(new Set(recurrenceDays.map((d) => localWeekdayToUtc(d, startIso)))).sort((a, b) => a - b)
           : undefined,
         dayOfMonth: recurrenceFreq === "monthly" ? Math.max(1, Math.min(31, Number.parseInt(recurrenceMonthDay || "1", 10))) : undefined,
         endAfter: recurrenceEndMode === "count" ? Math.max(1, Number.parseInt(recurrenceEndCount || "1", 10)) : undefined,

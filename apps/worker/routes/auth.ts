@@ -2,6 +2,7 @@ import {
   loginSchema,
   registerSchema,
 } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
@@ -9,9 +10,23 @@ import { createPasswordHash, createSession, destroySession, resolveSession, veri
 import { AuthService } from "../services/AuthService";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
+import { createRateLimitMiddleware } from "../middleware/rate-limit";
 import { buildError, getDb, handleResult, parseJsonBody } from "./_shared";
 
 export const authRoutes = new Hono();
+
+// Per-username throttle layered on top of the IP-based auth limiter in index.ts.
+// Defeats credential-stuffing that rotates source IPs against a single account.
+// The username is passed per-request via a keyResolver that reads a header set
+// just before invocation (the limiter only reads the key, never mutates context).
+function makeUsernameLoginLimiter(username: string) {
+  return createRateLimitMiddleware({
+    keyPrefix: "auth-user",
+    maxRequests: LIMITS.rateLimit.auth.maxRequests,
+    windowMs: LIMITS.rateLimit.auth.windowMs,
+    keyResolver: () => username,
+  });
+}
 
 function getService(c: Context): AuthService {
   const env = c.env as Bindings;
@@ -33,6 +48,12 @@ authRoutes.post("/login", async (c) => {
   if (body instanceof Response) return body;
   const parsed = loginSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid login payload", parsed.error.flatten());
+
+  // Throttle by username (normalized) in addition to the IP-based limiter.
+  const username = parsed.data.username.trim().toLowerCase();
+  await makeUsernameLoginLimiter(username)(c, async () => {});
+  if (c.res.status === 429) return c.res;
+
   const bodyRecord = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
   const stayLoggedIn = typeof bodyRecord.stay_logged_in === "boolean" ? bodyRecord.stay_logged_in : false;
   const result = await getService(c).login(parsed.data.username, parsed.data.password, stayLoggedIn);

@@ -202,7 +202,7 @@ Add labels used by the game definition to the relevant i18n files, such as:
 
 ### 4. Update branding
 
-Set the site name, logo path, and portal origin in `apps/worker/wrangler.jsonc`:
+Set the site name, logo path, and portal origin in your local `apps/worker/wrangler.jsonc` (copy from `wrangler.example.jsonc` first):
 
 ```jsonc
 "vars": {
@@ -245,7 +245,8 @@ You can also override feature flags per environment with the `FEATURES` Worker v
 ```bash
 # 1. Create a staging D1 database and R2 bucket in Cloudflare.
 
-# 2. Fill in apps/worker/wrangler.jsonc [env.staging] with the staging IDs and PORTAL_ORIGIN.
+# 2. Copy apps/worker/wrangler.example.jsonc → apps/worker/wrangler.jsonc
+#    and fill in [env.staging] with your staging IDs and PORTAL_ORIGIN.
 
 # 3. Apply migrations to staging.
 wrangler d1 migrations apply guild-portal-db-staging --config apps/worker/wrangler.jsonc --env staging
@@ -261,18 +262,19 @@ Staging uses separate D1 and R2 bindings. `workers_dev = true` gives the staging
 ```bash
 # 1. Create the production D1 database and R2 bucket in Cloudflare.
 
-# 2. Fill in wrangler.jsonc with production IDs and secrets.
+# 2. Fill in your wrangler.jsonc [env.production] with production IDs.
+#    Set secrets: wrangler secret put SIGNING_SECRET --env production
 
 # 3. Apply migrations.
-wrangler d1 migrations apply <your-db> --config apps/worker/wrangler.jsonc
+wrangler d1 migrations apply <your-db> --config apps/worker/wrangler.jsonc --env production
 
 # 4. Deploy the Worker and bundled portal assets.
-wrangler deploy --config apps/worker/wrangler.jsonc
+wrangler deploy --config apps/worker/wrangler.jsonc --env production
 ```
 
 ## Environment Variables
 
-### Worker (`apps/worker/wrangler.jsonc`)
+### Worker (`apps/worker/wrangler.example.jsonc`)
 
 | Variable | Description |
 | --- | --- |

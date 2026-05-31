@@ -129,7 +129,6 @@ apps/
 | **tests/** | |
 | `tests/events.test.ts` | Event endpoint integration tests |
 | `tests/contracts/events.test.ts` | Event API contract tests |
-| `tests/contracts/legacy-cleanup.test.ts` | Legacy cleanup contract tests |
 | `tests/integration-smoke.ts` | Integration smoke test runner |
 
 ### apps/portal/ — Frontend (React SPA)

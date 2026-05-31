@@ -4,12 +4,12 @@ import {
 } from "@guild/shared";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
-import { and, asc, desc, eq, isNotNull, isNull, like, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { wikiArticles, wikiCategories } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
-import { escapeLikePattern } from "./helpers";
+import { escapeLikePattern, likeEscaped } from "./helpers";
 
 // --- Types ---
 
@@ -83,7 +83,7 @@ export class WikiService {
   }
 
   private async uniqueCategorySlug(base: string): Promise<string> {
-    const rows = await this.db.select({ slug: wikiCategories.slug }).from(wikiCategories).where(like(wikiCategories.slug, `${escapeLikePattern(base)}%`));
+    const rows = await this.db.select({ slug: wikiCategories.slug }).from(wikiCategories).where(likeEscaped(wikiCategories.slug, `${escapeLikePattern(base)}%`));
     const existing = new Set(rows.map((r) => r.slug));
     if (!existing.has(base)) return base;
     let suffix = 2;
@@ -92,7 +92,7 @@ export class WikiService {
   }
 
   private async uniqueArticleSlug(base: string): Promise<string> {
-    const rows = await this.db.select({ slug: wikiArticles.slug }).from(wikiArticles).where(like(wikiArticles.slug, `${escapeLikePattern(base)}%`));
+    const rows = await this.db.select({ slug: wikiArticles.slug }).from(wikiArticles).where(likeEscaped(wikiArticles.slug, `${escapeLikePattern(base)}%`));
     const existing = new Set(rows.map((r) => r.slug));
     if (!existing.has(base)) return base;
     let suffix = 2;
@@ -178,7 +178,7 @@ export class WikiService {
     if (opts.pinned !== undefined) filters.push(eq(wikiArticles.pinned, opts.pinned));
     if (opts.search) {
       const pattern = `%${escapeLikePattern(opts.search)}%`;
-      filters.push(or(like(wikiArticles.title, pattern), like(wikiArticles.bodyJson, pattern))!);
+      filters.push(or(likeEscaped(wikiArticles.title, pattern), likeEscaped(wikiArticles.bodyJson, pattern))!);
     }
     const whereClause = and(...filters);
     const [rows, countRow] = await Promise.all([

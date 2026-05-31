@@ -33,6 +33,21 @@ if (ciMode) {
 
 let failed = false;
 
+// Config files that hold real infrastructure IDs / domains must never be tracked.
+// (.gitignore alone does not untrack files committed before they were ignored.)
+const FORBIDDEN_TRACKED = [/(^|\/)wrangler\.jsonc$/, /(^|\/)\.dev\.vars$/, /(^|\/)\.env(\.|$)/];
+try {
+  const allTracked = execSync("git ls-files", { encoding: "utf8" }).trim().split("\n").filter(Boolean);
+  for (const file of allTracked) {
+    if (FORBIDDEN_TRACKED.some((re) => re.test(file))) {
+      console.error(`[secret-check] ❌ ${file} is committed to git — it may contain real resource IDs or secrets. Run: git rm --cached "${file}"`);
+      failed = true;
+    }
+  }
+} catch {
+  // not a git repo / git unavailable — skip tracked-file check
+}
+
 for (const file of files) {
   if (skipFile.some((re) => re.test(file))) continue;
   if (!/\.(ts|tsx|js|mjs|json|jsonc|yaml|yml|toml|env)$/i.test(file)) continue;

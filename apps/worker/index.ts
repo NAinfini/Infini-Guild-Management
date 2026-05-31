@@ -170,7 +170,7 @@ app.get("/api/site-config", (c) => {
       for (const key of Object.keys(features) as (keyof FeatureFlags)[]) {
         if (typeof overrides[key] === "boolean") features[key] = overrides[key];
       }
-    } catch (e) { logger.warn("Malformed FEATURES JSON, using defaults", { error: String(e) }); }
+    } catch (e) { logger.error("Malformed FEATURES var — ignoring overrides, using defaults. Fix the FEATURES environment variable.", { error: String(e), featuresRaw: env.FEATURES }); }
   }
   return c.json({
     site_name: env.SITE_NAME,
