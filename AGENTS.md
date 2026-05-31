@@ -6,18 +6,12 @@
 
 - **Name:** Infini Guild Management
 - **Type:** Full-stack guild management portal (private)
-- **Framework:** Cloudflare Workers (Hono) + React 19 SPA + Node.js bot runtime
+- **Framework:** Cloudflare Workers (Hono) + React 19 SPA
 - **Database:** Cloudflare D1 (SQLite) via Drizzle ORM
 - **Object Storage:** Cloudflare R2
 - **Realtime:** Cloudflare Durable Objects (WebSocket)
 - **Package manager:** pnpm 10.6.2
 - **Node.js:** 20+
-
-## Relationship to Infini Dev Kit
-
-This app consumes `@infini-dev-kit/*` packages from the sibling `../Infini-Dev-Kit/` directory via TypeScript path aliases in `tsconfig.json` and Vite aliases in `apps/portal/vite.config.ts`.
-
-**The Dev Kit is the source of truth for themes, components, hooks, and utilities.** This repo is a consumer — it should never duplicate or override Dev Kit logic.
 
 ## Commands
 
@@ -25,7 +19,6 @@ This app consumes `@infini-dev-kit/*` packages from the sibling `../Infini-Dev-K
 pnpm dev            # Start worker + portal concurrently
 pnpm dev:worker     # Cloudflare Worker only (localhost:8787)
 pnpm dev:portal     # React portal only (Vite)
-pnpm dev:bot        # Bot runtime (port 3100)
 pnpm build          # Build portal SPA
 pnpm build:worker   # Dry-run worker deployment
 pnpm typecheck      # Full TypeScript check
@@ -43,8 +36,7 @@ pnpm db:mock:status   # Show local table list
 apps/
 ├── shared/           # Zod schemas, types, constants, API registry
 ├── worker/           # Cloudflare Worker — Hono API + D1 + R2 + Durable Objects
-├── portal/           # React SPA — TanStack Router + Mantine (Infini-Dev-Kit)
-└── bot-runtime/      # Node.js long-running service — Discord.js + Wechaty
+└── portal/           # React SPA — TanStack Router + Mantine
 ```
 
 ## File Index
@@ -54,7 +46,7 @@ apps/
 | File | Purpose |
 |------|---------|
 | `package.json` | Root workspace config, all scripts |
-| `tsconfig.json` | Root tsconfig with path aliases (`@infini-dev-kit/*`, `@portal`, `@guild/shared`) |
+| `tsconfig.json` | Root tsconfig with path aliases (`@portal`, `@guild/shared`) |
 | `wrangler.jsonc` | Cloudflare Worker config (D1, R2, Durable Objects, crons) |
 | `.npmrc` | pnpm config |
 | `README.md` | Human-readable documentation |
@@ -73,15 +65,13 @@ apps/
 | `schemas/guild-war.ts` | `warHistorySchema`, `warTemplateSchema`, `warTeamSchema`, `saveTeamsPayloadSchema`, `updateMemberStatsSchema` |
 | `schemas/wiki.ts` | `wikiCategorySchema`, `wikiArticleSchema`, `createWikiArticleSchema`, `updateWikiArticleSchema` |
 | `schemas/gallery.ts` | `galleryItemSchema`, `createGalleryItemSchema` |
-| `schemas/admin.ts` | `inviteLinkSchema`, `auditLogSchema`, `batchRoleChangeSchema`, `botSettingsSchema` |
-| `schemas/bot.ts` | `botTaskSchema`, `botSettingsSchema` |
+| `schemas/admin.ts` | `inviteLinkSchema`, `auditLogSchema`, `batchRoleChangeSchema` |
 | `types/` | TypeScript types inferred from Zod schemas |
 | `constants/roles.ts` | Role definitions (admin, moderator, member) |
 | `constants/classes.ts` | Character class constants |
 | `constants/event-types.ts` | Event type categories |
 | `constants/media.ts` | File size limits, image quotas |
 | `constants/errors.ts` | Error codes and HTTP status mappings |
-| `api/registry.ts` | Endpoint registry |
 | `index.ts` | Barrel export |
 
 ### apps/worker/ — Backend (Cloudflare Worker)
@@ -91,31 +81,28 @@ apps/
 | `index.ts` | Main entry — bindings, middleware stack, route mounting, cron dispatcher |
 | **routes/** | |
 | `routes/auth.ts` | Login, logout, register, session check, username availability |
-| `routes/users.ts` | Member listing, profile CRUD, media uploads, Discord linking, password/username changes |
+| `routes/users.ts` | Member listing, profile CRUD, media uploads, password/username changes |
 | `routes/events.ts` | Event CRUD, join/leave, recurrence, series handling |
 | `routes/announcements.ts` | Announcement CRUD, publish scheduling, pinning |
-| `routes/guild-war.ts` | War history, templates, team composition, member stats, bot dispatch |
+| `routes/guild-war.ts` | War history, templates, team composition, member stats |
 | `routes/wiki.ts` | Wiki categories, articles, versioning, search |
 | `routes/gallery.ts` | Gallery CRUD, filtering |
-| `routes/admin.ts` | Invite links, role management, audit logs, bot settings |
-| `routes/internal-bot.ts` | HMAC-authenticated bot task endpoints |
+| `routes/admin.ts` | Invite links, role management, audit logs |
 | **middleware/** | |
-| `middleware/session.ts` | `sessionMiddleware`, `requireSessionMiddleware` |
-| `middleware/rbac.ts` | `requireRole()` — role-based access control |
+| `middleware/session.ts` | `sessionMiddleware` |
+| `middleware/rbac.ts` | `requirePermission()` — permission-based access control |
 | `middleware/rate-limit.ts` | `createRateLimitMiddleware()` — Cache API sliding window rate limiter |
-| `middleware/hmac.ts` | `hmacMiddleware` — HMAC-SHA256 for bot requests |
 | `middleware/security-headers.ts` | Security headers middleware (CSP, HSTS, etc.) |
 | `middleware/etag.ts` | `etagMiddleware` — HTTP caching |
 | `middleware/error-handler.ts` | `handleAppError()` — global error handler |
-| `middleware/request-id.ts` | Request ID generation middleware |
 | **services/** | |
 | `services/auth.ts` | PBKDF2 password hashing, session management (30-day TTL) |
-| `services/bot-dispatch.ts` | Queue bot tasks to Discord/WeChat, retry failed tasks |
 | `services/push.ts` | WebSocket push notifications via Durable Objects |
 | `services/media.ts` | R2 media storage with content-type normalization |
 | `services/audit.ts` | Audit trail logging |
-| `services/search.ts` | Search index (stub — not yet implemented) |
+| `services/AdminAuditService.ts` | Audit log queries, archive management |
 | `services/result.ts` | `Result<T,E>` type for service return values |
+| `services/helpers.ts` | Shared helpers — `escapeLikePattern`, `parseStringArray`, `parseRecord` |
 | `services/AuthService.ts` | Auth business logic (login, register, session) |
 | `services/EventService.ts` | Event business logic (validation, recurrence, attachments) |
 | `services/AnnouncementService.ts` | Announcement lifecycle management |
@@ -124,19 +111,17 @@ apps/
 | `services/UserService.ts` | User profile business logic |
 | `services/WikiService.ts` | Wiki article and category management |
 | `services/GalleryService.ts` | Gallery CRUD operations |
-| `services/InternalBotService.ts` | Internal bot task processing |
 | **crons/** | |
 | `crons/event-instance-gen.ts` | Generate recurring event instances 56 days ahead (daily 00:00 UTC) |
-| `crons/announcement-publish.ts` | Publish scheduled announcements (every 15 min) |
-| `crons/bot-reminder.ts` | Send event reminders 15 min before start (every 15 min) |
-| `crons/audit-archive.ts` | Archive audit logs >90 days to R2 (daily 02:00 UTC) |
-| `crons/media-orphan-cleanup.ts` | Delete R2 media for deleted users (daily 03:00 UTC) |
-| `crons/event-auto-archive.ts` | Auto-archive past events (every 15 min) |
+| `crons/maintenance.ts` | Daily and 15-minute cron job grouping |
+| `crons/announcement-publish.ts` | Publish scheduled announcements and expire old announcements (15-minute maintenance) |
+| `crons/audit-archive.ts` | Archive audit logs >90 days to R2 (daily 00:00 UTC maintenance) |
+| `crons/media-orphan-cleanup.ts` | Delete R2 media for deleted users (daily 00:00 UTC maintenance) |
+| `crons/event-auto-archive.ts` | Auto-archive past events (15-minute maintenance) |
 | **db/** | |
 | `db/schema/` | Modular Drizzle schema (see Database section below) |
 | `db/schema/index.ts` | Barrel export for all schema modules |
 | `db/migrations/` | D1 SQL migrations |
-| `db/versions/` | Migration version snapshots |
 | `db/seed.ts` | Mock data seeder |
 | `scripts/seed-local-d1.mjs` | Wait for local worker health and reseed D1 via `/api/dev/reseed` |
 | **durable-objects/** | |
@@ -144,7 +129,6 @@ apps/
 | **tests/** | |
 | `tests/events.test.ts` | Event endpoint integration tests |
 | `tests/contracts/events.test.ts` | Event API contract tests |
-| `tests/contracts/legacy-cleanup.test.ts` | Legacy cleanup contract tests |
 | `tests/integration-smoke.ts` | Integration smoke test runner |
 
 ### apps/portal/ — Frontend (React SPA)
@@ -152,7 +136,7 @@ apps/
 | Path | Purpose |
 |------|---------|
 | `router.tsx` | All route definitions (TanStack Router, lazy code splitting) |
-| `vite.config.ts` | Vite config with `@infini-dev-kit/*` and `@portal` aliases |
+| `vite.config.ts` | Vite config with `@portal` alias |
 | **api/** | |
 | `api/client.ts` | HTTP client with ETag caching |
 | `api/queries/` | TanStack Query fetchers (per-domain) |
@@ -177,21 +161,13 @@ apps/
 | `components/layout/PageLayout.tsx` | Page-level layout wrapper |
 | `components/layout/UserProfileDropdown.tsx` | User profile dropdown menu |
 | `components/layout/ViewingAsSelector.tsx` | Admin "view as" role selector |
-| `components/shared/` | Reusable components — AppErrorOverlay, EmptyState, FilterToolbar, MemberCard, MemberGrid2x5, OverlayRegistrar, ProfileModal |
+| `components/shared/` | Reusable components — AppErrorOverlay, EmptyState, FilterToolbar, MemberCard, OverlayRegistrar, ProfileModal |
 | `components/feature/` | Feature-specific components across 7 domains (admin, announcements, events, gallery, guild-war, profile, wiki) |
-| `components/dashboard/` | Dashboard card components (ActiveMembersCard, LastWarCard, MySignupsCard, UpcomingEventsCard, NotificationsCard) |
+| `components/dashboard/` | Dashboard card components (ActiveMembersCard, LastWarCard, MySignupsCard, UpcomingEventsCard) |
 | **services/** | |
-| `services/AdminService.ts` | Admin operations (users, roles, invites, audit) |
-| `services/AnnouncementService.ts` | Announcement CRUD and lifecycle |
 | `services/AttachmentService.ts` | Attachment handling and validation |
-| `services/AuthService.ts` | Auth operations (login, register, session) |
 | `services/EventService.ts` | Event CRUD and participant management |
-| `services/GalleryService.ts` | Gallery uploads and listing |
-| `services/GuildWarService.ts` | War history, teams, stats |
-| `services/PortalQueryKeys.ts` | Centralized TanStack Query key factory |
-| `services/RoleService.ts` | Role permission checks |
-| `services/UserService.ts` | User profile operations |
-| `services/WikiService.ts` | Wiki article and category operations |
+| `services/GuildWarService.ts` | War history, teams, analytics selection |
 | **stores/** | |
 | `stores/auth.ts` | `useAuthStore` — Zustand session state |
 | `stores/preferences.ts` | `usePreferencesStore` — theme, locale preferences |
@@ -214,7 +190,6 @@ apps/
 | `hooks/useWikiArticleEditor.ts` | Wiki article editing state |
 | `hooks/useWikiCategoryEditor.ts` | Wiki category editing state |
 | `hooks/useAdminAuditFilter.ts` | Admin audit log filter state |
-| `hooks/useAdminBotController.ts` | Admin bot settings controller |
 | `hooks/useAdminInviteController.ts` | Admin invite management |
 | `hooks/useAdminMemberDetail.ts` | Admin member detail modal |
 | `hooks/useAdminMutations.ts` | Admin mutation hooks |
@@ -241,18 +216,6 @@ apps/
 | `i18n/en/` | English translations (14 namespace files) |
 | `i18n/zh/` | Chinese translations (14 namespace files) |
 
-### apps/bot-runtime/ — Bot Runtime (Node.js)
-
-| Path | Purpose |
-|------|---------|
-| `index.ts` | Entry point — boots Discord + WeChat adapters |
-| `config.ts` | Environment configuration |
-| `task-receiver.ts` | HMAC-verified HTTP endpoint (port 3100) |
-| `worker-client.ts` | Client for Worker internal APIs |
-| `devkit-smoke.ts` | Dev-Kit integration smoke test |
-| `discord/` | Discord.js adapter, commands, formatters, reactions |
-| `wechat/` | Wechaty adapter (stub, extensible) |
-
 ### docs/Planning/ — Feature Specs
 
 | File | Feature |
@@ -268,7 +231,6 @@ apps/
 | `gallery.md` | Media gallery |
 | `my-profile.md` | User profile |
 | `admin-console.md` | Admin panel |
-| `bot-integrations.md` | Discord/WeChat bots |
 | `settings.md` | User settings |
 | `tools.md` | Utility tools |
 
@@ -279,7 +241,7 @@ Drizzle schema is modular — each domain is a separate file in `apps/worker/db/
 | File | Tables | Domain |
 |------|--------|--------|
 | `shared.ts` | — | `nowUtc` SQL helper |
-| `auth.ts` | `users`, `user_auth_password`, `invite_links`, `discord_link_codes`, `sessions` | Auth & Identity |
+| `auth.ts` | `roles`, `role_permissions`, `users`, `user_auth_password`, `invite_links`, `sessions` | Auth & Identity |
 | `members.ts` | `member_profiles` | Member Profiles |
 | `events.ts` | `events`, `event_participants` | Events & Signups |
 | `announcements.ts` | `announcements` | Announcements |
@@ -287,7 +249,6 @@ Drizzle schema is modular — each domain is a separate file in `apps/worker/db/
 | `wiki.ts` | `wiki_categories`, `wiki_articles` | Wiki |
 | `gallery.ts` | `gallery_items` | Gallery |
 | `audit.ts` | `audit_log` | Audit Log |
-| `bot.ts` | `bot_delivery_log`, `bot_discord_event_messages` | Bot Integration |
 
 SQL migrations are in `apps/worker/db/migrations/`. The core schema is `0000_core_schema.sql`.
 
@@ -298,27 +259,6 @@ SQL migrations are in `apps/worker/db/migrations/`. The core schema is `0000_cor
 4. Keep Drizzle schema and SQL migration in sync
 
 ## Import Path Patterns
-
-### From Infini Dev Kit
-
-```ts
-// Provider & context
-import { KitApp, ThemeToolbar, useBridge, useThemeSnapshot } from "@infini-dev-kit/frontend/provider";
-
-// Components
-import { InfiniCard, InfiniButton } from "@infini-dev-kit/frontend/components/infini";
-import { GlowCard, DepthButton } from "@infini-dev-kit/frontend/components";
-
-// Theme
-import type { ThemeId } from "@infini-dev-kit/frontend/theme/theme-specs";
-import { loadThemeFonts } from "@infini-dev-kit/frontend/theme/mantine/font-loader";
-
-// API client
-import { createApiClient, ApiClientError } from "@infini-dev-kit/api-client";
-
-// Utils
-import { createRequestId } from "@infini-dev-kit/utils";
-```
 
 ### Internal aliases
 
@@ -333,7 +273,6 @@ import { users, sessions } from "./db/schema";
 // From shared
 import { loginSchema } from "@guild/shared/schemas/auth";
 import type { User } from "@guild/shared/types";
-import { ROLE_LEVELS } from "@guild/shared/constants/roles";
 ```
 
 ## Worker Bindings
@@ -346,8 +285,7 @@ Defined in `wrangler.jsonc`:
 | `MEDIA` | R2 Bucket | Media file storage |
 | `WS` | Durable Object | WebSocket connections |
 | `PORTAL_ORIGIN` | Variable | CORS allowed origin |
-| `BOT_SHARED_SECRET` | Secret | HMAC shared secret for Worker ↔ Bot Runtime |
-| `BOT_RUNTIME_URL` | Variable | Bot runtime HTTP endpoint |
+| `SIGNING_SECRET` | Secret | HMAC signing secret for audit archive download tokens |
 
 ## API Routes
 
@@ -361,7 +299,6 @@ Defined in `wrangler.jsonc`:
 | `/api/wiki` | Session | Categories, articles, versioning |
 | `/api/gallery` | Session | Media upload and listing |
 | `/api/admin` | Admin | User management, invite links, audit log |
-| `/internal/bot` | HMAC | Bot task endpoints (not publicly accessible) |
 | `/ws` | Session | WebSocket upgrade (Durable Object) |
 | `/api/health` | Public | Health check |
 
@@ -417,7 +354,6 @@ Aliases must be kept in sync between:
 
 - Before making changes, list all files you intend to modify.
 - After making changes, verify the app still compiles (`pnpm typecheck`).
-- If you modify imports from `@infini-dev-kit/*`, verify the path exists in the Dev Kit repo.
 - When adding a new table, update both the Drizzle schema AND the SQL migration.
 - When modifying Zod schemas, check that worker routes and portal queries using those schemas still compile.
 

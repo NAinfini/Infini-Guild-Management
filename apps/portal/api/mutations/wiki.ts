@@ -8,6 +8,7 @@ import {
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
+import { convertImageToWebP } from "../../utils/media-convert";
 
 export type CreateWikiCategoryPayload = z.input<typeof createWikiCategorySchema>;
 export type UpdateWikiCategoryPayload = z.input<typeof updateWikiCategorySchema>;
@@ -44,26 +45,28 @@ export function createWikiArticle(payload: CreateWikiArticlePayload): Promise<Wi
   });
 }
 
-export function updateWikiArticle(id: string, payload: UpdateWikiArticlePayload): Promise<WikiArticle> {
+export function updateWikiArticle(id: string, payload: UpdateWikiArticlePayload, ifMatch?: string): Promise<WikiArticle> {
   const bodyJson = updateWikiArticleSchema.parse(payload);
   return apiRequest<WikiArticle>(`/api/wiki/articles/${id}`, {
     method: "PATCH",
     bodyJson,
+    ifMatch,
   });
 }
 
-export function archiveWikiArticle(id: string): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>(`/api/wiki/articles/${id}`, {
+export function deleteWikiArticle(id: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/wiki/articles/${id}/permanent`, {
     method: "DELETE",
   });
 }
 
-export function uploadWikiArticleImages(
+export async function uploadWikiArticleImages(
   articleId: string,
   files: File[],
 ): Promise<{ keys: string[] }> {
+  const converted = await Promise.all(files.map(convertImageToWebP));
   const formData = new FormData();
-  for (const file of files) {
+  for (const file of converted) {
     formData.append("files", file);
   }
   return apiRequest<{ keys: string[] }>(`/api/wiki/articles/${articleId}/images`, {

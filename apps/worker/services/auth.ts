@@ -1,8 +1,5 @@
 import {
   PERMISSIONS,
-  isBuiltinRole,
-  roleFromLevel,
-  type BuiltinRole,
   type Permission,
   type RoleId,
 } from "@guild/shared";
@@ -11,40 +8,21 @@ import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { nanoid } from "nanoid";
-import { rolePermissions, roles, sessions, users } from "../db/schema";
+import { rolePermissions, sessions, users } from "../db/schema";
 import type { Bindings } from "../index";
 
 const RESOLVED_SESSION_PROMISE = Symbol("resolved_session_promise");
-
-const MODERATOR_DEFAULTS: ReadonlySet<Permission> = new Set<Permission>([
-  "admin.users.view",
-  "admin.users.edit",
-  "admin.invite.view",
-  "admin.audit.view",
-  "admin.bot.view",
-  "admin.status.view",
-  "admin.analytics.view",
-  "admin.roles.view",
-  "guildwar.manage",
-  "guildwar.history.edit",
-  "events.manage",
-  "announcements.manage",
-  "gallery.upload",
-  "gallery.manage",
-  "wiki.edit",
-]);
-const MEMBER_DEFAULTS: ReadonlySet<Permission> = new Set<Permission>(["gallery.upload"]);
+const RESOLVED_FRESH_SESSION_PROMISE = Symbol("resolved_fresh_session_promise");
 
 type ContextWithSessionCache = Context & {
   [RESOLVED_SESSION_PROMISE]?: Promise<ResolvedSession | null>;
+  [RESOLVED_FRESH_SESSION_PROMISE]?: Promise<ResolvedSession | null>;
 };
 
-export type SessionUserRole = BuiltinRole;
 export type SessionUser = {
   id: string;
   roleId: RoleId;
-  roleLevel: number;
-  role: SessionUserRole;
+  role: string;
   permissions: ReadonlySet<Permission>;
 };
 
@@ -54,7 +32,8 @@ type ResolvedSession = {
   user: SessionUser;
 };
 
-const PBKDF2_ITERATIONS = 210_000;
+// Cloudflare Workers caps PBKDF2 at 10,000 iterations (runtime limit).
+const PBKDF2_ITERATIONS = 10_000;
 const PBKDF2_KEY_LENGTH_BITS = 256;
 const PBKDF2_SALT_BYTES = 16;
 const PBKDF2_HASH = "SHA-256";
@@ -62,11 +41,29 @@ const PBKDF2_HASH = "SHA-256";
 const THIRTY_DAYS_IN_SECONDS = 30 * 24 * 60 * 60;
 const SESSION_TTL_MS = THIRTY_DAYS_IN_SECONDS * 1000;
 const MAX_ABSOLUTE_SESSION_MS = 90 * 24 * 60 * 60 * 1000;
+const PERMISSION_CACHE_TTL_MS = 60_000;
 
 export const SESSION_COOKIE_NAME = "ig_session";
 export const SESSION_MODE_COOKIE_NAME = "ig_session_mode";
 
 const textEncoder = new TextEncoder();
+/**
+ * Per-isolate cache of role permission rows (TTL = PERMISSION_CACHE_TTL_MS = 60 s).
+ * Cloudflare Worker isolates do NOT share memory, so after a role's permissions
+ * are changed via admin, other isolates may serve stale permissions for up to 60 s.
+ * For any operation that checks permissions before a destructive action (delete,
+ * role change, etc.), pass `{ freshPermissions: true }` to `resolveSession()`.
+ * `clearPermissionCache()` only clears the current isolate's cache.
+ */
+const permissionRowsCache = new Map<RoleId, { expiresAtMs: number; rows: Array<{ permission: string; granted: boolean }> }>();
+
+export function clearPermissionCache(roleId?: RoleId): void {
+  if (roleId) {
+    permissionRowsCache.delete(roleId);
+    return;
+  }
+  permissionRowsCache.clear();
+}
 
 function getDb(c: Context) {
   const env = c.env as Bindings;
@@ -78,34 +75,18 @@ function isSecureRequest(c: Context): boolean {
 }
 
 function buildPermissionSet(
-  roleId: RoleId,
-  permissionRows: Array<{ permission: string; granted: boolean }>,
+  permissionRows: Array<{ permission: string; granted: boolean } | null>,
 ): ReadonlySet<Permission> {
   const perms = new Set<Permission>();
 
-  if (roleId === "admin") {
-    for (const p of PERMISSIONS) perms.add(p);
-    return perms;
-  }
-
-  const defaults = roleId === "moderator" ? MODERATOR_DEFAULTS : roleId === "member" ? MEMBER_DEFAULTS : null;
-  if (defaults) {
-    for (const p of defaults) perms.add(p);
-  }
-
   for (const row of permissionRows) {
+    if (row === null) continue;
     if (!(PERMISSIONS as readonly string[]).includes(row.permission)) continue;
     const p = row.permission as Permission;
     if (row.granted) perms.add(p);
-    else perms.delete(p);
   }
 
   return perms;
-}
-
-function resolveCompatibilityRole(roleId: RoleId, roleLevel: number | null): SessionUserRole {
-  if (isBuiltinRole(roleId)) return roleId;
-  return roleFromLevel(roleLevel ?? 1);
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -217,42 +198,77 @@ export async function verifyPassword(password: string, salt: string, passwordHas
   }
 }
 
+async function hashSessionToken(token: string): Promise<string> {
+  const data = textEncoder.encode(token);
+  const hash = await crypto.subtle.digest("SHA-256", data as unknown as ArrayBuffer);
+  return bytesToBase64(new Uint8Array(hash));
+}
+
 export async function createSession(
   c: Context,
   userId: string,
   options: { stayLoggedIn?: boolean } = {},
 ): Promise<{ sessionId: string; expiresAt: string }> {
   const db = getDb(c);
-  const sessionId = nanoid();
+  const rawToken = nanoid();
+  const hashedToken = await hashSessionToken(rawToken);
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
   const stayLoggedIn = options.stayLoggedIn === true;
 
   await db.insert(sessions).values({
-    id: sessionId,
+    id: hashedToken,
     userId,
     expiresAt,
   });
 
-  setSessionCookies(c, sessionId, {
+  setSessionCookies(c, rawToken, {
     expiresAt,
     stayLoggedIn,
   });
 
-  return { sessionId, expiresAt };
+  return { sessionId: hashedToken, expiresAt };
 }
 
-export async function resolveSession(c: Context): Promise<ResolvedSession | null> {
+export async function resolveSession(c: Context, options: { freshPermissions?: boolean } = {}): Promise<ResolvedSession | null> {
   const carrier = c as ContextWithSessionCache;
-  carrier[RESOLVED_SESSION_PROMISE] ??= resolveSessionUncached(c);
-  return await carrier[RESOLVED_SESSION_PROMISE]!;
+  if (options.freshPermissions) {
+    carrier[RESOLVED_FRESH_SESSION_PROMISE] ??= resolveSessionUncached(c, { freshPermissions: true });
+    return await carrier[RESOLVED_FRESH_SESSION_PROMISE];
+  }
+  carrier[RESOLVED_SESSION_PROMISE] ??= resolveSessionUncached(c, { freshPermissions: false });
+  return await carrier[RESOLVED_SESSION_PROMISE];
 }
 
-async function resolveSessionUncached(c: Context): Promise<ResolvedSession | null> {
-  const sessionId = getCookie(c, SESSION_COOKIE_NAME);
-  if (!sessionId) {
+async function loadPermissionRows(
+  db: ReturnType<typeof getDb>,
+  roleId: RoleId,
+  options: { freshPermissions: boolean },
+): Promise<Array<{ permission: string; granted: boolean }>> {
+  if (!options.freshPermissions) {
+    const cached = permissionRowsCache.get(roleId);
+    if (cached && cached.expiresAtMs > Date.now()) {
+      return cached.rows;
+    }
+  }
+
+  const rows = await db
+    .select({ permission: rolePermissions.permission, granted: rolePermissions.granted })
+    .from(rolePermissions)
+    .where(eq(rolePermissions.roleId, roleId));
+
+  if (!options.freshPermissions) {
+    permissionRowsCache.set(roleId, { expiresAtMs: Date.now() + PERMISSION_CACHE_TTL_MS, rows });
+  }
+  return rows;
+}
+
+async function resolveSessionUncached(c: Context, options: { freshPermissions: boolean }): Promise<ResolvedSession | null> {
+  const rawToken = getCookie(c, SESSION_COOKIE_NAME);
+  if (!rawToken) {
     return null;
   }
 
+  const hashedToken = await hashSessionToken(rawToken);
   const db = getDb(c);
   const row = (
     await db
@@ -262,14 +278,12 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
         sessionCreatedAt: sessions.createdAt,
         userId: users.id,
         roleId: users.role,
-        roleLevel: roles.level,
         isActive: users.isActive,
         deletedAt: users.deletedAt,
       })
       .from(sessions)
       .innerJoin(users, eq(sessions.userId, users.id))
-      .leftJoin(roles, eq(users.role, roles.id))
-      .where(eq(sessions.id, sessionId))
+      .where(eq(sessions.id, hashedToken))
       .limit(1)
   )[0];
 
@@ -290,20 +304,13 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
     return null;
   }
 
-  const permissionRows = await db
-    .select({
-      permission: rolePermissions.permission,
-      granted: rolePermissions.granted,
-    })
-    .from(rolePermissions)
-    .where(eq(rolePermissions.roleId, row.roleId));
+  const permissionRows = await loadPermissionRows(db, row.roleId, options);
 
   const user: SessionUser = {
     id: row.userId,
     roleId: row.roleId,
-    roleLevel: row.roleLevel ?? 1,
-    role: resolveCompatibilityRole(row.roleId, row.roleLevel),
-    permissions: buildPermissionSet(row.roleId, permissionRows),
+    role: row.roleId,
+    permissions: buildPermissionSet(permissionRows),
   };
 
   const stayLoggedIn = getCookie(c, SESSION_MODE_COOKIE_NAME) === "1";
@@ -313,7 +320,7 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
   if (remainingMs < renewalThresholdMs) {
     const nextExpiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
     await db.update(sessions).set({ expiresAt: nextExpiresAt }).where(eq(sessions.id, row.sessionId));
-    setSessionCookies(c, row.sessionId, {
+    setSessionCookies(c, rawToken, {
       expiresAt: nextExpiresAt,
       stayLoggedIn,
     });
@@ -333,10 +340,11 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
 }
 
 export async function destroySession(c: Context, sessionId?: string): Promise<void> {
-  const targetSessionId = sessionId ?? getCookie(c, SESSION_COOKIE_NAME);
-  if (targetSessionId) {
+  const rawToken = sessionId ?? getCookie(c, SESSION_COOKIE_NAME);
+  if (rawToken) {
     const db = getDb(c);
-    await db.delete(sessions).where(eq(sessions.id, targetSessionId));
+    const hashed = await hashSessionToken(rawToken);
+    await db.delete(sessions).where(eq(sessions.id, hashed));
   }
   clearSessionCookie(c);
 }

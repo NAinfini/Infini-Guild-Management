@@ -18,6 +18,7 @@ export const wikiCategories = sqliteTable(
   },
   (table) => ({
     idxParentSort: index("idx_wiki_categories_parent_sort").on(table.parentId, table.sortOrder, table.name, table.id),
+    idxSort: index("idx_wiki_categories_sort").on(table.sortOrder, table.name, table.id),
   }),
 );
 

@@ -1,37 +1,27 @@
-import type { MemberProfile, User } from "@guild/shared";
 import { registerSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import {
-  Alert,
-  Anchor,
-  Loader,
-  Stack,
-  Text,
-  TextInput,
-} from "@mantine/core";
-import {
-  BubbleBackground,
-  DepthButton,
-  GlassEffect,
-  GradientText,
-  LampHeading,
-  MagneticElement,
-} from "@infini-dev-kit/react";
-import { IconArrowLeft, IconEye, IconEyeOff, IconKeyboard } from "@tabler/icons-react";
+import { BubbleBackground, GlassEffect, GradientText, LampHeading, MagneticElement } from "@portal/components/effects";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { ArrowLeftIcon, EyeIcon, EyeOffIcon, KeyboardIcon } from "@portal/components/icons";
+import { Alert, Anchor, Loader, Stack, Text, TextInput } from "@mantine/core";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
-import { apiRequest, isApiRequestError } from "../../api/client";
 import { queryKeys } from "../../api/query-keys";
+import {
+  checkUsername,
+  isApiRequestError,
+  register as requestRegister,
+  verifyInvite,
+} from "../../services/AuthService";
 import { useAuthStore } from "../../stores/auth";
-import { FireOutlined } from "../../utils/icons";
+import { useSiteConfigStore } from "../../stores/site-config";
 import "./AuthPages.css";
 
-type AuthSessionResponse = { user: User; profile: MemberProfile };
 type RegisterFormValues = z.infer<typeof registerSchema>;
 type FieldErrorMap = Record<string, string>;
 
@@ -77,10 +67,12 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const { inviteCode } = useParams({ from: "/register/$inviteCode" });
   const setSession = useAuthStore((state) => state.setSession);
+  const siteName = useSiteConfigStore((s) => s.siteName);
+  const siteLogoUrl = useSiteConfigStore((s) => s.siteLogoUrl);
 
   const inviteQuery = useQuery({
     queryKey: queryKeys.auth.verifyInvite(inviteCode),
-    queryFn: () => apiRequest<{ valid: boolean }>(`/api/auth/verify-invite/${encodeURIComponent(inviteCode)}`),
+    queryFn: () => verifyInvite(inviteCode),
     retry: false,
     staleTime: 60_000,
   });
@@ -113,20 +105,11 @@ export function RegisterPage() {
   const usernameAvailabilityQuery = useQuery({
     queryKey: queryKeys.auth.usernameAvailability(debouncedUsername),
     enabled: debouncedUsername.length >= 3,
-    queryFn: () =>
-      apiRequest<{ available: boolean; reason?: string }>(
-        `/api/auth/check-username?username=${encodeURIComponent(debouncedUsername)}`,
-      ),
+    queryFn: () => checkUsername(debouncedUsername),
   });
 
   const registerMutation = useMutation({
-    mutationFn: async (values: RegisterFormValues) => {
-      await apiRequest<{ user: User }>(`/api/auth/register/${inviteCode}`, {
-        method: "POST",
-        bodyJson: values,
-      });
-      return apiRequest<AuthSessionResponse>("/api/auth/me");
-    },
+    mutationFn: (values: RegisterFormValues) => requestRegister(inviteCode, values),
     onSuccess: (session) => {
       setSession(session.user, session.profile);
       void navigate({ to: "/" });
@@ -181,11 +164,11 @@ export function RegisterPage() {
         <div className="login-page__heading">
           <LampHeading coneWidth={320} coneHeight={140} animated>
             <div className="login-page__brand">
-              <span className="login-page__brand-icon" aria-hidden>
-                <FireOutlined />
-              </span>
+              {siteLogoUrl ? (
+                <img src={siteLogoUrl} alt="" aria-hidden className="login-page__brand-logo" />
+              ) : null}
               <GradientText animated duration={4} className="login-page__brand-text">
-                {t("brand.name")}
+                {siteName}
               </GradientText>
             </div>
           </LampHeading>
@@ -197,33 +180,33 @@ export function RegisterPage() {
         <GlassEffect className="login-page__card" blur={16} opacity={0.1} borderOpacity={0.15}>
           {inviteQuery.isLoading ? (
             <Stack align="center" py="xl">
-              <Loader color="var(--infini-color-primary)" />
+              <Loader color="var(--color-primary)" />
             </Stack>
           ) : !inviteQuery.data?.valid ? (
             <Stack align="center" gap="md">
-              <Alert color="infini-danger" title={t("inviteInvalid")} w="100%" />
-              <MagneticElement strength={8} className="login-page__back-link">
+              <Alert color="red" title={t("inviteInvalid")} w="100%" />
+              <div className="login-page__back-link">
                 <Anchor
                   underline="hover"
                   onClick={() => void navigate({ to: "/login" })}
                   className="login-page__back-anchor"
                 >
-                  <IconArrowLeft size={14} />
+                  <ArrowLeftIcon size={14} />
                   {t("button.backToLogin")}
                 </Anchor>
-              </MagneticElement>
+              </div>
             </Stack>
           ) : (
             <>
-              {submitError ? <Alert color="infini-danger" title={submitError} /> : null}
-              {isCapsLockOn ? <Alert color="infini-warning" title={t("capsLockWarning")} /> : null}
+              {submitError ? <Alert color="red" title={submitError} /> : null}
+              {isCapsLockOn ? <Alert color="yellow" title={t("capsLockWarning")} /> : null}
 
               <form onSubmit={handleSubmit(onSubmit)}>
                 <Stack gap={20}>
                   <div className={`login-floating-field${usernameValue.length > 0 ? " login-floating-field--filled" : ""}`}>
                     <TextInput
                       value={usernameValue}
-                      onChange={(event) => setValue("username", event.currentTarget.value)}
+                      onChange={(event: React.ChangeEvent<HTMLInputElement>) => setValue("username", event.currentTarget.value)}
                       error={usernameError}
                       classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
                       label={t("field.username")}
@@ -231,7 +214,7 @@ export function RegisterPage() {
                     />
                   </div>
 
-                  {!usernameError && debouncedUsername.length >= 3 ? (
+                  {!usernameError && debouncedUsername.length >= 1 ? (
                     usernameAvailabilityQuery.isFetching ? (
                       <Text c="dimmed" size="sm">
                         {t("checkingUsername")}
@@ -253,14 +236,14 @@ export function RegisterPage() {
                       label={t("field.password")}
                       type={showPassword ? "text" : "password"}
                       value={passwordValue}
-                      onChange={(event) => setValue("password", event.currentTarget.value)}
+                      onChange={(event: React.ChangeEvent<HTMLInputElement>) => setValue("password", event.currentTarget.value)}
                       error={passwordError}
                       classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
                       autoComplete="new-password"
                     />
                     <div className="login-page__password-actions">
                       {isCapsLockOn ? (
-                        <IconKeyboard size={18} className="login-page__caps-icon" />
+                        <KeyboardIcon size={18} className="login-page__caps-icon" />
                       ) : null}
                       <button
                         type="button"
@@ -269,7 +252,7 @@ export function RegisterPage() {
                         tabIndex={-1}
                         aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
                       >
-                        {showPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                        {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
                       </button>
                     </div>
                   </div>
@@ -284,14 +267,14 @@ export function RegisterPage() {
                       label={t("field.confirmPassword")}
                       type={showConfirmPassword ? "text" : "password"}
                       value={confirmPasswordValue}
-                      onChange={(event) => setValue("confirmPassword", event.currentTarget.value)}
+                      onChange={(event: React.ChangeEvent<HTMLInputElement>) => setValue("confirmPassword", event.currentTarget.value)}
                       error={confirmPasswordError}
                       classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
                       autoComplete="new-password"
                     />
                     <div className="login-page__password-actions">
                       {isCapsLockOn ? (
-                        <IconKeyboard size={18} className="login-page__caps-icon" />
+                        <KeyboardIcon size={18} className="login-page__caps-icon" />
                       ) : null}
                       <button
                         type="button"
@@ -300,7 +283,7 @@ export function RegisterPage() {
                         tabIndex={-1}
                         aria-label={showConfirmPassword ? t("aria.hidePassword") : t("aria.showPassword")}
                       >
-                        {showConfirmPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                        {showConfirmPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
                       </button>
                     </div>
                   </div>
@@ -309,13 +292,13 @@ export function RegisterPage() {
                     {t("button.register")}
                   </DepthButton>
 
-                  <MagneticElement strength={8} className="login-page__back-link">
+                  <MagneticElement strength={0.3} className="login-page__back-link">
                     <Anchor
                       underline="hover"
                       onClick={() => void navigate({ to: "/login" })}
                       className="login-page__back-anchor"
                     >
-                      <IconArrowLeft size={14} />
+                      <ArrowLeftIcon size={14} />
                       {t("button.backToLogin")}
                     </Anchor>
                   </MagneticElement>

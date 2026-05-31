@@ -6,9 +6,12 @@ dist/
 .claude/
 .env
 .env.local
+.dev.vars
+wrangler.jsonc
+apps/worker/wrangler.jsonc
 *.local
-
-pnpm-lock.yaml
+calculators/
+docs/
 .vite/
 coverage/
 
@@ -18,6 +21,9 @@ coverage/
 *.temp
 .cache/
 
+# Database backups
+backups/
+
 # OS / editor noise
 .DS_Store
 Thumbs.db
@@ -26,3 +32,10 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Build artifacts
+*.tsbuildinfo
+
+# Test output
+test-results/
+playwright-report/

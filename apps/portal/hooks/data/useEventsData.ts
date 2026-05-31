@@ -1,34 +1,75 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { fetchEventsList } from "../../services/EventService";
-import { queryKeys } from "../../services/PortalQueryKeys";
-import { fetchUsersList } from "../../services/UserService";
+import { queryKeys } from "../../api/query-keys";
+import { fetchAllUsersListWithOptions } from "../../services/UserService";
+import type { EventStatusFilter } from "../../utils/event-navigation";
+
+const PAGE_LIMIT = 50;
 
 type UseEventsDataOptions = {
   eventType?: string;
-  archivedOnly: boolean;
+  status: EventStatusFilter;
+  searchQuery: string;
+  pinnedOnly: boolean;
+  lockedOnly: boolean;
 };
 
-export function useEventsData(options: UseEventsDataOptions) {
-  const { eventType, archivedOnly } = options;
+function toArchivedParam(status: EventStatusFilter): boolean | undefined {
+  if (status === "active") return false;
+  if (status === "archived") return true;
+  return undefined;
+}
 
-  const eventsQuery = useQuery({
-    queryKey: queryKeys.events.list(eventType ?? "all", archivedOnly),
-    queryFn: () =>
+export function useEventsData(options: UseEventsDataOptions) {
+  const { eventType, status, searchQuery, pinnedOnly, lockedOnly } = options;
+  const normalizedSearch = searchQuery.trim();
+
+  const eventsQuery = useInfiniteQuery({
+    queryKey: [
+      ...queryKeys.events.all,
+      "infinite",
+      eventType ?? "all",
+      status,
+      normalizedSearch,
+      pinnedOnly,
+      lockedOnly,
+    ],
+    queryFn: ({ pageParam }) =>
       fetchEventsList({
-        page: 1,
-        limit: 100,
+        page: pageParam,
+        limit: PAGE_LIMIT,
         type: eventType,
-        archived: archivedOnly,
+        archived: toArchivedParam(status),
+        search: normalizedSearch || undefined,
+        pinned: pinnedOnly ? true : undefined,
+        locked: lockedOnly ? true : undefined,
       }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      const totalFetched = allPages.reduce(
+        (sum, page) => sum + page.data.length,
+        0,
+      );
+      return totalFetched < lastPage.total ? allPages.length + 1 : undefined;
+    },
+    staleTime: 10 * 60_000,
   });
 
+  const accumulatedEvents =
+    eventsQuery.data?.pages.flatMap((page) => page.data) ?? [];
+
   const usersQuery = useQuery({
-    queryKey: queryKeys.events.memberPreviewUsers(),
-    queryFn: fetchUsersList,
+    queryKey: queryKeys.users.all,
+    queryFn: () => fetchAllUsersListWithOptions(),
+    staleTime: 10 * 60_000,
   });
 
   return {
     eventsQuery,
+    eventsQueryData: accumulatedEvents,
+    eventsHasMore: eventsQuery.hasNextPage ?? false,
+    eventsLoadingMore: eventsQuery.isFetchingNextPage,
+    onLoadMoreEvents: () => eventsQuery.fetchNextPage(),
     usersQuery,
   };
 }

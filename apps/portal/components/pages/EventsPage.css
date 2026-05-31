@@ -1,9 +1,17 @@
-.events-filter-card {
+.events-filter-card.events-filter-card {
   position: sticky;
-  top: 8px;
+  top: 0;
   z-index: var(--z-sticky);
   margin-bottom: 12px;
-  overflow: visible !important;
+  overflow: visible;
+}
+
+.events-filter-search {
+  width: 100%;
+}
+
+.events-filter-status {
+  min-width: 250px;
 }
 
 .events-filter-type {
@@ -11,7 +19,13 @@
 }
 
 @media (max-width: 767px) {
+  .events-filter-status,
   .events-filter-type {
+    width: 100%;
+  }
+
+  .events-filter-toggles,
+  .events-filter-view {
     width: 100%;
   }
 }

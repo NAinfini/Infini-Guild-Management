@@ -1,5 +1,7 @@
 import type { PushMessage } from "@guild/shared";
+import i18n from "i18next";
 import { create } from "zustand";
+import { isIsoDate, toIsoOrNow } from "../utils/iso-dates";
 
 export type NotificationFeature = "announcements" | "members";
 
@@ -11,9 +13,18 @@ type FeatureState = {
 
 type FeatureMap = Record<NotificationFeature, FeatureState>;
 
-export type PushNotificationEntryType = "announcement_published" | "event_reminder" | "member_online";
+type PushNotificationEntryType =
+  | "announcement_published"
+  | "announcement_changed"
+  | "event_changed"
+  | "wiki_changed"
+  | "gallery_changed"
+  | "guild_war_changed"
+  | "badge_changed"
+  | "member_joined"
+  | "member_changed";
 
-export type PushNotificationEntry = {
+type PushNotificationEntry = {
   id: string;
   type: PushNotificationEntryType;
   title: string;
@@ -26,19 +37,21 @@ const FEATURE_STORAGE_KEY = "portal:last_seen";
 const PUSH_STORAGE_KEY = "portal:push-notification-center";
 const MAX_PUSH_ENTRIES = 80;
 const FEATURES: NotificationFeature[] = ["announcements", "members"];
-const ENTRY_TYPES: PushNotificationEntryType[] = ["announcement_published", "event_reminder", "member_online"];
-
-function isIsoDate(value: string): boolean {
-  return Number.isFinite(Date.parse(value));
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
+const ENTRY_TYPES: PushNotificationEntryType[] = [
+  "announcement_published",
+  "announcement_changed",
+  "event_changed",
+  "wiki_changed",
+  "gallery_changed",
+  "guild_war_changed",
+  "badge_changed",
+  "member_joined",
+  "member_changed",
+];
 
 function emptyFeatureState(lastSeenAt?: string): FeatureState {
   return {
-    lastSeenAt: lastSeenAt && isIsoDate(lastSeenAt) ? lastSeenAt : nowIso(),
+    lastSeenAt: toIsoOrNow(lastSeenAt),
     latestUpdatedAt: null,
     hasNew: false,
   };
@@ -98,7 +111,11 @@ function isPushEntryType(value: unknown): value is PushNotificationEntryType {
   return typeof value === "string" && ENTRY_TYPES.includes(value as PushNotificationEntryType);
 }
 
-function toIsoOrNow(value: unknown): string {
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function sanitizeUnknownIso(value: unknown): string {
   if (typeof value === "string" && isIsoDate(value)) {
     return value;
   }
@@ -130,7 +147,7 @@ function sanitizePushEntries(raw: unknown): PushNotificationEntry[] {
       type: value.type,
       title: value.title,
       message: value.message,
-      occurredAt: toIsoOrNow(value.occurredAt),
+      occurredAt: sanitizeUnknownIso(value.occurredAt),
       readAt: typeof value.readAt === "string" && isIsoDate(value.readAt) ? value.readAt : null,
     });
 
@@ -175,27 +192,112 @@ function isNewerThanLastSeen(lastSeenAt: string, latestUpdatedAt: string | null)
   return Date.parse(latestUpdatedAt) > Date.parse(lastSeenAt);
 }
 
+function resolveHintText(hint: string): string {
+  const key = `common:notification.hint.${hint}`;
+  const translated = i18n.t(key, { defaultValue: "" });
+  if (translated && translated !== key) return translated;
+  return hint.replace(/_/g, " ");
+}
+
 function createEntryFromPush(message: PushMessage): PushNotificationEntry | null {
   if (message.type === "announcement_published") {
     return {
       id: `announcement:${message.announcement_id}`,
       type: "announcement_published",
-      title: "Announcement Published",
+      title: i18n.t("common:notification.title.announcement_published", { defaultValue: "Announcement Published" }),
       message: message.title,
-      occurredAt: toIsoOrNow(message.published_at),
+      occurredAt: sanitizeUnknownIso(message.published_at),
       readAt: null,
     };
   }
 
-  if (message.type === "event_reminder") {
-    return {
-      id: `event-reminder:${message.event_id}:${message.starts_at}`,
-      type: "event_reminder",
-      title: "Event Reminder",
-      message: `${message.title} (${message.starts_at.slice(0, 16).replace("T", " ")})`,
-      occurredAt: toIsoOrNow(message.generated_at),
-      readAt: null,
-    };
+  if (message.type === "entity_changed") {
+    const occurredAt = sanitizeUnknownIso(message.updated_at);
+    const hintMessage = resolveHintText(message.hint);
+
+    switch (message.entity_type) {
+      case "wiki": {
+        const titleKey = message.hint === "article_created" ? "article_created" : "wiki_updated";
+        return {
+          id: `wiki:${message.entity_id}:${message.hint}`,
+          type: "wiki_changed",
+          title: i18n.t(`common:notification.title.${titleKey}`),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
+      }
+      case "event":
+        return {
+          id: `event:${message.entity_id}:${message.hint}`,
+          type: "event_changed",
+          title: i18n.t("common:notification.title.event_updated"),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
+      case "member_profile": {
+        if (message.hint === "member_joined") {
+          const name = message.display_name;
+          return {
+            id: `member:${message.entity_id}:${message.hint}`,
+            type: "member_joined",
+            title: i18n.t("common:notification.hint.member_joined"),
+            message: name
+              ? i18n.t("common:notification.member_joined_message", { name, defaultValue: "{{name}} joined the guild" })
+              : i18n.t("common:notification.hint.member_joined"),
+            occurredAt,
+            readAt: null,
+          };
+        }
+        return {
+          id: `member:${message.entity_id}:${message.hint}`,
+          type: "member_changed",
+          title: i18n.t("common:notification.title.member_updated"),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
+      }
+      case "announcement": {
+        const announcementTitleKey = `announcement_${message.hint.replace("announcement_", "")}`;
+        return {
+          id: `announcement:${message.entity_id}:${message.hint}`,
+          type: "announcement_changed",
+          title: i18n.t(`common:notification.title.${announcementTitleKey}`, { defaultValue: i18n.t("common:notification.type.announcement") }),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
+      }
+      case "gallery":
+        return {
+          id: `gallery:${message.entity_id}:${message.hint}`,
+          type: "gallery_changed",
+          title: i18n.t("common:notification.title.gallery_updated"),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
+      case "guild_war":
+        return {
+          id: `guild_war:${message.entity_id}:${message.hint}`,
+          type: "guild_war_changed",
+          title: i18n.t("common:notification.title.guild_war_updated"),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
+      case "member_badge":
+        return {
+          id: `badge:${message.entity_id}:${message.hint}`,
+          type: "badge_changed",
+          title: i18n.t("common:notification.title.badge_updated"),
+          message: hintMessage,
+          occurredAt,
+          readAt: null,
+        };
+    }
   }
 
   return null;
@@ -209,6 +311,7 @@ type NotificationStore = {
   lastSyncedAt: string | null;
   signalSequence: number;
   lastSignalMessage: PushMessage | null;
+  suppressed: boolean;
   setFeatureLatest: (feature: NotificationFeature, latestUpdatedAt: string | null) => void;
   setFeatureLatestBatch: (latest: Partial<Record<NotificationFeature, string | null>>) => void;
   markFeatureAsRead: (feature: NotificationFeature) => void;
@@ -220,6 +323,7 @@ type NotificationStore = {
   setWsConnected: (connected: boolean) => void;
   setSyncing: (syncing: boolean) => void;
   setLastSyncedAt: (value: string | null) => void;
+  setSuppressed: (suppressed: boolean) => void;
   resetNotifications: () => void;
 };
 
@@ -234,6 +338,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
   lastSyncedAt: null,
   signalSequence: 0,
   lastSignalMessage: null,
+  suppressed: false,
   setFeatureLatest: (feature, latestUpdatedAt) =>
     set((state) => {
       const nextFeatures: FeatureMap = {
@@ -296,6 +401,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
     }),
   appendPushMessage: (message) =>
     set((state) => {
+      if (state.suppressed) return state;
       const nextEntry = createEntryFromPush(message);
       const nextSignalSequence = state.signalSequence + 1;
       if (!nextEntry) {
@@ -366,6 +472,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
   setWsConnected: (connected) => set({ wsConnected: connected }),
   setSyncing: (syncing) => set({ isSyncing: syncing }),
   setLastSyncedAt: (value) => set({ lastSyncedAt: value }),
+  setSuppressed: (suppressed) => set({ suppressed }),
   resetNotifications: () => {
     const nextFeatures = {
       announcements: emptyFeatureState(),
@@ -381,6 +488,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
       lastSyncedAt: null,
       signalSequence: 0,
       lastSignalMessage: null,
+      suppressed: false,
     });
   },
 }));

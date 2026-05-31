@@ -1,19 +1,21 @@
 import { Table, UnstyledButton } from "@mantine/core";
 import {
   type ColumnDef,
+  type PaginationState,
   type Row,
   type SortingState,
   type RowSelectionState,
   flexRender,
   getCoreRowModel,
+  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
 import { forwardRef, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react";
 import clsx from "clsx";
 
-export type { ColumnDef, Row, SortingState, RowSelectionState };
-export { flexRender, getCoreRowModel, getSortedRowModel, useReactTable };
+export type { ColumnDef, PaginationState, Row, SortingState, RowSelectionState };
+export { flexRender, getCoreRowModel, getPaginationRowModel, getSortedRowModel, useReactTable };
 
 type InfiniTableProps<T> = {
   table: ReturnType<typeof useReactTable<T>>;

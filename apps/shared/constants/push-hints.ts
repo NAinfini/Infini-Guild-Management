@@ -1,0 +1,49 @@
+export const PUSH_ENTITY_TYPES = [
+  "announcement",
+  "event",
+  "gallery",
+  "guild_war",
+  "member_badge",
+  "member_profile",
+  "wiki",
+] as const;
+
+export type PushEntityType = (typeof PUSH_ENTITY_TYPES)[number];
+
+export const PUSH_HINTS = [
+  "announcement_archived",
+  "announcement_created",
+  "announcement_deleted",
+  "announcement_published",
+  "announcement_updated",
+  "article_archived",
+  "article_created",
+  "article_deleted",
+  "article_updated",
+  "badge_assigned",
+  "badge_unassigned",
+  "category_created",
+  "category_deleted",
+  "category_updated",
+  "history_created",
+  "history_deleted",
+  "history_updated",
+  "images_uploaded",
+  "item_deleted",
+  "items_deleted",
+  "member_joined",
+  "participants_added_by_moderator",
+  "participants_removed_by_moderator",
+  "participant_joined",
+  "participant_left",
+  "poll_fallback",
+  "poll_voted",
+  "profile_updated",
+  "raffle_drawn",
+  "role_tags_updated",
+  "teams_saved",
+  "video_created",
+  "war_concluded",
+] as const;
+
+export type PushHint = (typeof PUSH_HINTS)[number];

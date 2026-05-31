@@ -1,12 +1,16 @@
 import { PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Badge, Grid, Group, Tabs, Text } from "@mantine/core";
-import { DepthButton } from "@infini-dev-kit/react";
-import { IconGripVertical, IconTrash, IconUserCircle } from "@tabler/icons-react";
+import { Badge, Grid, Group, Skeleton, Stack, Tabs, Text } from "@mantine/core";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { TrashIcon, UserCircleIcon } from "@portal/components/icons";
+import { IconGripVertical } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { uploadProfileAudio, uploadProfileImages } from "../../services/UserService";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { CLASS_COLOR_GROUP } from "@guild/shared/constants/classes";
+import { queryKeys } from "../../api/query-keys";
+import { deleteAvatar, uploadAvatar, uploadProfileAudio, uploadProfileImages } from "../../services/UserService";
 import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
 import { useProfileData } from "../../hooks/data/useProfileData";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
@@ -14,13 +18,21 @@ import { useMediaUpload } from "../../hooks/useMediaUpload";
 import { useProfileFormState } from "../../hooks/useProfileFormState";
 import { useProfileMutations } from "../../hooks/useProfileMutations";
 import { useAuthStore } from "../../stores/auth";
+import { useAppError } from "../../hooks/useAppError";
+import { notifySuccess } from "../../utils/notifications";
 import { ProfileAccountTab } from "../feature/profile/ProfileAccountTab";
 import { ProfileAvailabilityTab } from "../feature/profile/ProfileAvailabilityTab";
-import { ProfileMediaTab } from "../feature/profile/ProfileMediaTab";
 import { ProfilePreviewCard } from "../feature/profile/ProfilePreviewCard";
 import { ProfileProfileTab } from "../feature/profile/ProfileProfileTab";
 import { PageLayout } from "../layout/PageLayout";
 import "./MyProfilePage.css";
+
+const CLASS_BADGE_COLOR: Record<string, string> = {
+  blue: "blue",
+  green: "teal",
+  purple: "violet",
+  "dark-red": "red",
+};
 
 type SortableClassRowProps = {
   value: string;
@@ -47,10 +59,10 @@ function SortableClassRow(props: SortableClassRowProps) {
       <div {...attributes} {...listeners} style={{ cursor: "grab", display: "flex", alignItems: "center" }} aria-label={t("classRow.aria.drag", { value })}>
         <IconGripVertical size={18} />
       </div>
-      <Badge color={isPrimary ? "yellow" : "gray"}>{value}</Badge>
-      <DepthButton size="sm" type="danger" before={<IconTrash size={16} />} onClick={onRemove}>
-        {t("classRow.remove")}
-      </DepthButton>
+      <Badge color={CLASS_BADGE_COLOR[(CLASS_COLOR_GROUP as Record<string, string>)[value] ?? ""] ?? (isPrimary ? "yellow" : "gray")}>{value}</Badge>
+      <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={16} />} onClick={onRemove}
+        tooltip={{ label: t("classRow.remove"), withArrow: true }}
+      />
       <Text c="dimmed" size="sm" style={{ fontSize: 12 }}>
         #{index + 1}
       </Text>
@@ -118,7 +130,7 @@ export function MyProfilePage() {
       maxFiles: 1,
       maxFileSizeBytes: 20 * 1024 * 1024,
       mediaType: "audio",
-      convertAudioToOpus: true,
+      convertAudioToOpus: false,
     },
   );
 
@@ -128,27 +140,70 @@ export function MyProfilePage() {
     audioUploader,
   });
 
+  const queryClient = useQueryClient();
+  const { showError } = useAppError();
+
+  const avatarUploadMutation = useMutation({
+    mutationFn: (file: File) => {
+      if (!user) throw new Error("Missing user session");
+      return uploadAvatar(user.id, file);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+      notifySuccess(t("message.avatarUploaded"));
+    },
+    onError: (error) => showError(error, t("message.avatarUploadFailed")),
+  });
+
+  const avatarDeleteMutation = useMutation({
+    mutationFn: () => {
+      if (!user) throw new Error("Missing user session");
+      return deleteAvatar(user.id);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+      notifySuccess(t("message.avatarRemoved"));
+    },
+    onError: (error) => showError(error, t("message.avatarRemoveFailed")),
+  });
+
   const profile = profileQuery.data?.profile;
 
   return (
     <PageLayout
       title={t("title")}
       subtitle={t("subtitle")}
-      icon={<IconUserCircle size={22} />}
+      icon={<UserCircleIcon size={22} />}
       className="my-profile-page"
     >
+      {profileQuery.isLoading ? (
+        <Grid gutter="md">
+          <Grid.Col span={{ base: 12, lg: 3 }}>
+            <Skeleton height={280} radius={8} />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, lg: 9 }}>
+            <Stack gap={12}>
+              <Skeleton height={36} width="50%" radius={8} />
+              <Skeleton height={48} radius={8} />
+              <Skeleton height={48} radius={8} />
+              <Skeleton height={48} radius={8} />
+              <Skeleton height={48} radius={8} />
+            </Stack>
+          </Grid.Col>
+        </Grid>
+      ) : (
       <Grid gutter="md">
         <Grid.Col span={{ base: 12, lg: 3 }}>
           <div style={{ position: "sticky", top: 16 }}>
             <ProfilePreviewCard
               username={user?.username ?? "-"}
-              wechatName={form.wechatName}
+              avatarKey={profile?.avatar_key ?? null}
               power={form.power}
               primaryClass={form.classList[0] ?? "-"}
               imageCount={form.imageList.length}
               videoCount={form.videoList.length}
-              hasAudio={Boolean(profile?.audio_key)}
-              discordId={profile?.discord_id ?? null}
               activeNowEstimate={form.activeNowEstimate}
               bio={form.bio}
             />
@@ -158,24 +213,20 @@ export function MyProfilePage() {
           <Tabs value={activeTab} onChange={(value) => value && setActiveTab(value)}>
             <Tabs.List>
               <Tabs.Tab value="profile">{t("tab.profile")}</Tabs.Tab>
-              <Tabs.Tab value="media">{t("tab.media")}</Tabs.Tab>
               <Tabs.Tab value="availability">{t("tab.availability")}</Tabs.Tab>
               <Tabs.Tab value="account">{t("tab.account")}</Tabs.Tab>
             </Tabs.List>
 
-            <Tabs.Panel value="profile" pt="sm">
+            <Tabs.Panel value="profile" pt="md">
               <ProfileProfileTab
-                wechatName={form.wechatName}
                 power={form.power}
                 classDraft={form.classDraft}
                 classOptions={form.classOptions}
                 classList={form.classList}
-                discordId={profile?.discord_id ?? null}
                 titleHtml={form.titleHtml}
                 onTitleHtmlChange={form.setTitleHtml}
                 bio={form.bio}
                 classSensors={classSensors}
-                onWechatNameChange={form.setWechatName}
                 onPowerChange={form.setPower}
                 onClassDraftChange={form.setClassDraft}
                 onAddClass={form.addClass}
@@ -196,17 +247,14 @@ export function MyProfilePage() {
                 savePending={mutations.saveProfileMutation.isPending}
                 isDirty={form.isDirty}
                 fieldBioPlaceholder={t("field.bio")}
-              />
-            </Tabs.Panel>
-
-            <Tabs.Panel value="media" pt="sm">
-              <ProfileMediaTab
                 videoDraft={form.videoDraft}
                 videoList={form.videoList}
                 imageList={form.imageList}
+                avatarKey={profile?.avatar_key ?? null}
                 profileAudioKey={profile?.audio_key ?? null}
                 imageUploader={imageUploader}
                 audioUploader={audioUploader}
+                avatarUploading={avatarUploadMutation.isPending}
                 onVideoDraftChange={form.setVideoDraft}
                 onAddVideoUrl={form.addVideoUrl}
                 onMoveVideo={(index, delta) =>
@@ -221,16 +269,15 @@ export function MyProfilePage() {
                 onUploadAudio={() => {
                   void mutations.uploadAudio();
                 }}
+                onUploadAvatar={(file) => avatarUploadMutation.mutate(file)}
+                onRemoveAvatar={() => avatarDeleteMutation.mutate()}
                 onReorderImages={form.setImageList}
                 onRemoveImage={mutations.removeImage}
                 onRemoveAudio={mutations.removeAudio}
-                onSaveProfile={mutations.saveProfile}
-                savePending={mutations.saveProfileMutation.isPending}
-                isDirty={form.isDirty}
               />
             </Tabs.Panel>
 
-            <Tabs.Panel value="availability" pt="sm">
+            <Tabs.Panel value="availability" pt="md">
               <ProfileAvailabilityTab
                 availabilityData={form.availabilityData}
                 vacationStart={form.vacationStart}
@@ -244,41 +291,31 @@ export function MyProfilePage() {
               />
             </Tabs.Panel>
 
-            <Tabs.Panel value="account" pt="sm">
+            <Tabs.Panel value="account" pt="md">
               <ProfileAccountTab
                 currentPassword={form.currentPassword}
                 newPassword={form.newPassword}
                 confirmNewPassword={form.confirmNewPassword}
                 currentPasswordForUsername={form.currentPasswordForUsername}
                 newUsername={form.newUsername}
-                discordCode={form.discordCode}
-                isDiscordLinking={form.isDiscordLinking}
-                discordId={profile?.discord_id ?? null}
-                discordReminderOptOut={form.discordReminderOptOut}
                 onCurrentPasswordChange={form.setCurrentPassword}
                 onNewPasswordChange={form.setNewPassword}
                 onConfirmNewPasswordChange={form.setConfirmNewPassword}
                 onCurrentPasswordForUsernameChange={form.setCurrentPasswordForUsername}
                 onNewUsernameChange={form.setNewUsername}
-                onDiscordCodeChange={form.setDiscordCode}
-                onToggleDiscordReminder={(checked) => form.setDiscordReminderOptOut(!checked)}
                 onChangePassword={mutations.changePassword}
                 onChangeUsername={mutations.changeUsername}
-                onVerifyDiscordLink={mutations.verifyDiscordLink}
-                onUnlinkDiscord={mutations.unlinkDiscord}
-                onSaveDiscordPreference={mutations.saveProfile}
                 onLogout={mutations.logout}
                 changePasswordLabel={t("button.changePassword")}
                 changeUsernameLabel={t("button.changeUsername")}
                 changePasswordPending={mutations.changePasswordMutation.isPending}
                 changeUsernamePending={mutations.changeUsernameMutation.isPending}
-                saveDiscordPreferencePending={mutations.saveProfileMutation.isPending}
-                isDirty={form.isDirty}
               />
             </Tabs.Panel>
           </Tabs>
         </Grid.Col>
       </Grid>
+      )}
     </PageLayout>
   );
 }

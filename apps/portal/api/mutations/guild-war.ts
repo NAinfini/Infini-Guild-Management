@@ -1,43 +1,46 @@
 import {
-  applyWarTemplateSchema,
-  createWarHistorySchema,
-  createWarTemplateSchema,
+  concludeWarPayloadSchema,
+  moveGuildWarMemberSchema,
   saveTeamsPayloadSchema,
+  updateGuildWarRoleTagsSchema,
   updateMemberStatsSchema,
   updateWarHistorySchema,
   type WarHistory,
   type WarTeamMember,
-  type WarTemplate,
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
 
 export type SaveTeamsPayload = z.input<typeof saveTeamsPayloadSchema>;
-export type CreateGuildWarHistoryPayload = z.input<typeof createWarHistorySchema>;
-export type UpdateGuildWarHistoryPayload = z.input<typeof updateWarHistorySchema>;
+export type MoveGuildWarMemberPayload = z.input<typeof moveGuildWarMemberSchema>;
+export type UpdateGuildWarRoleTagsPayload = z.input<typeof updateGuildWarRoleTagsSchema>;
 export type UpdateGuildWarMemberStatsPayload = z.input<typeof updateMemberStatsSchema>;
-export type CreateGuildWarTemplatePayload = z.input<typeof createWarTemplateSchema>;
-export type ApplyGuildWarTemplatePayload = z.input<typeof applyWarTemplateSchema>;
+export type UpdateWarHistoryPayload = z.input<typeof updateWarHistorySchema>;
+export type ConcludeWarPayload = z.input<typeof concludeWarPayloadSchema>;
 
-export function saveGuildWarTeams(payload: SaveTeamsPayload): Promise<WarHistory> {
+export function saveGuildWarTeams(payload: SaveTeamsPayload, etag?: string): Promise<{ ok: true }> {
   const bodyJson = saveTeamsPayloadSchema.parse(payload);
-  return apiRequest<WarHistory>("/api/guild-war/save-teams", {
+  return apiRequest<{ ok: true }>("/api/guild-war/save-teams", {
+    method: "POST",
+    bodyJson,
+    ifMatch: etag,
+  });
+}
+
+export function concludeGuildWar(payload: ConcludeWarPayload): Promise<{ war_history_id: string }> {
+  const bodyJson = concludeWarPayloadSchema.parse(payload);
+  return apiRequest<{ war_history_id: string }>("/api/guild-war/conclude", {
     method: "POST",
     bodyJson,
   });
 }
 
-export function moveGuildWarMember(payload: {
-  event_id: string;
-  user_id: string;
-  to: string;
-  etag?: string;
-}): Promise<{ ok: true }> {
+export function moveGuildWarMember(payload: MoveGuildWarMemberPayload & { etag?: string }): Promise<{ ok: true }> {
   const { etag, ...body } = payload;
   return apiRequest<{ ok: true }>("/api/guild-war/move", {
     method: "POST",
     ifMatch: etag,
-    bodyJson: body,
+    bodyJson: moveGuildWarMemberSchema.parse(body),
   });
 }
 
@@ -46,60 +49,16 @@ export function updateGuildWarRoleTag(payload: {
   user_id: string;
   role_tag: string | null;
 }): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>("/api/guild-war/role-tag", {
+  return updateGuildWarRoleTags({
+    event_id: payload.event_id,
+    updates: [{ user_id: payload.user_id, role_tag: payload.role_tag }],
+  }).then(() => ({ ok: true as const }));
+}
+
+export function updateGuildWarRoleTags(payload: UpdateGuildWarRoleTagsPayload): Promise<{ ok: true; updated: number }> {
+  return apiRequest<{ ok: true; updated: number }>("/api/guild-war/role-tag", {
     method: "PATCH",
-    bodyJson: payload,
-  });
-}
-
-export function postGuildWarTeams(payload: {
-  event_id: string;
-  platform: "discord" | "wechat";
-}): Promise<{ ok: true; task_id: string }> {
-  return apiRequest<{ ok: true; task_id: string }>("/api/guild-war/post-teams", {
-    method: "POST",
-    bodyJson: payload,
-  });
-}
-
-export function postGuildWarResults(payload: {
-  war_history_id: string;
-  platform: "discord" | "wechat";
-}): Promise<{ ok: true; task_id: string }> {
-  return apiRequest<{ ok: true; task_id: string }>("/api/guild-war/post-results", {
-    method: "POST",
-    bodyJson: payload,
-  });
-}
-
-export function createGuildWarHistory(payload: CreateGuildWarHistoryPayload): Promise<WarHistory> {
-  const bodyJson = createWarHistorySchema.parse(payload);
-  return apiRequest<WarHistory>("/api/guild-war/history", {
-    method: "POST",
-    bodyJson,
-  });
-}
-
-export function updateGuildWarHistory(
-  id: string,
-  payload: UpdateGuildWarHistoryPayload,
-): Promise<WarHistory> {
-  const bodyJson = updateWarHistorySchema.parse(payload);
-  return apiRequest<WarHistory>(`/api/guild-war/history/${id}`, {
-    method: "PATCH",
-    bodyJson,
-  });
-}
-
-export function updateGuildWarMemberStats(
-  id: string,
-  userId: string,
-  payload: UpdateGuildWarMemberStatsPayload,
-): Promise<WarTeamMember> {
-  const bodyJson = updateMemberStatsSchema.parse(payload);
-  return apiRequest<WarTeamMember>(`/api/guild-war/history/${id}/member-stats/${userId}`, {
-    method: "PATCH",
-    bodyJson,
+    bodyJson: updateGuildWarRoleTagsSchema.parse(payload),
   });
 }
 
@@ -118,32 +77,22 @@ export function batchUpdateGuildWarMemberStats(
   });
 }
 
-export function createGuildWarTemplate(payload: CreateGuildWarTemplatePayload): Promise<WarTemplate> {
-  const bodyJson = createWarTemplateSchema.parse(payload);
-  return apiRequest<WarTemplate>("/api/guild-war/templates", {
-    method: "POST",
-    bodyJson,
-  });
-}
-
-export function applyGuildWarTemplate(
-  payload: ApplyGuildWarTemplatePayload,
-): Promise<{ ok: true; war_history_id: string }> {
-  const bodyJson = applyWarTemplateSchema.parse(payload);
-  return apiRequest<{ ok: true; war_history_id: string }>("/api/guild-war/templates/apply", {
-    method: "POST",
-    bodyJson,
-  });
-}
-
 export function deleteGuildWarHistory(id: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/guild-war/history/${id}`, {
     method: "DELETE",
   });
 }
 
-export function deleteGuildWarTemplate(id: string): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>(`/api/guild-war/templates/${id}`, {
-    method: "DELETE",
+export function batchDeleteGuildWarHistory(ids: string[]): Promise<{ ok: true; deleted: number }> {
+  return apiRequest<{ ok: true; deleted: number }>("/api/guild-war/history/batch-delete", {
+    method: "POST",
+    bodyJson: { ids },
+  });
+}
+
+export function updateGuildWarHistory(historyId: string, payload: UpdateWarHistoryPayload): Promise<WarHistory> {
+  return apiRequest<WarHistory>(`/api/guild-war/history/${historyId}`, {
+    method: "PATCH",
+    bodyJson: updateWarHistorySchema.parse(payload),
   });
 }

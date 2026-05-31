@@ -1,22 +1,20 @@
-import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import type { UseMediaUploadState } from "./useMediaUpload";
 import type { ProfileFormStateController } from "./useProfileFormState";
+import { queryKeys } from "../api/query-keys";
 import { logout as requestLogout } from "../services/AuthService";
-import { queryKeys } from "../services/PortalQueryKeys";
 import {
   changeMyPassword,
   changeMyUsername,
   deleteProfileAudio,
   deleteProfileImage,
-  unlinkMyDiscord,
   updateMyProfile,
-  verifyMyDiscordLink,
 } from "../services/UserService";
 import { useAuthStore } from "../stores/auth";
+import { notifySuccess } from "../utils/notifications";
 
 type UseProfileMutationsParams = {
   form: ProfileFormStateController;
@@ -39,7 +37,6 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       return updateMyProfile(user.id, {
         bio: form.bio || null,
         title_html: form.titleHtml || null,
-        wechat_name: form.wechatName || null,
         power: form.power,
         classes: form.classList,
         video_urls: form.videoList,
@@ -47,13 +44,13 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
         vacation_start: form.vacationStart || null,
         vacation_end: form.vacationEnd || null,
         availability: form.availabilityData,
-        discord_reminder_opt_out: form.discordReminderOptOut,
       });
     },
     onSuccess: async (updatedProfile) => {
       setProfile(updatedProfile);
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
-      notifications.show({ color: "infini-success", message: t("message.profileSaved") });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+      notifySuccess(t("message.profileSaved"));
     },
     onError: (error) => {
       showError(error, t("message.profileSaveFailed"));
@@ -68,7 +65,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     onSuccess: async (_data, key) => {
       form.setImageList((current) => current.filter((item) => item !== key));
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
-      notifications.show({ color: "infini-success", message: t("message.imageRemoved") });
+      notifySuccess(t("message.imageRemoved"));
     },
     onError: (error) => {
       showError(error, t("message.imageRemoveFailed"));
@@ -82,47 +79,10 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
-      notifications.show({ color: "infini-success", message: t("message.audioRemoved") });
+      notifySuccess(t("message.audioRemoved"));
     },
     onError: (error) => {
       showError(error, t("message.audioRemoveFailed"));
-    },
-  });
-
-  const verifyDiscordMutation = useMutation({
-    mutationFn: () => {
-      if (!user || !form.discordCode.trim()) throw new Error("Missing user or code");
-      return verifyMyDiscordLink(user.id, { code: form.discordCode.trim() });
-    },
-    onMutate: () => {
-      form.setIsDiscordLinking(true);
-    },
-    onSuccess: async (response) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
-      form.setDiscordCode("");
-      notifications.show({ color: "infini-success", message: t("message.discordLinked", { discordId: response.discord_id }) });
-    },
-    onError: (error) => {
-      showError(error, t("message.discordLinkFailed"));
-    },
-    onSettled: () => {
-      form.setIsDiscordLinking(false);
-    },
-  });
-
-  const unlinkDiscordMutation = useMutation({
-    mutationFn: () => {
-      if (!user) throw new Error("Missing user session");
-      return unlinkMyDiscord(user.id);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
-      notifications.show({ color: "infini-success", message: t("message.discordUnlinked") });
-    },
-    onError: (error) => {
-      showError(error, t("message.discordUnlinkFailed"));
     },
   });
 
@@ -139,7 +99,10 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       form.setCurrentPassword("");
       form.setNewPassword("");
       form.setConfirmNewPassword("");
-      notifications.show({ color: "infini-success", message: t("message.passwordChanged") });
+      notifySuccess(t("message.passwordChanged"));
+      clearSession();
+      queryClient.clear();
+      void navigate({ to: "/login", search: { reason: "expired" } });
     },
     onError: (error) => {
       showError(error, t("message.passwordChangeFailed"));
@@ -155,7 +118,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       });
     },
     onSuccess: () => {
-      notifications.show({ color: "infini-success", message: t("message.usernameChanged") });
+      notifySuccess(t("message.usernameChanged"));
       form.setCurrentPasswordForUsername("");
       form.setNewUsername("");
       clearSession();
@@ -185,7 +148,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       const uploaded = await imageUploader.upload();
       if (!uploaded) return;
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user.id) });
-      notifications.show({ color: "infini-success", message: t("message.imagesUploaded") });
+      notifySuccess(t("message.imagesUploaded"));
     } catch (error) {
       showError(error, t("message.imageUploadFailed"));
     }
@@ -197,7 +160,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       const uploaded = await audioUploader.upload();
       if (!uploaded) return;
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user.id) });
-      notifications.show({ color: "infini-success", message: t("message.audioUploaded") });
+      notifySuccess(t("message.audioUploaded"));
     } catch (error) {
       showError(error, t("message.audioUploadFailed"));
     }
@@ -211,16 +174,6 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
   const removeAudio = () => {
     if (!user) return;
     removeAudioMutation.mutate();
-  };
-
-  const verifyDiscordLink = () => {
-    if (!user || !form.discordCode.trim()) return;
-    verifyDiscordMutation.mutate();
-  };
-
-  const unlinkDiscord = () => {
-    if (!user) return;
-    unlinkDiscordMutation.mutate();
   };
 
   const changePassword = () => {
@@ -246,8 +199,6 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     uploadAudio,
     removeImage,
     removeAudio,
-    verifyDiscordLink,
-    unlinkDiscord,
     changePassword,
     changeUsername,
     logout,

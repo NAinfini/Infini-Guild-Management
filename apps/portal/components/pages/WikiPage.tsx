@@ -1,16 +1,17 @@
-import { hasRoleAtLeast } from "@guild/shared";
-import { Button, Drawer, Group, Skeleton, Stack, Text, TextInput, VisuallyHidden } from "@mantine/core";
+import { type WikiArticle } from "@guild/shared";
+import { Button, Drawer, Group, SegmentedControl, Skeleton, Stack, Text, TextInput, VisuallyHidden } from "@mantine/core";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
-import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
+import { TipTapEditor, buildTipTapEditorLabels } from "@portal/components/shared/TipTapEditor";
 import { PortalCard } from "../shared/PortalCard";
+import { FilterToolbar } from "../shared/FilterToolbar";
 import { modals } from "@mantine/modals";
-import { IconArchive, IconEdit, IconPinned } from "@tabler/icons-react";
+import { PencilIcon, PinIcon } from "@portal/components/icons";
 import { useDebouncedValue, useDisclosure, useMediaQuery } from "@mantine/hooks";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { format } from "date-fns";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   fetchWikiArticleBySlug,
@@ -22,8 +23,8 @@ import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useWikiArticleEditor } from "../../hooks/useWikiArticleEditor";
 import { useWikiCategoryEditor } from "../../hooks/useWikiCategoryEditor";
-import { queryKeys } from "../../services/PortalQueryKeys";
-import { useAuthStore } from "../../stores/auth";
+import { queryKeys } from "../../api/query-keys";
+import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { WikiArticleEditorCard } from "../feature/wiki/WikiArticleEditorCard";
 import { WikiArticleListCard } from "../feature/wiki/WikiArticleListCard";
 import { WikiCategoryEditorCard } from "../feature/wiki/WikiCategoryEditorCard";
@@ -39,34 +40,51 @@ function formatDateTime(iso: string): string {
   return format(date, "yyyy-MM-dd HH:mm");
 }
 
+type WikiArchivedMode = "active" | "archived" | "all";
+
+function toArchivedParam(mode: WikiArchivedMode): boolean | undefined {
+  if (mode === "active") return false;
+  if (mode === "archived") return true;
+  return undefined;
+}
+
 export function WikiPage() {
   const { t } = useTranslation("wiki");
+  const { t: te } = useTranslation("editor");
+  const editorLabels = useMemo(() => buildTipTapEditorLabels(te), [te]);
   const navigate = useNavigate();
   const params = useParams({ strict: false });
   const routeSlug = (params as { slug?: string }).slug ?? null;
   const isDesktop = useMediaQuery("(min-width: 1200px)", true);
   const isMobile = !isDesktop;
-  const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
-  const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
+  const { canManage: canManagePermission } = useEffectivePermissions();
+  const isModerator = canManagePermission(["wiki.articles.create", "wiki.articles.edit", "wiki.articles.archive", "wiki.articles.delete", "wiki.categories.manage"]);
   const canEdit = isModerator && !isExternalView;
 
   const [search, setSearch] = useState("");
   const [debouncedSearchRaw] = useDebouncedValue(search, 300);
   const debouncedSearch = debouncedSearchRaw.trim();
   const [pinnedOnly, setPinnedOnly] = useState(false);
-  const [archivedOnly, setArchivedOnly] = useState(false);
+  const [archivedMode, setArchivedMode] = useState<WikiArchivedMode>("active");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(routeSlug);
+  const [skipAutoSelectOnce, setSkipAutoSelectOnce] = useState(false);
   const [editorTab, setEditorTab] = useState<"article" | "categories">("article");
   const [mobilePane, setMobilePane] = useState<"list" | "article">("list");
   const [showEditorPane, editorPaneHandlers] = useDisclosure(false);
   const isEditorPaneVisible = canEdit && showEditorPane;
 
+  const [articlesPage, setArticlesPage] = useState(1);
+  const accumulatedArticlesRef = useRef<WikiArticle[]>([]);
+  const [accumulatedArticles, setAccumulatedArticles] = useState<WikiArticle[]>([]);
+  const [articlesTotal, setArticlesTotal] = useState(0);
+
   const categoriesQuery = useQuery({
     queryKey: queryKeys.wiki.categories(),
     queryFn: fetchWikiCategories,
+    staleTime: Infinity,
   });
 
   const selectedCategoryFilterKey =
@@ -74,57 +92,99 @@ export function WikiPage() {
   const singleSelectedCategoryId = selectedCategoryIds.length === 1 ? selectedCategoryIds[0] : undefined;
 
   const articlesQuery = useQuery({
-    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, archivedOnly ? "archived" : "active"),
+    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, archivedMode, pinnedOnly, articlesPage),
     queryFn: () =>
       fetchWikiArticles({
-        page: 1,
-        limit: 100,
+        page: articlesPage,
+        limit: 50,
         category_id: singleSelectedCategoryId,
         search: debouncedSearch || undefined,
-        archived: archivedOnly,
+        archived: toArchivedParam(archivedMode),
+        pinned: pinnedOnly ? true : undefined,
       }),
+    staleTime: 10 * 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const detailQuery = useQuery({
     queryKey: queryKeys.wiki.article(selectedSlug),
     enabled: Boolean(selectedSlug),
     queryFn: () => fetchWikiArticleBySlug(selectedSlug as string),
+    staleTime: 10 * 60_000,
   });
 
   const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
   const categoriesById = useMemo(() => new Map(categories.map((item) => [item.id, item])), [categories]);
+
+  // Reset accumulated articles when filter params change
+  useEffect(() => {
+    accumulatedArticlesRef.current = [];
+    setAccumulatedArticles([]);
+    setArticlesTotal(0);
+    setArticlesPage(1);
+   
+  }, [selectedCategoryFilterKey, debouncedSearch, archivedMode, pinnedOnly]);
+
+  // Accumulate articles across pages
+  useEffect(() => {
+    if (!articlesQuery.data) return;
+    const newItems = articlesQuery.data.data;
+    if (articlesPage === 1) {
+      accumulatedArticlesRef.current = newItems;
+    } else {
+      const existingIds = new Set(accumulatedArticlesRef.current.map((item) => item.id));
+      const deduplicated = newItems.filter((item) => !existingIds.has(item.id));
+      accumulatedArticlesRef.current = [...accumulatedArticlesRef.current, ...deduplicated];
+    }
+    setAccumulatedArticles([...accumulatedArticlesRef.current]);
+    setArticlesTotal(articlesQuery.data.total);
+  }, [articlesQuery.data, articlesPage]);
+
+  const articlesHasMore = accumulatedArticles.length < articlesTotal;
+
   const articles = useMemo(() => {
-    const rows = articlesQuery.data?.data ?? [];
     const selectedSet = new Set(selectedCategoryIds);
-    return rows.filter((item) => {
+    return accumulatedArticles.filter((item) => {
       if (selectedCategoryIds.length > 0 && !selectedSet.has(item.category_id)) {
-        return false;
-      }
-      if (pinnedOnly && !item.pinned) {
         return false;
       }
       return true;
     });
-  }, [articlesQuery.data?.data, pinnedOnly, selectedCategoryIds]);
+  }, [accumulatedArticles, selectedCategoryIds]);
   const selectedArticle = detailQuery.data ?? null;
+  const handleArticleCreated = (slug: string | null) => {
+    setSelectedSlug(slug);
+    if (slug) {
+      setSkipAutoSelectOnce(false);
+      return;
+    }
+    setSkipAutoSelectOnce(true);
+    if (routeSlug) {
+      void navigate({ to: "/wiki", replace: true, viewTransition: false });
+    }
+  };
   const articleEditor = useWikiArticleEditor({
     canEdit,
     categories,
     selectedArticle,
     selectedCategoryId,
     selectedCategoryIds,
-    onArticleCreated: setSelectedSlug,
+    onArticleCreated: handleArticleCreated,
   });
   const categoryEditor = useWikiCategoryEditor({ categories });
 
   useEffect(() => {
     if (routeSlug && routeSlug !== selectedSlug) {
       setSelectedSlug(routeSlug);
+      setSkipAutoSelectOnce(false);
     }
   }, [routeSlug, selectedSlug]);
 
   useEffect(() => {
-    if (!selectedSlug && !articleEditor.isCreatingArticle && articles.length > 0 && routeSlug) {
+    if (skipAutoSelectOnce) {
+      return;
+    }
+    if (!selectedSlug && !articleEditor.isCreatingArticle && articles.length > 0) {
       const firstSlug = articles[0]?.slug ?? null;
       setSelectedSlug(firstSlug);
       if (firstSlug) {
@@ -136,7 +196,7 @@ export function WikiPage() {
         });
       }
     }
-  }, [articleEditor.isCreatingArticle, articles, navigate, routeSlug, selectedSlug]);
+  }, [articleEditor.isCreatingArticle, articles, navigate, routeSlug, selectedSlug, skipAutoSelectOnce]);
 
   useEffect(() => {
     if (!isMobile) {
@@ -166,6 +226,7 @@ export function WikiPage() {
   useBeforeUnloadPrompt(isEditorPaneVisible && (articleEditor.isDirty || categoryEditor.isDirty));
 
   const handleSelectArticle = (slug: string) => {
+    setSkipAutoSelectOnce(false);
     setSelectedSlug(slug);
     void navigate({
       to: "/wiki/$slug",
@@ -182,6 +243,7 @@ export function WikiPage() {
     editorPaneHandlers.open();
     articleEditor.startCreateArticle();
     setSelectedSlug(null);
+    setSkipAutoSelectOnce(true);
     if (routeSlug) {
       void navigate({ to: "/wiki", viewTransition: false });
     }
@@ -207,8 +269,43 @@ export function WikiPage() {
   };
 
   const handleExitArticleEditor = () => {
+    if (articleEditor.isDirty) {
+      modals.openConfirmModal({
+        title: t("confirm.discardArticle.title"),
+        children: t("confirm.discardArticle.description"),
+        centered: true,
+        confirmProps: { color: "red" },
+        labels: {
+          cancel: t("common:action.cancel"),
+          confirm: t("common:action.discard"),
+        },
+        onConfirm: () => {
+          articleEditor.exitEditor();
+          editorPaneHandlers.close();
+        },
+      });
+      return;
+    }
     articleEditor.exitEditor();
     editorPaneHandlers.close();
+  };
+
+  const handleDeleteArticle = () => {
+    if (!selectedArticle) return;
+    modals.openConfirmModal({
+      title: t("confirm.deleteArticle.title"),
+      children: <Text size="sm">{t("confirm.deleteArticle.description", { title: selectedArticle.title })}</Text>,
+      centered: true,
+      confirmProps: { color: "red" },
+      labels: {
+        cancel: t("common:action.cancel"),
+        confirm: t("common:action.delete"),
+      },
+      onConfirm: () => {
+        setSkipAutoSelectOnce(true);
+        articleEditor.deleteArticle(selectedArticle.id);
+      },
+    });
   };
 
   const handleCategoryFilterChange = (values: string[]) => {
@@ -228,7 +325,7 @@ export function WikiPage() {
       title: t("confirm.deleteCategory.title"),
       children: t("confirm.deleteCategory.description", { name: category.name }),
       centered: true,
-      confirmProps: { color: "infini-danger" },
+      confirmProps: { color: "red" },
       labels: {
         cancel: t("common:action.cancel"),
         confirm: t("common:action.delete"),
@@ -272,8 +369,8 @@ export function WikiPage() {
           isCreatingArticle={articleEditor.isCreatingArticle}
           selectedArticle={selectedArticle}
           selectedCategory={selectedCategory}
-          isLoading={false}
-          isError={false}
+          isLoading={detailQuery.isLoading}
+          isError={detailQuery.isError}
           warningMessage={t("common:loadError")}
           articleTitle={articleEditor.articleTitle}
           articleBody={articleEditor.articleBody}
@@ -293,6 +390,7 @@ export function WikiPage() {
           onCreateArticle={articleEditor.createArticle}
           onExitEditor={handleExitArticleEditor}
           onImageUpload={articleEditor.uploadWikiArticleImage}
+          onDeleteArticle={handleDeleteArticle}
           emptyTitle={t("empty")}
         />
       )}
@@ -335,7 +433,7 @@ export function WikiPage() {
                   {canEdit ? (
                     <DepthButton type="secondary" size="sm" onClick={handleOpenArticleEditor} tooltip={{ label: t("editor.editWiki"), withArrow: true }}>
                         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                          <IconEdit size={16} />
+                          <PencilIcon size={16} />
                         </span>
                         <VisuallyHidden>{t("editor.editWiki")}</VisuallyHidden>
                       </DepthButton>
@@ -348,21 +446,22 @@ export function WikiPage() {
                   </Text>
                   <Text size="sm">{selectedCategory?.name ?? t("articleEditor.categoryFallback")}</Text>
                 </Group>
-                <Text c="dimmed" size="sm">
-                  {t("articleEditor.lastUpdatedBy", { user: selectedArticle.created_by, date: formatDateTime(selectedArticle.updated_at) })}
-                </Text>
-                {selectedArticle.archived_at ? (
-                  <Text c="infini-warning" size="sm">
-                    {t("articleEditor.archivedAt", { date: formatDateTime(selectedArticle.archived_at) })}
-                  </Text>
-                ) : null}
                 <TipTapEditor
                   value={selectedArticle.body_json}
                   onChange={() => {
                     // Read-only pane intentionally ignores editor updates.
                   }}
                   editable={false}
+                  labels={editorLabels}
                 />
+                <Text c="dimmed" size="sm">
+                  {t("articleEditor.lastUpdatedBy", { user: selectedArticle.updated_by_username ?? selectedArticle.created_by.slice(0, 8), date: formatDateTime(selectedArticle.updated_at) })}
+                </Text>
+                {selectedArticle.archived_at ? (
+                  <Text c="yellow" size="sm">
+                    {t("articleEditor.archivedAt", { date: formatDateTime(selectedArticle.archived_at) })}
+                  </Text>
+                ) : null}
               </>
             )}
           </Stack>
@@ -379,15 +478,27 @@ export function WikiPage() {
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")}>
       <PageLayout.Section>
-        <PortalCard interactive={false}>
-          <div style={{ padding: "1.2rem" }}>
-            <Group gap={8} wrap="wrap">
+        <FilterToolbar
+          active={Boolean(search.trim()) || pinnedOnly || archivedMode !== "active"}
+          primary={
               <TextInput
-                style={{ width: 300 }}
                 placeholder={t("filter.search")}
                 aria-label={t("filter.searchAria")}
                 value={search}
                 onChange={(event) => setSearch(event.currentTarget.value)}
+              />
+          }
+          filters={
+            <>
+              <SegmentedControl
+                value={archivedMode}
+                onChange={(value) => setArchivedMode(value as WikiArchivedMode)}
+                data={[
+                  { value: "active", label: t("filter.status.active") },
+                  { value: "archived", label: t("filter.status.archived") },
+                  { value: "all", label: t("filter.status.all") },
+                ]}
+                aria-label={t("filter.status")}
               />
               <DepthToggle
                   pressed={pinnedOnly}
@@ -398,22 +509,11 @@ export function WikiPage() {
                   aria-label={pinnedOnly ? t("filter.showAll") : t("filter.showPinned")}
                   tooltip={{ label: pinnedOnly ? t("filter.showAll") : t("filter.showPinned"), withArrow: true }}
                 >
-                  <IconPinned size={16} />
+                  <PinIcon size={16} />
                 </DepthToggle>
-              <DepthToggle
-                  pressed={archivedOnly}
-                  onToggle={() => setArchivedOnly((value) => !value)}
-                  type="secondary"
-                  size="sm"
-                  iconOnly
-                  aria-label={archivedOnly ? t("filter.showActive") : t("filter.showArchived")}
-                  tooltip={{ label: archivedOnly ? t("filter.showActive") : t("filter.showArchived"), withArrow: true }}
-                >
-                  <IconArchive size={16} />
-                </DepthToggle>
-            </Group>
-          </div>
-        </PortalCard>
+            </>
+          }
+        />
       </PageLayout.Section>
 
       <div className={`wiki-page-grid ${isMobile ? "wiki-page-grid--mobile" : ""}`}>
@@ -432,13 +532,16 @@ export function WikiPage() {
               categoryOptions={categoryOptions}
               selectedCategoryIds={selectedCategoryIds}
               onCategoryFilterChange={handleCategoryFilterChange}
-              isLoading={false}
-              isError={false}
+              isLoading={articlesQuery.isLoading && articlesPage === 1}
+              isError={articlesQuery.isError}
               warningMessage={t("common:loadError")}
               articles={articles}
               selectedSlug={selectedSlug}
               emptyTitle={t("empty")}
               onSelectArticle={handleSelectArticle}
+              hasMore={articlesHasMore}
+              isLoadingMore={articlesQuery.isFetching && articlesPage > 1}
+              onLoadMore={() => setArticlesPage((p) => p + 1)}
             />
           </Stack>
         ) : null}

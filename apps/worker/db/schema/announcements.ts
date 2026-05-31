@@ -12,23 +12,23 @@ export const announcements = sqliteTable(
     title: text("title").notNull(),
     bodyJson: text("body_json").notNull(),
     pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
-    pinnedAt: text("pinned_at"),
     status: text("status", { enum: ["draft", "scheduled", "published", "archived"] }).notNull().default("draft"),
     publishAt: text("publish_at"),
     expiresAt: text("expires_at"),
     archivedAt: text("archived_at"),
     createdBy: text("created_by").notNull().references(() => users.id),
+    updatedBy: text("updated_by").references(() => users.id),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
   (table) => ({
-    idxFeed: index("idx_announcements_feed").on(
-      table.archivedAt,
+    idxStatusPinnedCreated: index("idx_announcements_status_pinned_created").on(
+      table.status,
       table.pinned,
-      table.pinnedAt,
       table.createdAt,
       table.id,
     ),
-    idxSchedule: index("idx_announcements_schedule").on(table.status, table.publishAt, table.expiresAt),
+    idxSchedule: index("idx_announcements_schedule").on(table.status, table.publishAt),
+    idxExpiry: index("idx_announcements_expiry").on(table.status, table.expiresAt),
   }),
 );

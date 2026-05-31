@@ -1,16 +1,10 @@
 import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
-import { DepthButton } from "@infini-dev-kit/react";
-import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
-import { Badge, Group, Skeleton, Stack, Text } from "@mantine/core";
+import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
+import { PortalCard } from "@portal/components/shared/PortalCard";
+import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, UsersIcon } from "@portal/components/icons";
+import { Badge, Group, HoverCard, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import {
-  IconDots,
-  IconPencil,
-  IconPlayerPause,
-  IconPlayerPlay,
-  IconTrash,
-} from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
@@ -24,6 +18,7 @@ const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed"
 function buildRecurrenceSummary(
   t: (key: string, opts?: Record<string, unknown>) => string,
   rule: RecurringTemplate["recurrence_rule"],
+  startAtIso: string,
 ): string {
   if (!rule) return "";
   const freq = rule.frequency;
@@ -33,6 +28,7 @@ function buildRecurrenceSummary(
   }
   if (freq === "weekly") {
     const dayNames = (rule.daysOfWeek ?? [])
+      .map((d) => utcWeekdayToLocal(d, startAtIso))
       .sort((a, b) => a - b)
       .map((d) => t(WEEKDAY_KEYS[d] ?? "weekday.sun"))
       .join(", ");
@@ -42,6 +38,13 @@ function buildRecurrenceSummary(
     return t("recurring.summary.monthly", { interval, day: rule.dayOfMonth ?? 1 });
   }
   return "";
+}
+
+function extractTime(iso: string | null): string {
+  if (!iso) return "--:--";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "--:--";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 type RecurringTemplatesTabProps = {
@@ -96,9 +99,10 @@ export function RecurringTemplatesTab({
       modals.openConfirmModal({
         title: t("recurring.confirm.delete.title"),
         children: (
-          <Text size="sm">{t("recurring.confirm.delete.description")}</Text>
+          <Text size="sm">{t("recurring.confirm.delete.description", { title: template.title })}</Text>
         ),
-        confirmProps: { color: "infini-danger" },
+        confirmProps: { color: "red" },
+        labels: { confirm: t("common:action.confirm"), cancel: t("common:action.cancel") },
         onConfirm: () => {
           void onDeleteTemplate(template.id);
         },
@@ -130,10 +134,7 @@ export function RecurringTemplatesTab({
     return (
       <Stack gap={12} py={16}>
         {Array.from({ length: 3 }).map((_, i) => (
-          <Group key={i} gap={8}>
-            <Skeleton height={14} width="30%" />
-            <Skeleton height={14} width="20%" />
-          </Group>
+          <Skeleton key={i} height={80} radius={8} />
         ))}
       </Stack>
     );
@@ -141,116 +142,137 @@ export function RecurringTemplatesTab({
 
   return (
     <>
-      <Stack gap={16}>
+      <Stack gap={12}>
         {templates.length === 0 ? (
-          <Text c="dimmed" ta="center" py={40}>
-            {t("recurring.empty")}
-          </Text>
+          <PortalCard interactive={false}>
+            <Stack align="center" gap={8} py={40} px={16}>
+              <CalendarRepeatIcon size={40} style={{ opacity: 0.3 }} />
+              <Text c="dimmed" size="sm">{t("recurring.empty")}</Text>
+            </Stack>
+          </PortalCard>
         ) : (
-          <Stack gap={12}>
-            {templates.map((template) => {
-              const isPaused = template.archived_at !== null;
-              const typeDef = EVENT_TYPES.find((et) => et === template.type);
-              return (
-                <div
-                  key={template.id}
-                  style={{
-                    padding: "14px 16px",
-                    borderRadius: 8,
-                    border: "1px solid color-mix(in srgb, var(--infini-color-border, #e5e7eb) 100%, transparent)",
-                    background: isPaused
-                      ? "color-mix(in srgb, var(--infini-color-text, #111827) 3%, transparent)"
-                      : "color-mix(in srgb, var(--infini-color-primary, #3b82f6) 4%, transparent)",
-                    opacity: isPaused ? 0.7 : 1,
-                    transition: "opacity 150ms ease",
-                  }}
-                >
-                  <Group justify="space-between" align="flex-start" wrap="nowrap">
-                    <Stack gap={6} style={{ flex: 1, minWidth: 0 }}>
-                      <Group gap={8} align="center">
-                        <Text fw={600} size="sm" truncate>
-                          {template.title}
-                        </Text>
-                        {typeDef && (
-                          <Badge size="xs" variant="light">
-                            {t(`common:eventType.${typeDef}`)}
-                          </Badge>
-                        )}
-                        <Badge
-                          size="xs"
-                          variant="light"
-                          color={isPaused ? "gray" : "green"}
-                        >
-                          {isPaused ? t("recurring.status.paused") : t("recurring.status.active")}
-                        </Badge>
-                      </Group>
-                      <Text size="xs" c="dimmed">
-                        {buildRecurrenceSummary(t, template.recurrence_rule)}
-                      </Text>
-                      <Group gap={12}>
-                        {template.last_generated_date && (
-                          <Text size="xs" c="dimmed">
-                            {t("recurring.lastGenerated", {
-                              date: new Date(template.last_generated_date).toLocaleDateString(i18n.language),
-                            })}
-                          </Text>
-                        )}
-                        <Text size="xs" c="dimmed">
-                          {t("recurring.generated", { count: template.generation_count })}
-                        </Text>
-                      </Group>
-                    </Stack>
+          templates.map((template) => {
+            const isPaused = template.archived_at !== null;
+            const typeDef = EVENT_TYPES.find((et) => et === template.type);
+            const time = extractTime(template.start_at);
+            return (
+              <PortalCard
+                key={template.id}
+                interactive={canManage}
+                style={{ opacity: isPaused ? 0.65 : 1, transition: "opacity 150ms ease" }}
+                onClick={canManage ? () => handleEdit(template) : undefined}
+              >
+                <div style={{ padding: "12px 16px" }}>
+                  <Group justify="space-between" align="center" wrap="nowrap">
+                    <Group gap={12} align="center" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 8,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: isPaused
+                            ? "color-mix(in srgb, var(--color-text, #111827) 6%, transparent)"
+                            : "color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <CalendarRepeatIcon
+                          size={20}
+                          style={{
+                            color: isPaused ? "var(--color-text-muted, #6b7280)" : "var(--color-primary, #3b82f6)",
+                          }}
+                        />
+                      </div>
 
-                    {canManage && (
-                      <InfiniMenu position="bottom-end" withArrow>
-                        <InfiniMenu.Target>
-                          <DepthButton type="secondary" size="sm">
-                            <IconDots size={16} />
-                          </DepthButton>
-                        </InfiniMenu.Target>
-                        <InfiniMenu.Dropdown>
-                          <InfiniMenu.Item
-                            leftSection={<IconPencil size={14} />}
-                            onClick={() => handleEdit(template)}
-                          >
-                            {t("menu.edit")}
-                          </InfiniMenu.Item>
-                          {isPaused ? (
-                            <InfiniMenu.Item
-                              leftSection={<IconPlayerPlay size={14} />}
-                              onClick={() => {
-                                void onResumeTemplate(template.id);
-                              }}
-                            >
-                              {t("recurring.resume")}
-                            </InfiniMenu.Item>
-                          ) : (
-                            <InfiniMenu.Item
-                              leftSection={<IconPlayerPause size={14} />}
-                              onClick={() => {
-                                void onPauseTemplate(template.id);
-                              }}
-                            >
-                              {t("recurring.pause")}
-                            </InfiniMenu.Item>
+                      <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
+                        <Group gap={8} align="center" wrap="nowrap">
+                          <Text fw={600} size="sm" truncate style={{ maxWidth: "100%" }}>
+                            {template.title}
+                          </Text>
+                          {typeDef && (
+                            <Badge size="xs" variant="light" style={{ flexShrink: 0 }}>
+                              {t(`common:eventType.${typeDef}`)}
+                            </Badge>
                           )}
-                          <InfiniMenu.Divider />
-                          <InfiniMenu.Item
-                            className="infini-menu-item--danger"
-                            color="red"
-                            leftSection={<IconTrash size={14} />}
-                            onClick={() => handleDelete(template)}
-                          >
-                            {t("recurring.delete")}
-                          </InfiniMenu.Item>
-                        </InfiniMenu.Dropdown>
-                      </InfiniMenu>
-                    )}
+                          <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                            <HoverCard.Target>
+                              <Badge
+                                size="xs"
+                                variant="light"
+                                color={isPaused ? "gray" : "green"}
+                                style={{ flexShrink: 0 }}
+                                data-animate-icon-trigger
+                              >
+                                {isPaused ? t("recurring.status.paused") : t("recurring.status.active")}
+                              </Badge>
+                            </HoverCard.Target>
+                            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                              <Group gap={10} wrap="nowrap" align="flex-start">
+                                <ThemeIcon variant="light" color={isPaused ? "yellow" : "green"} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                                  {isPaused ? <PauseIcon size={16} /> : <CircleCheckIcon size={16} />}
+                                </ThemeIcon>
+                                <div style={{ minWidth: 0 }}>
+                                  <Text size="sm" fw={700} lh={1.3} mb={4}>
+                                    {isPaused ? t("tooltip.templatePaused.title") : t("tooltip.templateActive.title")}
+                                  </Text>
+                                  <Text size="xs" c="dimmed" lh={1.5}>
+                                    {isPaused ? t("tooltip.templatePaused.desc") : t("tooltip.templateActive.desc")}
+                                  </Text>
+                                </div>
+                              </Group>
+                            </HoverCard.Dropdown>
+                          </HoverCard>
+                        </Group>
+
+                        <Group gap={16} wrap="wrap">
+                          <Group gap={4} align="center">
+                            <ClockIcon size={13} style={{ opacity: 0.5 }} />
+                            <Text size="xs" c="dimmed">{time}</Text>
+                          </Group>
+                          <Text size="xs" c="dimmed">
+                            {buildRecurrenceSummary(t, template.recurrence_rule, template.start_at)}
+                          </Text>
+                          {template.capacity != null && (
+                            <Group gap={4} align="center">
+                              <UsersIcon size={13} style={{ opacity: 0.5 }} />
+                              <Text size="xs" c="dimmed">{template.capacity}</Text>
+                            </Group>
+                          )}
+                        </Group>
+                      </Stack>
+                    </Group>
+
+                    <Group gap={12} align="center" wrap="nowrap" style={{ flexShrink: 0 }}>
+                      {template.last_generated_date && (
+                        <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                          <HoverCard.Target>
+                            <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                              {t("recurring.generated", { count: template.generation_count })}
+                            </Text>
+                          </HoverCard.Target>
+                          <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                            <Group gap={10} wrap="nowrap" align="flex-start">
+                              <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                                <ClockIcon size={16} />
+                              </ThemeIcon>
+                              <div style={{ minWidth: 0 }}>
+                                <Text size="sm" fw={700} lh={1.3}>{t("recurring.hovercard.lastGenerated.title")}</Text>
+                                <Text size="xs" c="dimmed" lh={1.5}>{t("recurring.lastGenerated", { date: new Date(template.last_generated_date).toLocaleDateString(i18n.language) })}</Text>
+                                <Text size="xs" c="dimmed" lh={1.5}>{t("recurring.hovercard.lastGenerated.desc")}</Text>
+                              </div>
+                            </Group>
+                          </HoverCard.Dropdown>
+                        </HoverCard>
+                      )}
+                    </Group>
                   </Group>
                 </div>
-              );
-            })}
-          </Stack>
+              </PortalCard>
+            );
+          })
         )}
       </Stack>
 
@@ -264,6 +286,12 @@ export function RecurringTemplatesTab({
           setEditingTemplate(null);
         }}
         onSave={handleFormSave}
+        onPause={onPauseTemplate}
+        onResume={onResumeTemplate}
+        onDelete={(id) => {
+          const tpl = templates.find((t) => t.id === id);
+          if (tpl) handleDelete(tpl);
+        }}
       />
     </>
   );

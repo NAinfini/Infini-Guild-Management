@@ -1,5 +1,5 @@
 import { PERMISSIONS, type AdminRole, type Permission } from "@guild/shared";
-import { DepthToggle } from "@infini-dev-kit/react";
+import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import {
   ActionIcon,
   Alert,
@@ -7,20 +7,41 @@ import {
   ColorInput,
   ColorSwatch,
   Group,
+  HoverCard,
+  NumberInput,
   Skeleton,
   ScrollArea,
   Stack,
   Text,
   TextInput,
-  Title,
+  ThemeIcon,
   UnstyledButton,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { IconCheck, IconDeviceFloppy, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangleIcon,
+  ArchiveIcon,
+  BookTextIcon,
+  CalendarDaysIcon,
+  CheckIcon,
+  EyeIcon,
+  GalleryThumbnailsIcon,
+  LockIcon,
+  PencilIcon,
+  PlusIcon,
+  SaveIcon,
+  SettingsIcon,
+  ShieldIcon,
+  SwordsIcon,
+  TrashIcon,
+  UploadIcon,
+  UserCheckIcon,
+  XIcon,
+} from "@portal/components/icons";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
-import { canManageRoles } from "../../../utils/permissions";
+import { userCanManageRoles } from "../../../utils/permissions";
 
 type RoleDraft = {
   name: string;
@@ -34,14 +55,14 @@ type RolePayload = {
   name: string;
   level: number;
   color?: string | null;
-  permissions?: Partial<Record<Permission, boolean>>;
+  permissions?: Record<Permission, boolean>;
 };
 
 type RoleUpdatePayload = {
   name?: string;
   level?: number;
   color?: string | null;
-  permissions?: Partial<Record<Permission, boolean>>;
+  permissions?: Record<Permission, boolean>;
 };
 
 type AdminRolesSectionProps = {
@@ -82,35 +103,106 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
     permissions: ["admin.audit.view", "admin.audit.export"],
   },
   {
-    labelKey: "roles.category.adminBot",
-    permissions: ["admin.bot.view", "admin.bot.manage"],
-  },
-  {
     labelKey: "roles.category.adminSystem",
-    permissions: ["admin.status.view", "admin.roles.manage"],
+    permissions: ["admin.status.view", "admin.roles.view", "admin.roles.manage"],
   },
   {
-    labelKey: "roles.category.content",
-    permissions: [
-      "guildwar.manage",
-      "guildwar.history.edit",
-      "events.manage",
-      "announcements.manage",
-      "gallery.upload",
-      "wiki.edit",
-    ],
+    labelKey: "roles.category.adminAnalytics",
+    permissions: ["admin.analytics.view", "admin.analytics.manage"],
+  },
+  {
+    labelKey: "roles.category.guildWar",
+    permissions: ["guildwar.teams.edit", "guildwar.history.edit"],
+  },
+  {
+    labelKey: "roles.category.events",
+    permissions: ["events.create", "events.edit", "events.archive", "events.delete", "events.templates"],
+  },
+  {
+    labelKey: "roles.category.announcements",
+    permissions: ["announcements.create", "announcements.edit", "announcements.archive", "announcements.delete"],
+  },
+  {
+    labelKey: "roles.category.gallery",
+    permissions: ["gallery.upload", "gallery.manage", "gallery.delete"],
+  },
+  {
+    labelKey: "roles.category.wiki",
+    permissions: ["wiki.articles.create", "wiki.articles.edit", "wiki.articles.archive", "wiki.articles.delete", "wiki.categories.manage"],
   },
 ];
 
+type PermMeta = { icon: ReactNode; color: string; danger?: boolean };
+
+const PERM_ICON_SIZE = 16;
+
+const PERM_META: Record<string, PermMeta> = {
+  "admin.users.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.users.edit":      { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
+  "admin.users.role":      { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "violet" },
+  "admin.users.activate":  { icon: <UserCheckIcon size={PERM_ICON_SIZE} />,          color: "orange" },
+  "admin.users.delete":    { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
+  "admin.users.password":  { icon: <LockIcon size={PERM_ICON_SIZE} />,               color: "orange", danger: true },
+  "admin.invite.view":     { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.invite.manage":   { icon: <PlusIcon size={PERM_ICON_SIZE} />,               color: "teal" },
+  "admin.audit.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.audit.export":    { icon: <ArchiveIcon size={PERM_ICON_SIZE} />,            color: "grape" },
+  "admin.status.view":     { icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "blue" },
+  "admin.roles.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.roles.manage":    { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "red", danger: true },
+  "admin.analytics.view":  { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.analytics.manage":{ icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "teal" },
+  "guildwar.teams.edit":   { icon: <SwordsIcon size={PERM_ICON_SIZE} />,             color: "orange" },
+  "guildwar.history.edit": { icon: <SwordsIcon size={PERM_ICON_SIZE} />,             color: "orange" },
+  "events.create":         { icon: <PlusIcon size={PERM_ICON_SIZE} />,               color: "teal" },
+  "events.edit":           { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
+  "events.archive":        { icon: <ArchiveIcon size={PERM_ICON_SIZE} />,            color: "grape" },
+  "events.delete":         { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
+  "events.templates":      { icon: <CalendarDaysIcon size={PERM_ICON_SIZE} />,       color: "teal" },
+  "announcements.create":  { icon: <PlusIcon size={PERM_ICON_SIZE} />,               color: "teal" },
+  "announcements.edit":    { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
+  "announcements.archive": { icon: <ArchiveIcon size={PERM_ICON_SIZE} />,            color: "grape" },
+  "announcements.delete":  { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
+  "gallery.upload":        { icon: <UploadIcon size={PERM_ICON_SIZE} />,             color: "teal" },
+  "gallery.manage":        { icon: <GalleryThumbnailsIcon size={PERM_ICON_SIZE} />,  color: "teal" },
+  "gallery.delete":        { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
+  "wiki.articles.create":  { icon: <PlusIcon size={PERM_ICON_SIZE} />,               color: "teal" },
+  "wiki.articles.edit":    { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
+  "wiki.articles.archive": { icon: <ArchiveIcon size={PERM_ICON_SIZE} />,            color: "grape" },
+  "wiki.articles.delete":  { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
+  "wiki.categories.manage":{ icon: <BookTextIcon size={PERM_ICON_SIZE} />,           color: "teal" },
+};
+
+const DEFAULT_META: PermMeta = { icon: <SettingsIcon size={PERM_ICON_SIZE} />, color: "gray" };
+
 function buildEmptyPermissions(): Record<Permission, boolean> {
   return Object.fromEntries(PERMISSIONS.map((permission) => [permission, false])) as Record<Permission, boolean>;
+}
+
+const CSS_COLOR_TO_HEX: Record<string, string> = {
+  red: "#ef4444",
+  blue: "#3b82f6",
+  gray: "#64748b",
+  green: "#22c55e",
+  orange: "#f97316",
+  yellow: "#eab308",
+  teal: "#14b8a6",
+  purple: "#a855f7",
+  pink: "#ec4899",
+  indigo: "#6366f1",
+};
+
+function normalizeColor(color: string | null): string {
+  if (!color) return "";
+  const lower = color.trim().toLowerCase();
+  return CSS_COLOR_TO_HEX[lower] ?? color;
 }
 
 function roleToDraft(role: AdminRole): RoleDraft {
   return {
     name: role.name,
     level: role.level,
-    color: role.color ?? "",
+    color: normalizeColor(role.color),
     permissions: { ...buildEmptyPermissions(), ...role.permissions },
   };
 }
@@ -128,7 +220,7 @@ function isRoleDraftDirty(role: AdminRole, draft: RoleDraft | undefined): boolea
     return true;
   }
 
-  if (draft.color.trim() !== (role.color ?? "")) {
+  if (draft.color.trim() !== normalizeColor(role.color)) {
     return true;
   }
 
@@ -155,11 +247,9 @@ export function AdminRolesSection({
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
   const user = useAuthStore((state) => state.user);
-  const isAdmin = Boolean(user && canManageRoles(roles, user.role));
+  const isAdmin = userCanManageRoles(user);
   const loadErrorMessage = tc("loadError");
-  const heading = <Title order={3} style={{ margin: 0, fontSize: 16 }}>{t("tab.roles")}</Title>;
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
-  const [newRoleName, setNewRoleName] = useState("");
   const [drafts, setDrafts] = useState<Record<string, RoleDraft>>({});
 
   const emptyPermissions = useMemo(() => buildEmptyPermissions(), []);
@@ -178,8 +268,7 @@ export function AdminRolesSection({
   if (!isAdmin) {
     return (
       <Stack gap={12}>
-        {heading}
-        <Alert color="infini-warning" title={t("adminOnly")} />
+        <Alert color="yellow" title={t("adminOnly")} />
       </Stack>
     );
   }
@@ -189,23 +278,14 @@ export function AdminRolesSection({
   const isDirty = selectedRole && selectedDraft ? isRoleDraftDirty(selectedRole, selectedDraft) : false;
 
   const handleCreateRole = async () => {
-    const name = newRoleName.trim();
-    if (!name) {
-      return;
-    }
+    const name = `Role-${Math.random().toString(36).slice(2, 6)}`;
 
-    const created = await onCreateRole({
+    await onCreateRole({
       name,
-      level: 2,
+      level: 100,
       color: null,
       permissions: emptyPermissions,
     });
-
-    if (!created) {
-      return;
-    }
-
-    setNewRoleName("");
   };
 
   const handleDeleteRole = async (role: AdminRole) => {
@@ -213,7 +293,7 @@ export function AdminRolesSection({
       modals.openConfirmModal({
         title: t("roles.confirmDeleteTitle"),
         children: t("roles.confirmDeleteDescription", { name: role.name }),
-        confirmProps: { color: "infini-danger" },
+        confirmProps: { color: "red" },
         labels: {
           confirm: t("roles.delete"),
           cancel: t("roles.cancel"),
@@ -232,7 +312,8 @@ export function AdminRolesSection({
 
     const deleted = await onDeleteRole(role.id);
     if (deleted && selectedRoleId === role.id) {
-      setSelectedRoleId(roles[0]?.id ?? null);
+      const remaining = roles.filter((r) => r.id !== role.id);
+      setSelectedRoleId(remaining[0]?.id ?? null);
     }
   };
 
@@ -266,19 +347,30 @@ export function AdminRolesSection({
 
   return (
     <Stack gap={12}>
-      {heading}
       {rolesLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {rolesError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
+      {rolesError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
 
       {!rolesLoading && !rolesError ? (
         <div className="admin-roles-layout">
           {/* ── Left panel: role list ── */}
           <div className="admin-roles-sidebar">
             <div className="admin-roles-sidebar-header">
-              <Text fw={700} size="sm">{t("roles.listTitle")}</Text>
+              <Group gap={8} justify="space-between" wrap="nowrap">
+                <Text fw={700} size="sm">{t("roles.listTitle")}</Text>
+                <ActionIcon
+                  size="sm"
+                  variant="filled"
+                  color="blue"
+                  onClick={() => { void handleCreateRole(); }}
+                  loading={createRolePending}
+                  aria-label={t("roles.create")}
+                >
+                  <PlusIcon size={14} />
+                </ActionIcon>
+              </Group>
             </div>
 
-            <ScrollArea className="admin-roles-sidebar-scroll" type="auto" scrollbarSize={6}>
+            <ScrollArea className="admin-roles-sidebar-scroll" type="auto" scrollbarSize={6} style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
               <Stack gap={4} p={8}>
                 {roles.map((role) => {
                   const isSelected = role.id === selectedRoleId;
@@ -294,7 +386,7 @@ export function AdminRolesSection({
                       <Group gap={8} wrap="nowrap" justify="space-between">
                         <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
                           {role.color ? (
-                            <ColorSwatch color={role.color} size={14} />
+                            <ColorSwatch color={normalizeColor(role.color)} size={14} />
                           ) : (
                             <ColorSwatch color="transparent" size={14} />
                           )}
@@ -304,11 +396,25 @@ export function AdminRolesSection({
                         </Group>
                         <Group gap={4} wrap="nowrap">
                           {dirty ? (
-                            <Badge size="xs" variant="light" color="infini-warning">*</Badge>
+                            <Badge size="xs" variant="light" color="yellow">*</Badge>
                           ) : null}
                           {role.is_builtin ? (
                             <Badge size="xs" variant="light" color="blue">{t("roles.builtin")}</Badge>
-                          ) : null}
+                          ) : (
+                            <ActionIcon
+                              size="xs"
+                              variant="subtle"
+                              color="red"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleDeleteRole(role);
+                              }}
+                              loading={deleteRolePending}
+                              aria-label={t("roles.delete")}
+                            >
+                              <XIcon size={12} />
+                            </ActionIcon>
+                          )}
                         </Group>
                       </Group>
                     </UnstyledButton>
@@ -316,34 +422,6 @@ export function AdminRolesSection({
                 })}
               </Stack>
             </ScrollArea>
-
-            {/* Add new role */}
-            <div className="admin-roles-sidebar-footer">
-              <Group gap={6} wrap="nowrap">
-                <TextInput
-                  size="xs"
-                  placeholder={t("roles.placeholder.name")}
-                  value={newRoleName}
-                  onChange={(event) => setNewRoleName(event.currentTarget.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      void handleCreateRole();
-                    }
-                  }}
-                  style={{ flex: 1 }}
-                />
-                <ActionIcon
-                  size="sm"
-                  variant="filled"
-                  color="infini-primary"
-                  onClick={() => { void handleCreateRole(); }}
-                  loading={createRolePending}
-                  disabled={!newRoleName.trim()}
-                >
-                  <IconPlus size={14} />
-                </ActionIcon>
-              </Group>
-            </div>
           </div>
 
           {/* ── Right panel: permissions ── */}
@@ -352,49 +430,58 @@ export function AdminRolesSection({
               <Stack gap={16}>
                 {/* Role header */}
                 <div className="admin-roles-detail-header">
-                  <Group justify="space-between" align="center" wrap="nowrap">
-                    <Group gap={10} align="center" wrap="nowrap" style={{ minWidth: 0 }}>
+                  <Group justify="space-between" align="flex-end" wrap="wrap">
+                    <Group gap={10} align="flex-end" wrap="wrap" style={{ minWidth: 0, flex: 1 }}>
                       <TextInput
                         size="sm"
                         label={t("roles.field.name")}
-                        value={selectedDraft.name}
+                        value={selectedRole.is_builtin ? t(`role.${selectedRole.id}`, { defaultValue: selectedDraft.name }) : selectedDraft.name}
                         onChange={(event) => updateDraftField(selectedRole.id, "name", event.currentTarget.value)}
-                        style={{ flex: 1, minWidth: 120, maxWidth: 200 }}
+                        style={{ flex: 1, minWidth: 100, maxWidth: 200 }}
+                        disabled={selectedRole.is_builtin}
+                      />
+                      <NumberInput
+                        size="sm"
+                        label={t("roles.field.level")}
+                        value={selectedDraft.level}
+                        onChange={(value) => updateDraftField(selectedRole.id, "level", typeof value === "number" ? value : selectedDraft.level)}
+                        min={1}
+                        max={998}
+                        hideControls
+                        style={{ width: 80 }}
                         disabled={selectedRole.is_builtin}
                       />
                       <ColorInput
                         size="sm"
+                        format="hex"
                         label={t("roles.field.color")}
                         value={selectedDraft.color}
                         onChange={(value) => updateDraftField(selectedRole.id, "color", value)}
-                        style={{ width: 160 }}
-                        disabled={selectedRole.is_builtin}
+                        style={{ flex: 1, minWidth: 120, maxWidth: 160 }}
                         swatches={[
                           "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
                           "#3b82f6", "#6366f1", "#a855f7", "#ec4899", "#64748b",
                         ]}
                       />
-                      <Group gap={6} mt={22}>
-                        <Badge variant="light" color="teal" size="sm">
-                          {t("roles.assignedCount", { count: selectedRole.assigned_user_count })}
-                        </Badge>
-                      </Group>
+                      <Badge variant="light" color="teal" size="sm">
+                        {t("roles.assignedCount", { count: selectedRole.assigned_user_count })}
+                      </Badge>
                     </Group>
-                    <Group gap={8} mt={22}>
+                    <Group gap={8}>
                       {!selectedRole.is_builtin ? (
                         <ActionIcon
-                          color="infini-danger"
-                          variant="light"
+                          color="red"
+                          variant="default"
                           size="lg"
                           onClick={() => { void handleDeleteRole(selectedRole); }}
                           loading={deleteRolePending}
                           aria-label={t("roles.delete")}
                         >
-                          <IconTrash size={16} />
+                          <TrashIcon size={16} />
                         </ActionIcon>
                       ) : null}
                       <ActionIcon
-                        color="infini-primary"
+                        color="blue"
                         variant="filled"
                         size="lg"
                         onClick={() => {
@@ -409,7 +496,7 @@ export function AdminRolesSection({
                         disabled={!isDirty}
                         aria-label={t("roles.save")}
                       >
-                        <IconDeviceFloppy size={16} />
+                        <SaveIcon size={16} />
                       </ActionIcon>
                     </Group>
                   </Group>
@@ -427,8 +514,10 @@ export function AdminRolesSection({
                           {category.permissions.map((permission) => {
                             const isReadOnly = selectedRole.is_builtin;
                             const isGranted = Boolean(selectedDraft.permissions[permission]);
+                            const meta = PERM_META[permission] ?? DEFAULT_META;
+                            const tooltipText = t(`roles.tooltip.${permission}`, { defaultValue: "" });
 
-                            return (
+                            const toggle = (
                               <DepthToggle
                                 key={`${selectedRole.id}-${permission}`}
                                 pressed={isGranted}
@@ -442,14 +531,64 @@ export function AdminRolesSection({
                                 disabled={isReadOnly}
                                 before={
                                   isGranted ? (
-                                    <IconCheck size={14} color="#22c55e" />
+                                    <CheckIcon size={14} style={{ color: "#22c55e" }} />
                                   ) : (
-                                    <IconX size={14} color="#ef4444" />
+                                    <XIcon size={14} style={{ color: "#ef4444" }} />
                                   )
                                 }
                               >
                                 {t(`roles.permission.${permission}`, { defaultValue: permission })}
                               </DepthToggle>
+                            );
+
+                            if (!tooltipText) return toggle;
+
+                            return (
+                              <HoverCard
+                                key={`${selectedRole.id}-${permission}`}
+                                width={320}
+                                shadow="lg"
+                                withArrow
+                                arrowSize={10}
+                                openDelay={350}
+                                closeDelay={80}
+                                position="top"
+                              >
+                                <HoverCard.Target>{toggle}</HoverCard.Target>
+                                <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                                  <Group gap={10} wrap="nowrap" align="flex-start">
+                                    <ThemeIcon
+                                      variant="light"
+                                      color={meta.color}
+                                      size="lg"
+                                      radius="md"
+                                      style={{ flexShrink: 0, marginTop: 2 }}
+                                    >
+                                      {meta.icon}
+                                    </ThemeIcon>
+                                    <div style={{ minWidth: 0 }}>
+                                      <Group gap={6} mb={4}>
+                                        <Text size="sm" fw={700} lh={1.3}>
+                                          {t(`roles.permission.${permission}`, { defaultValue: permission })}
+                                        </Text>
+                                        {meta.danger ? (
+                                          <Badge
+                                            size="xs"
+                                            color="red"
+                                            variant="light"
+                                            leftSection={<AlertTriangleIcon size={10} />}
+                                          >
+                                            {t("roles.tooltip.dangerBadge", { defaultValue: "Caution" })}
+                                          </Badge>
+                                        ) : null}
+                                      </Group>
+                                      <Text size="xs" c="dimmed" lh={1.5}>
+                                        {tooltipText}
+                                      </Text>
+                                    </div>
+                                  </Group>
+                                </HoverCard.Dropdown>
+                              </HoverCard>
                             );
                           })}
                         </div>

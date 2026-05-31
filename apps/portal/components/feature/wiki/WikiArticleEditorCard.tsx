@@ -2,14 +2,15 @@
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { PortalCard } from "../../shared/PortalCard";
-import { Alert, Group, Select, Skeleton, Stack, Text, TextInput } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
-import { IconArchive, IconDeviceFloppy, IconPinned, IconPlus, IconX } from "@tabler/icons-react";
+import { ActionIcon, Alert, Group, Select, Skeleton, Stack, Text, TextInput } from "@mantine/core";
+import { ArchiveIcon, PinIcon, PlusIcon, SaveIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
-import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
+import { notifyError } from "../../../utils/notifications";
+import { TipTapEditor, buildTipTapEditorLabels } from "@portal/components/shared/TipTapEditor";
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
@@ -48,6 +49,7 @@ type WikiArticleEditorCardProps = {
   onCreateArticle: () => void;
   onExitEditor: () => void;
   onImageUpload: (file: File) => Promise<string>;
+  onDeleteArticle: () => void;
   emptyTitle: ReactNode;
 };
 
@@ -77,9 +79,12 @@ export function WikiArticleEditorCard({
   onCreateArticle,
   onExitEditor,
   onImageUpload,
+  onDeleteArticle,
   emptyTitle,
 }: WikiArticleEditorCardProps) {
   const { t } = useTranslation("wiki");
+  const { t: te } = useTranslation("editor");
+  const editorLabels = useMemo(() => buildTipTapEditorLabels(te), [te]);
   const pinLabel = selectedArticle?.pinned
     ? (pinnedIntent === "unpin" ? t("articleEditor.unpinQueued") : t("articleEditor.unpin"))
     : (pinnedIntent === "pin" ? t("articleEditor.pinQueued") : t("articleEditor.pin"));
@@ -118,27 +123,41 @@ export function WikiArticleEditorCard({
                         type="primary"
                         size="sm"
                         iconOnly
-                        before={<IconPinned size={16} />}
                         disabled={isSaving}
                         aria-label={pinLabel}
                         tooltip={{ label: pinLabel, withArrow: true }}
-                      />
-                    <DepthButton
-                      type={archiveIntent === "none" ? "danger" : "secondary"}
+                      >
+                        <PinIcon size={16} />
+                      </DepthToggle>
+                    <DepthToggle
+                      pressed={selectedArticle?.archived_at ? archiveIntent !== "unarchive" : archiveIntent === "archive"}
+                      onToggle={onToggleArchiveIntent}
+                      type="primary"
+                      iconOnly
                       size="sm"
-                      before={<IconArchive size={16} />}
-                      onClick={onToggleArchiveIntent}
                       disabled={isSaving}
+                      aria-label={archiveLabel}
+                      tooltip={{ label: archiveLabel, withArrow: true }}
                     >
-                      {archiveLabel}
-                    </DepthButton>
+                      <ArchiveIcon size={16} />
+                    </DepthToggle>
+                    <ActionIcon
+                      color="red"
+                      variant="filled"
+                      size="sm"
+                      onClick={onDeleteArticle}
+                      disabled={isSaving}
+                      aria-label={t("common:action.delete")}
+                    >
+                      <TrashIcon size={16} />
+                    </ActionIcon>
                     <DepthButton
                       type="primary"
                       size="sm"
-                      before={<IconDeviceFloppy size={16} />}
+                      before={<SaveIcon size={16} />}
                       onClick={() => {
                         if (!articleTitle.trim()) {
-                          notifications.show({ color: "infini-danger", message: t("validation.titleRequired") });
+                          notifyError(t("validation.titleRequired"));
                           return;
                         }
                         onSaveArticle();
@@ -153,7 +172,7 @@ export function WikiArticleEditorCard({
                   <DepthButton
                     type="primary"
                     size="sm"
-                    before={<IconPlus size={16} />}
+                    before={<PlusIcon size={16} />}
                     onClick={onCreateArticle}
                     disabled={!canCreateArticle || isCreating}
                   >
@@ -163,7 +182,7 @@ export function WikiArticleEditorCard({
                 <DepthButton
                   type="secondary"
                   size="sm"
-                  before={<IconX size={16} />}
+                  before={<XIcon size={16} />}
                   onClick={onExitEditor}
                   disabled={isSaving}
                 >
@@ -180,28 +199,30 @@ export function WikiArticleEditorCard({
               ))}
             </Stack>
           ) : null}
-          {isError ? <Alert color="infini-warning" title={warningMessage} /> : null}
+          {isError ? <Alert color="yellow" title={warningMessage} /> : null}
 
           {!isLoading && !isError ? (
             <Stack gap={12}>
-              <TextInput
-                label={t("articleEditor.titleField")}
-                value={articleTitle}
-                disabled={!canEdit}
-                onChange={(event) => onArticleTitleChange(event.currentTarget.value)}
-                placeholder={t("articleEditor.titleField")}
-                aria-label="Wiki article title"
-              />
-              <Group gap={8} wrap="wrap">
+              <Group gap={12} wrap="nowrap" align="flex-end" grow>
+                <TextInput
+                  label={t("articleEditor.titleField")}
+                  value={articleTitle}
+                  disabled={!canEdit}
+                  onChange={(event) => onArticleTitleChange(event.currentTarget.value)}
+                  placeholder={t("articleEditor.titleField")}
+                  aria-label={t("aria.articleTitle")}
+                  style={{ flex: 1 }}
+                />
                 <Select
-                  w={260}
+                  w={200}
                   label={t("articleEditor.category")}
                   value={articleCategoryId || null}
                   disabled={!canEdit}
                   data={categoryOptions}
                   placeholder={t("articleEditor.category")}
-                  aria-label="Wiki article category"
+                  aria-label={t("aria.articleCategory")}
                   onChange={(value) => onArticleCategoryChange(value ?? "")}
+                  style={{ flex: 0, minWidth: 200 }}
                 />
               </Group>
               <Text fw={600} size="sm">
@@ -213,21 +234,22 @@ export function WikiArticleEditorCard({
                 placeholder={t("articleEditor.body")}
                 editable={canEdit}
                 onImageUpload={onImageUpload}
+                labels={editorLabels}
               />
               {selectedArticle ? (
                 <Stack gap={2}>
                   <Group gap={6}>
-                    <Text size="sm">Wiki</Text>
+                    <Text size="sm">{t("articleEditor.title")}</Text>
                     <Text size="sm" c="dimmed">/</Text>
                     <Text size="sm">{selectedCategory?.name ?? t("articleEditor.categoryFallback")}</Text>
                     <Text size="sm" c="dimmed">/</Text>
                     <Text size="sm">{selectedArticle.title}</Text>
                   </Group>
                   <Text c="dimmed" size="sm">
-                    {t("articleEditor.lastUpdatedBy", { user: selectedArticle.created_by, date: formatDateTime(selectedArticle.updated_at) })}
+                    {t("articleEditor.lastUpdatedBy", { user: selectedArticle.created_by.slice(0, 8), date: formatDateTime(selectedArticle.updated_at) })}
                   </Text>
                   {selectedArticle.archived_at ? (
-                    <Text c="infini-warning" size="sm">
+                    <Text c="yellow" size="sm">
                       {t("articleEditor.archivedAt", { date: formatDateTime(selectedArticle.archived_at) })}
                     </Text>
                   ) : null}

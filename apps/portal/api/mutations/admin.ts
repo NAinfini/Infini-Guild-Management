@@ -1,9 +1,9 @@
 import {
   type InviteLink,
+  type MemberProfile,
   adminUpdateProfileSchema,
   batchDeactivateSchema,
   batchRoleChangeSchema,
-  botSettingsSchema,
   createAdminMemberSchema,
   createInviteLinkSchema,
 } from "@guild/shared";
@@ -14,12 +14,11 @@ export type CreateInviteLinkPayload = z.input<typeof createInviteLinkSchema>;
 export type CreateAdminMemberPayload = z.input<typeof createAdminMemberSchema>;
 export type BatchRoleChangePayload = z.input<typeof batchRoleChangeSchema>;
 export type BatchDeactivatePayload = z.input<typeof batchDeactivateSchema>;
-export type UpdateBotSettingsPayload = z.input<typeof botSettingsSchema>;
 export type AdminUpdateProfilePayload = z.input<typeof adminUpdateProfileSchema>;
 
-export function adminUpdateProfile(userId: string, payload: AdminUpdateProfilePayload): Promise<unknown> {
+export function adminUpdateProfile(userId: string, payload: AdminUpdateProfilePayload): Promise<MemberProfile> {
   const bodyJson = adminUpdateProfileSchema.parse(payload);
-  return apiRequest(`/api/users/${userId}/profile`, { method: "PATCH", bodyJson });
+  return apiRequest<MemberProfile>(`/api/users/${userId}/profile`, { method: "PATCH", bodyJson });
 }
 
 export function createAdminInviteLink(payload: CreateInviteLinkPayload): Promise<InviteLink> {
@@ -41,7 +40,7 @@ export function deleteAdminInviteLink(id: string): Promise<{ ok: true }> {
 
 export function updateAdminUserRole(
   userId: string,
-  role: "admin" | "moderator" | "member",
+  role: string,
 ): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/admin/users/${userId}/role`, {
     method: "PATCH",
@@ -129,37 +128,3 @@ export function batchDeleteAdminUsers(
   });
 }
 
-export function updateAdminBotSettings(payload: UpdateBotSettingsPayload): Promise<{ ok: true }> {
-  const bodyJson = botSettingsSchema.parse(payload);
-  return apiRequest<{ ok: true }>("/api/admin/bot-settings", {
-    method: "PATCH",
-    bodyJson,
-  });
-}
-
-export function testAdminBotDispatch(payload: {
-  platform: "discord" | "wechat";
-}): Promise<{ ok: true; task_id: string }> {
-  return apiRequest<{ ok: true; task_id: string }>("/api/admin/bot-settings/test", {
-    method: "POST",
-    bodyJson: { ...payload, dry_run: true },
-  });
-}
-
-export type AnalyticsSettingsPayload = {
-  reference_duration_minutes?: number;
-  modifier_weight_kda?: number;
-  modifier_weight_towers?: number;
-  modifier_weight_credits?: number;
-  modifier_weight_distance?: number;
-  modifier_weight_basehp?: number;
-};
-
-export function updateAnalyticsSettings(
-  payload: AnalyticsSettingsPayload,
-): Promise<AnalyticsSettingsPayload> {
-  return apiRequest<AnalyticsSettingsPayload>("/api/admin/analytics-settings", {
-    method: "PATCH",
-    bodyJson: payload,
-  });
-}

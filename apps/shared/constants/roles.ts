@@ -1,7 +1,6 @@
-export const ROLES = ["admin", "moderator", "member"] as const;
+export const BUILTIN_ROLES = ["admin", "moderator", "member"] as const;
 
-export type BuiltinRole = (typeof ROLES)[number];
-export type Role = BuiltinRole;
+export type Role = string;
 export type RoleId = string;
 
 export const PERMISSIONS = [
@@ -15,68 +14,48 @@ export const PERMISSIONS = [
   "admin.invite.manage",
   "admin.audit.view",
   "admin.audit.export",
-  "admin.bot.view",
-  "admin.bot.manage",
   "admin.status.view",
   "admin.analytics.view",
   "admin.analytics.manage",
   "admin.roles.view",
   "admin.roles.manage",
-  "guildwar.manage",
+  "guildwar.teams.edit",
   "guildwar.history.edit",
-  "events.manage",
-  "announcements.manage",
+  "events.create",
+  "events.edit",
+  "events.archive",
+  "events.delete",
+  "events.templates",
+  "announcements.create",
+  "announcements.edit",
+  "announcements.archive",
+  "announcements.delete",
   "gallery.upload",
   "gallery.manage",
-  "wiki.edit",
+  "gallery.delete",
+  "wiki.articles.create",
+  "wiki.articles.edit",
+  "wiki.articles.archive",
+  "wiki.articles.delete",
+  "wiki.categories.manage",
+  "admin.badges.manage",
+  "admin.gameData.manage",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
 
-export const ROLE_LEVEL: Record<BuiltinRole, number> = {
-  admin: 3,
-  moderator: 2,
-  member: 1,
-};
-
-export const MODERATOR_DEFAULT_PERMISSIONS: ReadonlySet<Permission> = new Set<Permission>([
-  "admin.users.view",
-  "admin.users.edit",
-  "admin.invite.view",
-  "admin.audit.view",
-  "admin.bot.view",
-  "admin.status.view",
-  "admin.analytics.view",
-  "admin.roles.view",
-  "guildwar.manage",
-  "guildwar.history.edit",
-  "events.manage",
-  "announcements.manage",
-  "gallery.upload",
-  "gallery.manage",
-  "wiki.edit",
-]);
-
-export const MEMBER_DEFAULT_PERMISSIONS: ReadonlySet<Permission> = new Set<Permission>(["gallery.upload"]);
-
-export function isBuiltinRole(roleId: string): roleId is BuiltinRole {
-  return (ROLES as readonly string[]).includes(roleId);
-}
-
-export function roleFromLevel(level: number): BuiltinRole {
-  if (level >= ROLE_LEVEL.admin) return "admin";
-  if (level >= ROLE_LEVEL.moderator) return "moderator";
-  return "member";
-}
-
-export function hasPermission(granted: ReadonlySet<Permission>, required: Permission): boolean {
-  return granted.has(required);
-}
+export const HIGH_RISK_PERMISSIONS: readonly Permission[] = [
+  "admin.users.password",
+  "admin.users.role",
+  "admin.users.delete",
+  "admin.roles.manage",
+  "admin.audit.export",
+] as const;
 
 export function hasAnyPermission(granted: ReadonlySet<Permission>, required: readonly Permission[]): boolean {
   return required.some((p) => granted.has(p));
 }
 
-export function hasRoleAtLeast(current: Role, required: Role): boolean {
-  return ROLE_LEVEL[current] >= ROLE_LEVEL[required];
+export function permissionSetToRecord(permissions: ReadonlySet<Permission>): Record<Permission, boolean> {
+  return Object.fromEntries(PERMISSIONS.map((p) => [p, permissions.has(p)])) as Record<Permission, boolean>;
 }

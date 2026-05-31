@@ -1,11 +1,18 @@
 .my-profile-sortable-row {
   opacity: 1;
   background: transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 2px 4px;
 }
 
 .my-profile-sortable-row--dragging {
   opacity: 0.7;
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+}
+
+@media (max-width: 991px) {
+  .my-profile-page .mantine-Tabs-list {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
 }

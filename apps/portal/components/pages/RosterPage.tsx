@@ -1,30 +1,39 @@
-import type { MemberProfile, User } from "@guild/shared";
-import { CLASS_NAMES, hasRoleAtLeast } from "@guild/shared";
-import { DepthToggle, StaggerList } from "@infini-dev-kit/react";
+import type { MemberProfile, User, UserBadge } from "@guild/shared";
+import { CLASS_NAMES } from "@guild/shared";
+import { activeGame } from "@guild/shared/games";
+import { DepthToggle } from "@portal/components/shared/DepthToggle";
+import { StaggerList } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
+  ActionIcon,
   Button,
+  Collapse,
   Group,
   MultiSelect,
   Select,
+  Skeleton,
   Slider,
   Text,
   TextInput,
 } from "@mantine/core";
-import { useDebouncedValue, useLocalStorage } from "@mantine/hooks";
-import { IconSearch } from "@tabler/icons-react";
+import { useDebouncedValue, useDisclosure, useLocalStorage } from "@mantine/hooks";
+import { SearchIcon } from "@portal/components/icons";
+import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { motion } from "motion/react";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FocusEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
-import { queryKeys } from "../../services/PortalQueryKeys";
-import { fetchUsersListWithOptions } from "../../services/UserService";
+import { queryKeys } from "../../api/query-keys";
+import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { useAuthStore } from "../../stores/auth";
+import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
+import { resolveProfileMediaUrl } from "../../utils/media";
 import { VolumeOutlined, VolumeMutedOutlined } from "../../utils/icons";
+import { playAudio, stopAudio, setAudioVolume, setAudioMuted, isAudioPlaying, getAudioSrc } from "../../utils/audio-player";
 import { PageLayout } from "../layout/PageLayout";
 import { EmptyState } from "../shared/EmptyState";
 import { MemberCard } from "../shared/MemberCard";
@@ -39,16 +48,15 @@ const rosterCardVariants = {
   visible: { opacity: 1, y: 0 },
 } as const;
 
-type RosterEntry = { user: User; profile: MemberProfile };
+type RosterEntry = { user: User; profile: MemberProfile; badges?: UserBadge[] };
 const ROSTER_FILTERS_KEY = "roster.filters";
-const ROSTER_SORT_MODES = ["power", "username", "class"] as const;
+const ROSTER_SORT_MODES = [
+  ...activeGame.profileStats.filter((s) => s.sortable).map((s) => s.key),
+  "username",
+  "class",
+] as const;
 
 type RosterSortMode = (typeof ROSTER_SORT_MODES)[number];
-type HoverPreviewState = {
-  username: string;
-  source: string;
-};
-
 function readStoredClassFilter(): string[] {
   try {
     const raw = localStorage.getItem(ROSTER_FILTERS_KEY);
@@ -102,21 +110,23 @@ export function RosterPage() {
   const navigate = useNavigate();
   const isExternalView = useExternalView();
   const sessionUser = useAuthStore((state) => state.user);
+  const { canManage: canManagePermission } = useEffectivePermissions();
   const [search, setSearch] = useState("");
   const [debouncedSearchRaw] = useDebouncedValue(search, 300);
   const debouncedSearch = debouncedSearchRaw.trim().toLowerCase();
   const [classFilter, setClassFilter] = useState<string[]>(() => readStoredClassFilter());
   const [sortMode, setSortMode] = useState<RosterSortMode>(() => readStoredSortMode());
   const [visibleCount, setVisibleCount] = useState(20);
-  const [audioMuted, setAudioMuted] = useLocalStorage<boolean>({ key: "roster.audio.muted", defaultValue: false });
-  const [audioVolume, setAudioVolume] = useLocalStorage<number>({ key: "roster.audio.volume", defaultValue: 70 });
-  const hoverAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioMuted, setAudioMutedState] = useLocalStorage<boolean>({ key: "roster.audio.muted", defaultValue: false });
+  const [audioVolume, setAudioVolumeState] = useLocalStorage<number>({ key: "roster.audio.volume", defaultValue: 20 });
   const hoverAudioDebounceRef = useRef<number | null>(null);
   const hoverAudioStopDebounceRef = useRef<number | null>(null);
-  const [hoverPreview, setHoverPreview] = useState<HoverPreviewState | null>(null);
-  const [selected, setSelected] = useState<{ user: User; profile: MemberProfile } | null>(null);
+  const [selected, setSelected] = useState<{ user: User; profile: MemberProfile; badges?: UserBadge[] } | null>(null);
+  const selectedRef = useRef(selected);
   const [windowWidth, setWindowWidth] = useState(() => typeof window === "undefined" ? 1920 : window.innerWidth);
   const virtualScrollRef = useRef<HTMLDivElement | null>(null);
+  const [filtersOpen, { toggle: toggleFilters }] = useDisclosure(false);
+  const isMobile = windowWidth < 768;
 
   useEffect(() => {
     const onResize = () => setWindowWidth(window.innerWidth);
@@ -126,18 +136,14 @@ export function RosterPage() {
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.roster(isExternalView ? "external" : "default"),
-    queryFn: () => fetchUsersListWithOptions({ externalView: isExternalView }),
+    queryFn: () => fetchAllUsersListWithOptions({ externalView: isExternalView }),
+    staleTime: 10 * 60_000,
   });
   useLoadWarningToast(usersQuery.isError, t("common:loadErrorRetry"));
 
   useEffect(() => {
-    if (hoverAudioRef.current) {
-      hoverAudioRef.current.volume = audioVolume / 100;
-      hoverAudioRef.current.muted = audioMuted;
-      if (audioMuted && !hoverAudioRef.current.paused) {
-        hoverAudioRef.current.pause();
-      }
-    }
+    setAudioVolume(audioVolume / 100);
+    setAudioMuted(audioMuted);
   }, [audioMuted, audioVolume]);
 
   useEffect(() => {
@@ -148,17 +154,14 @@ export function RosterPage() {
       if (hoverAudioStopDebounceRef.current !== null) {
         window.clearTimeout(hoverAudioStopDebounceRef.current);
       }
-      if (hoverAudioRef.current) {
-        hoverAudioRef.current.pause();
-        hoverAudioRef.current.src = "";
-      }
+      stopAudio();
     };
   }, []);
 
   useEffect(() => {
     setVisibleCount(20);
     if (selected) {
-      setSelected(null);
+      closeMemberProfile();
     }
   }, [debouncedSearch, classFilter]);
 
@@ -178,7 +181,7 @@ export function RosterPage() {
   const displayRows = isExternalView
     ? rows.map((entry) => ({
         ...entry,
-        profile: { ...entry.profile, wechat_name: null, notes: null, discord_id: null },
+        profile: { ...entry.profile, notes: null },
       }))
     : rows;
 
@@ -186,8 +189,7 @@ export function RosterPage() {
     .filter((entry) => {
       const q = debouncedSearch;
       if (!q) return true;
-      const wechatKeyword = isExternalView ? "" : entry.profile.wechat_name ?? "";
-      return entry.user.username.toLowerCase().includes(q) || wechatKeyword.toLowerCase().includes(q);
+      return entry.user.username.toLowerCase().includes(q);
     })
     .filter((entry) => {
       if (classFilter.length === 0) return true;
@@ -207,23 +209,18 @@ export function RosterPage() {
   const rowVirtualizer = useVirtualizer({
     count: rowChunks.length,
     getScrollElement: () => virtualScrollRef.current,
-    estimateSize: () => 320,
+    estimateSize: () => 280,
     overscan: 6,
-    gap: 12,
+    gap: 8,
+    measureElement: (el) => el.getBoundingClientRect().height,
   });
   const virtualRows = rowVirtualizer.getVirtualItems();
-
-  const ensureHoverAudio = () => {
-    if (!hoverAudioRef.current) {
-      hoverAudioRef.current = new Audio();
-    }
-    return hoverAudioRef.current;
-  };
 
   const playHoverAudio = (entry: { user: User; profile: MemberProfile }) => {
     if (audioMuted) return;
     const key = entry.profile.audio_key;
-    if (!key || !/^https?:\/\//i.test(key)) return;
+    if (!key) return;
+    const resolvedSrc = resolveProfileMediaUrl(key);
     if (hoverAudioStopDebounceRef.current !== null) {
       window.clearTimeout(hoverAudioStopDebounceRef.current);
       hoverAudioStopDebounceRef.current = null;
@@ -232,26 +229,13 @@ export function RosterPage() {
       window.clearTimeout(hoverAudioDebounceRef.current);
     }
 
-    const currentAudio = hoverAudioRef.current;
-    if (
-      hoverPreview?.source === key &&
-      currentAudio &&
-      !currentAudio.paused
-    ) {
+    if (getAudioSrc() === resolvedSrc && isAudioPlaying()) {
       return;
     }
 
     hoverAudioDebounceRef.current = window.setTimeout(() => {
-      const audio = ensureHoverAudio();
-      setHoverPreview({ username: entry.user.username, source: key });
-      if (audio.src !== key) {
-        audio.pause();
-        audio.src = key;
-      }
-      audio.currentTime = 0;
-      audio.volume = audioVolume / 100;
-      audio.muted = audioMuted;
-      void audio.play().catch(() => {});
+      setAudioVolume(audioVolume / 100);
+      playAudio(resolvedSrc);
     }, 100);
   };
 
@@ -260,15 +244,27 @@ export function RosterPage() {
       window.clearTimeout(hoverAudioDebounceRef.current);
       hoverAudioDebounceRef.current = null;
     }
+    if (selectedRef.current) return;
     if (hoverAudioStopDebounceRef.current !== null) {
       window.clearTimeout(hoverAudioStopDebounceRef.current);
     }
     hoverAudioStopDebounceRef.current = window.setTimeout(() => {
-      if (hoverAudioRef.current) {
-        hoverAudioRef.current.pause();
+      if (!selectedRef.current) {
+        stopAudio();
       }
       hoverAudioStopDebounceRef.current = null;
     }, 140);
+  };
+
+  const openMemberProfile = (entry: { user: User; profile: MemberProfile }) => {
+    selectedRef.current = entry;
+    setSelected(entry);
+  };
+
+  const closeMemberProfile = () => {
+    selectedRef.current = null;
+    setSelected(null);
+    stopAudio();
   };
 
   const handleCardFocus = (entry: { user: User; profile: MemberProfile }) => {
@@ -287,10 +283,10 @@ export function RosterPage() {
       <DepthToggle
         pressed={audioMuted}
         onToggle={(nextPressed) => {
-          if (nextPressed && hoverAudioRef.current && !hoverAudioRef.current.paused) {
-            hoverAudioRef.current.pause();
+          if (nextPressed && isAudioPlaying()) {
+            stopAudio();
           }
-          setAudioMuted(nextPressed);
+          setAudioMutedState(nextPressed);
         }}
         type="secondary"
         size="sm"
@@ -301,7 +297,8 @@ export function RosterPage() {
       </DepthToggle>
       <div className="roster-volume-control">
         <Text size="xs" c="dimmed" className="roster-volume-label">{t("audio.volume")}</Text>
-        <Slider min={0} max={100} value={audioVolume} onChange={setAudioVolume} aria-label={t("audio.aria.volumeSlider")} />
+        <Slider min={0} max={100} value={audioVolume} onChange={setAudioVolumeState} aria-label={t("audio.aria.volumeSlider")} />
+        <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>{t("audio.hint")}</Text>
       </div>
     </Group>
   );
@@ -309,46 +306,96 @@ export function RosterPage() {
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")} className="roster-page">
       <PortalCard className="roster-filter-card" interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
-        <Group wrap="wrap" gap="md" className="roster-filter-controls">
-          <TextInput
-            className="roster-search-input"
-            value={search}
-            placeholder={isExternalView ? t("search.placeholder.usernameOnly") : t("search.placeholder.usernameWechat")}
-            aria-label={isExternalView ? t("search.aria.usernameOnly") : t("search.aria.usernameWechat")}
-            onChange={(event) => setSearch(event.currentTarget.value)}
-            leftSection={<IconSearch size={14} />}
-          />
-          <MultiSelect
-            className="roster-class-select"
-            value={classFilter}
-            onChange={setClassFilter}
-            data={CLASS_NAMES.map((className) => ({ value: className, label: className }))}
-            placeholder={t("filter.class.placeholder")}
-            aria-label={t("filter.class.aria")}
-            clearable
-            searchable
-          />
-          <Select
-            className="roster-sort-select"
-            value={sortMode}
-            aria-label={t("sort.aria")}
-            onChange={(value) => { if (value) setSortMode(value as RosterSortMode); }}
-            data={[
-              { value: "power", label: t("sort.powerDesc") },
-              { value: "username", label: t("sort.usernameAsc") },
-              { value: "class", label: t("sort.class") },
-            ]}
-          />
-          {audioControlContent}
-          <Text size="sm" c="dimmed" className="roster-count-text">
-            {t("count.showing", { visible: renderedRows.length, total: sortedRows.length })}
-          </Text>
-        </Group>
+        <div className="roster-filter-padding">
+          {isMobile ? (
+            <>
+              <Group gap="xs" wrap="nowrap" align="center">
+                <TextInput
+                  className="roster-search-input"
+                  value={search}
+                  placeholder={t("search.placeholder.usernameOnly")}
+                  aria-label={t("search.aria.usernameOnly")}
+                  onChange={(event) => setSearch(event.currentTarget.value)}
+                  leftSection={<SearchIcon size={14} />}
+                  style={{ flex: 1 }}
+                />
+                <ActionIcon variant={filtersOpen ? "filled" : "default"} size="lg" onClick={toggleFilters} aria-label={t("filter.toggle")}>
+                  <IconAdjustmentsHorizontal size={18} />
+                </ActionIcon>
+                <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                  {renderedRows.length}/{sortedRows.length}
+                </Text>
+              </Group>
+              <Collapse in={filtersOpen}>
+                <Group wrap="wrap" gap={6} mt={6} className="roster-filter-controls">
+                  <MultiSelect
+                    className="roster-class-select"
+                    value={classFilter}
+                    onChange={setClassFilter}
+                    data={CLASS_NAMES.map((className) => ({ value: className, label: className }))}
+                    placeholder={t("filter.class.placeholder")}
+                    aria-label={t("filter.class.aria")}
+                    clearable
+                    searchable
+                  />
+                  <Select
+                    className="roster-sort-select"
+                    value={sortMode}
+                    aria-label={t("sort.aria")}
+                    onChange={(value) => { if (value) setSortMode(value as RosterSortMode); }}
+                    data={[
+                      { value: "power", label: t("sort.powerDesc") },
+                      { value: "username", label: t("sort.usernameAsc") },
+                      { value: "class", label: t("sort.class") },
+                    ]}
+                  />
+                  {audioControlContent}
+                </Group>
+              </Collapse>
+            </>
+          ) : (
+            <Group wrap="wrap" gap="md" className="roster-filter-controls">
+              <TextInput
+                className="roster-search-input"
+                value={search}
+                placeholder={t("search.placeholder.usernameOnly")}
+                aria-label={t("search.aria.usernameOnly")}
+                onChange={(event) => setSearch(event.currentTarget.value)}
+                leftSection={<SearchIcon size={14} />}
+              />
+              <MultiSelect
+                className="roster-class-select"
+                value={classFilter}
+                onChange={setClassFilter}
+                data={CLASS_NAMES.map((className) => ({ value: className, label: className }))}
+                placeholder={t("filter.class.placeholder")}
+                aria-label={t("filter.class.aria")}
+                clearable
+                searchable
+              />
+              <Select
+                className="roster-sort-select"
+                value={sortMode}
+                aria-label={t("sort.aria")}
+                onChange={(value) => { if (value) setSortMode(value as RosterSortMode); }}
+                data={[
+                  { value: "power", label: t("sort.powerDesc") },
+                  { value: "username", label: t("sort.usernameAsc") },
+                  { value: "class", label: t("sort.class") },
+                ]}
+              />
+              {audioControlContent}
+              <Text size="sm" c="dimmed" className="roster-count-text">
+                {t("count.showing", { visible: renderedRows.length, total: sortedRows.length })}
+              </Text>
+            </Group>
+          )}
         </div>
       </PortalCard>
 
-      {sortedRows.length === 0 ? (
+      {usersQuery.isLoading ? (
+        <Skeleton height={200} radius={8} />
+      ) : sortedRows.length === 0 ? (
         <PortalCard className="roster-empty-card" interactive={false}>
           <EmptyState
             title={debouncedSearch || classFilter.length > 0 ? t("empty.filtered") : t("empty.default")}
@@ -374,6 +421,8 @@ export function RosterPage() {
                 return (
                   <div
                     key={virtualRow.key}
+                    ref={rowVirtualizer.measureElement}
+                    data-index={virtualRow.index}
                     className="roster-virtual-row"
                     style={{
                       transform: `translateY(${virtualRow.start}px)`,
@@ -388,7 +437,7 @@ export function RosterPage() {
                           onFocus={() => handleCardFocus(entry)}
                           onBlur={handleCardBlur}
                         >
-                          <MemberCard user={entry.user} profile={entry.profile} onClick={() => setSelected(entry)} />
+                          <MemberCard user={entry.user} profile={entry.profile} badges={entry.badges} resolveMediaUrl={resolveProfileMediaUrl} onClick={() => openMemberProfile(entry)} />
                         </div>
                       </div>
                     ))}
@@ -408,7 +457,7 @@ export function RosterPage() {
                     onFocus={() => handleCardFocus(entry)}
                     onBlur={handleCardBlur}
                   >
-                    <MemberCard user={entry.user} profile={entry.profile} onClick={() => setSelected(entry)} />
+                    <MemberCard user={entry.user} profile={entry.profile} badges={entry.badges} resolveMediaUrl={resolveProfileMediaUrl} onClick={() => setSelected(entry)} />
                   </div>
                 </motion.div>
               ))}
@@ -428,10 +477,11 @@ export function RosterPage() {
           open={selected !== null}
           user={selected?.user ?? null}
           profile={selected?.profile ?? null}
-          onClose={() => setSelected(null)}
+          onClose={closeMemberProfile}
+          resolveMediaUrl={resolveProfileMediaUrl}
           canEdit={Boolean(
             selected && sessionUser && (
-              hasRoleAtLeast(sessionUser.role, "moderator") ||
+              canManagePermission(["admin.users.edit"]) ||
               selected.user.id === sessionUser.id
             ),
           )}

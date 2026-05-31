@@ -1,6 +1,9 @@
 import type { ErrorCode, StandardErrorResponse } from "@guild/shared";
 import { HTTPException } from "hono/http-exception";
-import type { Context, Next } from "hono";
+import type { Context } from "hono";
+import { createLogger } from "../utils/logger";
+import { writeErrorLog } from "../services/ErrorLogService";
+import type { Bindings } from "../index";
 
 type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
 
@@ -36,26 +39,43 @@ function buildErrorBody(c: Context, status: number, message: string, details?: u
   };
 }
 
+function persistError(c: Context, message: string, stack?: string): void {
+  try {
+    const env = c.env as Bindings;
+    c.executionCtx.waitUntil(
+      writeErrorLog(env.DB, {
+        source: "request",
+        message,
+        requestPath: c.req.path,
+        requestMethod: c.req.method,
+        requestId: c.get("requestId") as string | undefined,
+        stack,
+      }),
+    );
+  } catch {
+    // executionCtx may be unavailable in tests — silently skip
+  }
+}
+
 export function handleAppError(error: unknown, c: Context): Response {
+  const log = createLogger(c.get("requestId") as string | undefined);
+
   if (error instanceof HTTPException) {
     const status = toStatusCode(error.status);
     const message = status >= 500 ? "Internal server error" : error.message || "Request failed";
+    if (status >= 500) {
+      persistError(c, error.message || "HTTPException 5xx", error.stack);
+    }
     return c.json(buildErrorBody(c, status, message), status);
   }
 
   if (error instanceof Error) {
-    console.error(`[handleAppError] ${c.req.method} ${c.req.path}:`, error.message, error.stack);
+    log.error("Unhandled error", { method: c.req.method, path: c.req.path, error: error.message, stack: error.stack });
+    persistError(c, error.message, error.stack);
     return c.json(buildErrorBody(c, 500, "Internal server error"), 500);
   }
 
-  console.error(`[handleAppError] ${c.req.method} ${c.req.path}: non-Error thrown:`, error);
+  log.error("Non-Error thrown", { method: c.req.method, path: c.req.path, error: String(error) });
+  persistError(c, String(error));
   return c.json(buildErrorBody(c, 500, "Internal server error"), 500);
-}
-
-export async function errorHandlerMiddleware(c: Context, next: Next): Promise<void> {
-  try {
-    await next();
-  } catch (error) {
-    c.res = handleAppError(error, c);
-  }
 }

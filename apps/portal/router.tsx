@@ -14,11 +14,11 @@ import {
   createRouter,
   redirect,
 } from "@tanstack/react-router";
-import { fetchRoles } from "./api/queries/roles";
-import { canAccessAdmin } from "./utils/permissions";
+import { userCanAccessAdmin } from "./utils/permissions";
 import { NavigationProgress, nprogress } from "@mantine/nprogress";
-import { Suspense, lazy, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, type ReactNode } from "react";
 import { z } from "zod";
+import { useTranslation } from "react-i18next";
 import { apiRequest } from "./api/client";
 import { fetchEventDetail } from "./api/queries/events";
 import { AppShell } from "./components/layout/AppShell";
@@ -67,7 +67,20 @@ const LazyRosterPage = lazy(() =>
 );
 
 function RouteLoadingFallback(): ReactNode {
-  return <div style={{ minHeight: "60vh" }} />;
+  return (
+    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div
+        style={{
+          width: 28,
+          height: 28,
+          border: "3px solid color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent)",
+          borderTopColor: "var(--color-primary, #3b82f6)",
+          borderRadius: "50%",
+          animation: "spin 0.7s linear infinite",
+        }}
+      />
+    </div>
+  );
 }
 
 function DashboardRoutePage() {
@@ -197,11 +210,69 @@ async function ensureSession(): Promise<AuthSessionResponse | null> {
     return response;
   } catch {
     useAuthStore.getState().clearSession();
+    queryClient.clear();
     return null;
   }
 }
 
-const rootRoute = createRootRoute({ component: AppShell });
+function NotFoundPage(): ReactNode {
+  const { t } = useTranslation("common");
+
+  useEffect(() => {
+    document.title = `404 - ${t("notFound.title")}`;
+  }, [t]);
+
+  return (
+    <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
+      <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.15 }}>404</span>
+      <span style={{ fontSize: 16, fontWeight: 600 }}>{t("notFound.title")}</span>
+      <a href="/" style={{ fontSize: 14, color: "var(--color-primary, #3b82f6)" }}>{t("notFound.backHome")}</a>
+    </div>
+  );
+}
+
+function RouteErrorFallback(): ReactNode {
+  const { t } = useTranslation("common");
+  return (
+    <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
+      <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.15, color: "#dc2626" }}>{t("errors.somethingWentWrong")}</span>
+      <span style={{ fontSize: 16, fontWeight: 600 }}>{t("errors.generic")}</span>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        style={{
+          marginTop: 8,
+          padding: "8px 20px",
+          borderRadius: 8,
+          border: "none",
+          background: "var(--color-primary, #3b82f6)",
+          color: "#fff",
+          fontSize: 14,
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        {t("action.reloadPage")}
+      </button>
+    </div>
+  );
+}
+
+const rootRoute = createRootRoute({
+  component: AppShell,
+  notFoundComponent: NotFoundPage,
+  errorComponent: RouteErrorFallback,
+  beforeLoad: async () => {
+    if (!useAuthStore.getState().user) {
+      try {
+        const response = await apiRequest<AuthSessionResponse>("/api/auth/me");
+        useAuthStore.getState().setSession(response.user, response.profile);
+      } catch {
+        // no valid session — that's fine for public routes
+      }
+    }
+  },
+});
 
 const publicSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -335,6 +406,7 @@ const wikiSlugRoute = createRoute({
 
 const ADMIN_SEARCH_SCHEMA = z.object({
   member: z.string().optional(),
+  tab: z.enum(["member", "invite", "audit", "roles", "badges", "status", "gameData"]).optional(),
 });
 
 const adminRoute = createRoute({
@@ -351,12 +423,7 @@ const adminRoute = createRoute({
       throw redirect({ to: "/" });
     }
 
-    const roles = await queryClient.fetchQuery({
-      queryKey: ["admin", "roles"],
-      queryFn: fetchRoles,
-    });
-
-    if (!canAccessAdmin(roles, user.role)) {
+    if (!userCanAccessAdmin(user)) {
       throw redirect({ to: "/" });
     }
   },
@@ -391,7 +458,7 @@ router.subscribe("onResolved", () => nprogress.complete());
 export function AppRouter() {
   return (
     <QueryClientProvider client={queryClient}>
-      <NavigationProgress />
+      <NavigationProgress aria-hidden="true" />
       <RouterProvider router={router} />
     </QueryClientProvider>
   );

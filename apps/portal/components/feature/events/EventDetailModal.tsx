@@ -1,23 +1,23 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { Avatar, Grid, Group, Modal, Select, Stack, Text } from "@mantine/core";
+import { Button, Grid, Group, Modal, Progress, Select, SimpleGrid, Stack, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { DepthButton } from "@infini-dev-kit/react";
-import { MediaGallery } from "@portal/components/shared/MediaGallery";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
+import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
+import { resolveEventMediaUrl } from "@portal/utils/media";
 import {
-  IconCalendarEvent,
-  IconClock,
-  IconUserMinus,
-  IconUserPlus,
-  IconUsers,
-} from "@tabler/icons-react";
+  CalendarEventIcon,
+  ChartBarIcon,
+  CheckIcon,
+  ClockIcon,
+  GiftIcon,
+  UserMinusIcon,
+  UserPlusIcon,
+  UsersIcon,
+} from "@portal/components/icons";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-
-const EVENT_TYPE_COLORS: Record<string, string> = {
-  weekly_mission: "blue",
-  guild_war: "red",
-  social: "grape",
-  other: "gray",
-};
+import "./EventDetailModal.css";
 
 export type MemberEntry = { user: User; profile: MemberProfile };
 
@@ -28,7 +28,7 @@ function formatLocalDate(startAt: string, locale: string): string {
 
 function formatLocalTime(startAt: string, endAt: string | null, locale: string): string {
   const start = new Date(startAt);
-  const timeOpts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+  const timeOpts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit", hour12: true };
   const startTime = start.toLocaleTimeString(locale, timeOpts);
   if (!endAt) return startTime;
   const end = new Date(endAt);
@@ -36,16 +36,10 @@ function formatLocalTime(startAt: string, endAt: string | null, locale: string):
   return `${startTime} - ${endTime}`;
 }
 
-function resolveEventAttachmentUrl(key: string): string {
-  if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:")) {
-    return key;
-  }
-  if (typeof window === "undefined") {
-    return `/api/events/image?key=${encodeURIComponent(key)}`;
-  }
-  const url = new URL("/api/events/image", window.location.origin);
-  url.searchParams.set("key", key);
-  return url.toString();
+function resolveVoterEntries(voterIds: string[], allUsers: MemberEntry[]): MemberEntry[] {
+  return voterIds
+    .map((userId) => allUsers.find((entry) => entry.user.id === userId))
+    .filter((entry): entry is MemberEntry => Boolean(entry));
 }
 
 type EventDetailModalProps = {
@@ -54,11 +48,17 @@ type EventDetailModalProps = {
   allUsers: MemberEntry[];
   canManage: boolean;
   currentUserId?: string;
+  joinPending?: boolean;
+  leavePending?: boolean;
   onClose: () => void;
   onJoin?: (eventId: string) => void;
   onLeave?: (eventId: string) => void;
   onAddParticipant: (eventId: string, userId: string) => void;
   onRemoveParticipant: (eventId: string, userId: string) => void;
+  onVotePoll?: (eventId: string, optionIds: string[]) => void;
+  votePending?: boolean;
+  onDrawRaffle?: (eventId: string) => void;
+  drawRafflePending?: boolean;
 };
 
 export function EventDetailModal({
@@ -67,161 +67,389 @@ export function EventDetailModal({
   allUsers,
   canManage,
   currentUserId,
+  joinPending,
+  leavePending,
   onClose,
   onJoin,
   onLeave,
   onAddParticipant,
   onRemoveParticipant,
+  onVotePoll,
+  votePending,
+  onDrawRaffle,
+  drawRafflePending,
 }: EventDetailModalProps) {
   const { t, i18n } = useTranslation("events");
+  const { t: tc } = useTranslation("common");
+  const mediaLabels = useMemo(() => buildMediaGalleryLabels(tc), [tc]);
+  const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
+  const [localHasVoted, setLocalHasVoted] = useState(false);
   const isJoined = currentUserId ? members.some((entry) => entry.user.id === currentUserId) : false;
   const isFull = event?.capacity != null ? members.length >= event.capacity : false;
   const hasEnded = Boolean(event?.end_at && new Date(event.end_at) < new Date());
+  const isPoll = event?.type === "poll";
+  const isRaffle = event?.type === "raffle";
+  const raffleWinners = event?.raffle_winners ?? [];
+  const raffleHasDrawn = raffleWinners.length > 0;
   const showMemberAction = Boolean(currentUserId && (isJoined ? onLeave : onJoin));
-  const memberActionDisabled = event ? event.signup_locked || Boolean(event.archived_at) || hasEnded || (!isJoined && isFull) : true;
+  const memberActionDisabled = event
+    ? event.signup_locked || Boolean(event.archived_at) || hasEnded || (!isJoined && isFull)
+    : true;
   const memberActionLabel = isJoined
     ? t("button.leave")
     : isFull
       ? t("button.full")
       : t("button.join");
+  const pollTotalVotes = event?.poll?.options.reduce((total, option) => total + option.vote_count, 0) ?? 0;
+
+  useEffect(() => {
+    if (!event) {
+      return;
+    }
+    const serverHasVoted = event.poll?.has_voted ?? false;
+    setSelectedOptionIds(event.poll?.options.filter((option) => option.voted_by_me).map((option) => option.id) ?? []);
+    setLocalHasVoted(serverHasVoted);
+  }, [event]);
+
+  const togglePollOption = (optionId: string, disabled: boolean) => {
+    if (disabled) {
+      return;
+    }
+    setSelectedOptionIds((current) =>
+      current.includes(optionId) ? current.filter((id) => id !== optionId) : [...current, optionId],
+    );
+  };
+
+  const handlePollOptionKeyDown = (optionId: string, disabled: boolean, keyEvent: KeyboardEvent<HTMLDivElement>) => {
+    if (keyEvent.key !== "Enter" && keyEvent.key !== " ") {
+      return;
+    }
+    keyEvent.preventDefault();
+    togglePollOption(optionId, disabled);
+  };
 
   return (
     <Modal
       opened={event !== null}
       onClose={onClose}
-      title={event?.title ?? t("detail.title")}
-      size={event?.attachments && event.attachments.length > 0 ? "calc(100vw - 80px)" : "lg"}
+      title={event?.title}
+      size={event?.attachments && event.attachments.length > 0 ? "calc(100vw - 80px)" : "min(820px, calc(100vw - 32px))"}
       centered
+      keepMounted={false}
+      classNames={{
+        body: "event-detail-modal__body",
+        content: "event-detail-modal__content",
+        header: "event-detail-modal__header",
+        title: "event-detail-modal__title",
+      }}
     >
       {event ? (
-        <Grid gutter={16}>
-          <Grid.Col span={event.attachments && event.attachments.length > 0 ? 5 : 12}>
-            <Stack gap={20}>
-              <div style={{ padding: "12px", borderRadius: "8px", background: "rgba(59, 130, 246, 0.08)", border: "1px solid rgba(59, 130, 246, 0.2)" }}>
-                <Group gap={8} mb={8}>
-                  <IconCalendarEvent size={20} style={{ color: "#3b82f6" }} />
-                  <Text size="md" fw={600}>{t("detail.eventType")}</Text>
-                </Group>
-                <Text size="md">{t(`common:eventType.${event.type}`)}</Text>
-              </div>
-
-              <div style={{ padding: "12px", borderRadius: "8px", background: "rgba(17, 24, 39, 0.03)", border: "1px solid rgba(17, 24, 39, 0.1)" }}>
-                <Group gap={8} mb={8}>
-                  <IconClock size={20} style={{ color: "#8b5cf6" }} />
-                  <Text size="md" fw={600}>{t("detail.time")}</Text>
-                </Group>
-                <Group gap={8}>
-                  <Text size="md">{formatLocalDate(event.start_at, i18n.language)}</Text>
-                  <Text size="md" c="dimmed">·</Text>
-                  <Text size="md">{formatLocalTime(event.start_at, event.end_at, i18n.language)}</Text>
-                </Group>
-              </div>
+        <Grid gutter={16} className="event-detail-modal__grid">
+          <Grid.Col span={event.attachments && event.attachments.length > 0 ? { base: 12, md: 5 } : 12}>
+            <Stack gap={14}>
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={10}>
+                <section className="event-detail-modal__meta-card event-detail-modal__meta-card--type">
+                  <CalendarEventIcon size={20} />
+                  <div>
+                    <Text size="xs" fw={700} tt="uppercase" c="dimmed">{t("detail.eventType")}</Text>
+                    <Text size="sm" fw={700}>{t(`common:eventType.${event.type}`)}</Text>
+                  </div>
+                </section>
+                <section className="event-detail-modal__meta-card event-detail-modal__meta-card--time">
+                  <ClockIcon size={20} />
+                  <div>
+                    <Text size="xs" fw={700} tt="uppercase" c="dimmed">{t("detail.time")}</Text>
+                    <Text size="sm" fw={600}>
+                      {formatLocalDate(event.start_at, i18n.language)} - {formatLocalTime(event.start_at, event.end_at, i18n.language)}
+                    </Text>
+                  </div>
+                </section>
+              </SimpleGrid>
 
               {event.description ? (
-                <div style={{ padding: "12px", borderRadius: "8px", background: "rgba(17, 24, 39, 0.03)", border: "1px solid rgba(17, 24, 39, 0.1)" }}>
-                  <Text size="md" fw={600} mb={8}>{t("detail.description")}</Text>
-                  <Text size="md" c="dimmed">{event.description}</Text>
-                </div>
+                <section className="event-detail-modal__section">
+                  <Text size="sm" fw={700} mb={4}>{t("detail.description")}</Text>
+                  <Text size="sm" c="dimmed" lh={1.55}>{event.description}</Text>
+                </section>
               ) : null}
 
-              <div style={{ padding: "12px", borderRadius: "8px", background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.2)" }}>
-                <Group justify="space-between" gap={12} mb={12} wrap="wrap">
-                  <Group gap={8}>
-                    <IconUsers size={20} style={{ color: "#10b981" }} />
-                    <Text size="md" fw={600}>{event.capacity ? t("detail.membersWithCap", { count: members.length, capacity: event.capacity }) : t("detail.members", { count: members.length })}</Text>
+              {isPoll && event.poll ? (
+                <section className="event-detail-modal__section event-detail-modal__section--poll">
+                  <Group justify="space-between" gap={12} mb={12} wrap="nowrap" className="event-detail-modal__poll-header">
+                    <Group gap={8}>
+                      <ChartBarIcon size={20} />
+                      <Text size="md" fw={800}>{t("poll.detail.title")}</Text>
+                    </Group>
+                    <Text size="xs" fw={700} className="event-detail-modal__poll-total">
+                      {t("poll.detail.votes", { count: pollTotalVotes })}
+                    </Text>
                   </Group>
-                  {showMemberAction ? (
-                    <DepthButton
-                      type={isJoined ? "danger" : "primary"}
-                      size="sm"
-                      onClick={() => {
-                        if (isJoined) {
-                          onLeave?.(event.id);
-                          return;
-                        }
-                        onJoin?.(event.id);
-                      }}
-                      disabled={memberActionDisabled}
-                    >
-                      {isJoined ? <IconUserMinus size={14} style={{ marginRight: 4 }} /> : <IconUserPlus size={14} style={{ marginRight: 4 }} />}
-                      {memberActionLabel}
-                    </DepthButton>
-                  ) : null}
-                </Group>
-
-                {canManage ? (
-                  <Select
-                    placeholder={t("detail.addMemberPlaceholder")}
-                    searchable
-                    clearable
-                    mb={12}
-                    value={null}
-                    onChange={(userId) => {
-                      if (userId && event) {
-                        onAddParticipant(event.id, userId);
-                      }
-                    }}
-                    data={allUsers
-                      .filter((entry) => entry.user.is_active && !entry.user.deleted_at && !members.some((m) => m.user.id === entry.user.id))
-                      .map((entry) => ({ value: entry.user.id, label: entry.user.username }))
-                    }
-                    leftSection={<IconUserPlus size={16} />}
-                  />
-                ) : null}
-
-                {members.length === 0 ? (
-                  <Text c="dimmed" size="md">{t("detail.noMembers")}</Text>
-                ) : (
-                  <div style={{ maxHeight: "300px", overflowY: "auto" }}>
-                    <Stack gap={10}>
-                      {members.map((entry) => (
-                        <Group key={entry.user.id} gap={10} style={{ padding: "8px", borderRadius: "6px", background: "color-mix(in srgb, var(--infini-color-text) 8%, transparent)" }}>
-                          <Avatar size="md" color={EVENT_TYPE_COLORS[event.type] ?? "gray"} radius="xl">
-                            {entry.user.username.slice(0, 1).toUpperCase()}
-                          </Avatar>
-                          <div style={{ flex: 1 }}>
-                            <Text size="md" fw={600}>{entry.user.username}</Text>
-                            <Group gap={6}>
-                              <Text size="sm" c="dimmed">{entry.profile.classes[0] ?? "—"}</Text>
-                              <Text size="sm" c="dimmed">·</Text>
-                              <Text size="sm" c="dimmed">{t("detail.power", { value: entry.profile.power ?? "—" })}</Text>
-                            </Group>
-                          </div>
-                          {canManage ? (
-                            <DepthButton
-                              type="danger"
-                              size="sm"
-                              onClick={() => {
-                                modals.openConfirmModal({
-                                  title: t("detail.confirm.removeMember.title"),
-                                  children: (
-                                    <Text size="sm">
-                                      {t("detail.confirm.removeMember.description", { username: entry.user.username })}
+                  <Stack gap={12}>
+                    <div className="event-detail-modal__poll-result-board">
+                      {event.poll.options.map((option) => {
+                        const percent = pollTotalVotes > 0 ? Math.round((option.vote_count / pollTotalVotes) * 100) : 0;
+                        const voterEntries = resolveVoterEntries(option.voter_ids, allUsers);
+                        const missingVoterIds = option.voter_ids.filter((userId) => !voterEntries.some((entry) => entry.user.id === userId));
+                        const visibleVoters = voterEntries.slice(0, 10);
+                        const hiddenVoterCount = Math.max(0, voterEntries.length - visibleVoters.length);
+                        const isSelectedOption = selectedOptionIds.includes(option.id);
+                        const optionDisabled = event === null || !event.poll?.can_vote || !onVotePoll || hasEnded || Boolean(event.archived_at) || Boolean(votePending);
+                        return (
+                          <div
+                            key={option.id}
+                            role="checkbox"
+                            aria-checked={isSelectedOption}
+                            aria-disabled={optionDisabled}
+                            tabIndex={optionDisabled ? -1 : 0}
+                            className={`event-detail-modal__poll-result-row${isSelectedOption ? " event-detail-modal__poll-result-row--selected" : ""}${optionDisabled ? " event-detail-modal__poll-result-row--disabled" : ""}`}
+                            onClick={() => togglePollOption(option.id, optionDisabled)}
+                            onKeyDown={(keyEvent) => handlePollOptionKeyDown(option.id, optionDisabled, keyEvent)}
+                          >
+                            <div className="event-detail-modal__poll-result-main">
+                              <div className="event-detail-modal__poll-result-top">
+                                <Group gap={9} wrap="nowrap" className="event-detail-modal__poll-choice">
+                                  <span className="event-detail-modal__poll-choice-indicator" aria-hidden="true">
+                                    {isSelectedOption ? <CheckIcon size={14} /> : null}
+                                  </span>
+                                  <Text size="sm" fw={800}>{option.label}</Text>
+                                </Group>
+                                <Group gap={8} wrap="nowrap" className="event-detail-modal__poll-result-stats">
+                                  <Text size="xs" fw={700} className="event-detail-modal__poll-option-votes">
+                                    {t("poll.detail.votes", { count: option.vote_count })}
+                                  </Text>
+                                  <Text size="xs" fw={900} className="event-detail-modal__poll-percent">{percent}%</Text>
+                                </Group>
+                              </div>
+                              <Progress value={percent} color="teal" size="md" className="event-detail-modal__poll-progress" />
+                              {option.voter_ids.length > 0 ? (
+                                <div className="event-detail-modal__poll-voters">
+                                  {visibleVoters.map((entry) => (
+                                    <div key={entry.user.id} className="event-detail-modal__poll-voter-chip">
+                                      <MemberRoleAvatar user={entry.user} profile={entry.profile} size={28} />
+                                      <Text size="xs" fw={700} truncate>{entry.user.username}</Text>
+                                    </div>
+                                  ))}
+                                  {hiddenVoterCount > 0 ? (
+                                    <Text size="xs" fw={700} c="dimmed" className="event-detail-modal__poll-voter-overflow">
+                                      +{hiddenVoterCount}
                                     </Text>
-                                  ),
-                                  labels: { confirm: t("detail.removeMember"), cancel: t("button.cancel") },
-                                  confirmProps: { color: "red" },
-                                  onConfirm: () => onRemoveParticipant(event.id, entry.user.id),
-                                  centered: true,
-                                });
-                              }}
-                            >
-                              <IconUserMinus size={14} style={{ marginRight: 4 }} />
-                              {t("detail.removeMember")}
-                            </DepthButton>
-                          ) : null}
-                        </Group>
-                      ))}
+                                  ) : null}
+                                  {missingVoterIds.map((userId) => (
+                                    <Text key={userId} size="xs" c="dimmed" className="event-detail-modal__poll-voter-missing">
+                                      {userId}
+                                    </Text>
+                                  ))}
+                                </div>
+                              ) : (
+                                <Text size="xs" c="dimmed" className="event-detail-modal__poll-empty-voters">
+                                  {t("poll.detail.noVotes")}
+                                </Text>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="event-detail-modal__poll-actions">
+                      {!event.poll.can_vote || hasEnded || event.archived_at ? (
+                        <Text size="xs" c="dimmed">{hasEnded ? t("poll.status.closed") : t("poll.status.readOnly")}</Text>
+                      ) : null}
+                      <Button
+                        color="teal"
+                        size="sm"
+                        loading={votePending}
+                        disabled={event === null || !event.poll.can_vote || !onVotePoll || hasEnded || Boolean(event.archived_at) || selectedOptionIds.length === 0}
+                        onClick={() => {
+                          onVotePoll?.(event.id, selectedOptionIds);
+                          setLocalHasVoted(true);
+                        }}
+                      >
+                        {localHasVoted ? t("poll.update") : t("poll.vote")}
+                      </Button>
+                    </div>
+                  </Stack>
+                </section>
+              ) : null}
+
+              {isRaffle ? (
+                <section className="event-detail-modal__section event-detail-modal__section--raffle">
+                  <Group justify="space-between" gap={12} mb={12} wrap="nowrap">
+                    <Group gap={8}>
+                      <GiftIcon size={20} />
+                      <Text size="md" fw={800}>{t("raffle.detail.title")}</Text>
+                    </Group>
+                    {raffleHasDrawn ? (
+                      <Text size="xs" fw={700} c="dimmed">{t("raffle.status.drawn")}</Text>
+                    ) : canManage && onDrawRaffle && members.length > 0 ? (
+                      <Button
+                        variant="light"
+                        color="pink"
+                        size="xs"
+                        loading={drawRafflePending}
+                        disabled={event === null || Boolean(event.archived_at)}
+                        leftSection={<GiftIcon size={14} />}
+                        onClick={() => {
+                          modals.openConfirmModal({
+                            title: t("raffle.confirm.draw.title"),
+                            children: (
+                              <Text size="sm">
+                                {t("raffle.confirm.draw.description", {
+                                  count: event.winner_count ?? 0,
+                                  pool: members.length,
+                                })}
+                              </Text>
+                            ),
+                            labels: { confirm: t("raffle.detail.drawNow"), cancel: t("button.cancel") },
+                            confirmProps: { color: "pink" },
+                            onConfirm: () => onDrawRaffle(event.id),
+                            centered: true,
+                          });
+                        }}
+                      >
+                        {t("raffle.detail.drawNow")}
+                      </Button>
+                    ) : (
+                      <Text size="xs" fw={700} c="dimmed">{t("raffle.status.pendingDraw")}</Text>
+                    )}
+                  </Group>
+                  {raffleHasDrawn ? (
+                    <Stack gap={8}>
+                      <Text size="sm" fw={600} c="dimmed">{t("raffle.detail.winnersLabel")}</Text>
+                      {raffleWinners.map((winner) => {
+                        const entry = allUsers.find((e) => e.user.id === winner.user_id);
+                        return (
+                          <Group key={winner.id} gap={10} wrap="nowrap">
+                            {entry ? (
+                              <>
+                                <MemberRoleAvatar user={entry.user} profile={entry.profile} size={36} withTooltip={false} />
+                                <Text size="sm" fw={700}>{entry.user.username}</Text>
+                              </>
+                            ) : (
+                              <Text size="sm" c="dimmed">{winner.user_id}</Text>
+                            )}
+                          </Group>
+                        );
+                      })}
                     </Stack>
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <Stack gap={4}>
+                      <Text size="sm" c="dimmed">
+                        {t("raffle.detail.winnerCount", { count: event.winner_count ?? 0 })}
+                      </Text>
+                      <Text size="sm" c="dimmed">
+                        {t("raffle.detail.pool", { count: members.length })}
+                      </Text>
+                      {!canManage ? (
+                        <Text size="xs" c="dimmed">{t("raffle.detail.pendingDraw")}</Text>
+                      ) : null}
+                    </Stack>
+                  )}
+                </section>
+              ) : null}
+
+              {!isPoll ? (
+                <section className="event-detail-modal__section event-detail-modal__section--members">
+                  <Group justify="space-between" gap={12} mb={12} wrap="wrap">
+                    <Group gap={8}>
+                      <UsersIcon size={20} />
+                      <Text size="md" fw={800}>
+                        {event.capacity ? t("detail.membersWithCap", { count: members.length, capacity: event.capacity }) : t("detail.members", { count: members.length })}
+                      </Text>
+                    </Group>
+                    {showMemberAction ? (
+                      <DepthButton
+                        type={isJoined ? "danger" : "success"}
+                        size="sm"
+                        onClick={() => {
+                          if (isJoined) {
+                            onLeave?.(event.id);
+                            return;
+                          }
+                          onJoin?.(event.id);
+                        }}
+                        disabled={memberActionDisabled || joinPending || leavePending}
+                        loading={joinPending || leavePending}
+                      >
+                        {isJoined ? <UserMinusIcon size={14} style={{ marginRight: 4 }} /> : <UserPlusIcon size={14} style={{ marginRight: 4 }} />}
+                        {memberActionLabel}
+                      </DepthButton>
+                    ) : null}
+                  </Group>
+
+                  {canManage ? (
+                    <Select
+                      placeholder={t("detail.addMemberPlaceholder")}
+                      searchable
+                      clearable
+                      mb={12}
+                      value={null}
+                      onChange={(userId) => {
+                        if (userId) {
+                          onAddParticipant(event.id, userId);
+                        }
+                      }}
+                      disabled={event === null}
+                      data={allUsers
+                        .filter((entry) => entry.user.is_active && !entry.user.deleted_at && !members.some((m) => m.user.id === entry.user.id))
+                        .map((entry) => ({ value: entry.user.id, label: entry.user.username }))
+                      }
+                      leftSection={<UserPlusIcon size={16} />}
+                    />
+                  ) : null}
+
+                  {members.length === 0 ? (
+                    <Text c="dimmed" size="sm">{t("detail.noMembers")}</Text>
+                  ) : (
+                    <div className="event-detail-modal__member-list">
+                      <Stack gap={8}>
+                        {members.map((entry) => (
+                          <Group key={entry.user.id} gap={10} className="event-detail-modal__member-row" wrap="nowrap">
+                            <MemberRoleAvatar user={entry.user} profile={entry.profile} size={40} withTooltip={false} />
+                            <div className="event-detail-modal__member-info">
+                              <Text size="sm" fw={700}>{entry.user.username}</Text>
+                              <Group gap={6}>
+                                <Text size="xs" c="dimmed">{entry.profile.classes[0] ?? "-"}</Text>
+                                <Text size="xs" c="dimmed">-</Text>
+                                <Text size="xs" c="dimmed">{t("detail.power", { value: entry.profile.power ?? "-" })}</Text>
+                              </Group>
+                            </div>
+                            {canManage ? (
+                              <DepthButton
+                                type="danger"
+                                size="sm"
+                                onClick={() => {
+                                  modals.openConfirmModal({
+                                    title: t("detail.confirm.removeMember.title"),
+                                    children: (
+                                      <Text size="sm">
+                                        {t("detail.confirm.removeMember.description", { username: entry.user.username })}
+                                      </Text>
+                                    ),
+                                    labels: { confirm: t("detail.removeMember"), cancel: t("button.cancel") },
+                                    confirmProps: { color: "red" },
+                                    onConfirm: () => onRemoveParticipant(event.id, entry.user.id),
+                                    centered: true,
+                                  });
+                                }}
+                                disabled={event === null}
+                              >
+                                <UserMinusIcon size={14} style={{ marginRight: 4 }} />
+                                {t("detail.removeMember")}
+                              </DepthButton>
+                            ) : null}
+                          </Group>
+                        ))}
+                      </Stack>
+                    </div>
+                  )}
+                </section>
+              ) : null}
             </Stack>
           </Grid.Col>
 
           {event.attachments && event.attachments.length > 0 ? (
-            <Grid.Col span={7}>
-              <MediaGallery images={event.attachments} resolveMediaUrl={resolveEventAttachmentUrl} />
+            <Grid.Col span={{ base: 12, md: 7 }}>
+              <MediaGallery images={event.attachments} resolveMediaUrl={resolveEventMediaUrl} labels={mediaLabels} />
             </Grid.Col>
           ) : null}
         </Grid>

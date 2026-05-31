@@ -1,16 +1,16 @@
 ﻿import type { z } from "zod";
+import type { PushEntityType, PushHint } from "../constants/push-hints";
 import type { userSchema, memberProfileSchema } from "../schemas/user";
-import type { eventSchema, eventParticipantSchema, recurringTemplateSchema } from "../schemas/event";
+import type { eventSchema, eventParticipantSchema, eventPollSchema, eventRaffleWinnerSchema, recurringTemplateSchema } from "../schemas/event";
 import type { announcementSchema } from "../schemas/announcement";
 import type {
   guildWarActiveResponseSchema,
   warHistorySchema,
-  warTemplateSchema,
   warTeamSchema,
   warTeamMemberSchema,
 } from "../schemas/guild-war";
 import type { wikiCategorySchema, wikiArticleSchema } from "../schemas/wiki";
-import type { galleryItemSchema, galleryCommentSchema } from "../schemas/gallery";
+import type { galleryItemSchema } from "../schemas/gallery";
 import type {
   inviteLinkSchema,
   inviteLinkStatsSchema,
@@ -18,30 +18,31 @@ import type {
   adminRoleSchema,
   rolePermissionsSchema,
 } from "../schemas/admin";
-import type { botTaskSchema, botSettingsSchema } from "../schemas/bot";
+import type { memberBadgeSchema, userBadgeSchema, badgeAssignmentSchema } from "../schemas/badge";
 
 export type User = z.infer<typeof userSchema>;
 export type MemberProfile = z.infer<typeof memberProfileSchema>;
 export type Event = z.infer<typeof eventSchema>;
 export type EventParticipant = z.infer<typeof eventParticipantSchema>;
+export type EventPoll = z.infer<typeof eventPollSchema>;
+export type EventRaffleWinner = z.infer<typeof eventRaffleWinnerSchema>;
 export type RecurringTemplate = z.infer<typeof recurringTemplateSchema>;
 export type Announcement = z.infer<typeof announcementSchema>;
 export type WarHistory = z.infer<typeof warHistorySchema>;
-export type WarTemplate = z.infer<typeof warTemplateSchema>;
 export type WarTeam = z.infer<typeof warTeamSchema>;
 export type WarTeamMember = z.infer<typeof warTeamMemberSchema>;
 export type GuildWarActiveResponse = z.infer<typeof guildWarActiveResponseSchema>;
 export type WikiCategory = z.infer<typeof wikiCategorySchema>;
 export type WikiArticle = z.infer<typeof wikiArticleSchema>;
 export type GalleryItem = z.infer<typeof galleryItemSchema>;
-export type GalleryComment = z.infer<typeof galleryCommentSchema>;
 export type InviteLink = z.infer<typeof inviteLinkSchema>;
 export type InviteLinkStats = z.infer<typeof inviteLinkStatsSchema>;
 export type AuditLogEntry = z.infer<typeof auditLogSchema>;
 export type AdminRole = z.infer<typeof adminRoleSchema>;
 export type RolePermissions = z.infer<typeof rolePermissionsSchema>;
-export type BotTask = z.infer<typeof botTaskSchema>;
-export type BotSettings = z.infer<typeof botSettingsSchema>;
+export type MemberBadge = z.infer<typeof memberBadgeSchema>;
+export type UserBadge = z.infer<typeof userBadgeSchema>;
+export type BadgeAssignment = z.infer<typeof badgeAssignmentSchema>;
 
 export type PaginatedResponse<T> = {
   data: T[];
@@ -56,35 +57,20 @@ export type CursorResponse<T> = {
   next_cursor: string | null;
 };
 
-export type ApiError = {
-  error_code: string;
-  message: string;
-  request_id: string;
-  details?: unknown;
-};
-
 export type EntityChangedPushMessage = {
   type: "entity_changed";
-  entity_type: string;
+  entity_type: PushEntityType;
   entity_id: string;
   updated_at: string;
-  hint: string;
+  hint: PushHint;
+  display_name?: string;
 };
 
 export type MemberOnlinePushMessage = {
   type: "member_online";
   user_id: string;
-  source: "portal" | "discord" | "wechat";
+  source: "portal";
   online_at: string;
-};
-
-export type EventReminderPushMessage = {
-  type: "event_reminder";
-  event_id: string;
-  title: string;
-  starts_at: string;
-  platforms: Array<"discord" | "wechat">;
-  generated_at: string;
 };
 
 export type AnnouncementPublishedPushMessage = {
@@ -112,8 +98,5 @@ export type HeartbeatAckMessage = {
 export type PushMessage =
   | EntityChangedPushMessage
   | MemberOnlinePushMessage
-  | EventReminderPushMessage
   | AnnouncementPublishedPushMessage
   | HeartbeatAckMessage;
-
-export type RoleLevel = { admin: 3; moderator: 2; member: 1 };

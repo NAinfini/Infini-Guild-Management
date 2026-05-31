@@ -1,11 +1,11 @@
 import type { MemberProfile, User } from "@guild/shared";
-import { DepthButton } from "@infini-dev-kit/react";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { Group, Modal, Stack, Text } from "@mantine/core";
-import { IconPencil } from "@tabler/icons-react";
+import { PencilIcon } from "@portal/components/icons";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import DOMPurify from "dompurify";
-import { MediaGallery } from "@portal/components/shared/MediaGallery";
+import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
+import { sanitizeTitleHtml } from "../../utils/sanitize";
 import styles from "./ProfileModal.module.css";
 
 type ProfileModalProps = {
@@ -34,21 +34,20 @@ export function ProfileModal({
   resolveMediaUrl = defaultMediaResolver,
 }: ProfileModalProps) {
   const { t, i18n } = useTranslation("common");
+  const mediaLabels = useMemo(() => buildMediaGalleryLabels(t), [t]);
   const [avatarLoaded, setAvatarLoaded] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const safeTitleHtml = useMemo(
-    () =>
-      DOMPurify.sanitize(profile?.title_html ?? "", {
-        ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
-        ALLOWED_ATTR: [],
-      }),
+    () => sanitizeTitleHtml(profile?.title_html ?? ""),
     [profile?.title_html],
   );
-  const avatarUrl = profile?.images[0] ? resolveMediaUrl(profile.images[0]) : null;
+  const avatarUrl = profile?.avatar_key ? resolveMediaUrl(profile.avatar_key) : null;
   const activeTime = user?.updated_at ? new Date(user.updated_at).toLocaleString(i18n.language) : "-";
 
   useEffect(() => {
     setAvatarLoaded(false);
+    setAvatarError(false);
   }, [open, profile?.id]);
 
   useEffect(() => {
@@ -108,19 +107,21 @@ export function ProfileModal({
     <Modal
       opened={open}
       title={
-        <Group gap={12} wrap="nowrap" justify="space-between" style={{ flex: 1 }}>
-          <span>{user ? t("profile.modalTitle", { name: user.username }) : t("profile.modalTitleFallback")}</span>
-          {canEdit && onEdit ? (
-            <DepthButton
-              onClick={onEdit}
-              type="secondary"
-              size="sm"
-              before={<IconPencil size={14} />}
-            >
-              {editLabel || t("profile.editProfile")}
-            </DepthButton>
-          ) : null}
-        </Group>
+        user ? (
+          <Group gap={12} wrap="nowrap" justify="space-between" style={{ flex: 1 }}>
+            <span>{t("profile.modalTitle", { name: user.username })}</span>
+            {canEdit && onEdit ? (
+              <DepthButton
+                onClick={onEdit}
+                type="secondary"
+                size="sm"
+                before={<PencilIcon size={14} />}
+              >
+                {editLabel || t("profile.editProfile")}
+              </DepthButton>
+            ) : null}
+          </Group>
+        ) : undefined
       }
       onClose={onClose}
       classNames={{ content: styles.modalContent, title: styles.modalTitle }}
@@ -135,7 +136,7 @@ export function ProfileModal({
           <Stack gap={16} w="100%">
             <div className={styles.header}>
               <div className={styles.avatarWrap}>
-              {avatarUrl ? (
+              {avatarUrl && !avatarError ? (
                 <img
                   src={avatarUrl}
                   alt={t("a11y.avatar", { name: user.username })}
@@ -143,6 +144,7 @@ export function ProfileModal({
                   decoding="async"
                   className={`${styles.avatar}${avatarLoaded ? ` ${styles.avatarLoaded}` : ""}`}
                   onLoad={() => setAvatarLoaded(true)}
+                  onError={() => setAvatarError(true)}
                 />
               ) : (
                 <div className={styles.avatarFallback} aria-hidden="true">
@@ -181,8 +183,8 @@ export function ProfileModal({
             <MediaGallery
               images={profile.images}
               videos={profile.video_urls}
-              audioKey={profile.audio_key}
               resolveMediaUrl={resolveMediaUrl}
+              labels={mediaLabels}
             />
           </Stack>
         </div>

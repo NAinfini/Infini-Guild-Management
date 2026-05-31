@@ -1,9 +1,12 @@
 ﻿import type { User } from "@guild/shared";
 import { Avatar, Button, Group, Text, UnstyledButton } from "@mantine/core";
+import { UserIcon } from "@portal/components/icons";
 import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { DownOutlined, LogoutOutlined, SettingOutlined, UserOutlined } from "../../utils/icons";
+import { useAuthStore } from "../../stores/auth";
+import { resolveProfileMediaUrl } from "../../utils/media";
 
 type UserProfileDropdownProps = {
   user: User | null;
@@ -14,6 +17,7 @@ type UserProfileDropdownProps = {
 export function UserProfileDropdown({ user, onLogout, compact = false }: UserProfileDropdownProps) {
   const { t } = useTranslation("common");
   const navigate = useNavigate();
+  const profile = useAuthStore((state) => state.profile);
 
   if (!user) {
     return (
@@ -32,8 +36,8 @@ export function UserProfileDropdown({ user, onLogout, compact = false }: UserPro
           aria-label={t("profile.menu.aria.open")}
         >
           <Group gap={8} wrap="nowrap" align="center">
-            <Avatar size={32} radius="xl" className="app-profile-avatar">
-              {user.username.slice(0, 1).toUpperCase()}
+            <Avatar size={32} radius="xl" className="app-profile-avatar" src={profile?.avatar_key ? resolveProfileMediaUrl(profile.avatar_key) : undefined}>
+              <UserIcon size={18} />
             </Avatar>
             <div className="app-profile-meta">
               <Text fw={600} className="app-profile-name">
@@ -58,7 +62,7 @@ export function UserProfileDropdown({ user, onLogout, compact = false }: UserPro
           {t("profile.menu.settings")}
         </InfiniMenu.Item>
         <InfiniMenu.Divider />
-        <InfiniMenu.Item className="infini-menu-item--danger" color="infini-danger" leftSection={<LogoutOutlined />} onClick={() => void onLogout()}>
+        <InfiniMenu.Item className="infini-menu-item--danger" color="red" leftSection={<LogoutOutlined />} onClick={() => void onLogout()}>
           {t("action.logout")}
         </InfiniMenu.Item>
       </InfiniMenu.Dropdown>

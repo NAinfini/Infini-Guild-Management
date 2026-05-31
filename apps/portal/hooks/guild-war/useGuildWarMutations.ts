@@ -1,23 +1,20 @@
-import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  applyGuildWarTemplate,
-  createGuildWarTemplate,
   deleteGuildWarHistory,
-  deleteGuildWarTemplate,
   downloadGuildWarExport,
   batchUpdateGuildWarMemberStats,
-  postGuildWarResults,
-  updateGuildWarRoleTag,
+  batchDeleteGuildWarHistory,
+  updateGuildWarRoleTags,
 } from "../../services/GuildWarService";
 import { useAppError } from "../useAppError";
-import { queryKeys } from "../../services/PortalQueryKeys";
+import { queryKeys } from "../../api/query-keys";
 import type { HistoryMemberStatsUpdate } from "../../components/feature/guild-war/WarHistoryTab";
+import { notifySuccess, notifyWarning } from "../../utils/notifications";
 
 const message = {
-  success: (content: string) => notifications.show({ color: "infini-success", message: content }),
-  warning: (content: string) => notifications.show({ color: "infini-warning", message: content }),
+  success: (content: string) => notifySuccess(content),
+  warning: (content: string) => notifyWarning(content),
 };
 
 function downloadFileBlob(filename: string, blob: Blob) {
@@ -34,28 +31,16 @@ function downloadFileBlob(filename: string, blob: Blob) {
 type UseGuildWarMutationsParams = {
   selectedEventId: string | undefined;
   selectedHistoryId: string;
-  selectedTemplateId: string;
-  templateName: string;
-  templateDescription: string;
   historyDateFrom: string;
   historyDateTo: string;
-  setTemplateName: (value: string) => void;
-  setTemplateDescription: (value: string) => void;
-  setSelectedTemplateId: (value: string) => void;
   setSelectedHistoryId: (value: string) => void;
 };
 
 export function useGuildWarMutations({
   selectedEventId,
   selectedHistoryId,
-  selectedTemplateId,
-  templateName,
-  templateDescription,
   historyDateFrom,
   historyDateTo,
-  setTemplateName,
-  setTemplateDescription,
-  setSelectedTemplateId,
   setSelectedHistoryId,
 }: UseGuildWarMutationsParams) {
   const { t } = useTranslation("guild-war");
@@ -63,102 +48,19 @@ export function useGuildWarMutations({
   const { showError } = useAppError();
 
   const roleTagMutation = useMutation({
-    mutationFn: updateGuildWarRoleTag,
+    mutationFn: (payload: { event_id: string; user_id: string; role_tag: string | null }) =>
+      updateGuildWarRoleTags({
+        event_id: payload.event_id,
+        updates: [{ user_id: payload.user_id, role_tag: payload.role_tag }],
+      }),
     onSuccess: async () => {
       message.success(t("message.roleTagUpdated"));
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.guildWar.active(selectedEventId ?? "none"),
+        queryKey: queryKeys.guildWar.active(selectedEventId ?? null),
       });
     },
     onError: (error) => {
       showError(error, t("message.roleTagUpdateFailed"));
-    },
-  });
-
-  const postResultsMutation = useMutation({
-    mutationFn: postGuildWarResults,
-    onSuccess: (payload) => {
-      message.success(t("message.resultsPostSuccess", { taskId: payload.task_id }));
-    },
-    onError: (error) => {
-      showError(error, t("message.resultsPostFailed"));
-    },
-  });
-
-  const createTemplateMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedEventId) {
-        throw new Error("Missing event id");
-      }
-      const normalizedName = templateName.trim();
-      if (!normalizedName) {
-        throw new Error(t("message.templateNameRequired"));
-      }
-      const normalizedDescription = templateDescription.trim();
-      return createGuildWarTemplate({
-        event_id: selectedEventId,
-        template_name: normalizedName,
-        template_type: "structure" as const,
-        description: normalizedDescription.length > 0 ? normalizedDescription : undefined,
-      });
-    },
-    onSuccess: async (template) => {
-      message.success(t("message.templateSaved"));
-      setTemplateName("");
-      setTemplateDescription("");
-      setSelectedTemplateId(template.id);
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.guildWar.templates(selectedEventId ?? "none"),
-      });
-    },
-    onError: (error) => {
-      showError(error, t("message.templateSaveFailed"));
-    },
-  });
-
-  const applyTemplateMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedEventId) {
-        throw new Error("Missing event id");
-      }
-      if (!selectedTemplateId) {
-        throw new Error("Missing template id");
-      }
-      return applyGuildWarTemplate({
-        event_id: selectedEventId,
-        template_id: selectedTemplateId,
-      });
-    },
-    onSuccess: async () => {
-      message.success(t("message.templateApplied"));
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.guildWar.active(selectedEventId ?? "none"),
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.guildWar.historyAll(),
-      });
-    },
-    onError: (error) => {
-      showError(error, t("message.templateApplyFailed"));
-    },
-  });
-
-  const deleteTemplateMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedTemplateId) {
-        throw new Error("Missing template id");
-      }
-      return deleteGuildWarTemplate(selectedTemplateId);
-    },
-    onSuccess: async () => {
-      message.success(t("message.templateDeleted"));
-      setSelectedTemplateId("");
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.guildWar.templates(selectedEventId ?? "none"),
-      });
-    },
-    onError: (error) => {
-      showError(error, t("message.templateDeleteFailed"));
     },
   });
 
@@ -189,7 +91,7 @@ export function useGuildWarMutations({
     }) =>
       batchUpdateGuildWarMemberStats(
         historyId,
-        updates.map((update) => ({ user_id: update.userId, stats: update.payload })),
+        updates.map((update) => ({ user_id: update.userId, stats: { stats: update.payload as Record<string, number | null> } })),
       ),
     onSuccess: async () => {
       message.success(t("history.saveStatsSuccess"));
@@ -222,6 +124,23 @@ export function useGuildWarMutations({
     },
   });
 
+  const batchDeleteHistoryMutation = useMutation({
+    mutationFn: batchDeleteGuildWarHistory,
+    onSuccess: async (_data, ids) => {
+      message.success(t("history.bulkDeleteSuccess", { count: ids.length }));
+      setSelectedHistoryId("");
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.guildWar.historyAll(),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.guildWar.analyticsDetailsAll(),
+      });
+    },
+    onError: (error) => {
+      showError(error, t("history.bulkDeleteFailed"));
+    },
+  });
+
   const saveHistoryMemberStats = async (updates: HistoryMemberStatsUpdate[]) => {
     if (!selectedHistoryId || updates.length === 0) {
       return;
@@ -234,13 +153,10 @@ export function useGuildWarMutations({
 
   return {
     roleTagMutation,
-    postResultsMutation,
-    createTemplateMutation,
-    applyTemplateMutation,
-    deleteTemplateMutation,
     exportHistoryMutation,
     updateMemberStatsMutation,
     deleteHistoryMutation,
+    batchDeleteHistoryMutation,
     saveHistoryMemberStats,
   };
 }

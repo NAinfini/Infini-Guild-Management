@@ -1,13 +1,24 @@
-.roster-filter-card {
+.roster-filter-card.roster-filter-card {
   position: sticky;
-  top: 8px;
+  top: 0;
   z-index: var(--z-sticky);
   margin-bottom: 12px;
-  overflow: visible !important;
+  overflow: visible;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.dark .roster-filter-card.roster-filter-card {
+  background: color-mix(in srgb, var(--color-surface, #1e293b) 85%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
 }
 
 .roster-filter-controls {
   width: 100%;
+}
+
+.roster-filter-padding {
+  padding: 1.2rem;
 }
 
 .roster-search-input {
@@ -23,18 +34,18 @@
 }
 
 .roster-volume-control {
-  flex: 1;
-  min-width: 120px;
+  flex: 0 1 160px;
+  min-width: 100px;
 }
 
 .roster-volume-label {
   font-size: 12px;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 60%, transparent);
 }
 
 .roster-audio-popover {
-  min-width: 260px;
-  width: min(320px, 100%);
+  min-width: 200px;
+  width: min(280px, 100%);
 }
 
 .roster-count-text {
@@ -42,8 +53,11 @@
 }
 
 .roster-virtual-scroll {
-  max-height: 70vh;
+  flex: 1;
+  min-height: 300px;
   overflow-y: auto;
+  padding: 16px;
+  margin: -16px;
 }
 
 .roster-virtual-inner {
@@ -55,13 +69,15 @@
   inset-inline: 0;
   top: 0;
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .roster-card-grid {
   display: grid;
-  gap: 12px;
+  gap: 8px;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  padding: 16px;
+  margin: -16px;
 }
 
 .roster-card-cell {
@@ -75,6 +91,10 @@
 }
 
 @media (max-width: 991px) {
+  .roster-filter-card .roster-filter-padding {
+    padding: 0.7rem;
+  }
+
   .roster-search-input,
   .roster-class-select,
   .roster-sort-select,
@@ -87,5 +107,45 @@
   .roster-count-text {
     margin-inline-start: 0;
     width: 100%;
+  }
+}
+
+@media (max-width: 767px) {
+  .roster-filter-card .roster-filter-padding {
+    padding: 0.5rem;
+  }
+
+  .roster-filter-controls {
+    gap: 6px !important;
+  }
+
+  .roster-search-input,
+  .roster-class-select {
+    flex: 1 1 calc(50% - 3px);
+    width: auto;
+  }
+
+  .roster-sort-select {
+    flex: 1 1 100%;
+    width: auto;
+  }
+
+  .roster-volume-control {
+    width: auto;
+    flex: 1 1 auto;
+  }
+
+  .roster-count-text {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .roster-card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+  }
+
+  .roster-virtual-scroll {
+    min-height: 200px;
   }
 }

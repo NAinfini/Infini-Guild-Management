@@ -1,54 +1,54 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   fetchAdminAuditArchiveMonths,
   fetchAdminAuditLog,
-  fetchAdminBotSettings,
-  fetchAdminDiscordChannels,
   fetchAdminInviteLinks,
   fetchAdminInviteStats,
   fetchAdminStatus,
+  fetchRoles,
 } from "../../services/AdminService";
-import { queryKeys } from "../../services/PortalQueryKeys";
-import { fetchRoles } from "../../services/RoleService";
-import { fetchUsersList } from "../../services/UserService";
-import { canManageBot, canViewStatus, canExportAudit } from "../../utils/permissions";
+import { queryKeys } from "../../api/query-keys";
+import { fetchAllUsersListWithOptions } from "../../services/UserService";
+import { getAdminCapabilities } from "../../utils/permissions";
 
 type UseAdminDataOptions = {
   isModerator: boolean;
-  isAdmin: string;
+  userRole: string;
   auditPage: number;
   auditSearch: string;
   auditDateFrom: string;
   auditDateTo: string;
-  discordGuildId: string;
+  auditEntityType: string;
+  auditActorId: string;
 };
 
 export function useAdminData(options: UseAdminDataOptions) {
   const {
     isModerator,
-    isAdmin: userRole,
+    userRole,
     auditPage,
     auditSearch,
     auditDateFrom,
     auditDateTo,
-    discordGuildId,
+    auditEntityType,
+    auditActorId,
   } = options;
 
   const rolesQuery = useQuery({
     queryKey: queryKeys.admin.roles(),
     queryFn: fetchRoles,
     enabled: isModerator,
+    staleTime: Infinity,
   });
 
   const roles = rolesQuery.data ?? [];
-  const hasBotManagePermission = canManageBot(roles, userRole);
-  const hasStatusViewPermission = canViewStatus(roles, userRole);
-  const hasAuditExportPermission = canExportAudit(roles, userRole);
+  const permissions = getAdminCapabilities(roles, userRole);
 
   const usersQuery = useQuery({
-    queryKey: queryKeys.admin.users(),
-    queryFn: fetchUsersList,
-    enabled: isModerator,
+    queryKey: queryKeys.users.all,
+    queryFn: () => fetchAllUsersListWithOptions(),
+    enabled: permissions.canViewUsers,
+    staleTime: 10 * 60_000,
   });
 
   const inviteLinksQuery = useQuery({
@@ -58,17 +58,19 @@ export function useAdminData(options: UseAdminDataOptions) {
         include_expired: true,
         include_revoked: true,
       }),
-    enabled: isModerator,
+    enabled: permissions.canViewInvites,
+    staleTime: 5 * 60_000,
   });
 
   const inviteStatsQuery = useQuery({
     queryKey: queryKeys.admin.inviteStats(),
     queryFn: fetchAdminInviteStats,
-    enabled: isModerator,
+    enabled: permissions.canViewInvites,
+    staleTime: 5 * 60_000,
   });
 
   const auditLogQuery = useQuery({
-    queryKey: queryKeys.admin.auditLog(auditPage, auditSearch, auditDateFrom, auditDateTo),
+    queryKey: queryKeys.admin.auditLog(auditPage, auditSearch, auditDateFrom, auditDateTo, auditEntityType || undefined, auditActorId || undefined),
     queryFn: () =>
       fetchAdminAuditLog({
         page: auditPage,
@@ -76,32 +78,26 @@ export function useAdminData(options: UseAdminDataOptions) {
         search: auditSearch.trim() || undefined,
         start_at: auditDateFrom ? `${auditDateFrom}T00:00:00.000Z` : undefined,
         end_at: auditDateTo ? `${auditDateTo}T23:59:59.999Z` : undefined,
+        entity_type: auditEntityType || undefined,
+        actor_id: auditActorId || undefined,
       }),
-    enabled: isModerator,
+    enabled: permissions.canViewAudit,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60_000,
   });
 
   const auditMonthsQuery = useQuery({
     queryKey: queryKeys.admin.auditMonths(),
     queryFn: fetchAdminAuditArchiveMonths,
-    enabled: hasAuditExportPermission,
-  });
-
-  const botSettingsQuery = useQuery({
-    queryKey: queryKeys.admin.botSettings(),
-    queryFn: fetchAdminBotSettings,
-    enabled: hasBotManagePermission,
-  });
-
-  const discordChannelsQuery = useQuery({
-    queryKey: queryKeys.admin.discordChannels(discordGuildId.trim() || "none"),
-    queryFn: () => fetchAdminDiscordChannels(discordGuildId.trim()),
-    enabled: hasBotManagePermission && discordGuildId.trim().length > 0,
+    enabled: permissions.canExportAudit,
+    staleTime: 10 * 60_000,
   });
 
   const statusQuery = useQuery({
     queryKey: queryKeys.admin.status(),
     queryFn: fetchAdminStatus,
-    enabled: hasStatusViewPermission,
+    enabled: permissions.canViewStatus,
+    staleTime: 5 * 60_000,
   });
 
   return {
@@ -110,9 +106,8 @@ export function useAdminData(options: UseAdminDataOptions) {
     inviteStatsQuery,
     auditLogQuery,
     auditMonthsQuery,
-    botSettingsQuery,
     rolesQuery,
-    discordChannelsQuery,
     statusQuery,
+    permissions,
   };
 }

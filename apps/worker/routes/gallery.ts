@@ -1,14 +1,8 @@
 import {
   ALLOWED_IMAGE_TYPES,
-  ERROR_STATUS,
   FILE_SIZE_LIMITS,
-  createGalleryCommentSchema,
   createGalleryItemSchema,
-  updateGalleryCommentSchema,
-  type ErrorCode,
-  type StandardErrorResponse,
 } from "@guild/shared";
-import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
@@ -16,43 +10,23 @@ import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
 import { GalleryService } from "../services/GalleryService";
-
-type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
+import { buildError, collectFiles, getDb, handleResult, parseJsonBody, requireSessionUser, safeFormData, serveR2Object } from "./_shared";
 
 export const galleryRoutes = new Hono();
 
-function getDb(c: Context) {
-  const env = c.env as Bindings;
-  return drizzle(env.DB);
-}
+const GALLERY_CAPTION_MAX_LENGTH = 200;
 
 function getService(c: Context): GalleryService {
   const env = c.env as Bindings;
   return new GalleryService(getDb(c), {
     media: env.MEDIA,
     writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(env, payload),
+    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
+    rawDb: env.DB,
   });
 }
 
-function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {
-  const requestId = (c.get("requestId") as string | undefined) ?? crypto.randomUUID();
-  const body: StandardErrorResponse = { error_code: code, message, request_id: requestId, ...(details ? { details } : {}) };
-  return c.json(body, ERROR_STATUS[code] as ErrorStatusCode);
-}
-
-function handleResult(c: Context, result: { ok: true; data: unknown } | { ok: false; code: ErrorCode; message: string; details?: unknown }, status?: number): Response {
-  if (!result.ok) return buildError(c, result.code, result.message, result.details);
-  return c.json(result.data, status as never);
-}
-
-async function requireSessionUser(c: Context) {
-  const user = await getRequestUser(c);
-  return user ?? buildError(c, "UNAUTHORIZED", "Authentication required");
-}
-
 async function requireGalleryUploader(c: Context) { return requirePermission(c, "gallery.upload"); }
-async function requireGalleryManager(c: Context) { return requirePermission(c, "gallery.manage"); }
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -73,6 +47,14 @@ function parseDayEndIso(value: string | undefined): string | undefined {
 
 // --- Routes ---
 
+galleryRoutes.get("/image", async (c) => {
+  const key = c.req.query("key");
+  if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
+  if (!key.startsWith("gallery/")) return buildError(c, "FORBIDDEN", "Invalid gallery media key");
+
+  return serveR2Object(c, key, "Gallery media not found");
+});
+
 galleryRoutes.get("/", async (c) => {
   const cursor = parsePositiveInt(c.req.query("cursor"), 0);
   const limit = Math.min(100, Math.max(1, parsePositiveInt(c.req.query("limit"), 20)));
@@ -90,12 +72,11 @@ galleryRoutes.post("/images", async (c) => {
   const sessionUser = await requireGalleryUploader(c);
   if (sessionUser instanceof Response) return sessionUser;
 
-  const form = await c.req.formData();
-  const files: File[] = [];
+  const formOrError = await safeFormData(c);
+  if (formOrError instanceof Response) return formOrError;
+  const form = formOrError;
   const captionsRaw = form.getAll("captions");
-  const single = form.get("file");
-  if (single instanceof File) files.push(single);
-  for (const item of form.getAll("files")) { if (item instanceof File) files.push(item); }
+  const files = collectFiles(form);
 
   if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
   for (const file of files) {
@@ -104,7 +85,7 @@ galleryRoutes.post("/images", async (c) => {
   }
 
   const captions = files.map((_, i) => { const raw = captionsRaw[i]; return typeof raw === "string" && raw.trim() ? raw.trim() : null; });
-  if (captions.find((c) => c !== null && c.length > 200)) return buildError(c, "VALIDATION_ERROR", "caption must be 200 characters or less");
+  if (captions.find((c) => c !== null && c.length > GALLERY_CAPTION_MAX_LENGTH)) return buildError(c, "VALIDATION_ERROR", `caption must be ${GALLERY_CAPTION_MAX_LENGTH} characters or less`);
 
   const fileData = await Promise.all(files.map(async (f) => ({ data: await f.arrayBuffer(), contentType: f.type || "application/octet-stream", name: f.name })));
   const result = await getService(c).uploadImages(sessionUser.id, fileData, captions);
@@ -115,8 +96,8 @@ galleryRoutes.post("/images", async (c) => {
 galleryRoutes.post("/videos", async (c) => {
   const sessionUser = await requireGalleryUploader(c);
   if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   const parsed = createGalleryItemSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid gallery video payload", parsed.error.flatten());
   if (parsed.data.type !== "video") return buildError(c, "VALIDATION_ERROR", "type must be video for this endpoint");
@@ -126,66 +107,21 @@ galleryRoutes.post("/videos", async (c) => {
 });
 
 galleryRoutes.delete("/:id", async (c) => {
-  const sessionUser = await requireGalleryManager(c);
+  const sessionUser = await requireSessionUser(c);
   if (sessionUser instanceof Response) return sessionUser;
-  const result = await getService(c).deleteItem(sessionUser.id, c.req.param("id"));
+  const result = await getService(c).deleteItem(sessionUser.id, sessionUser.permissions.has("gallery.delete"), c.req.param("id"));
   return handleResult(c, result);
 });
 
 galleryRoutes.post("/batch-delete", async (c) => {
-  const sessionUser = await requireGalleryManager(c);
+  const sessionUser = await requirePermission(c, "gallery.delete");
   if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  const body = await parseJsonBody(c);
+  if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
   const ids = (body as { ids: string[] }).ids.filter((id) => typeof id === "string" && id.length > 0);
   if (ids.length === 0) return c.json({ ok: true, deleted: 0 });
   if (ids.length > 50) return buildError(c, "VALIDATION_ERROR", "Maximum 50 ids per batch request");
   const result = await getService(c).batchDelete(sessionUser.id, ids);
-  return handleResult(c, result);
-});
-
-galleryRoutes.post("/:id/like", async (c) => {
-  const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
-  const result = await getService(c).likeItem(sessionUser.id, c.req.param("id"));
-  if (!result.ok) return buildError(c, result.code, result.message, result.details);
-  return c.json(result.data, result.data.already_liked ? 200 : 201);
-});
-
-galleryRoutes.get("/:id/comments", async (c) => {
-  const cursor = parsePositiveInt(c.req.query("cursor"), 0);
-  const limit = Math.min(100, Math.max(1, parsePositiveInt(c.req.query("limit"), 50)));
-  const result = await getService(c).listComments(c.req.param("id"), cursor, limit);
-  return handleResult(c, result);
-});
-
-galleryRoutes.post("/:id/comments", async (c) => {
-  const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
-  const parsed = createGalleryCommentSchema.safeParse(body);
-  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid comment", parsed.error.flatten());
-  const result = await getService(c).createComment(sessionUser.id, c.req.param("id"), parsed.data.body);
-  if (!result.ok) return buildError(c, result.code, result.message, result.details);
-  return c.json(result.data, 201);
-});
-
-galleryRoutes.patch("/:id/comments/:commentId", async (c) => {
-  const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
-  let body: unknown;
-  try { body = await c.req.json(); } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
-  const parsed = updateGalleryCommentSchema.safeParse(body);
-  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid comment update", parsed.error.flatten());
-  const result = await getService(c).updateComment(sessionUser.id, c.req.param("commentId"), parsed.data.body);
-  return handleResult(c, result);
-});
-
-galleryRoutes.delete("/:id/comments/:commentId", async (c) => {
-  const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
-  const result = await getService(c).deleteComment(sessionUser.id, sessionUser.permissions.has("gallery.manage"), c.req.param("commentId"));
   return handleResult(c, result);
 });

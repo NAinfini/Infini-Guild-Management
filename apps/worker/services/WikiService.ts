@@ -2,21 +2,24 @@ import {
   wikiArticleSchema,
   wikiCategorySchema,
 } from "@guild/shared";
-import { and, asc, desc, eq, isNotNull, isNull, like, or, sql, type SQL } from "drizzle-orm";
+import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
+import { and, asc, desc, eq, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { wikiArticles, wikiCategories } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
+import { escapeLikePattern, likeEscaped } from "./helpers";
 
 // --- Types ---
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
-type AuditLogInput = { entityType: string; action: string; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
+type AuditLogInput = { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
 
 type CategoryRow = { id: string; name: string; slug: string; sortOrder: number; parentId: string | null; createdAt: string; updatedAt: string };
-type ArticleRow = { id: string; title: string; slug: string; categoryId: string; bodyJson: string; sortOrder: number; pinned: boolean; archivedAt: string | null; createdBy: string; updatedBy: string | null; createdAt: string; updatedAt: string };
+type ArticleRow = { id: string; title: string; slug: string; categoryId: string; bodyJson: string; sortOrder: number; pinned: boolean; archivedAt: string | null; createdBy: string; updatedBy: string | null; createdAt: string; updatedAt: string; updatedByUsername: string | null };
 
-type EntityChangedInput = { entityType: string; entityId: string; hint: string };
+type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: PushHint };
 
 export type WikiServiceDeps = {
   media: R2Bucket;
@@ -31,20 +34,28 @@ function slugify(value: string): string {
   return normalized || `wiki-${nanoid(6)}`;
 }
 
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, "\\$&");
-}
-
 function toCategoryPayload(row: CategoryRow) {
   return wikiCategorySchema.parse({ id: row.id, name: row.name, slug: row.slug, sort_order: row.sortOrder, parent_id: row.parentId, created_at: row.createdAt, updated_at: row.updatedAt });
 }
 
 function toArticlePayload(row: ArticleRow) {
-  return wikiArticleSchema.parse({ id: row.id, title: row.title, slug: row.slug, category_id: row.categoryId, body_json: row.bodyJson, sort_order: row.sortOrder, pinned: row.pinned, archived_at: row.archivedAt, created_by: row.createdBy, updated_by: row.updatedBy, created_at: row.createdAt, updated_at: row.updatedAt });
+  return wikiArticleSchema.parse({ id: row.id, title: row.title, slug: row.slug, category_id: row.categoryId, body_json: row.bodyJson, sort_order: row.sortOrder, pinned: row.pinned, archived_at: row.archivedAt, created_by: row.createdBy, updated_by: row.updatedBy, updated_by_username: row.updatedByUsername, created_at: row.createdAt, updated_at: row.updatedAt });
 }
 
 const CATEGORY_COLS = { id: wikiCategories.id, name: wikiCategories.name, slug: wikiCategories.slug, sortOrder: wikiCategories.sortOrder, parentId: wikiCategories.parentId, createdAt: wikiCategories.createdAt, updatedAt: wikiCategories.updatedAt } as const;
-const ARTICLE_COLS = { id: wikiArticles.id, title: wikiArticles.title, slug: wikiArticles.slug, categoryId: wikiArticles.categoryId, bodyJson: wikiArticles.bodyJson, sortOrder: wikiArticles.sortOrder, pinned: wikiArticles.pinned, archivedAt: wikiArticles.archivedAt, createdBy: wikiArticles.createdBy, updatedBy: wikiArticles.updatedBy, createdAt: wikiArticles.createdAt, updatedAt: wikiArticles.updatedAt } as const;
+const ARTICLE_COLS = { id: wikiArticles.id, title: wikiArticles.title, slug: wikiArticles.slug, categoryId: wikiArticles.categoryId, bodyJson: wikiArticles.bodyJson, sortOrder: wikiArticles.sortOrder, pinned: wikiArticles.pinned, archivedAt: wikiArticles.archivedAt, createdBy: wikiArticles.createdBy, updatedBy: wikiArticles.updatedBy, updatedByUsername: sql<string | null>`(SELECT username FROM users WHERE id = COALESCE(${wikiArticles.updatedBy}, ${wikiArticles.createdBy}))`.as("updated_by_username"), createdAt: wikiArticles.createdAt, updatedAt: wikiArticles.updatedAt } as const;
+
+const LIST_ARTICLE_COLS = { id: wikiArticles.id, title: wikiArticles.title, slug: wikiArticles.slug, categoryId: wikiArticles.categoryId, sortOrder: wikiArticles.sortOrder, pinned: wikiArticles.pinned, archivedAt: wikiArticles.archivedAt, createdBy: wikiArticles.createdBy, updatedBy: wikiArticles.updatedBy, updatedByUsername: sql<string | null>`(SELECT username FROM users WHERE id = COALESCE(${wikiArticles.updatedBy}, ${wikiArticles.createdBy}))`.as("updated_by_username"), createdAt: wikiArticles.createdAt, updatedAt: wikiArticles.updatedAt } as const;
+
+type ArticleListRow = Omit<ArticleRow, "bodyJson">;
+
+function toArticleListPayload(row: ArticleListRow) {
+  return {
+    id: row.id, title: row.title, slug: row.slug, category_id: row.categoryId, body_json: "",
+    sort_order: row.sortOrder, pinned: row.pinned, archived_at: row.archivedAt,
+    created_by: row.createdBy, updated_by: row.updatedBy, updated_by_username: row.updatedByUsername, created_at: row.createdAt, updated_at: row.updatedAt,
+  };
+}
 
 // --- Service ---
 
@@ -71,6 +82,24 @@ export class WikiService {
     return (await this.db.select(ARTICLE_COLS).from(wikiArticles).where(eq(wikiArticles.id, articleId)).limit(1))[0] ?? null;
   }
 
+  private async uniqueCategorySlug(base: string): Promise<string> {
+    const rows = await this.db.select({ slug: wikiCategories.slug }).from(wikiCategories).where(likeEscaped(wikiCategories.slug, `${escapeLikePattern(base)}%`));
+    const existing = new Set(rows.map((r) => r.slug));
+    if (!existing.has(base)) return base;
+    let suffix = 2;
+    while (existing.has(`${base}-${suffix}`)) suffix++;
+    return `${base}-${suffix}`;
+  }
+
+  private async uniqueArticleSlug(base: string): Promise<string> {
+    const rows = await this.db.select({ slug: wikiArticles.slug }).from(wikiArticles).where(likeEscaped(wikiArticles.slug, `${escapeLikePattern(base)}%`));
+    const existing = new Set(rows.map((r) => r.slug));
+    if (!existing.has(base)) return base;
+    let suffix = 2;
+    while (existing.has(`${base}-${suffix}`)) suffix++;
+    return `${base}-${suffix}`;
+  }
+
   // --- Categories ---
 
   async listCategories(): Promise<ServiceResult<unknown[]>> {
@@ -85,7 +114,7 @@ export class WikiService {
       if (parent.parentId) return err("VALIDATION_ERROR", "Category nesting supports only one level");
     }
     const categoryId = nanoid();
-    const slug = slugify(data.slug ?? data.name);
+    const slug = await this.uniqueCategorySlug(slugify(data.slug ?? data.name));
     await this.db.insert(wikiCategories).values({ id: categoryId, name: data.name, slug, sortOrder: data.sort_order, parentId: data.parent_id ?? null });
     const created = await this.getCategoryById(categoryId);
     if (!created) return err("SERVER_ERROR", "Failed to create wiki category");
@@ -100,7 +129,12 @@ export class WikiService {
 
     const patch: Partial<typeof wikiCategories.$inferInsert> = {};
     if (data.name !== undefined) patch.name = data.name;
-    if (data.slug !== undefined) patch.slug = slugify(data.slug);
+    if (data.slug !== undefined) {
+      const candidateSlug = slugify(data.slug);
+      const conflict = (await this.db.select({ id: wikiCategories.id }).from(wikiCategories).where(and(eq(wikiCategories.slug, candidateSlug), sql`${wikiCategories.id} != ${categoryId}`)).limit(1))[0];
+      if (conflict) return err("CONFLICT", "Slug already exists");
+      patch.slug = candidateSlug;
+    }
     if (data.sort_order !== undefined) patch.sortOrder = data.sort_order;
     if (data.parent_id !== undefined) {
       if (data.parent_id === categoryId) return err("VALIDATION_ERROR", "Category cannot be its own parent");
@@ -135,20 +169,24 @@ export class WikiService {
 
   // --- Articles ---
 
-  async listArticles(opts: { page: number; limit: number; categoryId?: string; archived?: boolean; search?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
+  async listArticles(opts: { page: number; limit: number; categoryId?: string; archived?: boolean; pinned?: boolean; search?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
     const offset = (opts.page - 1) * opts.limit;
     const filters: SQL<unknown>[] = [];
     if (opts.categoryId) filters.push(eq(wikiArticles.categoryId, opts.categoryId));
-    if (opts.archived === true) { filters.push(isNotNull(wikiArticles.archivedAt)); } else { filters.push(isNull(wikiArticles.archivedAt)); }
+    if (opts.archived === true) { filters.push(isNotNull(wikiArticles.archivedAt)); }
+    else if (opts.archived === false) { filters.push(isNull(wikiArticles.archivedAt)); }
+    if (opts.pinned !== undefined) filters.push(eq(wikiArticles.pinned, opts.pinned));
     if (opts.search) {
       const pattern = `%${escapeLikePattern(opts.search)}%`;
-      filters.push(or(like(wikiArticles.title, pattern), like(wikiArticles.bodyJson, pattern))!);
+      filters.push(or(likeEscaped(wikiArticles.title, pattern), likeEscaped(wikiArticles.bodyJson, pattern))!);
     }
     const whereClause = and(...filters);
-    const totalRow = (await this.db.select({ count: sql<number>`count(*)` }).from(wikiArticles).where(whereClause))[0];
-    const total = Number(totalRow?.count ?? 0);
-    const rows = await this.db.select(ARTICLE_COLS).from(wikiArticles).where(whereClause).orderBy(desc(wikiArticles.pinned), asc(wikiArticles.sortOrder), desc(wikiArticles.updatedAt), asc(wikiArticles.id)).limit(opts.limit).offset(offset);
-    return ok({ data: rows.map(toArticlePayload), total, page: opts.page, limit: opts.limit, total_pages: Math.max(1, Math.ceil(total / opts.limit)) });
+    const [rows, countRow] = await Promise.all([
+      this.db.select(LIST_ARTICLE_COLS).from(wikiArticles).where(whereClause).orderBy(desc(wikiArticles.pinned), asc(wikiArticles.sortOrder), desc(wikiArticles.updatedAt), asc(wikiArticles.id)).limit(opts.limit).offset(offset),
+      this.db.select({ count: sql<number>`count(*)` }).from(wikiArticles).where(whereClause),
+    ]);
+    const total = Number(countRow[0]?.count ?? 0);
+    return ok({ data: rows.map(toArticleListPayload), total, page: opts.page, limit: opts.limit, total_pages: Math.max(1, Math.ceil(total / opts.limit)) });
   }
 
   async getArticleBySlug(slug: string): Promise<ServiceResult<unknown>> {
@@ -159,7 +197,7 @@ export class WikiService {
 
   async createArticle(actorId: string, data: { title: string; slug?: string; category_id: string; body_json: string; sort_order: number; pinned: boolean }): Promise<ServiceResult<unknown>> {
     const articleId = nanoid();
-    const slug = slugify(data.slug ?? data.title);
+    const slug = await this.uniqueArticleSlug(slugify(data.slug ?? data.title));
     await this.db.insert(wikiArticles).values({ id: articleId, title: data.title, slug, categoryId: data.category_id, bodyJson: data.body_json, sortOrder: data.sort_order, pinned: data.pinned, archivedAt: null, createdBy: actorId });
     const created = await this.getArticleById(articleId);
     if (!created) return err("SERVER_ERROR", "Failed to create wiki article");
@@ -168,12 +206,21 @@ export class WikiService {
     return ok(toArticlePayload(created));
   }
 
-  async updateArticle(actorId: string, articleId: string, data: { title?: string; slug?: string; category_id?: string; body_json?: string; sort_order?: number; pinned?: boolean; archived_at?: string | null }): Promise<ServiceResult<unknown>> {
+  async updateArticle(actorId: string, articleId: string, data: { title?: string; slug?: string; category_id?: string; body_json?: string; sort_order?: number; pinned?: boolean; archived_at?: string | null }, conditionalEtag?: string): Promise<ServiceResult<unknown>> {
     const existing = await this.getArticleById(articleId);
     if (!existing) return err("NOT_FOUND", "Wiki article not found");
+    if (conditionalEtag) {
+      const expectedEtag = `"wiki-${existing.id}-${existing.updatedAt}"`;
+      if (conditionalEtag !== expectedEtag) return err("CONFLICT", "Article has been modified by another user");
+    }
     const patch: Partial<typeof wikiArticles.$inferInsert> = { updatedAt: new Date().toISOString(), updatedBy: actorId };
     if (data.title !== undefined) patch.title = data.title;
-    if (data.slug !== undefined) patch.slug = slugify(data.slug);
+    if (data.slug !== undefined) {
+      const candidateSlug = slugify(data.slug);
+      const conflict = (await this.db.select({ id: wikiArticles.id }).from(wikiArticles).where(and(eq(wikiArticles.slug, candidateSlug), sql`${wikiArticles.id} != ${articleId}`)).limit(1))[0];
+      if (conflict) return err("CONFLICT", "Slug already exists");
+      patch.slug = candidateSlug;
+    }
     if (data.category_id !== undefined) patch.categoryId = data.category_id;
     if (data.body_json !== undefined) patch.bodyJson = data.body_json;
     if (data.sort_order !== undefined) patch.sortOrder = data.sort_order;
@@ -197,6 +244,15 @@ export class WikiService {
     return ok({ ok: true });
   }
 
+  async permanentDeleteArticle(actorId: string, articleId: string): Promise<ServiceResult<{ ok: true }>> {
+    const existing = await this.getArticleById(articleId);
+    if (!existing) return err("NOT_FOUND", "Wiki article not found");
+    await this.db.delete(wikiArticles).where(eq(wikiArticles.id, articleId));
+    await this.deps.writeAuditLog({ entityType: "wiki_article", action: "delete", actorId, entityId: articleId, diffTitle: existing.title });
+    await this.deps.publishEntityChanged({ entityType: "wiki", entityId: articleId, hint: "article_deleted" });
+    return ok({ ok: true });
+  }
+
   async uploadArticleImages(actorId: string, articleId: string, files: Array<{ data: ArrayBuffer; contentType: string }>): Promise<ServiceResult<{ keys: string[] }>> {
     const existing = await this.getArticleById(articleId);
     if (!existing) return err("NOT_FOUND", "Wiki article not found");
@@ -206,7 +262,7 @@ export class WikiService {
       await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
       keys.push(key);
     }
-    await this.deps.writeAuditLog({ entityType: "wiki_article", action: "upload_images", actorId, entityId: articleId, detailText: JSON.stringify({ keys }) });
+    await this.deps.writeAuditLog({ entityType: "wiki_article", action: "upload_images", actorId, entityId: articleId, diffTitle: existing.title ?? null, detailText: JSON.stringify({ keys }) });
     return ok({ keys });
   }
 }

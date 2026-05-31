@@ -15,10 +15,17 @@
 .guild-war-dnd-pool {
   flex: 0 0 auto;
   width: min(500px, 38%);
+  min-width: 0;
   position: sticky;
   top: 12px;
-  min-height: 400px;
+  display: flex;
+  flex-direction: column;
   max-height: calc(100vh - 80px);
+}
+
+.guild-war-dnd-pool > .guild-war-column-card-wrap {
+  flex: 1 1 0%;
+  min-height: 200px;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -41,27 +48,32 @@
 
 .guild-war-section-heading { margin: 0; font-size: 16px; font-weight: 600; }
 
-.guild-war-active-top-row {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.guild-war-active-top-card {
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
-
-.guild-war-active-top-card { height: 100%; }
 .guild-war-column-card {
   padding: 16px;
   height: 100%;
   display: flex;
   flex-direction: column;
-  border-radius: var(--infini-radius, 8px);
-  box-shadow: var(--infini-depth-card, none);
-  transition: box-shadow var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  transition: box-shadow var(--transition-normal);
   overflow: visible;
 }
 
-.guild-war-column-card--over {
-  border-color: var(--infini-color-primary, #3b82f6) !important;
-  box-shadow: var(--infini-glow-primary, 0 0 8px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 30%, transparent));
+.guild-war-column-card--over.guild-war-column-card--over {
+  border-color: var(--color-primary, #3b82f6);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent),
+    0 0 12px color-mix(in srgb, var(--color-primary, #3b82f6) 25%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 6%, var(--color-surface, #ffffff));
+}
+
+.guild-war-column-card--drag-active {
+  outline: 2px dashed color-mix(in srgb, var(--color-primary, #3b82f6) 50%, transparent);
+  outline-offset: -2px;
 }
 .guild-war-column-stack {
   width: 100%;
@@ -70,7 +82,7 @@
   gap: 8px;
 }
 
-.guild-war-column-stack > :only-child {
+.guild-war-column-stack > .empty-state:only-child {
   grid-column: 1 / -1;
   justify-self: center;
 }
@@ -81,6 +93,11 @@
 
 .guild-war-dnd-teams .guild-war-column-stack {
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  min-height: 42px;
+}
+
+.guild-war-dnd-teams .guild-war-member-card {
+  max-width: 220px;
 }
 
 .guild-war-column-header {
@@ -93,83 +110,90 @@
 
 /* Pool column header accent */
 .guild-war-dnd-pool .guild-war-column-card {
-  border-left: 3px solid var(--infini-color-primary, #3b82f6);
+  border-left: 3px solid var(--color-primary, #3b82f6);
   background:
     linear-gradient(
       135deg,
-      color-mix(in srgb, var(--infini-color-primary, #3b82f6) 4%, var(--infini-color-surface, #ffffff)) 0%,
-      var(--infini-color-surface, #ffffff) 100%
+      color-mix(in srgb, var(--color-primary, #3b82f6) 4%, var(--color-surface, #ffffff)) 0%,
+      var(--color-surface, #ffffff) 100%
     );
 }
 
 /* Team column subtle top accent */
 .guild-war-dnd-teams .guild-war-column-card {
-  border-top: 2px solid color-mix(in srgb, var(--infini-color-accent, #8b5cf6) 50%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--color-accent, #8b5cf6) 50%, transparent);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--infini-color-accent, #8b5cf6) 3%, var(--infini-color-surface, #ffffff)) 0%,
-      var(--infini-color-surface, #ffffff) 100%
+      color-mix(in srgb, var(--color-accent, #8b5cf6) 3%, var(--color-surface, #ffffff)) 0%,
+      var(--color-surface, #ffffff) 100%
     );
 }
 
 .guild-war-member-card {
+  position: relative;
   width: 100%; cursor: grab;
-  border: var(--infini-border-width, 1px) solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
-  border-radius: var(--infini-radius, 8px);
-  background: var(--infini-color-surface, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface, #ffffff);
   padding: 6px 10px; text-align: left;
-  box-shadow: var(--infini-depth-card, none);
+  box-shadow: none;
   font-size: 13px;
+  overflow: hidden;
   transition:
-    border-color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease),
-    box-shadow var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease),
-    background-color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease),
-    transform var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+    border-color var(--transition-normal),
+    box-shadow var(--transition-normal),
+    background-color var(--transition-normal);
+}
+
+.guild-war-member-card__progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 0;
+  background: var(--color-primary, #3b82f6);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.guild-war-member-card--holding .guild-war-member-card__progress {
+  opacity: 1;
+  width: 100%;
+  transition: width 150ms linear;
 }
 
 .guild-war-member-card:hover:not(:disabled) {
-  box-shadow: var(--infini-depth-card-hover, var(--infini-shadow-hover, none));
-  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 35%, transparent);
-  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 35%, transparent);
 }
 
 .guild-war-member-card:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: var(--infini-depth-card, none);
+  box-shadow: none;
+}
+
+.guild-war-member-card:focus-visible {
+  outline: 2px solid var(--color-primary, #3b82f6);
+  outline-offset: 2px;
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 35%, transparent);
+}
+
+.guild-war-column-card--drag-active .guild-war-member-card,
+.guild-war-column-card--over .guild-war-member-card {
+  transition: none;
 }
 
 .guild-war-member-card--disabled { cursor: default; opacity: 0.7; }
 .guild-war-member-card--matched {
-  border-color: var(--infini-color-warning, #f59e0b);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--infini-color-warning, #f59e0b) 25%, transparent);
+  border-color: var(--color-warning, #f59e0b);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-warning, #f59e0b) 25%, transparent);
 }
 
 .guild-war-member-card--selected {
-  border-color: var(--infini-color-primary, #3b82f6);
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 8%, var(--infini-color-surface, #ffffff));
-  box-shadow: var(--infini-glow-primary, 0 0 0 2px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 20%, transparent));
-}
-
-.guild-war-legend-chip {
-  border: var(--infini-border-width, 1px) solid color-mix(in srgb, var(--infini-color-text, #111827) 18%, transparent);
-  border-radius: 999px; padding: 4px 10px; cursor: pointer;
-  background: transparent;
-  color: var(--guild-war-legend-color, var(--infini-color-text, #111827));
-  box-shadow: var(--infini-shadow-sm, none);
-  transition: border-color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease), background-color var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease), transform var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease), box-shadow var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
-}
-
-.guild-war-legend-chip:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--guild-war-legend-color, var(--infini-color-primary, #3b82f6)) 52%, transparent);
-  background: color-mix(in srgb, var(--guild-war-legend-color, var(--infini-color-primary, #3b82f6)) 10%, transparent);
-  box-shadow: var(--infini-shadow-hover, none);
-}
-
-.guild-war-legend-chip--active {
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 12%, transparent);
-  border-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 40%, transparent);
+  border-color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, var(--color-surface, #ffffff));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent);
 }
 
 @media (max-width: 1199px) {
@@ -184,15 +208,9 @@
   gap: 12px;
   align-items: center;
   padding: 12px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 92%, var(--infini-color-text, #111827) 8%);
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
-}
-
-.war-history-summary-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, var(--color-text, #111827) 8%);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
 }
 
 .war-history-filters__group {
@@ -201,31 +219,16 @@
   align-items: center;
 }
 
-.war-history-filters__divider {
-  width: 1px;
-  height: 28px;
-  background: color-mix(in srgb, var(--infini-color-text, #111827) 16%, transparent);
-}
-
-.war-history-list-card,
-.war-history-detail-card {
+.war-history-list-card {
   width: 100%;
-  border-radius: 12px;
-  border-color: color-mix(in srgb, var(--infini-color-text, #111827) 16%, transparent);
+  border-radius: var(--radius-md);
+  border-color: color-mix(in srgb, var(--color-text, #111827) 16%, transparent);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--infini-color-surface, #ffffff) 96%, var(--infini-color-primary, #3b82f6) 4%) 0%,
-      color-mix(in srgb, var(--infini-color-surface, #ffffff) 98%, transparent) 100%
+      color-mix(in srgb, var(--color-surface, #ffffff) 96%, var(--color-primary, #3b82f6) 4%) 0%,
+      color-mix(in srgb, var(--color-surface, #ffffff) 98%, transparent) 100%
     );
-}
-
-.war-history-list-toolbar {
-  margin-bottom: 10px;
-}
-
-.war-history-list-toolbar .mantine-TextInput-root {
-  width: min(520px, 100%);
 }
 
 .war-history-list-table-wrap {
@@ -238,9 +241,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px dashed color-mix(in srgb, var(--infini-color-text, #111827) 20%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 95%, var(--infini-color-text, #111827) 5%);
+  border: 1px dashed color-mix(in srgb, var(--color-text, #111827) 20%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 95%, var(--color-text, #111827) 5%);
 }
 
 .war-history-detail-header {
@@ -249,9 +252,9 @@
   gap: 10px;
   align-items: flex-start;
   padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 6%, transparent);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent);
 }
 
 .war-history-detail-title {
@@ -266,15 +269,8 @@
   margin-top: 8px;
 }
 
-.war-history-result-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 16px;
-  align-items: center;
-}
-
 .war-history-save-button--ready {
-  box-shadow: var(--infini-glow-primary, 0 0 10px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 36%, transparent));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-primary, #3b82f6) 36%, transparent);
 }
 
 .war-history-compare-header {
@@ -283,9 +279,9 @@
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 6%, transparent);
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent);
 }
 
 .war-history-compare-team {
@@ -296,11 +292,11 @@
 }
 
 .war-history-compare-team--us {
-  color: var(--infini-color-primary, #3b82f6);
+  color: var(--color-primary, #3b82f6);
 }
 
 .war-history-compare-team--enemy {
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 72%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 72%, transparent);
 }
 
 .war-history-compare-section {
@@ -322,7 +318,7 @@
   gap: 6px;
   font-size: 12px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 78%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 78%, transparent);
 }
 
 .war-history-compare-label-icon {
@@ -332,8 +328,8 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 16%, transparent);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 92%, var(--infini-color-text, #111827) 8%);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 16%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, var(--color-text, #111827) 8%);
 }
 
 .war-history-compare-bar-wrap {
@@ -350,12 +346,12 @@
 }
 
 .war-history-compare-val--left {
-  color: var(--infini-color-primary, #3b82f6);
+  color: var(--color-primary, #3b82f6);
   text-align: right;
 }
 
 .war-history-compare-val--right {
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 65%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 65%, transparent);
   text-align: left;
 }
 
@@ -363,40 +359,50 @@
   position: relative;
   height: 10px;
   overflow: hidden;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 90%, var(--infini-color-text, #111827) 10%);
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 90%, var(--color-text, #111827) 10%);
   display: flex;
 }
 
 .war-history-compare-bar-fill {
   height: 100%;
-  transition: width var(--infini-motion-hover, 160ms) var(--infini-motion-easing, ease);
+  transition: width var(--transition-normal);
 }
 
 .war-history-compare-bar-fill--own {
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 74%, white 26%);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 74%, white 26%);
 }
 
 .war-history-compare-bar-fill--own.war-history-compare-bar-fill--winning {
-  box-shadow: 0 0 8px color-mix(in srgb, var(--infini-color-primary, #3b82f6) 45%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-primary, #3b82f6) 45%, transparent);
 }
 
 .war-history-compare-bar-fill--enemy {
-  background: color-mix(in srgb, var(--infini-color-danger, #ef4444) 74%, white 26%);
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 74%, white 26%);
 }
 
 .war-history-compare-bar-fill--enemy.war-history-compare-bar-fill--winning {
-  box-shadow: 0 0 8px color-mix(in srgb, var(--infini-color-danger, #ef4444) 45%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-danger, #ef4444) 45%, transparent);
 }
 
 .war-history-detail-table-wrap {
   width: 100%;
   overflow-x: auto;
+  max-height: 420px;
+  overflow-y: auto;
 }
 
 .war-history-detail-table-wrap table {
-  min-width: 1160px;
+  min-width: 1360px;
+}
+
+.war-history-detail-table-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--color-surface, #ffffff);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
 }
 
 .war-history-detail-grid {
@@ -407,9 +413,9 @@
 
 .war-history-stat-card {
   padding: 12px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 94%, var(--infini-color-text, #111827) 6%);
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 94%, var(--color-text, #111827) 6%);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
 }
 
 .war-history-stat-label {
@@ -417,14 +423,14 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 62%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 62%, transparent);
   margin-bottom: 6px;
 }
 
 .war-history-stat-value {
   font-size: 18px;
   font-weight: 700;
-  color: var(--infini-color-text, #111827);
+  color: var(--color-text, #111827);
 }
 
 .war-history-stat-value--vs {
@@ -434,15 +440,15 @@
 }
 
 .war-history-stat-value--own {
-  color: var(--infini-color-primary, #3b82f6);
+  color: var(--color-primary, #3b82f6);
 }
 
 .war-history-stat-value--enemy {
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 52%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 52%, transparent);
 }
 
 .war-history-stat-separator {
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 32%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 32%, transparent);
   font-weight: 400;
 }
 
@@ -450,9 +456,9 @@
 .war-history-teams-card,
 .war-history-chart-card,
 .war-history-team-card {
-  border-radius: 10px;
-  border-color: color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 96%, var(--infini-color-text, #111827) 4%);
+  border-radius: var(--radius-md);
+  border-color: color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 96%, var(--color-text, #111827) 4%);
 }
 
 .war-history-team-stack {
@@ -463,20 +469,256 @@
   width: 100%;
 }
 
+/* ── Guild War Analytics (redesigned) ── */
+.gwa-layout {
+  width: 100%;
+}
+
+.gwa-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
+  background:
+    radial-gradient(
+      circle at top right,
+      color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent) 0%,
+      transparent 50%
+    ),
+    color-mix(in srgb, var(--color-surface, #ffffff) 97%, var(--color-text, #111827) 3%);
+}
+
+.gwa-toolbar__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gwa-toolbar__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text, #111827) 62%, transparent);
+}
+
+.gwa-content {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.gwa-sidebar {
+  flex: 0 0 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 97%, var(--color-text, #111827) 3%);
+}
+
+.gwa-sidebar__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gwa-sidebar__section--row {
+  flex-direction: row;
+  gap: 8px;
+}
+
+.gwa-main {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+/* ── ListBox (always-visible scrollable checklist) ── */
+.gwa-listbox {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
+  background: var(--color-surface, #ffffff);
+  overflow: hidden;
+}
+
+.gwa-listbox__search {
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  padding: 4px;
+}
+
+.gwa-listbox__search input {
+  border: none;
+  background: transparent;
+}
+
+.gwa-listbox__items {
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gwa-listbox__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  transition: background var(--transition-normal);
+}
+
+.gwa-listbox__item:hover {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
+}
+
+.gwa-listbox__item--selected {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+  color: var(--color-primary, #3b82f6);
+  font-weight: 600;
+}
+
+.gwa-listbox__item--selected:hover {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 16%, transparent);
+}
+
+.gwa-listbox__item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gwa-norm-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
+  transition: background var(--transition-normal);
+}
+.gwa-norm-toggle:hover {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent);
+}
+
+.gwa-norm-panel {
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 97%, var(--color-text, #111827) 3%);
+}
+
+.gwa-norm-weights {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gwa-chart {
+  position: relative;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
+  background:
+    radial-gradient(
+      circle at 85% 8%,
+      color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent) 0%,
+      transparent 40%
+    ),
+    color-mix(in srgb, var(--color-surface, #ffffff) 97%, var(--color-text, #111827) 3%);
+}
+
+.gwa-chart__expand {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, var(--color-text, #111827) 8%);
+  color: color-mix(in srgb, var(--color-text, #111827) 65%, transparent);
+  transition: background var(--transition-normal), color var(--transition-normal);
+}
+
+.gwa-chart__expand:hover {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 12%, var(--color-surface, #ffffff));
+  color: var(--color-primary, #3b82f6);
+}
+
+.gwa-table-section {
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 97%, var(--color-text, #111827) 3%);
+}
+
+.gwa-table-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 97%, var(--color-text, #111827) 3%);
+  transition: background var(--transition-normal);
+}
+.gwa-table-toggle:hover {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 4%, var(--color-surface, #ffffff));
+}
+
+.gwa-table-action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
+  transition: background var(--transition-normal);
+}
+.gwa-table-action:hover {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
+}
+
+.gwa-table-wrap {
+  max-height: 400px;
+  overflow: auto;
+}
+
 .guild-war-analytics-control-panel {
-  border-radius: 12px;
-  border-color: color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 97%, var(--infini-color-text, #111827) 3%);
+  border-radius: var(--radius-md);
+  border-color: color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 97%, var(--color-text, #111827) 3%);
 }
 
 .guild-war-analytics-control-panel--top {
   background:
     radial-gradient(
       circle at top right,
-      color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, transparent) 0%,
+      color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent) 0%,
       transparent 58%
     ),
-    color-mix(in srgb, var(--infini-color-surface, #ffffff) 97%, var(--infini-color-text, #111827) 3%);
+    color-mix(in srgb, var(--color-surface, #ffffff) 97%, var(--color-text, #111827) 3%);
 }
 
 .guild-war-analytics-toolbar {
@@ -508,7 +750,7 @@
   font-weight: 600;
   letter-spacing: .06em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 62%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 62%, transparent);
 }
 
 .guild-war-analytics-main-grid {
@@ -516,17 +758,17 @@
   align-items: stretch;
 }
 
-.guild-war-analytics-chart-card {
-  border-radius: 12px;
-  border-color: color-mix(in srgb, var(--infini-color-text, #111827) 14%, transparent);
+.guild-war-analytics-chart-card.guild-war-analytics-chart-card {
+  border-radius: var(--radius-md);
+  border-color: color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
   background:
     radial-gradient(
       circle at 85% 8%,
-      color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, transparent) 0%,
+      color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent) 0%,
       transparent 45%
     ),
-    color-mix(in srgb, var(--infini-color-surface, #ffffff) 97%, var(--infini-color-text, #111827) 3%);
-  transition: none !important;
+    color-mix(in srgb, var(--color-surface, #ffffff) 97%, var(--color-text, #111827) 3%);
+  transition: none;
 }
 
 .guild-war-analytics-chart-card--center {
@@ -541,11 +783,139 @@
   height: 100%;
 }
 
-@media (max-width: 991px) {
-  .war-history-filters__divider {
-    display: none;
-  }
+/* War History Detail (redesigned modal) */
+.whd-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-primary, #3b82f6) 6%, var(--color-surface, #ffffff)) 0%,
+      var(--color-surface, #ffffff) 100%
+    );
+}
 
+.whd-hero__main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.whd-hero__badge {
+  flex-shrink: 0;
+}
+
+.whd-hero__info {
+  min-width: 0;
+}
+
+.whd-hero__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.whd-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--color-text, #111827) 65%, transparent);
+}
+
+.whd-hero__meta-sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-text, #111827) 30%, transparent);
+}
+
+.whd-hero__meta-note {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+.whd-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.whd-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.whd-mvp {
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 95%, var(--color-text, #111827) 5%);
+}
+
+.whd-mvp__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.whd-mvp__entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.whd-mvp__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+  color: var(--color-primary, #3b82f6);
+  flex-shrink: 0;
+}
+
+.whd-teams {
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 95%, var(--color-text, #111827) 5%);
+}
+
+.whd-team-row {
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  background: var(--color-surface, #ffffff);
+}
+
+.whd-chart-wrap {
+  padding: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 97%, var(--color-text, #111827) 3%);
+}
+
+.whd-actions {
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+}
+
+@media (max-width: 991px) {
   .war-history-filters__group {
     flex-wrap: wrap;
   }
@@ -580,7 +950,61 @@
     max-height: none;
   }
 
+  .guild-war-dnd-pool > .guild-war-column-card-wrap {
+    max-height: 50vh;
+  }
+
   .guild-war-dnd-teams > * {
     width: 100%;
   }
+
+  .whd-split {
+    grid-template-columns: 1fr;
+  }
+
+  .whd-mvp__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gwa-content {
+    flex-direction: column;
+  }
+
+  .gwa-sidebar {
+    flex: none;
+    width: 100%;
+    position: static;
+    max-height: none;
+  }
+
+  .gwa-sidebar--right {
+    order: 3;
+  }
+}
+
+/* Trash drop zone */
+.guild-war-trash-zone {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+  height: 72px;
+  margin-top: 8px;
+  border: 2px dashed color-mix(in srgb, var(--color-danger, #ef4444) 50%, transparent);
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 5%, transparent);
+  color: var(--color-danger, #ef4444);
+  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+}
+
+.guild-war-trash-zone--visible {
+  display: flex;
+}
+
+.guild-war-trash-zone--over {
+  border-color: var(--color-danger, #ef4444);
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 14%, transparent);
 }

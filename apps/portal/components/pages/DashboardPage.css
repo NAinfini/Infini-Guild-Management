@@ -1,16 +1,41 @@
 .dashboard-page [data-variant="filled"],
 .dashboard-page .mantine-Text-root[data-variant="dimmed"] {
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 72%, black 28%);
+  color: color-mix(in srgb, var(--color-text, #111827) 72%, black 28%);
 }
 
-/* ── Dashboard card padding (GlowCard has no built-in padding) ── */
+/* ── Dashboard card padding (PortalCard has no built-in padding) ── */
 .dashboard-card > div:last-child {
-  padding: 16px;
+  padding: 20px;
 }
 
-.dashboard-slot {
-  min-width: 0;
-  overflow: visible;
+/* ── Gradient accent strip at top of dashboard cards ── */
+.dashboard-card {
+  position: relative;
+}
+
+.dashboard-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-primary, #3b82f6), var(--color-secondary, #8b5cf6), var(--color-accent, #06b6d4));
+  background-size: 200% 100%;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  opacity: 0.4;
+  transition: opacity 0.3s ease, height 0.3s ease;
+  z-index: 3;
+  animation: dashboardStripShimmer 5s ease-in-out infinite;
+}
+
+@keyframes dashboardStripShimmer {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 200% center; }
+}
+
+.dashboard-card:hover::before {
+  opacity: 1;
 }
 
 .dashboard-card-title {
@@ -24,51 +49,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--infini-color-primary, #3b82f6);
+  color: var(--color-primary, #3b82f6);
   opacity: 0.85;
-}
-
-.dashboard-featured-strip {
-  margin-top: 12px;
-}
-
-.dashboard-featured-list {
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
-
-.dashboard-featured-list--overflow {
-  scroll-snap-type: x mandatory;
-}
-
-.dashboard-featured-item {
-  flex: 0 0 240px;
-  border: 1px solid color-mix(in srgb, var(--infini-color-primary, #3b82f6) 28%, transparent);
-  border-radius: 10px;
-  padding: 10px;
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 8%, var(--infini-color-surface, #ffffff));
-}
-
-.dashboard-featured-list--overflow .dashboard-featured-item {
-  scroll-snap-align: start;
-}
-
-.dashboard-event-item {
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
-  border-radius: 10px;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 94%, transparent);
-}
-
-.dashboard-event-content {
-  width: 100%;
-}
-
-.dashboard-event-actions {
-  width: 100%;
 }
 
 .dashboard-stats-circle {
@@ -86,9 +68,9 @@
 
 .dashboard-stats-circle-value {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: center;
-  gap: 2px;
+  gap: 1px;
   font-size: 15px;
   font-weight: 600;
 }
@@ -118,16 +100,27 @@
   flex-direction: column;
   gap: 4px;
   padding: 8px 6px;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 96%, transparent);
   min-width: 0;
-  transition: border-color var(--infini-motion-hover, 150ms) var(--infini-motion-easing, ease);
+  transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.signup-box:hover {
+  border-color: color-mix(in srgb, var(--color-text, #111827) 18%, transparent);
 }
 
 .signup-box--today {
-  border-color: var(--infini-color-primary, #3b82f6);
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 5%, var(--infini-color-surface, #ffffff));
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 5%, var(--color-surface, #ffffff));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+  animation: todayBoxPulse 3s ease-in-out infinite;
+}
+
+@keyframes todayBoxPulse {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent); }
+  50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent), 0 0 12px color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent); }
 }
 
 .signup-box--yesterday {
@@ -140,7 +133,7 @@
   align-items: center;
   gap: 1px;
   padding-bottom: 5px;
-  border-bottom: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
 }
 
 .signup-box-label {
@@ -148,18 +141,18 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 55%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 55%, transparent);
   line-height: 1;
 }
 
 .signup-box--today .signup-box-label {
-  color: var(--infini-color-primary, #3b82f6);
+  color: var(--color-primary, #3b82f6);
 }
 
 .signup-box-date {
   font-size: 11px;
   font-weight: 700;
-  color: var(--infini-color-text, #111827);
+  color: var(--color-text, #111827);
   line-height: 1;
 }
 
@@ -174,7 +167,7 @@
   display: block;
   text-align: center;
   font-size: 13px;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 25%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 25%, transparent);
   line-height: 1;
   padding: 2px 0;
 }
@@ -186,16 +179,16 @@
   width: 100%;
   padding: 3px 4px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   cursor: pointer;
   text-align: left;
-  transition: background var(--infini-motion-hover, 120ms) var(--infini-motion-easing, ease);
+  transition: background var(--transition-fast);
   min-width: 0;
 }
 
 .signup-box-event:hover {
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 10%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
 }
 
 .signup-box-event-dot {
@@ -210,7 +203,7 @@
   min-width: 0;
   font-size: 11px;
   line-height: 1.2;
-  color: var(--infini-color-text, #111827);
+  color: var(--color-text, #111827);
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -220,7 +213,7 @@
 .signup-box-event-time {
   flex-shrink: 0;
   font-size: 10px;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 50%, transparent);
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
@@ -247,20 +240,20 @@
   flex-shrink: 0;
 }
 
-.war-nav-btn {
-  min-width: 28px !important;
-  min-height: 28px !important;
-  width: 28px !important;
-  height: 28px !important;
-  padding: 0 !important;
-  display: inline-flex !important;
+.war-nav-btn.war-nav-btn {
+  min-width: 28px;
+  min-height: 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 12px;
-  color: var(--infini-color-text, #111827) !important;
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 86%, var(--infini-color-text, #111827) 14%) !important;
-  border-color: color-mix(in srgb, var(--infini-color-text, #111827) 24%, transparent) !important;
-  box-shadow: none !important;
+  color: var(--color-text, #111827);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, var(--color-text, #111827) 14%);
+  border-color: color-mix(in srgb, var(--color-text, #111827) 24%, transparent);
+  box-shadow: none;
 }
 
 .war-nav-btn svg {
@@ -269,12 +262,12 @@
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.35));
 }
 
-.war-nav-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 78%, var(--infini-color-text, #111827) 22%) !important;
+.war-nav-btn.war-nav-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 78%, var(--color-text, #111827) 22%);
 }
 
-.war-nav-btn:disabled {
-  opacity: 0.5 !important;
+.war-nav-btn.war-nav-btn:disabled {
+  opacity: 0.5;
 }
 
 .war-nav-counter {
@@ -315,22 +308,22 @@
   min-width: 0;
 }
 
-.war-share-btn {
-  min-width: 26px !important;
-  min-height: 26px !important;
-  width: 26px !important;
-  height: 26px !important;
-  padding: 0 !important;
-  display: inline-flex !important;
+.war-share-btn.war-share-btn {
+  min-width: 26px;
+  min-height: 26px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--infini-color-text, #111827) !important;
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 86%, var(--infini-color-text, #111827) 14%) !important;
-  border-color: color-mix(in srgb, var(--infini-color-text, #111827) 24%, transparent) !important;
-  box-shadow: none !important;
+  color: var(--color-text, #111827);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, var(--color-text, #111827) 14%);
+  border-color: color-mix(in srgb, var(--color-text, #111827) 24%, transparent);
+  box-shadow: none;
   opacity: 0.85;
-  transition: opacity 150ms ease;
+  transition: opacity var(--transition-normal);
 }
 
 .war-share-btn svg {
@@ -339,8 +332,8 @@
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.35));
 }
 
-.war-share-btn:hover {
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 78%, var(--infini-color-text, #111827) 22%) !important;
+.war-share-btn.war-share-btn:hover {
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 78%, var(--color-text, #111827) 22%);
   opacity: 1;
 }
 
@@ -351,15 +344,16 @@
   align-items: center;
   gap: 5px;
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
   white-space: nowrap;
   flex-shrink: 0;
   color: var(--war-result-color, #888);
-  background: color-mix(in srgb, var(--war-result-color, #888) 10%, var(--infini-color-surface, #fff));
+  background: color-mix(in srgb, var(--war-result-color, #888) 10%, var(--color-surface, #fff));
   border: 1px solid color-mix(in srgb, var(--war-result-color, #888) 22%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--war-result-color, #888) 15%, transparent);
 }
 
 /* ── VS bar header ── */
@@ -370,7 +364,7 @@
   justify-content: center;
   gap: 10px;
   padding: 4px 0;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 45%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 45%, transparent);
 }
 
 .war-vs-bar-team {
@@ -383,12 +377,12 @@
 }
 
 .war-vs-bar-team--us {
-  color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 70%, var(--infini-color-text, #e5e5e5));
+  color: color-mix(in srgb, var(--color-primary, #3b82f6) 70%, var(--color-text, #e5e5e5));
   text-align: right;
 }
 
 .war-vs-bar-team--enemy {
-  color: color-mix(in srgb, var(--infini-color-text, #e5e5e5) 60%, var(--infini-color-danger, #ef4444));
+  color: color-mix(in srgb, var(--color-text, #e5e5e5) 60%, var(--color-danger, #ef4444));
   text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -416,7 +410,7 @@
   gap: 5px;
   font-size: 11px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 55%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 55%, transparent);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   width: 100%;
@@ -425,7 +419,7 @@
 .war-compare-label-icon {
   display: inline-flex;
   align-items: center;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 60%, transparent);
 }
 
 .war-compare-bar-wrap {
@@ -443,44 +437,44 @@
 
 .war-compare-val--left {
   text-align: right;
-  color: var(--infini-color-text, #111827);
+  color: var(--color-text, #111827);
 }
 
 .war-compare-val--right {
   text-align: left;
-  color: color-mix(in srgb, var(--infini-color-text, #e5e5e5) 65%, transparent);
+  color: color-mix(in srgb, var(--color-text, #e5e5e5) 65%, transparent);
 }
 
 .war-compare-bar {
   flex: 1;
   display: flex;
-  height: 6px;
-  border-radius: 3px;
+  height: 8px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
-  background: color-mix(in srgb, var(--infini-color-text, #111827) 10%, transparent);
+  background: color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
 }
 
 .war-compare-bar-fill {
   height: 100%;
-  transition: width 400ms ease;
+  transition: width 500ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .war-compare-bar-fill--own {
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 55%, var(--infini-color-surface, #fff));
-  border-radius: 3px 0 0 3px;
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 60%, var(--color-surface, #fff));
+  border-radius: 4px 0 0 4px;
 }
 
 .war-compare-bar-fill--own.war-compare-bar-fill--winning {
-  background: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 80%, var(--infini-color-surface, #fff));
+  background: var(--color-primary, #3b82f6);
 }
 
 .war-compare-bar-fill--enemy {
-  background: color-mix(in srgb, var(--infini-color-danger, #ef4444) 40%, var(--infini-color-surface, #fff));
-  border-radius: 0 3px 3px 0;
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 45%, var(--color-surface, #fff));
+  border-radius: 0 4px 4px 0;
 }
 
 .war-compare-bar-fill--enemy.war-compare-bar-fill--winning {
-  background: color-mix(in srgb, var(--infini-color-danger, #ef4444) 65%, var(--infini-color-surface, #fff));
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 70%, var(--color-surface, #fff));
 }
 
 /* ── MVP section ── */
@@ -490,7 +484,7 @@
   flex-direction: column;
   gap: 6px;
   padding-top: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 8%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
 }
 
 .war-mvp-section-header {
@@ -515,9 +509,9 @@
   flex-shrink: 0;
   font-size: 11px;
   font-weight: 700;
-  background: color-mix(in srgb, var(--infini-color-text, #111827) 10%, var(--infini-color-surface, #fff));
-  color: var(--infini-color-text, #111827);
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 15%, transparent);
+  background: color-mix(in srgb, var(--color-text, #111827) 10%, var(--color-surface, #fff));
+  color: var(--color-text, #111827);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 15%, transparent);
 }
 
 .war-mvp-chip-info {
@@ -532,9 +526,9 @@
   line-height: 1.2;
 }
 
-.war-mvp-chip-label {
+.war-mvp-chip-label.war-mvp-chip-label {
   line-height: 1.2;
-  font-size: 10px !important;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -543,22 +537,31 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 50%, transparent);
 }
 
 .war-mvp-chip-value {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
-  color: var(--infini-color-text, #111827);
+  color: var(--color-text, #111827);
 }
 
 /* ── War History Row Highlight Animation ── */
 
 @keyframes war-history-highlight {
-  0% { background-color: color-mix(in srgb, var(--infini-color-primary, #3b82f6) 25%, transparent); }
+  0% { background-color: color-mix(in srgb, var(--color-primary, #3b82f6) 25%, transparent); }
   100% { background-color: transparent; }
 }
 
 .war-history-row-highlight {
   animation: war-history-highlight 1.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signup-box--today {
+    animation: none;
+  }
+  .dashboard-card::before {
+    animation: none;
+  }
 }

@@ -1,4 +1,3 @@
-﻿import type { MemberProfile, User } from "@guild/shared";
 import { loginSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -18,21 +17,19 @@ import {
   GlassEffect,
   GradientText,
   LampHeading,
-  MagneticElement,
-} from "@infini-dev-kit/react";
-import { DepthButton } from "@infini-dev-kit/react";
-import { IconArrowLeft, IconEye, IconEyeOff, IconKeyboard } from "@tabler/icons-react";
+
+} from "@portal/components/effects";
+import { DepthButton } from "@portal/components/shared/DepthButton";
+import { ArrowLeftIcon, EyeIcon, EyeOffIcon, KeyboardIcon } from "@portal/components/icons";
 import { useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
-import { apiRequest, isApiRequestError } from "../../api/client";
+import { isApiRequestError, login as requestLogin } from "../../services/AuthService";
 import { useAuthStore } from "../../stores/auth";
-import { FireOutlined } from "../../utils/icons";
+import { useSiteConfigStore } from "../../stores/site-config";
 import "./AuthPages.css";
-
-type AuthSessionResponse = { user: User; profile: MemberProfile };
 
 const LOGIN_FORM_SCHEMA = loginSchema.extend({
   stay_logged_in: z.boolean().default(false),
@@ -88,6 +85,8 @@ export function LoginPage() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/login" });
   const setSession = useAuthStore((state) => state.setSession);
+  const siteName = useSiteConfigStore((s) => s.siteName);
+  const siteLogoUrl = useSiteConfigStore((s) => s.siteLogoUrl);
 
   const {
     register,
@@ -95,7 +94,7 @@ export function LoginPage() {
     watch,
     setValue,
     formState: { errors },
-  } = useForm<LoginFormValues>({
+  } = useForm<z.input<typeof LOGIN_FORM_SCHEMA>, any, LoginFormValues>({
     resolver: zodResolver(LOGIN_FORM_SCHEMA),
     defaultValues: {
       username: "",
@@ -115,11 +114,7 @@ export function LoginPage() {
   const passwordValue = watch("password");
 
   const loginMutation = useMutation({
-    mutationFn: (values: LoginFormValues) =>
-      apiRequest<AuthSessionResponse>("/api/auth/login", {
-        method: "POST",
-        bodyJson: values,
-      }),
+    mutationFn: requestLogin,
     onSuccess: (response) => {
       setSession(response.user, response.profile);
       const fallback = "/";
@@ -138,8 +133,11 @@ export function LoginPage() {
         }
         return;
       }
-      const messageText = error instanceof Error ? error.message : t("invalidCredentials");
-      setSubmitError(messageText);
+      if (isApiRequestError(error) && error.status === 401) {
+        setSubmitError(t("invalidCredentials"));
+        return;
+      }
+      setSubmitError(error instanceof Error ? error.message : t("invalidCredentials"));
     },
   });
 
@@ -167,11 +165,11 @@ export function LoginPage() {
         <div className="login-page__heading">
           <LampHeading coneWidth={320} coneHeight={140} animated>
             <div className="login-page__brand">
-              <span className="login-page__brand-icon" aria-hidden>
-                <FireOutlined />
-              </span>
+              {siteLogoUrl ? (
+                <img src={siteLogoUrl} alt="" aria-hidden className="login-page__brand-logo" />
+              ) : null}
               <GradientText animated duration={4} className="login-page__brand-text">
-                {t("brand.name")}
+                {siteName}
               </GradientText>
             </div>
           </LampHeading>
@@ -181,9 +179,9 @@ export function LoginPage() {
         </div>
 
         <GlassEffect className="login-page__card" blur={16} opacity={0.1} borderOpacity={0.15}>
-          {search.reason === "expired" ? <Alert color="infini-warning" title={t("sessionExpired")} /> : null}
-          {search.reason === "required" ? <Alert color="infini-primary" title={t("loginRequired")} /> : null}
-          {submitError ? <Alert color="infini-danger" title={submitError} /> : null}
+          {search.reason === "expired" ? <Alert color="yellow" title={t("sessionExpired")} /> : null}
+          {search.reason === "required" ? <Alert color="blue" title={t("loginRequired")} /> : null}
+          {submitError ? <Alert color="red" title={submitError} /> : null}
 
           <form onSubmit={handleSubmit(onSubmit)}>
             <Stack gap={20}>
@@ -217,7 +215,7 @@ export function LoginPage() {
                 />
                 <div className="login-page__password-actions">
                   {isCapsLockOn ? (
-                    <IconKeyboard size={18} className="login-page__caps-icon" />
+                    <KeyboardIcon size={18} className="login-page__caps-icon" />
                   ) : null}
                   <button
                     type="button"
@@ -226,7 +224,7 @@ export function LoginPage() {
                     tabIndex={-1}
                     aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
                   >
-                    {showPassword ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                    {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
                   </button>
                 </div>
               </div>
@@ -237,16 +235,16 @@ export function LoginPage() {
                 {t("button.login")}
               </DepthButton>
 
-              <MagneticElement strength={8} className="login-page__back-link">
+              <div className="login-page__back-link">
                 <Anchor
                   underline="hover"
                   onClick={() => void navigate({ to: "/" })}
                   className="login-page__back-anchor"
                 >
-                  <IconArrowLeft size={14} />
+                  <ArrowLeftIcon size={14} />
                   {t("button.backToPortal")}
                 </Anchor>
-              </MagneticElement>
+              </div>
 
               <div style={{ textAlign: "center" }}>
                 {inviteCodeInput === null ? (
@@ -282,7 +280,7 @@ export function LoginPage() {
                     />
                     <Button
                       size="xs"
-                      variant="light"
+                      variant="default"
                       onClick={() => {
                         if (inviteCodeInput.trim()) {
                           void navigate({ to: "/register/$inviteCode", params: { inviteCode: inviteCodeInput.trim() } });

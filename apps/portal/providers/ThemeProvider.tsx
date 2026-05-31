@@ -1,116 +1,198 @@
-import { MantineProvider, type CSSVariablesResolver } from "@mantine/core";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Card,
+  createTheme,
+  MantineProvider,
+  Menu,
+  Modal,
+  NumberInput,
+  Select,
+  Skeleton,
+  Tabs,
+  TextInput,
+  Textarea,
+} from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
 
-import "@mantine/core/styles.css";
-import "@mantine/notifications/styles.css";
+const portalTheme = createTheme({
+  primaryColor: "portal-blue",
+  fontFamily: '"Inter", system-ui, sans-serif',
+  fontFamilyMonospace: '"JetBrains Mono", "Fira Code", monospace',
+  headings: { fontFamily: '"Inter", system-ui, sans-serif', fontWeight: "700" },
 
-import { createBrowserLocalStorageAdapter } from "@infini-dev-kit/utils/storage";
-import {
-  createThemeProviderBridge,
-  type ThemeProviderBridge,
-  type ThemeProviderSnapshot,
-} from "@infini-dev-kit/theme-core";
-import { loadThemeFonts } from "@infini-dev-kit/theme-core";
-import { composeMantineTheme, type MantineThemeConfig } from "../theme/mantine-adapter";
+  defaultRadius: "md",
+  radius: {
+    xs: "4px",
+    sm: "8px",
+    md: "12px",
+    lg: "16px",
+    xl: "24px",
+  },
 
-const BridgeContext = createContext<ThemeProviderBridge<MantineThemeConfig> | null>(null);
-const SnapshotContext = createContext<ThemeProviderSnapshot<MantineThemeConfig> | null>(null);
+  shadows: {
+    xs: "0 1px 2px rgba(0,0,0,0.04)",
+    sm: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+    md: "0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.04)",
+    lg: "0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.04)",
+    xl: "0 12px 32px rgba(0,0,0,0.12), 0 4px 8px rgba(0,0,0,0.06)",
+  },
 
-const bridge = createThemeProviderBridge<MantineThemeConfig>({
-  storage: createBrowserLocalStorageAdapter(),
-  prefersReducedMotion: () =>
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  themeComposer: composeMantineTheme,
+  colors: {
+    "portal-blue": [
+      "#EBF2FF", // 0 – lightest tint
+      "#D6E4FF", // 1
+      "#ADC8FF", // 2
+      "#84ABFF", // 3
+      "#5B8EFF", // 4
+      "#3B82F6", // 5 – base (--color-primary)
+      "#2563EB", // 6
+      "#1D4ED8", // 7
+      "#1E40AF", // 8
+      "#1E3A8A", // 9 – darkest
+    ],
+    "portal-violet": [
+      "#F1ECFF",
+      "#E4D9FF",
+      "#C9B3FF",
+      "#AE8DFF",
+      "#9B74FF",
+      "#8B5CF6", // 5 – base (--color-secondary)
+      "#7C3AED",
+      "#6D28D9",
+      "#5B21B6",
+      "#4C1D95",
+    ],
+    "portal-cyan": [
+      "#ECFEFF",
+      "#CFFAFE",
+      "#A5F3FC",
+      "#67E8F9",
+      "#22D3EE",
+      "#06B6D4", // 5 – base (--color-accent)
+      "#0891B2",
+      "#0E7490",
+      "#155E75",
+      "#164E63",
+    ],
+  },
+
+  spacing: {
+    xs: "4px",
+    sm: "8px",
+    md: "12px",
+    lg: "16px",
+    xl: "24px",
+  },
+
+  components: {
+    Button: Button.extend({
+      defaultProps: { radius: "md" },
+    }),
+    ActionIcon: ActionIcon.extend({
+      defaultProps: { radius: "md" },
+    }),
+    TextInput: TextInput.extend({
+      defaultProps: { radius: "md" },
+    }),
+    Textarea: Textarea.extend({
+      defaultProps: { radius: "md" },
+    }),
+    NumberInput: NumberInput.extend({
+      defaultProps: { radius: "md" },
+    }),
+    Select: Select.extend({
+      defaultProps: { radius: "md" },
+    }),
+    Card: Card.extend({
+      defaultProps: { radius: "md", shadow: "sm" },
+    }),
+    Badge: Badge.extend({
+      defaultProps: { radius: "sm" },
+    }),
+    Modal: Modal.extend({
+      defaultProps: { radius: "lg", centered: true, transitionProps: { duration: 0 } },
+    }),
+    Skeleton: Skeleton.extend({
+      defaultProps: { radius: "md" },
+    }),
+    Tabs: Tabs.extend({
+      defaultProps: { radius: "md", variant: "pills" },
+    }),
+    Menu: Menu.extend({
+      defaultProps: { radius: "md", shadow: "lg" },
+      classNames: {
+        dropdown: "infini-menu-dropdown",
+        item: "infini-menu-item",
+        divider: "infini-menu-divider",
+        label: "infini-menu-label",
+      },
+      styles: {
+        dropdown: { padding: "6px", minWidth: "200px" },
+        item: { padding: "10px 14px", borderRadius: "8px", fontSize: "0.875rem", fontWeight: 500, gap: "10px" },
+        divider: { margin: "6px 8px" },
+        label: { padding: "8px 14px 4px", fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" as const },
+      },
+    }),
+  },
 });
 
-export function useBridge(): ThemeProviderBridge<MantineThemeConfig> {
-  const ctx = useContext(BridgeContext);
-  if (!ctx) {
-    throw new Error("useBridge must be used inside PortalThemeProvider");
-  }
-  return ctx;
+type Theme = "light" | "dark";
+
+interface ThemeContextValue {
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  toggleTheme: () => void;
 }
 
-export function useThemeSnapshot(): ThemeProviderSnapshot<MantineThemeConfig> {
-  const ctx = useContext(SnapshotContext);
-  if (!ctx) {
-    throw new Error("useThemeSnapshot must be used inside PortalThemeProvider");
-  }
+const ThemeContext = createContext<ThemeContextValue | null>(null);
+
+export function useTheme(): ThemeContextValue {
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error("useTheme must be used inside ThemeProvider");
   return ctx;
 }
 
 export function PortalThemeProvider({ children }: { children: ReactNode }) {
-  const [snapshot, setSnapshot] = useState(() => bridge.getSnapshot());
-  const previousScopeClass = useRef<string | null>(null);
+  const [theme, setThemeState] = useState<Theme>(() => {
+    if (typeof window === "undefined") return "light";
+    const stored = localStorage.getItem("theme-mode");
+    if (stored === "dark" || stored === "light") return stored;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
 
-  useEffect(() => bridge.subscribe(setSnapshot), []);
+  const setTheme = useCallback((t: Theme) => {
+    setThemeState(t);
+    localStorage.setItem("theme-mode", t);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setThemeState((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
+      localStorage.setItem("theme-mode", next);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
-    void loadThemeFonts(snapshot.state.themeId);
-  }, [snapshot.state.themeId]);
-
-  useLayoutEffect(() => {
     const root = document.documentElement;
-    const previous = previousScopeClass.current;
+    root.classList.toggle("dark", theme === "dark");
+    root.dataset.theme = theme;
+  }, [theme]);
 
-    if (previous && previous !== snapshot.scope.className) {
-      root.classList.remove(previous);
-    }
-
-    root.classList.add(snapshot.scope.className);
-    previousScopeClass.current = snapshot.scope.className;
-
-    root.dataset.themeId = snapshot.state.themeId;
-    root.dataset.motionMode = snapshot.motion.effectiveMode;
-    if (document.body) {
-      document.body.dataset.themeId = snapshot.state.themeId;
-    }
-
-    return () => {
-      if (previousScopeClass.current) {
-        root.classList.remove(previousScopeClass.current);
-      }
-    };
-  }, [snapshot.scope.className, snapshot.state.themeId, snapshot.motion.effectiveMode]);
-
-  const cssVariablesResolver = useMemo<CSSVariablesResolver>(
-    () => () => ({
-      variables: snapshot.scope.variables.variables,
-      light: {},
-      dark: {},
-    }),
-    [snapshot.scope.variables.variables],
-  );
+  const contextValue = useMemo(() => ({ theme, setTheme, toggleTheme }), [theme, setTheme, toggleTheme]);
 
   return (
-    <BridgeContext.Provider value={bridge}>
-      <SnapshotContext.Provider value={snapshot}>
-        <MantineProvider
-          key={`${snapshot.state.themeId}:${snapshot.composed.colorScheme}`}
-          theme={snapshot.composed.theme}
-          cssVariablesSelector={snapshot.scope.variables.selector}
-          cssVariablesResolver={cssVariablesResolver}
-          forceColorScheme={snapshot.composed.colorScheme}
-          withCssVariables
-          withGlobalClasses
-        >
-          <ModalsProvider>
-            <Notifications position="bottom-right" zIndex={1200} />
-            {children}
-          </ModalsProvider>
-        </MantineProvider>
-      </SnapshotContext.Provider>
-    </BridgeContext.Provider>
+    <ThemeContext.Provider value={contextValue}>
+      <MantineProvider theme={portalTheme} forceColorScheme={theme}>
+        <Notifications position="top-right" />
+        <ModalsProvider>
+          {children}
+        </ModalsProvider>
+      </MantineProvider>
+    </ThemeContext.Provider>
   );
 }

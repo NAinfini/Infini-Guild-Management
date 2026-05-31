@@ -10,6 +10,7 @@
   "sandbox.section.typography": "TYPOGRAPHY",
   "sandbox.section.livePreview": "LIVE PREVIEW",
   "sandbox.section.generatedHtml": "GENERATED HTML",
+  "sandbox.section.htmlSource": "HTML SOURCE",
   "sandbox.section.customHtmlOverride": "CUSTOM HTML OVERRIDE",
   "sandbox.label.opacity": "Opacity",
   "sandbox.label.recent": "Recent",
@@ -46,5 +47,18 @@
   "message.generatedHtmlCopied": "Generated HTML copied",
   "theme.title": "Theme Showcase",
   "theme.current": "Current theme:",
-  "sandbox.defaultTitle": "Guild Vanguard"
+  "sandbox.defaultTitle": "Guild Vanguard",
+  "dice.title": "Dice Roller",
+  "dice.description": "Roll configurable dice with animation for events or loot decisions",
+  "dice.count": "Number of Dice",
+  "dice.sides": "Sides per Die",
+  "dice.roll": "Roll",
+  "dice.rolling": "Rolling...",
+  "dice.total": "Total",
+  "dice.history": "History",
+  "dice.clearHistory": "Clear",
+  "dice.noHistory": "No rolls yet. Hit Roll!",
+  "dice.result": "{{count}}d{{sides}} → {{results}} = {{total}}",
+  "equipCalc.title": "Equipment Calculator",
+  "equipCalc.description": "Plan and optimize your gear builds"
 }

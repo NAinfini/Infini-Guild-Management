@@ -12,7 +12,7 @@
   "card.activeMembers.title": "Active Members",
   "card.activeMembers.unit": "online",
   "card.activeMembers.activeRatio": "Active / Total",
-  "card.activeMembers.eventsWeek": "Events / Week",
+  "card.activeMembers.upcomingEvents": "Upcoming Events",
   "card.activeMembers.winRate": "All War Win Rate",
   "card.activeMembers.activeEvents": "Active Events",
   "card.activeMembers.summaryHint": "Realtime guild activity snapshot",
@@ -29,7 +29,9 @@
   "card.lastWar.mvp.damage": "Damage",
   "card.lastWar.mvp.healing": "Healing",
   "card.lastWar.mvp.damageTaken": "Damage Taken",
+  "card.lastWar.mvp.damage_taken": "Damage Taken",
   "card.lastWar.mvp.building": "Building",
+  "card.lastWar.mvp.building_damage": "Building",
   "card.lastWar.us": "US",
   "card.lastWar.enemy": "ENEMY",
   "card.lastWar.result.victory": "VICTORY",
@@ -39,7 +41,12 @@
   "eventType.weekly_mission": "Weekly Mission",
   "eventType.guild_war": "Guild War",
   "eventType.social": "Social",
+  "eventType.poll": "Poll",
+  "eventType.raffle": "Raffle",
   "eventType.other": "Other",
   "guest.banner": "You are browsing as a guest. Log in to access all features.",
-  "guest.login": "Log in"
+  "guest.login": "Log in",
+  "card.lastWar.aria.prevWar": "Previous war",
+  "card.lastWar.aria.nextWar": "Next war",
+  "card.lastWar.aria.openHistory": "Open war history"
 }

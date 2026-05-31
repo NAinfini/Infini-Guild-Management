@@ -3,12 +3,12 @@ import { Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { UploadStatus, UploadTask } from "./shared";
 
-function progressByStatus(status: UploadStatus): number {
-  if (status === "queued") return 0;
-  if (status === "uploading") return 55;
-  if (status === "done") return 100;
-  return 100;
-}
+const PROGRESS_BY_STATUS = {
+  queued: 0,
+  uploading: 55,
+  done: 100,
+  error: 100,
+} satisfies Record<UploadStatus, number>;
 
 function fileSizeText(size: number): string {
   if (size < 1024) return `${size} B`;
@@ -54,7 +54,7 @@ export function GalleryUploadQueueCard({
                 </Text>
               </Group>
               <Progress
-                value={progressByStatus(task.status)}
+                value={PROGRESS_BY_STATUS[task.status]}
                 color={task.status === "error" ? "red" : task.status === "done" ? "green" : "blue"}
                 size="sm"
                 animated={task.status === "uploading"}
@@ -70,7 +70,7 @@ export function GalleryUploadQueueCard({
                 mt={6}
               />
               {task.error ? (
-                <Text c="infini-danger" size="sm" mt={4}>
+                <Text c="red" size="sm" mt={4}>
                   {task.error}
                 </Text>
               ) : null}

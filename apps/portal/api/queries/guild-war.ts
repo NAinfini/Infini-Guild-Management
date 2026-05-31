@@ -1,26 +1,22 @@
-import type { GuildWarActiveResponse, PaginatedResponse, WarHistory, WarTemplate } from "@guild/shared";
+import type { GuildWarActiveResponse, PaginatedResponse, WarHistory } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { apiDownload, apiRequest } from "../client";
 
 type WarTeamMember = {
   id: string;
   war_team_id: string;
   user_id: string;
+  username?: string;
   role_tag: string | null;
   sort_order: number;
-  kills: number | null;
-  deaths: number | null;
-  assists: number | null;
-  damage: number | null;
-  healing: number | null;
-  building_damage: number | null;
-  credits: number | null;
-  damage_taken: number | null;
+  stats: Record<string, number | null> | null;
   note: string | null;
 };
 
 type WarTeam = {
   id: string;
-  war_history_id: string;
+  war_history_id: string | null;
+  event_id: string | null;
   team_name: string;
   sort_order: number;
   notes: string | null;
@@ -30,14 +26,7 @@ type WarTeam = {
 
 export type GuildWarAnalyticsMemberStat = {
   user_id: string;
-  kills: number;
-  deaths: number;
-  assists: number;
-  damage: number;
-  healing: number;
-  building_damage: number;
-  credits: number;
-  damage_taken: number;
+  stats: Record<string, number>;
 };
 
 export type ModifierBreakdown = {
@@ -55,11 +44,7 @@ export type AnalyticsWarEntry = WarHistory & {
 
 export type AnalyticsSettings = {
   reference_duration_minutes: number;
-  modifier_weight_kda: number;
-  modifier_weight_towers: number;
-  modifier_weight_credits: number;
-  modifier_weight_distance: number;
-  modifier_weight_basehp: number;
+  modifier_weights: Record<string, number>;
 };
 
 export type GuildWarAnalyticsResponse = {
@@ -80,6 +65,10 @@ export function fetchGuildWarActive(eventId?: string): Promise<GuildWarActiveRes
   return apiRequest<GuildWarActiveResponse>(`/api/guild-war/active${query.size > 0 ? `?${query.toString()}` : ""}`);
 }
 
+export function fetchGuildWarConcludedEventIds(): Promise<{ data: string[] }> {
+  return apiRequest<{ data: string[] }>("/api/guild-war/concluded-event-ids");
+}
+
 export function fetchGuildWarHistory(params: {
   page?: number;
   limit?: number;
@@ -88,7 +77,7 @@ export function fetchGuildWarHistory(params: {
 }): Promise<PaginatedResponse<WarHistory>> {
   const query = new URLSearchParams();
   query.set("page", String(params.page ?? 1));
-  query.set("limit", String(params.limit ?? 20));
+  query.set("limit", String(params.limit ?? LIMITS.pagination.guildWar));
   if (params.date_from) query.set("date_from", params.date_from);
   if (params.date_to) query.set("date_to", params.date_to);
 
@@ -117,13 +106,6 @@ export function fetchGuildWarAnalytics(params: {
   return apiRequest<GuildWarAnalyticsResponse>(
     `/api/guild-war/analytics${query.size > 0 ? `?${query.toString()}` : ""}`,
   );
-}
-
-export function fetchGuildWarTemplates(eventId?: string): Promise<WarTemplate[]> {
-  const query = new URLSearchParams();
-  if (eventId) query.set("event_id", eventId);
-
-  return apiRequest<WarTemplate[]>(`/api/guild-war/templates${query.size > 0 ? `?${query.toString()}` : ""}`);
 }
 
 function parseFilenameFromContentDisposition(headerValue: string | null, fallback: string): string {

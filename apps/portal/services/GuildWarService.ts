@@ -1,15 +1,15 @@
 import type { QueryClient } from "@tanstack/react-query";
 import {
-  applyGuildWarTemplate,
   batchUpdateGuildWarMemberStats,
-  createGuildWarTemplate,
+  batchDeleteGuildWarHistory,
+  concludeGuildWar,
   deleteGuildWarHistory,
-  deleteGuildWarTemplate,
   moveGuildWarMember,
-  postGuildWarResults,
   saveGuildWarTeams as saveGuildWarTeamsMutation,
+  updateGuildWarHistory,
   type SaveTeamsPayload,
   updateGuildWarRoleTag,
+  updateGuildWarRoleTags,
 } from "../api/mutations/guild-war";
 import { queryKeys } from "../api/query-keys";
 import type { GuildWarActiveResponse } from "@guild/shared";
@@ -17,46 +17,50 @@ import {
   downloadGuildWarExport,
   fetchGuildWarActive,
   fetchGuildWarAnalytics,
+  fetchGuildWarConcludedEventIds,
   fetchGuildWarHistory,
   fetchGuildWarHistoryBatch,
   fetchGuildWarHistoryDetail,
-  fetchGuildWarTemplates,
 } from "../api/queries/guild-war";
 
 export {
-  applyGuildWarTemplate,
+  batchDeleteGuildWarHistory,
   batchUpdateGuildWarMemberStats,
-  createGuildWarTemplate,
+  concludeGuildWar,
   deleteGuildWarHistory,
-  deleteGuildWarTemplate,
   downloadGuildWarExport,
   fetchGuildWarActive,
   fetchGuildWarAnalytics,
+  fetchGuildWarConcludedEventIds,
   fetchGuildWarHistory,
   fetchGuildWarHistoryBatch,
   fetchGuildWarHistoryDetail,
-  fetchGuildWarTemplates,
   moveGuildWarMember,
-  postGuildWarResults,
+  updateGuildWarHistory,
   updateGuildWarRoleTag,
+  updateGuildWarRoleTags,
 };
 
+export const guildWarQueryKeys = queryKeys.guildWar;
+export const usersQueryKeys = queryKeys.users;
+
 export const ANALYTICS_SELECTION_SOFT_CAP = 10;
-export const ANALYTICS_SELECTION_HARD_CAP = 20;
+const ANALYTICS_SELECTION_HARD_CAP = 20;
 
 type GuildWarTeam = GuildWarActiveResponse["teams"][number];
 type GuildWarPoolMember = GuildWarActiveResponse["pool"][number];
 
-export type PersistTeamSnapshotInput = {
+type PersistTeamSnapshotInput = {
   eventId: string;
   teams: GuildWarTeam[];
   pool: GuildWarPoolMember[];
   teamDraftNames: Record<string, string>;
   teamDraftNotes: Record<string, string>;
   teamDraftLocks: Record<string, boolean>;
+  etag?: string;
 };
 
-export type AnalyticsSelectionResult =
+type AnalyticsSelectionResult =
   | { selection: string[]; warning: null }
   | { selection: string[]; warning: { type: "large"; count: number } }
   | { selection: string[]; warning: { type: "capped"; cap: number } };
@@ -96,9 +100,12 @@ export class GuildWarService {
   }
 
   async persistTeamSnapshot(input: PersistTeamSnapshotInput) {
-    const response = await this.saveGuildWarTeamsFn(this.buildSaveTeamsPayload(input));
+    const response = await this.saveGuildWarTeamsFn(this.buildSaveTeamsPayload(input), input.etag);
     await this.queryClient?.invalidateQueries({
       queryKey: queryKeys.guildWar.active(input.eventId),
+    });
+    await this.queryClient?.invalidateQueries({
+      queryKey: queryKeys.guildWar.historyAll(),
     });
     return response;
   }

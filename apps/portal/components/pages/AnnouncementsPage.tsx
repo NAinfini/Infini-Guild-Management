@@ -1,5 +1,5 @@
-import { IconPlus, IconSpeakerphone } from "@tabler/icons-react";
-import { Button, Grid, Group, Loader } from "@mantine/core";
+import { SpeakerphoneIcon } from "@portal/components/icons";
+import { Loader } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { usePageHeaderActions } from "../../context/PageHeaderContext";
 import { useAnnouncementsController } from "../../hooks/useAnnouncementsController";
@@ -21,27 +21,11 @@ export function AnnouncementsPage() {
   const emptyText = (
     <EmptyState
       title={controller.search.trim() || controller.statusFilter || controller.pinnedFilter ? t("empty.filtered") : t("empty")}
-      actions={
-        <Group gap={8} wrap="wrap">
-          <Button
-            variant="default"
-            onClick={controller.resetFilters}
-            disabled={!controller.search.trim() && !controller.statusFilter && !controller.pinnedFilter}
-          >
-            {t("action.resetFilters")}
-          </Button>
-          {controller.canEdit ? (
-            <Button onClick={controller.handleCreateByStatus} leftSection={<IconPlus size={16} />}>
-              {t("action.createAnnouncement")}
-            </Button>
-          ) : null}
-        </Group>
-      }
     />
   );
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconSpeakerphone size={22} />} className="announcements-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<SpeakerphoneIcon size={22} />} className="announcements-page">
       <AnnouncementFiltersCard
         pinnedFilter={controller.pinnedFilter}
         statusFilter={controller.statusFilter}
@@ -52,31 +36,34 @@ export function AnnouncementsPage() {
         onSearchChange={controller.setSearch}
       />
 
-      <Grid gutter={12}>
-        <Grid.Col span={{ base: 12, lg: 3 }}>
+      <div className="announcements-page-grid">
+        <div>
           <AnnouncementListCard
             title={t("list.title")}
             rows={controller.rows}
             selectedId={controller.selectedId}
             canEdit={controller.canEdit}
             announcementsLastSeenAt={controller.announcementsLastSeenAt}
-            isLoading={false}
-            isError={false}
+            isLoading={controller.listQuery.isLoading}
+            isError={controller.listQuery.isError}
             warningMessage={t("common:loadError")}
             emptyText={emptyText}
             onSelect={controller.setSelectedId}
             onCreate={controller.handleCreateByStatus}
+            hasMore={controller.listHasMore}
+            isLoadingMore={controller.listLoadingMore}
+            onLoadMore={controller.onLoadMoreList}
           />
-        </Grid.Col>
+        </div>
 
-        <Grid.Col span={{ base: 12, lg: "auto" }}>
+        <div>
           <AnnouncementDetailCard
             title={controller.isCreating ? t("detail.titleCreate") : t("detail.title")}
             canEdit={controller.canEdit}
             selectedId={controller.isCreating ? "new" : controller.selectedId}
             selected={controller.isCreating ? null : controller.selected}
-            isLoading={false}
-            isError={false}
+            isLoading={controller.detailQuery.isLoading}
+            isError={controller.detailQuery.isError}
             warningMessage={t("common:loadError")}
             savePending={controller.savePending}
             titleValue={controller.title}
@@ -87,14 +74,8 @@ export function AnnouncementsPage() {
             onPinnedChange={controller.setPinned}
             scheduleEnabled={controller.scheduleEnabled}
             onScheduleEnabledChange={controller.setScheduleEnabled}
-            notifyDiscord={controller.notifyDiscord}
-            onNotifyDiscordChange={controller.setNotifyDiscord}
-            notifyWechat={controller.notifyWechat}
-            onNotifyWechatChange={controller.setNotifyWechat}
             publishAt={controller.publishAt}
             onPublishAtChange={controller.setPublishAt}
-            expiresAt={controller.expiresAt}
-            onExpiresAtChange={controller.setExpiresAt}
             onFinish={controller.handleFinish}
             onDelete={controller.handleDelete}
             onCloseEditor={controller.handleCloseEditor}
@@ -107,8 +88,8 @@ export function AnnouncementsPage() {
             isDirty={controller.isDirty}
             emptyTitle={t("common:message.noData")}
           />
-        </Grid.Col>
-      </Grid>
+        </div>
+      </div>
 
       {controller.isBusy ? <Loader size="sm" /> : null}
     </PageLayout>

@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CmdKSearch } from "./CmdKSearch";
 
 const navigateMock = vi.hoisted(() => vi.fn());
-const apiRequestMock = vi.hoisted(() => vi.fn());
+const searchMock = vi.hoisted(() => vi.fn());
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -40,8 +40,8 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => navigateMock,
 }));
 
-vi.mock("../../api/client", () => ({
-  apiRequest: apiRequestMock,
+vi.mock("../../services/SearchService", () => ({
+  searchGlobal: searchMock,
 }));
 
 function createWrapper(queryClient: QueryClient) {
@@ -57,32 +57,15 @@ function createWrapper(queryClient: QueryClient) {
 describe("CmdKSearch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    apiRequestMock.mockImplementation((path: string) => {
-      if (path.startsWith("/api/users")) {
-        return Promise.reject(new Error("users failed"));
-      }
-      if (path.startsWith("/api/events")) {
-        return Promise.resolve({ data: [] });
-      }
-      if (path.startsWith("/api/announcements")) {
-        return Promise.resolve({ data: [] });
-      }
-      if (path.startsWith("/api/wiki/articles")) {
-        return Promise.resolve({ data: [{ id: "wiki-1", title: "war history", slug: "war-history", body_json: "archive" }] });
-      }
-      if (path.startsWith("/api/guild-war/history")) {
-        return Promise.resolve({
-          data: [{ id: "war-1", war_name: "Guild War", result: "win", created_at: "2026-03-01T10:00:00.000Z" }],
-        });
-      }
-      if (path.startsWith("/api/gallery")) {
-        return Promise.resolve({ data: [] });
-      }
-      return Promise.resolve({ data: [] });
+    searchMock.mockResolvedValue({
+      data: [
+        { id: "war-1", title: "Guild War", subtitle: "win - 2026-03-01", type: "war", to: "/guild-war" },
+        { id: "wiki-1", title: "war history", subtitle: "war-history", type: "wiki", to: "/wiki" },
+      ],
     });
   });
 
-  it("still shows war matches when one search source fails", async () => {
+  it("shows war matches from search service data", async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -102,6 +85,7 @@ describe("CmdKSearch", () => {
       expect(screen.getAllByText("Guild War").length).toBeGreaterThan(0);
     });
 
+    expect(searchMock).toHaveBeenCalledWith("war", 24);
     expect(
       screen.getByText((_, element) => element?.textContent === "war history"),
     ).toBeInTheDocument();

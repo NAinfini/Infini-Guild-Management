@@ -1,5 +1,5 @@
-﻿import { LeftOutlined, RightOutlined } from "@portal/utils/icons";
-import { Alert, Button, Group, Modal, Text } from "@mantine/core";
+import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "@portal/components/icons";
+import { Group, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { GalleryItem } from "./shared";
 
@@ -13,11 +13,10 @@ type GalleryLightboxModalProps = {
   onPrev: () => void;
   onNext: () => void;
   setZoom: (next: number | ((value: number) => number)) => void;
-  isHttpUrl: (value: string) => boolean;
+  resolveImageUrl: (key: string) => string;
   toEmbedVideoUrl: (value: string) => string;
   formatDateTime: (iso: string) => string;
   isExternalView: boolean;
-  fieldR2ObjectLabel: string;
 };
 
 export function GalleryLightboxModal({
@@ -30,85 +29,90 @@ export function GalleryLightboxModal({
   onPrev,
   onNext,
   setZoom,
-  isHttpUrl,
+  resolveImageUrl,
   toEmbedVideoUrl,
   formatDateTime,
   isExternalView,
-  fieldR2ObjectLabel,
 }: GalleryLightboxModalProps) {
   const { t } = useTranslation("gallery");
+
+  if (!open || !item) return null;
+
   return (
-    <Modal opened={open} onClose={onClose} size="980px" withCloseButton>
-      {item ? (
-        <div className="gallery-lightbox">
-          <div className="gallery-lightbox__toolbar">
-            <Group gap={8}>
-              <Button onClick={onPrev} aria-label={t("aria.prevItem")}>
-                <LeftOutlined />
-              </Button>
-              <Button onClick={onNext} aria-label={t("aria.nextItem")}>
-                <RightOutlined />
-              </Button>
-              <Button onClick={() => setZoom((value) => Math.max(1, Number((value - 0.2).toFixed(2))))} aria-label={t("aria.zoomOut")}>-</Button>
-              <Button onClick={() => setZoom(1)} aria-label={t("aria.zoomReset")}>100%</Button>
-              <Button onClick={() => setZoom((value) => Math.min(2.6, Number((value + 0.2).toFixed(2))))} aria-label={t("aria.zoomIn")}>+</Button>
-            </Group>
-            <Text c="dimmed">
-              {Math.max(1, index + 1)} / {total}
-            </Text>
-          </div>
+    <div className="gallery-lb-overlay" onClick={onClose}>
+      <div className="gallery-lb" onClick={(e) => e.stopPropagation()}>
+        {/* Close button */}
+        <button type="button" className="gallery-lb__close" onClick={onClose} aria-label={t("common:close")}>
+          <XIcon size={20} />
+        </button>
+
+        {/* Prev / Next nav */}
+        <button type="button" className="gallery-lb__nav gallery-lb__nav--prev" onClick={onPrev} aria-label={t("aria.prevItem")}>
+          <ChevronLeftIcon size={28} />
+        </button>
+        <button type="button" className="gallery-lb__nav gallery-lb__nav--next" onClick={onNext} aria-label={t("aria.nextItem")}>
+          <ChevronRightIcon size={28} />
+        </button>
+
+        {/* Media */}
+        <div className="gallery-lb__media">
           {item.type === "image" ? (
-            isHttpUrl(item.url) ? (
-              <div
-                style={{ overflow: "auto", maxHeight: "78vh", cursor: zoom > 1 ? "zoom-out" : "zoom-in" }}
-                onWheel={(event) => {
-                  event.preventDefault();
-                  const direction = event.deltaY < 0 ? 0.12 : -0.12;
-                  setZoom((value) => Math.min(2.6, Math.max(1, Number((value + direction).toFixed(2)))));
+            <div
+              className="gallery-lb__img-wrap"
+              onWheel={(event) => {
+                event.preventDefault();
+                const direction = event.deltaY < 0 ? 0.12 : -0.12;
+                setZoom((value) => Math.min(2.6, Math.max(1, Number((value + direction).toFixed(2)))));
+              }}
+              onDoubleClick={() => setZoom((value) => (value > 1 ? 1 : 2.2))}
+              style={{ cursor: zoom > 1 ? "zoom-out" : "zoom-in" }}
+            >
+              <img
+                src={resolveImageUrl(item.url)}
+                alt={item.caption ?? item.id}
+                loading="lazy"
+                decoding="async"
+                className="gallery-lb__img"
+                style={{
+                  transform: `scale(${zoom})`,
                 }}
-                onDoubleClick={() => setZoom((value) => (value > 1 ? 1 : 2.2))}
-              >
-                <img
-                  src={item.url}
-                  alt={item.caption ?? item.id}
-                  loading="lazy"
-                  decoding="async"
-                  style={{
-                    width: "100%",
-                    maxHeight: "78vh",
-                    objectFit: "contain",
-                    transform: `scale(${zoom})`,
-                    transformOrigin: "center center",
-                    transition: "transform 120ms ease",
-                  }}
-                />
-              </div>
-            ) : (
-              <Alert color="infini-primary" title={fieldR2ObjectLabel}>
-                {item.url}
-              </Alert>
-            )
+              />
+            </div>
           ) : (
             <iframe
               src={toEmbedVideoUrl(item.url)}
               title={item.caption ?? item.id}
-              style={{ width: "100%", height: "70vh", border: "none", borderRadius: 8 }}
+              className="gallery-lb__video"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
             />
           )}
-          <Group justify="space-between" gap={8} wrap="wrap" mt={8}>
+        </div>
+
+        {/* Bottom info bar */}
+        <div className="gallery-lb__info">
+          <Group gap={12} wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+            {item.caption ? (
+              <Text size="sm" fw={600} truncate style={{ color: "rgba(255,255,255,0.95)" }}>
+                {item.caption}
+              </Text>
+            ) : null}
+          </Group>
+          <Group gap={16} wrap="nowrap">
             {!isExternalView ? (
-              <Text size="sm" fw={500}>
+              <Text size="xs" style={{ color: "rgba(255,255,255,0.6)" }}>
                 {item.uploaded_by_name ?? item.uploaded_by}
               </Text>
             ) : null}
-            <Text size="sm" c="dimmed">
+            <Text size="xs" style={{ color: "rgba(255,255,255,0.4)" }}>
               {formatDateTime(item.created_at)}
+            </Text>
+            <Text size="xs" fw={500} style={{ color: "rgba(255,255,255,0.5)" }}>
+              {Math.max(1, index + 1)} / {total}
             </Text>
           </Group>
         </div>
-      ) : null}
-    </Modal>
+      </div>
+    </div>
   );
 }

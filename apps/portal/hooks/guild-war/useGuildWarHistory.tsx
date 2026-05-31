@@ -1,18 +1,15 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
-import { NumberTicker } from "@infini-dev-kit/react";
+import { Badge } from "@mantine/core";
 import type { ColumnDef } from "@tanstack/react-table";
+import { resolveResultTagColor } from "@portal/utils/guild-war";
 import type { HistorySummaryRow } from "../../components/feature/guild-war/WarHistoryTab";
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "-";
   return format(date, "yyyy-MM-dd HH:mm");
-}
-
-function renderCounter(value: number | null | undefined) {
-  return <NumberTicker value={value ?? 0} />;
 }
 
 type UseGuildWarHistoryParams = {
@@ -22,35 +19,20 @@ type UseGuildWarHistoryParams = {
       team_name: string;
       members: Array<{
         user_id: string;
-        damage?: number | null;
-        healing?: number | null;
-        building_damage?: number | null;
+        username?: string;
+        role_tag?: string | null;
       }>;
     }>;
     member_stats: Array<{
       user_id: string;
-      damage: number | null;
-      healing: number | null;
-      building_damage: number | null;
+      username?: string;
+      stats: Record<string, number | null> | null;
     }>;
   } | null;
-  templatesData: Array<{
-    id: string;
-    template_name: string;
-    description?: string | null;
-    team_count: number;
-    member_count: number;
-  }>;
-  canManageActive: boolean;
-  selectedEventId: string | undefined;
-  createTemplatePending: boolean;
-  applyTemplatePending: boolean;
-  deleteTemplatePending: boolean;
 };
 
 export function useGuildWarHistory({
   historyDetailData,
-  templatesData,
 }: UseGuildWarHistoryParams) {
   const { t } = useTranslation("guild-war");
 
@@ -75,14 +57,15 @@ export function useGuildWarHistory({
       accessorKey: "result",
       cell: ({ getValue }) => {
         const v = getValue();
-        return typeof v === "string" ? v : "-";
+        const label = typeof v === "string" && v ? v : "-";
+        return <Badge color={resolveResultTagColor(v as string | null)} variant="light">{label}</Badge>;
       },
     },
     {
       header: t("history.table.kills"),
       id: "kills",
       enableSorting: false,
-      cell: ({ row }) => `${row.original.own_kills ?? 0} / ${row.original.enemy_kills ?? 0}`,
+      cell: ({ row }) => `${row.original.own_stats?.kills ?? 0} / ${row.original.enemy_stats?.kills ?? 0}`,
     },
     {
       header: t("history.table.date"),
@@ -101,14 +84,16 @@ export function useGuildWarHistory({
       return null;
     }
 
-    const topDamage = [...stats].sort((a, b) => (b.damage ?? 0) - (a.damage ?? 0))[0] ?? null;
-    const topHealing = [...stats].sort((a, b) => (b.healing ?? 0) - (a.healing ?? 0))[0] ?? null;
-    const topBuilding = [...stats].sort((a, b) => (b.building_damage ?? 0) - (a.building_damage ?? 0))[0] ?? null;
+    const topDamage = [...stats].sort((a, b) => (b.stats?.damage ?? 0) - (a.stats?.damage ?? 0))[0] ?? null;
+    const topHealing = [...stats].sort((a, b) => (b.stats?.healing ?? 0) - (a.stats?.healing ?? 0))[0] ?? null;
+    const topBuilding = [...stats].sort((a, b) => (b.stats?.building_damage ?? 0) - (a.stats?.building_damage ?? 0))[0] ?? null;
+    const topDamageTaken = [...stats].sort((a, b) => (b.stats?.damage_taken ?? 0) - (a.stats?.damage_taken ?? 0))[0] ?? null;
 
     return {
-      damage: topDamage ? `${topDamage.user_id} (${topDamage.damage ?? 0})` : "-",
-      healing: topHealing ? `${topHealing.user_id} (${topHealing.healing ?? 0})` : "-",
-      building: topBuilding ? `${topBuilding.user_id} (${topBuilding.building_damage ?? 0})` : "-",
+      damage: topDamage ? `${topDamage.username ?? topDamage.user_id} (${topDamage.stats?.damage ?? 0})` : "-",
+      healing: topHealing ? `${topHealing.username ?? topHealing.user_id} (${topHealing.stats?.healing ?? 0})` : "-",
+      building: topBuilding ? `${topBuilding.username ?? topBuilding.user_id} (${topBuilding.stats?.building_damage ?? 0})` : "-",
+      damageTaken: topDamageTaken ? `${topDamageTaken.username ?? topDamageTaken.user_id} (${topDamageTaken.stats?.damage_taken ?? 0})` : "-",
     };
   }, [historyDetailData]);
 
@@ -135,21 +120,10 @@ export function useGuildWarHistory({
     return map;
   }, [historyDetailData?.teams, historyTeamSizeBaseline]);
 
-  const templateOptions = useMemo(
-    () =>
-      templatesData.map((template) => ({
-        value: template.id,
-        label: `${template.template_name} (${template.team_count}/${template.member_count})`,
-      })),
-    [templatesData],
-  );
-
   return {
     historyColumns,
     historyMvp,
     historyMissingSlotsByUserId,
-    templateOptions,
     formatDateTime,
-    renderCounter,
   };
 }

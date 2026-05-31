@@ -61,5 +61,9 @@
   "aria.selectItem": "Select gallery item {{id}}",
   "aria.openImage": "Open image {{name}}",
   "aria.openVideo": "Open video {{name}}",
-  "media.video": "VIDEO"
+  "media.video": "VIDEO",
+  "type.image": "Image",
+  "type.video": "Video",
+  "hovercard.clearDates.title": "Clear Date Filters",
+  "hovercard.clearDates.desc": "Remove the start and end date filters from the gallery search"
 }

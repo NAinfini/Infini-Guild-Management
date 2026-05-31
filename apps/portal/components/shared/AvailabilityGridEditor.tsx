@@ -201,6 +201,7 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
     const [vacationStartValue, setVacationStartValue] = useState(vacationStart);
     const [vacationEndValue, setVacationEndValue] = useState(vacationEnd);
     const [isDragging, setIsDragging] = useState(false);
+    const isDraggingRef = useRef(false);
     const paintModeRef = useRef<boolean>(true);
     const lastCellRef = useRef<string | null>(null);
 
@@ -251,36 +252,39 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
 
     const handlePointerDown = useCallback(
       (dayKey: DayKey, slot: number) => {
-        const paint = !grid[dayKey][slot];
+        const paint = !gridRef.current[dayKey][slot];
         paintModeRef.current = paint;
         lastCellRef.current = `${dayKey}-${slot}`;
+        isDraggingRef.current = true;
         setIsDragging(true);
         toggleCell(dayKey, slot, paint);
       },
-      [grid, toggleCell],
+      [toggleCell],
     );
 
     const handlePointerEnter = useCallback(
       (dayKey: DayKey, slot: number) => {
-        if (!isDragging) return;
+        if (!isDraggingRef.current) return;
         const cellKey = `${dayKey}-${slot}`;
         if (lastCellRef.current === cellKey) return;
         lastCellRef.current = cellKey;
         toggleCell(dayKey, slot, paintModeRef.current);
       },
-      [isDragging, toggleCell],
+      [toggleCell],
     );
 
     const handlePointerUp = useCallback(() => {
-      if (!isDragging) return;
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
       setIsDragging(false);
       lastCellRef.current = null;
       emit(gridRef.current);
-    }, [isDragging, emit]);
+    }, [emit]);
 
     useEffect(() => {
       if (!isDragging) return;
       const up = () => {
+        isDraggingRef.current = false;
         setIsDragging(false);
         lastCellRef.current = null;
         emit(gridRef.current);
@@ -302,9 +306,9 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
         <Group gap={8} justify="space-between" wrap="wrap">
           <Group gap={8}>
             <Text c="dimmed" size="sm">{labels.timezoneNote}</Text>
-            <Badge variant="light">{timezone}</Badge>
+            <Badge variant="default">{timezone}</Badge>
           </Group>
-          <Button size="compact-xs" variant="light" color="infini-danger" onClick={clearAll}>
+          <Button size="compact-xs" variant="default" color="red" onClick={clearAll}>
             {labels.clearAll}
           </Button>
         </Group>
@@ -400,7 +404,7 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
                           width: `${100 / 7}%`,
                           height: 14,
                           background: grid[day.key][hourSlot]
-                            ? "var(--mantine-primary-color-filled, var(--infini-color-primary, #3b82f6))"
+                            ? "var(--mantine-primary-color-filled, var(--color-primary, #3b82f6))"
                             : "transparent",
                           borderTop: "1px solid var(--mantine-color-default-border)",
                           borderLeft: "1px solid var(--mantine-color-default-border)",
@@ -424,7 +428,7 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
                         style={{
                           height: 14,
                           background: grid[day.key][hourSlot + 1]
-                            ? "var(--mantine-primary-color-filled, var(--infini-color-primary, #3b82f6))"
+                            ? "var(--mantine-primary-color-filled, var(--color-primary, #3b82f6))"
                             : "transparent",
                           borderLeft: "1px solid var(--mantine-color-default-border)",
                           borderRight: "1px solid var(--mantine-color-default-border)",

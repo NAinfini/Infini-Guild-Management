@@ -1,25 +1,28 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   fetchEventDetail,
   fetchEventsList,
 } from "../../services/EventService";
 import {
   fetchGuildWarActive,
+  fetchGuildWarConcludedEventIds,
   fetchGuildWarHistory,
   fetchGuildWarHistoryDetail,
-  fetchGuildWarTemplates,
 } from "../../services/GuildWarService";
-import { queryKeys } from "../../services/PortalQueryKeys";
+import { queryKeys } from "../../api/query-keys";
 
 type UseGuildWarDataOptions = {
   selectedEventId?: string;
   selectedHistoryId: string | null;
   historyDateFrom: string;
   historyDateTo: string;
+  historyPage: number;
+  historyPerPage: number;
+  hasSession?: boolean;
 };
 
 export function useGuildWarData(options: UseGuildWarDataOptions) {
-  const { selectedEventId, selectedHistoryId, historyDateFrom, historyDateTo } = options;
+  const { selectedEventId, selectedHistoryId, historyDateFrom, historyDateTo, historyPage, historyPerPage, hasSession = true } = options;
 
   const warEventsQuery = useQuery({
     queryKey: queryKeys.guildWar.events(),
@@ -28,50 +31,55 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
         page: 1,
         limit: 100,
         type: "guild_war",
-        archived: false,
       }),
+    staleTime: 10 * 60_000,
+  });
+
+  const concludedEventIdsQuery = useQuery({
+    queryKey: queryKeys.guildWar.concludedEventIds(),
+    queryFn: () => fetchGuildWarConcludedEventIds(),
+    staleTime: 10 * 60_000,
   });
 
   const selectedEventDetailQuery = useQuery({
     queryKey: queryKeys.guildWar.eventDetail(selectedEventId ?? null),
     enabled: Boolean(selectedEventId),
     queryFn: () => fetchEventDetail(selectedEventId as string),
+    staleTime: 10 * 60_000,
   });
 
   const activeQuery = useQuery({
-    queryKey: queryKeys.guildWar.active(selectedEventId ?? "none"),
+    queryKey: queryKeys.guildWar.active(selectedEventId ?? null),
     queryFn: () => fetchGuildWarActive(selectedEventId),
-    enabled: Boolean(selectedEventId),
-  });
-
-  const templatesQuery = useQuery({
-    queryKey: queryKeys.guildWar.templates(selectedEventId ?? "none"),
-    queryFn: () => fetchGuildWarTemplates(selectedEventId),
-    enabled: Boolean(selectedEventId),
+    enabled: hasSession && Boolean(selectedEventId),
+    staleTime: 10 * 60_000,
   });
 
   const historyQuery = useQuery({
-    queryKey: queryKeys.guildWar.history(historyDateFrom || "none", historyDateTo || "none"),
+    queryKey: queryKeys.guildWar.history(historyDateFrom || "none", historyDateTo || "none", historyPage, historyPerPage),
     queryFn: () =>
       fetchGuildWarHistory({
-        page: 1,
-        limit: 50,
+        page: historyPage,
+        limit: historyPerPage,
         date_from: historyDateFrom ? `${historyDateFrom}T00:00:00.000Z` : undefined,
         date_to: historyDateTo ? `${historyDateTo}T23:59:59.999Z` : undefined,
       }),
+    staleTime: 10 * 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const historyDetailQuery = useQuery({
     queryKey: queryKeys.guildWar.historyDetail(selectedHistoryId),
     enabled: Boolean(selectedHistoryId),
     queryFn: () => fetchGuildWarHistoryDetail(selectedHistoryId as string),
+    staleTime: 10 * 60_000,
   });
 
   return {
     warEventsQuery,
+    concludedEventIdsQuery,
     selectedEventDetailQuery,
     activeQuery,
-    templatesQuery,
     historyQuery,
     historyDetailQuery,
   };

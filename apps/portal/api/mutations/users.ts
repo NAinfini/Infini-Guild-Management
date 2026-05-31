@@ -1,17 +1,17 @@
 import {
   changePasswordSchema,
   changeUsernameSchema,
-  discordLinkVerifySchema,
+  deleteProfileImagesSchema,
   updateProfileSchema,
   type MemberProfile,
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
+import { convertAudioToOpus, convertImageToWebP } from "../../utils/media-convert";
 
 export type UpdateMyProfilePayload = z.input<typeof updateProfileSchema>;
 export type ChangeMyPasswordPayload = z.input<typeof changePasswordSchema>;
 export type ChangeMyUsernamePayload = z.input<typeof changeUsernameSchema>;
-export type VerifyMyDiscordLinkPayload = z.input<typeof discordLinkVerifySchema>;
 
 export function updateMyProfile(userId: string, payload: UpdateMyProfilePayload): Promise<MemberProfile> {
   const bodyJson = updateProfileSchema.parse(payload);
@@ -21,9 +21,10 @@ export function updateMyProfile(userId: string, payload: UpdateMyProfilePayload)
   });
 }
 
-export function uploadProfileImages(userId: string, files: File[]): Promise<{ keys: string[] }> {
+export async function uploadProfileImages(userId: string, files: File[]): Promise<{ keys: string[] }> {
+  const converted = await Promise.all(files.map(convertImageToWebP));
   const formData = new FormData();
-  for (const file of files) {
+  for (const file of converted) {
     formData.append("files", file);
   }
 
@@ -33,9 +34,10 @@ export function uploadProfileImages(userId: string, files: File[]): Promise<{ ke
   });
 }
 
-export function uploadProfileAudio(userId: string, file: File): Promise<{ key: string }> {
+export async function uploadProfileAudio(userId: string, file: File): Promise<{ key: string }> {
+  const converted = await convertAudioToOpus(file);
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", converted);
 
   return apiRequest<{ key: string }>(`/api/users/${userId}/media/audio`, {
     method: "POST",
@@ -43,9 +45,32 @@ export function uploadProfileAudio(userId: string, file: File): Promise<{ key: s
   });
 }
 
-export function deleteProfileImage(userId: string, key: string): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>(`/api/users/${userId}/media/images/${encodeURIComponent(key)}`, {
+export async function uploadAvatar(userId: string, file: File): Promise<{ key: string }> {
+  const converted = await convertImageToWebP(file);
+  const formData = new FormData();
+  formData.append("file", converted);
+
+  return apiRequest<{ key: string }>(`/api/users/${userId}/media/avatar`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export function deleteAvatar(userId: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/users/${userId}/media/avatar`, {
     method: "DELETE",
+  });
+}
+
+export function deleteProfileImage(userId: string, key: string): Promise<{ ok: true }> {
+  return deleteProfileImages(userId, [key]).then(() => ({ ok: true as const }));
+}
+
+export function deleteProfileImages(userId: string, keys: string[]): Promise<{ ok: true; deleted: number }> {
+  const bodyJson = deleteProfileImagesSchema.parse({ keys });
+  return apiRequest<{ ok: true; deleted: number }>(`/api/users/${userId}/media/images`, {
+    method: "DELETE",
+    bodyJson,
   });
 }
 
@@ -74,22 +99,5 @@ export function changeMyUsername(
   return apiRequest<{ ok: true }>(`/api/users/${userId}/change-username`, {
     method: "POST",
     bodyJson,
-  });
-}
-
-export function verifyMyDiscordLink(
-  userId: string,
-  payload: VerifyMyDiscordLinkPayload,
-): Promise<{ ok: true; discord_id: string }> {
-  const bodyJson = discordLinkVerifySchema.parse(payload);
-  return apiRequest<{ ok: true; discord_id: string }>(`/api/users/${userId}/discord-link/verify`, {
-    method: "POST",
-    bodyJson,
-  });
-}
-
-export function unlinkMyDiscord(userId: string): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>(`/api/users/${userId}/discord-link`, {
-    method: "DELETE",
   });
 }

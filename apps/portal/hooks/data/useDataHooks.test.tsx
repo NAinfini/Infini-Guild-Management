@@ -2,7 +2,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAdminData } from "./useAdminData";
 import { useEventsData } from "./useEventsData";
 import { useGuildWarData } from "./useGuildWarData";
@@ -11,8 +11,6 @@ import { useProfileData } from "./useProfileData";
 const serviceMocks = vi.hoisted(() => ({
   fetchAdminAuditArchiveMonths: vi.fn(),
   fetchAdminAuditLog: vi.fn(),
-  fetchAdminBotSettings: vi.fn(),
-  fetchAdminDiscordChannels: vi.fn(),
   fetchAdminInviteLinks: vi.fn(),
   fetchAdminInviteStats: vi.fn(),
   fetchAdminStatus: vi.fn(),
@@ -21,11 +19,10 @@ const serviceMocks = vi.hoisted(() => ({
   fetchGuildWarActive: vi.fn(),
   fetchGuildWarHistory: vi.fn(),
   fetchGuildWarHistoryDetail: vi.fn(),
-  fetchGuildWarTemplates: vi.fn(),
   fetchRoles: vi.fn(),
   fetchTemplatesList: vi.fn(),
   fetchUserDetail: vi.fn(),
-  fetchUsersList: vi.fn(),
+  fetchAllUsersListWithOptions: vi.fn(),
 }));
 
 vi.mock("../../services/EventService", () => ({
@@ -38,32 +35,25 @@ vi.mock("../../services/GuildWarService", () => ({
   fetchGuildWarActive: serviceMocks.fetchGuildWarActive,
   fetchGuildWarHistory: serviceMocks.fetchGuildWarHistory,
   fetchGuildWarHistoryDetail: serviceMocks.fetchGuildWarHistoryDetail,
-  fetchGuildWarTemplates: serviceMocks.fetchGuildWarTemplates,
 }));
 
 vi.mock("../../services/UserService", () => ({
+  fetchAllUsersListWithOptions: serviceMocks.fetchAllUsersListWithOptions,
   fetchUserDetail: serviceMocks.fetchUserDetail,
-  fetchUsersList: serviceMocks.fetchUsersList,
 }));
 
 vi.mock("../../services/AdminService", () => ({
   fetchAdminAuditArchiveMonths: serviceMocks.fetchAdminAuditArchiveMonths,
   fetchAdminAuditLog: serviceMocks.fetchAdminAuditLog,
-  fetchAdminBotSettings: serviceMocks.fetchAdminBotSettings,
-  fetchAdminDiscordChannels: serviceMocks.fetchAdminDiscordChannels,
   fetchAdminInviteLinks: serviceMocks.fetchAdminInviteLinks,
   fetchAdminInviteStats: serviceMocks.fetchAdminInviteStats,
   fetchAdminStatus: serviceMocks.fetchAdminStatus,
-}));
-
-vi.mock("../../services/RoleService", () => ({
   fetchRoles: serviceMocks.fetchRoles,
 }));
 
-vi.mock("../../utils/permissions", () => ({
-  canExportAudit: () => true,
-  canManageBot: () => true,
-  canViewStatus: () => true,
+vi.mock("../../stores/auth", () => ({
+  useAuthStore: (selector: (s: { user: { id: string } }) => unknown) =>
+    selector({ user: { id: "user-1" } }),
 }));
 
 function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
@@ -81,12 +71,25 @@ function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
 }
 
 describe("portal data hooks", () => {
+  beforeEach(() => {
+    for (const fn of Object.values(serviceMocks)) {
+      fn.mockReset();
+    }
+  });
+
   it("loads events and users through the service layer", async () => {
     serviceMocks.fetchEventsList.mockResolvedValueOnce({ data: [] });
-    serviceMocks.fetchUsersList.mockResolvedValueOnce({ data: [] });
+    serviceMocks.fetchAllUsersListWithOptions.mockResolvedValueOnce({ data: [] });
 
     const { result } = renderHook(
-      () => useEventsData({ eventType: "social", archivedOnly: false }),
+      () =>
+        useEventsData({
+          eventType: "social",
+          status: "active",
+          searchQuery: "guild raid",
+          pinnedOnly: true,
+          lockedOnly: true,
+        }),
       { wrapper: createWrapper() },
     );
 
@@ -97,18 +100,20 @@ describe("portal data hooks", () => {
 
     expect(serviceMocks.fetchEventsList).toHaveBeenCalledWith({
       page: 1,
-      limit: 100,
+      limit: 50,
       type: "social",
       archived: false,
+      search: "guild raid",
+      pinned: true,
+      locked: true,
     });
-    expect(serviceMocks.fetchUsersList).toHaveBeenCalled();
+    expect(serviceMocks.fetchAllUsersListWithOptions).toHaveBeenCalled();
   });
 
   it("loads guild war queries through the service layer", async () => {
     serviceMocks.fetchEventsList.mockResolvedValueOnce({ data: [] });
     serviceMocks.fetchEventDetail.mockResolvedValueOnce({ id: "event-1", title: "Guild War", participants: [], attachments: [] });
     serviceMocks.fetchGuildWarActive.mockResolvedValueOnce({ teams: [], pool: [], etag: "etag-1" });
-    serviceMocks.fetchGuildWarTemplates.mockResolvedValueOnce([]);
     serviceMocks.fetchGuildWarHistory.mockResolvedValueOnce({ data: [] });
     serviceMocks.fetchGuildWarHistoryDetail.mockResolvedValueOnce({ id: "history-1", teams: [], pool: [], member_stats: [] });
 
@@ -119,6 +124,8 @@ describe("portal data hooks", () => {
           selectedHistoryId: "history-1",
           historyDateFrom: "2026-03-01",
           historyDateTo: "2026-03-08",
+          historyPage: 1,
+          historyPerPage: 20,
         }),
       { wrapper: createWrapper() },
     );
@@ -127,7 +134,6 @@ describe("portal data hooks", () => {
       expect(result.current.warEventsQuery.isSuccess).toBe(true);
       expect(result.current.selectedEventDetailQuery.isSuccess).toBe(true);
       expect(result.current.activeQuery.isSuccess).toBe(true);
-      expect(result.current.templatesQuery.isSuccess).toBe(true);
       expect(result.current.historyQuery.isSuccess).toBe(true);
       expect(result.current.historyDetailQuery.isSuccess).toBe(true);
     });
@@ -136,14 +142,12 @@ describe("portal data hooks", () => {
       page: 1,
       limit: 100,
       type: "guild_war",
-      archived: false,
     });
     expect(serviceMocks.fetchEventDetail).toHaveBeenCalledWith("event-1");
     expect(serviceMocks.fetchGuildWarActive).toHaveBeenCalledWith("event-1");
-    expect(serviceMocks.fetchGuildWarTemplates).toHaveBeenCalledWith("event-1");
     expect(serviceMocks.fetchGuildWarHistory).toHaveBeenCalledWith({
       page: 1,
-      limit: 50,
+      limit: 20,
       date_from: "2026-03-01T00:00:00.000Z",
       date_to: "2026-03-08T23:59:59.999Z",
     });
@@ -166,26 +170,40 @@ describe("portal data hooks", () => {
   });
 
   it("loads admin data through service exports when permissions allow it", async () => {
-    serviceMocks.fetchRoles.mockResolvedValueOnce([]);
-    serviceMocks.fetchUsersList.mockResolvedValueOnce({ data: [] });
+    serviceMocks.fetchRoles.mockResolvedValueOnce([
+      {
+        id: "admin",
+        permissions: {
+          "admin.audit.export": true,
+          "admin.audit.view": true,
+          "admin.badges.manage": true,
+          "admin.gameData.manage": true,
+          "admin.invite.view": true,
+          "admin.roles.manage": true,
+          "admin.roles.view": true,
+          "admin.status.view": true,
+          "admin.users.view": true,
+        },
+      },
+    ]);
+    serviceMocks.fetchAllUsersListWithOptions.mockResolvedValueOnce({ data: [] });
     serviceMocks.fetchAdminInviteLinks.mockResolvedValueOnce([]);
     serviceMocks.fetchAdminInviteStats.mockResolvedValueOnce({});
     serviceMocks.fetchAdminAuditLog.mockResolvedValueOnce({ data: [] });
     serviceMocks.fetchAdminAuditArchiveMonths.mockResolvedValueOnce([]);
-    serviceMocks.fetchAdminBotSettings.mockResolvedValueOnce({});
-    serviceMocks.fetchAdminDiscordChannels.mockResolvedValueOnce({ channels: [] });
     serviceMocks.fetchAdminStatus.mockResolvedValueOnce({});
 
     const { result } = renderHook(
       () =>
         useAdminData({
           isModerator: true,
-          isAdmin: "admin",
+          userRole: "admin",
           auditPage: 2,
           auditSearch: "raid",
           auditDateFrom: "2026-03-01",
           auditDateTo: "2026-03-08",
-          discordGuildId: "guild-1",
+          auditEntityType: "",
+          auditActorId: "",
         }),
       { wrapper: createWrapper() },
     );
@@ -197,13 +215,11 @@ describe("portal data hooks", () => {
       expect(result.current.inviteStatsQuery.isSuccess).toBe(true);
       expect(result.current.auditLogQuery.isSuccess).toBe(true);
       expect(result.current.auditMonthsQuery.isSuccess).toBe(true);
-      expect(result.current.botSettingsQuery.isSuccess).toBe(true);
-      expect(result.current.discordChannelsQuery.isSuccess).toBe(true);
       expect(result.current.statusQuery.isSuccess).toBe(true);
     });
 
     expect(serviceMocks.fetchRoles).toHaveBeenCalled();
-    expect(serviceMocks.fetchUsersList).toHaveBeenCalled();
+    expect(serviceMocks.fetchAllUsersListWithOptions).toHaveBeenCalled();
     expect(serviceMocks.fetchAdminInviteLinks).toHaveBeenCalledWith({
       include_expired: true,
       include_revoked: true,
@@ -215,7 +231,117 @@ describe("portal data hooks", () => {
       start_at: "2026-03-01T00:00:00.000Z",
       end_at: "2026-03-08T23:59:59.999Z",
     });
-    expect(serviceMocks.fetchAdminDiscordChannels).toHaveBeenCalledWith("guild-1");
     expect(serviceMocks.fetchAdminStatus).toHaveBeenCalled();
+    expect(result.current.permissions).toEqual({
+      canAccessAdmin: true,
+      canViewUsers: true,
+      canViewInvites: true,
+      canViewAudit: true,
+      canExportAudit: true,
+      canViewRoles: true,
+      canManageRoles: true,
+      canViewStatus: true,
+      canManageBadges: true,
+      canManageGameData: true,
+    });
+  });
+
+  it("does not fetch unrelated admin sections without exact permissions", async () => {
+    serviceMocks.fetchRoles.mockResolvedValueOnce([
+      {
+        id: "status-only",
+        permissions: {
+          "admin.status.view": true,
+        },
+      },
+    ]);
+    serviceMocks.fetchAdminStatus.mockResolvedValueOnce({});
+
+    const { result } = renderHook(
+      () =>
+        useAdminData({
+          isModerator: true,
+          userRole: "status-only",
+          auditPage: 1,
+          auditSearch: "",
+          auditDateFrom: "",
+          auditDateTo: "",
+          auditEntityType: "",
+          auditActorId: "",
+        }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.rolesQuery.isSuccess).toBe(true);
+      expect(result.current.statusQuery.isSuccess).toBe(true);
+    });
+
+    expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminInviteLinks).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminInviteStats).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminAuditLog).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminAuditArchiveMonths).not.toHaveBeenCalled();
+    expect(result.current.permissions).toEqual({
+      canAccessAdmin: true,
+      canViewUsers: false,
+      canViewInvites: false,
+      canViewAudit: false,
+      canExportAudit: false,
+      canViewRoles: false,
+      canManageRoles: false,
+      canViewStatus: true,
+      canManageBadges: false,
+      canManageGameData: false,
+    });
+  });
+
+  it("treats roles-view-only permission as admin access without enabling unrelated queries", async () => {
+    serviceMocks.fetchRoles.mockResolvedValueOnce([
+      {
+        id: "roles-view-only",
+        permissions: {
+          "admin.roles.view": true,
+        },
+      },
+    ]);
+
+    const { result } = renderHook(
+      () =>
+        useAdminData({
+          isModerator: true,
+          userRole: "roles-view-only",
+          auditPage: 1,
+          auditSearch: "",
+          auditDateFrom: "",
+          auditDateTo: "",
+          auditEntityType: "",
+          auditActorId: "",
+        }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.rolesQuery.isSuccess).toBe(true);
+    });
+
+    expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminInviteLinks).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminInviteStats).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminAuditLog).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminAuditArchiveMonths).not.toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminStatus).not.toHaveBeenCalled();
+    expect(result.current.permissions).toEqual({
+      canAccessAdmin: true,
+      canViewUsers: false,
+      canViewInvites: false,
+      canViewAudit: false,
+      canExportAudit: false,
+      canViewRoles: true,
+      canManageRoles: false,
+      canViewStatus: false,
+      canManageBadges: false,
+      canManageGameData: false,
+    });
   });
 });

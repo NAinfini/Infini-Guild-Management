@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -5,8 +6,14 @@ import { defineConfig, loadEnv } from "vite";
 
 const portalDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(portalDir, "..", "..");
-const githubRoot = resolve(repoRoot, "..");
-const devKitRoot = resolve(githubRoot, "Infini-Dev-Kit");
+export const API_PROXY_CONTEXT = "^/api(?:/|$)";
+const SOURCE_MODULE_PATH_PATTERN = /\/[^/?#]+\.[^/?#]+$/;
+
+export function shouldProxyApiRequest(url: string): boolean {
+  const queryIndex = url.search(/[?#]/);
+  const pathname = queryIndex === -1 ? url : url.slice(0, queryIndex);
+  return new RegExp(API_PROXY_CONTEXT).test(pathname) && !SOURCE_MODULE_PATH_PATTERN.test(pathname);
+}
 
 function normalizeTarget(value: string): string {
   return value.replace(/\/+$/, "");
@@ -31,18 +38,15 @@ export default defineConfig(({ mode }) => {
 
   return {
     root: portalDir,
-    plugins: [react()],
+    plugins: [tailwindcss(), react()],
     build: {
+      sourcemap: mode !== "production",
       chunkSizeWarningLimit: 550,
       rollupOptions: {
         output: {
-          experimentalMinChunkSize: 8_000,
           manualChunks(id) {
             const normalizedId = id.replace(/\\/g, "/");
 
-            if (normalizedId.includes("/Infini-Dev-Kit/packages/")) {
-              return "devkit";
-            }
             if (normalizedId.includes("/apps/portal/i18n/")) {
               return "portal-i18n";
             }
@@ -58,8 +62,11 @@ export default defineConfig(({ mode }) => {
             if (normalizedId.includes("/node_modules/react/") || normalizedId.includes("/node_modules/react-dom/")) {
               return "react-core";
             }
+            if (normalizedId.includes("/node_modules/@mantine/core") || normalizedId.includes("/node_modules/@mantine/hooks") || normalizedId.includes("/node_modules/@mantine/notifications")) {
+              return "mantine-core";
+            }
             if (normalizedId.includes("/node_modules/@mantine/")) {
-              return "mantine";
+              return "mantine-optional";
             }
             if (normalizedId.includes("/node_modules/@tanstack/")) {
               return "tanstack";
@@ -88,9 +95,6 @@ export default defineConfig(({ mode }) => {
             if (normalizedId.includes("/node_modules/@dnd-kit/")) {
               return "dnd-kit";
             }
-            if (normalizedId.includes("/node_modules/swiper/")) {
-              return "swiper";
-            }
             if (normalizedId.includes("/node_modules/date-fns/")) {
               return "date-fns";
             }
@@ -100,38 +104,13 @@ export default defineConfig(({ mode }) => {
       },
     },
     resolve: {
-      dedupe: ["@mantine/core", "@mantine/hooks", "@mantine/modals", "react", "react-dom"],
+      dedupe: ["react", "react-dom", "@mantine/core", "@mantine/hooks"],
       alias: [
-        // Dev-Kit source aliases
-        {
-          find: "@infini-dev-kit/react",
-          replacement: resolve(devKitRoot, "packages/react"),
-        },
-        {
-          find: "@infini-dev-kit/theme-core",
-          replacement: resolve(devKitRoot, "packages/theme-core"),
-        },
-        {
-          find: "@infini-dev-kit/adapter-mantine",
-          replacement: resolve(devKitRoot, "packages/adapter-mantine"),
-        },
-        {
-          find: "@infini-dev-kit/utils",
-          replacement: resolve(devKitRoot, "packages/utils"),
-        },
-        {
-          find: "@infini-dev-kit/api-client",
-          replacement: resolve(devKitRoot, "packages/api-client"),
-        },
-        // Force Dev-Kit peer deps to resolve from Guild-Management node_modules
+        // Peer dep deduplication
         { find: "react", replacement: resolve(repoRoot, "node_modules/react") },
         { find: "react-dom", replacement: resolve(repoRoot, "node_modules/react-dom") },
-        { find: "@mantine/core", replacement: resolve(repoRoot, "node_modules/@mantine/core") },
-        { find: "@mantine/hooks", replacement: resolve(repoRoot, "node_modules/@mantine/hooks") },
-        { find: "@mantine/modals", replacement: resolve(repoRoot, "node_modules/@mantine/modals") },
-        { find: "@mantine/notifications", replacement: resolve(repoRoot, "node_modules/@mantine/notifications") },
-        { find: "@mantine/dates", replacement: resolve(repoRoot, "node_modules/@mantine/dates") },
-        { find: "@mantine/carousel", replacement: resolve(repoRoot, "node_modules/@mantine/carousel") },
+        { find: /^@mantine\/core$/, replacement: resolve(repoRoot, "node_modules/@mantine/core") },
+        { find: /^@mantine\/hooks$/, replacement: resolve(repoRoot, "node_modules/@mantine/hooks") },
         { find: "motion", replacement: resolve(repoRoot, "node_modules/motion") },
         { find: /^@tanstack\/react-table$/, replacement: resolve(repoRoot, "node_modules/@tanstack/react-table") },
         { find: /^@tiptap\/(.*)$/, replacement: resolve(repoRoot, "node_modules/@tiptap/$1") },
@@ -157,15 +136,48 @@ export default defineConfig(({ mode }) => {
         },
       ],
     },
+    optimizeDeps: {
+      include: [
+        "react",
+        "react-dom",
+        "@mantine/core",
+        "@mantine/hooks",
+        "mantine-contextmenu",
+      ],
+    },
     server: {
       proxy: {
-        "^/api/(?!.*\\.[^/]+(?:\\?.*)?$).*": {
+        [API_PROXY_CONTEXT]: {
           target: workerHttpTarget,
           changeOrigin: true,
+          bypass(req) {
+            if (!req.url || shouldProxyApiRequest(req.url)) return undefined;
+            return req.url;
+          },
+          configure(proxy) {
+            // Prevent ECONNREFUSED from bubbling into viteErrorMiddleware,
+            // where JSON.stringify on the DevEnvironment error object causes a
+            // "Converting circular structure to JSON" crash (Vite 8 regression).
+            proxy.on("error", (err, _req, res) => {
+              if (!("headersSent" in res) || (res as import("node:http").ServerResponse).headersSent) return;
+              (res as import("node:http").ServerResponse).writeHead(503, { "Content-Type": "application/json" });
+              (res as import("node:http").ServerResponse).end(
+                JSON.stringify({ error: "Worker backend unavailable", detail: (err as NodeJS.ErrnoException).code }),
+              );
+            });
+          },
         },
         "/ws": {
           target: workerWsTarget,
           ws: true,
+          configure(proxy) {
+            proxy.on("error", (_err, _req, socket) => {
+              // Swallow WebSocket proxy errors when the backend isn't running.
+              if (socket && typeof (socket as import("node:net").Socket).destroy === "function") {
+                (socket as import("node:net").Socket).destroy();
+              }
+            });
+          },
         },
       },
     },

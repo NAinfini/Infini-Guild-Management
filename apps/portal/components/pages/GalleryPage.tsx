@@ -1,10 +1,8 @@
-import { hasRoleAtLeast } from "@guild/shared";
-import { IconPhoto } from "@tabler/icons-react";
+import { PhotoIcon } from "@portal/components/icons";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { Button, Group, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
 import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -14,21 +12,25 @@ import {
   batchDeleteGalleryItems,
   createGalleryVideo,
   deleteGalleryItem,
-  fetchGallery,
   uploadGalleryImages,
+  fetchGallery,
 } from "../../services/GalleryService";
 import { useAppError } from "../../hooks/useAppError";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
-import { queryKeys } from "../../services/PortalQueryKeys";
+import { queryKeys } from "../../api/query-keys";
+import { notifySuccess, notifyError } from "../../utils/notifications";
 import { useAuthStore } from "../../stores/auth";
-import { DEFAULT_IMAGE_WEBP_QUALITY, convertImageToWebP, toEmbedVideoUrl } from "@infini-dev-kit/react";
+import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
+import { DEFAULT_IMAGE_WEBP_QUALITY, convertImageToWebP } from "@guild/shared/utils/media";
+import { isAllowedGalleryVideoUrl, toEmbedVideoUrl } from "@guild/shared/utils/video";
 import { GalleryFiltersCard } from "../feature/gallery/GalleryFiltersCard";
 import { GalleryGrid } from "../feature/gallery/GalleryGrid";
 import { GalleryLightboxModal } from "../feature/gallery/GalleryLightboxModal";
 import { GalleryUploadQueueCard } from "../feature/gallery/GalleryUploadQueueCard";
 import type { UploadStatus, UploadTask } from "../feature/gallery/shared";
 import { PageLayout } from "../layout/PageLayout";
+import { resolveGalleryMediaUrl } from "../../utils/media";
 import "./GalleryPage.css";
 const MAX_GALLERY_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 
@@ -38,18 +40,15 @@ function formatDateTime(iso: string): string {
   return format(date, "yyyy-MM-dd HH:mm");
 }
 
-function isHttpUrl(value: string): boolean {
-  return /^(https?:\/\/|\/(?!\/)|\.\.?\/|data:image\/|blob:)/i.test(value);
-}
-
 export function GalleryPage() {
   const { t } = useTranslation("gallery");
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
-  const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
-  const canUpload = Boolean(user && hasRoleAtLeast(user.role, "member")) && !isExternalView;
-  const canModerate = isModerator && !isExternalView;
+  const { canManage: canManagePermission } = useEffectivePermissions();
+  const canDeleteGallery = canManagePermission(["gallery.delete"]);
+  const canUpload = canManagePermission(["gallery.upload"]) && !isExternalView;
+  const canModerate = canDeleteGallery && !isExternalView;
   const { showError } = useAppError();
 
   const [typeFilter, setTypeFilter] = useState<"image" | "video" | undefined>(undefined);
@@ -90,6 +89,7 @@ export function GalleryPage() {
       }),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     initialPageParam: undefined as string | undefined,
+    staleTime: 5 * 60_000,
   });
 
   useEffect(() => {
@@ -101,7 +101,7 @@ export function GalleryPage() {
   const createVideoMutation = useMutation({
     mutationFn: createGalleryVideo,
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.videoCreated") });
+      notifySuccess(t("message.videoCreated"));
       setVideoUrl("");
       setVideoCaption("");
       addMediaModalHandlers.close();
@@ -128,7 +128,7 @@ export function GalleryPage() {
       return res.deleted;
     },
     onSuccess: async (count) => {
-      notifications.show({ color: "infini-success", message: t("message.bulkDeleted", { count }) });
+      notifySuccess(t("message.bulkDeleted", { count }));
       setSelectedIds([]);
       await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
     },
@@ -231,7 +231,7 @@ export function GalleryPage() {
 
     await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
     if (failedCount === 0) {
-      notifications.show({ color: "infini-success", message: t("message.uploaded") });
+      notifySuccess(t("message.uploaded"));
     }
   }, [queuedCount, queryClient, t, uploadQueue]);
 
@@ -240,10 +240,9 @@ export function GalleryPage() {
   }, []);
 
   const openLightboxAt = (index: number) => {
-    if (index < 0 || index >= rows.length) {
-      return;
-    }
-    const target = rows[index];
+    if (rows.length === 0) return;
+    const clampedIndex = Math.max(0, Math.min(index, rows.length - 1));
+    const target = rows[clampedIndex];
     if (!target) {
       return;
     }
@@ -296,7 +295,7 @@ export function GalleryPage() {
       : undefined;
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconPhoto size={22} />} className="gallery-page">
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<PhotoIcon size={22} />} className="gallery-page">
       <Modal
         opened={addMediaModalOpen}
         onClose={addMediaModalHandlers.close}
@@ -318,7 +317,7 @@ export function GalleryPage() {
                 className="gallery-dropzone gallery-dropzone--modal"
               >
                 <Group justify="center" gap="xl" style={{ pointerEvents: "none" }}>
-                  <IconPhoto size={40} stroke={1.5} />
+                  <PhotoIcon size={40} />
                   <Text>{t("dropzone")}</Text>
                 </Group>
               </Dropzone>
@@ -342,6 +341,19 @@ export function GalleryPage() {
                   {t("upload.summary", { queued: queuedCount, uploading: uploadingCount, total: uploadQueue.length })}
                 </Text>
               </Group>
+              <GalleryUploadQueueCard
+                uploadQueue={uploadQueue}
+                uploadingCount={uploadingCount}
+                uploadQueueTitle={t("uploadQueue")}
+                captionPlaceholder={t("field.caption")}
+                onCaptionChange={(taskId, caption) =>
+                  setUploadQueue((current) =>
+                    current.map((item) =>
+                      item.id === taskId ? { ...item, caption } : item,
+                    ),
+                  )
+                }
+              />
             </Stack>
           </Tabs.Panel>
 
@@ -363,13 +375,17 @@ export function GalleryPage() {
               />
               <Group justify="flex-end">
                 <DepthButton
-                  onClick={() =>
+                  onClick={() => {
+                    if (!isAllowedGalleryVideoUrl(videoUrl.trim())) {
+                      notifyError(t("message.videoHostUnsupported"));
+                      return;
+                    }
                     createVideoMutation.mutate({
                       type: "video",
                       url: videoUrl,
                       caption: videoCaption || undefined,
-                    })
-                  }
+                    });
+                  }}
                   loading={createVideoMutation.isPending}
                   disabled={!videoUrl.trim()}
                 >
@@ -407,24 +423,6 @@ export function GalleryPage() {
         addMediaLabel={t("action.addMedia")}
       />
 
-      <GalleryUploadQueueCard
-        uploadQueue={uploadQueue}
-        uploadingCount={uploadingCount}
-        uploadQueueTitle={t("uploadQueue")}
-        captionPlaceholder={t("field.caption")}
-        onCaptionChange={(taskId, caption) =>
-          setUploadQueue((current) =>
-            current.map((item) =>
-              item.id === taskId
-                ? {
-                    ...item,
-                    caption,
-                  }
-                : item,
-            ),
-          )
-        }
-      />
       <GalleryGrid
         rows={rows}
         isLoading={galleryQuery.isLoading}
@@ -448,16 +446,15 @@ export function GalleryPage() {
           modals.openConfirmModal({
             title: t("confirm.delete.title"),
             children: <Text size="sm">{t("confirm.delete.description")}</Text>,
-            labels: { confirm: t("action.delete"), cancel: t("common:cancel") },
-            confirmProps: { color: "infini-danger" },
+            labels: { confirm: t("action.delete"), cancel: t("common:action.cancel") },
+            confirmProps: { color: "red" },
             onConfirm: () => deleteMutation.mutate(id),
           })
         }
         onOpenLightbox={setLightboxId}
-        isHttpUrl={isHttpUrl}
+        resolveImageUrl={resolveGalleryMediaUrl}
         formatDateTime={formatDateTime}
         actionDeleteLabel={t("action.delete")}
-        fieldR2ObjectLabel={t("field.r2Object")}
       />
 
       <div ref={loadMoreRef} style={{ height: 1 }} />
@@ -483,11 +480,10 @@ export function GalleryPage() {
         onPrev={openLightboxPrev}
         onNext={openLightboxNext}
         setZoom={setLightboxZoom}
-        isHttpUrl={isHttpUrl}
+        resolveImageUrl={resolveGalleryMediaUrl}
         toEmbedVideoUrl={toEmbedVideoUrl}
         formatDateTime={formatDateTime}
         isExternalView={isExternalView}
-        fieldR2ObjectLabel={t("field.r2Object")}
       />
     </PageLayout>
   );

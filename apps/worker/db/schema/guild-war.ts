@@ -1,10 +1,13 @@
 // Domain: Guild War
-// Tables: warHistory, warTeams, warTeamMembers, warPoolMembers, warTemplates
+// Tables: warHistory, warTeams, warTeamMembers, warPoolMembers
 // Dependencies: auth.users, events.events
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { activeGame } from "@guild/shared/games";
 import { users } from "./auth";
 import { events } from "./events";
 import { nowUtc } from "./shared";
+
+const WAR_RESULT_OPTIONS = activeGame.war.resultOptions as unknown as [string, ...string[]];
 
 export const warHistory = sqliteTable(
   "war_history",
@@ -13,27 +16,20 @@ export const warHistory = sqliteTable(
     eventId: text("event_id").references(() => events.id),
     warName: text("war_name").notNull(),
     enemyName: text("enemy_name"),
-    result: text("result", { enum: ["win", "loss", "draw"] }),
-    ownKills: integer("own_kills"),
-    ownTowers: integer("own_towers"),
-    ownBaseHp: integer("own_base_hp"),
-    ownCredits: integer("own_credits"),
-    ownDistance: integer("own_distance"),
-    enemyKills: integer("enemy_kills"),
-    enemyTowers: integer("enemy_towers"),
-    enemyBaseHp: integer("enemy_base_hp"),
-    enemyCredits: integer("enemy_credits"),
-    enemyDistance: integer("enemy_distance"),
+    result: text("result", { enum: WAR_RESULT_OPTIONS }),
+    ownStats: text("own_stats", { mode: "json" }).$type<Record<string, number | null>>(),
+    enemyStats: text("enemy_stats", { mode: "json" }).$type<Record<string, number | null>>(),
     durationMinutes: real("duration_minutes"),
     notes: text("notes"),
     createdBy: text("created_by").notNull().references(() => users.id),
+    updatedBy: text("updated_by").references(() => users.id),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
   (table) => ({
     idxEventId: index("idx_war_history_event_id").on(table.eventId),
+    idxEventCreated: index("idx_war_history_event_created").on(table.eventId, table.createdAt, table.id),
     idxCreated: index("idx_war_history_created").on(table.createdAt, table.id),
-    idxCreatedBy: index("idx_war_history_created_by").on(table.createdBy),
   }),
 );
 
@@ -41,15 +37,16 @@ export const warTeams = sqliteTable(
   "war_teams",
   {
     id: text("id").primaryKey(),
-    warHistoryId: text("war_history_id").notNull().references(() => warHistory.id, { onDelete: "cascade" }),
+    warHistoryId: text("war_history_id").references(() => warHistory.id, { onDelete: "cascade" }),
+    eventId: text("event_id").references(() => events.id, { onDelete: "cascade" }),
     teamName: text("team_name").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
     notes: text("notes"),
     isLocked: integer("is_locked", { mode: "boolean" }).notNull().default(false),
   },
   (table) => ({
-    idxHistoryId: index("idx_war_teams_history_id").on(table.warHistoryId),
     idxHistorySort: index("idx_war_teams_history_sort").on(table.warHistoryId, table.sortOrder, table.id),
+    idxEventSort: index("idx_war_teams_event_sort").on(table.eventId, table.sortOrder, table.id),
   }),
 );
 
@@ -61,19 +58,11 @@ export const warTeamMembers = sqliteTable(
     userId: text("user_id").notNull().references(() => users.id),
     roleTag: text("role_tag"),
     sortOrder: integer("sort_order").notNull().default(0),
-    kills: integer("kills"),
-    deaths: integer("deaths"),
-    assists: integer("assists"),
-    damage: integer("damage"),
-    healing: integer("healing"),
-    buildingDamage: integer("building_damage"),
-    credits: integer("credits"),
-    damageTaken: integer("damage_taken"),
+    stats: text("stats", { mode: "json" }).$type<Record<string, number | null>>(),
     note: text("note"),
   },
   (table) => ({
     uxTeamUser: uniqueIndex("ux_war_team_members_team_user").on(table.warTeamId, table.userId),
-    idxTeamId: index("idx_war_team_members_team_id").on(table.warTeamId),
     idxTeamSort: index("idx_war_team_members_team_sort").on(table.warTeamId, table.sortOrder, table.id),
     idxUser: index("idx_war_team_members_user").on(table.userId),
   }),
@@ -83,30 +72,13 @@ export const warPoolMembers = sqliteTable(
   "war_pool_members",
   {
     id: text("id").primaryKey(),
-    warHistoryId: text("war_history_id").notNull().references(() => warHistory.id, { onDelete: "cascade" }),
+    warHistoryId: text("war_history_id").references(() => warHistory.id, { onDelete: "cascade" }),
+    eventId: text("event_id").references(() => events.id, { onDelete: "cascade" }),
     userId: text("user_id").notNull().references(() => users.id),
   },
   (table) => ({
     uxHistoryUser: uniqueIndex("ux_war_pool_members_history_user").on(table.warHistoryId, table.userId),
-    idxHistoryId: index("idx_war_pool_members_history_id").on(table.warHistoryId),
-  }),
-);
-
-export const warTemplates = sqliteTable(
-  "war_templates",
-  {
-    id: text("id").primaryKey(),
-    templateName: text("template_name").notNull(),
-    description: text("description"),
-    templateType: text("template_type").notNull().default("structure"),
-    sourceEventId: text("source_event_id").references(() => events.id),
-    payloadJson: text("payload_json").notNull(),
-    createdBy: text("created_by").notNull().references(() => users.id),
-    createdAt: text("created_at").notNull().default(nowUtc),
-    updatedAt: text("updated_at").notNull().default(nowUtc),
-  },
-  (table) => ({
-    idxSourceEvent: index("idx_war_templates_source_event").on(table.sourceEventId),
-    idxUpdatedAt: index("idx_war_templates_updated_at").on(table.updatedAt),
+    uxEventUser: uniqueIndex("ux_war_pool_members_event_user").on(table.eventId, table.userId),
+    idxEvent: index("idx_war_pool_members_event").on(table.eventId),
   }),
 );

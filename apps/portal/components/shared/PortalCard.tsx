@@ -1,4 +1,4 @@
-import { forwardRef, type CSSProperties, type MouseEventHandler, type ReactNode } from "react";
+import { forwardRef, useCallback, useRef, type MouseEventHandler, type ReactNode } from "react";
 
 export interface PortalCardProps extends Omit<React.ComponentPropsWithoutRef<"div">, "children" | "onClick"> {
   children: ReactNode;
@@ -9,24 +9,35 @@ export interface PortalCardProps extends Omit<React.ComponentPropsWithoutRef<"di
 
 export const PortalCard = forwardRef<HTMLDivElement, PortalCardProps>(
   function PortalCard({ children, className, onClick, style, interactive = true, padding, ...rest }, ref) {
-    const baseStyle: CSSProperties = {
-      position: "relative",
-      overflow: "hidden",
-      color: "var(--infini-color-text)",
-      borderStyle: "solid",
-      borderWidth: "var(--infini-border-width)",
-      borderColor: "var(--infini-color-border)",
-      borderRadius: "var(--infini-radius)",
-      boxShadow: "0 12px 28px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
-      cursor: onClick ? "pointer" : undefined,
-      ...style,
-    };
+    const internalRef = useRef<HTMLDivElement>(null);
+    const cardRef = (ref ?? internalRef) as React.RefObject<HTMLDivElement>;
 
-    const classes = ["portal-card", className].filter(Boolean).join(" ");
+    const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+      const el = cardRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      el.style.setProperty("--spotlight-x", `${e.clientX - rect.left}px`);
+      el.style.setProperty("--spotlight-y", `${e.clientY - rect.top}px`);
+    }, [cardRef]);
+
+    const classes = [
+      "portal-card",
+      interactive ? "portal-card--interactive" : "",
+      onClick ? "portal-card--clickable" : "",
+      className,
+    ].filter(Boolean).join(" ");
 
     return (
-      <div ref={ref} className={classes} onClick={onClick} style={baseStyle} {...rest}>
-        <div style={{ position: "relative", zIndex: 2, padding }}>{children}</div>
+      <div
+        ref={cardRef}
+        className={classes}
+        onClick={onClick}
+        onMouseMove={interactive ? handleMouseMove : undefined}
+        style={style}
+        {...rest}
+      >
+        {interactive && <div className="portal-card__spotlight" />}
+        <div className="portal-card__inner" style={padding != null ? { padding } : undefined}>{children}</div>
       </div>
     );
   },

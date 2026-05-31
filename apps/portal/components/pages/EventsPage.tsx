@@ -1,9 +1,7 @@
 ﻿import type { Event, MemberProfile, User } from "@guild/shared";
-import type { ImageGridEditorItem } from "@infini-dev-kit/react";
-import { IconCalendarEvent } from "@tabler/icons-react";
-import { hasRoleAtLeast } from "@guild/shared";
+import type { ImageGridEditorItem } from "@guild/shared/types/media";
+import { CalendarEventIcon } from "@portal/components/icons";
 import { useClipboard, useLocalStorage } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
@@ -13,7 +11,9 @@ import {
   useMemo,
   useState,
 } from "react";
+import { Card, Skeleton, Stack } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { notifySuccess, notifyWarning } from "../../utils/notifications";
 import {
   EventService,
 } from "../../services/EventService";
@@ -24,6 +24,7 @@ import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useAttachmentService } from "../../services/AttachmentService";
 import { useAuthStore } from "../../stores/auth";
+import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { buildMentionList } from "../../utils/copy";
 import { sanitizeEventsRouteSearch, type EventWorkbenchViewMode, type EventsRouteSearch } from "../../utils/event-navigation";
 import { useEventsEditorController } from "../feature/events/useEventsEditorController";
@@ -72,7 +73,8 @@ export function EventsPage() {
   const { showError } = useAppError();
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
-  const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
+  const { canManage: canManagePermission } = useEffectivePermissions();
+  const isModerator = canManagePermission(["events.create", "events.edit", "events.archive", "events.delete", "events.templates"]);
   const canManage = isModerator && !isExternalView;
   const canInteract = Boolean(user) && !isExternalView;
 
@@ -130,21 +132,30 @@ export function EventsPage() {
     editorCapacity,
     editorPinned,
     editorSignupLocked,
+    editorAutoArchive,
+    editorPollOptions,
+    editorPollResultsVisibility,
+    editorPollShowVoterNames,
+    editorWinnerCount,
     editorStartIso,
     editorEndIso,
-    conflictingEvents,
     setEditorType,
     setEditorTitle,
     setEditorDescription,
     setEditorStartAt,
     setEditorEndAt,
     setEditorCapacity,
+    setEditorAutoArchive,
+    setEditorPollOptions,
+    setEditorPollResultsVisibility,
+    setEditorPollShowVoterNames,
+    setEditorWinnerCount,
     markEditorTouched,
     openCreateEditor: openCreateEditorBase,
     openEditEditor: openEditEditorBase,
     closeEditor: closeEditorBase,
     closeEditorAfterSave,
-  } = useEventsEditorController({ sortedEvents: filtering.sortedEvents, attachmentSnapshot });
+  } = useEventsEditorController({ attachmentSnapshot });
   const mutations = useEventsMutations({
     canInteract,
     user,
@@ -199,6 +210,7 @@ export function EventsPage() {
   }, [markEditorTouched, mutations]);
 
   const handleSaveEvent = () => {
+    if (!editorType) return;
     mutations.saveEvent({
       mode: editorMode,
       editingEventId,
@@ -212,6 +224,11 @@ export function EventsPage() {
       capacity: editorCapacity,
       pinned: editorPinned,
       signupLocked: editorSignupLocked,
+      autoArchive: editorAutoArchive,
+      pollOptions: editorPollOptions,
+      pollResultsVisibility: editorPollResultsVisibility,
+      pollShowVoterNames: editorPollShowVoterNames,
+      winnerCount: editorWinnerCount,
     });
   };
 
@@ -219,35 +236,34 @@ export function EventsPage() {
     const value = buildMentionList(
       (filtering.eventMembersMap.get(event.id) ?? []).map((entry) => ({
         username: entry.user.username,
-        wechatName: entry.profile.wechat_name,
       })),
       event.title,
     );
     if (!value.trim()) {
-      notifications.show({ color: "infini-warning", message: t("message.nothingToCopy") });
+      notifyWarning(t("message.nothingToCopy"));
       return;
     }
     clipboard.copy(value);
-    notifications.show({ color: "infini-success", message: t("message.mentionsCopied") });
+    notifySuccess(t("message.mentionsCopied"));
   };
 
   const hasLoadError = filtering.eventsQuery.isError || filtering.usersQuery.isError;
   useLoadWarningToast(hasLoadError, t("common:loadErrorRetry"));
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<IconCalendarEvent size={22} />} className="events-page">
-      <Suspense fallback={null}>
+    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<CalendarEventIcon size={22} />} className="events-page">
+      <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={36} radius={8} /></Stack></Card>}>
         <LazyEventsFiltersCard
           searchQuery={filtering.searchQuery}
           eventType={filtering.eventType}
-          archivedOnly={filtering.archivedOnly}
+          eventStatus={filtering.eventStatus}
           pinnedOnly={filtering.pinnedOnly}
           lockedOnly={filtering.lockedOnly}
           viewMode={viewMode}
           canManage={canManage}
           onSearchChange={filtering.setSearchQuery}
           onEventTypeChange={filtering.setEventType}
-          onArchivedOnlyChange={filtering.setArchivedOnly}
+          onEventStatusChange={filtering.setEventStatus}
           onPinnedOnlyChange={filtering.setPinnedOnly}
           onLockedOnlyChange={filtering.setLockedOnly}
           onViewModeChange={setViewMode}
@@ -256,7 +272,7 @@ export function EventsPage() {
         />
       </Suspense>
 
-      <Suspense fallback={null}>
+      <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
         {viewMode === "recurring" && canManage ? (
           <LazyRecurringTemplatesTab
             canManage={canManage}
@@ -281,6 +297,7 @@ export function EventsPage() {
             archivedOnly={filtering.archivedOnly}
             pinnedOnly={filtering.pinnedOnly}
             lockedOnly={filtering.lockedOnly}
+            hasAnyFilter={filtering.hasAnyFilter}
             focusedEventId={filtering.focusEventId}
             eventFlags={filtering.eventFlags}
             eventMembersMap={filtering.eventMembersMap}
@@ -288,6 +305,9 @@ export function EventsPage() {
             createPending={mutations.createPending}
             updatePending={mutations.updatePending}
             archivePending={mutations.archivePending}
+            joinPending={mutations.joinPending}
+            leavePending={mutations.leavePending}
+            votePending={mutations.votePending}
             onResetFilters={filtering.resetFilters}
             onCreateEvent={() => openCreateEditor()}
             onJoinEvent={(eventId) => {
@@ -304,6 +324,12 @@ export function EventsPage() {
             onDeleteEvent={(event) => { void mutations.deleteEventWithConfirm(event); }}
             onAddParticipant={mutations.addParticipant}
             onRemoveParticipant={mutations.removeParticipant}
+            onVotePoll={canInteract ? mutations.votePoll : undefined}
+            onDrawRaffle={canManage ? mutations.drawRaffle : undefined}
+            drawRafflePending={mutations.drawRafflePending}
+            hasMore={filtering.eventsHasMore}
+            isLoadingMore={filtering.eventsLoadingMore}
+            onLoadMore={filtering.onLoadMoreEvents}
           />
         ) : (
           <LazyEventCalendarView
@@ -320,7 +346,7 @@ export function EventsPage() {
       </Suspense>
 
       {editorOpen ? (
-        <Suspense fallback={null}>
+        <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={120} radius={8} /></Stack></Card>}>
           <LazyEventFormModal
             open={editorOpen}
             mode={editorMode}
@@ -337,11 +363,20 @@ export function EventsPage() {
             onCapacityChange={setEditorCapacity}
             description={editorDescription}
             onDescriptionChange={setEditorDescription}
+            autoArchive={editorAutoArchive}
+            onAutoArchiveChange={setEditorAutoArchive}
+            pollOptions={editorPollOptions}
+            onPollOptionsChange={setEditorPollOptions}
+            pollResultsVisibility={editorPollResultsVisibility}
+            onPollResultsVisibilityChange={setEditorPollResultsVisibility}
+            pollShowVoterNames={editorPollShowVoterNames}
+            onPollShowVoterNamesChange={setEditorPollShowVoterNames}
+            winnerCount={editorWinnerCount}
+            onWinnerCountChange={setEditorWinnerCount}
             attachmentItems={attachmentItems}
             onAttachmentsChange={handleAttachmentItemsChange}
             onFilesSelected={handleFilesSelected}
             onAttachmentDelete={handleAttachmentDelete}
-            conflictingEvents={conflictingEvents}
             availabilityDaysWithAny={filtering.availabilityHeatData.daysWithAny}
             availabilityMaxCount={filtering.availabilityHeatData.maxCount}
             availabilityMemberCount={filtering.availabilityHeatData.memberCount}
@@ -361,11 +396,17 @@ export function EventsPage() {
         allUsers={asMemberEntries(filtering.usersQuery.data?.data ?? [])}
         canManage={canManage}
         currentUserId={user?.id ?? undefined}
+        joinPending={mutations.joinPending}
+        leavePending={mutations.leavePending}
         onClose={() => setMonthDetailEvent(null)}
         onJoin={(eventId) => { void mutations.handleJoin(eventId); }}
         onLeave={mutations.handleLeave}
         onAddParticipant={mutations.addParticipant}
         onRemoveParticipant={mutations.removeParticipant}
+        onVotePoll={canInteract ? mutations.votePoll : undefined}
+        votePending={mutations.votePending}
+        onDrawRaffle={canManage ? mutations.drawRaffle : undefined}
+        drawRafflePending={mutations.drawRafflePending}
       />
     </PageLayout>
   );

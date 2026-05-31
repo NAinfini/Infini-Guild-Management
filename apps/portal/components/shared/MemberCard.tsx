@@ -1,13 +1,36 @@
-﻿import type { ClassName, MemberProfile, User } from "@guild/shared";
+﻿import type { ClassName, MemberProfile, User, UserBadge } from "@guild/shared";
 import { CLASS_COLOR_GROUP, CLASS_NAMES } from "@guild/shared";
+import { IconPhoto, IconVideo } from "@tabler/icons-react";
 import DOMPurify from "dompurify";
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { parseAvailabilityRanges } from "../../utils/availability";
+import { sanitizeTitleHtml } from "../../utils/sanitize";
 import "./MemberCard.css";
+
+const BADGE_SANITIZE_OPTIONS = {
+  ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
+  ALLOWED_ATTR: ["style"],
+};
+
+const MemberBadge = memo(function MemberBadge({ badge }: { badge: UserBadge }) {
+  const sanitizedHtml = useMemo(
+    () => DOMPurify.sanitize(badge.label_html, BADGE_SANITIZE_OPTIONS),
+    [badge.label_html],
+  );
+  return (
+    <span
+      className="member-card__badge"
+      style={{ "--badge-color": badge.color } as React.CSSProperties}
+      dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+    />
+  );
+});
 
 type MemberCardProps = {
   user: User;
   profile: MemberProfile;
+  badges?: UserBadge[];
   onClick?: () => void;
   onDoubleClick?: () => void;
   compact?: boolean;
@@ -21,7 +44,7 @@ function isClassName(value: string): value is ClassName {
   return (CLASS_NAMES as readonly string[]).includes(value);
 }
 
-function resolveClassGroup(className: string | null): "blue" | "green" | "purple" | "dark-red" {
+function resolveClassGroup(className: string | null): string {
   if (!className || !isClassName(className)) {
     return "blue";
   }
@@ -33,20 +56,28 @@ function getMemberStatus(user: User, profile: MemberProfile): MemberStatus {
     return "inactive";
   }
 
-  if (!profile.vacation_start || !profile.vacation_end) {
-    return "active";
+  if (profile.vacation_start && profile.vacation_end) {
+    const now = Date.now();
+    const start = Date.parse(profile.vacation_start);
+    const end = Date.parse(profile.vacation_end);
+    if (!Number.isNaN(start) && !Number.isNaN(end) && now >= start && now <= end) {
+      return "vacation";
+    }
   }
 
-  const now = Date.now();
-  const start = Date.parse(profile.vacation_start);
-  const end = Date.parse(profile.vacation_end);
-  if (Number.isNaN(start) || Number.isNaN(end)) {
-    return "active";
+  const rangesByDay = parseAvailabilityRanges(profile.availability);
+  const nowUtc = new Date();
+  const dayIndex = nowUtc.getUTCDay();
+  const currentMinutes = nowUtc.getUTCHours() * 60 + nowUtc.getUTCMinutes();
+  const ranges = rangesByDay.get(dayIndex) ?? [];
+
+  for (const range of ranges) {
+    if (currentMinutes >= range.startMinutes && currentMinutes < range.endMinutes) {
+      return "active";
+    }
   }
-  if (now >= start && now <= end) {
-    return "vacation";
-  }
-  return "active";
+
+  return "inactive";
 }
 
 function defaultMediaResolver(value: string): string {
@@ -56,6 +87,7 @@ function defaultMediaResolver(value: string): string {
 export const MemberCard = memo(function MemberCard({
   user,
   profile,
+  badges,
   onClick,
   onDoubleClick,
   compact = false,
@@ -66,14 +98,12 @@ export const MemberCard = memo(function MemberCard({
   const primaryClass = profile.classes[0] ?? null;
   const classGroup = resolveClassGroup(primaryClass);
   const status = getMemberStatus(user, profile);
-  const avatarKey = profile.images[0] ?? null;
+  const avatarKey = profile.avatar_key ?? null;
   const avatarSrc = avatarKey ? resolveMediaUrl(avatarKey) : null;
+  const [avatarBroken, setAvatarBroken] = useState(false);
+
   const titleHtml = useMemo(
-    () =>
-      DOMPurify.sanitize(profile.title_html ?? "", {
-        ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
-        ALLOWED_ATTR: [],
-      }),
+    () => sanitizeTitleHtml(profile.title_html ?? ""),
     [profile.title_html],
   );
 
@@ -102,13 +132,14 @@ export const MemberCard = memo(function MemberCard({
         aria-label={t("a11y.openProfile", { name: user.username })}
       >
         <div className="member-card__avatar-wrap">
-          {avatarSrc ? (
+          {avatarSrc && !avatarBroken ? (
             <img
               src={avatarSrc}
               alt={t("a11y.avatar", { name: user.username })}
               loading="lazy"
               decoding="async"
               className="member-card__avatar"
+              onError={() => setAvatarBroken(true)}
             />
           ) : (
             <div className="member-card__avatar-fallback" aria-hidden="true">
@@ -122,8 +153,17 @@ export const MemberCard = memo(function MemberCard({
         </div>
 
         <div className="member-card__meta-row">
-          <span className="member-card__pill member-card__pill--photo">{t("member.photo")} {profile.images.length}</span>
-          <span className="member-card__pill member-card__pill--video">{t("member.video")} {profile.video_urls.length}</span>
+          <span className="member-card__pill member-card__pill--photo" aria-label={`${t("member.photo")} ${profile.images.length}`}>
+            <IconPhoto size={13} />
+            {profile.images.length}
+          </span>
+          <span className="member-card__pill member-card__pill--video" aria-label={`${t("member.video")} ${profile.video_urls.length}`}>
+            <IconVideo size={13} />
+            {profile.video_urls.length}
+          </span>
+          {badges?.map((badge) => (
+            <MemberBadge key={badge.id} badge={badge} />
+          ))}
         </div>
 
         <div className="member-card__content">

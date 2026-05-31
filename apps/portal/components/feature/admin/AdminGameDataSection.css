@@ -1,0 +1,215 @@
+.admin-game-data {
+  --gd-border: color-mix(in srgb, var(--mantine-color-default-border) 60%, transparent);
+  --gd-surface: color-mix(in srgb, var(--mantine-color-body) 92%, var(--mantine-color-default));
+  --gd-muted: color-mix(in srgb, var(--mantine-color-default) 78%, var(--mantine-color-body));
+  --gd-hover: color-mix(in srgb, var(--mantine-color-default-hover) 50%, transparent);
+}
+
+/* Hero panel - clean card */
+.admin-game-data__hero {
+  padding: 20px;
+  border: 1px solid var(--gd-border);
+  border-radius: 12px;
+  background: var(--gd-surface);
+}
+
+.admin-game-data__hero-header {
+  row-gap: 12px;
+}
+
+.admin-game-data__actions {
+  row-gap: 8px;
+}
+
+/* Status dot - green active indicator */
+.admin-game-data__status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.admin-game-data__eyebrow {
+  letter-spacing: 0.04em;
+}
+
+.admin-game-data__version-badge {
+  max-width: min(100%, 520px);
+}
+
+.admin-game-data__version-badge .mantine-Badge-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Meta grid - left-accent stat cards */
+.admin-game-data__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-game-data__meta-item {
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mantine-color-default) 60%, var(--mantine-color-body));
+  border: none;
+  border-left: 3px solid var(--gd-border);
+}
+
+.admin-game-data__meta-item:nth-child(1) { border-left-color: var(--mantine-primary-color-filled, #3b82f6); }
+.admin-game-data__meta-item:nth-child(2) { border-left-color: #22c55e; }
+.admin-game-data__meta-item:nth-child(3) { border-left-color: #f59e0b; }
+
+.admin-game-data__meta-item p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Panel - JSON editor container */
+.admin-game-data__panel {
+  border: 1px solid var(--gd-border);
+  border-radius: 12px;
+  background: var(--gd-surface);
+  overflow: hidden;
+}
+
+/* Toolbar-style collapse trigger */
+.admin-game-data__collapse-trigger {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.admin-game-data__collapse-trigger:hover {
+  background: var(--gd-hover);
+}
+
+.admin-game-data__collapse-trigger > span:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-game-data__collapse-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 6px;
+  transition: transform 0.2s ease;
+}
+
+.admin-game-data__collapse-icon--open {
+  transform: rotate(180deg);
+}
+
+.admin-game-data__collapse-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--mantine-color-dimmed);
+}
+
+/* Editor body */
+.admin-game-data__editor-body {
+  padding: 12px 16px 16px;
+}
+
+.admin-game-data__textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mantine-color-dark-7, #1a1b1e) 4%, var(--mantine-color-body)) !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+/* Version history */
+.admin-game-data__versions-table {
+  border-collapse: separate;
+  border-spacing: 0 6px;
+}
+
+.admin-game-data__versions-table thead th {
+  border-bottom: 0;
+  color: var(--mantine-color-dimmed);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.admin-game-data__versions-table tbody tr {
+  background: var(--gd-muted);
+  transition: background 0.15s ease;
+}
+
+.admin-game-data__versions-table tbody tr:hover {
+  background: color-mix(in srgb, var(--mantine-color-default-hover) 80%, var(--gd-muted));
+}
+
+.admin-game-data__versions-table tbody td {
+  border-top: 1px solid var(--gd-border);
+  border-bottom: 1px solid var(--gd-border);
+}
+
+.admin-game-data__versions-table tbody td:first-child {
+  border-left: 1px solid var(--gd-border);
+  border-radius: 8px 0 0 8px;
+}
+
+.admin-game-data__versions-table tbody td:last-child {
+  border-right: 1px solid var(--gd-border);
+  border-radius: 0 8px 8px 0;
+}
+
+/* Active version row - accent highlight */
+.admin-game-data__active-row td:first-child {
+  border-left: 3px solid var(--mantine-primary-color-filled, #3b82f6) !important;
+}
+
+.admin-game-data__active-row {
+  background: color-mix(in srgb, var(--mantine-primary-color-filled, #3b82f6) 4%, var(--gd-muted)) !important;
+}
+
+/* Rollback button - ghost style, visible on hover */
+.admin-game-data__rollback-btn {
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
+}
+
+.admin-game-data__versions-table tbody tr:hover .admin-game-data__rollback-btn {
+  opacity: 1;
+}
+
+/* Relative time */
+.admin-game-data__relative-time {
+  display: block;
+  font-size: 11px;
+  color: var(--mantine-color-dimmed);
+  margin-top: 1px;
+}
+
+@media (max-width: 760px) {
+  .admin-game-data__meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-game-data__collapse-label {
+    display: none;
+  }
+}

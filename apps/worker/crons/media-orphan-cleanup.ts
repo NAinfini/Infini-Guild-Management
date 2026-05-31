@@ -1,4 +1,8 @@
 import type { Bindings } from "../index";
+import { logger } from "../utils/logger";
+
+/** Days to retain soft-deleted users' media before permanent removal. */
+const SOFT_DELETE_RETENTION_DAYS = 7;
 
 async function listAllKeys(bucket: R2Bucket, prefix: string): Promise<string[]> {
   const keys: string[] = [];
@@ -29,13 +33,18 @@ async function listAllKeys(bucket: R2Bucket, prefix: string): Promise<string[]> 
 }
 
 export async function runMediaOrphanCleanupCron(env: Bindings): Promise<void> {
-  const deletedUsers = await env.DB.prepare("SELECT id FROM users WHERE deleted_at IS NOT NULL").all<{ id: string }>();
+  // Retention policy: only purge media for users soft-deleted more than N days ago.
+  // We use strftime to produce ISO-8601 output so the comparison matches the stored
+  // deleted_at format (JavaScript toISOString → "YYYY-MM-DDTHH:MM:SS.sssZ").
+  const deletedUsers = await env.DB.prepare(
+    `SELECT id FROM users WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${SOFT_DELETE_RETENTION_DAYS} days')`,
+  ).all<{ id: string }>();
   const deletedUserIds = (deletedUsers.results ?? [])
     .map((row) => row.id)
     .filter((value): value is string => typeof value === "string" && value.length > 0);
 
   for (const userId of deletedUserIds) {
-    const profileKeys = await listAllKeys(env.MEDIA, `profile/${userId}/`);
+    const profileKeys = await listAllKeys(env.MEDIA, `members/${userId}/`);
     if (profileKeys.length > 0) {
       await env.MEDIA.delete(profileKeys);
     }
@@ -70,8 +79,8 @@ export async function runMediaOrphanCleanupCron(env: Bindings): Promise<void> {
           referencedEventKeys.add(item);
         }
       }
-    } catch {
-      // skip malformed attachments JSON
+    } catch (e) {
+      logger.warn("Malformed attachments JSON", { value: row.attachments, error: String(e) });
     }
   }
   const eventObjects = await listAllKeys(env.MEDIA, "events/");

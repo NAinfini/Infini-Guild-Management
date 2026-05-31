@@ -27,14 +27,12 @@ const STATIC_PAGE_API_CHECKS = [
   { page: "Announcements", path: "/api/announcements?page=1&limit=10&status=archived" },
   { page: "GuildWar", path: "/api/guild-war/history?limit=5" },
   { page: "GuildWar", path: "/api/guild-war/analytics" },
-  { page: "GuildWar", path: "/api/guild-war/templates" },
   { page: "Gallery", path: "/api/gallery?limit=20" },
   { page: "Wiki", path: "/api/wiki/categories" },
   { page: "Wiki", path: "/api/wiki/articles?page=1&limit=10" },
   { page: "Admin", path: "/api/admin/invite-links?include_expired=true&include_revoked=true" },
   { page: "Admin", path: "/api/admin/invite-links/stats" },
   { page: "Admin", path: "/api/admin/audit-log?page=1&limit=20" },
-  { page: "Admin", path: "/api/admin/bot-settings" },
   { page: "Admin", path: "/api/admin/roles" },
   { page: "Admin", path: "/api/admin/status" },
   { page: "Profile", path: "/api/auth/me" },
@@ -200,7 +198,6 @@ async function checkMemberAdminAccessDenied(cookie) {
     "/api/admin/status",
     "/api/admin/invite-links",
     "/api/admin/audit-log?page=1&limit=5",
-    "/api/admin/bot-settings",
     "/api/admin/roles",
   ];
 

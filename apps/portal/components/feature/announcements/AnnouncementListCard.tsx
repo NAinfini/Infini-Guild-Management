@@ -1,12 +1,14 @@
 ﻿import type { Announcement } from "@guild/shared";
 import { PushpinOutlined } from "@portal/utils/icons";
-import { DepthButton } from "@infini-dev-kit/react";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
-import { Alert, Badge, Group, Indicator, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
-import { IconArchive, IconCalendarTime, IconCircleCheck, IconFileText, IconPlus } from "@tabler/icons-react";
+import { Alert, Badge, Button, Group, HoverCard, Indicator, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
+import { ArchiveIcon, CalendarTimeIcon, CircleCheckIcon, FileTextIcon, PlusIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+
+import type { AnnouncementStatus } from "@guild/shared/constants/announcements";
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "-";
@@ -15,20 +17,19 @@ function formatDateTime(iso: string | null): string {
   return format(date, "yyyy-MM-dd HH:mm");
 }
 
-function statusIcon(value: Announcement["status"]): ReactNode {
-  switch (value) {
-    case "draft":
-      return <IconFileText size={14} style={{ color: "var(--mantine-color-dimmed)" }} />;
-    case "scheduled":
-      return <IconCalendarTime size={14} style={{ color: "var(--mantine-color-infini-primary-filled)" }} />;
-    case "published":
-      return <IconCircleCheck size={14} style={{ color: "var(--mantine-color-infini-success-filled)" }} />;
-    case "archived":
-      return <IconArchive size={14} style={{ color: "var(--mantine-color-infini-danger-filled)" }} />;
-    default:
-      return null;
-  }
-}
+const STATUS_ICON = {
+  draft: <FileTextIcon size={14} style={{ color: "var(--mantine-color-dimmed)" }} />,
+  scheduled: <CalendarTimeIcon size={14} style={{ color: "var(--mantine-color-blue-filled)" }} />,
+  published: <CircleCheckIcon size={14} style={{ color: "var(--mantine-color-green-filled)" }} />,
+  archived: <ArchiveIcon size={14} style={{ color: "var(--mantine-color-red-filled)" }} />,
+} satisfies Record<AnnouncementStatus, ReactNode>;
+
+const STATUS_THEME = {
+  draft: { color: "gray", icon: <FileTextIcon size={18} /> },
+  scheduled: { color: "blue", icon: <CalendarTimeIcon size={18} /> },
+  published: { color: "green", icon: <CircleCheckIcon size={18} /> },
+  archived: { color: "yellow", icon: <ArchiveIcon size={18} /> },
+} satisfies Record<AnnouncementStatus, { color: string; icon: ReactNode }>;
 
 type AnnouncementListCardProps = {
   title: ReactNode;
@@ -42,6 +43,9 @@ type AnnouncementListCardProps = {
   emptyText: ReactNode;
   onSelect: (id: string) => void;
   onCreate?: () => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 };
 
 export function AnnouncementListCard({
@@ -56,6 +60,9 @@ export function AnnouncementListCard({
   emptyText,
   onSelect,
   onCreate,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: AnnouncementListCardProps) {
   const { t } = useTranslation("announcements");
   return (
@@ -67,9 +74,9 @@ export function AnnouncementListCard({
             {canEdit && onCreate ? (
               <DepthButton
                 onClick={() => onCreate()}
-                type="secondary"
+                type="primary"
                 size="sm"
-                before={<IconPlus size={16} />}
+                before={<PlusIcon size={16} />}
               >
                 {t("action.newAnnouncement")}
               </DepthButton>
@@ -85,7 +92,7 @@ export function AnnouncementListCard({
               ))}
             </Stack>
           ) : null}
-          {isError ? <Alert color="infini-warning" title={warningMessage} /> : null}
+          {isError ? <Alert color="yellow" title={warningMessage} /> : null}
           {!isLoading && !isError ? (
             rows.length > 0 ? (
               <Stack gap={8}>
@@ -104,7 +111,7 @@ export function AnnouncementListCard({
                     <button
                       type="button"
                       onClick={() => onSelect(item.id)}
-                      aria-label={`Open announcement ${item.title}`}
+                      aria-label={t("aria.openAnnouncement", { title: item.title })}
                       aria-pressed={item.id === selectedId}
                       className={`announcement-item ${item.id === selectedId ? "announcement-item--active" : ""}`.trim()}
                     >
@@ -112,15 +119,31 @@ export function AnnouncementListCard({
                         <div className="announcement-item-title">
                             <Text fw={600}>{item.title}</Text>
                           {item.pinned ? <PushpinOutlined className="announcement-item-pin" /> : null}
-                          {canEdit || item.status === "archived" ? (
-                            <Tooltip label={t(`status.${item.status}`)} withArrow>
-                              <span style={{ display: "inline-flex", lineHeight: 0 }}>{statusIcon(item.status)}</span>
-                            </Tooltip>
-                          ) : null}
+                          {canEdit || item.status === "archived" ? (() => {
+                            const { color, icon } = STATUS_THEME[item.status];
+                            return (
+                              <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                                <HoverCard.Target>
+                                  <span style={{ display: "inline-flex", lineHeight: 0 }} data-animate-icon-trigger>{STATUS_ICON[item.status]}</span>
+                                </HoverCard.Target>
+                                <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                                  <Group gap={10} wrap="nowrap" align="flex-start">
+                                    <ThemeIcon variant="light" color={color} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                                      {icon}
+                                    </ThemeIcon>
+                                    <div style={{ minWidth: 0 }}>
+                                      <Text size="sm" fw={700} lh={1.3}>{t(`status.${item.status}`)}</Text>
+                                      <Text size="xs" c="dimmed" lh={1.5}>{t(`tooltip.status.${item.status}.desc`)}</Text>
+                                    </div>
+                                  </Group>
+                                </HoverCard.Dropdown>
+                              </HoverCard>
+                            );
+                          })() : null}
                         </div>
                         <Group gap={8}>
                           {canEdit && item.status === "scheduled" && item.publish_at ? (
-                            <Badge color="infini-primary">{t("meta.scheduled", { datetime: formatDateTime(item.publish_at) })}</Badge>
+                            <Badge color="blue">{t("meta.scheduled", { datetime: formatDateTime(item.publish_at) })}</Badge>
                           ) : null}
                         </Group>
                         <Text c="dimmed" size="sm" className="announcement-item-time">
@@ -131,6 +154,17 @@ export function AnnouncementListCard({
                     </Indicator>
                   </div>
                 ))}
+                {hasMore && onLoadMore ? (
+                  <Button
+                    variant="subtle"
+                    size="xs"
+                    loading={isLoadingMore}
+                    onClick={onLoadMore}
+                    style={{ alignSelf: "center" }}
+                  >
+                    {t("action.loadMore")}
+                  </Button>
+                ) : null}
               </Stack>
             ) : (
               <>{emptyText}</>

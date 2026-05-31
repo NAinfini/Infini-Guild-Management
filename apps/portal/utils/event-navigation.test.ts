@@ -23,7 +23,6 @@ describe("event navigation", () => {
       sanitizeEventsRouteSearch({
         search: "   ",
         type: undefined,
-        archived: false,
         pinned: false,
         locked: false,
         eventId: "   ",
@@ -39,19 +38,24 @@ describe("event navigation", () => {
       sanitizeEventsRouteSearch({
         search: "Guild Raid",
         type: "guild_war",
-        archived: true,
+        status: "archived",
         pinned: true,
-        locked: false,
+        locked: true,
         eventId: "event-42",
         view: "month",
       }),
     ).toEqual({
       search: "Guild Raid",
       type: "guild_war",
-      archived: true,
+      status: "archived",
       pinned: true,
+      locked: true,
       eventId: "event-42",
       view: "month",
     });
+  });
+
+  it("keeps all status explicit because it changes server filtering", () => {
+    expect(sanitizeEventsRouteSearch({ status: "all" })).toEqual({ status: "all" });
   });
 });

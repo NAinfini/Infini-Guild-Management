@@ -1,22 +1,24 @@
 import type { Event } from "@guild/shared";
-import { Grid, Stack } from "@mantine/core";
-import { IconLayoutDashboard } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { Grid, Skeleton, Stack } from "@mantine/core";
+import { LayoutGridIcon } from "@portal/components/icons";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { addDays, differenceInHours } from "date-fns";
+import { differenceInHours } from "date-fns";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
-import { fetchEventDetailBatch, fetchEventsList, type EventDetailResponse } from "../../services/EventService";
-import { fetchGuildWarHistory, fetchGuildWarHistoryBatch } from "../../services/GuildWarService";
-import { queryKeys } from "../../services/PortalQueryKeys";
-import { fetchUsersList } from "../../services/UserService";
+import {
+  dashboardQueryKeys,
+  fetchDashboardSummary,
+  type DashboardSummaryEvent,
+} from "../../services/DashboardService";
 import { useAuthStore } from "../../stores/auth";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import { PageLayout } from "../layout/PageLayout";
 import {
   type DashboardLastWarMvp,
+  type DashboardMember,
   type DashboardUpcomingEventRow,
 } from "../dashboard/shared";
 import { ActiveMembersCard } from "../dashboard/ActiveMembersCard";
@@ -25,13 +27,9 @@ import { MySignupsCard } from "../dashboard/MySignupsCard";
 import { UpcomingEventsCard } from "../dashboard/UpcomingEventsCard";
 import "./DashboardPage.css";
 
-/**
- * Module-level timestamp that survives component unmount/remount.
- * Rounded to 5-minute bucket so query keys stay stable across navigations.
- * Refreshed when the bucket boundary is crossed.
- */
 let _dashboardNow: Date | null = null;
 let _dashboardNowBucket = -1;
+export const DASHBOARD_EVENTS_REFETCH_INTERVAL_MS = 60_000;
 
 function getDashboardNow(): Date {
   const bucket = Math.floor(Date.now() / (5 * 60_000));
@@ -44,15 +42,56 @@ function getDashboardNow(): Date {
   return _dashboardNow;
 }
 
+export function buildDashboardUpcomingEventsQueryParams(now: Date) {
+  const end = new Date(now);
+  end.setUTCDate(end.getUTCDate() + 7);
+
+  return {
+    page: 1,
+    limit: 20,
+    archived: false,
+    start_after: now.toISOString(),
+    start_before: end.toISOString(),
+  };
+}
+
+function participantToDashboardMember(participant: DashboardSummaryEvent["participants"][number]): DashboardMember {
+  return {
+    user: {
+      id: participant.user_id,
+      username: participant.username,
+      role: participant.role,
+      permissions: {} as DashboardMember["user"]["permissions"],
+      is_active: true,
+      deleted_at: null,
+      created_at: "",
+      updated_at: "",
+    },
+    profile: {
+      id: participant.user_id,
+      user_id: participant.user_id,
+      power: participant.power,
+      classes: participant.classes as DashboardMember["profile"]["classes"],
+      title_html: null,
+      bio: null,
+      avatar_key: participant.avatar_key,
+      images: [],
+      audio_key: null,
+      video_urls: [],
+      availability: null,
+      vacation_start: null,
+      vacation_end: null,
+      notes: null,
+      created_at: "",
+      updated_at: "",
+    },
+  };
+}
+
 function buildUpcomingEventRow(
-  item: Event,
-  source: Event[],
+  item: DashboardSummaryEvent,
+  source: DashboardSummaryEvent[],
   now: Date,
-  upcomingEventDetailById: Map<string, EventDetailResponse>,
-  participantsByEventId: Map<
-    string,
-    { user: Awaited<ReturnType<typeof fetchUsersList>>["data"][number]["user"]; profile: Awaited<ReturnType<typeof fetchUsersList>>["data"][number]["profile"] }[]
-  >,
   currentUserId: string | undefined,
 ): DashboardUpcomingEventRow {
   const startsAt = new Date(item.start_at);
@@ -64,22 +103,29 @@ function buildUpcomingEventRow(
     const peerEnd = peer.end_at ? new Date(peer.end_at) : peerStart;
     return startsAt < peerEnd && peerStart < endsAt;
   });
-  const detail = upcomingEventDetailById.get(item.id);
-  const participants = detail?.participants ?? [];
-  const joined = Boolean(currentUserId && participants.some((participant) => participant.user_id === currentUserId));
-  const participantCount = participants.length;
+  const participantCount = item.participants.length;
+  const joined = Boolean(currentUserId && item.participants.some((participant) => participant.user_id === currentUserId));
   const capacityLabel = item.capacity === null ? `${participantCount}/∞` : `${participantCount}/${item.capacity}`;
-  const isFull = item.capacity !== null && participantCount >= item.capacity;
 
   return {
     item,
     startsSoon,
     hasConflict,
-    members: participantsByEventId.get(item.id) ?? [],
+    members: item.participants.map(participantToDashboardMember),
     joined,
     capacityLabel,
-    isFull,
+    isFull: item.capacity !== null && participantCount >= item.capacity,
   };
+}
+
+export function orderDashboardUpcomingRows<T extends { item: Pick<Event, "id" | "start_at" | "pinned"> }>(rows: T[]): T[] {
+  return [...rows].sort((left, right) => {
+    const leftTime = new Date(left.item.start_at).getTime();
+    const rightTime = new Date(right.item.start_at).getTime();
+    if (leftTime !== rightTime) return leftTime - rightTime;
+    if (left.item.pinned !== right.item.pinned) return left.item.pinned ? -1 : 1;
+    return left.item.id.localeCompare(right.item.id);
+  });
 }
 
 export function DashboardPage() {
@@ -88,221 +134,49 @@ export function DashboardPage() {
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
   const now = useMemo(() => getDashboardNow(), []);
-  const nowIso = now.toISOString();
 
-  const upcomingEventsQuery = useQuery({
-    queryKey: queryKeys.dashboard.upcomingEvents(nowIso),
-    queryFn: async () => {
-      // Fetch all non-archived events, then filter client-side
-      const all = await fetchEventsList({
-        page: 1,
-        limit: 100,
-        archived: false,
-      });
-      const nextWeek = addDays(now, 7);
-      const filtered = all.data.filter((event) => {
-        const startsAt = new Date(event.start_at);
-        // Upcoming: starts within next 7 days
-        if (startsAt >= now && startsAt <= nextWeek) return true;
-        // Ongoing: already started but not yet ended
-        if (startsAt < now) {
-          if (!event.end_at) return true; // no end_at means still active
-          return new Date(event.end_at) > now;
-        }
-        return false;
-      });
-      return { ...all, data: filtered };
-    },
+  const summaryQuery = useQuery({
+    queryKey: dashboardQueryKeys.summary(),
+    queryFn: fetchDashboardSummary,
+    staleTime: DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
+    placeholderData: keepPreviousData,
   });
 
-  const recentWarCount = 4;
-
-  const warQuery = useQuery({
-    queryKey: queryKeys.dashboard.wars(),
-    queryFn: () =>
-      fetchGuildWarHistory({
-        page: 1,
-        limit: 100,
-      }),
-  });
-
-  const usersQuery = useQuery({
-    queryKey: queryKeys.dashboard.users(),
-    queryFn: () => fetchUsersList(),
-  });
-
-  const recentWars = useMemo(
-    () => (warQuery.data?.data ?? []).slice(0, recentWarCount),
-    [warQuery.data?.data],
-  );
-  const recentWarIds = recentWars.map((w) => w.id);
-
-  const recentWarDetailsQuery = useQuery({
-    queryKey: queryKeys.dashboard.lastWarDetail(recentWarIds.join(",") || "none"),
-    enabled: recentWarIds.length > 0,
-    queryFn: async () => {
-      const res = await fetchGuildWarHistoryBatch(recentWarIds);
-      return res.data;
-    },
-  });
-
-  const upcomingEventDetailsQuery = useQuery({
-    queryKey: queryKeys.dashboard.upcomingEventDetails(
-      upcomingEventsQuery.data?.data.slice(0, 12).map((item) => item.id).join(",") ?? "",
-    ),
-    enabled: Boolean(upcomingEventsQuery.data) && Boolean(usersQuery.data),
-    queryFn: async () => {
-      const eventIds = (upcomingEventsQuery.data?.data ?? []).slice(0, 12).map((item) => item.id);
-      if (eventIds.length === 0) return [];
-      const res = await fetchEventDetailBatch(eventIds);
-      return res.data;
-    },
-  });
-
-  const mySignupsQuery = useQuery({
-    queryKey: queryKeys.dashboard.mySignups(
-      user?.id ?? "anonymous",
-      upcomingEventsQuery.data?.data.map((item) => item.id).join(",") ?? "",
-    ),
-    enabled: Boolean(user?.id) && Boolean(upcomingEventsQuery.data),
-    queryFn: async () => {
-      if (!user?.id) {
-        return [] as Event[];
-      }
-      const eventIds = (upcomingEventsQuery.data?.data ?? []).slice(0, 12).map((item) => item.id);
-      if (eventIds.length === 0) return [] as Event[];
-      const res = await fetchEventDetailBatch(eventIds);
-      return res.data
-        .filter((detail) => detail.participants.some((participant) => participant.user_id === user.id))
-        .map((detail) => detail as Event);
-    },
-  });
-
-  const upcomingEvents = upcomingEventsQuery.data?.data ?? [];
-  const users = usersQuery.data?.data ?? [];
-  const activeMemberCount = users.filter((entry) => entry.user.is_active && entry.user.deleted_at === null).length;
-  const totalMembersCount = users.filter((entry) => entry.user.deleted_at === null).length;
-  const activeEventsCount = upcomingEvents.length;
-
-  const upcomingEventDetailById = useMemo(
-    () => new Map((upcomingEventDetailsQuery.data ?? []).map((detail) => [detail.id, detail])),
-    [upcomingEventDetailsQuery.data],
-  );
+  const summary = summaryQuery.data;
+  const upcomingEvents = summary?.upcoming_events ?? [];
+  const recentWars = summary?.recent_wars ?? [];
 
   const mySignupEvents = useMemo(() => {
-    const rawEvents = mySignupsQuery.data ?? [];
-    return rawEvents.map((event) => {
-      const detail = upcomingEventDetailById.get(event.id);
-      return {
-        event,
-        participantCount: detail?.participants.length ?? 0,
-      };
-    });
-  }, [mySignupsQuery.data, upcomingEventDetailById]);
-
-  const allWarWinRate = useMemo(() => {
-    const history = warQuery.data?.data ?? [];
-    const resolvedWars = history.filter((entry) => Boolean(entry.result));
-    if (resolvedWars.length === 0) {
-      return 0;
-    }
-    const winCount = resolvedWars.filter((entry) => entry.result === "win").length;
-    return (winCount / resolvedWars.length) * 100;
-  }, [warQuery.data?.data]);
-
-  const userRowById = useMemo(
-    () => new Map(users.map((entry) => [entry.user.id, entry])),
-    [users],
-  );
+    const mySignupIds = new Set(summary?.my_signup_event_ids ?? []);
+    return upcomingEvents
+      .filter((event) => mySignupIds.has(event.id))
+      .map((event) => ({ event, participantCount: event.participants.length }));
+  }, [summary?.my_signup_event_ids, upcomingEvents]);
 
   const recentWarMvps = useMemo<DashboardLastWarMvp[]>(() => {
-    const details = recentWarDetailsQuery.data ?? [];
-    const resolveName = (userId: string) => {
-      const row = userRowById.get(userId);
-      return row?.profile.wechat_name ?? row?.user.username ?? userId;
-    };
-    const initials = (userId: string) => {
-      const name = resolveName(userId);
-      return name.slice(0, 2).toUpperCase();
-    };
-    return details.map((detail) => {
-      const stats = detail.member_stats ?? [];
-      if (stats.length === 0) return null;
-      const topDamage = [...stats].sort((l, r) => (r.damage ?? 0) - (l.damage ?? 0))[0];
-      const topHealing = [...stats].sort((l, r) => (r.healing ?? 0) - (l.healing ?? 0))[0];
-      const topDamageTaken = [...stats].sort((l, r) => (r.damage_taken ?? 0) - (l.damage_taken ?? 0))[0];
-      const topBuilding = [...stats].sort((l, r) => (r.building_damage ?? 0) - (l.building_damage ?? 0))[0];
-      return {
-        damage: {
-          label: t("card.lastWar.mvp.damage"),
-          name: topDamage ? resolveName(topDamage.user_id) : "-",
-          initials: topDamage ? initials(topDamage.user_id) : "?",
-          value: topDamage?.damage ?? 0,
-        },
-        healing: {
-          label: t("card.lastWar.mvp.healing"),
-          name: topHealing ? resolveName(topHealing.user_id) : "-",
-          initials: topHealing ? initials(topHealing.user_id) : "?",
-          value: topHealing?.healing ?? 0,
-        },
-        damageTaken: {
-          label: t("card.lastWar.mvp.damageTaken"),
-          name: topDamageTaken ? resolveName(topDamageTaken.user_id) : "-",
-          initials: topDamageTaken ? initials(topDamageTaken.user_id) : "?",
-          value: topDamageTaken?.damage_taken ?? 0,
-        },
-        building: {
-          label: t("card.lastWar.mvp.building"),
-          name: topBuilding ? resolveName(topBuilding.user_id) : "-",
-          initials: topBuilding ? initials(topBuilding.user_id) : "?",
-          value: topBuilding?.building_damage ?? 0,
-        },
-      };
-    });
-  }, [recentWarDetailsQuery.data, userRowById]);
+    return (summary?.recent_war_mvps ?? []).map((warMvp) =>
+      warMvp?.map((entry) => ({
+        ...entry,
+        label: t(`card.lastWar.mvp.${entry.category}`),
+      })) ?? null,
+    );
+  }, [summary?.recent_war_mvps, t]);
 
-  const participantsByEventId = useMemo(() => {
-    const map = new Map<string, { user: (typeof users)[number]["user"]; profile: (typeof users)[number]["profile"] }[]>();
-    for (const detail of upcomingEventDetailsQuery.data ?? []) {
-      const members = detail.participants
-        .map((participant) => userRowById.get(participant.user_id))
-        .filter((entry): entry is (typeof users)[number] => Boolean(entry))
-        .map((entry) => ({ user: entry.user, profile: entry.profile }));
-      map.set(detail.id, members);
-    }
-    return map;
-  }, [upcomingEventDetailsQuery.data, userRowById]);
+  const orderedUpcomingEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
+    return orderDashboardUpcomingRows(
+      upcomingEvents.map((item) => buildUpcomingEventRow(item, upcomingEvents, now, user?.id)),
+    ).slice(0, 5);
+  }, [now, upcomingEvents, user?.id]);
 
-  const featuredEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
-    return upcomingEvents
-      .filter((item) => item.pinned)
-      .map((item) =>
-        buildUpcomingEventRow(
-          item,
-          upcomingEvents,
-          now,
-          upcomingEventDetailById,
-          participantsByEventId,
-          user?.id,
-        ),
-      );
-  }, [now, participantsByEventId, upcomingEventDetailById, upcomingEvents, user?.id]);
+  const featuredEventRows = useMemo(
+    () => orderedUpcomingEventRows.filter((row) => row.item.pinned),
+    [orderedUpcomingEventRows],
+  );
 
-  const upcomingEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
-    return upcomingEvents
-      .filter((item) => !item.pinned)
-      .map((item) =>
-        buildUpcomingEventRow(
-          item,
-          upcomingEvents,
-          now,
-          upcomingEventDetailById,
-          participantsByEventId,
-          user?.id,
-        ),
-      )
-      .slice(0, 3);
-  }, [now, participantsByEventId, upcomingEventDetailById, upcomingEvents, user?.id]);
+  const upcomingEventRows = useMemo(
+    () => orderedUpcomingEventRows.filter((row) => !row.item.pinned),
+    [orderedUpcomingEventRows],
+  );
 
   const openEventDetail = (event: Pick<Event, "id" | "title">) => {
     void navigate({
@@ -311,65 +185,59 @@ export function DashboardPage() {
     });
   };
 
-  const hasError =
-    upcomingEventsQuery.isError ||
-    warQuery.isError ||
-    usersQuery.isError ||
-    upcomingEventDetailsQuery.isError ||
-    mySignupsQuery.isError ||
-    recentWarDetailsQuery.isError;
-  useLoadWarningToast(hasError, t("common:loadErrorRetry"));
+  useLoadWarningToast(summaryQuery.isError, t("common:loadErrorRetry"));
 
   return (
     <PageLayout
       title={t("title")}
       subtitle={t("welcome", { name: user?.username ?? t("welcomeFallback") })}
-      icon={<IconLayoutDashboard size={22} />}
+      icon={<LayoutGridIcon size={22} />}
       className="dashboard-page"
     >
       <Grid gutter={16} align="flex-start">
         <Grid.Col span={{ base: 12, xl: "auto" }}>
           <Stack gap={16}>
             {!isExternalView && (
-              <MySignupsCard
-                mySignupEvents={mySignupEvents}
-                now={now}
-                onOpenEvent={openEventDetail}
-              />
+              <Skeleton visible={summaryQuery.isLoading} radius={8}>
+                <MySignupsCard mySignupEvents={mySignupEvents} now={now} onOpenEvent={openEventDetail} />
+              </Skeleton>
             )}
 
-            <UpcomingEventsCard
-              upcomingEventsCount={upcomingEvents.length}
-              featuredRows={featuredEventRows}
-              rows={upcomingEventRows}
-              onOpenEvent={openEventDetail}
-            />
+            <Skeleton visible={summaryQuery.isLoading} radius={8}>
+              <UpcomingEventsCard
+                upcomingEventsCount={upcomingEvents.length}
+                featuredRows={featuredEventRows}
+                rows={upcomingEventRows}
+                onOpenEvent={openEventDetail}
+              />
+            </Skeleton>
           </Stack>
         </Grid.Col>
 
         <Grid.Col span={{ base: 12, xl: isExternalView ? 6 : 4 }}>
           <Stack gap={16}>
-            <ActiveMembersCard
-              activeMemberCount={activeMemberCount}
-              totalMembersCount={totalMembersCount}
-              allWarWinRate={allWarWinRate}
-              activeEventsCount={activeEventsCount}
-            />
+            <Skeleton visible={summaryQuery.isLoading} radius={8}>
+              <ActiveMembersCard
+                activeMemberCount={summary?.active_member_count ?? 0}
+                totalMembersCount={summary?.total_member_count ?? 0}
+                allWarWinRate={summary?.all_war_win_rate ?? 0}
+                activeEventsCount={summary?.active_events_count ?? 0}
+              />
+            </Skeleton>
 
-            <LastWarCard
-              recentWars={recentWars}
-              warMvps={recentWarMvps}
-              isExternalView={isExternalView}
-              onOpenHistory={(warName) => {
-                void navigate({
-                  to: "/guild-war",
-                  search: {
-                    tab: "history",
-                    warName,
-                  },
-                });
-              }}
-            />
+            <Skeleton visible={summaryQuery.isLoading} radius={8}>
+              <LastWarCard
+                recentWars={recentWars}
+                warMvps={recentWarMvps}
+                isExternalView={isExternalView}
+                onOpenHistory={(warName) => {
+                  void navigate({
+                    to: "/guild-war",
+                    search: { tab: "history", warName },
+                  });
+                }}
+              />
+            </Skeleton>
           </Stack>
         </Grid.Col>
       </Grid>

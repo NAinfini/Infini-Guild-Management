@@ -1,127 +1,87 @@
-import { composeMantineTheme } from "./theme/mantine-adapter";
-import { listThemeIds } from "@infini-dev-kit/theme-core";
-import type { ThemeId } from "@infini-dev-kit/theme-core";
+import "@mantine/core/styles.css";
+import "@mantine/notifications/styles.css";
+import "@mantine/carousel/styles.css";
+import "@mantine/dropzone/styles.css";
+import "@mantine/nprogress/styles.css";
 import { ContextMenuProvider } from "mantine-contextmenu";
-import { StrictMode } from "react";
+import "mantine-contextmenu/styles.css";
+import React, { StrictMode } from "react";
 import type { Root } from "react-dom/client";
-import "@gfazioli/mantine-split-pane/styles.css";
 import "./i18n";
+import { ErrorBoundary } from "./components/effects/ErrorBoundary";
 import { PortalThemeProvider } from "./providers/ThemeProvider";
 import { AppRouter } from "./router";
+import type { FeatureFlags } from "@guild/shared/config/features";
+import { useSiteConfigStore } from "./stores/site-config";
 
-type MotionMode = "off" | "minimum" | "reduced" | "full";
-type SerializedThemeState = {
-  version: 1;
-  state: {
-    themeId: ThemeId;
-    motionMode: MotionMode;
-  };
-};
-
-const DEV_KIT_THEME_STORAGE_KEY = "infini-dev-kit.theme";
-const FALLBACK_THEME_ID: ThemeId = "neu-brutalism";
-const FALLBACK_MOTION_MODE: MotionMode = "full";
-const VALID_THEME_IDS = new Set<ThemeId>(listThemeIds());
-const VALID_MOTION_MODES = new Set<MotionMode>(["off", "minimum", "reduced", "full"]);
-
-function isThemeId(value: string | null): value is ThemeId {
-  return !!value && VALID_THEME_IDS.has(value as ThemeId);
-}
-
-function isMotionMode(value: string | null): value is MotionMode {
-  return !!value && VALID_MOTION_MODES.has(value as MotionMode);
-}
-
-function rehydrateThemeState(): void {
-  const legacyTheme = localStorage.getItem("theme");
-  const legacyMotion = localStorage.getItem("motionMode");
-  const searchTheme = new URLSearchParams(window.location.search).get("theme");
-
-  let themeId: ThemeId = isThemeId(legacyTheme) ? legacyTheme : FALLBACK_THEME_ID;
-  let motionMode: MotionMode = isMotionMode(legacyMotion) ? legacyMotion : FALLBACK_MOTION_MODE;
-
-  const serializedState = localStorage.getItem(DEV_KIT_THEME_STORAGE_KEY);
-  if (serializedState) {
-    try {
-      const parsed = JSON.parse(serializedState) as Partial<SerializedThemeState>;
-      const parsedThemeRaw = parsed.state?.themeId ?? null;
-      const parsedMotionRaw = parsed.state?.motionMode ?? null;
-      if (isThemeId(parsedThemeRaw)) {
-        themeId = parsedThemeRaw;
-      }
-      if (isMotionMode(parsedMotionRaw)) {
-        motionMode = parsedMotionRaw;
-      }
-    } catch {
-      // Rebuild invalid persisted payload with safe defaults.
-    }
+async function loadSiteConfig(): Promise<void> {
+  const response = await fetch("/api/site-config");
+  if (!response.ok) {
+    throw new Error(`Site config request failed: ${response.status}`);
   }
-
-  if (isThemeId(searchTheme)) {
-    themeId = searchTheme;
-    localStorage.setItem("theme", themeId);
+  const data = await response.json() as { site_name: string; site_logo_url: string; features?: Partial<FeatureFlags> };
+  useSiteConfigStore.getState().setSiteConfig(data.site_name, data.site_logo_url);
+  if (data.features) {
+    useSiteConfigStore.getState().setFeatures(data.features);
   }
-
-  // Precompute a token payload and validate theme id before first render.
-  composeMantineTheme({ themeId });
-
-  const nextState: SerializedThemeState = {
-    version: 1,
-    state: {
-      themeId,
-      motionMode,
-    },
-  };
-  localStorage.setItem(DEV_KIT_THEME_STORAGE_KEY, JSON.stringify(nextState));
+  document.title = data.site_name;
+  const splashTitle = document.getElementById("splash-title");
+  if (splashTitle) splashTitle.textContent = data.site_name;
+  const splashSub = document.querySelector(".splash-subtitle");
+  if (splashSub) splashSub.textContent = data.site_name;
+  const link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+  if (link) {
+    link.href = data.site_logo_url;
+    link.type = "image/webp";
+  }
 }
 
-export function mountApp(root: Root): void {
-  rehydrateThemeState();
+function dismissSplash(): void {
+  const splash = document.getElementById("splash");
+  const rootEl = document.getElementById("root");
+  if (splash) {
+    splash.remove();
+    (window as unknown as { __splashCleanup?: () => void }).__splashCleanup?.();
+  }
+  if (rootEl) {
+    rootEl.style.opacity = "1";
+    rootEl.style.position = "";
+    rootEl.style.inset = "";
+  }
+  document.documentElement.classList.add("splash-done");
+}
+
+export async function mountApp(root: Root): Promise<void> {
+  await loadSiteConfig();
   root.render(
     <StrictMode>
-      <PortalThemeProvider>
-        <ContextMenuProvider
-          borderRadius="md"
-          classNames={{
-            root: "infini-context-menu-root",
-            item: "infini-context-menu-item",
-            divider: "infini-context-menu-divider",
-          }}
-          styles={{
-            divider: {
-              background: "color-mix(in srgb, var(--infini-color-text, #e5e7eb) 12%, transparent)",
-              border: "none",
-              height: 1,
-              margin: "4px 8px",
-            },
-            item: {
-              background: "transparent",
-              border: "none",
-              borderRadius: 9,
-              boxShadow: "none",
-              color: "var(--infini-color-text, #e5e7eb)",
-              fontSize: 13,
-              fontWeight: 500,
-              letterSpacing: "0.01em",
-              lineHeight: 1.2,
-              minHeight: 36,
-              padding: "9px 12px",
-            },
-            root: {
-              background: "color-mix(in srgb, var(--infini-color-surface, #0f172a) 96%, transparent)",
-              border: "none",
-              borderRadius: 12,
-              boxShadow: "0 16px 34px color-mix(in srgb, black 24%, transparent)",
-              minWidth: 176,
-              padding: 6,
-            },
-          }}
-          shadow="md"
-          submenuDelay={160}
-        >
-          <AppRouter />
-        </ContextMenuProvider>
-      </PortalThemeProvider>
+      <ErrorBoundary>
+        <PortalThemeProvider>
+          <ContextMenuProvider
+            borderRadius="md"
+            classNames={{
+              root: "infini-context-menu-root",
+              item: "infini-context-menu-item",
+              divider: "infini-context-menu-divider",
+            }}
+            shadow="md"
+            submenuDelay={160}
+          >
+            <AppRouter />
+          </ContextMenuProvider>
+        </PortalThemeProvider>
+      </ErrorBoundary>
     </StrictMode>,
   );
+
+  // Dismiss the HTML splash screen
+  dismissSplash();
+
+  if (import.meta.env.DEV) {
+    import("@axe-core/react").then((axe) => {
+      import("react-dom").then((ReactDOM) => {
+        axe.default(React, ReactDOM, 1000);
+      });
+    });
+  }
 }

@@ -1,22 +1,12 @@
-import type {
-  Announcement,
-  CursorResponse,
-  Event,
-  GalleryItem,
-  MemberProfile,
-  PaginatedResponse,
-  User,
-  WarHistory,
-  WikiArticle,
-} from "@guild/shared";
-import { Badge, Button, Group, Highlight, Modal, Stack, Text } from "@mantine/core";
-import { useQuery } from "@tanstack/react-query";
-import { Command } from "cmdk";
-import { useMemo, useState } from "react";
+import { ActionIcon, Badge, Button, Group, Highlight, Kbd, Modal, Stack, Text } from "@mantine/core";
 import { useDebouncedValue, useDisclosure, useHotkeys, useLocalStorage } from "@mantine/hooks";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { Command } from "cmdk";
+import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { apiRequest } from "../../api/client";
+import { queryKeys } from "../../api/query-keys";
+import { searchGlobal, type SearchResult, type SearchResultType } from "../../services/SearchService";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import {
   CalendarOutlined,
@@ -32,22 +22,43 @@ type SearchItem = {
   id: string;
   title: string;
   subtitle: string;
-  body?: string;
-  category: "user" | "event" | "announcement" | "wiki" | "gallery" | "war";
+  category: SearchResult["type"];
+  role?: string;
   to: string;
   entityId?: string;
 };
 
-type UsersListResponse = PaginatedResponse<{ user: User; profile: MemberProfile }>;
 const RECENT_SEARCHES_KEY = "cmdk.recent.searches";
 const RECENT_LIMIT = 8;
 const RESULT_LIMIT = 24;
+
+const isMac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
 
 function normalizeSearchText(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export function CmdKSearch() {
+const CATEGORY_LABEL_KEY = {
+  user: "cmdk.category.members",
+  event: "cmdk.category.events",
+  announcement: "cmdk.category.announcements",
+  wiki: "cmdk.category.wiki",
+  gallery: "cmdk.category.gallery",
+  war: "cmdk.category.guildWar",
+} as const satisfies Record<SearchResultType, string>;
+
+const CATEGORY_ICON = {
+  user: <UserOutlined />,
+  event: <CalendarOutlined />,
+  announcement: <NotificationOutlined />,
+  wiki: <FileSearchOutlined />,
+  gallery: <PictureOutlined />,
+  war: <TeamOutlined />,
+} satisfies Record<SearchResultType, ReactNode>;
+
+const ROLE_BADGE_COLOR: Record<string, string> = { admin: "red", moderator: "orange" };
+
+export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
   const navigate = useNavigate();
   const { t } = useTranslation("common");
   const [open, openHandlers] = useDisclosure(false);
@@ -60,94 +71,22 @@ export function CmdKSearch() {
 
   useHotkeys([["mod+k", openHandlers.toggle]]);
 
+  const normalizedQuery = normalizeSearchText(debouncedQuery);
   const searchDataQuery = useQuery({
-    queryKey: ["cmdk", "search-data"],
-    enabled: open,
+    queryKey: queryKeys.cmdk.search(normalizedQuery),
+    enabled: open && normalizedQuery.length >= 2,
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      const [usersResponse, eventsResponse, announcementsResponse, wikiResponse, warHistoryResponse, galleryResponse] =
-        await Promise.allSettled([
-          apiRequest<UsersListResponse>("/api/users?page=1&limit=40"),
-          apiRequest<PaginatedResponse<Event>>("/api/events?page=1&limit=40"),
-          apiRequest<PaginatedResponse<Announcement>>("/api/announcements?page=1&limit=25"),
-          apiRequest<PaginatedResponse<WikiArticle>>("/api/wiki/articles?page=1&limit=25"),
-          apiRequest<PaginatedResponse<WarHistory>>("/api/guild-war/history?page=1&limit=25"),
-          apiRequest<CursorResponse<GalleryItem>>("/api/gallery?cursor=0&limit=25"),
-        ]);
-
-      const userItems: SearchItem[] = usersResponse.status === "fulfilled"
-        ? usersResponse.value.data.map((entry) => ({
-            id: `user-${entry.user.id}`,
-            title: entry.user.username,
-            subtitle: `${entry.user.role} · ${entry.profile.classes.join(", ") || t("noClass")} · ${
-              entry.profile.wechat_name ?? "-"
-            }`,
-            category: "user",
-            to: "/roster",
-          }))
-        : [];
-
-      const eventItems: SearchItem[] = eventsResponse.status === "fulfilled"
-        ? eventsResponse.value.data.map((entry) => ({
-            id: `event-${entry.id}`,
-            title: entry.title,
-            subtitle: entry.type,
-            category: "event",
-            to: "/events",
-            entityId: entry.id,
-          }))
-        : [];
-
-      const announcementItems: SearchItem[] = announcementsResponse.status === "fulfilled"
-        ? announcementsResponse.value.data.map((entry) => ({
-            id: `announcement-${entry.id}`,
-            title: entry.title,
-            subtitle: entry.status,
-            body: entry.body_json,
-            category: "announcement",
-            to: "/announcements",
-          }))
-        : [];
-
-      const wikiItems: SearchItem[] = wikiResponse.status === "fulfilled"
-        ? wikiResponse.value.data.map((entry) => ({
-            id: `wiki-${entry.id}`,
-            title: entry.title,
-            subtitle: entry.slug,
-            body: entry.body_json,
-            category: "wiki",
-            to: "/wiki",
-          }))
-        : [];
-
-      const warItems: SearchItem[] = warHistoryResponse.status === "fulfilled"
-        ? warHistoryResponse.value.data.map((entry) => ({
-            id: `war-${entry.id}`,
-            title: entry.war_name,
-            subtitle: `${entry.result ?? t("unknown")} · ${entry.created_at.slice(0, 10)}`,
-            category: "war",
-            to: "/guild-war",
-          }))
-        : [];
-
-      const galleryItems: SearchItem[] = galleryResponse.status === "fulfilled"
-        ? galleryResponse.value.data.map((entry) => ({
-            id: `gallery-${entry.id}`,
-            title: entry.caption ?? entry.url.split("/").pop() ?? entry.id,
-            subtitle: entry.type,
-            category: "gallery",
-            to: "/gallery",
-          }))
-        : [];
-
-      return [
-        ...userItems,
-        ...eventItems,
-        ...announcementItems,
-        ...wikiItems,
-        ...warItems,
-        ...galleryItems,
-      ];
+      const response = await searchGlobal(normalizedQuery, RESULT_LIMIT);
+      return response.data.map((entry): SearchItem => ({
+        id: `${entry.type}-${entry.id}`,
+        title: entry.title,
+        subtitle: entry.subtitle,
+        category: entry.type,
+        role: entry.role,
+        to: entry.to,
+        entityId: entry.entity_id,
+      }));
     },
   });
 
@@ -155,18 +94,8 @@ export function CmdKSearch() {
   const loading = searchDataQuery.isLoading;
 
   const visibleItems = useMemo(() => {
-    const normalized = normalizeSearchText(debouncedQuery);
-    if (!normalized) {
-      return items.slice(0, RESULT_LIMIT);
-    }
-
-    return items
-      .filter((item) => {
-        const haystack = `${item.title} ${item.subtitle} ${item.body ?? ""} ${item.category}`.toLowerCase();
-        return haystack.includes(normalized);
-      })
-      .slice(0, RESULT_LIMIT);
-  }, [debouncedQuery, items]);
+    return items.slice(0, RESULT_LIMIT);
+  }, [items]);
 
   const groupedItems = useMemo(() => {
     const groups = new Map<SearchItem["category"], SearchItem[]>();
@@ -202,49 +131,28 @@ export function CmdKSearch() {
     void navigate({ to: item.to });
   };
 
-  const categoryLabel = (category: SearchItem["category"]) => {
-    switch (category) {
-      case "user":
-        return t("cmdk.category.members");
-      case "event":
-        return t("cmdk.category.events");
-      case "announcement":
-        return t("cmdk.category.announcements");
-      case "wiki":
-        return t("cmdk.category.wiki");
-      case "gallery":
-        return t("cmdk.category.gallery");
-      case "war":
-        return t("cmdk.category.guildWar");
-      default:
-        return category;
-    }
-  };
+  const categoryLabel = (category: SearchItem["category"]) => t(CATEGORY_LABEL_KEY[category]);
 
-  const categoryIcon = (category: SearchItem["category"]) => {
-    switch (category) {
-      case "user":
-        return <UserOutlined />;
-      case "event":
-        return <CalendarOutlined />;
-      case "announcement":
-        return <NotificationOutlined />;
-      case "wiki":
-        return <FileSearchOutlined />;
-      case "gallery":
-        return <PictureOutlined />;
-      case "war":
-        return <TeamOutlined />;
-      default:
-        return <SearchOutlined />;
-    }
-  };
+  const categoryIcon = (category: SearchItem["category"]) => CATEGORY_ICON[category];
+
+  const roleBadgeColor = (role: string | undefined): string => ROLE_BADGE_COLOR[role ?? ""] ?? "blue";
 
   return (
     <>
-      <Button onClick={openHandlers.open} size="xs" aria-label={t("cmdk.aria.openSearch")}>
-        {t("cmdk.searchButton")}
-      </Button>
+      {asIcon ? (
+        <ActionIcon variant="subtle" onClick={openHandlers.open} aria-label={t("cmdk.aria.openSearch")}>
+          <SearchOutlined />
+        </ActionIcon>
+      ) : (
+        <Button onClick={openHandlers.open} size="xs" aria-label={t("cmdk.aria.openSearch")} rightSection={
+          <Group gap={2} wrap="nowrap">
+            <Kbd size="xs">{isMac ? "Cmd" : "Ctrl"}</Kbd>
+            <Kbd size="xs">K</Kbd>
+          </Group>
+        }>
+          {t("cmdk.searchButton")}
+        </Button>
+      )}
 
       <Modal
         title={t("cmdk.searchTitle")}
@@ -261,7 +169,7 @@ export function CmdKSearch() {
             aria-label={t("cmdk.aria.searchInput")}
             style={{
               width: "100%",
-              border: "1px solid color-mix(in srgb, var(--infini-color-text, #111827) 20%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--color-text, #111827) 20%, transparent)",
               borderRadius: 8,
               padding: "10px 12px",
               marginTop: 4,
@@ -271,7 +179,7 @@ export function CmdKSearch() {
 
           <Command.List style={{ maxHeight: 360, overflow: "auto" }}>
             {loading || queryIsDebouncing ? <Text c="dimmed">{t("message.loading")}</Text> : null}
-            {!loading && visibleItems.length === 0 ? <Command.Empty>{t("cmdk.noResults")}</Command.Empty> : null}
+            {!loading && normalizedQuery.length >= 2 && visibleItems.length === 0 ? <Command.Empty>{t("cmdk.noResults")}</Command.Empty> : null}
 
             {query.length === 0 && recentSearches.length > 0 ? (
               <Command.Group heading={t("cmdk.recent")}>
@@ -296,7 +204,7 @@ export function CmdKSearch() {
                 {group.map((item) => (
                   <Command.Item
                     key={item.id}
-                    value={`${item.category} ${item.title} ${item.subtitle} ${item.body ?? ""}`}
+                    value={`${item.category} ${item.title} ${item.subtitle}`}
                     onSelect={() => onSelectItem(item)}
                     style={{
                       borderRadius: 8,
@@ -308,7 +216,9 @@ export function CmdKSearch() {
                       <Group align="center">
                         {categoryIcon(item.category)}
                         <Highlight highlight={query} fw={600}>{item.title}</Highlight>
-                        <Badge>{categoryLabel(item.category)}</Badge>
+                        <Badge color={item.category === "user" ? roleBadgeColor(item.role) : undefined}>
+                          {item.category === "user" && item.role ? item.role : categoryLabel(item.category)}
+                        </Badge>
                       </Group>
                       <Highlight highlight={query} c="dimmed" size="sm">
                         {item.subtitle}
@@ -324,4 +234,3 @@ export function CmdKSearch() {
     </>
   );
 }
-

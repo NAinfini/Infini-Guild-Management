@@ -1,9 +1,10 @@
-import { hasRoleAtLeast, type Announcement, type PaginatedResponse } from "@guild/shared";
+import { type Announcement, type PaginatedResponse } from "@guild/shared";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/TipTapEditor";
 import { notifications } from "@mantine/notifications";
+import { modals } from "@mantine/modals";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { format, isValid, parseISO } from "date-fns";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
@@ -11,27 +12,28 @@ import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
 import { useExternalView } from "./useExternalView";
 import {
   archiveAnnouncement,
-  buildAnnouncementImageUrl,
   createAnnouncement,
-  fetchAnnouncement,
-  fetchAnnouncements,
+  deleteAnnouncement,
   type UpdateAnnouncementPayload,
   updateAnnouncement,
   uploadAnnouncementImages,
+  fetchAnnouncement,
+  fetchAnnouncements,
 } from "../services/AnnouncementService";
-import { queryKeys } from "../services/PortalQueryKeys";
-import { useAuthStore } from "../stores/auth";
+import { queryKeys } from "../api/query-keys";
+import { useEffectivePermissions } from "./useEffectivePermissions";
+import { toIsoOrUndefined } from "../utils/iso-dates";
+
+function buildAnnouncementImageUrl(key: string): string {
+  if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:")) return key;
+  const path = `/api/announcements/image?key=${encodeURIComponent(key)}`;
+  if (typeof window === "undefined") return path;
+  return new URL(path, window.location.origin).toString();
+}
 
 const message = {
-  success: (text: string) => notifications.show({ color: "infini-success", message: text, autoClose: 3000 }),
+  success: (text: string) => notifications.show({ color: "green", message: text, autoClose: 3000 }),
 };
-
-function toIsoOrUndefined(value: string): string | undefined {
-  if (!value.trim()) return undefined;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return undefined;
-  return date.toISOString();
-}
 
 function toDateTimePickerValue(iso: string | null): string {
   if (!iso) return "";
@@ -57,11 +59,12 @@ function readAnnouncementsLastSeenAt(): string | null {
 export function useAnnouncementsController() {
   const { t } = useTranslation("announcements");
   const queryClient = useQueryClient();
-  const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
   const { showError } = useAppError();
 
-  const isModerator = Boolean(user && hasRoleAtLeast(user.role, "moderator"));
+  const { canManage: canManagePermission } = useEffectivePermissions();
+
+  const isModerator = canManagePermission(["announcements.create", "announcements.edit", "announcements.archive", "announcements.delete"]);
   const canEdit = isModerator && !isExternalView;
 
   const [pinnedFilter, setPinnedFilter] = useState(false);
@@ -70,6 +73,7 @@ export function useAnnouncementsController() {
   const [debouncedSearchRaw] = useDebouncedValue(search, 300);
   const debouncedSearch = debouncedSearchRaw.trim();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [skipAutoSelectOnce, setSkipAutoSelectOnce] = useState(false);
   const [isCreating, isCreatingHandlers] = useDisclosure(false);
   const [draftAnnouncementId, setDraftAnnouncementId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -78,23 +82,26 @@ export function useAnnouncementsController() {
   const [archived, setArchived] = useState(false);
   const [draftEnabled, setDraftEnabled] = useState(false);
   const [publishAt, setPublishAt] = useState("");
-  const [expiresAt, setExpiresAt] = useState("");
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
-  const [notifyDiscord, setNotifyDiscord] = useState(true);
-  const [notifyWechat, setNotifyWechat] = useState(false);
   const [announcementsLastSeenAt, setAnnouncementsLastSeenAt] = useState<string | null>(null);
 
+  const [listPage, setListPage] = useState(1);
+  const accumulatedAnnouncementsRef = useRef<Announcement[]>([]);
+  const [accumulatedAnnouncements, setAccumulatedAnnouncements] = useState<Announcement[]>([]);
+  const [listTotal, setListTotal] = useState(0);
+
   const listQuery = useQuery({
-    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch),
+    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch, listPage),
     queryFn: () =>
       fetchAnnouncements({
-        page: 1,
-        limit: 100,
+        page: listPage,
+        limit: 50,
         status: statusFilter,
         pinned: pinnedFilter ? true : undefined,
         search: debouncedSearch || undefined,
         archived: statusFilter === "archived",
       }),
+    staleTime: 10 * 60_000,
     placeholderData: keepPreviousData,
   });
 
@@ -102,6 +109,7 @@ export function useAnnouncementsController() {
     queryKey: queryKeys.announcements.detail(selectedId),
     enabled: Boolean(selectedId),
     queryFn: () => fetchAnnouncement(selectedId as string),
+    staleTime: 10 * 60_000,
     placeholderData: keepPreviousData,
   });
 
@@ -111,6 +119,7 @@ export function useAnnouncementsController() {
       message.success(t("message.created"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
       isCreatingHandlers.close();
+      setSkipAutoSelectOnce(false);
       setSelectedId(data.id);
     },
     onError: (error) => {
@@ -119,7 +128,7 @@ export function useAnnouncementsController() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: UpdateAnnouncementPayload }) => updateAnnouncement(id, payload),
+    mutationFn: ({ id, payload, ifMatch }: { id: string; payload: UpdateAnnouncementPayload; ifMatch?: string }) => updateAnnouncement(id, payload, ifMatch),
     onMutate: async ({ id, payload }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
 
@@ -206,6 +215,7 @@ export function useAnnouncementsController() {
     onSuccess: async () => {
       message.success(t("message.archived"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+      setSkipAutoSelectOnce(true);
       setSelectedId(null);
     },
     onError: (error, _variables, context) => {
@@ -218,14 +228,50 @@ export function useAnnouncementsController() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: deleteAnnouncement,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
+      const previousLists = queryClient
+        .getQueriesData<PaginatedResponse<Announcement>>({ queryKey: queryKeys.announcements.all })
+        .filter(([key]) => !(Array.isArray(key) && key[1] === "detail"));
+
+      for (const [key] of previousLists) {
+        queryClient.setQueryData<PaginatedResponse<Announcement>>(key, (current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            data: current.data.filter((item) => item.id !== id),
+          };
+        });
+      }
+
+      return { previousLists };
+    },
+    onSuccess: async () => {
+      message.success(t("message.deleted"));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+      setSkipAutoSelectOnce(true);
+      setSelectedId(null);
+    },
+    onError: (error, _variables, context) => {
+      if (context) {
+        for (const [key, previous] of context.previousLists) {
+          queryClient.setQueryData(key, previous);
+        }
+      }
+      showError(error, t("message.deleteFailed"));
+    },
+  });
+
   const rows = useMemo(() => {
-    let raw = listQuery.data?.data ?? [];
+    let raw = accumulatedAnnouncements;
     if (!canEdit) {
       raw = raw.filter((item) => item.status === "published" || item.status === "archived");
     }
     if (statusFilter) {
       raw = raw.filter((item) => item.status === statusFilter);
-    } else {
+    } else if (!canEdit) {
       raw = raw.filter((item) => item.status === "published");
     }
     if (pinnedFilter) {
@@ -237,7 +283,9 @@ export function useAnnouncementsController() {
       }
       return left.pinned ? -1 : 1;
     });
-  }, [canEdit, listQuery.data?.data, pinnedFilter, statusFilter]);
+  }, [canEdit, accumulatedAnnouncements, pinnedFilter, statusFilter]);
+
+  const listHasMore = accumulatedAnnouncements.length < listTotal;
 
   const selected = detailQuery.data ?? null;
 
@@ -245,19 +293,49 @@ export function useAnnouncementsController() {
     setAnnouncementsLastSeenAt(readAnnouncementsLastSeenAt());
   }, []);
 
+  // Reset accumulated announcements when filter params change
+  useEffect(() => {
+    accumulatedAnnouncementsRef.current = [];
+    setAccumulatedAnnouncements([]);
+    setListTotal(0);
+    setListPage(1);
+   
+  }, [pinnedFilter, statusFilter, debouncedSearch]);
+
+  // Accumulate announcements across pages
+  useEffect(() => {
+    if (!listQuery.data || listQuery.isFetching) return;
+    const newItems = listQuery.data.data;
+    if (listPage === 1) {
+      accumulatedAnnouncementsRef.current = newItems;
+    } else {
+      const existingIds = new Set(accumulatedAnnouncementsRef.current.map((item) => item.id));
+      const deduplicated = newItems.filter((item) => !existingIds.has(item.id));
+      accumulatedAnnouncementsRef.current = [...accumulatedAnnouncementsRef.current, ...deduplicated];
+    }
+    setAccumulatedAnnouncements([...accumulatedAnnouncementsRef.current]);
+    setListTotal(listQuery.data.total);
+  }, [listQuery.data, listQuery.isFetching, listPage]);
+
   useEffect(() => {
     if (isCreating) return;
-    if (!selectedId && rows.length > 0) {
-      setSelectedId(rows[0]?.id ?? null);
-      return;
-    }
     if (selectedId && rows.length > 0 && !rows.some((r) => r.id === selectedId)) {
       setSelectedId(rows[0]?.id ?? null);
+      setSkipAutoSelectOnce(false);
+      return;
     }
     if (selectedId && rows.length === 0) {
       setSelectedId(null);
+      setSkipAutoSelectOnce(false);
+      return;
     }
-  }, [isCreating, rows, selectedId]);
+    if (selectedId || skipAutoSelectOnce) {
+      return;
+    }
+    if (rows.length > 0) {
+      setSelectedId(rows[0]?.id ?? null);
+    }
+  }, [isCreating, rows, selectedId, skipAutoSelectOnce]);
 
   useEffect(() => {
     if (isCreating) {
@@ -267,10 +345,7 @@ export function useAnnouncementsController() {
       setArchived(false);
       setDraftEnabled(false);
       setPublishAt("");
-      setExpiresAt("");
       setScheduleEnabled(false);
-      setNotifyDiscord(true);
-      setNotifyWechat(false);
     } else if (selected) {
       setTitle(selected.title);
       setBodyJson(selected.body_json);
@@ -278,10 +353,7 @@ export function useAnnouncementsController() {
       setArchived(selected.status === "archived");
       setDraftEnabled(selected.status === "draft");
       setPublishAt(toDateTimePickerValue(selected.publish_at));
-      setExpiresAt(toDateTimePickerValue(selected.expires_at));
       setScheduleEnabled(selected.status === "scheduled");
-      setNotifyDiscord(selected.status === "published");
-      setNotifyWechat(false);
     }
   }, [isCreating, selected]);
 
@@ -296,29 +368,50 @@ export function useAnnouncementsController() {
         bodyJson !== selected.body_json ||
         pinned !== selected.pinned ||
         publishAt !== toDateTimePickerValue(selected.publish_at) ||
-        expiresAt !== toDateTimePickerValue(selected.expires_at) ||
         scheduleEnabled !== (selected.status === "scheduled") ||
         draftEnabled !== (selected.status === "draft") ||
         archived !== (selected.status === "archived")
       );
     }
     return false;
-  }, [archived, bodyJson, canEdit, draftEnabled, expiresAt, isCreating, pinned, publishAt, scheduleEnabled, selected, title]);
+  }, [archived, bodyJson, canEdit, draftEnabled, isCreating, pinned, publishAt, scheduleEnabled, selected, title]);
 
   useBeforeUnloadPrompt(isDirty);
 
   const handleCreateByStatus = useCallback(() => {
     isCreatingHandlers.open();
     setDraftAnnouncementId(null);
+    setSkipAutoSelectOnce(false);
     setSelectedId(null);
   }, []);
 
   const handleSelectId = useCallback((id: string | null) => {
+    if (isDirty) {
+      modals.openConfirmModal({
+        title: t("confirm.discardUnsaved.title"),
+        children: t("confirm.discardUnsaved.description"),
+        centered: true,
+        confirmProps: { color: "red" },
+        labels: {
+          cancel: t("action.cancel"),
+          confirm: t("common:action.discard"),
+        },
+        onConfirm: () => {
+          if (id !== null) {
+            isCreatingHandlers.close();
+          }
+          setSkipAutoSelectOnce(false);
+          setSelectedId(id);
+        },
+      });
+      return;
+    }
     if (id !== null) {
       isCreatingHandlers.close();
     }
+    setSkipAutoSelectOnce(false);
     setSelectedId(id);
-  }, [isCreatingHandlers]);
+  }, [isDirty, isCreatingHandlers, t]);
 
   const resetFilters = useCallback(() => {
     setSearch("");
@@ -346,12 +439,10 @@ export function useAnnouncementsController() {
             pinned,
             status,
             publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
-            expires_at: toIsoOrUndefined(expiresAt),
-            notify_discord: notifyDiscord,
-            notify_wechat: notifyWechat,
           },
         });
         isCreatingHandlers.close();
+        setSkipAutoSelectOnce(false);
         setSelectedId(draftAnnouncementId);
         setDraftAnnouncementId(null);
         return;
@@ -363,9 +454,6 @@ export function useAnnouncementsController() {
         pinned,
         status,
         publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
-        expires_at: toIsoOrUndefined(expiresAt),
-        notify_discord: notifyDiscord,
-        notify_wechat: notifyWechat,
       });
       return;
     }
@@ -378,7 +466,7 @@ export function useAnnouncementsController() {
     }
 
     const statusMap: Record<string, Announcement["status"]> = {
-      none: selected.status === "draft" ? "published" : selected.status,
+      none: "published",
       draft: "draft",
       scheduled: "scheduled",
     };
@@ -392,10 +480,8 @@ export function useAnnouncementsController() {
         pinned,
         status,
         publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
-        expires_at: toIsoOrUndefined(expiresAt),
-        notify_discord: notifyDiscord,
-        notify_wechat: notifyWechat,
       },
+      ifMatch: `"announcement-${selected.id}-${selected.updated_at}"`,
     });
   };
 
@@ -419,15 +505,12 @@ export function useAnnouncementsController() {
     setArchived(selected.status === "archived");
     setDraftEnabled(selected.status === "draft");
     setPublishAt(toDateTimePickerValue(selected.publish_at));
-    setExpiresAt(toDateTimePickerValue(selected.expires_at));
     setScheduleEnabled(selected.status === "scheduled");
-    setNotifyDiscord(selected.status === "published");
-    setNotifyWechat(false);
   };
 
   const handleDelete = () => {
     if (!selectedId) return;
-    archiveMutation.mutate(selectedId);
+    deleteMutation.mutate(selectedId);
   };
 
   const handleUploadAnnouncementImages = async (file: File) => {
@@ -442,8 +525,6 @@ export function useAnnouncementsController() {
           body_json: bodyJson || TIPTAP_DEFAULT_JSON,
           pinned: false,
           status: "draft",
-          notify_discord: false,
-          notify_wechat: false,
         });
         setDraftAnnouncementId(created.id);
         announcementId = created.id;
@@ -482,22 +563,19 @@ export function useAnnouncementsController() {
     setDraftEnabled,
     publishAt,
     setPublishAt,
-    expiresAt,
-    setExpiresAt,
     scheduleEnabled,
     setScheduleEnabled,
-    notifyDiscord,
-    setNotifyDiscord,
-    notifyWechat,
-    setNotifyWechat,
     announcementsLastSeenAt,
     listQuery,
     detailQuery,
     rows,
     selected,
-    isBusy: createMutation.isPending || updateMutation.isPending || archiveMutation.isPending,
+    listHasMore,
+    listLoadingMore: listQuery.isFetching && listPage > 1,
+    onLoadMoreList: () => setListPage((p) => p + 1),
+    isBusy: createMutation.isPending || updateMutation.isPending || archiveMutation.isPending || deleteMutation.isPending,
     savePending: updateMutation.isPending,
-    deletePending: archiveMutation.isPending,
+    deletePending: deleteMutation.isPending,
     isDirty,
     resetFilters,
     handleCreateByStatus,

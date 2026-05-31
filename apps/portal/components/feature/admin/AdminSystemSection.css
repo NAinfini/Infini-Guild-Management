@@ -1,0 +1,200 @@
+/* ── System Health Grid ── */
+
+.system-health-grid {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.system-health-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #111827));
+  min-width: 80px;
+  flex: 1;
+  transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+}
+
+.system-health-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+}
+
+.system-health-tile--ok {
+  border-color: color-mix(in srgb, #10b981 20%, transparent);
+}
+
+.system-health-tile--ok:hover {
+  border-color: color-mix(in srgb, #10b981 40%, transparent);
+  box-shadow: 0 4px 16px color-mix(in srgb, #10b981 12%, transparent);
+}
+
+.system-health-tile--error {
+  border-color: color-mix(in srgb, #ef4444 25%, transparent);
+  background: color-mix(in srgb, #ef4444 3%, var(--color-surface, #fff));
+}
+
+.system-health-tile--error:hover {
+  border-color: color-mix(in srgb, #ef4444 45%, transparent);
+  box-shadow: 0 4px 16px color-mix(in srgb, #ef4444 12%, transparent);
+}
+
+.system-health-tile--latency {
+  flex-direction: row;
+  gap: 10px;
+  padding: 10px 16px;
+  min-width: 140px;
+}
+
+.system-health-tile__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  transition: transform 200ms ease;
+}
+
+.system-health-tile:hover .system-health-tile__icon {
+  transform: scale(1.1);
+}
+
+.system-health-tile__label {
+  letter-spacing: 0.03em;
+  color: var(--color-text, #111827);
+}
+
+.system-health-tile__badge {
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+/* ── Overall Status Indicator ── */
+
+.system-health-overall {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid;
+  flex: 1;
+  min-width: 120px;
+  justify-content: center;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.system-health-overall--ok {
+  border-color: color-mix(in srgb, #10b981 25%, transparent);
+  background: color-mix(in srgb, #10b981 4%, var(--color-surface, #fff));
+}
+
+.system-health-overall--warn {
+  border-color: color-mix(in srgb, #eab308 30%, transparent);
+  background: color-mix(in srgb, #eab308 5%, var(--color-surface, #fff));
+}
+
+.system-health-overall__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.system-health-overall__dot--ok {
+  background: #10b981;
+  box-shadow: 0 0 8px #10b98166;
+  animation: healthPulse 2s ease-in-out infinite;
+}
+
+.system-health-overall__dot--warn {
+  background: #eab308;
+  box-shadow: 0 0 8px #eab30866;
+  animation: healthPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes healthPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px currentColor; }
+  50% { opacity: 0.6; box-shadow: 0 0 12px currentColor; }
+}
+
+/* ── Health Log Table ── */
+
+.health-log-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+
+.health-log-table th {
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 700;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--color-text, #111827) 50%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  background: var(--color-surface, #fff);
+  z-index: 1;
+}
+
+.health-log-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 5%, transparent);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.health-log-table tr:last-child td {
+  border-bottom: none;
+}
+
+.health-log-table tr:hover td {
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 3%, transparent);
+}
+
+.health-log-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.health-log-dot--ok { background: #10b981; }
+.health-log-dot--warn { background: #eab308; }
+.health-log-dot--error { background: #ef4444; }
+
+.health-log-latency {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.health-log-latency-bar {
+  height: 4px;
+  border-radius: 2px;
+  transition: width 300ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .system-health-overall__dot--ok,
+  .system-health-overall__dot--warn {
+    animation: none;
+  }
+}

@@ -1,15 +1,11 @@
 import type { Event } from "@guild/shared";
-import { NumberTicker } from "@infini-dev-kit/react";
+import { activeGame } from "@guild/shared/games";
+import { NumberTicker } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
-import { Avatar, Badge, Button, Group, RingProgress, Stack, Text, Tooltip } from "@mantine/core";
-import {
-  IconArrowRight,
-  IconCalendarEvent,
-  IconClock,
-  IconFriends,
-  IconSwords,
-  IconTargetArrow,
-} from "@tabler/icons-react";
+import { Badge, Button, Group, RingProgress, Stack, Text } from "@mantine/core";
+import { MemberRoleAvatar } from "../shared/MemberRoleAvatar";
+import { ArrowRightIcon, CalendarEventIcon, ClockIcon, FriendsIcon, SwordsIcon, TargetArrowIcon } from "@portal/components/icons";
+import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarEventOutlined } from "../../utils/icons";
 import { EmptyState } from "../shared/EmptyState";
@@ -19,15 +15,19 @@ import {
   type DashboardUpcomingEventRow,
 } from "./shared";
 
-const EVENT_TYPE_ICON: Record<string, React.ReactNode> = {
-  weekly_mission: <IconTargetArrow size={12} />,
-  guild_war: <IconSwords size={12} />,
-  social: <IconFriends size={12} />,
-  other: <IconCalendarEvent size={12} />,
+const ICON_COMPONENT_MAP: Record<string, React.ReactNode> = {
+  TargetOutlined: <TargetArrowIcon size={12} />,
+  SwordsOutlined: <SwordsIcon size={12} />,
+  TeamOutlined: <FriendsIcon size={12} />,
+  CalendarEventOutlined: <CalendarEventIcon size={12} />,
 };
 
+const EVENT_TYPE_ICON: Record<string, React.ReactNode> = Object.fromEntries(
+  activeGame.eventTypes.map((et) => [et.id, ICON_COMPONENT_MAP[et.icon] ?? <CalendarEventIcon size={12} />]),
+);
+
 function eventTypeIcon(type: string): React.ReactNode {
-  return EVENT_TYPE_ICON[type] ?? EVENT_TYPE_ICON.other;
+  return EVENT_TYPE_ICON[type] ?? <CalendarEventIcon size={12} />;
 }
 
 type UpcomingEventsCardProps = {
@@ -37,7 +37,7 @@ type UpcomingEventsCardProps = {
   onOpenEvent: (event: Pick<Event, "id" | "title">) => void;
 };
 
-export function UpcomingEventsCard({
+export const UpcomingEventsCard = memo(function UpcomingEventsCard({
   upcomingEventsCount,
   featuredRows,
   rows,
@@ -62,7 +62,7 @@ export function UpcomingEventsCard({
             {[...featuredRows, ...rows].slice(0, 5).map((item) => {
               const signedUpCount = item.members.length;
               const capacity = item.item.capacity ?? 0;
-              const percentage = capacity > 0 ? Math.round((signedUpCount / capacity) * 100) : 100;
+              const percentage = capacity > 0 ? Math.round((signedUpCount / capacity) * 100) : 0;
               const startDate = new Date(item.item.start_at);
               const month = startDate.toLocaleString(i18n.language, { month: "short" }).toUpperCase();
               const day = startDate.getDate();
@@ -71,9 +71,19 @@ export function UpcomingEventsCard({
                 <div
                   key={item.item.id}
                   style={{
-                    padding: "12px",
-                    background: "color-mix(in srgb, var(--infini-color-surface, #fff) 95%, var(--infini-color-text, #111827))",
-                    borderRadius: "8px",
+                    padding: "14px",
+                    background: "color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #111827))",
+                    borderRadius: "12px",
+                    border: "1px solid color-mix(in srgb, var(--color-text, #111827) 6%, transparent)",
+                    transition: "border-color 160ms ease, box-shadow 160ms ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--color-primary, #3b82f6) 24%, transparent)";
+                    e.currentTarget.style.boxShadow = "0 2px 8px color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--color-text, #111827) 6%, transparent)";
+                    e.currentTarget.style.boxShadow = "none";
                   }}
                 >
                   <Group gap={12} wrap="nowrap" align="center">
@@ -93,7 +103,7 @@ export function UpcomingEventsCard({
                           {t(`common:eventType.${item.item.type}`)}
                         </Badge>
                         <Group gap={4}>
-                          <IconClock size={12} style={{ opacity: 0.6 }} />
+                          <ClockIcon size={12} style={{ opacity: 0.6 }} />
                           <Text size="xs" c="dimmed">
                             {startDate.toLocaleTimeString(i18n.language, { hour: "2-digit", minute: "2-digit", hour12: false })}
                           </Text>
@@ -101,30 +111,25 @@ export function UpcomingEventsCard({
                       </Group>
                     </Stack>
                       <Group gap={4}>
-                        {item.members.slice(0, 5).map((member) => (
-                          <Tooltip key={member.user.id} label={member.user.username} withArrow>
-                            <Avatar size={40} radius="xl">
-                              {member.user.username.slice(0, 2).toUpperCase()}
-                            </Avatar>
-                          </Tooltip>
+                        {item.members.slice(0, 10).map((member) => (
+                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={48} />
                         ))}
-                      {item.members.length > 5 ? (
+                      {item.members.length > 10 ? (
                         <Text size="xs" c="dimmed" fw={600}>
-                          +{item.members.length - 5}
+                          +{item.members.length - 10}
                         </Text>
                       ) : null}
                     </Group>
                     <Stack gap={2} align="center">
                       <RingProgress
-                        size={40}
-                        thickness={3}
-                        sections={[{ value: percentage, color: "var(--infini-color-primary, #3b82f6)" }]}
-                        label={
-                          <Text size="10px" ta="center" fw={600}>
-                            {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}
-                          </Text>
-                        }
+                        size={36}
+                        thickness={4}
+                        roundCaps
+                        sections={[{ value: percentage, color: "var(--color-primary, #3b82f6)" }]}
                       />
+                      <Text size="10px" ta="center" fw={600} c="dimmed">
+                        {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}
+                      </Text>
                     </Stack>
                     <Button
                       size="xs"
@@ -133,7 +138,7 @@ export function UpcomingEventsCard({
                       style={{ minWidth: 32, padding: "4px 8px" }}
                       aria-label={t("card.upcomingEvents.viewEvent")}
                     >
-                      <IconArrowRight size={16} />
+                      <ArrowRightIcon size={16} />
                     </Button>
                   </Group>
                 </div>
@@ -143,4 +148,4 @@ export function UpcomingEventsCard({
         )}
     </PortalCard>
   );
-}
+});

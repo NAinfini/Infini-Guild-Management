@@ -1,6 +1,7 @@
 ﻿import { notifications } from "@mantine/notifications";
 import type { PushMessage } from "@guild/shared";
 import { useEffect, useRef, type MutableRefObject } from "react";
+import { useTranslation } from "react-i18next";
 import { useNotificationStore } from "../stores/notifications";
 
 type UseNotificationPresentationOptions = {
@@ -11,9 +12,9 @@ type UseNotificationPresentationOptions = {
 
 type PushSignalPayload = {
   key: string;
-  title: string;
+  titleKey: string;
   message: string;
-  color: "infini-primary" | "infini-warning";
+  color: "blue" | "yellow";
   frequencyHz: number;
 };
 
@@ -24,25 +25,83 @@ type AudioContextWindow = Window & {
 const SIGNAL_DEDUPE_MS = 10_000;
 const SIGNAL_TONE_MS = 120;
 
-function resolveSignalPayload(message: PushMessage): PushSignalPayload | null {
+function resolveHintMessage(hint: string, t: (key: string, options?: Record<string, unknown>) => string): string {
+  const key = `notification.hint.${hint}`;
+  const translated = t(key, { defaultValue: "" });
+  if (translated && translated !== key) return translated;
+  return hint.replace(/_/g, " ");
+}
+
+function resolveSignalPayload(message: PushMessage, t: (key: string, options?: Record<string, unknown>) => string): PushSignalPayload | null {
   if (message.type === "announcement_published") {
     return {
       key: `announcement:${message.announcement_id}`,
-      title: "Announcement Published",
+      titleKey: "notification.type.announcement",
       message: message.title,
-      color: "infini-primary",
+      color: "blue",
       frequencyHz: 880,
     };
   }
 
-  if (message.type === "event_reminder") {
-    return {
-      key: `event-reminder:${message.event_id}`,
-      title: "Event Reminder",
-      message: `${message.title} (${message.starts_at.slice(0, 16).replace("T", " ")})`,
-      color: "infini-warning",
-      frequencyHz: 740,
-    };
+  if (message.type === "entity_changed") {
+    switch (message.entity_type) {
+      case "event":
+        return {
+          key: `event:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.eventReminder",
+          message: resolveHintMessage(message.hint, t),
+          color: "yellow",
+          frequencyHz: 660,
+        };
+      case "wiki":
+        return {
+          key: `wiki:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.wiki",
+          message: resolveHintMessage(message.hint, t),
+          color: "blue",
+          frequencyHz: 660,
+        };
+      case "member_profile":
+        return {
+          key: `member:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.memberOnline",
+          message: resolveHintMessage(message.hint, t),
+          color: "yellow",
+          frequencyHz: 660,
+        };
+      case "announcement":
+        return {
+          key: `announcement:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.announcement",
+          message: resolveHintMessage(message.hint, t),
+          color: "blue",
+          frequencyHz: 660,
+        };
+      case "gallery":
+        return {
+          key: `gallery:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.gallery",
+          message: resolveHintMessage(message.hint, t),
+          color: "blue",
+          frequencyHz: 660,
+        };
+      case "guild_war":
+        return {
+          key: `guild_war:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.guildWar",
+          message: resolveHintMessage(message.hint, t),
+          color: "yellow",
+          frequencyHz: 660,
+        };
+      case "member_badge":
+        return {
+          key: `badge:${message.entity_id}:${message.hint}`,
+          titleKey: "notification.type.badge",
+          message: resolveHintMessage(message.hint, t),
+          color: "yellow",
+          frequencyHz: 660,
+        };
+    }
   }
 
   return null;
@@ -92,17 +151,19 @@ export function useNotificationPresentation(options: UseNotificationPresentation
   const enabled = options.enabled ?? true;
   const showToast = options.showToast ?? true;
   const playSound = options.playSound ?? false;
+  const { t } = useTranslation("common");
   const signalSequence = useNotificationStore((state) => state.signalSequence);
   const lastSignalMessage = useNotificationStore((state) => state.lastSignalMessage);
+  const suppressed = useNotificationStore((state) => state.suppressed);
   const lastSignalRef = useRef<Map<string, number>>(new Map());
   const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
-    if (!enabled || !lastSignalMessage || signalSequence <= 0) {
+    if (!enabled || suppressed || !lastSignalMessage || signalSequence <= 0) {
       return;
     }
 
-    const payload = resolveSignalPayload(lastSignalMessage);
+    const payload = resolveSignalPayload(lastSignalMessage, t);
     if (!payload) {
       return;
     }
@@ -117,7 +178,7 @@ export function useNotificationPresentation(options: UseNotificationPresentation
     if (showToast) {
       notifications.show({
         color: payload.color,
-        title: payload.title,
+        title: t(payload.titleKey),
         message: payload.message,
       });
     }
@@ -128,7 +189,7 @@ export function useNotificationPresentation(options: UseNotificationPresentation
         console.warn(`[push-sound] ${message}`);
       });
     }
-  }, [enabled, lastSignalMessage, playSound, showToast, signalSequence]);
+  }, [enabled, lastSignalMessage, playSound, showToast, signalSequence, suppressed, t]);
 
   useEffect(() => {
     if (playSound) {

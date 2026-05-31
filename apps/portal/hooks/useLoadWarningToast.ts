@@ -6,7 +6,7 @@ function showWarningToast(text: string) {
   const delivered = portalToast({ title: text, status: "warning" });
   if (!delivered) {
     notifications.show({
-      color: "infini-warning",
+      color: "yellow",
       message: text,
       autoClose: 4500,
       withCloseButton: true,

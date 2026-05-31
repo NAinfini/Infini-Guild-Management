@@ -1,19 +1,20 @@
 import type { WikiArticle, WikiCategory } from "@guild/shared";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/TipTapEditor";
-import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
+import { notifySuccess } from "../utils/notifications";
 import {
   createWikiArticle,
   type CreateWikiArticlePayload,
   type UpdateWikiArticlePayload,
   updateWikiArticle,
   uploadWikiArticleImages,
+  deleteWikiArticle,
 } from "../services/WikiService";
-import { queryKeys } from "../services/PortalQueryKeys";
+import { queryKeys } from "../api/query-keys";
 
 type UseWikiArticleEditorParams = {
   canEdit: boolean;
@@ -21,7 +22,7 @@ type UseWikiArticleEditorParams = {
   selectedArticle: WikiArticle | null;
   selectedCategoryId?: string;
   selectedCategoryIds: string[];
-  onArticleCreated: (slug: string) => void;
+  onArticleCreated: (slug: string | null) => void;
 };
 
 function getDefaultCategoryId(
@@ -75,7 +76,7 @@ export function useWikiArticleEditor({
   const createArticleMutation = useMutation({
     mutationFn: createWikiArticle,
     onSuccess: async (created) => {
-      notifications.show({ color: "infini-success", message: t("message.articleCreated") });
+      notifySuccess(t("message.articleCreated"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
       isCreatingArticleHandlers.close();
       onArticleCreated(created.slug);
@@ -86,9 +87,9 @@ export function useWikiArticleEditor({
   });
 
   const updateArticleMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: UpdateWikiArticlePayload }) => updateWikiArticle(id, payload),
+    mutationFn: ({ id, payload, ifMatch }: { id: string; payload: UpdateWikiArticlePayload; ifMatch?: string }) => updateWikiArticle(id, payload, ifMatch),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.articleSaved") });
+      notifySuccess(t("message.articleSaved"));
       setPinnedIntent("none");
       setArchiveIntent("none");
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
@@ -98,6 +99,18 @@ export function useWikiArticleEditor({
     },
     onError: (error) => {
       showError(error, t("message.articleSaveFailed"));
+    },
+  });
+
+  const deleteArticleMutation = useMutation({
+    mutationFn: (id: string) => deleteWikiArticle(id),
+    onSuccess: async () => {
+      notifySuccess(t("message.articleDeleted"));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
+      onArticleCreated(null);
+    },
+    onError: (error) => {
+      showError(error, t("message.articleDeleteFailed"));
     },
   });
 
@@ -192,6 +205,7 @@ export function useWikiArticleEditor({
     updateArticleMutation.mutate({
       id: selectedArticle.id,
       payload,
+      ifMatch: `"wiki-${selectedArticle.id}-${selectedArticle.updated_at}"`,
     });
   };
 
@@ -229,6 +243,10 @@ export function useWikiArticleEditor({
     });
   };
 
+  const deleteArticle = (id: string) => {
+    deleteArticleMutation.mutate(id);
+  };
+
   const uploadWikiArticleImage = async (file: File) => {
     if (!selectedArticle) {
       throw new Error("Save article first before uploading images");
@@ -238,7 +256,9 @@ export function useWikiArticleEditor({
     if (!key) {
       throw new Error("Image upload returned no key");
     }
-    return key;
+    if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:")) return key;
+    const path = `/api/wiki/image?key=${encodeURIComponent(key)}`;
+    return new URL(path, window.location.origin).toString();
   };
 
   return {
@@ -264,5 +284,6 @@ export function useWikiArticleEditor({
     togglePinnedIntent,
     toggleArchiveIntent,
     uploadWikiArticleImage,
+    deleteArticle,
   };
 }

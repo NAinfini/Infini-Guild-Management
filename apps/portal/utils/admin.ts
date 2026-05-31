@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+export { toIsoOrUndefined } from "./iso-dates";
 
 export function formatDateTime(iso: string | null): string {
   if (!iso) {
@@ -9,17 +10,6 @@ export function formatDateTime(iso: string | null): string {
     return "-";
   }
   return format(date, "yyyy-MM-dd HH:mm");
-}
-
-export function toIsoOrUndefined(value: string): string | undefined {
-  if (!value.trim()) {
-    return undefined;
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return undefined;
-  }
-  return date.toISOString();
 }
 
 export function downloadFileBlob(filename: string, blob: Blob) {

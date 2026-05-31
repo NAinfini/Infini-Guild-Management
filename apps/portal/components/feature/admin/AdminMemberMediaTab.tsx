@@ -1,12 +1,13 @@
-import { type ImageGridEditorItem } from "@infini-dev-kit/react";
-import { ImageGridEditor } from "@infini-dev-kit/react";
+import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
+import type { ImageGridEditorItem } from "@guild/shared/types/media";
 import { PortalCard } from "../../shared/PortalCard";
-import { Button, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
+import { Avatar, Button, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { IconPlus, IconTrash, IconUpload } from "@tabler/icons-react";
+import { PlusIcon, TrashIcon, UploadIcon, UserIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import type { UseMediaUploadState } from "../../../hooks/useMediaUpload";
 import type { UsersListResponse } from "../../../services/UserService";
+import { resolveProfileMediaUrl } from "../../../utils/media";
 
 const PROFILE_IMAGE_MAX = 10;
 
@@ -34,6 +35,10 @@ type AdminMemberMediaTabProps = {
   deleteAudioPending: boolean;
   onUploadAudio: () => Promise<void>;
   onDeleteAudio: () => void;
+  avatarUploadPending: boolean;
+  avatarDeletePending: boolean;
+  onUploadAvatar: (file: File) => void;
+  onDeleteAvatar: () => void;
 };
 
 export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
@@ -59,11 +64,66 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
     deleteAudioPending,
     onUploadAudio,
     onDeleteAudio,
+    avatarUploadPending,
+    avatarDeletePending,
+    onUploadAvatar,
+    onDeleteAvatar,
   } = props;
   const { t } = useTranslation(["admin", "common"]);
 
   return (
     <Stack gap={16}>
+      <PortalCard interactive={false}>
+        <div style={{ padding: "1.2rem" }}>
+          <Text fw={600} size="sm" mb={12}>{t("media.avatar")}</Text>
+          <Group gap={16} align="center">
+            <Avatar size={72} radius="xl" src={member.profile.avatar_key ? resolveProfileMediaUrl(member.profile.avatar_key) : undefined}>
+              <UserIcon size={32} />
+            </Avatar>
+            {isModerator ? (
+              <Stack gap={6}>
+                <FileButton
+                  onChange={(file) => { if (file) onUploadAvatar(file); }}
+                  accept="image/jpeg,image/png,image/gif,image/webp,image/avif"
+                >
+                  {(props) => (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      loading={avatarUploadPending}
+                      leftSection={<UploadIcon size={16} />}
+                      {...props}
+                    >
+                      {t("media.uploadAvatar")}
+                    </Button>
+                  )}
+                </FileButton>
+                {member.profile.avatar_key && isAdmin ? (
+                  <Button
+                    variant="subtle"
+                    color="red"
+                    size="compact-xs"
+                    leftSection={<TrashIcon size={14} />}
+                    loading={avatarDeletePending}
+                    onClick={() =>
+                      modals.openConfirmModal({
+                        title: t("confirm.deleteAvatar.title"),
+                        children: <Text size="sm">{t("confirm.deleteAvatar.description", { username: member.user.username })}</Text>,
+                        labels: { confirm: t("media.removeAvatar"), cancel: t("common:cancel") },
+                        confirmProps: { color: "red" },
+                        onConfirm: onDeleteAvatar,
+                      })
+                    }
+                  >
+                    {t("media.removeAvatar")}
+                  </Button>
+                ) : null}
+              </Stack>
+            ) : null}
+          </Group>
+        </div>
+      </PortalCard>
+
       <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
           <Text fw={600} size="sm" mb={12}>{t("media.images")}</Text>
@@ -84,7 +144,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
 
               {imageUploader.files.length > 0 ? (
                 <Stack gap={8}>
-                  {imageUploader.error ? <Text c="infini-danger" size="sm">{imageUploader.error}</Text> : null}
+                  {imageUploader.error ? <Text c="red" size="sm">{imageUploader.error}</Text> : null}
                   {imageUploader.isConverting || imageUploader.isUploading ? (
                     <Stack style={{ width: "100%" }} gap={4}>
                       <Progress value={imageUploader.conversionProgress} size="sm" animated />
@@ -92,7 +152,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                     </Stack>
                   ) : null}
                   <Button
-                    leftSection={<IconUpload size={16} />}
+                    leftSection={<UploadIcon size={16} />}
                     onClick={() => {
                       void onUploadImages();
                     }}
@@ -126,8 +186,8 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                 {isModerator ? (
                   <Button
                     size="sm"
-                    color="infini-danger"
-                    variant="light"
+                    color="red"
+                    variant="default"
                     px={8}
                     onClick={() => {
                       onRemoveVideoUrl(index);
@@ -135,7 +195,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                     loading={saveVideosPending}
                     aria-label={t("media.aria.removeVideoUrl")}
                   >
-                    <IconTrash size={16} />
+                    <TrashIcon size={16} />
                   </Button>
                 ) : null}
               </Group>
@@ -145,8 +205,8 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
               <Group gap={8}>
                 <Button
                   size="sm"
-                  variant="light"
-                  leftSection={<IconPlus size={16} />}
+                  variant="default"
+                  leftSection={<PlusIcon size={16} />}
                   onClick={onAddVideoUrl}
                   disabled={videoUrls.length >= 10}
                 >
@@ -178,20 +238,22 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
           <Text fw={600} size="sm" mb={12}>{t("media.audio")}</Text>
           {member.profile.audio_key ? (
             <Stack gap={6}>
-              <audio controls src={member.profile.audio_key} style={{ width: "100%" }} />
+              <audio controls src={resolveProfileMediaUrl(member.profile.audio_key)} style={{ width: "100%" }} />
               <Text c="dimmed" size="sm" style={{ wordBreak: "break-all" }}>
                 {member.profile.audio_key}
               </Text>
               {isAdmin ? (
                 <Button
-                  color="infini-danger"
-                  leftSection={<IconTrash size={16} />}
+                  color="red"
+                  size="sm"
+                  w="fit-content"
+                  leftSection={<TrashIcon size={14} />}
                   onClick={() =>
                     modals.openConfirmModal({
                       title: t("confirm.deleteAudio.title"),
-                      children: <Text size="sm">{t("confirm.deleteAudio.description")}</Text>,
+                      children: <Text size="sm">{t("confirm.deleteAudio.description", { username: member.user.username })}</Text>,
                       labels: { confirm: t("media.removeAudio"), cancel: t("common:cancel") },
-                      confirmProps: { color: "infini-danger" },
+                      confirmProps: { color: "red" },
                       onConfirm: onDeleteAudio,
                     })
                   }
@@ -208,35 +270,41 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
 
           {isModerator ? (
             <Stack gap={8} mt="md">
-              <Text c="dimmed" size="sm">{t("media.uploadAudioHint")}</Text>
-              {audioUploader.supportError ? (
-                <Text c="infini-warning" size="sm">{audioUploader.supportError}</Text>
-              ) : null}
-              <input
-                type="file"
-                accept="audio/*"
-                aria-label={t("media.aria.selectAudio")}
-                disabled={Boolean(audioUploader.supportError)}
-                onChange={(event) => audioUploader.selectFiles(event.target.files)}
-              />
-              {audioUploader.error ? <Text c="infini-danger" size="sm">{audioUploader.error}</Text> : null}
+              {audioUploader.error ? <Text c="red" size="sm">{audioUploader.error}</Text> : null}
               {audioUploader.isConverting || audioUploader.isUploading ? (
                 <Stack style={{ width: "100%" }} gap={4}>
                   <Progress value={audioUploader.conversionProgress} size="sm" animated />
                   <Progress value={audioUploader.uploadProgress} size="sm" animated />
                 </Stack>
               ) : null}
-              <Button
-                leftSection={<IconUpload size={16} />}
-                onClick={() => {
-                  void onUploadAudio();
-                }}
-                loading={audioUploader.isUploading}
-                disabled={Boolean(audioUploader.supportError) || audioUploader.files.length === 0}
-                size="sm"
-              >
-                {t("media.uploadAudio")}
-              </Button>
+              <Group gap={8}>
+                <FileButton
+                  onChange={(file) => { if (file) audioUploader.selectFiles([file]); }}
+                  accept="audio/*"
+                >
+                  {(btnProps) => (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      leftSection={<PlusIcon size={14} />}
+                      {...btnProps}
+                    >
+                      {t("media.selectAudio")}
+                    </Button>
+                  )}
+                </FileButton>
+                <Button
+                  leftSection={<UploadIcon size={14} />}
+                  onClick={() => {
+                    void onUploadAudio();
+                  }}
+                  loading={audioUploader.isUploading}
+                  disabled={audioUploader.files.length === 0}
+                  size="sm"
+                >
+                  {t("media.uploadAudio")}
+                </Button>
+              </Group>
             </Stack>
           ) : null}
         </div>

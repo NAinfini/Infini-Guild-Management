@@ -1,15 +1,15 @@
 import { Button, Group, Slider, Stack, Text } from "@mantine/core";
 import { Carousel } from "@mantine/carousel";
-import { PortalCard as InfiniCard } from "./PortalCard";
 import { useMediaQuery } from "@mantine/hooks";
-import { forwardRef, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import clsx from "clsx";
-import { isDirectPlayableVideoUrl, isEmbeddableVideoUrl, toEmbedVideoUrl } from "@infini-dev-kit/react";
+import { isDirectPlayableVideoUrl, isEmbeddableVideoUrl, toEmbedVideoUrl, getVideoThumbnailUrl } from "@guild/shared/utils/video";
+import { ChevronUpIcon, ChevronDownIcon, PlayIcon } from "@portal/components/icons";
 import "./media-gallery.css";
 
 export type MediaGalleryLabels = {
   noMedia: string;
-  noAudio: string;
+  imageLoadFailed: string;
   pause: string;
   resume: string;
   restart: string;
@@ -24,14 +24,13 @@ export type MediaGalleryLabels = {
   thumbnailVideo: string;
   thumbnailImage: string;
   seekVideo: string;
-  seekAudio: string;
   playVideoAria: string;
   openItemAria: string;
 };
 
 const DEFAULT_LABELS: MediaGalleryLabels = {
   noMedia: "No media",
-  noAudio: "No audio",
+  imageLoadFailed: "Image failed to load",
   pause: "Pause",
   resume: "Play",
   restart: "Restart",
@@ -46,15 +45,36 @@ const DEFAULT_LABELS: MediaGalleryLabels = {
   thumbnailVideo: "Video",
   thumbnailImage: "Image",
   seekVideo: "Seek video",
-  seekAudio: "Seek audio",
   playVideoAria: "Play video",
   openItemAria: "Open item",
 };
 
+export function buildMediaGalleryLabels(t: (key: string) => string): MediaGalleryLabels {
+  return {
+    noMedia: t("media.noMedia"),
+    imageLoadFailed: t("media.imageLoadFailed"),
+    pause: t("media.pause"),
+    resume: t("media.resume"),
+    restart: t("media.restart"),
+    fullscreen: t("media.fullscreen"),
+    stopVideo: t("media.stopVideo"),
+    playVideo: t("media.playVideo"),
+    externalLink: t("media.externalLink"),
+    openInDouyin: t("media.openInDouyin"),
+    open: t("media.open"),
+    hideThumbnails: t("media.hideThumbnails"),
+    showThumbnails: t("media.showThumbnails"),
+    thumbnailVideo: t("media.thumbnailVideo"),
+    thumbnailImage: t("media.thumbnailImage"),
+    seekVideo: t("media.aria.seekVideo"),
+    playVideoAria: t("media.aria.playVideo"),
+    openItemAria: t("media.aria.openItem"),
+  };
+}
+
 export type MediaGalleryProps = {
   images: string[];
   videos?: string[];
-  audioKey?: string | null;
   resolveMediaUrl?: (key: string) => string;
   emptyContent?: ReactNode;
   labels?: Partial<MediaGalleryLabels>;
@@ -75,8 +95,8 @@ function defaultResolver(value: string): string {
   return value;
 }
 
-function isHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
+function isRenderableUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value) || value.startsWith("/");
 }
 
 function formatMediaTime(totalSeconds: number): string {
@@ -90,7 +110,6 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
   function MediaGallery({
     images,
     videos = [],
-    audioKey = null,
     resolveMediaUrl = defaultResolver,
     emptyContent,
     labels: labelsProp,
@@ -101,15 +120,11 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
   const labels = { ...DEFAULT_LABELS, ...labelsProp };
   const isMobile = useMediaQuery("(max-width: 767px)") ?? false;
   const [activeIndex, setActiveIndex] = useState(0);
-  const [embedPlayingVideos, setEmbedPlayingVideos] = useState<Record<number, boolean>>({});
   const [directVideoPlaying, setDirectVideoPlaying] = useState<Record<number, boolean>>({});
   const [directVideoProgress, setDirectVideoProgress] = useState<Record<number, VideoProgressState>>({});
-  const [audioPlaying, setAudioPlaying] = useState(false);
-  const [audioProgress, setAudioProgress] = useState<VideoProgressState>({ current: 0, duration: 0 });
   const [thumbnailExpanded, setThumbnailExpanded] = useState(true);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const [embla, setEmbla] = useState<any>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const directVideoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
 
   const items = useMemo(
@@ -126,12 +141,25 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
         label: item,
         source: item,
         isDirect: isDirectPlayableVideoUrl(item),
+        thumbnailUrl: getVideoThumbnailUrl(item),
       })),
     ],
     [images, resolveMediaUrl, videos],
   );
-  const thumbnails = items.slice(0, 60);
-  const audioResolved = audioKey ? resolveMediaUrl(audioKey) : null;
+  const thumbnails = items.slice(0, 20);
+  const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
+
+  const handleImageError = useCallback((index: number) => {
+    setBrokenImages((prev) => {
+      const next = new Set(prev);
+      next.add(index);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    setBrokenImages(new Set());
+  }, [images, videos]);
 
   useEffect(() => {
     if (isMobile) setThumbnailExpanded(false);
@@ -139,10 +167,6 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
 
   useEffect(() => {
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = "";
-      }
       Object.values(directVideoRefs.current).forEach((video) => {
         if (video) video.pause();
       });
@@ -158,29 +182,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
         setDirectVideoPlaying((prev) => ({ ...prev, [index]: false }));
       }
     });
-    setEmbedPlayingVideos((prev) => {
-      const next: Record<number, boolean> = {};
-      for (const [indexKey, value] of Object.entries(prev)) {
-        const index = Number.parseInt(indexKey, 10);
-        if (Number.isFinite(index) && index === activeIndex && value) next[index] = true;
-      }
-      return next;
-    });
   }, [activeIndex]);
-
-  const toggleAudioPlayback = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (audio.paused) { void audio.play().catch(() => {}); return; }
-    audio.pause();
-  };
-
-  const seekAudio = (nextValue: number) => {
-    const audio = audioRef.current;
-    if (!audio || !Number.isFinite(nextValue)) return;
-    audio.currentTime = nextValue;
-    setAudioProgress((prev) => ({ ...prev, current: nextValue }));
-  };
 
   const toggleDirectVideoPlayback = (index: number) => {
     const video = directVideoRefs.current[index];
@@ -204,7 +206,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
     void Promise.resolve(requestFullscreen.call(video)).catch(() => {});
   };
 
-  if (items.length === 0 && !audioResolved) {
+  if (items.length === 0) {
     return <>{emptyContent ?? <Text c="dimmed">{labels.noMedia}</Text>}</>;
   }
 
@@ -222,16 +224,14 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
             {items.map((item, index) => (
               <Carousel.Slide key={item.key}>
                 {item.type === "image" ? (
-                  isHttpUrl(item.source) ? (
+                  isRenderableUrl(item.source) && !brokenImages.has(index) ? (
                     <div className="infini-media-gallery-slide">
-                      <img src={item.source} alt={`Media image ${index + 1}`} loading="lazy" decoding="async" />
+                      <img src={item.source} alt={`Media image ${index + 1}`} loading="lazy" decoding="async" onError={() => handleImageError(index)} />
                     </div>
                   ) : (
-                    <InfiniCard interactive={false}>
-                      <div style={{ padding: "1.2rem" }}>
-                        <Text c="dimmed">{item.label}</Text>
-                      </div>
-                    </InfiniCard>
+                    <div className="infini-media-gallery-slide infini-media-gallery-slide--broken">
+                      <Text c="dimmed" ta="center">{brokenImages.has(index) ? labels.imageLoadFailed : item.label}</Text>
+                    </div>
                   )
                 ) : (
                   <div className="infini-media-gallery-slide infini-media-gallery-video-slide">
@@ -287,7 +287,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                         <Text>{labels.openInDouyin}</Text>
                         <Button component="a" href={item.source} target="_blank" rel="noreferrer">{labels.open}</Button>
                       </Stack>
-                    ) : embedPlayingVideos[index] ? (
+                    ) : (
                       <>
                         <iframe
                           src={toEmbedVideoUrl(item.source)}
@@ -296,21 +296,12 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                           allowFullScreen
                         />
-                        <Group justify="center">
-                          <Button size="xs" variant="default" onClick={() => setEmbedPlayingVideos((prev) => ({ ...prev, [index]: false }))}>
-                            {labels.stopVideo}
+                        <Group justify="center" gap={8}>
+                          <Button size="xs" variant="default" component="a" href={item.source} target="_blank" rel="noreferrer">
+                            {labels.externalLink}
                           </Button>
                         </Group>
                       </>
-                    ) : (
-                      <Stack gap={8}>
-                        <Button onClick={() => setEmbedPlayingVideos((prev) => ({ ...prev, [index]: true }))} aria-label={labels.playVideoAria}>
-                          {labels.playVideo}
-                        </Button>
-                        <Button component="a" href={item.source} target="_blank" rel="noreferrer" variant="default">
-                          {labels.externalLink}
-                        </Button>
-                      </Stack>
                     )}
                   </div>
                 )}
@@ -320,9 +311,14 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
 
           <div className="infini-media-gallery-thumbnails-header">
             <Text c="dimmed">{Math.min(activeIndex + 1, items.length)} / {items.length}</Text>
-            <Button size="xs" variant="default" onClick={() => setThumbnailExpanded((v) => !v)}>
-              {thumbnailExpanded ? labels.hideThumbnails : labels.showThumbnails}
-            </Button>
+            <button
+              type="button"
+              className="infini-media-gallery-toggle-thumb"
+              onClick={() => setThumbnailExpanded((v) => !v)}
+              aria-label={thumbnailExpanded ? labels.hideThumbnails : labels.showThumbnails}
+            >
+              {thumbnailExpanded ? <ChevronUpIcon size={18} /> : <ChevronDownIcon size={18} />}
+            </button>
           </div>
 
           {thumbnailExpanded ? (
@@ -336,10 +332,26 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                   aria-label={`${labels.openItemAria} ${index + 1}`}
                   aria-pressed={index === activeIndex}
                 >
-                  {item.type === "image" && isHttpUrl(item.source) ? (
-                    <img src={item.source} alt={`Media thumbnail ${index + 1}`} loading="lazy" decoding="async" />
+                  {item.type === "image" && isRenderableUrl(item.source) && !brokenImages.has(index) ? (
+                    <img src={item.source} alt={`Media thumbnail ${index + 1}`} loading="lazy" decoding="async" onError={() => handleImageError(index)} />
+                  ) : item.type === "video" ? (
+                    "thumbnailUrl" in item && item.thumbnailUrl ? (
+                      <div className="infini-media-gallery-thumb-video">
+                        <img src={item.thumbnailUrl} alt={`Video thumbnail ${index + 1}`} loading="lazy" decoding="async" />
+                        <PlayIcon size={16} className="infini-media-gallery-thumb-play" />
+                      </div>
+                    ) : "isDirect" in item && item.isDirect ? (
+                      <div className="infini-media-gallery-thumb-video">
+                        <video src={item.source} preload="metadata" muted className="infini-media-gallery-thumb-vid" />
+                        <PlayIcon size={16} className="infini-media-gallery-thumb-play" />
+                      </div>
+                    ) : (
+                      <div className="infini-media-gallery-thumb-video">
+                        <PlayIcon size={20} className="infini-media-gallery-thumb-play-only" />
+                      </div>
+                    )
                   ) : (
-                    <span>{item.type === "video" ? labels.thumbnailVideo : labels.thumbnailImage}</span>
+                    <span>{labels.thumbnailImage}</span>
                   )}
                 </button>
               ))}
@@ -347,59 +359,6 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
           ) : null}
         </div>
       ) : null}
-
-      {audioResolved ? (
-        isHttpUrl(audioResolved) ? (
-          <InfiniCard className="infini-media-gallery-audio-section" interactive={false}>
-            <div style={{ padding: "1.2rem" }}>
-              <Stack gap={8}>
-                <audio
-                  ref={audioRef}
-                  controls
-                  src={audioResolved}
-                  style={{ width: "100%" }}
-                  onLoadedMetadata={(e) => {
-                    const t = e.currentTarget;
-                    setAudioProgress({ current: t.currentTime, duration: Number.isFinite(t.duration) ? t.duration : 0 });
-                  }}
-                  onTimeUpdate={(e) => {
-                    const t = e.currentTarget;
-                    setAudioProgress((prev) => ({ current: t.currentTime, duration: Number.isFinite(t.duration) ? t.duration : prev.duration }));
-                  }}
-                  onPlay={() => setAudioPlaying(true)}
-                  onPause={() => setAudioPlaying(false)}
-                  onEnded={() => { setAudioPlaying(false); setAudioProgress((prev) => ({ ...prev, current: 0 })); }}
-                />
-                <Group className="infini-media-gallery-audio-controls" justify="space-between" gap={8}>
-                  <Button size="xs" variant="default" onClick={toggleAudioPlayback}>
-                    {audioPlaying ? labels.pause : labels.resume}
-                  </Button>
-                  <Text size="xs" c="dimmed">
-                    {formatMediaTime(audioProgress.current)} / {formatMediaTime(audioProgress.duration)}
-                  </Text>
-                </Group>
-                <Slider
-                  className="infini-media-gallery-audio-progress"
-                  min={0}
-                  max={Math.max(audioProgress.duration, 1)}
-                  value={Math.min(audioProgress.current, Math.max(audioProgress.duration, 1))}
-                  disabled={audioProgress.duration <= 0}
-                  onChange={seekAudio}
-                  aria-label={labels.seekAudio}
-                />
-              </Stack>
-            </div>
-          </InfiniCard>
-        ) : (
-          <InfiniCard interactive={false}>
-            <div style={{ padding: "1.2rem" }}>
-              <Text c="dimmed" style={{ wordBreak: "break-all" }}>{audioKey}</Text>
-            </div>
-          </InfiniCard>
-        )
-      ) : (
-        emptyContent ?? <Text c="dimmed">{labels.noAudio}</Text>
-      )}
     </Stack>
     </div>
   );

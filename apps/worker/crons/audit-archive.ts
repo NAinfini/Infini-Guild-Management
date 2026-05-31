@@ -1,7 +1,7 @@
 import type { Bindings } from "../index";
 
 const ARCHIVE_PREFIX = "audit-archive";
-const RETENTION_DAYS = 90;
+const RETENTION_MONTHS = 3;
 
 type AuditArchiveDbRow = {
   id: string;
@@ -30,10 +30,13 @@ type AuditArchiveManifest = {
   files: AuditArchiveManifestFile[];
 };
 
-function cutoffIso(): string {
-  const cutoff = new Date();
-  cutoff.setUTCDate(cutoff.getUTCDate() - RETENTION_DAYS);
-  return cutoff.toISOString();
+function lastFullyExpiredMonth(): string | null {
+  const now = new Date();
+  const cutoff = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - RETENTION_MONTHS, 0));
+  if (cutoff.getTime() <= 0) return null;
+  const y = cutoff.getUTCFullYear();
+  const m = String(cutoff.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
 }
 
 function archivePaths(month: string): { dataKey: string; manifestKey: string } {
@@ -83,11 +86,13 @@ function buildManifest(month: string, file: AuditArchiveManifestFile, rows: Audi
 }
 
 export async function runAuditArchiveCron(env: Bindings): Promise<void> {
-  const cutoff = cutoffIso();
+  const maxMonth = lastFullyExpiredMonth();
+  if (!maxMonth) return;
+
   const monthRows = await env.DB.prepare(
-    "SELECT DISTINCT substr(created_at, 1, 7) AS month FROM audit_log WHERE created_at < ?1 ORDER BY month ASC",
+    "SELECT DISTINCT substr(created_at, 1, 7) AS month FROM audit_log WHERE substr(created_at, 1, 7) <= ?1 ORDER BY month ASC",
   )
-    .bind(cutoff)
+    .bind(maxMonth)
     .all<{ month: string }>();
 
   const months = (monthRows.results ?? [])
@@ -96,9 +101,9 @@ export async function runAuditArchiveCron(env: Bindings): Promise<void> {
 
   for (const month of months) {
     const rows = await env.DB.prepare(
-      "SELECT id, entity_type, action, actor_id, entity_id, diff_title, detail_text, created_at FROM audit_log WHERE created_at LIKE ?1 AND created_at < ?2 ORDER BY created_at ASC",
+      "SELECT id, entity_type, action, actor_id, entity_id, diff_title, detail_text, created_at FROM audit_log WHERE created_at LIKE ?1 ORDER BY created_at ASC",
     )
-      .bind(`${month}-%`, cutoff)
+      .bind(`${month}-%`)
       .all<AuditArchiveDbRow>();
 
     if (!rows.results || rows.results.length === 0) {
@@ -107,19 +112,21 @@ export async function runAuditArchiveCron(env: Bindings): Promise<void> {
 
     const { dataKey, manifestKey } = archivePaths(month);
     const existing = await env.MEDIA.head(dataKey);
-    let sizeBytes = existing?.size ?? 0;
 
-    if (!existing) {
-      const ndjson = toNdjson(rows.results);
-      const compressed = await gzipText(ndjson);
-      sizeBytes = compressed.byteLength;
-      await env.MEDIA.put(dataKey, compressed, {
-        httpMetadata: {
-          contentType: "application/x-ndjson",
-          contentEncoding: "gzip",
-        },
-      });
+    if (existing) {
+      await env.DB.prepare("DELETE FROM audit_log WHERE created_at LIKE ?1").bind(`${month}-%`).run();
+      continue;
     }
+
+    const ndjson = toNdjson(rows.results);
+    const compressed = await gzipText(ndjson);
+    const sizeBytes = compressed.byteLength;
+    await env.MEDIA.put(dataKey, compressed, {
+      httpMetadata: {
+        contentType: "application/x-ndjson",
+        contentEncoding: "gzip",
+      },
+    });
 
     const manifest = buildManifest(
       month,
@@ -138,6 +145,6 @@ export async function runAuditArchiveCron(env: Bindings): Promise<void> {
       },
     });
 
-    await env.DB.prepare("DELETE FROM audit_log WHERE created_at LIKE ?1 AND created_at < ?2").bind(`${month}-%`, cutoff).run();
+    await env.DB.prepare("DELETE FROM audit_log WHERE created_at LIKE ?1").bind(`${month}-%`).run();
   }
 }

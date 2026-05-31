@@ -1,10 +1,10 @@
 import type {
   AuditLogEntry,
-  BotSettings,
   InviteLink,
   InviteLinkStats,
   PaginatedResponse,
 } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { apiDownload, apiRequest } from "../client";
 
 export type InviteLinkStatsSummary = {
@@ -22,12 +22,6 @@ export type AdminStatus = {
   crons: string;
 };
 
-export type AdminDiscordChannel = {
-  id: string;
-  name: string;
-  type: string;
-};
-
 export type AdminAuditArchiveDownloadFile = {
   key: string;
   row_count: number;
@@ -38,25 +32,8 @@ export type AdminAuditArchiveDownloadFile = {
 
 export type AdminAuditArchiveDownloadResponse = {
   month: string;
-  format: "raw_ndjson_gz" | "csv";
   expires_in_seconds: number;
   files: AdminAuditArchiveDownloadFile[];
-};
-
-export type AdminAuditArchiveMonthResponse = {
-  month: string;
-  total: number;
-  page: number;
-  limit: number;
-  total_pages: number;
-  data: AuditLogEntry[];
-  source?: "r2_manifest";
-  manifest?: {
-    generated_at: string;
-    total_rows: number;
-    file_count: number;
-    total_size_bytes?: number;
-  } | null;
 };
 
 export type AdminAuditExportParams = {
@@ -100,7 +77,7 @@ export function fetchAdminAuditLog(params: {
 }): Promise<PaginatedResponse<AuditLogEntry>> {
   const query = new URLSearchParams();
   query.set("page", String(params.page ?? 1));
-  query.set("limit", String(params.limit ?? 50));
+  query.set("limit", String(params.limit ?? LIMITS.pagination.admin));
   if (params.entity_type) query.set("entity_type", params.entity_type);
   if (params.actor_id) query.set("actor_id", params.actor_id);
   if (params.search) query.set("search", params.search);
@@ -127,46 +104,16 @@ export function fetchAdminAuditArchiveMonths(): Promise<{ months: string[] }> {
   return apiRequest<{ months: string[] }>("/api/admin/audit-archive/months");
 }
 
-export function fetchAdminAuditArchiveMonth(
-  month: string,
-  params?: { page?: number; limit?: number },
-): Promise<AdminAuditArchiveMonthResponse> {
-  const query = new URLSearchParams();
-  if (params?.page !== undefined) query.set("page", String(params.page));
-  if (params?.limit !== undefined) query.set("limit", String(params.limit));
-  const suffix = query.size > 0 ? `?${query.toString()}` : "";
-  return apiRequest<AdminAuditArchiveMonthResponse>(`/api/admin/audit-archive/${month}${suffix}`);
-}
-
 export function requestAdminAuditArchiveDownload(
   month: string,
-  format: "raw_ndjson_gz" | "csv" = "raw_ndjson_gz",
 ): Promise<AdminAuditArchiveDownloadResponse> {
-  const query = new URLSearchParams({
-    month,
-    format,
-  });
+  const query = new URLSearchParams({ month });
   return apiRequest<AdminAuditArchiveDownloadResponse>(`/api/admin/audit-archive/download?${query.toString()}`);
 }
 
 export async function downloadAdminAuditArchiveFile(url: string): Promise<Blob> {
   const { blob } = await apiDownload(url);
   return blob;
-}
-
-export function fetchAdminBotSettings(): Promise<BotSettings> {
-  return apiRequest<BotSettings>("/api/admin/bot-settings");
-}
-
-export function fetchAdminDiscordChannels(guildId?: string): Promise<{ guild_id: string; channels: AdminDiscordChannel[] }> {
-  const query = new URLSearchParams();
-  if (guildId && guildId.trim()) {
-    query.set("guild_id", guildId.trim());
-  }
-  const suffix = query.size > 0 ? `?${query.toString()}` : "";
-  return apiRequest<{ guild_id: string; channels: AdminDiscordChannel[] }>(
-    `/api/admin/bot-settings/discord/channels${suffix}`,
-  );
 }
 
 export function fetchAdminStatus(): Promise<AdminStatus> {

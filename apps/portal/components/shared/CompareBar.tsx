@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 
 type CompareBarProps = {
   classPrefix: string;
@@ -8,7 +8,7 @@ type CompareBarProps = {
   enemy: number;
 };
 
-export function CompareBar({ classPrefix: p, icon, label, own, enemy }: CompareBarProps) {
+export const CompareBar = memo(function CompareBar({ classPrefix: p, icon, label, own, enemy }: CompareBarProps) {
   const total = own + enemy || 1;
   const ownPct = Math.round((own / total) * 100);
   const enemyPct = 100 - ownPct;
@@ -35,4 +35,4 @@ export function CompareBar({ classPrefix: p, icon, label, own, enemy }: CompareB
       </div>
     </div>
   );
-}
+});

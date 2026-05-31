@@ -1,4 +1,8 @@
-﻿export * from "./constants/roles";
+﻿export * from "./config/limits";
+export * from "./config/features";
+export * from "./games";
+
+export * from "./constants/roles";
 export * from "./constants/classes";
 export * from "./constants/event-types";
 export * from "./constants/media";
@@ -12,7 +16,9 @@ export * from "./schemas/guild-war";
 export * from "./schemas/wiki";
 export * from "./schemas/gallery";
 export * from "./schemas/admin";
-export * from "./schemas/bot";
+export * from "./schemas/badge";
+export * from "./schemas/equipment-calc";
+
+export * from "./calculator/types";
 
 export * from "./types";
-export * from "./api/registry";

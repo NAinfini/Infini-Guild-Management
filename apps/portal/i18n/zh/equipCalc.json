@@ -1,0 +1,288 @@
+{
+  "title": "装备计算器",
+  "description": "规划和优化你的装备搭配",
+  "pool": {
+    "title": "装备池",
+    "addEquipment": "添加装备",
+    "empty": "暂无装备，添加你的第一件装备吧！",
+    "addFirst": "添加你的第一件装备",
+    "filter": {
+      "available": "可用",
+      "all": "全部",
+      "equipped": "已穿着"
+    },
+    "equipped": "已穿着",
+    "allSlots": "全部",
+    "noMatch": "没有符合当前筛选条件的装备",
+    "chengyin": "承音",
+    "purple": "紫装"
+  },
+  "loadout": {
+    "title": "配装方案",
+    "newLoadout": "新建方案",
+    "rename": "重命名",
+    "delete": "删除方案",
+    "class": "门派",
+    "armory": "武库",
+    "xinfa": "心法",
+    "bowType": "弓类型",
+    "set": "套装",
+    "earlySeasonBonus": "上半赛季加成",
+    "loanDingyin": "贷款满定音",
+    "loanDingyinConfig": "定音贷款设置",
+    "loanOuterPen": "外功穿透",
+    "loanElePen": "属攻穿透",
+    "loanSpecificSkill": "指定武学技能增伤",
+    "bossAsPlayer": "首领视为玩家",
+    "selectXinfa": "选择心法",
+    "emptySlot": "空",
+    "unequip": "卸下",
+    "slots": {
+      "weapon1": "武器1",
+      "weapon2": "武器2",
+      "head": "冠胄",
+      "chest": "胸甲",
+      "ring": "环",
+      "pendant": "佩",
+      "legs": "胫甲",
+      "hands": "腕甲"
+    },
+    "selectPlaceholder": "选择方案",
+    "add": "新建",
+    "empty": "暂无配装方案，点击 + 新建一个",
+    "defaultName": "方案",
+    "required": "请先选择或创建一个配装方案。"
+  },
+  "stats": {
+    "graduationRate": "毕业率",
+    "expectedDps": "轴期望秒伤",
+    "excelRate": "Excel表格显示",
+    "breakdown": "属性详情",
+    "actualPrecision": "实际精准率",
+    "actualCrit": "实际会心率",
+    "actualIntent": "实际会意率",
+    "overflow": "溢出",
+    "raw": "面板",
+    "panel": {
+      "outerAttack": "外功攻击",
+      "elementAttack": "{{element}}攻击",
+      "elementAttackFallback": "属攻攻击",
+      "wuxiangAttack": "无相攻击",
+      "precision": "精准率",
+      "crit": "会心率",
+      "intent": "会意率",
+      "directCrit": "直接会心率",
+      "critDamage": "会心伤害加成",
+      "intentDamage": "会意伤害加成",
+      "outerPen": "外功穿透",
+      "elementPen": "属攻穿透",
+      "elementDamage": "{{element}}伤害加成",
+      "elementDamageFallback": "属攻伤害加成"
+    },
+    "quality": {
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    }
+  },
+  "form": {
+    "title": "装备详情",
+    "editTitle": "编辑装备",
+    "slot": "部位",
+    "weaponType": "武器类型",
+    "name": "名称",
+    "mainStat": "主属性",
+    "subStats": "副属性",
+    "dingyin": "定音属性",
+    "classRestriction": "门派限制",
+    "allClasses": "全门派",
+    "save": "保存",
+    "cancel": "取消",
+    "maxBtn": "拉满",
+    "value": "数值",
+    "statType": "属性类型"
+  },
+  "tabs": {
+    "comparison": "装备对比",
+    "priority": "属性优先级",
+    "cultivation": "培养建议",
+    "transmutation": "炼化建议",
+    "bestBuild": "最佳配装",
+    "manualEntry": "手动录入"
+  },
+  "comparison": {
+    "selectSlot": "选择一个部位来对比装备",
+    "rateDelta": "毕业率变化",
+    "freezeDingyin": "锁定当前定音",
+    "assumeMaxChengyin": "假设满承音"
+  },
+  "priority": {
+    "addMaxRoll": "增加一条满属性",
+    "loseMaxRoll": "失去一条满属性",
+    "gives": "提升",
+    "costs": "损失"
+  },
+  "cultivation": {
+    "upgradeNext": "优先提升以获得最大收益",
+    "currentRate": "当前",
+    "potentialRate": "潜力"
+  },
+  "transmutation": {
+    "selectEquipment": "选择一件装备",
+    "rerollStat": "重置属性",
+    "targetStat": "目标属性",
+    "expectedImprovement": "预期提升"
+  },
+  "bestBuild": {
+    "find": "寻找最佳配装",
+    "cancel": "取消",
+    "searching": "搜索中...",
+    "progress": "进度",
+    "lockSlot": "锁定部位",
+    "topBuilds": "最佳方案",
+    "apply": "应用配装",
+    "noResults": "未找到有效配装"
+  },
+  "manualEntry": {
+    "title": "手动录入属性",
+    "description": "直接输入游戏面板属性，快速查看毕业率",
+    "calculate": "计算"
+  },
+  "actions": {
+    "export": "导出",
+    "import": "导入",
+    "help": "帮助",
+    "cancel": "取消",
+    "importSuccess": "数据导入成功",
+    "importError": "导入数据无效",
+    "exportSuccess": "数据已复制到剪贴板"
+  },
+  "importModal": {
+    "title": "导入数据",
+    "description": "在此粘贴导出的计算器 JSON。",
+    "placeholder": "粘贴 JSON",
+    "confirm": "导入",
+    "errorTitle": "导入失败"
+  },
+  "panels": {
+    "pool": "装备池",
+    "config": "配装设置",
+    "analysis": "数据分析",
+    "combat": "战斗",
+    "bonuses": "加成"
+  },
+  "bowTypes": {
+    "precision": "精准弓",
+    "crit": "会心弓",
+    "intent": "会意弓"
+  },
+  "setNames": {
+    "玉斗": "玉斗",
+    "飞隼": "飞隼",
+    "时雨": "时雨",
+    "断岳": "断岳",
+    "烟柳": "烟柳",
+    "浣花": "浣花",
+    "燕归": "燕归",
+    "连星": "连星",
+    "撼天": "撼天"
+  },
+  "classNames": {
+    "鸣金虹": "鸣金虹",
+    "鸣金影": "鸣金影",
+    "裂石威": "裂石威",
+    "裂石钧": "裂石钧",
+    "裂石钧（纯唐）": "裂石钧（纯唐）",
+    "牵丝玉": "牵丝玉",
+    "牵丝霖": "牵丝霖",
+    "破竹尘": "破竹尘",
+    "破竹风": "破竹风",
+    "破竹鸢": "破竹鸢"
+  },
+  "armoryTypes": {
+    "通用": "通用",
+    "鸣金": "鸣金",
+    "裂石": "裂石",
+    "牵丝": "牵丝",
+    "破竹": "破竹"
+  },
+  "workspace": {
+    "equipment": "装备",
+    "statsOverview": "属性总览"
+  },
+  "statNames": {
+    "最小外功攻击": "最小外功攻击",
+    "最大外功攻击": "最大外功攻击",
+    "最小鸣金攻击": "最小鸣金攻击",
+    "最大鸣金攻击": "最大鸣金攻击",
+    "最小裂石攻击": "最小裂石攻击",
+    "最大裂石攻击": "最大裂石攻击",
+    "最小牵丝攻击": "最小牵丝攻击",
+    "最大牵丝攻击": "最大牵丝攻击",
+    "最小破竹攻击": "最小破竹攻击",
+    "最大破竹攻击": "最大破竹攻击",
+    "最小无相攻击": "最小无相攻击",
+    "最大无相攻击": "最大无相攻击",
+    "精准率": "精准率",
+    "会心率": "会心率",
+    "会意率": "会意率",
+    "劲": "劲",
+    "敏": "敏",
+    "势": "势",
+    "外功穿透": "外功穿透",
+    "属攻穿透": "属攻穿透",
+    "无相穿透": "无相穿透",
+    "外功伤害加成": "外功伤害加成",
+    "属攻伤害加成": "属攻伤害加成",
+    "会心伤害加成": "会心伤害加成",
+    "会意伤害加成": "会意伤害加成",
+    "直接会心率": "直接会心率",
+    "直接会意率": "直接会意率",
+    "对首领单位增伤": "对首领单位增伤",
+    "对玩家单位增效": "对玩家单位增效",
+    "全武学增效": "全武学增效",
+    "全武学增伤": "全武学增伤",
+    "指定武学技能增伤": "指定武学技能增伤",
+    "单体类奇术增伤": "单体类奇术增伤",
+    "群体类奇术增伤": "群体类奇术增伤",
+    "剑武学增效": "剑武学增效",
+    "枪武学增效": "枪武学增效",
+    "伞武学增效": "伞武学增效",
+    "扇武学增效": "扇武学增效",
+    "绳标武学增效": "绳标武学增效",
+    "双刀武学增效": "双刀武学增效",
+    "陌刀武学增效": "陌刀武学增效",
+    "横刀武学增效": "横刀武学增效",
+    "拳甲武学增效": "拳甲武学增效",
+    "生存类词条": "生存类词条",
+    "生存向": "生存向",
+    "无": "无",
+    "实际精准率": "实际精准率",
+    "实际会心率": "实际会心率",
+    "实际会意率": "实际会意率",
+    "精准率溢出": "精准率溢出",
+    "会心率溢出": "会心率溢出",
+    "会意率溢出": "会意率溢出",
+    "固伤加成": "固伤加成",
+    "鸣金伤害加成": "鸣金伤害加成",
+    "裂石伤害加成": "裂石伤害加成",
+    "牵丝伤害加成": "牵丝伤害加成",
+    "破竹伤害加成": "破竹伤害加成",
+    "鸣金穿透": "鸣金穿透",
+    "裂石穿透": "裂石穿透",
+    "牵丝穿透": "牵丝穿透",
+    "破竹穿透": "破竹穿透"
+  },
+  "statsGroup": {
+    "attack": "攻击属性",
+    "rates": "命中属性",
+    "damage": "伤害加成"
+  },
+  "bottomPanel": {
+    "dragHint": "数据分析"
+  },
+  "errors": {
+    "loadTitle": "无法加载计算器数据",
+    "loadBody": "已保存的计算器数据已过期。服务器将使用内置的参考数据。"
+  }
+}

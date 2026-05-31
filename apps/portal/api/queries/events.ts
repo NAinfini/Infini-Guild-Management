@@ -1,4 +1,5 @@
 import type { Event, PaginatedResponse, RecurringTemplate } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { apiRequest } from "../client";
 
 export type EventDetailResponse = Event & {
@@ -10,11 +11,14 @@ export function fetchEventsList(params: {
   limit?: number;
   type?: string;
   archived?: boolean;
+  pinned?: boolean;
+  locked?: boolean;
+  search?: string;
   start_after?: string;
   start_before?: string;
 }): Promise<PaginatedResponse<Event>> {
   const page = params.page ?? 1;
-  const limit = params.limit ?? 100;
+  const limit = params.limit ?? LIMITS.pagination.events;
   const query = new URLSearchParams();
   query.set("page", String(page));
   query.set("limit", String(limit));
@@ -24,13 +28,21 @@ export function fetchEventsList(params: {
   if (params.archived !== undefined) {
     query.set("archived", String(params.archived));
   }
+  if (params.pinned !== undefined) {
+    query.set("pinned", String(params.pinned));
+  }
+  if (params.locked !== undefined) {
+    query.set("locked", String(params.locked));
+  }
+  if (params.search) {
+    query.set("search", params.search);
+  }
   if (params.start_after) {
     query.set("start_after", params.start_after);
   }
   if (params.start_before) {
     query.set("start_before", params.start_before);
   }
-
   return apiRequest<PaginatedResponse<Event>>(`/api/events?${query.toString()}`);
 }
 
@@ -53,7 +65,7 @@ export async function fetchEventDetailBatch(ids: string[]): Promise<{ data: Even
     chunks.push(ids.slice(i, i + BATCH_DETAIL_CHUNK_SIZE));
   }
 
-  const results = await Promise.all(
+  const results = await Promise.allSettled(
     chunks.map((chunk) =>
       apiRequest<{ data: EventDetailResponse[] }>("/api/events/batch-details", {
         method: "POST",
@@ -62,7 +74,11 @@ export async function fetchEventDetailBatch(ids: string[]): Promise<{ data: Even
     ),
   );
 
-  return { data: results.flatMap((r) => r.data) };
+  return {
+    data: results
+      .filter((r): r is PromiseFulfilledResult<{ data: EventDetailResponse[] }> => r.status === "fulfilled")
+      .flatMap((r) => r.value.data),
+  };
 }
 
 export function fetchTemplatesList(): Promise<{ data: RecurringTemplate[] }> {

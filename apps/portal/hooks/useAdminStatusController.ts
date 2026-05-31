@@ -12,6 +12,14 @@ export type StatusHealthLog = {
 const STORAGE_KEY = "admin.status.health.logs";
 const LOG_LIMIT = 10;
 
+function isStatusHealthLog(item: unknown): item is StatusHealthLog {
+  if (!item || typeof item !== "object") return false;
+  const r = item as Record<string, unknown>;
+  return typeof r.at === "string" && typeof r.db === "string" && typeof r.r2 === "string"
+    && typeof r.ws === "string" && typeof r.crons === "string"
+    && (r.latencyMs === null || typeof r.latencyMs === "number");
+}
+
 type UseAdminStatusControllerParams = {
   statusQuery: { refetch: () => Promise<{ data?: { db: string; r2: string; ws: string; crons: string } }> };
   activeTab: string;
@@ -33,10 +41,7 @@ export function useAdminStatusController({
       if (!raw) return;
       const parsed = JSON.parse(raw) as unknown;
       if (Array.isArray(parsed)) {
-        const next = parsed
-          .filter((item) => item && typeof item === "object")
-          .map((item) => item as StatusHealthLog)
-          .slice(0, LOG_LIMIT);
+        const next = parsed.filter(isStatusHealthLog).slice(0, LOG_LIMIT);
         setStatusHealthLogs(next);
       }
     } catch {

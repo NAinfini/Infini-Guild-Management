@@ -1,40 +1,34 @@
 import { forwardRef } from "react";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import Color from "@tiptap/extension-color";
+import Highlight from "@tiptap/extension-highlight";
+import TextAlign from "@tiptap/extension-text-align";
+import TaskItem from "@tiptap/extension-task-item";
+import TaskList from "@tiptap/extension-task-list";
+import { TextStyle } from "@tiptap/extension-text-style";
+import HorizontalRule from "@tiptap/extension-horizontal-rule";
 import Image from "@tiptap/extension-image";
-import Link from "@tiptap/extension-link";
-import Placeholder from "@tiptap/extension-placeholder";
-import Table from "@tiptap/extension-table";
-import TableCell from "@tiptap/extension-table-cell";
-import TableHeader from "@tiptap/extension-table-header";
-import TableRow from "@tiptap/extension-table-row";
-import Underline from "@tiptap/extension-underline";
+import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
+import { CharacterCount, Placeholder } from "@tiptap/extensions";
+import { Youtube } from "@tiptap/extension-youtube";
+import { Details, DetailsContent, DetailsSummary } from "@tiptap/extension-details";
 import type { Content } from "@tiptap/core";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Alert, ActionIcon, Button, Card, Group, Modal, Progress, Stack, Text, Tooltip } from "@mantine/core";
+import { Alert, Button, Card, Group, Modal, Progress, Stack, Text } from "@mantine/core";
 import DOMPurify from "dompurify";
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  IconBold,
-  IconItalic,
-  IconUnderline,
-  IconStrikethrough,
-  IconLink,
-  IconLinkOff,
-  IconH1,
-  IconH2,
-  IconH3,
-  IconList,
-  IconListNumbers,
-  IconBlockquote,
-  IconCode,
-  IconTable,
-  IconColumnInsertRight,
-  IconRowInsertBottom,
-  IconTableOff,
-  IconPhoto,
-} from "@tabler/icons-react";
-import { lowlight } from "lowlight";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { common, createLowlight } from "lowlight";
+import { Bilibili, isValidBilibiliUrl } from "./tiptap-ext-bilibili";
+import { SearchReplace } from "./tiptap-ext-search-replace";
+
+import { TipTapEditorToolbar } from "./TipTapEditorToolbar";
+import { TipTapEditorContextMenu } from "./TipTapEditorContextMenu";
+import { TipTapEditorLinkDialog } from "./TipTapEditorLinkDialog";
+import { TipTapEditorFindReplace } from "./TipTapEditorFindReplace";
+import { TipTapEditorToc } from "./TipTapEditorToc";
+
+const lowlight = createLowlight(common);
 import "./tiptap-editor.css";
 
 type EditorMode = "json" | "html";
@@ -56,14 +50,45 @@ export type TipTapEditorLabels = {
   table: string;
   addCol: string;
   addRow: string;
+  delCol: string;
+  delRow: string;
   delTable: string;
   image: string;
+  textColor: string;
+  customTextColor: string;
+  highlight: string;
+  customHighlightColor: string;
+  clearFormatting: string;
+  alignLeft: string;
+  alignCenter: string;
+  alignRight: string;
+  divider: string;
+  taskList: string;
+  undo: string;
+  redo: string;
+  moreFormatting: string;
+  moreInsert: string;
   close: string;
   slashCommands: string;
   linkPrompt: string;
   imageInserted: string;
   imageUploadFailed: string;
   uploading: string;
+  youtube: string;
+  bilibili: string;
+  videoUrl: string;
+  embedVideo: string;
+  details: string;
+  findReplace: string;
+  findPlaceholder: string;
+  replacePlaceholder: string;
+  findNext: string;
+  findPrev: string;
+  replaceOne: string;
+  replaceAllLabel: string;
+  tableOfContents: string;
+  words: string;
+  characters: string;
 };
 
 const DEFAULT_LABELS: TipTapEditorLabels = {
@@ -83,27 +108,107 @@ const DEFAULT_LABELS: TipTapEditorLabels = {
   table: "Table",
   addCol: "Add column",
   addRow: "Add row",
+  delCol: "Delete column",
+  delRow: "Delete row",
   delTable: "Delete table",
   image: "Image",
+  textColor: "Text color",
+  customTextColor: "Custom text color",
+  highlight: "Highlight",
+  customHighlightColor: "Custom background color",
+  clearFormatting: "Clear formatting",
+  alignLeft: "Align left",
+  alignCenter: "Align center",
+  alignRight: "Align right",
+  divider: "Divider",
+  taskList: "Task checklist",
+  undo: "Undo",
+  redo: "Redo",
+  moreFormatting: "More formatting",
+  moreInsert: "Insert",
   close: "Close",
   slashCommands: "Slash commands",
   linkPrompt: "Enter URL",
   imageInserted: "Image inserted",
   imageUploadFailed: "Image upload failed",
   uploading: "Uploading...",
+  youtube: "YouTube",
+  bilibili: "Bilibili",
+  videoUrl: "Video URL",
+  embedVideo: "Embed video",
+  details: "Toggle section",
+  findReplace: "Find & Replace",
+  findPlaceholder: "Find...",
+  replacePlaceholder: "Replace...",
+  findNext: "Next",
+  findPrev: "Previous",
+  replaceOne: "Replace",
+  replaceAllLabel: "Replace all",
+  tableOfContents: "Table of Contents",
+  words: "words",
+  characters: "characters",
 };
 
-/**
- * Rich text editor built on TipTap.
- *
- * Requires the following peer dependencies to be installed:
- * `@tiptap/core`, `@tiptap/react`, `@tiptap/starter-kit`,
- * `@tiptap/extension-code-block-lowlight`, `@tiptap/extension-image`,
- * `@tiptap/extension-link`, `@tiptap/extension-placeholder`,
- * `@tiptap/extension-table`, `@tiptap/extension-table-cell`,
- * `@tiptap/extension-table-header`, `@tiptap/extension-table-row`,
- * `@tiptap/extension-underline`, `dompurify`, `lowlight`, `@tabler/icons-react`
- */
+export function buildTipTapEditorLabels(t: (key: string) => string): TipTapEditorLabels {
+  return {
+    bold: t("toolbar.bold"),
+    italic: t("toolbar.italic"),
+    underline: t("toolbar.underline"),
+    strike: t("toolbar.strike"),
+    link: t("toolbar.link"),
+    unlink: t("toolbar.unlink"),
+    h1: t("toolbar.h1"),
+    h2: t("toolbar.h2"),
+    h3: t("toolbar.h3"),
+    bullet: t("toolbar.bullet"),
+    number: t("toolbar.number"),
+    quote: t("toolbar.quote"),
+    code: t("toolbar.code"),
+    table: t("toolbar.table"),
+    addCol: t("toolbar.addCol"),
+    addRow: t("toolbar.addRow"),
+    delCol: t("toolbar.delCol"),
+    delRow: t("toolbar.delRow"),
+    delTable: t("toolbar.delTable"),
+    image: t("toolbar.image"),
+    textColor: t("toolbar.textColor"),
+    customTextColor: t("toolbar.customTextColor"),
+    highlight: t("toolbar.highlight"),
+    customHighlightColor: t("toolbar.customHighlightColor"),
+    clearFormatting: t("toolbar.clearFormatting"),
+    alignLeft: t("toolbar.alignLeft"),
+    alignCenter: t("toolbar.alignCenter"),
+    alignRight: t("toolbar.alignRight"),
+    divider: t("toolbar.divider"),
+    taskList: t("toolbar.taskList"),
+    undo: t("toolbar.undo"),
+    redo: t("toolbar.redo"),
+    moreFormatting: t("toolbar.moreFormatting"),
+    moreInsert: t("toolbar.moreInsert"),
+    close: t("toolbar.close"),
+    slashCommands: t("slashCommands"),
+    linkPrompt: t("toolbar.linkPrompt"),
+    imageInserted: t("message.imageInserted"),
+    imageUploadFailed: t("message.imageUploadFailed"),
+    uploading: t("upload.uploading"),
+    youtube: t("toolbar.youtube"),
+    bilibili: t("toolbar.bilibili"),
+    videoUrl: t("toolbar.videoUrl"),
+    embedVideo: t("toolbar.embedVideo"),
+    details: t("toolbar.details"),
+    findReplace: t("toolbar.findReplace"),
+    findPlaceholder: t("toolbar.findPlaceholder"),
+    replacePlaceholder: t("toolbar.replacePlaceholder"),
+    findNext: t("toolbar.findNext"),
+    findPrev: t("toolbar.findPrev"),
+    replaceOne: t("toolbar.replaceOne"),
+    replaceAllLabel: t("toolbar.replaceAllLabel"),
+    tableOfContents: t("toolbar.tableOfContents"),
+    words: t("toolbar.words"),
+    characters: t("toolbar.characters"),
+  };
+}
+
 export type TipTapEditorProps = {
   value: string;
   onChange: (value: string) => void;
@@ -165,21 +270,28 @@ function sanitizeDocJson(doc: Record<string, unknown>): Record<string, unknown> 
   return doc;
 }
 
+export function sanitizeTipTapHtml(html: string): string {
+  return DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    ALLOWED_TAGS: [
+      "p", "span", "b", "strong", "i", "em", "u", "s",
+      "mark", "ul", "ol", "li", "blockquote", "code", "pre",
+      "table", "thead", "tbody", "tr", "th", "td",
+      "a", "img", "br", "h1", "h2", "h3", "hr",
+      "label", "input", "div", "iframe",
+      "details", "summary",
+    ],
+    ALLOWED_ATTR: ["href", "target", "rel", "src", "alt", "style", "data-type", "data-checked", "type", "checked", "disabled", "data-bilibili-video", "allowfullscreen", "sandbox", "width", "height", "frameborder", "allow", "open"],
+  });
+}
+
 function serializeValue(editor: Editor, mode: EditorMode): string {
   if (mode === "json") {
     const doc = editor.getJSON() as Record<string, unknown>;
     return JSON.stringify(sanitizeDocJson(doc));
   }
 
-  return DOMPurify.sanitize(editor.getHTML(), {
-    ALLOWED_TAGS: [
-      "p", "span", "b", "strong", "i", "em", "u", "s",
-      "ul", "ol", "li", "blockquote", "code", "pre",
-      "table", "thead", "tbody", "tr", "th", "td",
-      "a", "img", "br", "h1", "h2", "h3",
-    ],
-    ALLOWED_ATTR: ["href", "target", "rel", "src", "alt"],
-  });
+  return sanitizeTipTapHtml(editor.getHTML());
 }
 
 function removeSlashTrigger(editor: Editor): void {
@@ -206,16 +318,24 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
     labels: labelsProp,
     ...rest
   }, ref) {
-    const labels = { ...DEFAULT_LABELS, ...labelsProp };
+    const labels = useMemo(() => ({ ...DEFAULT_LABELS, ...labelsProp }), [labelsProp]);
     const effectiveReadOnly = editable === undefined ? readOnly : !editable;
     const [slashOpen, setSlashOpen] = useState(false);
     const [isUploadingImage, setIsUploadingImage] = useState(false);
     const [imageUploadProgress, setImageUploadProgress] = useState(0);
     const [lightboxImageSrc, setLightboxImageSrc] = useState<string | null>(null);
     const [lightboxZoom, setLightboxZoom] = useState(1);
+    const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+    const [linkUrl, setLinkUrl] = useState("https://");
+    const [linkSelection, setLinkSelection] = useState<{ from: number; to: number } | null>(null);
+    const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+    const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+    const [videoDialogOpen, setVideoDialogOpen] = useState(false);
+    const [videoUrl, setVideoUrl] = useState("");
+    const linkDialogTitleId = useId();
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-    const uploadImageAndInsert = async (editor: Editor, file: File): Promise<void> => {
+    const uploadImageAndInsert = useCallback(async (editor: Editor, file: File): Promise<void> => {
       try {
         setIsUploadingImage(true);
         setImageUploadProgress(5);
@@ -235,17 +355,26 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
           setImageUploadProgress(0);
         }, 300);
       }
-    };
+    }, [convertImage, onImageUpload, onNotify, onError, labels]);
 
     const editor = useEditor({
       extensions: [
-        StarterKit.configure({ codeBlock: false }),
-        Underline,
-        Link.configure({
-          openOnClick: false,
-          HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" },
+        StarterKit.configure({
+          codeBlock: false,
+          horizontalRule: false,
+          link: {
+            openOnClick: false,
+            HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" },
+          },
         }),
         CodeBlockLowlight.configure({ lowlight }),
+        TextStyle,
+        Color,
+        Highlight.configure({ multicolor: true }),
+        TextAlign.configure({ types: ["heading", "paragraph"], alignments: ["left", "center", "right"] }),
+        HorizontalRule,
+        TaskList,
+        TaskItem.configure({ nested: true }),
         Table.configure({ resizable: true }),
         TableRow,
         TableHeader,
@@ -253,14 +382,30 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
         Image.configure({
           HTMLAttributes: { loading: "lazy", decoding: "async" },
         }),
+        Youtube.configure({ nocookie: true, HTMLAttributes: { class: "infini-tiptap-embed" } }),
+        Bilibili,
+        Details.configure({ persist: true }),
+        DetailsContent,
+        DetailsSummary,
+        CharacterCount,
+        SearchReplace,
         Placeholder.configure({
-          placeholder: placeholder ?? "Start typing…",
+          placeholder: placeholder ?? "Start typing...",
         }),
       ],
       content: parseContent(value, mode),
       editable: !effectiveReadOnly,
       editorProps: {
         attributes: { class: "infini-tiptap-surface" },
+        handleDOMEvents: {
+          contextmenu: (_view: unknown, event: Event) => {
+            if (effectiveReadOnly) return false;
+            event.preventDefault();
+            const me = event as MouseEvent;
+            setContextMenuPos({ x: me.clientX, y: me.clientY });
+            return true;
+          },
+        },
         handlePaste: (_view: unknown, event: ClipboardEvent) => {
           if (effectiveReadOnly || !editor) return false;
           const files = Array.from((event.clipboardData?.files ?? []) as FileList).filter((f) => f.type.startsWith("image/"));
@@ -291,6 +436,11 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
           if (effectiveReadOnly) return false;
           if (event.key === "/") setSlashOpen(true);
           if (event.key === "Escape") setSlashOpen(false);
+          if ((event.ctrlKey || event.metaKey) && event.key === "f") {
+            event.preventDefault();
+            setFindReplaceOpen(true);
+            return true;
+          }
           return false;
         },
       },
@@ -305,62 +455,93 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
       if (mode === "json") {
         const current = JSON.stringify(editor.getJSON());
         const incoming = typeof nextContent === "string" ? nextContent : JSON.stringify(nextContent);
-        if (current !== incoming) editor.commands.setContent(nextContent, false);
+        if (current !== incoming) editor.commands.setContent(nextContent, { emitUpdate: false });
         return;
       }
       const incoming = typeof nextContent === "string" ? nextContent : "";
-      if (editor.getHTML() !== incoming) editor.commands.setContent(incoming, false);
+      if (editor.getHTML() !== incoming) editor.commands.setContent(incoming, { emitUpdate: false });
     }, [editor, mode, value]);
 
     const slashCommands = useMemo<SlashCommand[]>(
       () => [
         { id: "heading1", label: labels.h1, run: (e) => e.chain().focus().toggleHeading({ level: 1 }).run() },
         { id: "heading2", label: labels.h2, run: (e) => e.chain().focus().toggleHeading({ level: 2 }).run() },
+        { id: "heading3", label: labels.h3, run: (e) => e.chain().focus().toggleHeading({ level: 3 }).run() },
         { id: "bullet", label: labels.bullet, run: (e) => e.chain().focus().toggleBulletList().run() },
         { id: "ordered", label: labels.number, run: (e) => e.chain().focus().toggleOrderedList().run() },
+        { id: "task", label: labels.taskList, run: (e) => e.chain().focus().toggleTaskList().run() },
+        { id: "quote", label: labels.quote, run: (e) => e.chain().focus().toggleBlockquote().run() },
         { id: "codeblock", label: labels.code, run: (e) => e.chain().focus().toggleCodeBlock().run() },
+        { id: "divider", label: labels.divider, run: (e) => e.chain().focus().setHorizontalRule().run() },
         { id: "table", label: labels.table, run: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3 }).run() },
         { id: "image", label: labels.image, run: () => fileInputRef.current?.click() },
+        { id: "details", label: labels.details, run: (e) => (e.commands as Record<string, Function>).setDetails() },
+        { id: "video", label: labels.embedVideo, run: () => setVideoDialogOpen(true) },
       ],
       [labels],
     );
 
     if (!editor) return null;
 
-    const insertLink = () => {
+    const openLinkDialog = () => {
       const previousUrl = editor.getAttributes("link").href as string | undefined;
-      const url = window.prompt(labels.linkPrompt, previousUrl ?? "https://");
-      if (url === null) return;
-      if (url.trim() === "") {
-        editor.chain().focus().unsetLink().run();
+      setLinkSelection({ from: editor.state.selection.from, to: editor.state.selection.to });
+      setLinkUrl(previousUrl ?? "https://");
+      setLinkDialogOpen(true);
+    };
+
+    const closeLinkDialog = () => {
+      setLinkDialogOpen(false);
+      setLinkSelection(null);
+    };
+
+    const runLinkCommand = (mode: "set" | "unset") => {
+      let chain = editor.chain().focus();
+      if (linkSelection) {
+        chain = chain.setTextSelection(linkSelection);
+      }
+      if (mode === "unset" || linkUrl.trim() === "") {
+        chain.extendMarkRange("link").unsetLink().run();
+        closeLinkDialog();
         return;
       }
-      editor.chain().focus().extendMarkRange("link").setLink({ href: url.trim() }).run();
+      chain.extendMarkRange("link").setLink({ href: linkUrl.trim() }).run();
+      closeLinkDialog();
     };
+
+    const insertVideo = () => {
+      const url = videoUrl.trim();
+      if (!url) return;
+      if (isValidBilibiliUrl(url)) {
+        (editor.commands as Record<string, Function>).setBilibiliVideo({ src: url });
+      } else {
+        editor.commands.setYoutubeVideo({ src: url });
+      }
+      setVideoUrl("");
+      setVideoDialogOpen(false);
+    };
+
+    const charCount = editor.storage.characterCount as { characters: () => number; words: () => number };
 
     return (
       <Stack ref={ref} gap={8} w="100%" {...rest}>
         {!effectiveReadOnly ? (
-          <div className="infini-tiptap-toolbar">
-            <Tooltip label={labels.bold} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleBold().run()}><IconBold size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.italic} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleItalic().run()}><IconItalic size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.underline} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleUnderline().run()}><IconUnderline size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.strike} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleStrike().run()}><IconStrikethrough size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.link} withArrow><ActionIcon size="sm" variant="default" onClick={insertLink}><IconLink size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.unlink} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().unsetLink().run()}><IconLinkOff size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.h1} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}><IconH1 size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.h2} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><IconH2 size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.h3} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><IconH3 size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.bullet} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleBulletList().run()}><IconList size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.number} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleOrderedList().run()}><IconListNumbers size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.quote} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleBlockquote().run()}><IconBlockquote size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.code} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().toggleCodeBlock().run()}><IconCode size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.table} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}><IconTable size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.addCol} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().addColumnAfter().run()}><IconColumnInsertRight size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.addRow} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().addRowAfter().run()}><IconRowInsertBottom size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.delTable} withArrow><ActionIcon size="sm" variant="default" onClick={() => editor.chain().focus().deleteTable().run()}><IconTableOff size={16} /></ActionIcon></Tooltip>
-            <Tooltip label={labels.image} withArrow><ActionIcon size="sm" variant="default" onClick={() => fileInputRef.current?.click()}><IconPhoto size={16} /></ActionIcon></Tooltip>
-          </div>
+          <TipTapEditorToolbar
+            editor={editor}
+            labels={labels}
+            onInsertLink={openLinkDialog}
+            onInsertImage={() => fileInputRef.current?.click()}
+            onInsertVideo={() => setVideoDialogOpen(true)}
+            onToggleFindReplace={() => setFindReplaceOpen((v) => !v)}
+          />
+        ) : null}
+
+        {findReplaceOpen && !effectiveReadOnly ? (
+          <TipTapEditorFindReplace
+            editor={editor}
+            labels={labels}
+            onClose={() => setFindReplaceOpen(false)}
+          />
         ) : null}
 
         {slashOpen && !effectiveReadOnly ? (
@@ -389,7 +570,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
         ) : null}
 
         {isUploadingImage ? (
-          <Alert color="infini-primary" title={labels.uploading} variant="light">
+          <Alert color="blue" title={labels.uploading} variant="light">
             <Progress value={imageUploadProgress} size="sm" mt={8} />
           </Alert>
         ) : null}
@@ -406,7 +587,31 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
           }}
         />
 
-        <EditorContent editor={editor} />
+        <div className="infini-tiptap-layout">
+          <div className="infini-tiptap-layout__main">
+            <EditorContent editor={editor} />
+
+            {!effectiveReadOnly ? (
+              <Text size="xs" c="dimmed" ta="right" className="infini-tiptap-word-count">
+                {charCount.words()} {labels.words} · {charCount.characters()} {labels.characters}
+              </Text>
+            ) : null}
+          </div>
+
+          <TipTapEditorToc editor={editor} labels={labels} />
+        </div>
+
+        {linkDialogOpen ? (
+          <TipTapEditorLinkDialog
+            labels={labels}
+            titleId={linkDialogTitleId}
+            url={linkUrl}
+            onUrlChange={setLinkUrl}
+            onClose={closeLinkDialog}
+            onSubmit={() => runLinkCommand("set")}
+            onUnset={() => runLinkCommand("unset")}
+          />
+        ) : null}
 
         <Modal opened={Boolean(lightboxImageSrc)} onClose={() => setLightboxImageSrc(null)} size={960} keepMounted={false}>
           {lightboxImageSrc ? (
@@ -437,6 +642,36 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
               </div>
             </Stack>
           ) : null}
+        </Modal>
+
+        {contextMenuPos && !effectiveReadOnly ? (
+          <TipTapEditorContextMenu
+            editor={editor}
+            labels={labels}
+            position={contextMenuPos}
+            onClose={() => setContextMenuPos(null)}
+            onInsertLink={openLinkDialog}
+            onInsertImage={() => fileInputRef.current?.click()}
+            onInsertVideo={() => setVideoDialogOpen(true)}
+          />
+        ) : null}
+
+        <Modal opened={videoDialogOpen} onClose={() => setVideoDialogOpen(false)} title={labels.embedVideo} size="sm" keepMounted={false}>
+          <Stack gap={12}>
+            <Text size="sm" c="dimmed">{labels.youtube} / {labels.bilibili}</Text>
+            <input
+              className="infini-tiptap-link-dialog__input"
+              placeholder={labels.videoUrl}
+              aria-label={labels.videoUrl}
+              value={videoUrl}
+              onChange={(e) => setVideoUrl(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") insertVideo(); }}
+              autoFocus
+            />
+            <Group justify="flex-end">
+              <Button size="sm" onClick={insertVideo}>{labels.embedVideo}</Button>
+            </Group>
+          </Stack>
         </Modal>
       </Stack>
     );

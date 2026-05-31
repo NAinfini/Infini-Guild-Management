@@ -34,7 +34,7 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@infini-dev-kit/react", () => ({
+vi.mock("../../components/shared/ImageGridEditor", () => ({
   ImageGridEditor: ({
     items,
     onFilesSelected,
@@ -56,7 +56,11 @@ vi.mock("@infini-dev-kit/react", () => ({
       ))}
     </div>
   ),
+}));
+
+vi.mock("@guild/shared/utils/media", () => ({
   convertImageToWebP: vi.fn(async (file: File) => file),
+  DEFAULT_IMAGE_WEBP_QUALITY: 0.82,
 }));
 
 function EventCreationHarness({
@@ -78,6 +82,7 @@ function EventCreationHarness({
   const [endAt, setEndAt] = useState("");
   const [capacity, setCapacity] = useState("20");
   const [description, setDescription] = useState("Bring food");
+  const [autoArchive, setAutoArchive] = useState(false);
   const [attachmentItems, setAttachmentItems] = useState<Array<{ id: string; src?: string; alt?: string; file?: File }>>([]);
 
   return (
@@ -98,6 +103,8 @@ function EventCreationHarness({
         onCapacityChange={setCapacity}
         description={description}
         onDescriptionChange={setDescription}
+        autoArchive={autoArchive}
+        onAutoArchiveChange={setAutoArchive}
         attachmentItems={attachmentItems}
         onAttachmentsChange={setAttachmentItems}
         onFilesSelected={(files) => {
@@ -106,7 +113,6 @@ function EventCreationHarness({
           });
         }}
         onAttachmentDelete={() => {}}
-        conflictingEvents={[]}
         availabilityDaysWithAny={new Set<number>()}
         availabilityMaxCount={0}
         availabilityMemberCount={0}
@@ -126,6 +132,7 @@ function EventCreationHarness({
             capacity,
             pinned: false,
             signupLocked: false,
+            autoArchive,
             attachmentItems,
           });
         }}

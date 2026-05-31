@@ -6,6 +6,7 @@ type RateLimitOptions = {
   windowMs?: number;
   keyPrefix?: string;
   keyResolver?: (c: Context) => string;
+  deferWrite?: boolean;
 };
 
 type Bucket = {
@@ -89,7 +90,16 @@ export function createRateLimitMiddleware(options: RateLimitOptions = {}) {
     // for a guild-scale app (50-200 members). For absolute guarantees, layer
     // Cloudflare's native rate limiting rules on top.
     const ttl = Math.max(1, windowSeconds - Math.floor((nowMs % windowMs) / 1000));
-    await setCachedBucket(cacheKey, activeBucket, ttl);
+    const writeBucket = setCachedBucket(cacheKey, activeBucket, ttl);
+    if (options.deferWrite) {
+      try {
+        c.executionCtx.waitUntil(writeBucket);
+      } catch {
+        await writeBucket;
+      }
+    } else {
+      await writeBucket;
+    }
 
     const remaining = Math.max(0, maxRequests - activeBucket.count);
     const resetInSeconds = Math.max(0, Math.ceil((activeBucket.resetAt - nowMs) / 1000));
@@ -116,5 +126,3 @@ export function createRateLimitMiddleware(options: RateLimitOptions = {}) {
     await next();
   };
 }
-
-export const rateLimitMiddleware = createRateLimitMiddleware();

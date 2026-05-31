@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { events } from "../db/schema";
 import type { Bindings } from "../index";
+import { logger } from "../utils/logger";
 
 type RecurrenceRule = {
   frequency: "daily" | "weekly" | "monthly";
@@ -62,7 +63,8 @@ function parseRecurrenceRule(value: string | null): RecurrenceRule | null {
       endAfter,
       endDate,
     };
-  } catch {
+  } catch (e) {
+    logger.warn("Failed to parse recurrence rule", { value, error: String(e) });
     return null;
   }
 }
@@ -146,29 +148,20 @@ function computeNextOccurrence(anchor: Date, templateStart: Date, rule: Recurren
   return isValidDate(next) ? next : null;
 }
 
-/**
- * Compute the lookahead horizon based on frequency.
- * - daily: 1 day ahead
- * - weekly: 7 days ahead
- * - monthly: ~31 days ahead
- */
-function computeHorizon(now: Date, rule: RecurrenceRule): Date {
+export function computeHorizon(now: Date): Date {
   const horizon = new Date(now);
-  if (rule.frequency === "daily") {
-    horizon.setUTCDate(horizon.getUTCDate() + 1);
-  } else if (rule.frequency === "weekly") {
-    horizon.setUTCDate(horizon.getUTCDate() + 7);
-  } else {
-    horizon.setUTCDate(horizon.getUTCDate() + 31);
-  }
+  horizon.setUTCDate(horizon.getUTCDate() + 3);
   return horizon;
 }
 
-export async function runEventInstanceGenerationCron(env: Bindings): Promise<void> {
+export async function runEventInstanceGenerationCron(env: Bindings, options: { templateId?: string } = {}): Promise<void> {
   const db = drizzle(env.DB);
   const now = new Date();
+  const MAX_CATCHUP = 10;
 
-  // Fetch all active templates (is_series_parent = true, not archived, has recurrence_rule)
+  // Fetch active templates (is_series_parent = true, not archived, has recurrence_rule).
+  // When `templateId` is provided (request-triggered materialization), scope to that
+  // one series instead of scanning every template.
   const templates = await db
     .select({
       id: events.id,
@@ -183,6 +176,8 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
       attachments: events.attachments,
       lastGeneratedDate: events.lastGeneratedDate,
       generationCount: events.generationCount,
+      visibilityOffsetMinutes: events.visibilityOffsetMinutes,
+      autoArchive: events.autoArchive,
     })
     .from(events)
     .where(
@@ -190,6 +185,7 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
         eq(events.isSeriesParent, true),
         isNull(events.archivedAt),
         not(isNull(events.recurrenceRule)),
+        ...(options.templateId ? [eq(events.id, options.templateId)] : []),
       ),
     );
 
@@ -226,59 +222,90 @@ export async function runEventInstanceGenerationCron(env: Bindings): Promise<voi
       }
     }
 
-    const horizon = computeHorizon(now, rule);
-    const nextOccurrence = computeNextOccurrence(anchor, templateStart, rule);
-    if (!nextOccurrence) {
-      continue;
-    }
+    const horizon = computeHorizon(now);
+    let currentAnchor = anchor;
+    let generationCount = template.generationCount;
+    let catchupCount = 0;
+    let lastDateKey: string | null = null;
 
-    // Only generate if next occurrence is within the lookahead window
-    if (nextOccurrence > horizon) {
-      continue;
-    }
+    while (catchupCount < MAX_CATCHUP) {
+      const nextOccurrence = computeNextOccurrence(currentAnchor, templateStart, rule);
+      if (!nextOccurrence) {
+        break;
+      }
 
-    // Check end date against next occurrence
-    if (rule.endDate) {
-      const endDate = new Date(rule.endDate);
-      if (isValidDate(endDate) && nextOccurrence > endDate) {
-        continue;
+      // Stop if beyond the lookahead horizon
+      if (nextOccurrence > horizon) {
+        break;
+      }
+
+      // Respect creation offset: only create the instance when now >= start - offset
+      if (template.visibilityOffsetMinutes != null && template.visibilityOffsetMinutes > 0) {
+        const createAt = new Date(nextOccurrence.getTime() - template.visibilityOffsetMinutes * 60_000);
+        if (now < createAt) {
+          break;
+        }
+      }
+
+      // Stop if beyond the rule's end date
+      if (rule.endDate) {
+        const endDate = new Date(rule.endDate);
+        if (isValidDate(endDate) && nextOccurrence > endDate) {
+          break;
+        }
+      }
+
+      const nextStartIso = nextOccurrence.toISOString();
+      const nextDateKey = toDateKey(nextOccurrence);
+
+      // INSERT OR IGNORE: the UNIQUE constraint on (series_id, instance_date) prevents duplicates
+      const result = await db.insert(events).values({
+        id: nanoid(),
+        type: template.type,
+        title: template.title,
+        description: template.description,
+        startAt: nextStartIso,
+        endAt: computeEndAt(template.startAt, template.endAt, nextStartIso),
+        capacity: template.capacity,
+        pinned: false,
+        signupLocked: false,
+        autoArchive: template.autoArchive,
+        autoArchived: false,
+        archivedAt: null,
+        createdBy: template.createdBy,
+        recurrenceRule: null,
+        attachments: template.attachments,
+        seriesId: template.id,
+        isSeriesParent: false,
+        instanceDate: nextDateKey,
+        lastGeneratedDate: null,
+        generationCount: 0,
+        updatedAt: now.toISOString(),
+      }).onConflictDoNothing({ target: [events.seriesId, events.instanceDate] });
+
+      if (result.meta.changes > 0) {
+        generationCount += 1;
+        lastDateKey = nextDateKey;
+      }
+
+      currentAnchor = nextOccurrence;
+      catchupCount += 1;
+
+      // Stop if endAfter limit reached
+      if (rule.endAfter && generationCount >= rule.endAfter) {
+        break;
       }
     }
 
-    const nextStartIso = nextOccurrence.toISOString();
-    const nextDateKey = toDateKey(nextOccurrence);
-
-    // Generate a standalone event (no series_id, no instance_date)
-    await db.insert(events).values({
-      id: nanoid(),
-      type: template.type,
-      title: template.title,
-      description: template.description,
-      startAt: nextStartIso,
-      endAt: computeEndAt(template.startAt, template.endAt, nextStartIso),
-      capacity: template.capacity,
-      pinned: false,
-      signupLocked: false,
-      archivedAt: null,
-      createdBy: template.createdBy,
-      recurrenceRule: null,
-      attachments: template.attachments,
-      seriesId: template.id,
-      isSeriesParent: false,
-      instanceDate: nextDateKey,
-      lastGeneratedDate: null,
-      generationCount: 0,
-      updatedAt: now.toISOString(),
-    });
-
-    // Update template tracking
-    await db
-      .update(events)
-      .set({
-        lastGeneratedDate: nextDateKey,
-        generationCount: template.generationCount + 1,
-        updatedAt: now.toISOString(),
-      })
-      .where(eq(events.id, template.id));
+    if (lastDateKey) {
+      await db
+        .update(events)
+        .set({
+          lastGeneratedDate: lastDateKey,
+          generationCount,
+          updatedAt: now.toISOString(),
+        })
+        .where(eq(events.id, template.id));
+    }
   }
 }

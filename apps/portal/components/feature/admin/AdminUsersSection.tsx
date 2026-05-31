@@ -1,7 +1,9 @@
 import { PortalCard } from "../../shared/PortalCard";
 import type { AdminRole } from "@guild/shared";
 import {
+  ActionIcon,
   Alert,
+  Badge,
   Group,
   Skeleton,
   Progress,
@@ -9,25 +11,24 @@ import {
   Stack,
   Text,
   TextInput,
-  Title,
+
 } from "@mantine/core";
+import { CopyIcon, EyeIcon, KeyIcon, PlayIcon, PlayerPauseIcon, SearchIcon, TrashIcon, UserPlusIcon } from "@portal/components/icons";
+import { IconDotsVertical } from "@tabler/icons-react";
 import {
-  IconCopy,
-  IconEye,
-  IconKey,
-  IconPlayerPause,
-  IconPlayerPlay,
-  IconSearch,
-  IconTrash,
-  IconUserPlus,
-} from "@tabler/icons-react";
-import { InfiniTable, getCoreRowModel, getSortedRowModel, useReactTable } from "@portal/components/shared/InfiniTable";
-import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
-import { useMemo, useState } from "react";
+  InfiniTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@portal/components/shared/InfiniTable";
+import type { ColumnDef, PaginationState, SortingState } from "@portal/components/shared/InfiniTable";
+import { useMemo, useRef, useState } from "react";
 import { useClipboard } from "@mantine/hooks";
 import { type ContextMenuItemOptions, useContextMenu } from "mantine-contextmenu";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { TablePagination } from "../../shared/TablePagination";
 import type { UsersListResponse } from "../../../services/UserService";
 
 export type AdminUserRow = UsersListResponse["data"][number];
@@ -39,11 +40,11 @@ type AdminUsersSectionProps = {
   onOpenCreateMember: () => void;
   selectedUserIds: string[];
   batchSelectionLimit: number;
-  onBatchRole: (userIds: string[], role: "member" | "moderator") => void;
+  onBatchRole: (userIds: string[], role: string) => void;
   onBatchActivate: (userIds: string[]) => void;
   onBatchDeactivate: (userIds: string[]) => void;
   onBatchDelete: (userIds: string[]) => void;
-  onSingleRoleChange: (userId: string, role: "admin" | "moderator" | "member") => void;
+  onSingleRoleChange: (userId: string, role: string) => void;
   onSingleActivate: (userId: string) => void;
   onSingleDeactivate: (userId: string) => void;
   onSingleResetPassword: (userId: string) => void;
@@ -101,21 +102,50 @@ export function AdminUsersSection({
   const { t: tc } = useTranslation("common");
   const clipboard = useClipboard();
   const loadErrorMessage = tc("loadError");
-  const heading = <Title order={3} m={0} fz={16}>{t("tab.member")}</Title>;
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
   const { showContextMenu } = useContextMenu();
 
   const selectedIdSet = useMemo(() => new Set(selectedUserIds), [selectedUserIds]);
   const usersById = useMemo(() => new Map(userRows.map((row) => [row.user.id, row])), [userRows]);
+  const contextMenuRef = useRef<(userId: string, event: ReactMouseEvent<HTMLTableRowElement>) => void>(() => {});
+
+  const allColumns = useMemo(() => {
+    if (!isAdmin) return userColumns;
+    const actionColumn: ColumnDef<AdminUserRow, unknown> = {
+      header: "",
+      id: "actions",
+      size: 40,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            contextMenuRef.current(row.original.user.id, e as unknown as ReactMouseEvent<HTMLTableRowElement>);
+          }}
+          aria-label={t("member.action.menu")}
+        >
+          <IconDotsVertical size={16} />
+        </ActionIcon>
+      ),
+    };
+    return [...userColumns, actionColumn];
+  }, [userColumns, isAdmin, t]);
 
   const table = useReactTable({
     data: userRows,
-    columns: userColumns,
-    state: { sorting },
+    columns: allColumns,
+    state: { sorting, pagination },
     onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    autoResetPageIndex: false,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
     getRowId: (row) => row.user.id,
   });
 
@@ -212,7 +242,7 @@ export function AdminUsersSection({
             if (role.id === "admin") {
               return;
             }
-            onBatchRole(nextContextUserIds, role.id as "member" | "moderator");
+            onBatchRole(nextContextUserIds, role.id);
             return;
           }
 
@@ -220,7 +250,7 @@ export function AdminUsersSection({
             return;
           }
 
-          onSingleRoleChange(contextSingleUserId, role.id as "admin" | "moderator" | "member");
+          onSingleRoleChange(contextSingleUserId, role.id);
         },
         title: role.name,
       }));
@@ -239,7 +269,7 @@ export function AdminUsersSection({
       {
         key: "detail",
         disabled: !contextSingleUserId,
-        icon: <IconEye size={14} />,
+        icon: <EyeIcon size={14} />,
         onClick: () => {
           if (contextSingleUserId) {
             onOpenMemberDetail(contextSingleUserId);
@@ -249,17 +279,15 @@ export function AdminUsersSection({
       },
       {
         key: "copy-row",
-        icon: <IconCopy size={14} />,
+        icon: <CopyIcon size={14} />,
         onClick: () => {
           const lines = nextContextRows.map((row) =>
             [
               row.user.username,
-              row.profile.wechat_name ?? "",
-              row.profile.discord_id ?? "",
               row.profile.classes.join(", "),
               String(row.profile.power),
               row.user.role,
-              row.user.is_active ? "Active" : "Inactive",
+              row.user.is_active ? t("member.status.active") : t("member.status.inactive"),
             ].join(", "),
           );
           clipboard.copy(lines.join("\n") + "\n");
@@ -275,7 +303,7 @@ export function AdminUsersSection({
         ? [{
             key: "activate",
             disabled: singleActivationPending || batchActivatePending,
-            icon: <IconPlayerPlay size={14} />,
+            icon: <PlayIcon size={14} />,
             onClick: () => {
               if (isBatchContext) {
                 onBatchActivate(nextContextUserIds);
@@ -290,7 +318,7 @@ export function AdminUsersSection({
         ? [{
             key: "deactivate",
             disabled: singleActivationPending || batchDeactivatePending,
-            icon: <IconPlayerPause size={14} />,
+            icon: <PlayerPauseIcon size={14} />,
             onClick: () => {
               if (isBatchContext) {
                 onBatchDeactivate(nextContextUserIds);
@@ -305,7 +333,7 @@ export function AdminUsersSection({
         ? [{
             key: "reset-password",
             disabled: singleResetPasswordPending,
-            icon: <IconKey size={14} />,
+            icon: <KeyIcon size={14} />,
             onClick: () => {
               onSingleResetPassword(contextSingleUserId);
             },
@@ -315,7 +343,7 @@ export function AdminUsersSection({
       { key: "divider-actions" },
       {
         key: "create-member",
-        icon: <IconUserPlus size={14} />,
+        icon: <UserPlusIcon size={14} />,
         onClick: () => {
           onOpenCreateMember();
         },
@@ -326,7 +354,7 @@ export function AdminUsersSection({
         className: "infini-menu-item--danger",
         color: "red",
         disabled: batchDeletePending,
-        icon: <IconTrash size={14} />,
+        icon: <TrashIcon size={14} />,
         onClick: () => {
           onBatchDelete(nextContextUserIds);
         },
@@ -337,11 +365,12 @@ export function AdminUsersSection({
     showContextMenu(items)(event);
   };
 
+  contextMenuRef.current = handleRowContextMenu;
+
   return (
     <Stack gap={12}>
-      {heading}
       {usersLoading ? <Stack gap={8}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {usersError ? <Alert color="infini-warning" title={loadErrorMessage} /> : null}
+      {usersError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
       {!usersLoading && !usersError ? (
         <>
           {isAdmin ? (
@@ -350,7 +379,7 @@ export function AdminUsersSection({
                 value={memberSearch}
                 onChange={(event) => onMemberSearchChange(event.currentTarget.value)}
                 placeholder={t("member.search.placeholder")}
-                leftSection={<IconSearch size={14} />}
+                leftSection={<SearchIcon size={14} />}
                 style={{ flex: 1 }} miw={200} maw={360}
                 size="sm"
               />
@@ -366,7 +395,7 @@ export function AdminUsersSection({
             </Group>
           ) : null}
 
-          <PortalCard interactive={false}>
+          <PortalCard interactive={false} className="admin-member-table-desktop">
             <ScrollArea type="auto" style={{ padding: "1.2rem" }}>
               <InfiniTable
                 table={table}
@@ -378,8 +407,51 @@ export function AdminUsersSection({
                   selectedIdSet.has(row.original.user.id) ? "admin-member-row-selected" : undefined
                 }
               />
+              <TablePagination table={table} />
             </ScrollArea>
           </PortalCard>
+
+          <div className="admin-member-cards-mobile">
+            {table.getRowModel().rows.map((row) => {
+              const u = row.original.user;
+              const p = row.original.profile;
+              const roleDef = roles.find((r) => r.id === u.role);
+              return (
+                <PortalCard key={u.id} interactive className={`admin-member-card${selectedIdSet.has(u.id) ? " admin-member-card--selected" : ""}`}>
+                  <div style={{ padding: "0.8rem 1rem" }} onClick={() => onOpenMemberDetail(u.id)}>
+                    <Group justify="space-between" wrap="nowrap" gap={8}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <Text fw={600} size="sm" truncate>{u.username}</Text>
+                        <Group gap={6} mt={2}>
+                          <Badge size="xs" color={roleDef?.color ?? "blue"}>{u.role}</Badge>
+                          {u.is_active
+                            ? <Badge size="xs" color="green">{t("member.status.active")}</Badge>
+                            : <Badge size="xs" color="red">{t("member.status.inactive")}</Badge>
+                          }
+                          {p.classes[0] ? <Text size="xs" c="dimmed">{p.classes[0]}</Text> : null}
+                        </Group>
+                      </div>
+                      {isAdmin ? (
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRowContextMenu(u.id, e as unknown as ReactMouseEvent<HTMLTableRowElement>);
+                          }}
+                          aria-label={t("member.action.menu")}
+                        >
+                          <IconDotsVertical size={16} />
+                        </ActionIcon>
+                      ) : null}
+                    </Group>
+                  </div>
+                </PortalCard>
+              );
+            })}
+            <TablePagination table={table} />
+          </div>
         </>
       ) : null}
     </Stack>

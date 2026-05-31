@@ -1,8 +1,8 @@
 import type { WarHistory } from "@guild/shared";
-import { NumberTicker } from "@infini-dev-kit/react";
+import { NumberTicker } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
 import { ActionIcon, Avatar, Stack, Text } from "@mantine/core";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CrownOutlined,
@@ -14,10 +14,17 @@ import {
   TargetOutlined,
   TrophyOutlined,
 } from "../../utils/icons";
-import { IconFlame, IconHeart, IconHammer, IconShield } from "@tabler/icons-react";
+import { FlameIcon, HeartIcon, HammerIcon, ShieldIcon } from "@portal/components/icons";
 import { CompareBar } from "../shared/CompareBar";
 import { EmptyState } from "../shared/EmptyState";
 import { cardHeading, formatDateTime, type DashboardLastWarMvp, type DashboardLastWarMvpEntry } from "./shared";
+
+const MVP_ICON_MAP: Record<string, React.ReactNode> = {
+  damage: <FlameIcon size={12} />,
+  healing: <HeartIcon size={12} />,
+  damage_taken: <ShieldIcon size={12} />,
+  building_damage: <HammerIcon size={12} />,
+};
 
 type LastWarCardProps = {
   recentWars: WarHistory[];
@@ -26,18 +33,24 @@ type LastWarCardProps = {
   onOpenHistory: (warName: string) => void;
 };
 
+const RESULT_COLOR: Record<string, string> = {
+  win: "var(--color-success, #22c55e)",
+  loss: "var(--color-danger, #ef4444)",
+  draw: "var(--color-warning, #f59e0b)",
+};
+
+const RESULT_LABEL_KEY: Record<string, string> = {
+  win: "card.lastWar.result.victory",
+  loss: "card.lastWar.result.defeat",
+  draw: "card.lastWar.result.draw",
+};
+
 function resultColor(result: string | null): string {
-  if (result === "win") return "var(--infini-color-success, #22c55e)";
-  if (result === "loss") return "var(--infini-color-danger, #ef4444)";
-  if (result === "draw") return "var(--infini-color-warning, #f59e0b)";
-  return "color-mix(in srgb, var(--infini-color-text, #111827) 50%, transparent)";
+  return (result && RESULT_COLOR[result]) ?? "color-mix(in srgb, var(--color-text, #111827) 50%, transparent)";
 }
 
 function resultLabel(result: string | null, t: (key: string) => string): string {
-  if (result === "win") return t("card.lastWar.result.victory");
-  if (result === "loss") return t("card.lastWar.result.defeat");
-  if (result === "draw") return t("card.lastWar.result.draw");
-  return t("card.lastWar.result.pending");
+  return t((result && RESULT_LABEL_KEY[result]) ?? "card.lastWar.result.pending");
 }
 
 function MvpChip({ entry, icon }: { entry: DashboardLastWarMvpEntry; icon: React.ReactNode }) {
@@ -64,7 +77,7 @@ function MvpChip({ entry, icon }: { entry: DashboardLastWarMvpEntry; icon: React
   );
 }
 
-export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory }: LastWarCardProps) {
+export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory }: LastWarCardProps) {
   const { t } = useTranslation("dashboard");
   const [index, setIndex] = useState(0);
 
@@ -84,7 +97,7 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
               disabled={!hasPrev}
               onClick={() => setIndex((i) => i - 1)}
               className="war-nav-btn"
-              aria-label="Previous war"
+              aria-label={t("card.lastWar.aria.prevWar")}
             >
               <LeftOutlined size={16} stroke={2.6} />
             </ActionIcon>
@@ -95,7 +108,7 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
               disabled={!hasNext}
               onClick={() => setIndex((i) => i + 1)}
               className="war-nav-btn"
-              aria-label="Next war"
+              aria-label={t("card.lastWar.aria.nextWar")}
             >
               <RightOutlined size={16} stroke={2.6} />
             </ActionIcon>
@@ -113,7 +126,7 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
                 <ActionIcon
                   onClick={() => onOpenHistory(war.war_name)}
                   className="war-share-btn"
-                  aria-label="Open war history"
+                  aria-label={t("card.lastWar.aria.openHistory")}
                 >
                   <GoToOutlined size={15} stroke={2.4} />
                 </ActionIcon>
@@ -142,8 +155,8 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
               classPrefix="war-compare-"
               icon={<TargetOutlined size={13} />}
               label={t("card.lastWar.kills")}
-              own={war.own_kills ?? 0}
-              enemy={war.enemy_kills ?? 0}
+              own={war.own_stats?.kills ?? 0}
+              enemy={war.enemy_stats?.kills ?? 0}
             />
             {!isExternalView ? (
               <>
@@ -151,22 +164,22 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
                   classPrefix="war-compare-"
                   icon={<CrownOutlined size={13} />}
                   label={t("card.lastWar.credits")}
-                  own={war.own_credits ?? 0}
-                  enemy={war.enemy_credits ?? 0}
+                  own={war.own_stats?.credits ?? 0}
+                  enemy={war.enemy_stats?.credits ?? 0}
                 />
                 <CompareBar
                   classPrefix="war-compare-"
                   icon={<ShieldOutlined size={13} />}
                   label={t("card.lastWar.towers")}
-                  own={war.own_towers ?? 0}
-                  enemy={war.enemy_towers ?? 0}
+                  own={war.own_stats?.towers ?? 0}
+                  enemy={war.enemy_stats?.towers ?? 0}
                 />
                 <CompareBar
                   classPrefix="war-compare-"
                   icon={<ShieldOutlined size={13} />}
                   label={t("card.lastWar.baseHp")}
-                  own={war.own_base_hp ?? 0}
-                  enemy={war.enemy_base_hp ?? 0}
+                  own={war.own_stats?.base_hp ?? 0}
+                  enemy={war.enemy_stats?.base_hp ?? 0}
                 />
               </>
             ) : null}
@@ -174,15 +187,14 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
 
           {/* MVPs */}
           {!isExternalView && mvp ? (
-            <Stack gap={6} pt={8} style={{ borderTop: "1px solid color-mix(in srgb, var(--infini-color-text, #111827) 8%, transparent)" }}>
+            <Stack gap={6} pt={8} style={{ borderTop: "1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent)" }}>
               <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: "0.08em", marginBottom: 2 }}>
                 {t("card.lastWar.mvps")}
               </Text>
               <Stack gap={6}>
-                <MvpChip entry={{ ...mvp.damage, label: t("card.lastWar.mvp.damage") }} icon={<IconFlame size={12} />} />
-                <MvpChip entry={{ ...mvp.healing, label: t("card.lastWar.mvp.healing") }} icon={<IconHeart size={12} />} />
-                <MvpChip entry={{ ...mvp.damageTaken, label: t("card.lastWar.mvp.damageTaken") }} icon={<IconShield size={12} />} />
-                <MvpChip entry={{ ...mvp.building, label: t("card.lastWar.mvp.building") }} icon={<IconHammer size={12} />} />
+                {mvp.map((entry) => (
+                  <MvpChip key={entry.category} entry={entry} icon={MVP_ICON_MAP[entry.category] ?? <FlameIcon size={12} />} />
+                ))}
               </Stack>
             </Stack>
           ) : null}
@@ -192,4 +204,4 @@ export function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory
       )}
     </PortalCard>
   );
-}
+});

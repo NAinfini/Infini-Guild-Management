@@ -1,4 +1,4 @@
-import { CLASS_NAMES } from "@guild/shared";
+import { CLASS_NAMES, type AdminRole } from "@guild/shared";
 import { PortalCard } from "../../shared/PortalCard";
 import {
   Badge,
@@ -16,7 +16,7 @@ import {
   Textarea,
   TextInput,
 } from "@mantine/core";
-import { IconDeviceFloppy } from "@tabler/icons-react";
+import { SaveIcon } from "@portal/components/icons";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { UsersListResponse } from "../../../services/UserService";
@@ -25,16 +25,13 @@ import styles from "./AdminMemberDetailModal.module.css";
 type AdminUserRow = UsersListResponse["data"][number];
 
 type MemberDetailFormState = {
-  wechatName: string;
   power: number;
   classes: string[];
   titleHtml: string;
   bio: string;
   notes: string;
-  discordId: string;
   vacationStart: string;
   vacationEnd: string;
-  discordReminderOptOut: boolean;
   role: string;
   isActive: boolean;
 };
@@ -48,6 +45,7 @@ type AdminMemberDetailModalProps = {
   onSaveProfile: (member: AdminUserRow) => void;
   saveProfilePending: boolean;
   mediaTab: ReactNode;
+  roles: AdminRole[];
 };
 
 function FieldSection({ label, children }: { label: string; children: ReactNode }) {
@@ -70,13 +68,14 @@ export function AdminMemberDetailModal({
   onSaveProfile,
   saveProfilePending,
   mediaTab,
+  roles,
 }: AdminMemberDetailModalProps) {
   const { t } = useTranslation("admin");
 
   return (
     <Modal
       opened={open}
-      title={member ? t("detail.titleWithName", { username: member.user.username }) : t("detail.title")}
+      title={member ? t("detail.titleWithName", { username: member.user.username }) : undefined}
       onClose={onClose}
       size="min(960px, 96vw)"
       centered
@@ -107,11 +106,11 @@ export function AdminMemberDetailModal({
                         <Select
                           value={form.role}
                           onChange={(value) => { if (value) onFormChange({ role: value }); }}
-                          data={[
-                            { value: "admin", label: t("role.admin") },
-                            { value: "moderator", label: t("role.moderator") },
-                            { value: "member", label: t("role.member") },
-                          ]}
+                          data={roles
+                            .slice()
+                            .sort((a, b) => a.level - b.level)
+                            .map((r) => ({ value: r.id, label: r.name }))
+                          }
                           size="sm"
                         />
                       </FieldSection>
@@ -124,7 +123,7 @@ export function AdminMemberDetailModal({
                             size="sm"
                           />
                           <Badge
-                            color={form.isActive ? "infini-success" : "gray"}
+                            color={form.isActive ? "green" : "red"}
                             variant="light"
                           >
                             {form.isActive ? t("member.status.active") : t("member.status.inactive")}
@@ -143,8 +142,10 @@ export function AdminMemberDetailModal({
                         label={t("detail.field.power")}
                         placeholder={t("detail.placeholder.power")}
                         value={form.power}
-                        onChange={(value) => onFormChange({ power: typeof value === "number" ? value : 0 })}
+                        onChange={(value) => { if (typeof value === "number") onFormChange({ power: value }); }}
                         min={0}
+                        decimalScale={2}
+                        hideControls
                         thousandSeparator=","
                       />
                       <MultiSelect
@@ -162,7 +163,7 @@ export function AdminMemberDetailModal({
               </Stack>
             </Tabs.Panel>
 
-            {/* Profile: Title, Bio, Contact */}
+            {/* Profile: Title, Bio */}
             <Tabs.Panel value="profile">
               <Stack gap={16}>
                 <PortalCard interactive={false}>
@@ -186,33 +187,6 @@ export function AdminMemberDetailModal({
                         autosize
                       />
                     </Stack>
-                  </div>
-                </PortalCard>
-
-                <PortalCard interactive={false}>
-                  <div className={styles.sectionBody}>
-                    <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.contact")}</Text>
-                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                      <TextInput
-                        label={t("detail.field.wechat")}
-                        placeholder={t("detail.placeholder.wechat")}
-                        value={form.wechatName}
-                        onChange={(event) => onFormChange({ wechatName: event.currentTarget.value })}
-                      />
-                      <TextInput
-                        label={t("detail.field.discordId")}
-                        placeholder={t("detail.placeholder.discordId")}
-                        value={form.discordId}
-                        onChange={(event) => onFormChange({ discordId: event.currentTarget.value })}
-                      />
-                    </SimpleGrid>
-                    <Switch
-                      label={t("detail.field.discordReminderOptOut")}
-                      checked={form.discordReminderOptOut}
-                      onChange={(event) => onFormChange({ discordReminderOptOut: event.currentTarget.checked })}
-                      size="sm"
-                      mt="sm"
-                    />
                   </div>
                 </PortalCard>
               </Stack>
@@ -267,7 +241,7 @@ export function AdminMemberDetailModal({
           {/* Save Button — always visible across all tabs */}
           <Group justify="flex-end" className={styles.saveBar}>
             <Button
-              leftSection={<IconDeviceFloppy size={18} />}
+              leftSection={<SaveIcon size={18} />}
               onClick={() => onSaveProfile(member)}
               loading={saveProfilePending}
               size="md"

@@ -1,6 +1,6 @@
 .modalContent {
   transform-origin: top center;
-  animation: profileModalEnter var(--infini-motion-hover, 220ms) var(--infini-motion-easing, ease) forwards;
+  animation: profileModalEnter 220ms ease forwards;
 }
 
 .modalTitle {
@@ -19,8 +19,8 @@
   height: 88px;
   border-radius: 14px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 88%, var(--infini-color-text, #111827) 5%);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, var(--color-text, #111827) 5%);
 }
 
 .avatar {
@@ -28,7 +28,7 @@
   height: 100%;
   object-fit: cover;
   opacity: 0;
-  transition: opacity var(--infini-motion-hover, 220ms) var(--infini-motion-easing, ease);
+  transition: opacity 220ms ease;
 }
 
 .avatarLoaded {
@@ -40,7 +40,7 @@
   height: 100%;
   display: grid;
   place-items: center;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 46%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 46%, transparent);
   font-size: 32px;
   font-weight: 700;
 }
@@ -52,10 +52,10 @@
 }
 
 .field {
-  border: 1px solid color-mix(in srgb, var(--infini-color-text, #111827) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
   border-radius: 10px;
   padding: 8px 10px;
-  background: color-mix(in srgb, var(--infini-color-surface, #ffffff) 90%, var(--infini-color-text, #111827) 4%);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 90%, var(--color-text, #111827) 4%);
   min-height: 64px;
   overflow-wrap: anywhere;
 }
@@ -63,11 +63,12 @@
 .fieldLabel {
   display: block;
   margin-bottom: 4px;
-  color: color-mix(in srgb, var(--infini-color-text, #111827) 52%, transparent);
+  color: color-mix(in srgb, var(--color-text, #111827) 52%, transparent);
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+
 
 @media (max-width: 900px) {
   .header {

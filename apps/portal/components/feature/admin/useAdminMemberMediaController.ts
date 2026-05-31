@@ -1,16 +1,19 @@
-import type { ImageGridEditorItem } from "@infini-dev-kit/react";
-import { notifications } from "@mantine/notifications";
+import type { ImageGridEditorItem } from "@guild/shared/types/media";
 import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMediaUpload } from "../../../hooks/useMediaUpload";
+import { notifySuccess } from "../../../utils/notifications";
+import { resolveProfileMediaUrl } from "../../../utils/media";
 import {
+  deleteAvatar,
   deleteProfileAudio,
   deleteProfileImage,
-  type UsersListResponse,
   updateMyProfile,
+  uploadAvatar,
   uploadProfileAudio,
   uploadProfileImages,
+  type UsersListResponse,
 } from "../../../services/UserService";
 
 const PROFILE_IMAGE_MAX = 10;
@@ -24,10 +27,6 @@ type UseAdminMemberMediaControllerParams = {
   onRefresh: () => Promise<void>;
   onError: (error: unknown, fallbackMessage: string) => void;
 };
-
-function isHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
-}
 
 function requireMember(member: AdminUserRow | null): AdminUserRow {
   if (!member) {
@@ -49,7 +48,7 @@ export function useAdminMemberMediaController({
     () =>
       (member?.profile.images ?? []).map((key) => ({
         id: key,
-        src: isHttpUrl(key) ? key : undefined,
+        src: resolveProfileMediaUrl(key),
         alt: key,
       })),
     [member?.profile.images],
@@ -78,14 +77,14 @@ export function useAdminMemberMediaController({
       maxFiles: 1,
       maxFileSizeBytes: PROFILE_AUDIO_MAX_BYTES,
       mediaType: "audio",
-      convertAudioToOpus: true,
+      convertAudioToOpus: false,
     },
   );
 
   const deleteImageMutation = useMutation({
     mutationFn: (key: string) => deleteProfileImage(requireMember(member).user.id, key),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.mediaImageRemoved") });
+      notifySuccess(t("message.mediaImageRemoved"));
       await onRefresh();
     },
     onError: (error) => onError(error, t("message.mediaImageRemoveFailed")),
@@ -103,10 +102,28 @@ export function useAdminMemberMediaController({
   const deleteAudioMutation = useMutation({
     mutationFn: () => deleteProfileAudio(requireMember(member).user.id),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.mediaAudioRemoved") });
+      notifySuccess(t("message.mediaAudioRemoved"));
       await onRefresh();
     },
     onError: (error) => onError(error, t("message.mediaAudioRemoveFailed")),
+  });
+
+  const uploadAvatarMutation = useMutation({
+    mutationFn: (file: File) => uploadAvatar(requireMember(member).user.id, file),
+    onSuccess: async () => {
+      notifySuccess(t("message.mediaAvatarUploaded"));
+      await onRefresh();
+    },
+    onError: (error) => onError(error, t("message.mediaAvatarUploadFailed")),
+  });
+
+  const deleteAvatarMutation = useMutation({
+    mutationFn: () => deleteAvatar(requireMember(member).user.id),
+    onSuccess: async () => {
+      notifySuccess(t("message.mediaAvatarRemoved"));
+      await onRefresh();
+    },
+    onError: (error) => onError(error, t("message.mediaAvatarRemoveFailed")),
   });
 
   const [videoUrls, setVideoUrls] = useState<string[]>(() => [...memberVideoUrls]);
@@ -121,7 +138,7 @@ export function useAdminMemberMediaController({
         video_urls: urls.filter((url) => url.trim() !== ""),
       }),
     onSuccess: async () => {
-      notifications.show({ color: "infini-success", message: t("message.mediaVideosSaved") });
+      notifySuccess(t("message.mediaVideosSaved"));
       await onRefresh();
     },
     onError: (error) => onError(error, t("message.mediaVideosSaveFailed")),
@@ -175,7 +192,7 @@ export function useAdminMemberMediaController({
       if (!result) {
         return;
       }
-      notifications.show({ color: "infini-success", message: t("message.mediaImagesUploaded") });
+      notifySuccess(t("message.mediaImagesUploaded"));
       await onRefresh();
       imageUploader.reset();
     } catch (error) {
@@ -189,7 +206,7 @@ export function useAdminMemberMediaController({
       if (!result) {
         return;
       }
-      notifications.show({ color: "infini-success", message: t("message.mediaAudioUploaded") });
+      notifySuccess(t("message.mediaAudioUploaded"));
       await onRefresh();
       audioUploader.reset();
     } catch (error) {
@@ -200,6 +217,17 @@ export function useAdminMemberMediaController({
   const deleteAudio = useCallback(() => {
     deleteAudioMutation.mutate();
   }, [deleteAudioMutation]);
+
+  const handleUploadAvatar = useCallback(
+    (file: File) => {
+      uploadAvatarMutation.mutate(file);
+    },
+    [uploadAvatarMutation],
+  );
+
+  const handleDeleteAvatar = useCallback(() => {
+    deleteAvatarMutation.mutate();
+  }, [deleteAvatarMutation]);
 
   return {
     imageItems,
@@ -220,5 +248,9 @@ export function useAdminMemberMediaController({
     deleteAudioPending: deleteAudioMutation.isPending,
     uploadAudio,
     deleteAudio,
+    uploadAvatar: handleUploadAvatar,
+    deleteAvatar: handleDeleteAvatar,
+    avatarUploadPending: uploadAvatarMutation.isPending,
+    avatarDeletePending: deleteAvatarMutation.isPending,
   };
 }

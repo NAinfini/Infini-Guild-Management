@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { queryKeys } from "../../../services/PortalQueryKeys";
+import { queryKeys } from "../../../services/EventService";
 import { useRecurringTemplatesController } from "./useRecurringTemplatesController";
 
 const notificationMocks = vi.hoisted(() => ({
@@ -29,14 +29,18 @@ vi.mock("@mantine/notifications", () => ({
   notifications: notificationMocks,
 }));
 
-vi.mock("../../../services/EventService", () => ({
-  fetchTemplatesList: serviceMocks.fetchTemplatesList,
-  createTemplate: serviceMocks.createTemplate,
-  updateTemplate: serviceMocks.updateTemplate,
-  pauseTemplate: serviceMocks.pauseTemplate,
-  resumeTemplate: serviceMocks.resumeTemplate,
-  deleteTemplate: serviceMocks.deleteTemplate,
-}));
+vi.mock("../../../services/EventService", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../services/EventService")>();
+  return {
+    ...actual,
+    fetchTemplatesList: serviceMocks.fetchTemplatesList,
+    createTemplate: serviceMocks.createTemplate,
+    updateTemplate: serviceMocks.updateTemplate,
+    pauseTemplate: serviceMocks.pauseTemplate,
+    resumeTemplate: serviceMocks.resumeTemplate,
+    deleteTemplate: serviceMocks.deleteTemplate,
+  };
+});
 
 function createWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {

@@ -1,0 +1,288 @@
+{
+  "title": "Equipment Calculator",
+  "description": "Plan and optimize your gear builds",
+  "pool": {
+    "title": "Equipment Pool",
+    "addEquipment": "Add Equipment",
+    "empty": "No equipment yet. Add your first piece!",
+    "addFirst": "Add your first equipment piece",
+    "filter": {
+      "available": "Available",
+      "all": "All",
+      "equipped": "Equipped"
+    },
+    "equipped": "Equipped",
+    "allSlots": "All",
+    "noMatch": "No equipment matches the current filters",
+    "chengyin": "Chengyin",
+    "purple": "Purple"
+  },
+  "loadout": {
+    "title": "Loadout",
+    "newLoadout": "New Loadout",
+    "rename": "Rename",
+    "delete": "Delete Loadout",
+    "class": "Class",
+    "armory": "Armory",
+    "xinfa": "Inner Arts",
+    "bowType": "Bow Type",
+    "set": "Set",
+    "earlySeasonBonus": "Early Season Bonus",
+    "loanDingyin": "Loan Dingyin",
+    "loanDingyinConfig": "Configure Loan Stats",
+    "loanOuterPen": "Physical Penetration",
+    "loanElePen": "Attribute Penetration",
+    "loanSpecificSkill": "Specific Skill Bonus",
+    "bossAsPlayer": "Treat Boss as Player",
+    "selectXinfa": "Select Inner Art",
+    "emptySlot": "Empty",
+    "unequip": "Unequip",
+    "slots": {
+      "weapon1": "Weapon 1",
+      "weapon2": "Weapon 2",
+      "head": "Helm",
+      "chest": "Chest",
+      "ring": "Ring",
+      "pendant": "Pendant",
+      "legs": "Legs",
+      "hands": "Hands"
+    },
+    "selectPlaceholder": "Select loadout",
+    "add": "New",
+    "empty": "No loadout yet. Click + to create one.",
+    "defaultName": "Loadout",
+    "required": "Please select or create a loadout first."
+  },
+  "stats": {
+    "graduationRate": "Graduation Rate",
+    "expectedDps": "Expected DPS",
+    "excelRate": "Excel Shows",
+    "breakdown": "Stats Breakdown",
+    "actualPrecision": "Actual Precision",
+    "actualCrit": "Actual Critical Rate",
+    "actualIntent": "Actual Affinity Rate",
+    "overflow": "Overflow",
+    "raw": "raw",
+    "panel": {
+      "outerAttack": "Physical Attack",
+      "elementAttack": "{{element}} Attack",
+      "elementAttackFallback": "Attribute Attack",
+      "wuxiangAttack": "Formless Attack",
+      "precision": "Precision Rate",
+      "crit": "Critical Rate",
+      "intent": "Affinity Rate",
+      "directCrit": "Direct Critical Rate",
+      "critDamage": "Critical DMG Bonus",
+      "intentDamage": "Affinity DMG Bonus",
+      "outerPen": "Physical Penetration",
+      "elementPen": "Attribute Penetration",
+      "elementDamage": "{{element}} DMG Bonus",
+      "elementDamageFallback": "Attribute DMG Bonus"
+    },
+    "quality": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    }
+  },
+  "form": {
+    "title": "Equipment Details",
+    "editTitle": "Edit Equipment",
+    "slot": "Slot",
+    "weaponType": "Weapon Type",
+    "name": "Name",
+    "mainStat": "Main Stat",
+    "subStats": "Sub Stats",
+    "dingyin": "Dingyin Stat",
+    "classRestriction": "Class Restriction",
+    "allClasses": "All Classes",
+    "save": "Save",
+    "cancel": "Cancel",
+    "maxBtn": "Max",
+    "value": "Value",
+    "statType": "Stat Type"
+  },
+  "tabs": {
+    "comparison": "Comparison",
+    "priority": "Stat Priority",
+    "cultivation": "Cultivation",
+    "transmutation": "Transmutation",
+    "bestBuild": "Best Build",
+    "manualEntry": "Manual Entry"
+  },
+  "comparison": {
+    "selectSlot": "Select a slot to compare equipment",
+    "rateDelta": "Rate Change",
+    "freezeDingyin": "Freeze current dingyin",
+    "assumeMaxChengyin": "Assume max chengyin"
+  },
+  "priority": {
+    "addMaxRoll": "Adding one max roll",
+    "loseMaxRoll": "Losing one max roll",
+    "gives": "gives",
+    "costs": "costs"
+  },
+  "cultivation": {
+    "upgradeNext": "Upgrade next for biggest improvement",
+    "currentRate": "Current",
+    "potentialRate": "Potential"
+  },
+  "transmutation": {
+    "selectEquipment": "Select an equipment piece",
+    "rerollStat": "Reroll",
+    "targetStat": "Target",
+    "expectedImprovement": "Expected Improvement"
+  },
+  "bestBuild": {
+    "find": "Find Best Build",
+    "cancel": "Cancel",
+    "searching": "Searching...",
+    "progress": "Progress",
+    "lockSlot": "Lock slot",
+    "topBuilds": "Top Builds",
+    "apply": "Apply Build",
+    "noResults": "No valid builds found"
+  },
+  "manualEntry": {
+    "title": "Manual Stat Entry",
+    "description": "Enter your in-game panel stats directly for a quick graduation check",
+    "calculate": "Calculate"
+  },
+  "actions": {
+    "export": "Export",
+    "import": "Import",
+    "help": "Help",
+    "cancel": "Cancel",
+    "importSuccess": "Data imported successfully",
+    "importError": "Invalid import data",
+    "exportSuccess": "Data copied to clipboard"
+  },
+  "importModal": {
+    "title": "Import data",
+    "description": "Paste exported calculator JSON here.",
+    "placeholder": "Paste JSON",
+    "confirm": "Import",
+    "errorTitle": "Import failed"
+  },
+  "panels": {
+    "pool": "Equipment Pool",
+    "config": "Loadout Config",
+    "analysis": "Analysis",
+    "combat": "Combat",
+    "bonuses": "Bonuses"
+  },
+  "bowTypes": {
+    "precision": "Precision",
+    "crit": "Critical",
+    "intent": "Affinity"
+  },
+  "setNames": {
+    "玉斗": "Jadeware",
+    "飞隼": "Hawkwing",
+    "时雨": "Rainwhisper",
+    "断岳": "Shattered Ridge",
+    "烟柳": "Mistwillow",
+    "浣花": "Ivorybloom",
+    "燕归": "Swallowcall",
+    "连星": "Stars Align",
+    "撼天": "Swaying Heights"
+  },
+  "classNames": {
+    "鸣金虹": "Bellstrike-Splendor",
+    "鸣金影": "Bellstrike-Umbra",
+    "裂石威": "Stonesplit-Might",
+    "裂石钧": "Stonesplit-Scale",
+    "裂石钧（纯唐）": "Stonesplit-Scale (Pure Tang)",
+    "牵丝玉": "Silkbind-Jade",
+    "牵丝霖": "Silkbind-Deluge",
+    "破竹尘": "Bamboocut-Dust",
+    "破竹风": "Bamboocut-Wind",
+    "破竹鸢": "Bamboocut-Kite"
+  },
+  "armoryTypes": {
+    "通用": "General",
+    "鸣金": "Bellstrike",
+    "裂石": "Stonesplit",
+    "牵丝": "Silkbind",
+    "破竹": "Bamboocut"
+  },
+  "workspace": {
+    "equipment": "Equipment",
+    "statsOverview": "Stats Overview"
+  },
+  "statNames": {
+    "最小外功攻击": "Min Physical ATK",
+    "最大外功攻击": "Max Physical ATK",
+    "最小鸣金攻击": "Min Bellstrike ATK",
+    "最大鸣金攻击": "Max Bellstrike ATK",
+    "最小裂石攻击": "Min Stonesplit ATK",
+    "最大裂石攻击": "Max Stonesplit ATK",
+    "最小牵丝攻击": "Min Silkbind ATK",
+    "最大牵丝攻击": "Max Silkbind ATK",
+    "最小破竹攻击": "Min Bamboocut ATK",
+    "最大破竹攻击": "Max Bamboocut ATK",
+    "最小无相攻击": "Min Formless ATK",
+    "最大无相攻击": "Max Formless ATK",
+    "精准率": "Precision Rate",
+    "会心率": "Critical Rate",
+    "会意率": "Affinity Rate",
+    "劲": "Strength",
+    "敏": "Agility",
+    "势": "Power",
+    "外功穿透": "Physical Penetration",
+    "属攻穿透": "Attribute Penetration",
+    "无相穿透": "Formless Penetration",
+    "外功伤害加成": "Physical DMG Bonus",
+    "属攻伤害加成": "Attribute DMG Bonus",
+    "会心伤害加成": "Critical DMG Bonus",
+    "会意伤害加成": "Affinity DMG Bonus",
+    "直接会心率": "Direct Critical Rate",
+    "直接会意率": "Direct Affinity Rate",
+    "对首领单位增伤": "Boss DMG Bonus",
+    "对玩家单位增效": "PvP DMG Bonus",
+    "全武学增效": "All Martial Arts Bonus",
+    "全武学增伤": "All Martial Arts Bonus",
+    "指定武学技能增伤": "Specific Skill Bonus",
+    "单体类奇术增伤": "Single Target Arts",
+    "群体类奇术增伤": "AoE Arts Bonus",
+    "剑武学增效": "Sword Arts",
+    "枪武学增效": "Spear Arts",
+    "伞武学增效": "Umbrella Arts",
+    "扇武学增效": "Fan Arts",
+    "绳标武学增效": "Rope Dart Arts",
+    "双刀武学增效": "Twinblades Arts",
+    "陌刀武学增效": "Mo Dao Arts",
+    "横刀武学增效": "Heng Dao Arts",
+    "拳甲武学增效": "Gauntlet Arts",
+    "生存类词条": "Survival",
+    "生存向": "Survival",
+    "无": "None",
+    "实际精准率": "Actual Precision",
+    "实际会心率": "Actual Critical Rate",
+    "实际会意率": "Actual Affinity Rate",
+    "精准率溢出": "Precision Overflow",
+    "会心率溢出": "Critical Overflow",
+    "会意率溢出": "Affinity Overflow",
+    "固伤加成": "Fixed DMG Bonus",
+    "鸣金伤害加成": "Bellstrike DMG Bonus",
+    "裂石伤害加成": "Stonesplit DMG Bonus",
+    "牵丝伤害加成": "Silkbind DMG Bonus",
+    "破竹伤害加成": "Bamboocut DMG Bonus",
+    "鸣金穿透": "Bellstrike Penetration",
+    "裂石穿透": "Stonesplit Penetration",
+    "牵丝穿透": "Silkbind Penetration",
+    "破竹穿透": "Bamboocut Penetration"
+  },
+  "statsGroup": {
+    "attack": "Attack Stats",
+    "rates": "Rate Stats",
+    "damage": "Damage Modifiers"
+  },
+  "bottomPanel": {
+    "dragHint": "Analysis"
+  },
+  "errors": {
+    "loadTitle": "Unable to load calculator data",
+    "loadBody": "The stored calculator data is out of date. The server will use the bundled reference data."
+  }
+}

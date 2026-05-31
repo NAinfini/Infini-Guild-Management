@@ -6,5 +6,7 @@ export * from "./announcements";
 export * from "./guild-war";
 export * from "./wiki";
 export * from "./gallery";
+export * from "./badges";
 export * from "./audit";
-export * from "./bot";
+export * from "./error-log";
+export * from "./game-data";

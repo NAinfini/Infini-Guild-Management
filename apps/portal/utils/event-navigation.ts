@@ -1,15 +1,17 @@
 import { EVENT_TYPES } from "@guild/shared";
 import { z } from "zod";
 
-export const EVENT_WORKBENCH_VIEW_MODES = ["cards", "month", "recurring"] as const;
+const EVENT_WORKBENCH_VIEW_MODES = ["cards", "month", "recurring"] as const;
+const EVENT_STATUS_FILTERS = ["active", "archived", "all"] as const;
 
 export type EventWorkbenchViewMode = (typeof EVENT_WORKBENCH_VIEW_MODES)[number];
 export type EventTypeFilter = (typeof EVENT_TYPES)[number];
+export type EventStatusFilter = (typeof EVENT_STATUS_FILTERS)[number];
 
 export type EventsRouteSearch = {
   search?: string;
   type?: EventTypeFilter;
-  archived?: boolean;
+  status?: EventStatusFilter;
   pinned?: boolean;
   locked?: boolean;
   view?: EventWorkbenchViewMode;
@@ -34,23 +36,32 @@ function normalizeOptionalString(value: string | null | undefined): string | und
 export const EVENTS_ROUTE_SEARCH_SCHEMA = z.object({
   search: z.string().optional(),
   type: z.enum(EVENT_TYPES).optional(),
-  archived: z.preprocess(parseBooleanSearchValue, z.boolean().optional()),
+  status: z.preprocess(
+    (val) => (typeof val === "string" && (EVENT_STATUS_FILTERS as readonly string[]).includes(val) ? val : undefined),
+    z.enum(EVENT_STATUS_FILTERS).optional(),
+  ),
   pinned: z.preprocess(parseBooleanSearchValue, z.boolean().optional()),
   locked: z.preprocess(parseBooleanSearchValue, z.boolean().optional()),
-  view: z.enum(EVENT_WORKBENCH_VIEW_MODES).optional(),
+  view: z.preprocess(
+    (val) => (typeof val === "string" && (EVENT_WORKBENCH_VIEW_MODES as readonly string[]).includes(val) ? val : undefined),
+    z.enum(EVENT_WORKBENCH_VIEW_MODES).optional(),
+  ),
   eventId: z.string().optional(),
 });
 
 export function sanitizeEventsRouteSearch(search: EventsRouteSearch): EventsRouteSearch {
-  return {
-    search: normalizeOptionalString(search.search),
-    type: search.type?.trim() ? search.type : undefined,
-    archived: search.archived ? true : undefined,
-    pinned: search.pinned ? true : undefined,
-    locked: search.locked ? true : undefined,
-    view: search.view,
-    eventId: normalizeOptionalString(search.eventId),
-  };
+  const sanitized: EventsRouteSearch = {};
+  const normalizedSearch = normalizeOptionalString(search.search);
+  const normalizedEventId = normalizeOptionalString(search.eventId);
+
+  if (normalizedSearch) sanitized.search = normalizedSearch;
+  if (search.type?.trim()) sanitized.type = search.type;
+  if (search.status && search.status !== "active") sanitized.status = search.status;
+  if (search.pinned) sanitized.pinned = true;
+  if (search.locked) sanitized.locked = true;
+  if (search.view) sanitized.view = search.view;
+  if (normalizedEventId) sanitized.eventId = normalizedEventId;
+  return sanitized;
 }
 
 export function buildEventWorkbenchSearch(event: { id: string; title?: string | null }): EventsRouteSearch {

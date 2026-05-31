@@ -1,8 +1,8 @@
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
-import { PortalCard } from "../../shared/PortalCard";
-import { Group, TextInput } from "@mantine/core";
-import { IconArchive, IconCalendarTime, IconFileText, IconPin } from "@tabler/icons-react";
+import { SegmentedControl, TextInput } from "@mantine/core";
+import { PinIcon, SearchIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
+import { FilterToolbar } from "../../shared/FilterToolbar";
 
 type AnnouncementFiltersCardProps = {
   pinnedFilter: boolean;
@@ -25,71 +25,54 @@ export function AnnouncementFiltersCard({
 }: AnnouncementFiltersCardProps) {
   const { t } = useTranslation("announcements");
 
-  const handleStatusToggle = (value: string, nextPressed: boolean) => {
-    onStatusFilterChange(nextPressed ? value : undefined);
-  };
+  const statusValue = statusFilter ?? (canEdit ? "all" : "published");
+  const statusOptions = canEdit
+    ? [
+        { value: "all", label: t("filter.status.all") },
+        { value: "published", label: t("filter.published") },
+        { value: "archived", label: t("filter.archived") },
+        { value: "draft", label: t("filter.draft") },
+        { value: "scheduled", label: t("filter.scheduled") },
+      ]
+    : [
+        { value: "published", label: t("filter.published") },
+        { value: "archived", label: t("filter.archived") },
+      ];
 
   return (
-    <PortalCard interactive={false}>
-      <div style={{ padding: "1.2rem" }}>
-        <Group gap={8} wrap="wrap" align="center">
+    <FilterToolbar
+      active={Boolean(search.trim()) || pinnedFilter || Boolean(statusFilter)}
+      primary={
           <TextInput
             className="announcements-filter-search"
             placeholder={t("filter.search")}
-            aria-label="Search announcements"
+            aria-label={t("aria.searchAnnouncements")}
             value={search}
             onChange={(event) => onSearchChange(event.currentTarget.value)}
+            leftSection={<SearchIcon size={16} />}
+          />
+      }
+      filters={
+        <>
+          <SegmentedControl
+            value={statusValue}
+            onChange={(value) => onStatusFilterChange(value === "all" ? undefined : value)}
+            data={statusOptions}
+            aria-label={t("filter.status")}
           />
           <DepthToggle
             pressed={pinnedFilter}
             onToggle={onPinnedFilterChange}
-            type="secondary"
+            type="primary"
             size="sm"
             iconOnly
             aria-label={t("filter.pinned")}
             tooltip={t("filter.pinned")}
           >
-            <IconPin size={16} />
+            <PinIcon size={16} />
           </DepthToggle>
-          <DepthToggle
-            pressed={statusFilter === "archived"}
-            onToggle={(nextPressed) => handleStatusToggle("archived", nextPressed)}
-            type="secondary"
-            size="sm"
-            iconOnly
-            aria-label={t("filter.archived")}
-            tooltip={t("filter.archived")}
-          >
-            <IconArchive size={16} />
-          </DepthToggle>
-          {canEdit ? (
-            <>
-              <DepthToggle
-                pressed={statusFilter === "draft"}
-                onToggle={(nextPressed) => handleStatusToggle("draft", nextPressed)}
-                type="secondary"
-                size="sm"
-                iconOnly
-                aria-label={t("filter.draft")}
-                tooltip={t("filter.draft")}
-              >
-                <IconFileText size={16} />
-              </DepthToggle>
-              <DepthToggle
-                pressed={statusFilter === "scheduled"}
-                onToggle={(nextPressed) => handleStatusToggle("scheduled", nextPressed)}
-                type="secondary"
-                size="sm"
-                iconOnly
-                aria-label={t("filter.scheduled")}
-                tooltip={t("filter.scheduled")}
-              >
-                <IconCalendarTime size={16} />
-              </DepthToggle>
-            </>
-          ) : null}
-        </Group>
-      </div>
-    </PortalCard>
+        </>
+      }
+    />
   );
 }

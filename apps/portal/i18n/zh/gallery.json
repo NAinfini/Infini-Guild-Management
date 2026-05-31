@@ -61,5 +61,9 @@
   "aria.selectItem": "选择画廊项 {{id}}",
   "aria.openImage": "打开图片 {{name}}",
   "aria.openVideo": "打开视频 {{name}}",
-  "media.video": "视频"
+  "media.video": "视频",
+  "type.image": "图片",
+  "type.video": "视频",
+  "hovercard.clearDates.title": "清除日期筛选",
+  "hovercard.clearDates.desc": "移除图库搜索中的开始和结束日期筛选"
 }

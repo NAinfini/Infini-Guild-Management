@@ -1,26 +1,25 @@
 export {
   changeMyPassword,
   changeMyUsername,
+  deleteAvatar,
   deleteProfileAudio,
   deleteProfileImage,
-  unlinkMyDiscord,
+  deleteProfileImages,
   updateMyProfile,
+  uploadAvatar,
   uploadProfileAudio,
   uploadProfileImages,
-  verifyMyDiscordLink,
 } from "../api/mutations/users";
 export type {
   ChangeMyPasswordPayload,
   ChangeMyUsernamePayload,
   UpdateMyProfilePayload,
-  VerifyMyDiscordLinkPayload,
 } from "../api/mutations/users";
 export {
   fetchUserDetail,
+  fetchUsersStats,
   fetchUsersList,
   fetchUsersListWithOptions,
+  fetchAllUsersListWithOptions,
 } from "../api/queries/users";
-export type {
-  UserDetailResponse,
-  UsersListResponse,
-} from "../api/queries/users";
+export type { UsersListResponse, UsersStatsResponse } from "../api/queries/users";

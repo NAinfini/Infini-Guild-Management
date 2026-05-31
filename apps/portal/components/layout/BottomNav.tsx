@@ -34,14 +34,13 @@ export function BottomNav({ pathname, mainItems, moreItems, onNavigate }: Bottom
   const isMoreActive = moreItems.some((item) => isPathActive(pathname, item.to));
 
   return (
-    <nav aria-label="Bottom navigation" className="app-bottom-nav">
+    <nav aria-label={t("nav.bottomNav")} className="app-bottom-nav">
       <div className="bottom-nav-grid">
         {mainItems.slice(0, 4).map((item) => (
           <Link
             key={item.to}
             to={item.to}
             className={`bottom-nav-link ${isPathActive(pathname, item.to) ? "bottom-nav-link--active" : ""}`}
-            aria-label={item.label}
             onClick={() => onNavigate?.(item.to)}
           >
             <Indicator disabled={!item.isNew} offset={2} size={8} inline>
@@ -60,7 +59,7 @@ export function BottomNav({ pathname, mainItems, moreItems, onNavigate }: Bottom
               variant={isMoreActive ? "filled" : "subtle"}
               size="compact-sm"
               className="bottom-nav-more-button"
-              aria-label="Open more navigation links"
+              aria-label={t("nav.openMoreLinks")}
             >
               <EllipsisOutlined className="bottom-nav-more-icon" />
               <span className="bottom-nav-label">{t("nav.more")}</span>
