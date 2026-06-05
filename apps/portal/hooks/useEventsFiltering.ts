@@ -129,13 +129,15 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   }, [events, lastSeenAt]);
 
   const previewEventIds = useMemo(() => sortedEvents.map((event) => event.id), [sortedEvents]);
+  const stableIdsKey = useMemo(() => [...previewEventIds].sort().join(","), [previewEventIds]);
   const eventPreviewDetailsQuery = useQuery({
-    queryKey: queryKeys.events.previewDetailsByIds(previewEventIds.join(",")),
+    queryKey: queryKeys.events.previewDetailsByIds(stableIdsKey),
     enabled: previewEventIds.length > 0,
     queryFn: async () => {
       const response = await fetchEventDetailBatch(previewEventIds);
       return response.data;
     },
+    staleTime: 30_000,
   });
 
   const eventMembersMap = useMemo(() => {

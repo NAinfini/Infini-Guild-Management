@@ -1,6 +1,31 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { cn } from "@portal/utils/cn";
 
+const OBSERVER_THRESHOLD = 0.1;
+let sharedObserver: IntersectionObserver | null = null;
+const callbacks = new Map<Element, () => void>();
+
+function getSharedObserver(): IntersectionObserver {
+  if (!sharedObserver) {
+    sharedObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const cb = callbacks.get(entry.target);
+            if (cb) {
+              cb();
+              callbacks.delete(entry.target);
+              sharedObserver!.unobserve(entry.target);
+            }
+          }
+        }
+      },
+      { threshold: OBSERVER_THRESHOLD },
+    );
+  }
+  return sharedObserver;
+}
+
 export interface RevealOnScrollProps {
   children: ReactNode;
   className?: string;
@@ -15,17 +40,13 @@ export function RevealOnScroll({ children, className, delayMs = 0 }: RevealOnScr
     const el = ref.current;
     if (!el) return;
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          setVisible(true);
-          observer.unobserve(el);
-        }
-      },
-      { threshold: 0.1 },
-    );
+    const observer = getSharedObserver();
+    callbacks.set(el, () => setVisible(true));
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      callbacks.delete(el);
+      observer.unobserve(el);
+    };
   }, []);
 
   const style: CSSProperties = delayMs > 0 ? { transitionDelay: `${delayMs}ms` } : {};

@@ -855,7 +855,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         id: `systemtest_role_${nowId}`,
         name: `[systemtest] API Role ${nowId}`,
         level: 1,
-        color: "#228be6",
+        color: "#B8922F",
       });
 
     case "PATCH /api/admin/roles/:id":

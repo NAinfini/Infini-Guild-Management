@@ -144,7 +144,7 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
             );
           })}
           {profile.power > 0 ? (
-            <Text size="xs" c="dimmed"><BoltIcon size={13} style={{ display: "inline-block", verticalAlign: "-2px" }} /> {profile.power.toLocaleString()}</Text>
+            <Text component="span" size="xs" c="dimmed"><BoltIcon size={13} style={{ display: "inline-block", verticalAlign: "-2px" }} /> {profile.power.toLocaleString()}</Text>
           ) : null}
         </Group>
       </HoverCard.Dropdown>

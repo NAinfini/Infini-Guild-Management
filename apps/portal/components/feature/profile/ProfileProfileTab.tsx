@@ -195,7 +195,7 @@ export function ProfileProfileTab({
               <Text fw={700} size="sm" c="dimmed" tt="uppercase" lts={0.5} mb={10}>{t("media.avatar")}</Text>
               <Group gap={16} align="center">
                 <Avatar size={64} radius="xl" src={avatarKey ? resolveProfileMediaUrl(avatarKey) : undefined}
-                  style={{ border: "2px solid var(--color-border, #e5e7eb)" }}
+                  style={{ border: "2px solid var(--color-border, #E2DDD6)" }}
                 >
                   <UserIcon size={28} />
                 </Avatar>
@@ -298,7 +298,7 @@ export function ProfileProfileTab({
                 <Stack gap={6} mt={10}>
                   {videoList.map((item, index) => (
                     <Group key={`${item}-${index}`} gap={8} wrap="wrap" align="center"
-                      style={{ padding: "4px 8px", borderRadius: "var(--radius-sm, 8px)", background: "var(--color-primary-alpha, rgba(59,130,246,0.06))" }}
+                      style={{ padding: "4px 8px", borderRadius: "var(--radius-sm, 8px)", background: "var(--color-primary-alpha, rgba(212,168,67,0.06))" }}
                     >
                       <Text size="sm" style={{ flex: 1, minWidth: 0 }} truncate="end">{item}</Text>
                       <Group gap={4} wrap="nowrap">
@@ -347,7 +347,7 @@ export function ProfileProfileTab({
 
               {profileAudioKey ? (
                 <Group gap={8} align="center" mt={8}
-                  style={{ padding: "4px 8px", borderRadius: "var(--radius-sm, 8px)", background: "var(--color-primary-alpha, rgba(59,130,246,0.06))" }}
+                  style={{ padding: "4px 8px", borderRadius: "var(--radius-sm, 8px)", background: "var(--color-primary-alpha, rgba(212,168,67,0.06))" }}
                 >
                   <Text size="sm" style={{ flex: 1 }} truncate="end">{profileAudioKey.split("/").pop()}</Text>
                   <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={14} />} onClick={() => {

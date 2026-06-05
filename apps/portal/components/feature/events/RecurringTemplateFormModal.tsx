@@ -39,7 +39,7 @@ const sectionStyle: React.CSSProperties = {
   padding: "12px 14px",
   borderRadius: "var(--radius-sm, 8px)",
   background: "var(--color-surface-elevated, #fff)",
-  border: "1px solid var(--color-border, #e5e7eb)",
+  border: "1px solid var(--color-border, #E2DDD6)",
 };
 
 const weekdayBtnBase: React.CSSProperties = {
@@ -317,9 +317,9 @@ export function RecurringTemplateFormModal({
                         }}
                         style={{
                           ...weekdayBtnBase,
-                          border: isSelected ? "2px solid var(--color-primary, #3b82f6)" : "1px solid var(--color-border, #e5e7eb)",
-                          background: isSelected ? "var(--color-primary, #3b82f6)" : "transparent",
-                          color: isSelected ? "#fff" : "var(--color-text, #111827)",
+                          border: isSelected ? "2px solid var(--color-primary, #D4A843)" : "1px solid var(--color-border, #E2DDD6)",
+                          background: isSelected ? "var(--color-primary, #D4A843)" : "transparent",
+                          color: isSelected ? "#fff" : "var(--color-text, #1A1815)",
                           fontWeight: isSelected ? 600 : 400,
                         }}
                       >

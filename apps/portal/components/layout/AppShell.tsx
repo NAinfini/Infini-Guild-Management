@@ -43,6 +43,11 @@ function isWikiPath(pathname: string): boolean {
 
 const HAS_VIEW_TRANSITIONS = typeof document !== "undefined" && "startViewTransition" in document;
 
+const HEADER_TITLE_OVERRIDES: Record<string, string> = {
+  "/profile": "nav.profile",
+  "/settings": "nav.settings",
+};
+
 const ENTITY_QUERY_KEYS = {
   announcement: [queryKeys.announcements.all],
   event: [queryKeys.events.all, queryKeys.dashboard.all, queryKeys.guildWar.events()],
@@ -363,11 +368,6 @@ export function AppShell() {
     },
     [markFeatureAsRead, markPushAsRead, navigate],
   );
-
-  const HEADER_TITLE_OVERRIDES: Record<string, string> = {
-    "/profile": "nav.profile",
-    "/settings": "nav.settings",
-  };
 
   const { selectedNavKey, activePageTitle } = useMemo(() => {
     const matches = visibleNavItems

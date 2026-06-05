@@ -418,7 +418,7 @@ export function AdminStatusTab({
                       const barColor = latency < 200 ? "#10b981" : latency < 400 ? "#eab308" : "#ef4444";
                       return (
                         <tr key={`${row.at}-${index}`}>
-                          <td style={{ color: "color-mix(in srgb, var(--color-text, #111827) 65%, transparent)" }}>
+                          <td style={{ color: "color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent)" }}>
                             {formatDateTime(row.at)}
                           </td>
                           <td><span className={`health-log-dot health-log-dot--${row.db === "ok" ? "ok" : "error"}`} />{row.db}</td>

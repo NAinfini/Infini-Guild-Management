@@ -22,13 +22,13 @@ export function GradientText({
     <span
       className={cn(
         "bg-clip-text text-transparent bg-gradient-to-r",
-        !from && !to && "from-blue-500 to-purple-500",
+        !from && !to && "from-amber-500 to-yellow-700",
         animated && "bg-[length:200%_100%] animate-[shimmer_linear_infinite]",
         className,
       )}
       style={{
         ...(from || to
-          ? { backgroundImage: `linear-gradient(to right, ${from ?? "#3B82F6"}, ${to ?? "#8B5CF6"})` }
+          ? { backgroundImage: `linear-gradient(to right, ${from ?? "#D4A843"}, ${to ?? "#C17F3E"})` }
           : undefined),
         ...(animated ? { animationDuration: `${duration}s` } : undefined),
       }}

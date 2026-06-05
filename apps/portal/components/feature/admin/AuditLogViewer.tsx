@@ -374,7 +374,7 @@ export function AuditLogViewer({
                         {row.summary}
                       </Text>
                       {row.entityName ? (
-                        <Text size="xs" fw={600} c="var(--color-primary, #3b82f6)" lineClamp={1} className="audit-log-row__entity-name">
+                        <Text size="xs" fw={600} c="var(--color-primary, #D4A843)" lineClamp={1} className="audit-log-row__entity-name">
                           {row.entityName}
                         </Text>
                       ) : null}

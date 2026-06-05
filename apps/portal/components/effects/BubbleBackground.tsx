@@ -34,7 +34,7 @@ export function BubbleBackground({
       const top = rng() * 100;
       const duration = (6 + rng() * 6) / speed;
       const delay = rng() * 4;
-      const hue = 200 + rng() * 60;
+      const hue = 30 + rng() * 30;
       return { id: i, size, left, top, duration, delay, hue };
     });
   }, [count, minSize, maxSize, speed]);

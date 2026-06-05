@@ -174,15 +174,15 @@ export function RecurringTemplatesTab({
                           alignItems: "center",
                           justifyContent: "center",
                           background: isPaused
-                            ? "color-mix(in srgb, var(--color-text, #111827) 6%, transparent)"
-                            : "color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent)",
+                            ? "color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent)"
+                            : "color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent)",
                           flexShrink: 0,
                         }}
                       >
                         <CalendarRepeatIcon
                           size={20}
                           style={{
-                            color: isPaused ? "var(--color-text-muted, #6b7280)" : "var(--color-primary, #3b82f6)",
+                            color: isPaused ? "var(--color-text-muted, #6B665E)" : "var(--color-primary, #D4A843)",
                           }}
                         />
                       </div>
@@ -255,7 +255,7 @@ export function RecurringTemplatesTab({
                           </HoverCard.Target>
                           <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                             <Group gap={10} wrap="nowrap" align="flex-start">
-                              <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                              <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                                 <ClockIcon size={16} />
                               </ThemeIcon>
                               <div style={{ minWidth: 0 }}>

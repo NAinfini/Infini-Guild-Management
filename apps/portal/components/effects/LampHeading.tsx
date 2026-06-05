@@ -20,7 +20,7 @@ export function LampHeading({
     <div className={cn("relative flex flex-col items-center", className)}>
       <div
         className={cn(
-          "absolute rounded-full bg-blue-500/20 blur-3xl dark:bg-blue-400/10",
+          "absolute rounded-full bg-amber-500/20 blur-3xl dark:bg-amber-400/10",
           animated && "animate-pulse",
         )}
         style={{

@@ -203,7 +203,7 @@ export function EventMonthView({
                 {dayEvents.length > 3 ? (
                   <Popover withinPortal>
                     <Popover.Target>
-                      <Badge color="blue" variant="light" size="xs" style={{ cursor: "pointer" }}>
+                      <Badge color="yellow" variant="light" size="xs" style={{ cursor: "pointer" }}>
                         +{dayEvents.length - 3} {t("month.more")}
                       </Badge>
                     </Popover.Target>

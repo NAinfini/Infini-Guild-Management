@@ -61,7 +61,7 @@
   height: 2px;
   margin-top: 4px;
   border-radius: 1px;
-  background: linear-gradient(90deg, var(--color-primary, #3b82f6), var(--color-secondary, #8b5cf6), var(--color-accent, #06b6d4));
+  background: linear-gradient(90deg, var(--color-primary, #D4A843), var(--color-secondary, #8B7355), var(--color-accent, #C17F3E));
   background-size: 200% 100%;
   opacity: 0.6;
   transition: width 0.3s ease, opacity 0.3s ease;
@@ -92,7 +92,7 @@
   position: relative;
   overflow: hidden;
   color: var(--color-text);
-  border: 1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border, #E2DDD6) 80%, transparent);
   border-radius: var(--radius-md);
   background: var(--color-surface, #ffffff);
   box-shadow: var(--shadow-sm);
@@ -113,7 +113,7 @@
   transition: opacity 0.3s ease;
   background: radial-gradient(
     360px circle at var(--spotlight-x) var(--spotlight-y),
-    color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent),
+    color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent),
     transparent 65%
   );
 }
@@ -121,7 +121,7 @@
 .dark .portal-card__spotlight {
   background: radial-gradient(
     360px circle at var(--spotlight-x) var(--spotlight-y),
-    color-mix(in srgb, var(--color-primary, #3b82f6) 16%, transparent),
+    color-mix(in srgb, var(--color-primary, #D4A843) 16%, transparent),
     transparent 65%
   );
 }
@@ -153,7 +153,7 @@
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in srgb, var(--color-primary, #3b82f6) 5%, transparent),
+    color-mix(in srgb, var(--color-primary, #D4A843) 5%, transparent),
     transparent
   );
   transform: translateX(-100%) skewX(-15deg);
@@ -171,30 +171,28 @@
 .portal-card--interactive:hover {
   box-shadow:
     var(--shadow-md),
-    0 0 24px color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+    0 0 24px color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
   transform: translateY(-3px);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 35%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 35%, transparent);
 }
 
 .dark .portal-card {
-  background: color-mix(in srgb, var(--color-surface, #1e293b) 90%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #141418) 95%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
 }
 
 .dark .portal-card--interactive:hover {
   box-shadow:
     var(--shadow-md),
-    0 0 32px color-mix(in srgb, var(--color-primary, #3b82f6) 14%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 45%, transparent);
+    0 0 32px color-mix(in srgb, var(--color-primary, #D4A843) 14%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 45%, transparent);
 }
 
 .portal-card--interactive:active {
   transform: translateY(0) scale(0.99);
   box-shadow: var(--shadow-sm);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 40%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -230,7 +228,7 @@
 .page-layout__card.infini-card-hover:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent);
 }
 
 .page-layout__divider {
@@ -239,9 +237,9 @@
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent) 30%,
-    color-mix(in srgb, var(--color-border, #e5e7eb) 40%, transparent) 50%,
-    color-mix(in srgb, var(--color-secondary, #8b5cf6) 12%, transparent) 70%,
+    color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent) 30%,
+    color-mix(in srgb, var(--color-border, #E2DDD6) 40%, transparent) 50%,
+    color-mix(in srgb, var(--color-secondary, #8B7355) 12%, transparent) 70%,
     transparent
   );
 }

@@ -404,7 +404,7 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
                           width: `${100 / 7}%`,
                           height: 14,
                           background: grid[day.key][hourSlot]
-                            ? "var(--mantine-primary-color-filled, var(--color-primary, #3b82f6))"
+                            ? "var(--mantine-primary-color-filled, var(--color-primary, #D4A843))"
                             : "transparent",
                           borderTop: "1px solid var(--mantine-color-default-border)",
                           borderLeft: "1px solid var(--mantine-color-default-border)",
@@ -428,7 +428,7 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
                         style={{
                           height: 14,
                           background: grid[day.key][hourSlot + 1]
-                            ? "var(--mantine-primary-color-filled, var(--color-primary, #3b82f6))"
+                            ? "var(--mantine-primary-color-filled, var(--color-primary, #D4A843))"
                             : "transparent",
                           borderLeft: "1px solid var(--mantine-color-default-border)",
                           borderRight: "1px solid var(--mantine-color-default-border)",

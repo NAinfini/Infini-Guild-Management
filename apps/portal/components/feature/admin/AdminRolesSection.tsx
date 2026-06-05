@@ -181,7 +181,7 @@ function buildEmptyPermissions(): Record<Permission, boolean> {
 
 const CSS_COLOR_TO_HEX: Record<string, string> = {
   red: "#ef4444",
-  blue: "#3b82f6",
+  blue: "#D4A843",
   gray: "#64748b",
   green: "#22c55e",
   orange: "#f97316",
@@ -460,7 +460,7 @@ export function AdminRolesSection({
                         style={{ flex: 1, minWidth: 120, maxWidth: 160 }}
                         swatches={[
                           "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
-                          "#3b82f6", "#6366f1", "#a855f7", "#ec4899", "#64748b",
+                          "#D4A843", "#6366f1", "#a855f7", "#ec4899", "#64748b",
                         ]}
                       />
                       <Badge variant="light" color="teal" size="sm">

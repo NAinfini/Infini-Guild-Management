@@ -5,7 +5,7 @@
 
 .event-detail-modal__header {
   padding: 18px 20px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
 }
 
 .event-detail-modal__title {
@@ -24,7 +24,7 @@
 
 .event-detail-modal__meta-card,
 .event-detail-modal__section {
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 9%, transparent);
   border-radius: 10px;
   background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent);
 }
@@ -43,11 +43,11 @@
 }
 
 .event-detail-modal__meta-card--type svg {
-  color: var(--mantine-color-blue-6);
+  color: var(--mantine-color-yellow-6);
 }
 
 .event-detail-modal__meta-card--time svg {
-  color: var(--mantine-color-violet-6);
+  color: var(--mantine-color-orange-6);
 }
 
 .event-detail-modal__section {
@@ -96,7 +96,7 @@
   align-items: stretch;
   min-width: 0;
   padding: 10px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
   border-radius: 10px;
   background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
   cursor: pointer;
@@ -124,7 +124,7 @@
 }
 
 .event-detail-modal__poll-result-row--disabled:hover {
-  border-color: color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
 }
 
@@ -159,7 +159,7 @@
   width: 22px;
   height: 22px;
   flex-shrink: 0;
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 18%, transparent);
   border-radius: 999px;
   color: #ffffff;
   background: color-mix(in srgb, var(--color-surface, #ffffff) 74%, transparent);
@@ -172,7 +172,7 @@
 
 .event-detail-modal__poll-result-stats {
   flex-shrink: 0;
-  color: color-mix(in srgb, var(--color-text, #111827) 62%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 62%, transparent);
   font-variant-numeric: tabular-nums;
 }
 
@@ -186,7 +186,7 @@
 }
 
 .event-detail-modal__poll-progress.mantine-Progress-root {
-  background: color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
   overflow: hidden;
 }
 
@@ -213,7 +213,7 @@
   max-width: 176px;
   min-height: 32px;
   padding: 2px 9px 2px 4px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 7%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent);
 }
@@ -230,7 +230,7 @@
   min-height: 32px;
   padding: 0 11px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--color-text, #111827) 7%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 7%, transparent);
 }
 
 .event-detail-modal__poll-empty-voters {
@@ -261,7 +261,7 @@
 
 .event-detail-modal__member-row {
   padding: 9px 10px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 7%, transparent);
   border-radius: 9px;
   background: color-mix(in srgb, var(--color-surface, #ffffff) 78%, transparent);
 }
@@ -277,15 +277,15 @@
 .dark .event-detail-modal__member-row,
 .dark .event-detail-modal__poll-voter-chip,
 .dark .event-detail-modal__poll-total {
-  background: color-mix(in srgb, var(--color-surface, #1e293b) 88%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #141418) 88%, transparent);
 }
 
 .dark .event-detail-modal__poll-result-row--selected {
-  background: color-mix(in srgb, var(--mantine-color-teal-9) 22%, var(--color-surface, #1e293b));
+  background: color-mix(in srgb, var(--mantine-color-teal-9) 22%, var(--color-surface, #141418));
 }
 
 .dark .event-detail-modal__poll-choice-indicator {
-  background: color-mix(in srgb, var(--color-surface, #1e293b) 84%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #141418) 84%, transparent);
 }
 
 .dark .event-detail-modal__poll-result-row--selected .event-detail-modal__poll-choice-indicator {

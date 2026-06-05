@@ -6,20 +6,27 @@ import React, { useEffect, useRef, useState } from "react";
 
 type MemberEntry = { user: User; profile: MemberProfile };
 
-const EVENT_CARD_AVATAR_MAX_SIZE = 36;
-const EVENT_CARD_AVATAR_MIN_SIZE = 24;
-const EVENT_CARD_AVATAR_GAP = 2;
-const EVENT_CARD_AVATAR_BADGE_OVERHANG = 4;
+const AVATAR_MAX_SIZE = 36;
+const AVATAR_MIN_SIZE = 24;
+const AVATAR_GAP = 2;
+const OVERFLOW_BADGE_WIDTH = 28;
 
-export function calculateEventCardAvatarSize(containerWidth: number, slotCount: number): number {
-  if (!Number.isFinite(containerWidth) || containerWidth <= 0 || slotCount <= 0) {
-    return EVENT_CARD_AVATAR_MAX_SIZE;
+function calculateLayout(containerWidth: number, totalMembers: number): { size: number; count: number } {
+  if (!Number.isFinite(containerWidth) || containerWidth <= 0 || totalMembers <= 0) {
+    return { size: AVATAR_MAX_SIZE, count: totalMembers };
   }
 
-  const gapWidth = Math.max(0, slotCount - 1) * EVENT_CARD_AVATAR_GAP;
-  const availableWidth = containerWidth - gapWidth - EVENT_CARD_AVATAR_BADGE_OVERHANG;
-  const fittedSize = Math.floor(availableWidth / slotCount);
-  return Math.max(EVENT_CARD_AVATAR_MIN_SIZE, Math.min(EVENT_CARD_AVATAR_MAX_SIZE, fittedSize));
+  for (let size = AVATAR_MAX_SIZE; size >= AVATAR_MIN_SIZE; size--) {
+    const slotWidth = size + AVATAR_GAP;
+    const allFit = totalMembers * slotWidth - AVATAR_GAP;
+    if (allFit <= containerWidth) {
+      return { size, count: totalMembers };
+    }
+  }
+
+  const slotWidth = AVATAR_MIN_SIZE + AVATAR_GAP;
+  const maxSlots = Math.max(1, Math.floor((containerWidth - OVERFLOW_BADGE_WIDTH) / slotWidth));
+  return { size: AVATAR_MIN_SIZE, count: Math.min(maxSlots, totalMembers) };
 }
 
 type EventCardAvatarStripProps = {
@@ -29,53 +36,52 @@ type EventCardAvatarStripProps = {
 };
 
 export function EventCardAvatarStrip({ members, visibleMembers, hiddenMembersCount }: EventCardAvatarStripProps) {
-  const gridRef = useRef<HTMLDivElement>(null);
-  const [avatarSize, setAvatarSize] = useState(EVENT_CARD_AVATAR_MAX_SIZE);
-  const slotCount = members.length === 0 ? 1 : visibleMembers.length + (hiddenMembersCount > 0 ? 1 : 0);
+  const sizerRef = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState<{ size: number; count: number } | null>(null);
+
+  const totalCount = visibleMembers.length + hiddenMembersCount;
 
   useEffect(() => {
-    const grid = gridRef.current;
-    if (!grid) {
-      return;
-    }
+    const sizer = sizerRef.current;
+    if (!sizer) return;
 
-    const updateAvatarSize = (width: number) => {
-      setAvatarSize(calculateEventCardAvatarSize(width, slotCount));
+    const measure = () => {
+      setLayout(calculateLayout(sizer.offsetWidth, totalCount));
     };
 
-    updateAvatarSize(grid.clientWidth);
+    measure();
 
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
+    if (typeof ResizeObserver === "undefined") return;
 
-    const observer = new ResizeObserver((entries) => {
-      const [entry] = entries;
-      if (entry) {
-        updateAvatarSize(entry.contentRect.width);
-      }
-    });
-    observer.observe(grid);
+    const observer = new ResizeObserver(() => measure());
+    observer.observe(sizer);
     return () => observer.disconnect();
-  }, [slotCount]);
+  }, [totalCount]);
+
+  const avatarSize = layout?.size ?? AVATAR_MAX_SIZE;
+  const showCount = layout !== null ? Math.min(layout.count, visibleMembers.length) : visibleMembers.length;
+  const displayMembers = visibleMembers.slice(0, showCount);
+  const overflowCount = totalCount - showCount;
 
   return (
-    <div
-      ref={gridRef}
-      className="event-card__avatar-grid"
-      style={{ "--event-card-avatar-size": `${avatarSize}px` } as React.CSSProperties}
-    >
-      {members.length === 0 ? (
-        <span className="event-card__avatar-placeholder" aria-hidden="true">
-          <UsersIcon size={Math.max(14, Math.round(avatarSize * 0.5))} />
-        </span>
-      ) : null}
-      {visibleMembers.map((member) => (
-        <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={avatarSize} />
-      ))}
-      {hiddenMembersCount > 0 ? (
-        <Text size="xs" c="dimmed" fw={700} className="event-card__avatar-overflow">+{hiddenMembersCount}</Text>
-      ) : null}
-    </div>
+    <>
+      <div ref={sizerRef} style={{ width: "100%", height: 0, overflow: "hidden", padding: 0, margin: 0, border: "none" }} />
+      <div
+        className="event-card__avatar-grid"
+        style={{ "--event-card-avatar-size": `${avatarSize}px` } as React.CSSProperties}
+      >
+        {members.length === 0 ? (
+          <span className="event-card__avatar-placeholder" aria-hidden="true">
+            <UsersIcon size={Math.max(14, Math.round(avatarSize * 0.5))} />
+          </span>
+        ) : null}
+        {displayMembers.map((member) => (
+          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={avatarSize} />
+        ))}
+        {overflowCount > 0 ? (
+          <Text size="xs" c="dimmed" fw={700} className="event-card__avatar-overflow">+{overflowCount}</Text>
+        ) : null}
+      </div>
+    </>
   );
 }

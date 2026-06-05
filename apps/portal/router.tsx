@@ -73,8 +73,8 @@ function RouteLoadingFallback(): ReactNode {
         style={{
           width: 28,
           height: 28,
-          border: "3px solid color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent)",
-          borderTopColor: "var(--color-primary, #3b82f6)",
+          border: "3px solid color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent)",
+          borderTopColor: "var(--color-primary, #D4A843)",
           borderRadius: "50%",
           animation: "spin 0.7s linear infinite",
         }}
@@ -226,7 +226,7 @@ function NotFoundPage(): ReactNode {
     <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
       <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.15 }}>404</span>
       <span style={{ fontSize: 16, fontWeight: 600 }}>{t("notFound.title")}</span>
-      <a href="/" style={{ fontSize: 14, color: "var(--color-primary, #3b82f6)" }}>{t("notFound.backHome")}</a>
+      <a href="/" style={{ fontSize: 14, color: "var(--color-primary, #D4A843)" }}>{t("notFound.backHome")}</a>
     </div>
   );
 }
@@ -245,7 +245,7 @@ function RouteErrorFallback(): ReactNode {
           padding: "8px 20px",
           borderRadius: 8,
           border: "none",
-          background: "var(--color-primary, #3b82f6)",
+          background: "var(--color-primary, #D4A843)",
           color: "#fff",
           fontSize: 14,
           fontWeight: 600,

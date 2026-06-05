@@ -2,7 +2,7 @@
 
 .settings-section {
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border, #E2DDD6) 80%, transparent);
   background: var(--color-surface, #ffffff);
   padding: 24px;
   box-shadow: var(--shadow-sm);
@@ -23,7 +23,7 @@
   gap: 4px;
   padding: 14px 18px;
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border, #E2DDD6) 80%, transparent);
   background: var(--color-surface, #ffffff);
   transition:
     border-color var(--transition-normal),
@@ -32,20 +32,20 @@
 }
 
 .settings-option-card:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 35%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 4%, var(--color-surface, #ffffff));
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 35%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 4%, var(--color-surface, #ffffff));
 }
 
 .settings-option-card--active {
   border-width: 2px;
-  border-color: var(--color-primary, #3b82f6);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 6%, var(--color-surface, #ffffff));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+  border-color: var(--color-primary, #D4A843);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 6%, var(--color-surface, #ffffff));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
 }
 
 .settings-option-card--active:hover {
-  border-color: var(--color-primary, #3b82f6);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, var(--color-surface, #ffffff));
+  border-color: var(--color-primary, #D4A843);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 8%, var(--color-surface, #ffffff));
 }
 
 /* ── Option card with icon (theme & locale) ── */
@@ -64,13 +64,13 @@
   display: grid;
   place-items: center;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, var(--color-surface, #ffffff));
-  color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 8%, var(--color-surface, #ffffff));
+  color: var(--color-primary, #D4A843);
   transition: background var(--transition-normal);
 }
 
 .settings-option-card--active .settings-option-card__icon {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 16%, var(--color-surface, #ffffff));
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 16%, var(--color-surface, #ffffff));
 }
 
 .settings-option-card__content {
@@ -90,7 +90,7 @@
 }
 
 .settings-switch-row + .settings-switch-row {
-  border-top: 1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 60%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-border, #E2DDD6) 60%, transparent);
 }
 
 .settings-switch-row__content {
@@ -112,7 +112,7 @@
 .settings-reset-zone {
   margin-top: 8px;
   padding-top: 16px;
-  border-top: 1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 60%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-border, #E2DDD6) 60%, transparent);
 }
 
 /* ── Responsive ── */

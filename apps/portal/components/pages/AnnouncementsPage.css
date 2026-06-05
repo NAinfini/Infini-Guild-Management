@@ -44,13 +44,13 @@
 }
 
 .announcement-item:hover {
-  border-color: color-mix(in srgb, var(--color-text, #111827) 16%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent);
+  border-color: color-mix(in srgb, var(--color-text, #1A1815) 16%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent);
 }
 
 .announcement-item--active {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 28%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 28%, transparent);
 }
 
 .announcement-item-title {
@@ -65,7 +65,7 @@
 
 .announcement-item-time {
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-text, #111827) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 60%, transparent);
 }
 
 .announcement-reader-title {
@@ -88,8 +88,8 @@
 .announcement-editor-sidebar {
   padding: 12px;
   border-radius: var(--radius-sm);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 96%, var(--color-text, #111827) 4%);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 96%, var(--color-text, #1A1815) 4%);
 }
 
 /* ── Create Modal Layout ── */
@@ -108,8 +108,8 @@
 .create-announcement-sidebar {
   padding: 12px;
   border-radius: var(--radius-sm);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 96%, var(--color-text, #111827) 4%);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 96%, var(--color-text, #1A1815) 4%);
 }
 
 /* ── Responsive ── */

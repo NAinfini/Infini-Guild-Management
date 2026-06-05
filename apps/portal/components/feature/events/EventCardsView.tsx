@@ -191,6 +191,7 @@ export function EventCardsView({
   const [detailModalEvent, setDetailModalEvent] = useState<Event | null>(null);
   const [archiveConfirmEvent, setArchiveConfirmEvent] = useState<Event | null>(null);
   const detailModalMembers = detailModalEvent ? (eventMembersMap.get(detailModalEvent.id) ?? []) : [];
+  const now = new Date();
 
   if (events.length === 0) {
     return (
@@ -221,7 +222,7 @@ export function EventCardsView({
           const participantMembers = eventMembersMap.get(event.id) ?? [];
           const isPoll = event.type === "poll";
           const isRaffle = event.type === "raffle";
-          const hasEnded = event.end_at != null && new Date(event.end_at) < new Date();
+          const hasEnded = event.end_at != null && new Date(event.end_at) < now;
           const raffleHasDrawn = isRaffle && (event.raffle_winners?.length ?? 0) > 0;
           const pollVoterMembers = isPoll && event.poll
             ? (() => {
@@ -237,8 +238,8 @@ export function EventCardsView({
           const isJoined = currentUserId ? members.some((m) => m.user.id === currentUserId) : false;
           const isFocused = focusedEventId === event.id;
           const isArchived = Boolean(event.archived_at);
-          const visibleMembers = members.length > 10 ? members.slice(0, 9) : members.slice(0, 10);
-          const hiddenMembersCount = members.length > 10 ? members.length - visibleMembers.length : 0;
+          const visibleMembers = members;
+          const hiddenMembersCount = 0;
           const participantActionDisabled = joinPending || leavePending || isArchived || (!isJoined && (event.signup_locked || isFull || hasEnded));
           const statusIndicators = (
             <>

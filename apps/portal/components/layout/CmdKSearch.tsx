@@ -169,7 +169,7 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
             aria-label={t("cmdk.aria.searchInput")}
             style={{
               width: "100%",
-              border: "1px solid color-mix(in srgb, var(--color-text, #111827) 20%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--color-text, #1A1815) 20%, transparent)",
               borderRadius: 8,
               padding: "10px 12px",
               marginTop: 4,

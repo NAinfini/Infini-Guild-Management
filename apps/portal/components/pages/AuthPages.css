@@ -17,11 +17,11 @@
   inset: 0;
   z-index: 0;
   background:
-    radial-gradient(ellipse 120% 80% at 15% 20%, color-mix(in srgb, var(--color-primary, #3b82f6) 35%, transparent) 0%, transparent 55%),
-    radial-gradient(ellipse 100% 70% at 85% 25%, color-mix(in srgb, var(--color-accent, #8b5cf6) 28%, transparent) 0%, transparent 50%),
-    radial-gradient(ellipse 110% 80% at 50% 85%, color-mix(in srgb, var(--color-secondary, #22d3ee) 24%, transparent) 0%, transparent 55%),
-    radial-gradient(ellipse 80% 60% at 70% 60%, color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent) 0%, transparent 45%),
-    radial-gradient(ellipse 60% 40% at 30% 50%, color-mix(in srgb, var(--color-accent, #8b5cf6) 10%, transparent) 0%, transparent 40%);
+    radial-gradient(ellipse 120% 80% at 15% 20%, color-mix(in srgb, var(--color-primary, #D4A843) 35%, transparent) 0%, transparent 55%),
+    radial-gradient(ellipse 100% 70% at 85% 25%, color-mix(in srgb, var(--color-accent, #8B7355) 28%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse 110% 80% at 50% 85%, color-mix(in srgb, var(--color-secondary, #C17F3E) 24%, transparent) 0%, transparent 55%),
+    radial-gradient(ellipse 80% 60% at 70% 60%, color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent) 0%, transparent 45%),
+    radial-gradient(ellipse 60% 40% at 30% 50%, color-mix(in srgb, var(--color-accent, #8B7355) 10%, transparent) 0%, transparent 40%);
   animation: login-bg-drift 16s ease-in-out infinite alternate;
 }
 
@@ -108,10 +108,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 22%, transparent);
-  color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 22%, transparent);
+  color: var(--color-primary, #D4A843);
   font-size: 22px;
-  box-shadow: 0 0 24px color-mix(in srgb, var(--color-primary, #3b82f6) 30%, transparent);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent);
 }
 
 .login-page__brand-logo {
@@ -119,12 +119,12 @@
   height: 56px;
   border-radius: var(--radius-md);
   object-fit: contain;
-  filter: drop-shadow(0 0 20px rgba(139, 92, 246, 0.35)) drop-shadow(0 0 40px rgba(59, 130, 246, 0.15));
+  filter: drop-shadow(0 0 20px rgba(212, 168, 67, 0.35)) drop-shadow(0 0 40px rgba(212, 168, 67, 0.15));
   transition: filter 0.3s ease, transform 0.3s ease;
 }
 
 .login-page__brand:hover .login-page__brand-logo {
-  filter: drop-shadow(0 0 24px rgba(139, 92, 246, 0.5)) drop-shadow(0 0 48px rgba(59, 130, 246, 0.25));
+  filter: drop-shadow(0 0 24px rgba(212, 168, 67, 0.5)) drop-shadow(0 0 48px rgba(212, 168, 67, 0.25));
   transform: scale(1.05);
 }
 
@@ -135,10 +135,10 @@
   font-family: inherit;
   background: linear-gradient(
     135deg,
-    var(--color-primary, #3b82f6) 0%,
-    var(--color-accent, #8b5cf6) 30%,
-    var(--color-secondary, #22d3ee) 60%,
-    var(--color-primary, #3b82f6) 100%
+    var(--color-primary, #D4A843) 0%,
+    var(--color-accent, #8B7355) 30%,
+    var(--color-secondary, #C17F3E) 60%,
+    var(--color-primary, #D4A843) 100%
   );
   background-size: 200% auto;
   -webkit-background-clip: text;
@@ -167,10 +167,10 @@
   padding: clamp(24px, 4vw, 36px);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.2),
-    0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent),
     inset 0 1px 0 color-mix(in srgb, #ffffff 6%, transparent);
   position: relative;
-  background: color-mix(in srgb, var(--color-surface, #1a1a2e) 65%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #141418) 65%, transparent);
   backdrop-filter: blur(20px) saturate(150%);
   -webkit-backdrop-filter: blur(20px) saturate(150%);
 }
@@ -183,9 +183,9 @@
   padding: 1px;
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent) 0%,
-    color-mix(in srgb, var(--color-accent, #8b5cf6) 25%, transparent) 50%,
-    color-mix(in srgb, var(--color-secondary, #22d3ee) 30%, transparent) 100%
+    color-mix(in srgb, var(--color-primary, #D4A843) 40%, transparent) 0%,
+    color-mix(in srgb, var(--color-accent, #8B7355) 25%, transparent) 50%,
+    color-mix(in srgb, var(--color-secondary, #C17F3E) 30%, transparent) 100%
   );
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -207,7 +207,7 @@
   border-radius: inherit;
   background: radial-gradient(
     ellipse at 30% 0%,
-    color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent),
+    color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent),
     transparent 70%
   );
   pointer-events: none;
@@ -215,18 +215,18 @@
 
 .login-page__card .mantine-TextInput-input,
 .login-page__card .mantine-PasswordInput-input {
-  background: color-mix(in srgb, var(--color-surface, #1a1a2e) 55%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 18%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #141418) 55%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 18%, transparent);
   transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
 }
 
 .login-page__card .mantine-TextInput-input:focus,
 .login-page__card .mantine-PasswordInput-input:focus {
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 60%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 60%, transparent);
   box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent),
-    0 0 20px color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #1a1a2e) 70%, transparent);
+    0 0 0 3px color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent),
+    0 0 20px color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #141418) 70%, transparent);
 }
 
 /* ── Floating label inputs ── */
@@ -261,8 +261,8 @@
   top: 0;
   transform: translateY(-50%);
   font-size: 11px;
-  color: var(--color-primary, #3b82f6);
-  background: color-mix(in srgb, var(--color-surface, #1a1a2e) 90%, transparent);
+  color: var(--color-primary, #D4A843);
+  background: color-mix(in srgb, var(--color-surface, #141418) 90%, transparent);
   border-radius: var(--radius-sm);
 }
 
@@ -333,7 +333,7 @@
 }
 
 .login-page__back-anchor:hover {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
 }
 
 /* ── Responsive ── */
@@ -359,7 +359,7 @@
     animation: none;
     background: none;
     -webkit-text-fill-color: unset;
-    color: var(--color-primary, #3b82f6);
+    color: var(--color-primary, #D4A843);
   }
   .login-page__card::before {
     transition: none;

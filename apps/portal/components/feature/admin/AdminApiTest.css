@@ -4,14 +4,14 @@
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #111827));
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #1A1815));
   overflow: hidden;
 }
 
 .dark .api-console {
-  background: color-mix(in srgb, var(--color-surface, #1e293b) 85%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #141418) 85%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
 }
 
 /* ── Console Header ── */
@@ -22,13 +22,13 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 18px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 6%, transparent);
-  background: color-mix(in srgb, var(--color-text, #111827) 2%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 2%, transparent);
 }
 
 .dark .api-console__header {
-  background: color-mix(in srgb, var(--color-surface, #1e293b) 60%, transparent);
-  border-bottom-color: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #141418) 60%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
 }
 
 .api-console__header button {
@@ -57,14 +57,14 @@
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--color-text, #111827) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 50%, transparent);
 }
 
 .api-console__stat-value {
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   font-size: 12.5px;
-  color: var(--color-text, #111827);
+  color: var(--color-text, #1A1815);
 }
 
 .api-console__stat-dot {
@@ -81,7 +81,7 @@
 
 .api-console__progress-track {
   height: 3px;
-  background: color-mix(in srgb, var(--color-text, #111827) 5%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -89,11 +89,11 @@
 .api-console__progress-fill {
   height: 100%;
   transition: width 400ms cubic-bezier(0.4, 0, 0.2, 1);
-  background: linear-gradient(90deg, #3b82f6, #10b981);
+  background: linear-gradient(90deg, #D4A843, #10b981);
 }
 
 .api-console__progress-fill--running {
-  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  background: linear-gradient(90deg, #D4A843, #60a5fa);
   animation: apiProgressShimmer 1.5s ease-in-out infinite;
 }
 
@@ -115,12 +115,12 @@
 .api-cat {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 5%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
   position: relative;
 }
 
 .dark .api-cat {
-  border-bottom-color: color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent);
 }
 
 .api-cat:last-child {
@@ -138,7 +138,7 @@
 }
 
 .api-cat__accent--running {
-  background: #3b82f6;
+  background: #D4A843;
   animation: accentPulse 1.2s ease-in-out infinite;
 }
 
@@ -162,7 +162,7 @@
 }
 
 .api-cat__row:hover {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 3%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 3%, transparent);
 }
 
 .api-cat__chevron {
@@ -172,13 +172,13 @@
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  color: color-mix(in srgb, var(--color-text, #111827) 35%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 35%, transparent);
   transition: transform 200ms ease, color 200ms ease;
 }
 
 .api-cat__chevron--open {
   transform: rotate(90deg);
-  color: var(--color-primary, #3b82f6);
+  color: var(--color-primary, #D4A843);
 }
 
 .api-cat__icon {
@@ -189,19 +189,19 @@
   height: 28px;
   border-radius: 6px;
   flex-shrink: 0;
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
-  color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
+  color: var(--color-primary, #D4A843);
   transition: background 200ms ease;
 }
 
 .api-cat__row:hover .api-cat__icon {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 14%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 14%, transparent);
 }
 
 .api-cat__name {
   font-size: 13px;
   font-weight: 700;
-  color: var(--color-text, #111827);
+  color: var(--color-text, #1A1815);
   white-space: nowrap;
   min-width: 90px;
 }
@@ -214,7 +214,7 @@
   font-size: 11.5px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #111827) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 60%, transparent);
   min-width: 32px;
 }
 
@@ -222,7 +222,7 @@
   font-size: 10.5px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #111827) 40%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 40%, transparent);
   min-width: 32px;
 }
 
@@ -230,7 +230,7 @@
   font-size: 10.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #111827) 35%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 35%, transparent);
   min-width: 50px;
 }
 
@@ -268,7 +268,7 @@
 
 .api-cat__progress-track {
   height: 3px;
-  background: color-mix(in srgb, var(--color-text, #111827) 4%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 4%, transparent);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -306,7 +306,7 @@
 }
 
 .api-ep:hover {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 3%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 3%, transparent);
 }
 
 .api-ep__method {
@@ -322,7 +322,7 @@
   min-width: 38px;
 }
 
-.api-ep__method--GET { background: color-mix(in srgb, #3b82f6 10%, transparent); color: #3b82f6; }
+.api-ep__method--GET { background: color-mix(in srgb, #D4A843 10%, transparent); color: #D4A843; }
 .api-ep__method--POST { background: color-mix(in srgb, #10b981 10%, transparent); color: #10b981; }
 .api-ep__method--PATCH { background: color-mix(in srgb, #eab308 12%, transparent); color: #b45309; }
 .api-ep__method--DELETE { background: color-mix(in srgb, #ef4444 10%, transparent); color: #ef4444; }
@@ -332,7 +332,7 @@
 .api-ep__label {
   font-size: 11.5px;
   font-weight: 500;
-  color: color-mix(in srgb, var(--color-text, #111827) 65%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -366,7 +366,7 @@
   font-size: 10px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #111827) 35%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 35%, transparent);
   min-width: 42px;
   text-align: right;
 }
@@ -375,8 +375,8 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 1.5px solid color-mix(in srgb, #3b82f6 25%, transparent);
-  border-top-color: #3b82f6;
+  border: 1.5px solid color-mix(in srgb, #D4A843 25%, transparent);
+  border-top-color: #D4A843;
   animation: epSpin 0.6s linear infinite;
   flex-shrink: 0;
 }
@@ -389,14 +389,14 @@
 
 .api-debug {
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #111827));
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #1A1815));
   overflow: hidden;
 }
 
 .dark .api-debug {
-  background: color-mix(in srgb, var(--color-surface, #1e293b) 85%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #141418) 85%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
 }
 
 .api-debug__header {
@@ -405,13 +405,13 @@
   justify-content: space-between;
   gap: 12px;
   padding: 10px 16px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 6%, transparent);
-  background: color-mix(in srgb, var(--color-text, #111827) 2%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 2%, transparent);
 }
 
 .dark .api-debug__header {
-  background: color-mix(in srgb, var(--color-surface, #1e293b) 60%, transparent);
-  border-bottom-color: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #141418) 60%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
 }
 
 .api-debug__header-left {
@@ -432,7 +432,7 @@
   gap: 2px;
   padding: 2px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--color-text, #111827) 4%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 4%, transparent);
 }
 
 .dark .api-debug__filters {
@@ -446,24 +446,24 @@
   border-radius: 4px;
   border: none;
   background: transparent;
-  color: color-mix(in srgb, var(--color-text, #111827) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 50%, transparent);
   cursor: pointer;
   transition: background 150ms ease, color 150ms ease;
   white-space: nowrap;
 }
 
 .api-debug__filter-btn:hover {
-  color: var(--color-text, #111827);
+  color: var(--color-text, #1A1815);
 }
 
 .api-debug__filter-btn--active {
   background: var(--color-surface, #fff);
-  color: var(--color-text, #111827);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  color: var(--color-text, #1A1815);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
 }
 
 .dark .api-debug__filter-btn--active {
-  background: color-mix(in srgb, var(--color-surface, #1e293b) 90%, var(--color-primary, #3b82f6));
+  background: color-mix(in srgb, var(--color-surface, #141418) 90%, var(--color-primary, #D4A843));
   color: var(--color-text, #e2e8f0);
 }
 
@@ -479,13 +479,13 @@
   padding: 32px 16px;
   text-align: center;
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-text, #111827) 35%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 35%, transparent);
 }
 
 .api-debug__row {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 4%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 4%, transparent);
 }
 
 .api-debug__row:last-child {
@@ -511,7 +511,7 @@
 }
 
 .api-debug__row-main:hover {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 3%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 3%, transparent);
 }
 
 .api-debug__row-dot {
@@ -537,7 +537,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.api-debug__row-method--GET { background: color-mix(in srgb, #3b82f6 10%, transparent); color: #3b82f6; }
+.api-debug__row-method--GET { background: color-mix(in srgb, #D4A843 10%, transparent); color: #D4A843; }
 .api-debug__row-method--POST { background: color-mix(in srgb, #10b981 10%, transparent); color: #10b981; }
 .api-debug__row-method--PATCH { background: color-mix(in srgb, #eab308 12%, transparent); color: #b45309; }
 .api-debug__row-method--DELETE { background: color-mix(in srgb, #ef4444 10%, transparent); color: #ef4444; }
@@ -548,7 +548,7 @@
   font-size: 11px;
   font-weight: 500;
   font-family: var(--mantine-font-family-monospace, ui-monospace, monospace);
-  color: color-mix(in srgb, var(--color-text, #111827) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 60%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -575,7 +575,7 @@
   font-size: 10px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #111827) 35%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 35%, transparent);
   min-width: 44px;
   text-align: right;
   flex-shrink: 0;
@@ -585,7 +585,7 @@
   font-size: 9.5px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #111827) 30%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 30%, transparent);
   flex-shrink: 0;
 }
 
@@ -596,7 +596,7 @@
   width: 14px;
   height: 14px;
   flex-shrink: 0;
-  color: color-mix(in srgb, var(--color-text, #111827) 25%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 25%, transparent);
   transition: transform 150ms ease;
 }
 
@@ -620,20 +620,20 @@
   font-size: 10.5px;
   font-family: var(--mantine-font-family-monospace, ui-monospace, monospace);
   line-height: 1.5;
-  color: color-mix(in srgb, var(--color-text, #111827) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 60%, transparent);
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
   padding: 8px 10px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--color-text, #111827) 3%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
   max-height: 200px;
   overflow-y: auto;
   scrollbar-width: thin;
 }
 
 .dark .api-debug__row-body pre {
-  background: color-mix(in srgb, var(--color-surface, #0f172a) 70%, transparent);
+  background: color-mix(in srgb, var(--color-surface, #0A0A0F) 70%, transparent);
 }
 
 .api-debug__row-error {
@@ -652,7 +652,7 @@
   }
   .api-ep__running {
     animation: none;
-    border-color: #3b82f6;
+    border-color: #D4A843;
   }
   .api-cat__accent,
   .api-cat__progress-fill,

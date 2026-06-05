@@ -46,7 +46,7 @@ const RESULT_LABEL_KEY: Record<string, string> = {
 };
 
 function resultColor(result: string | null): string {
-  return (result && RESULT_COLOR[result]) ?? "color-mix(in srgb, var(--color-text, #111827) 50%, transparent)";
+  return (result && RESULT_COLOR[result]) ?? "color-mix(in srgb, var(--color-text, #1A1815) 50%, transparent)";
 }
 
 function resultLabel(result: string | null, t: (key: string) => string): string {
@@ -187,7 +187,7 @@ export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isEx
 
           {/* MVPs */}
           {!isExternalView && mvp ? (
-            <Stack gap={6} pt={8} style={{ borderTop: "1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent)" }}>
+            <Stack gap={6} pt={8} style={{ borderTop: "1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent)" }}>
               <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: "0.08em", marginBottom: 2 }}>
                 {t("card.lastWar.mvps")}
               </Text>

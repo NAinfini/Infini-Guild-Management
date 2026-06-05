@@ -57,7 +57,7 @@ function isOptionalSkip(result: EndpointResult | null): boolean {
 function progressColor(allPassed: boolean, hasFail: boolean): string {
   if (hasFail) return "#ef4444";
   if (allPassed) return "#10b981";
-  return "#3b82f6";
+  return "#D4A843";
 }
 
 function EndpointRow({

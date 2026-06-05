@@ -1,7 +1,7 @@
 .gallery-dropzone {
   min-width: 260px;
   min-height: 92px;
-  border: 1px dashed color-mix(in srgb, var(--color-text, #111827) 22%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--color-text, #1A1815) 22%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
   display: grid;
@@ -229,7 +229,7 @@
 
 .gallery-object-placeholder {
   width: 100%; min-height: 140px; border-radius: var(--radius-sm);
-  border: 1px dashed color-mix(in srgb, var(--color-text, #111827) 22%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--color-text, #1A1815) 22%, transparent);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
   display: grid; gap: 8px; place-items: center; padding: 12px; text-align: center;
 }
