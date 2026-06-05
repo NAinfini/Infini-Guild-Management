@@ -146,6 +146,8 @@ export function WarHistoryTable({
                 {filteredHistoryRows.length > 0 ? (
                   <InfiniTable
                     table={summaryTable}
+                    virtualize
+                    maxHeight="65vh"
                     onRowClick={(row) => onRowClick(row.original.id)}
                     rowClassName={(row) => {
                       const classes: string[] = [];

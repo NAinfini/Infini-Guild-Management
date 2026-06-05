@@ -7,7 +7,7 @@ import { ContextMenuProvider } from "mantine-contextmenu";
 import "mantine-contextmenu/styles.css";
 import React, { StrictMode } from "react";
 import type { Root } from "react-dom/client";
-import "./i18n";
+import { i18nReady } from "./i18n";
 import { ErrorBoundary } from "./components/effects/ErrorBoundary";
 import { PortalThemeProvider } from "./providers/ThemeProvider";
 import { AppRouter } from "./router";
@@ -52,7 +52,8 @@ function dismissSplash(): void {
 }
 
 export async function mountApp(root: Root): Promise<void> {
-  await loadSiteConfig();
+  await i18nReady;
+  loadSiteConfig();
   root.render(
     <StrictMode>
       <ErrorBoundary>

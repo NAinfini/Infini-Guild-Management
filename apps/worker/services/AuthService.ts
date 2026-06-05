@@ -28,6 +28,7 @@ export type AuthServiceDeps = {
   verifyPassword: (password: string, salt: string, hash: string) => Promise<boolean>;
   createSession: (userId: string, opts?: { stayLoggedIn?: boolean }) => Promise<void>;
   destroySession: (sessionId?: string) => Promise<void>;
+  deleteUserSessions: (userId: string) => Promise<void>;
   publishEntityChanged?: (input: { entityType: PushEntityType; entityId: string; hint: PushHint; displayName?: string }) => Promise<void>;
   writeAuditLog: (input: { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null }) => Promise<void>;
 };
@@ -118,6 +119,7 @@ export class AuthService {
       logger.warn("Login failed: wrong password", { username });
       return err("UNAUTHORIZED", "Invalid credentials");
     }
+    await this.deps.deleteUserSessions(account.id);
     await this.deps.createSession(account.id, { stayLoggedIn });
     const profile = await this.ensureProfile(account.id);
     const extra = await this.resolveUserPermissions(account.role);

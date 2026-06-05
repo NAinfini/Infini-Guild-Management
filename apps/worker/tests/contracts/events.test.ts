@@ -42,7 +42,7 @@ async function api(
 function extractCookie(headers: Headers): string | null {
   const setCookie = headers.get("set-cookie");
   if (!setCookie) return null;
-  const first = setCookie.split(",")[0];
+  const first = setCookie.split(",")[0]!;
   return first.split(";")[0]?.trim() || null;
 }
 

@@ -17,7 +17,7 @@ export function RevealOnScroll({ children, className, delayMs = 0 }: RevealOnScr
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
+        if (entry?.isIntersecting) {
           setVisible(true);
           observer.unobserve(el);
         }

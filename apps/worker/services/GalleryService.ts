@@ -115,7 +115,7 @@ export class GalleryService {
     await this.db.insert(galleryItems).values({ id: itemId, type: "video", url, caption, uploadedBy: actorId });
     const created = await this.getItemById(itemId);
     if (!created) return err("SERVER_ERROR", "Failed to create gallery item");
-    await this.deps.writeAuditLog({ entityType: "gallery_item", action: "create_video", actorId, entityId: itemId, diffTitle: caption });
+    await this.deps.writeAuditLog({ entityType: "gallery_item", action: "create_video", actorId, entityId: itemId, diffTitle: caption ?? url });
     await this.deps.publishEntityChanged({ entityType: "gallery", entityId: itemId, hint: "video_created" });
     return ok(toGalleryPayload(created));
   }
@@ -128,7 +128,7 @@ export class GalleryService {
       this.deps.rawDb.prepare("DELETE FROM gallery_items WHERE id = ?1").bind(itemId),
     ]);
     if (existing.type === "image") await this.deps.media.delete(existing.url);
-    await this.deps.writeAuditLog({ entityType: "gallery_item", action: "delete", actorId, entityId: itemId, diffTitle: existing.caption });
+    await this.deps.writeAuditLog({ entityType: "gallery_item", action: "delete", actorId, entityId: itemId, diffTitle: existing.caption ?? existing.type });
     await this.deps.publishEntityChanged({ entityType: "gallery", entityId: itemId, hint: "item_deleted" });
     return ok({ ok: true });
   }

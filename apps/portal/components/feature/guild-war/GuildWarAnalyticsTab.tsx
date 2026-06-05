@@ -407,7 +407,7 @@ export function GuildWarAnalyticsTab({
                                 min={0}
                                 max={100}
                                 step={1}
-                                value={Math.round(analytics.modifierWeights[key] * 100)}
+                                value={Math.round((analytics.modifierWeights[key] ?? 0) * 100)}
                                 onChange={(val) =>
                                   analytics.setModifierWeights({
                                     ...analytics.modifierWeights,
@@ -423,7 +423,7 @@ export function GuildWarAnalyticsTab({
                                 c="dimmed"
                                 style={{ width: 38, textAlign: "right", flexShrink: 0 }}
                               >
-                                {(analytics.modifierWeights[key] * 100).toFixed(0)}%
+                                {((analytics.modifierWeights[key] ?? 0) * 100).toFixed(0)}%
                               </Text>
                             </Group>
                           ),
@@ -433,11 +433,11 @@ export function GuildWarAnalyticsTab({
                         {t("analytics.normalization.weightsTotal", {
                           total:
                             (
-                              (analytics.modifierWeights.kda +
-                                analytics.modifierWeights.towers +
-                                analytics.modifierWeights.credits +
-                                analytics.modifierWeights.distance +
-                                analytics.modifierWeights.basehp) *
+                              ((analytics.modifierWeights.kda ?? 0) +
+                                (analytics.modifierWeights.towers ?? 0) +
+                                (analytics.modifierWeights.credits ?? 0) +
+                                (analytics.modifierWeights.distance ?? 0) +
+                                (analytics.modifierWeights.basehp ?? 0)) *
                               100
                             ).toFixed(0) + "%",
                         })}

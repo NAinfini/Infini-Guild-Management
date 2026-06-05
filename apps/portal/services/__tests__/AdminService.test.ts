@@ -33,7 +33,7 @@ describe("AdminService mutations", () => {
   it("updateAdminUserRole sends PATCH with role payload", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
     await updateAdminUserRole("user-1", "moderator");
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/users/user-1/role");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body)).toEqual({ role: "moderator" });
@@ -42,7 +42,7 @@ describe("AdminService mutations", () => {
   it("deactivateAdminUser sends PATCH with optional reason", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
     await deactivateAdminUser("user-1", "Inactive");
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/users/user-1/deactivate");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body)).toEqual({ reason: "Inactive" });
@@ -51,14 +51,14 @@ describe("AdminService mutations", () => {
   it("deactivateAdminUser omits reason when undefined", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
     await deactivateAdminUser("user-2");
-    const [, init] = mockFetch.mock.calls[0];
+    const [, init] = mockFetch.mock.calls[0]!;
     expect(JSON.parse(init.body)).toEqual({});
   });
 
   it("reactivateAdminUser sends PATCH to reactivate endpoint", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
     await reactivateAdminUser("user-1");
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/users/user-1/reactivate");
     expect(init.method).toBe("PATCH");
   });
@@ -66,7 +66,7 @@ describe("AdminService mutations", () => {
   it("resetAdminUserPassword sends POST and returns temporary password", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, temporary_password: "abc123" }));
     const result = await resetAdminUserPassword("user-1");
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/users/user-1/reset-password");
     expect(init.method).toBe("POST");
     expect(result.temporary_password).toBe("abc123");
@@ -75,7 +75,7 @@ describe("AdminService mutations", () => {
   it("createAdminMember validates and sends POST", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, user_id: "u-new", username: "newuser", temporary_password: "pass" }));
     const result = await createAdminMember({ username: "newuser" });
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/users");
     expect(init.method).toBe("POST");
     expect(result.username).toBe("newuser");
@@ -88,7 +88,7 @@ describe("AdminService mutations", () => {
   it("batchUpdateAdminUserRole sends batch role PATCH", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, updated: 3 }));
     await batchUpdateAdminUserRole({ user_ids: ["u-1", "u-2", "u-3"], new_role: "member" });
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/users/batch/role");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body)).toEqual({ user_ids: ["u-1", "u-2", "u-3"], new_role: "member" });
@@ -97,7 +97,7 @@ describe("AdminService mutations", () => {
   it("batchDeactivateAdminUsers sends batch deactivate PATCH", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, updated: 2 }));
     await batchDeactivateAdminUsers({ user_ids: ["u-1", "u-2"] });
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/users/batch/deactivate");
     expect(init.method).toBe("PATCH");
   });
@@ -105,7 +105,7 @@ describe("AdminService mutations", () => {
   it("batchReactivateAdminUsers sends batch reactivate PATCH", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, updated: 1 }));
     await batchReactivateAdminUsers({ user_ids: ["u-1"] });
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/users/batch/reactivate");
     expect(init.method).toBe("PATCH");
   });
@@ -113,7 +113,7 @@ describe("AdminService mutations", () => {
   it("batchDeleteAdminUsers sends batch delete PATCH", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, updated: 2 }));
     await batchDeleteAdminUsers({ user_ids: ["u-1", "u-2"] });
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/users/batch/delete");
     expect(init.method).toBe("PATCH");
   });
@@ -125,7 +125,7 @@ describe("AdminService mutations", () => {
   it("createAdminInviteLink sends POST with payload", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ id: "inv-1", code: "ABC" }));
     await createAdminInviteLink({ max_uses: 10 });
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/invite-links");
     expect(init.method).toBe("POST");
   });
@@ -133,7 +133,7 @@ describe("AdminService mutations", () => {
   it("revokeAdminInviteLink sends DELETE", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
     await revokeAdminInviteLink("inv-1");
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/invite-links/inv-1");
     expect(init.method).toBe("DELETE");
   });
@@ -141,7 +141,7 @@ describe("AdminService mutations", () => {
   it("deleteAdminInviteLink sends DELETE to permanent endpoint", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
     await deleteAdminInviteLink("inv-1");
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/invite-links/inv-1/permanent");
     expect(init.method).toBe("DELETE");
   });

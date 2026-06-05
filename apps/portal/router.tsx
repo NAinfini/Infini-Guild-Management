@@ -320,20 +320,20 @@ const authenticatedOnlyRoute = createRoute({
 });
 
 const dashboardRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedOnlyRoute,
   path: "/",
   component: DashboardRoutePage,
 });
 
 const eventsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedOnlyRoute,
   path: "/events",
   validateSearch: (search) => EVENTS_ROUTE_SEARCH_SCHEMA.parse(search),
   component: EventsRoutePage,
 });
 
 const eventDetailRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedOnlyRoute,
   path: "/events/$id",
   beforeLoad: async ({ params }) => {
     let detailTitle: string | undefined;
@@ -357,7 +357,7 @@ const eventDetailRoute = createRoute({
 });
 
 const rosterRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedOnlyRoute,
   path: "/roster",
   component: RosterRoutePage,
 });
@@ -374,32 +374,32 @@ const profileRoute = createRoute({
 });
 
 const announcementsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedOnlyRoute,
   path: "/announcements",
   component: AnnouncementsRoutePage,
 });
 
 const guildWarRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedOnlyRoute,
   path: "/guild-war",
   validateSearch: (search) => GUILD_WAR_SEARCH_SCHEMA.parse(search),
   component: GuildWarRoutePage,
 });
 
 const galleryRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedOnlyRoute,
   path: "/gallery",
   component: GalleryRoutePage,
 });
 
 const wikiRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedOnlyRoute,
   path: "/wiki",
   component: WikiRoutePage,
 });
 
 const wikiSlugRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedOnlyRoute,
   path: "/wiki/$slug",
   component: WikiRoutePage,
 });
@@ -435,16 +435,16 @@ const routeTree = rootRoute.addChildren([
   publicToolsRoute,
   loginRoute,
   registerRoute,
-  dashboardRoute,
-  eventsRoute,
-  eventDetailRoute,
-  rosterRoute,
-  announcementsRoute,
-  guildWarRoute,
-  galleryRoute,
-  wikiRoute,
-  wikiSlugRoute,
   authenticatedOnlyRoute.addChildren([
+    dashboardRoute,
+    eventsRoute,
+    eventDetailRoute,
+    rosterRoute,
+    announcementsRoute,
+    guildWarRoute,
+    galleryRoute,
+    wikiRoute,
+    wikiSlugRoute,
     profileRoute,
     adminRoute,
   ]),

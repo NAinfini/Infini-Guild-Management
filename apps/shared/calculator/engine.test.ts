@@ -243,13 +243,13 @@ describe("equipment calculator engine", () => {
     const goldMaxOuter = Number(gameData.seasonStats["金装武器最大外功"]);
 
     expect(statsWith["最小外功攻击"], "weapon adds min outer ATK").toBeCloseTo(
-      statsWithout["最小外功攻击"] + goldMinOuter, 2,
+      statsWithout["最小外功攻击"]! + goldMinOuter, 2,
     );
     expect(statsWith["最大外功攻击"], "weapon adds max outer ATK + main stat").toBeCloseTo(
-      statsWithout["最大外功攻击"] + goldMaxOuter + 50, 2,
+      statsWithout["最大外功攻击"]! + goldMaxOuter + 50, 2,
     );
     expect(statsWith["外功穿透"], "weapon adds dingyin pen").toBeCloseTo(
-      statsWithout["外功穿透"] + 8, 4,
+      statsWithout["外功穿透"]! + 8, 4,
     );
   });
 
@@ -274,9 +274,9 @@ describe("equipment calculator engine", () => {
       "破竹尘", "", xinfas, setId, false, false, undefined, "破竹", gameData,
     );
 
-    const maxCrit = gameData.maxValues["会心率"];
+    const maxCrit = gameData.maxValues["会心率"]!;
     const expectedIncrease = 0.94 * maxCrit;
-    expect(statsWith["实际会心率"] - statsWithout["实际会心率"], "chengyin applies 0.94 * max").toBeCloseTo(
+    expect(statsWith["实际会心率"]! - statsWithout["实际会心率"]!, "chengyin applies 0.94 * max").toBeCloseTo(
       expectedIncrease / Number(gameData.seasonStats["赛季抗性"]), 2,
     );
   });
@@ -294,13 +294,13 @@ describe("equipment calculator engine", () => {
     const critBonus = Number(gameData.seasonStats["会心弓加成"]);
     const intentBonus = Number(gameData.seasonStats["会意弓加成"]);
 
-    expect(precBow["实际精准率"] - noBow["实际精准率"], "precision bow").toBeCloseTo(
+    expect(precBow["实际精准率"]! - noBow["实际精准率"]!, "precision bow").toBeCloseTo(
       precBonus / Number(gameData.seasonStats["赛季抗性"]), 2,
     );
-    expect(critBow["实际会心率"] - noBow["实际会心率"], "crit bow").toBeCloseTo(
+    expect(critBow["实际会心率"]! - noBow["实际会心率"]!, "crit bow").toBeCloseTo(
       critBonus / Number(gameData.seasonStats["赛季抗性"]), 2,
     );
-    expect(intentBow["实际会意率"] - noBow["实际会意率"], "intent bow").toBeCloseTo(
+    expect(intentBow["实际会意率"]! - noBow["实际会意率"]!, "intent bow").toBeCloseTo(
       intentBonus / Number(gameData.seasonStats["赛季抗性"]), 2,
     );
   });
@@ -393,9 +393,9 @@ describe("equipment calculator engine", () => {
     const stats = calculateTotal({}, "破竹尘", "", xinfas, setId, false, false, undefined, "破竹", gameData);
     const capped = capRates(stats);
 
-    expect(capped.actualPrecision, "actualPrecision").toBeCloseTo(stats["实际精准率"], 4);
-    expect(capped.actualCrit, "actualCrit").toBeCloseTo(stats["实际会心率"], 4);
-    expect(capped.actualIntent, "actualIntent").toBeCloseTo(stats["实际会意率"], 4);
+    expect(capped.actualPrecision, "actualPrecision").toBeCloseTo(stats["实际精准率"]!, 4);
+    expect(capped.actualCrit, "actualCrit").toBeCloseTo(stats["实际会心率"]!, 4);
+    expect(capped.actualIntent, "actualIntent").toBeCloseTo(stats["实际会意率"]!, 4);
     expect(capped.precisionOverflow, "precisionOverflow").toBe(stats["精准率溢出"] ?? 0);
     expect(capped.critOverflow, "critOverflow").toBe(stats["会心率溢出"] ?? 0);
     expect(capped.intentOverflow, "intentOverflow").toBe(stats["会意率溢出"] ?? 0);

@@ -10,7 +10,10 @@ async function publishPushMessage(env: Bindings, message: PushMessage): Promise<
     const stub = env.WS.get(objectId);
     await stub.fetch("https://ws.internal/publish", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${env.SIGNING_SECRET}`,
+      },
       body: JSON.stringify(message),
     });
   } catch (err) {

@@ -1,36 +1,49 @@
 import i18n, { type Resource } from "i18next";
 import { initReactI18next } from "react-i18next";
 
-const localeModules = import.meta.glob<Record<string, unknown>>("./*/*.json", { eager: true });
+const localeModules = import.meta.glob<Record<string, unknown>>("./*/*.json");
 
-function buildResources(): { resources: Resource; namespaces: string[] } {
-  const resources: Record<string, Record<string, object>> = {};
-  const namespaceSet = new Set<string>();
-
-  for (const [path, module] of Object.entries(localeModules)) {
-    const match = path.match(/^\.\/([^/]+)\/([^/]+)\.json$/);
-    if (!match) continue;
-    const [, lang, file] = match;
-    const ns = file!;
-    namespaceSet.add(ns);
-    if (!resources[lang!]) resources[lang!] = {};
-    resources[lang!][ns] = (module.default ?? module) as object;
+async function loadLocaleResources(lang: string): Promise<Record<string, object>> {
+  const resources: Record<string, object> = {};
+  const entries = Object.entries(localeModules).filter(([path]) => path.startsWith(`./${lang}/`));
+  const modules = await Promise.all(entries.map(async ([path, loader]) => {
+    const match = path.match(/^\.\/[^/]+\/([^/]+)\.json$/);
+    if (!match) return null;
+    const ns = match[1]!;
+    const mod = await loader();
+    return [ns, (mod.default ?? mod) as object] as const;
+  }));
+  for (const entry of modules) {
+    if (entry) resources[entry[0]] = entry[1];
   }
-
-  return { resources: resources as Resource, namespaces: [...namespaceSet] };
+  return resources;
 }
 
-const { resources, namespaces } = buildResources();
+async function initI18n(): Promise<void> {
+  const locale = localStorage.getItem("locale") ?? (navigator.language.startsWith("zh") ? "zh" : "en");
+  const fallbackLng = "en";
 
-const locale = localStorage.getItem("locale") ?? (navigator.language.startsWith("zh") ? "zh" : "en");
+  const [localeResources, fallbackResources] = await Promise.all([
+    loadLocaleResources(locale),
+    locale !== fallbackLng ? loadLocaleResources(fallbackLng) : Promise.resolve({}),
+  ]);
 
-void i18n.use(initReactI18next).init({
-  lng: locale,
-  fallbackLng: "en",
-  defaultNS: "common",
-  ns: namespaces,
-  resources,
-  interpolation: { escapeValue: false },
-});
+  const namespaces = Object.keys(localeResources);
+  const resources: Resource = {
+    [locale]: localeResources,
+    ...(locale !== fallbackLng ? { [fallbackLng]: fallbackResources } : {}),
+  };
+
+  await i18n.use(initReactI18next).init({
+    lng: locale,
+    fallbackLng,
+    defaultNS: "common",
+    ns: namespaces,
+    resources,
+    interpolation: { escapeValue: false },
+  });
+}
+
+export const i18nReady = initI18n();
 
 export default i18n;

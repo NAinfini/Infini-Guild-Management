@@ -48,7 +48,7 @@ function resolveClassGroup(className: string | null): string {
   if (!className || !isClassName(className)) {
     return "blue";
   }
-  return CLASS_COLOR_GROUP[className];
+  return CLASS_COLOR_GROUP[className] ?? "blue";
 }
 
 function getMemberStatus(user: User, profile: MemberProfile): MemberStatus {

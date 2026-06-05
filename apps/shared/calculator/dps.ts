@@ -110,8 +110,9 @@ export function computeRotationDamage(
   let includedR = 0;
 
   for (const entry of config.rotation) {
-    const skill = config.skillDatabase[entry.name];
-    if (!skill) continue;
+    const skillMaybe = config.skillDatabase[entry.name];
+    if (!skillMaybe) continue;
+    const skill = skillMaybe;
 
     const tiaozhan = entry.tiaozhan ?? 1;
 
@@ -128,9 +129,9 @@ export function computeRotationDamage(
       };
       const mapped = eleMap[skill.element];
       if (mapped) {
-        (r as Record<string, number>)[mapped.min] += r.minWuXiang;
-        (r as Record<string, number>)[mapped.max] += r.maxWuXiang;
-        (r as Record<string, number>)[mapped.pen] += r.wuXiangPen;
+        (r as Record<string, number>)[mapped.min] = ((r as Record<string, number>)[mapped.min] ?? 0) + r.minWuXiang;
+        (r as Record<string, number>)[mapped.max] = ((r as Record<string, number>)[mapped.max] ?? 0) + r.maxWuXiang;
+        (r as Record<string, number>)[mapped.pen] = ((r as Record<string, number>)[mapped.pen] ?? 0) + r.wuXiangPen;
       }
     }
 
@@ -179,7 +180,7 @@ export function computeRotationDamage(
       globalMult += r.allArtsDmgBonus / 100;
     }
     if (skill.weaponType && weaponBonus[skill.weaponType]) {
-      globalMult += weaponBonus[skill.weaponType] / 100;
+      globalMult += weaponBonus[skill.weaponType]! / 100;
     }
     if (skill.weaponType === "单体奇术") {
       globalMult += r.singleMagicBonus / 100;
@@ -406,16 +407,18 @@ function computeHealDamage(
   r.outerPen += 10; // 易水歌
 
   // Outer heal
+  const outerRatio = healRatios.outerRatio ?? 0;
   const avgOuter = (r.minOuter + r.maxOuter) / 2;
-  const outerCritHeal = avgOuter * healRatios.outerRatio * (1 + r.outerPen / 200) * totalMult * critHealMult;
-  const outerNormalHeal = avgOuter * healRatios.outerRatio * (1 + r.outerPen / 200) * totalMult;
+  const outerCritHeal = avgOuter * outerRatio * (1 + r.outerPen / 200) * totalMult * critHealMult;
+  const outerNormalHeal = avgOuter * outerRatio * (1 + r.outerPen / 200) * totalMult;
   let expectedOuterHeal = outerCritHeal * critRate + outerNormalHeal * (1 - critRate);
   expectedOuterHeal *= 1 + r.outerHealBonus / 100;
 
   // Ele heal
+  const eleRatio = healRatios.eleRatio ?? 0;
   const avgQianSi = (r.minQianSi + r.maxQianSi) / 2;
-  const eleCritHeal = avgQianSi * healRatios.eleRatio * (1 + r.qianSiPen / 200) * totalMult * critHealMult;
-  const eleNormalHeal = avgQianSi * healRatios.eleRatio * (1 + r.qianSiPen / 200) * totalMult;
+  const eleCritHeal = avgQianSi * eleRatio * (1 + r.qianSiPen / 200) * totalMult * critHealMult;
+  const eleNormalHeal = avgQianSi * eleRatio * (1 + r.qianSiPen / 200) * totalMult;
   let expectedEleHeal = eleCritHeal * critRate + eleNormalHeal * (1 - critRate);
   expectedEleHeal *= 1 + r.qiansiHealBonus / 100;
 

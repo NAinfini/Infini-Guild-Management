@@ -32,6 +32,7 @@ export const PUSH_HINTS = [
   "item_deleted",
   "items_deleted",
   "member_joined",
+  "members_moved",
   "participants_added_by_moderator",
   "participants_removed_by_moderator",
   "participant_joined",

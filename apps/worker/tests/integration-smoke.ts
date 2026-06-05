@@ -23,7 +23,7 @@ function extractCookie(headers: Headers): string | null {
     return null;
   }
 
-  const first = setCookie.split(",")[0];
+  const first = setCookie.split(",")[0]!;
   const cookiePair = first.split(";")[0]?.trim();
   return cookiePair || null;
 }

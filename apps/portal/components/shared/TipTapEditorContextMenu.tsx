@@ -238,7 +238,7 @@ export function TipTapEditorContextMenu({
         <button type="button" className="infini-tiptap-context-item" onClick={() => run(onInsertVideo)}>
           <PlayerPlayIcon size={ICON_SIZE} /> {labels.embedVideo}
         </button>
-        <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => (editor.commands as Record<string, Function>).setDetails())}>
+        <button type="button" className="infini-tiptap-context-item" onClick={() => run(() => (editor.commands as unknown as { setDetails: () => void }).setDetails())}>
           <LayoutListIcon size={ICON_SIZE} /> {labels.details}
         </button>
 

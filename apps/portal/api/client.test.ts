@@ -22,6 +22,6 @@ describe("apiRequest", () => {
     await expect(apiRequest<{ ok: boolean }>("/api/test")).resolves.toEqual({ ok: true });
     await expect(apiRequest<{ ok: boolean }>("/api/test")).resolves.toEqual({ ok: true });
 
-    expect(new Headers(fetchMock.mock.calls[1][1].headers).get("If-None-Match")).toBe("\"etag-1\"");
+    expect(new Headers(fetchMock.mock.calls[1]![1].headers).get("If-None-Match")).toBe("\"etag-1\"");
   });
 });

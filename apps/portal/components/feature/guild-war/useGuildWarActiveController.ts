@@ -88,7 +88,7 @@ export function useGuildWarActiveController({ selectedEventId, activeData, guild
         return current;
       }
       const next = [...current];
-      const [moved] = next.splice(fromIndex, 1);
+      const moved = next.splice(fromIndex, 1)[0]!;
       next.splice(toIndex, 0, moved);
       return next;
     });

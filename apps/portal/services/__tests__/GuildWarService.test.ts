@@ -42,7 +42,7 @@ describe("GuildWarService", () => {
         { user_id: "u-2", role_tag: null },
       ],
     });
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/guild-war/role-tag");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body)).toEqual({

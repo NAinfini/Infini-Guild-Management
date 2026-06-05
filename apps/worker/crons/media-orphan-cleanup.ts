@@ -88,4 +88,36 @@ export async function runMediaOrphanCleanupCron(env: Bindings): Promise<void> {
   if (orphanEventKeys.length > 0) {
     await env.MEDIA.delete(orphanEventKeys);
   }
+
+  const announcementRows = await env.DB.prepare("SELECT id, body_json FROM announcements").all<{ id: string; body_json: string | null }>();
+  const referencedAnnouncementKeys = new Set<string>();
+  for (const row of announcementRows.results ?? []) {
+    if (!row.body_json) continue;
+    const prefix = `announcement/${row.id}/images/`;
+    const matches = row.body_json.matchAll(/"([^"]*announcement\/[^"]+\/images\/[^"]+)"/g);
+    for (const match of matches) {
+      if (match[1] && match[1].startsWith(prefix)) referencedAnnouncementKeys.add(match[1]);
+    }
+  }
+  const announcementObjects = await listAllKeys(env.MEDIA, "announcement/");
+  const orphanAnnouncementKeys = announcementObjects.filter((key) => !referencedAnnouncementKeys.has(key));
+  if (orphanAnnouncementKeys.length > 0) {
+    await env.MEDIA.delete(orphanAnnouncementKeys);
+  }
+
+  const wikiRows = await env.DB.prepare("SELECT id, body_json FROM wiki_articles").all<{ id: string; body_json: string | null }>();
+  const referencedWikiKeys = new Set<string>();
+  for (const row of wikiRows.results ?? []) {
+    if (!row.body_json) continue;
+    const prefix = `wiki/${row.id}/images/`;
+    const matches = row.body_json.matchAll(/"([^"]*wiki\/[^"]+\/images\/[^"]+)"/g);
+    for (const match of matches) {
+      if (match[1] && match[1].startsWith(prefix)) referencedWikiKeys.add(match[1]);
+    }
+  }
+  const wikiObjects = await listAllKeys(env.MEDIA, "wiki/");
+  const orphanWikiKeys = wikiObjects.filter((key) => !referencedWikiKeys.has(key));
+  if (orphanWikiKeys.length > 0) {
+    await env.MEDIA.delete(orphanWikiKeys);
+  }
 }

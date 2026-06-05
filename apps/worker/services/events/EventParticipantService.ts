@@ -69,7 +69,7 @@ export class EventParticipantService {
       if (eventRow.signupLocked) return { ok: false, code: "CONFLICT", message: "Event signup is locked" };
 
       const existing = (
-        await (this.db as any)
+        await this.db
           .select({ id: eventParticipants.id })
           .from(eventParticipants)
           .where(and(eq(eventParticipants.eventId, eventId), eq(eventParticipants.userId, actorId)))
@@ -79,7 +79,7 @@ export class EventParticipantService {
 
       if (eventRow.capacity !== null) {
         const countRow = (
-          await (this.db as any)
+          await this.db
             .select({ count: sql<number>`count(*)` })
             .from(eventParticipants)
             .where(eq(eventParticipants.eventId, eventId))
@@ -102,7 +102,7 @@ export class EventParticipantService {
     });
 
     const created = (
-      await (this.db as any)
+      await this.db
         .select({
           id: eventParticipants.id,
           eventId: eventParticipants.eventId,
@@ -137,7 +137,7 @@ export class EventParticipantService {
     if (eventRow.endAt && eventRow.endAt <= this.now()) return { ok: false, code: "CONFLICT", message: "Event has ended" };
 
     const existing = (
-      await (this.db as any)
+      await this.db
         .select({ id: eventParticipants.id })
         .from(eventParticipants)
         .where(and(eq(eventParticipants.eventId, eventId), eq(eventParticipants.userId, actorId)))
@@ -146,7 +146,7 @@ export class EventParticipantService {
 
     if (!existing) return { ok: false, code: "CONFLICT", message: "Not a participant" };
 
-    await (this.db as any)
+    await this.db
       .delete(eventParticipants)
       .where(and(eq(eventParticipants.eventId, eventId), eq(eventParticipants.userId, actorId)));
 
@@ -185,7 +185,7 @@ export class EventParticipantService {
     if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
     if (eventRow.endAt && eventRow.endAt <= this.now()) return { ok: false, code: "CONFLICT", message: "Event has ended" };
 
-    const activeUserRows = (await (this.db as any)
+    const activeUserRows = (await this.db
       .select({ id: users.id })
       .from(users)
       .where(and(inArray(users.id, userIds), eq(users.isActive, true), isNull(users.deletedAt)))) as Array<{ id?: string; userId?: string }>;
@@ -193,7 +193,7 @@ export class EventParticipantService {
     const missingUserId = userIds.find((userId) => !activeUserIds.has(userId));
     if (missingUserId) return { ok: false, code: "NOT_FOUND", message: `User not found: ${missingUserId}` };
 
-    const existingRows = (await (this.db as any)
+    const existingRows = (await this.db
       .select({ userId: eventParticipants.userId })
       .from(eventParticipants)
       .where(and(eq(eventParticipants.eventId, eventId), inArray(eventParticipants.userId, userIds)))) as Array<{ userId: string }>;
@@ -203,7 +203,7 @@ export class EventParticipantService {
 
     if (eventRow.capacity !== null && eventRow.capacity > 0) {
       const countRow = (
-        await (this.db as any)
+        await this.db
           .select({ count: sql<number>`count(*)` })
           .from(eventParticipants)
           .where(eq(eventParticipants.eventId, eventId))
@@ -221,7 +221,7 @@ export class EventParticipantService {
     );
     await this.rawDb.batch(stmts);
 
-    const createdRows = (await (this.db as any)
+    const createdRows = (await this.db
       .select({
         id: eventParticipants.id,
         eventId: eventParticipants.eventId,

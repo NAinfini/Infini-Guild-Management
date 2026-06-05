@@ -475,7 +475,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
         { id: "divider", label: labels.divider, run: (e) => e.chain().focus().setHorizontalRule().run() },
         { id: "table", label: labels.table, run: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3 }).run() },
         { id: "image", label: labels.image, run: () => fileInputRef.current?.click() },
-        { id: "details", label: labels.details, run: (e) => (e.commands as Record<string, Function>).setDetails() },
+        { id: "details", label: labels.details, run: (e) => (e.commands as unknown as { setDetails: () => void }).setDetails() },
         { id: "video", label: labels.embedVideo, run: () => setVideoDialogOpen(true) },
       ],
       [labels],
@@ -513,7 +513,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
       const url = videoUrl.trim();
       if (!url) return;
       if (isValidBilibiliUrl(url)) {
-        (editor.commands as Record<string, Function>).setBilibiliVideo({ src: url });
+        (editor.commands as unknown as { setBilibiliVideo: (opts: { src: string }) => void }).setBilibiliVideo({ src: url });
       } else {
         editor.commands.setYoutubeVideo({ src: url });
       }

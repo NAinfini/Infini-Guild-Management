@@ -133,11 +133,11 @@ describe("EquipmentCalcModal", () => {
     await userEvent.click(screen.getByLabelText("panels.config"));
     await userEvent.click(await screen.findByTitle("loadout.add"));
 
-    const defaultClass = gameData.classes[0];
+    const defaultClass = gameData.classes[0]!;
     expect(storeState.addLoadout).toHaveBeenCalledWith("loadout.defaultName", defaultClass, {
       armoryType: defaultClass.substring(0, 2),
       setId: gameData.defaultSets[defaultClass],
-      xinfaSlots: gameData.xinfaRules[defaultClass].default,
+      xinfaSlots: gameData.xinfaRules[defaultClass]!.default,
     });
   });
 
@@ -153,11 +153,11 @@ describe("EquipmentCalcModal", () => {
     };
     renderModal();
 
-    const defaultClass = gameData.classes[0];
+    const defaultClass = gameData.classes[0]!;
     expect(storeState.addLoadout).toHaveBeenCalledWith("loadout.defaultName", defaultClass, {
       armoryType: defaultClass.substring(0, 2),
       setId: gameData.defaultSets[defaultClass],
-      xinfaSlots: gameData.xinfaRules[defaultClass].default,
+      xinfaSlots: gameData.xinfaRules[defaultClass]!.default,
     });
   });
 });

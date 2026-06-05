@@ -79,7 +79,7 @@ export function computeDurationFromIso(startIso: string | null, endIso: string |
 
 export function timeToTodayIso(time: string): string | undefined {
   if (!time) return undefined;
-  const [hours, minutes] = time.split(":").map(Number);
+  const [hours, minutes] = time.split(":").map(Number) as [number, number];
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return undefined;
   const date = new Date();
   date.setHours(hours, minutes, 0, 0);

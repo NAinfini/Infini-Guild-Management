@@ -62,7 +62,9 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     const rows = await this.db
       .select({ eventId: warHistory.eventId })
       .from(warHistory)
-      .where(and(sql`${warHistory.eventId} IS NOT NULL`, sql`${warHistory.result} IS NOT NULL`));
+      .where(and(sql`${warHistory.eventId} IS NOT NULL`, sql`${warHistory.result} IS NOT NULL`))
+      .orderBy(desc(warHistory.createdAt))
+      .limit(500);
     return rows.map((r) => r.eventId).filter((id): id is string => id !== null);
   }
 

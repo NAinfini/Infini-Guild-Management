@@ -111,6 +111,18 @@ app.use("*", async (c, next) => {
   c.header("X-Request-Id", c.get("requestId"));
 });
 
+app.use("*", async (c, next) => {
+  const env = c.env as Bindings;
+  if (env.ENVIRONMENT !== "development") {
+    const missing = ["SIGNING_SECRET", "SITE_NAME", "SITE_LOGO_URL"].filter(k => !env[k as keyof Bindings]);
+    if (missing.length > 0) {
+      logger.error("Missing required environment variables", { missing });
+      return c.json({ error_code: "SERVER_ERROR", message: "Server misconfigured", request_id: c.get("requestId") }, 500);
+    }
+  }
+  await next();
+});
+
 app.use(
   "*",
   cors({
@@ -123,6 +135,7 @@ app.use(
     allowHeaders: ["Content-Type", "If-None-Match", "If-Match", "X-Signature", "X-Timestamp", "X-Request-Id", "X-Requested-With"],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
+    maxAge: 86400,
   }),
 );
 
@@ -139,7 +152,7 @@ app.use("/api/*", async (c, next) => {
     if (origin !== selfOrigin && (!portalOrigin || origin !== portalOrigin)) {
       return c.json({ error_code: "FORBIDDEN", message: "Origin not allowed", request_id: c.get("requestId") }, 403);
     }
-    if (!c.req.header("X-Requested-With")) {
+    if (c.req.header("X-Requested-With") !== "XMLHttpRequest") {
       return c.json({ error_code: "FORBIDDEN", message: "Missing required header", request_id: c.get("requestId") }, 403);
     }
   }
@@ -285,6 +298,12 @@ export default {
       const response = new Response(html, assetResponse);
       response.headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
       return response;
+    }
+    const filename = url.pathname.split("/").pop() ?? "";
+    if (/\.[0-9a-f]{8,}\.[a-z0-9]+$/i.test(filename)) {
+      const immutableResponse = new Response(assetResponse.body, assetResponse);
+      immutableResponse.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+      return immutableResponse;
     }
     return assetResponse;
   },

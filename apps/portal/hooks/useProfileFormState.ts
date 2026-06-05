@@ -55,7 +55,7 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
   const activeNowEstimate = useMemo(() => {
     const dayKeys = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
     const now = new Date();
-    const dayKey = dayKeys[now.getUTCDay()];
+    const dayKey = dayKeys[now.getUTCDay()]!;
     const days =
       availabilityData && typeof availabilityData === "object" && "days" in availabilityData
         ? (availabilityData as Record<string, unknown>).days
@@ -76,9 +76,18 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
       if (typeof startUtc !== "string" || typeof endUtc !== "string") {
         continue;
       }
-      const [startHour, startMinute] = startUtc.split(":").map((value) => Number.parseInt(value, 10));
-      const [endHour, endMinute] = endUtc.split(":").map((value) => Number.parseInt(value, 10));
-      if (!Number.isFinite(startHour) || !Number.isFinite(startMinute) || !Number.isFinite(endHour) || !Number.isFinite(endMinute)) {
+      const startParts = startUtc.split(":").map((value) => Number.parseInt(value, 10));
+      const endParts = endUtc.split(":").map((value) => Number.parseInt(value, 10));
+      const startHour = startParts[0];
+      const startMinute = startParts[1];
+      const endHour = endParts[0];
+      const endMinute = endParts[1];
+      if (
+        startHour === undefined || startMinute === undefined ||
+        endHour === undefined || endMinute === undefined ||
+        !Number.isFinite(startHour) || !Number.isFinite(startMinute) ||
+        !Number.isFinite(endHour) || !Number.isFinite(endMinute)
+      ) {
         continue;
       }
       const startTotal = startHour * 60 + startMinute;

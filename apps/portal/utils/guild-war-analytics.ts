@@ -102,7 +102,7 @@ export function aggregateValues(values: number[], aggregation: AnalyticsAggregat
     const sorted = [...values].sort((left, right) => left - right);
     const middle = Math.floor(sorted.length / 2);
     if (sorted.length % 2 === 0) {
-      return Number(((sorted[middle - 1] + sorted[middle]) / 2).toFixed(2));
+      return Number(((sorted[middle - 1]! + sorted[middle]!) / 2).toFixed(2));
     }
     return sorted[middle] ?? 0;
   }

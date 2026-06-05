@@ -206,6 +206,7 @@ export class GuildWarActiveService extends GuildWarCoreService {
         moves: moves.map((move) => ({ ...move, username: usernamesById.get(move.user_id) ?? null })),
       }),
     });
+    await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: eventId, hint: "members_moved" });
     return ok({ ok: true });
   }
 

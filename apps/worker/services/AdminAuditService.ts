@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { auditLog, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, likeEscaped } from "./helpers";
-import { parsePage } from "../routes/_shared";
+import { parsePage } from "../utils/pagination";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
 

@@ -18,6 +18,7 @@ export const LIMITS = {
       profileAudio: 20 * 1024 * 1024,
       announcementImage: 5 * 1024 * 1024,
       wikiImage: 5 * 1024 * 1024,
+      eventImage: 5 * 1024 * 1024,
       galleryImage: 10 * 1024 * 1024,
     },
   },
@@ -62,7 +63,7 @@ export const LIMITS = {
     reads: { maxRequests: 120, windowMs: 60_000 },
   },
   cache: {
-    mediaMaxAgeSeconds: 300,
+    mediaMaxAgeSeconds: 3600,
   },
 } as const;
 

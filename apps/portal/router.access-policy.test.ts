@@ -7,21 +7,36 @@ function routerSource(): string {
 }
 
 describe("portal route access policy", () => {
-  it("keeps profile and admin under the authenticated route branch", () => {
+  it("keeps all feature routes under the authenticated route branch", () => {
     const source = routerSource();
 
-    expect(source).toContain("authenticatedOnlyRoute.addChildren([\n    profileRoute,\n    adminRoute,");
+    const authenticatedRoutes = [
+      "dashboardRoute",
+      "eventsRoute",
+      "eventDetailRoute",
+      "rosterRoute",
+      "announcementsRoute",
+      "guildWarRoute",
+      "galleryRoute",
+      "wikiRoute",
+      "wikiSlugRoute",
+      "profileRoute",
+      "adminRoute",
+    ];
+
+    for (const route of authenticatedRoutes) {
+      expect(source).toContain(`authenticatedOnlyRoute.addChildren([`);
+      const authBlock = source.slice(source.indexOf("authenticatedOnlyRoute.addChildren(["));
+      expect(authBlock).toContain(`${route},`);
+    }
   });
 
-  it("documents public read-only feature routes outside the authenticated branch", () => {
+  it("keeps only public utility routes outside the authenticated branch", () => {
     const source = routerSource();
 
-    expect(source).toContain("dashboardRoute,");
-    expect(source).toContain("eventsRoute,");
-    expect(source).toContain("rosterRoute,");
-    expect(source).toContain("announcementsRoute,");
-    expect(source).toContain("guildWarRoute,");
-    expect(source).toContain("galleryRoute,");
-    expect(source).toContain("wikiRoute,");
+    expect(source).toContain("publicSettingsRoute,");
+    expect(source).toContain("publicToolsRoute,");
+    expect(source).toContain("loginRoute,");
+    expect(source).toContain("registerRoute,");
   });
 });

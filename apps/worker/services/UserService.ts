@@ -21,6 +21,7 @@ import { nanoid } from "nanoid";
 import { memberProfileClasses, memberProfiles, sessions, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, parseStringArray, parseRecord } from "./helpers";
+import { logger } from "../utils/logger";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
 
@@ -112,15 +113,31 @@ const UPLOAD_VALIDATION_ERROR_PREFIXES = [
   "Unsupported file type:",
 ];
 
+const STYLE_PROP_ALLOWLIST = new Set(["color", "font-weight", "font-style", "text-decoration", "background-color"]);
+
+function sanitizeStyleAttr(raw: string): string {
+  const declarations = raw.split(";").map((d) => d.trim()).filter(Boolean);
+  const safe = declarations.filter((decl) => {
+    const colonIdx = decl.indexOf(":");
+    if (colonIdx === -1) return false;
+    const prop = decl.slice(0, colonIdx).trim().toLowerCase();
+    return STYLE_PROP_ALLOWLIST.has(prop);
+  });
+  return safe.join("; ");
+}
+
 function sanitizeTitleHtml(html: string): string {
-  return html.replace(/<(\/?)(\w+)(\s[^>]*)?(\/?)>/gi, (_match, slash: string, tagName: string, attrs: string | undefined) => {
+  return html.replace(/<(\/?)(\w+)([^>]*)>/gi, (_match, slash: string, tagName: string, attrs: string) => {
     if (!TITLE_HTML_ALLOWED_TAGS.has(tagName.toLowerCase())) return "";
     const isSelfClosing = tagName.toLowerCase() === "br";
     if (isSelfClosing) return "<br>";
     let styleAttr = "";
     if (!slash && attrs) {
       const styleMatch = attrs.match(/\sstyle\s*=\s*"([^"]*)"/i);
-      if (styleMatch) styleAttr = ` style="${styleMatch[1]}"`;
+      if (styleMatch) {
+        const safe = sanitizeStyleAttr(styleMatch[1]!);
+        if (safe) styleAttr = ` style="${safe}"`;
+      }
     }
     return `<${slash}${tagName.toLowerCase()}${styleAttr}>`;
   });
@@ -149,7 +166,8 @@ function toUserPayload(user: UserRow) {
     updated_at: user.updatedAt,
   });
   if (!result.success) {
-    throw new Error(`Invalid user data for id=${user.id}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
+    logger.error("Invalid user data from database", { userId: user.id, issues: result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ') });
+    throw new Error(`Invalid user data for id=${user.id}`);
   }
   return result.data;
 }
@@ -314,7 +332,7 @@ export class UserService {
     private deps: UserServiceDeps,
   ) {}
 
-  private async loadUserWithProfile(userId: string): Promise<UserWithProfileRow | null> {
+  private async loadUserWithProfile(userId: string): Promise<{ data: UserWithProfileRow; profileExists: boolean } | null> {
     const row = (
       await this.db
         .select(userProfileSelect)
@@ -324,7 +342,10 @@ export class UserService {
         .limit(1)
     )[0];
     if (!row) return null;
-    return rowToUserWithProfile(row as unknown as Record<string, unknown>);
+    return {
+      data: rowToUserWithProfile(row as unknown as Record<string, unknown>),
+      profileExists: (row as unknown as Record<string, unknown>).profileId != null,
+    };
   }
 
   private async ensureProfile(userId: string): Promise<ProfileRow> {
@@ -422,12 +443,12 @@ export class UserService {
   async getUser(sessionUser: SessionUser, targetUserId: string): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
     const loaded = await this.loadUserWithProfile(targetUserId);
     if (!loaded) return err("NOT_FOUND", "User not found");
-    if (!loaded.user.isActive && !sessionUser.permissions.has("admin.users.view")) {
+    if (!loaded.data.user.isActive && !sessionUser.permissions.has("admin.users.view")) {
       return err("NOT_FOUND", "User not found");
     }
-    const profile = await this.ensureProfile(targetUserId);
+    const profile = loaded.profileExists ? loaded.data.profile : await this.ensureProfile(targetUserId);
     return ok({
-      user: toUserPayload(loaded.user),
+      user: toUserPayload(loaded.data.user),
       profile: toProfilePayload(profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includePrivate: true }),
     });
   }
@@ -454,11 +475,11 @@ export class UserService {
     const diff = buildProfileDiff(oldProfile, patch);
     await this.deps.writeAuditLog({
       entityType: "member_profile", action: "update", actorId: sessionUser.id,
-      entityId: targetUserId, diffTitle: updated.user.username,
+      entityId: targetUserId, diffTitle: updated.data.user.username,
       detailText: diff ? JSON.stringify(diff) : null,
     });
     await this.deps.publishEntityChanged({ entityType: "member_profile", entityId: targetUserId, hint: "profile_updated" });
-    return ok(toProfilePayload(updated.profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includePrivate: true }));
+    return ok(toProfilePayload(updated.data.profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includePrivate: true }));
   }
 
   async uploadProfileImages(sessionUser: SessionUser, targetUserId: string, files: File[]): Promise<ServiceResult<{ keys: string[] }>> {
@@ -666,7 +687,12 @@ export class UserService {
     if (dup && dup.id !== targetUserId) return err("CONFLICT", "Username already taken");
 
     const oldUser = (await this.db.select({ username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
-    await this.db.update(users).set({ username: parsed.data.newUsername, updatedAt: new Date().toISOString() }).where(eq(users.id, targetUserId));
+    try {
+      await this.db.update(users).set({ username: parsed.data.newUsername, updatedAt: new Date().toISOString() }).where(eq(users.id, targetUserId));
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("UNIQUE constraint failed: users.username")) return err("CONFLICT", "Username already taken");
+      throw error;
+    }
     await this.deps.writeAuditLog({
       entityType: "user", action: "change_username", actorId: sessionUser.id,
       entityId: targetUserId, diffTitle: parsed.data.newUsername,

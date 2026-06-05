@@ -4,6 +4,7 @@ import type { Context } from "hono";
 import type { ZodTypeAny } from "zod";
 import type { Bindings } from "../index";
 import { getRequestUser } from "../middleware/rbac";
+export { parsePage } from "../utils/pagination";
 
 type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
 
@@ -52,11 +53,6 @@ export function handleResult(
 ): Response {
   if (!result.ok) return buildError(c, result.code, result.message, result.details);
   return c.json(result.data, status as never);
-}
-
-export function parsePage(value: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 export function parseBoolean(value: string | undefined): boolean | undefined {

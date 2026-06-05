@@ -36,7 +36,7 @@ dashboardRoutes.get("/summary", async (c) => {
   const viewer = await getRequestUser(c);
   const window = weekWindow();
 
-  const [memberStatsRows, upcomingEventRows, recentWarRows, allWarResultRows] = await Promise.all([
+  const [memberStatsRows, upcomingEventRows, recentWarRows, warStatsRows] = await Promise.all([
     db
       .select({
         activeMembers: sql<number>`sum(case when ${users.deletedAt} is null and ${users.isActive} = 1 then 1 else 0 end)`,
@@ -82,7 +82,10 @@ dashboardRoutes.get("/summary", async (c) => {
       .orderBy(desc(warHistory.createdAt), desc(warHistory.id))
       .limit(RECENT_WAR_LIMIT),
     db
-      .select({ result: warHistory.result })
+      .select({
+        total: sql<number>`count(*)`,
+        wins: sql<number>`sum(case when ${warHistory.result} = 'win' then 1 else 0 end)`,
+      })
       .from(warHistory)
       .where(isNotNull(warHistory.result)),
   ]);
@@ -152,7 +155,7 @@ dashboardRoutes.get("/summary", async (c) => {
     const members = warMembersByHistory.get(war.id) ?? [];
     if (members.length === 0) return null;
     return mvpCategories.map((category) => {
-      let top = members[0];
+      let top = members[0]!;
       for (const member of members.slice(1)) {
         if ((member.stats?.[category] ?? 0) > (top.stats?.[category] ?? 0)) {
           top = member;
@@ -168,10 +171,10 @@ dashboardRoutes.get("/summary", async (c) => {
     });
   });
 
-  const resolvedWarRows = allWarResultRows.filter((row) => Boolean(row.result));
-  const allWarWinRate = resolvedWarRows.length === 0
+  const warStats = warStatsRows[0];
+  const allWarWinRate = !warStats || Number(warStats.total) === 0
     ? 0
-    : (resolvedWarRows.filter((row) => row.result === "win").length / resolvedWarRows.length) * 100;
+    : (Number(warStats.wins) / Number(warStats.total)) * 100;
   const memberStats = memberStatsRows[0];
 
   return c.json({

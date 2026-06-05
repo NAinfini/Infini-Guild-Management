@@ -13,7 +13,7 @@ import {
 const gameData: GameData = gameDataSchema.parse(seedGameData);
 
 function makeLoadout(): Loadout {
-  const classId = gameData.classes[0];
+  const classId = gameData.classes[0]!;
   return {
     id: "loadout",
     name: "Loadout",

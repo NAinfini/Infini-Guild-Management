@@ -63,7 +63,7 @@ function sanitizeBadgeLabelHtml(html: string): string {
     const rawTag = match[0];
     const tagMatch = /^<\/?\s*([a-zA-Z0-9-]+)([^>]*)>$/.exec(rawTag);
     if (tagMatch) {
-      const tag = tagMatch[1].toLowerCase();
+      const tag = tagMatch[1]!.toLowerCase();
       if (ALLOWED_INLINE_TAGS.has(tag)) {
         const isClosing = /^<\//.test(rawTag);
         if (tag === "br") {
@@ -71,8 +71,8 @@ function sanitizeBadgeLabelHtml(html: string): string {
         } else if (isClosing) {
           output += `</${tag}>`;
         } else {
-          const styleMatch = /\bstyle\s*=\s*"([^"]*)"/.exec(tagMatch[2]);
-          output += styleMatch ? `<${tag} style="${styleMatch[1]}">` : `<${tag}>`;
+          const styleMatch = /\bstyle\s*=\s*"([^"]*)"/.exec(tagMatch[2]!);
+          output += styleMatch ? `<${tag} style="${styleMatch[1]!}">` : `<${tag}>`;
         }
       }
     }

@@ -109,7 +109,7 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
     const hasActiveLoadout = activeLoadoutId == null ||
       loadouts.some((loadout) => loadout.id === activeLoadoutId);
     if (loadouts.length > 0 && !hasActiveLoadout) {
-      setActiveLoadout(loadouts[0].id);
+      setActiveLoadout(loadouts[0]!.id);
       return;
     }
     if (loadouts.length > 0) return;

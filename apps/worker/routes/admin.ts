@@ -356,10 +356,11 @@ adminRoutes.get("/error-log", async (c) => {
 
   const where = sourceFilter ? eq(errorLog.source, sourceFilter) : undefined;
 
-  const [{ count: total }] = await db
+  const [countRow] = await db
     .select({ count: sql<number>`count(*)` })
     .from(errorLog)
     .where(where);
+  const total = countRow?.count ?? 0;
 
   const data = await db
     .select()

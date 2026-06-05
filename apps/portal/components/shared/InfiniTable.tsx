@@ -11,7 +11,8 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { forwardRef, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { forwardRef, useRef, type CSSProperties, type MutableRefObject, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react";
 import clsx from "clsx";
 
 export type { ColumnDef, PaginationState, Row, SortingState, RowSelectionState };
@@ -31,6 +32,8 @@ type InfiniTableProps<T> = {
   emptyContent?: ReactNode;
   className?: string;
   style?: CSSProperties;
+  virtualize?: boolean;
+  maxHeight?: number | string;
 };
 
 function SortIndicator({ sorted }: { sorted: false | "asc" | "desc" }) {
@@ -55,23 +58,63 @@ function InfiniTableInner<T>({
   emptyContent,
   className,
   style,
+  virtualize = false,
+  maxHeight = "70vh",
   ...rest
 }: InfiniTableProps<T>, ref: Ref<HTMLDivElement>) {
   const rows = table.getRowModel().rows;
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: virtualize ? rows.length : 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 42,
+    overscan: 5,
+  });
 
   if (emptyContent && rows.length === 0) {
     return <>{emptyContent}</>;
   }
 
+  const virtualItems = virtualizer.getVirtualItems();
+  const totalSize = virtualizer.getTotalSize();
+  const paddingTop = virtualItems.length > 0 ? (virtualItems[0]?.start ?? 0) : 0;
+  const paddingBottom =
+    virtualItems.length > 0
+      ? totalSize - (virtualItems[virtualItems.length - 1]?.end ?? 0)
+      : 0;
+
+  const wrapperStyle: CSSProperties = virtualize
+    ? { overflow: "auto", maxHeight, ...style }
+    : { ...style };
+
   return (
-    <div ref={ref} className={clsx(className)} style={style} {...rest}>
+    <div
+      ref={(node) => {
+        (scrollRef as MutableRefObject<HTMLDivElement | null>).current = node;
+        if (typeof ref === "function") {
+          ref(node);
+        } else if (ref) {
+          (ref as MutableRefObject<HTMLDivElement | null>).current = node;
+        }
+      }}
+      className={clsx(className)}
+      style={wrapperStyle}
+      {...rest}
+    >
       <Table
         withTableBorder={withTableBorder}
         withColumnBorders={withColumnBorders}
         striped={striped}
         highlightOnHover={highlightOnHover}
       >
-        <Table.Thead>
+        <Table.Thead
+          style={
+            virtualize
+              ? { position: "sticky", top: 0, zIndex: 1, background: "inherit" }
+              : undefined
+          }
+        >
           {table.getHeaderGroups().map((headerGroup) => (
             <Table.Tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
@@ -112,25 +155,64 @@ function InfiniTableInner<T>({
           ))}
         </Table.Thead>
         <Table.Tbody>
-          {rows.map((row) => (
-            <Table.Tr
-              key={row.id}
-              onClick={onRowClick ? (event) => onRowClick(row, event) : undefined}
-              onDoubleClick={onRowDoubleClick ? (event) => onRowDoubleClick(row, event) : undefined}
-              onContextMenu={onRowContextMenu ? (event) => onRowContextMenu(row, event) : undefined}
-              style={{
-                ...(onRowClick || onRowContextMenu ? { cursor: "pointer" } : {}),
-                ...rowStyle?.(row),
-              }}
-              className={rowClassName?.(row)}
-            >
-              {row.getVisibleCells().map((cell) => (
-                <Table.Td key={cell.id}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </Table.Td>
-              ))}
-            </Table.Tr>
-          ))}
+          {virtualize ? (
+            <>
+              {paddingTop > 0 && (
+                <tr>
+                  <td style={{ height: paddingTop }} colSpan={99} />
+                </tr>
+              )}
+              {virtualItems.map((virtualRow) => {
+                const row = rows[virtualRow.index]!;
+                return (
+                  <Table.Tr
+                    key={row.id}
+                    data-index={virtualRow.index}
+                    ref={virtualizer.measureElement}
+                    onClick={onRowClick ? (event) => onRowClick(row, event) : undefined}
+                    onDoubleClick={onRowDoubleClick ? (event) => onRowDoubleClick(row, event) : undefined}
+                    onContextMenu={onRowContextMenu ? (event) => onRowContextMenu(row, event) : undefined}
+                    style={{
+                      ...(onRowClick || onRowContextMenu ? { cursor: "pointer" } : {}),
+                      ...rowStyle?.(row),
+                    }}
+                    className={rowClassName?.(row)}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <Table.Td key={cell.id}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </Table.Td>
+                    ))}
+                  </Table.Tr>
+                );
+              })}
+              {paddingBottom > 0 && (
+                <tr>
+                  <td style={{ height: paddingBottom }} colSpan={99} />
+                </tr>
+              )}
+            </>
+          ) : (
+            rows.map((row) => (
+              <Table.Tr
+                key={row.id}
+                onClick={onRowClick ? (event) => onRowClick(row, event) : undefined}
+                onDoubleClick={onRowDoubleClick ? (event) => onRowDoubleClick(row, event) : undefined}
+                onContextMenu={onRowContextMenu ? (event) => onRowContextMenu(row, event) : undefined}
+                style={{
+                  ...(onRowClick || onRowContextMenu ? { cursor: "pointer" } : {}),
+                  ...rowStyle?.(row),
+                }}
+                className={rowClassName?.(row)}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <Table.Td key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </Table.Td>
+                ))}
+              </Table.Tr>
+            ))
+          )}
         </Table.Tbody>
       </Table>
     </div>

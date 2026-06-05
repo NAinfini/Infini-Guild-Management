@@ -10,6 +10,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { nanoid } from "nanoid";
 import { rolePermissions, sessions, users } from "../db/schema";
 import type { Bindings } from "../index";
+import { logger } from "../utils/logger";
 
 const RESOLVED_SESSION_PROMISE = Symbol("resolved_session_promise");
 const RESOLVED_FRESH_SESSION_PROMISE = Symbol("resolved_fresh_session_promise");
@@ -92,7 +93,7 @@ function buildPermissionSet(
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index]);
+    binary += String.fromCharCode(bytes[index]!);
   }
   return btoa(binary);
 }
@@ -111,7 +112,7 @@ async function timingSafeEqual(a: Uint8Array, b: Uint8Array): Promise<boolean> {
   const hashB = new Uint8Array(await crypto.subtle.digest("SHA-256", b as unknown as ArrayBuffer));
   let diff = 0;
   for (let index = 0; index < hashA.length; index += 1) {
-    diff |= hashA[index] ^ hashB[index];
+    diff |= hashA[index]! ^ hashB[index]!;
   }
   return diff === 0;
 }
@@ -193,7 +194,8 @@ export async function verifyPassword(password: string, salt: string, passwordHas
     const expectedHashBytes = base64ToBytes(passwordHash);
     const actualHashBytes = await derivePasswordHash(password, saltBytes);
     return await timingSafeEqual(actualHashBytes, expectedHashBytes);
-  } catch {
+  } catch (error) {
+    logger.error("Password verification failed with unexpected error", { error: String(error) });
     return false;
   }
 }
@@ -347,4 +349,9 @@ export async function destroySession(c: Context, sessionId?: string): Promise<vo
     await db.delete(sessions).where(eq(sessions.id, hashed));
   }
   clearSessionCookie(c);
+}
+
+export async function deleteUserSessions(c: Context, userId: string): Promise<void> {
+  const db = getDb(c);
+  await db.delete(sessions).where(eq(sessions.userId, userId));
 }

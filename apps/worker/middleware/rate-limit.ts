@@ -108,7 +108,7 @@ export function createRateLimitMiddleware(options: RateLimitOptions = {}) {
     c.header("X-RateLimit-Remaining", String(remaining));
     c.header("X-RateLimit-Reset", String(Math.floor(activeBucket.resetAt / 1000)));
 
-    if (activeBucket.count > maxRequests) {
+    if (activeBucket.count >= maxRequests) {
       c.header("Retry-After", String(resetInSeconds));
       const requestId = (c.get("requestId") as string | undefined) ?? crypto.randomUUID();
       const body: StandardErrorResponse = {

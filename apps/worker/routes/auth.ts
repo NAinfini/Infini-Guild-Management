@@ -6,7 +6,7 @@ import { LIMITS } from "@guild/shared/config/limits";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { createPasswordHash, createSession, destroySession, resolveSession, verifyPassword } from "../services/auth";
+import { createPasswordHash, createSession, deleteUserSessions, destroySession, resolveSession, verifyPassword } from "../services/auth";
 import { AuthService } from "../services/AuthService";
 import { writeAuditLog } from "../services/audit";
 import { publishEntityChanged } from "../services/push";
@@ -36,6 +36,7 @@ function getService(c: Context): AuthService {
     verifyPassword,
     createSession: async (userId, opts) => { await createSession(c, userId, opts); },
     destroySession: (sessionId) => destroySession(c, sessionId),
+    deleteUserSessions: (userId) => deleteUserSessions(c, userId),
     publishEntityChanged: (payload) => publishEntityChanged(c, payload),
     writeAuditLog: (input) => writeAuditLog(c, input),
   });

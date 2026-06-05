@@ -234,7 +234,7 @@ export function EquipmentForm({ opened, onClose, gameData, editEquipment }: Prop
                 value={sub.type || null}
                 onChange={(v) => {
                   const next = [...subStats];
-                  next[i] = { ...next[i], type: v ?? "" };
+                  next[i] = { ...next[i]!, type: v ?? "" };
                   setSubStats(next);
                 }}
                 style={{ flex: 1 }}
@@ -245,7 +245,7 @@ export function EquipmentForm({ opened, onClose, gameData, editEquipment }: Prop
                 value={sub.value}
                 onChange={(v) => {
                   const next = [...subStats];
-                  next[i] = { ...next[i], value: typeof v === "number" ? v : 0 };
+                  next[i] = { ...next[i]!, value: typeof v === "number" ? v : 0 };
                   setSubStats(next);
                 }}
                 min={0}
@@ -257,8 +257,8 @@ export function EquipmentForm({ opened, onClose, gameData, editEquipment }: Prop
                 variant="light"
                 onClick={() => {
                   const next = [...subStats];
-                  const max = gameData.maxValues[next[i].type];
-                  if (max) next[i] = { ...next[i], value: max };
+                  const max = gameData.maxValues[next[i]!.type];
+                  if (max) next[i] = { ...next[i]!, value: max };
                   setSubStats(next);
                 }}
               >

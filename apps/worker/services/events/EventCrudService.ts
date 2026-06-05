@@ -1,7 +1,8 @@
-import { createEventSchema, eventSchema, recurringTemplateSchema, updateEventSchema } from "@guild/shared";
+import { createEventSchema, eventSchema, recurringTemplateSchema, updateEventSchema, LIMITS } from "@guild/shared";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
 import {
@@ -21,30 +22,7 @@ import {
 export { toParticipantPayload, type EventParticipantRow } from "./EventParticipantService";
 export { toRaffleWinnerPayload, type RaffleWinnerRow } from "./EventPollRaffleService";
 
-type QueryChain = Promise<unknown[]> & {
-  limit: (n: number) => Promise<unknown[]>;
-  orderBy: (...cols: unknown[]) => QueryChain;
-  offset: (n: number) => QueryChain;
-};
-
-type WhereChain = QueryChain & {
-  orderBy: (...cols: unknown[]) => QueryChain;
-};
-
-export type DatabaseLike = {
-  insert: (table: unknown) => { values: (values: unknown) => Promise<unknown> | unknown };
-  update: (table: unknown) => { set: (values: unknown) => { where: (filter: unknown) => Promise<unknown> | unknown } };
-  delete: (table: unknown) => { where: (filter: unknown) => Promise<unknown> | unknown };
-  select: (fields: unknown) => {
-    from: (table: unknown) => {
-      where: (filter: unknown) => WhereChain;
-      leftJoin: (table: unknown, on: unknown) => {
-        where: (filter: unknown) => WhereChain;
-      };
-      orderBy: (...cols: unknown[]) => QueryChain;
-    };
-  };
-};
+export type DatabaseLike = DrizzleD1Database;
 
 type BoundStatement = {
   run: () => Promise<{ meta?: { changes?: number } }>;
@@ -100,8 +78,8 @@ export type EventRow = {
   updatedAt: string;
 };
 
-const MAX_EVENT_ATTACHMENTS = 5;
-const MAX_EVENT_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_EVENT_ATTACHMENTS = LIMITS.content.eventAttachments.max;
+const MAX_EVENT_IMAGE_BYTES = LIMITS.media.maxFileSize.eventImage;
 
 export type EventServiceDeps = {
   getEventById: (eventId: string) => Promise<EventRow | null>;

@@ -12,7 +12,10 @@ type TipTapEditorFindReplaceProps = {
   onClose: () => void;
 };
 
+type SearchReplaceCommands = Record<"setSearchTerm" | "nextSearchResult" | "prevSearchResult" | "clearSearch" | "setReplaceTerm" | "replaceCurrent" | "replaceAll", (...args: unknown[]) => void>;
+
 export function TipTapEditorFindReplace({ editor, labels, onClose }: TipTapEditorFindReplaceProps) {
+  const cmd = editor.commands as unknown as SearchReplaceCommands;
   const store = editor.storage.searchReplace as { searchTerm: string; replaceTerm: string; results: unknown[]; activeIndex: number } | undefined;
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
@@ -70,13 +73,13 @@ export function TipTapEditorFindReplace({ editor, labels, onClose }: TipTapEdito
             placeholder={labels.findPlaceholder}
             aria-label={labels.findPlaceholder}
             value={store.searchTerm}
-            onChange={(e) => (editor.commands as Record<string, Function>).setSearchTerm(e.currentTarget.value)}
+            onChange={(e) => cmd.setSearchTerm(e.currentTarget.value)}
             autoFocus
             className="infini-tiptap-find-replace__input"
             onKeyDown={(e) => {
-              if (e.key === "Enter") (editor.commands as Record<string, Function>).nextSearchResult();
+              if (e.key === "Enter") cmd.nextSearchResult();
               if (e.key === "Escape") {
-                (editor.commands as Record<string, Function>).clearSearch();
+                cmd.clearSearch();
                 onClose();
               }
             }}
@@ -86,12 +89,12 @@ export function TipTapEditorFindReplace({ editor, labels, onClose }: TipTapEdito
           </Text>
           <Group gap={2}>
             <Tooltip label={labels.findPrev} withArrow zIndex={1060}>
-              <ActionIcon size="sm" variant="subtle" onClick={() => (editor.commands as Record<string, Function>).prevSearchResult()} aria-label={labels.findPrev}>
+              <ActionIcon size="sm" variant="subtle" onClick={() => cmd.prevSearchResult()} aria-label={labels.findPrev}>
                 <ArrowUpIcon size={14} />
               </ActionIcon>
             </Tooltip>
             <Tooltip label={labels.findNext} withArrow zIndex={1060}>
-              <ActionIcon size="sm" variant="subtle" onClick={() => (editor.commands as Record<string, Function>).nextSearchResult()} aria-label={labels.findNext}>
+              <ActionIcon size="sm" variant="subtle" onClick={() => cmd.nextSearchResult()} aria-label={labels.findNext}>
                 <ArrowDownIcon size={14} />
               </ActionIcon>
             </Tooltip>
@@ -100,7 +103,7 @@ export function TipTapEditorFindReplace({ editor, labels, onClose }: TipTapEdito
                 size="sm"
                 variant="subtle"
                 onClick={() => {
-                  (editor.commands as Record<string, Function>).clearSearch();
+                  cmd.clearSearch();
                   onClose();
                 }}
                 aria-label={labels.close}
@@ -116,24 +119,24 @@ export function TipTapEditorFindReplace({ editor, labels, onClose }: TipTapEdito
             placeholder={labels.replacePlaceholder}
             aria-label={labels.replacePlaceholder}
             value={store.replaceTerm}
-            onChange={(e) => (editor.commands as Record<string, Function>).setReplaceTerm(e.currentTarget.value)}
+            onChange={(e) => cmd.setReplaceTerm(e.currentTarget.value)}
             className="infini-tiptap-find-replace__input"
             onKeyDown={(e) => {
-              if (e.key === "Enter") (editor.commands as Record<string, Function>).replaceCurrent();
+              if (e.key === "Enter") cmd.replaceCurrent();
               if (e.key === "Escape") {
-                (editor.commands as Record<string, Function>).clearSearch();
+                cmd.clearSearch();
                 onClose();
               }
             }}
           />
           <Group gap={2}>
             <Tooltip label={labels.replaceOne} withArrow zIndex={1060}>
-              <ActionIcon size="sm" variant="subtle" onClick={() => (editor.commands as Record<string, Function>).replaceCurrent()} aria-label={labels.replaceOne}>
+              <ActionIcon size="sm" variant="subtle" onClick={() => cmd.replaceCurrent()} aria-label={labels.replaceOne}>
                 <ReplaceIcon size={14} />
               </ActionIcon>
             </Tooltip>
             <Tooltip label={labels.replaceAllLabel} withArrow zIndex={1060}>
-              <ActionIcon size="sm" variant="subtle" onClick={() => (editor.commands as Record<string, Function>).replaceAll()} aria-label={labels.replaceAllLabel}>
+              <ActionIcon size="sm" variant="subtle" onClick={() => cmd.replaceAll()} aria-label={labels.replaceAllLabel}>
                 <ReplaceIcon size={14} />
               </ActionIcon>
             </Tooltip>

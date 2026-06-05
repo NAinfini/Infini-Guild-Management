@@ -112,7 +112,7 @@ export class EventPollRaffleService {
     const hasWinners = Array.isArray(existingWinners) ? existingWinners.length > 0 : (existingWinners?.results?.length ?? 0) > 0;
     if (hasWinners) return { ok: false, code: "CONFLICT", message: "Raffle winners already drawn" };
 
-    const participantRows = (await (this.db as any)
+    const participantRows = (await this.db
       .select({ userId: eventParticipants.userId })
       .from(eventParticipants)
       .where(eq(eventParticipants.eventId, eventId))) as Array<{ userId: string }>;
@@ -172,7 +172,7 @@ export class EventPollRaffleService {
   }
 
   async getRaffleWinners(eventId: string): Promise<RaffleWinnerRow[]> {
-    return (await (this.db as any)
+    return (await this.db
       .select({ id: eventRaffleWinners.id, eventId: eventRaffleWinners.eventId, userId: eventRaffleWinners.userId, drawnAt: eventRaffleWinners.drawnAt })
       .from(eventRaffleWinners)
       .where(eq(eventRaffleWinners.eventId, eventId))) as RaffleWinnerRow[];

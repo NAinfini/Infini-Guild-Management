@@ -10,7 +10,11 @@ function emit(level: LogLevel, message: string, context?: LogContext, requestId?
   };
   if (requestId) entry.requestId = requestId;
   if (context) entry.context = context;
-  console.log(JSON.stringify(entry));
+  const serialized = JSON.stringify(entry);
+  if (level === "debug") console.debug(serialized);
+  else if (level === "warn") console.warn(serialized);
+  else if (level === "error") console.error(serialized);
+  else console.log(serialized);
 }
 
 export function createLogger(requestId?: string) {
