@@ -19,7 +19,8 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { useDebouncedValue, useDisclosure, useLocalStorage } from "@mantine/hooks";
+import { useDisclosure, useLocalStorage } from "@mantine/hooks";
+import { useDebouncedSearch } from "../../hooks/useDebouncedSearch";
 import { SearchIcon } from "@portal/components/icons";
 import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { motion } from "motion/react";
@@ -111,8 +112,7 @@ export function RosterPage() {
   const isExternalView = useExternalView();
   const sessionUser = useAuthStore((state) => state.user);
   const { canManage: canManagePermission } = useEffectivePermissions();
-  const [search, setSearch] = useState("");
-  const [debouncedSearchRaw] = useDebouncedValue(search, 300);
+  const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim().toLowerCase();
   const [classFilter, setClassFilter] = useState<string[]>(() => readStoredClassFilter());
   const [sortMode, setSortMode] = useState<RosterSortMode>(() => readStoredSortMode());

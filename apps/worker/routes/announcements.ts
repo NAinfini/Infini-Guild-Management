@@ -7,23 +7,15 @@ import {
 } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import type { Bindings } from "../index";
 import { getRequestUser, requirePermission } from "../middleware/rbac";
-import { writeAuditLog } from "../services/audit";
-import { publishAnnouncementPublished, publishEntityChanged } from "../services/push";
 import { AnnouncementService } from "../services/AnnouncementService";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
+import { withMediaAndPublishAnnouncement } from "./service-factory";
 
 export const announcementsRoutes = new Hono();
 
 function getService(c: Context): AnnouncementService {
-  const env = c.env as Bindings;
-  return new AnnouncementService(getDb(c), {
-    media: env.MEDIA,
-    writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (input) => publishEntityChanged(c, input),
-    publishAnnouncementPublished: (input) => publishAnnouncementPublished(c, input),
-  });
+  return new AnnouncementService(getDb(c), withMediaAndPublishAnnouncement(c));
 }
 
 async function requireAnnouncementCreate(c: Context) { return requirePermission(c, "announcements.create"); }

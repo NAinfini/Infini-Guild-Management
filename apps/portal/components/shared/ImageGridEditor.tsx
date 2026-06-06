@@ -8,13 +8,9 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import type { ImageGridEditorItem } from "@portal/types/media";
 
-export interface ImageGridEditorItem {
-  id: string;
-  src?: string;
-  alt?: string;
-  file?: File;
-}
+export type { ImageGridEditorItem };
 
 export interface ImageGridEditorProps {
   items: ImageGridEditorItem[];

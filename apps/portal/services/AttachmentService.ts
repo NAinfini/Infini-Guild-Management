@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { type ImageGridEditorItem } from "@guild/shared/types/media";
+import { type ImageGridEditorItem } from "@portal/types/media";
 import { convertImageToWebP } from "@guild/shared/utils/media";
 
 export type AttachmentItem = ImageGridEditorItem;

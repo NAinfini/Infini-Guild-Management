@@ -85,23 +85,26 @@ function isCredentialChangePath(path: string): boolean {
   return path.endsWith("/change-password") || path.endsWith("/change-username");
 }
 
+function rejectBadOrigin(c: Context<{ Bindings: Bindings; Variables: Variables }>): Response | null {
+  const origin = c.req.header("Origin");
+  if (!origin) {
+    return c.json({ error_code: "FORBIDDEN", message: "Origin header required", request_id: c.get("requestId") }, 403);
+  }
+  const portalOrigin = c.env.PORTAL_ORIGIN;
+  const selfOrigin = new URL(c.req.url).origin;
+  if (origin !== selfOrigin && (!portalOrigin || origin !== portalOrigin)) {
+    return c.json({ error_code: "FORBIDDEN", message: "Origin not allowed", request_id: c.get("requestId") }, 403);
+  }
+  return null;
+}
+
 function isUploadPath(path: string): boolean {
-  if (path.includes("/announcements/") && path.endsWith("/images")) {
-    return true;
-  }
-  if (path.includes("/events/") && path.endsWith("/images")) {
-    return true;
-  }
-  if (path.includes("/wiki/articles/") && path.endsWith("/images")) {
-    return true;
-  }
-  if (path.includes("/game-data/") && path.endsWith("/icons")) {
-    return true;
-  }
   return (
     path.includes("/media/images") ||
     path.includes("/media/audio") ||
-    path.includes("/gallery/images")
+    path.includes("/gallery/images") ||
+    (path.endsWith("/images") && (path.includes("/announcements/") || path.includes("/events/") || path.includes("/wiki/articles/"))) ||
+    (path.endsWith("/icons") && path.includes("/game-data/"))
   );
 }
 
@@ -143,15 +146,8 @@ app.use("*", securityHeadersMiddleware);
 
 app.use("/api/*", async (c, next) => {
   if (isMutationMethod(c.req.method)) {
-    const origin = c.req.header("Origin");
-    if (!origin) {
-      return c.json({ error_code: "FORBIDDEN", message: "Origin header required", request_id: c.get("requestId") }, 403);
-    }
-    const portalOrigin = c.env.PORTAL_ORIGIN;
-    const selfOrigin = new URL(c.req.url).origin;
-    if (origin !== selfOrigin && (!portalOrigin || origin !== portalOrigin)) {
-      return c.json({ error_code: "FORBIDDEN", message: "Origin not allowed", request_id: c.get("requestId") }, 403);
-    }
+    const blocked = rejectBadOrigin(c);
+    if (blocked) return blocked;
     if (c.req.header("X-Requested-With") !== "XMLHttpRequest") {
       return c.json({ error_code: "FORBIDDEN", message: "Missing required header", request_id: c.get("requestId") }, 403);
     }
@@ -250,15 +246,8 @@ app.get("/ws", async (c) => {
   }
 
   // Validate origin to prevent cross-origin WebSocket hijacking
-  const origin = c.req.header("Origin");
-  if (!origin) {
-    return c.json({ error_code: "FORBIDDEN", message: "Origin header required", request_id: c.get("requestId") }, 403);
-  }
-  const portalOrigin = c.env.PORTAL_ORIGIN;
-  const selfOrigin = new URL(c.req.url).origin;
-  if (origin !== selfOrigin && (!portalOrigin || origin !== portalOrigin)) {
-    return c.json({ error_code: "FORBIDDEN", message: "Origin not allowed", request_id: c.get("requestId") }, 403);
-  }
+  const blocked = rejectBadOrigin(c);
+  if (blocked) return blocked;
 
   const session = await resolveSession(c);
   if (!session) {

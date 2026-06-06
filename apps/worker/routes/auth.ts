@@ -8,10 +8,9 @@ import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { createPasswordHash, createSession, deleteUserSessions, destroySession, resolveSession, verifyPassword } from "../services/auth";
 import { AuthService } from "../services/AuthService";
-import { writeAuditLog } from "../services/audit";
-import { publishEntityChanged } from "../services/push";
 import { createRateLimitMiddleware } from "../middleware/rate-limit";
 import { buildError, getDb, handleResult, parseJsonBody } from "./_shared";
+import { commonDeps } from "./service-factory";
 
 export const authRoutes = new Hono();
 
@@ -37,8 +36,7 @@ function getService(c: Context): AuthService {
     createSession: async (userId, opts) => { await createSession(c, userId, opts); },
     destroySession: (sessionId) => destroySession(c, sessionId),
     deleteUserSessions: (userId) => deleteUserSessions(c, userId),
-    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
-    writeAuditLog: (input) => writeAuditLog(c, input),
+    ...commonDeps(c),
   });
 }
 

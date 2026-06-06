@@ -1,9 +1,10 @@
 import { ActionIcon, Badge, Button, Group, Highlight, Kbd, Modal, Stack, Text } from "@mantine/core";
-import { useDebouncedValue, useDisclosure, useHotkeys, useLocalStorage } from "@mantine/hooks";
+import { useDisclosure, useHotkeys, useLocalStorage } from "@mantine/hooks";
+import { useDebouncedSearch } from "../../hooks/useDebouncedSearch";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../../api/query-keys";
 import { searchGlobal, type SearchResult, type SearchResultType } from "../../services/SearchService";
@@ -62,8 +63,7 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
   const navigate = useNavigate();
   const { t } = useTranslation("common");
   const [open, openHandlers] = useDisclosure(false);
-  const [query, setQuery] = useState("");
-  const [debouncedQuery] = useDebouncedValue(query, 300);
+  const { search: query, setSearch: setQuery, debouncedSearch: debouncedQuery } = useDebouncedSearch();
   const [recentSearches, setRecentSearches] = useLocalStorage<string[]>({
     key: RECENT_SEARCHES_KEY,
     defaultValue: [],

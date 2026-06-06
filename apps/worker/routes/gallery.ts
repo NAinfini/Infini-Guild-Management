@@ -7,10 +7,9 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { getRequestUser, requirePermission } from "../middleware/rbac";
-import { writeAuditLog } from "../services/audit";
-import { publishEntityChanged } from "../services/push";
 import { GalleryService } from "../services/GalleryService";
 import { buildError, collectFiles, getDb, handleResult, parseJsonBody, requireSessionUser, safeFormData, serveR2Object } from "./_shared";
+import { withMedia } from "./service-factory";
 
 export const galleryRoutes = new Hono();
 
@@ -19,9 +18,7 @@ const GALLERY_CAPTION_MAX_LENGTH = 200;
 function getService(c: Context): GalleryService {
   const env = c.env as Bindings;
   return new GalleryService(getDb(c), {
-    media: env.MEDIA,
-    writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
+    ...withMedia(c),
     rawDb: env.DB,
   });
 }

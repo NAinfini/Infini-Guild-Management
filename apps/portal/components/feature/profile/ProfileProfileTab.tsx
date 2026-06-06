@@ -1,7 +1,7 @@
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
-import type { ImageGridEditorItem } from "@guild/shared/types/media";
+import type { ImageGridEditorItem } from "@portal/types/media";
 import { PortalCard } from "../../shared/PortalCard";
 import { FloatingSaveBar } from "../../shared/FloatingSaveBar";
 import { DepthButton } from "@portal/components/shared/DepthButton";

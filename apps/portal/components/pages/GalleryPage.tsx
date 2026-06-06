@@ -6,7 +6,8 @@ import { modals } from "@mantine/modals";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useDebouncedValue, useDisclosure, useIntersection } from "@mantine/hooks";
+import { useDisclosure, useIntersection } from "@mantine/hooks";
+import { useDebouncedSearch } from "../../hooks/useDebouncedSearch";
 import { useTranslation } from "react-i18next";
 import {
   batchDeleteGalleryItems,
@@ -55,8 +56,7 @@ export function GalleryPage() {
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [search, setSearch] = useState("");
-  const [debouncedSearchRaw] = useDebouncedValue(search, 300);
+  const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim().toLowerCase();
   const [videoUrl, setVideoUrl] = useState("");
   const [videoCaption, setVideoCaption] = useState("");

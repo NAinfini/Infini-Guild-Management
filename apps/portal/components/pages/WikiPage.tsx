@@ -7,7 +7,8 @@ import { PortalCard } from "../shared/PortalCard";
 import { FilterToolbar } from "../shared/FilterToolbar";
 import { modals } from "@mantine/modals";
 import { PencilIcon, PinIcon } from "@portal/components/icons";
-import { useDebouncedValue, useDisclosure, useMediaQuery } from "@mantine/hooks";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
+import { useDebouncedSearch } from "../../hooks/useDebouncedSearch";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { format } from "date-fns";
@@ -62,8 +63,7 @@ export function WikiPage() {
   const isModerator = canManagePermission(["wiki.articles.create", "wiki.articles.edit", "wiki.articles.archive", "wiki.articles.delete", "wiki.categories.manage"]);
   const canEdit = isModerator && !isExternalView;
 
-  const [search, setSearch] = useState("");
-  const [debouncedSearchRaw] = useDebouncedValue(search, 300);
+  const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim();
   const [pinnedOnly, setPinnedOnly] = useState(false);
   const [archivedMode, setArchivedMode] = useState<WikiArchivedMode>("active");

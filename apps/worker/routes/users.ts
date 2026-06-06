@@ -2,19 +2,17 @@ import { deleteProfileImagesSchema, type Role } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { createPasswordHash, destroySession, resolveSession, verifyPassword } from "../services/auth";
-import { writeAuditLog } from "../services/audit";
-import { publishEntityChanged } from "../services/push";
 import { deleteMediaObject, storeProfileAudio, storeProfileImage } from "../services/media";
 import { UserService } from "../services/UserService";
 import { BadgeService } from "../services/BadgeService";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, requireSessionUser, serveR2Object } from "./_shared";
+import { commonDeps } from "./service-factory";
 
 export const usersRoutes = new Hono();
 
 function getUserService(c: Context) {
   return new UserService(getDb(c), {
-    writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
+    ...commonDeps(c),
     storeProfileImage: (userId, file) => storeProfileImage(c, userId, file),
     storeProfileAudio: (userId, file) => storeProfileAudio(c, userId, file),
     deleteMediaObject: (key) => deleteMediaObject(c, key),
@@ -25,10 +23,7 @@ function getUserService(c: Context) {
 }
 
 function getBadgeService(c: Context) {
-  return new BadgeService(getDb(c), {
-    writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
-  });
+  return new BadgeService(getDb(c), commonDeps(c));
 }
 
 // --- Routes ---

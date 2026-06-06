@@ -28,11 +28,11 @@ export type AnalyticsSettings = {
 
 const ANALYTICS_SETTINGS_KEY = "config/analytics-settings.json";
 
-export function emptyPermissionRecord(): Record<Permission, boolean> {
+function emptyPermissionRecord(): Record<Permission, boolean> {
   return Object.fromEntries(PERMISSIONS.map((p) => [p, false])) as Record<Permission, boolean>;
 }
 
-export function parsePermissionRecord(
+function parsePermissionRecord(
   permissionRows: Array<{ permission: string; granted: boolean }>,
 ): Record<Permission, boolean> {
   const record = emptyPermissionRecord();
@@ -44,7 +44,7 @@ export function parsePermissionRecord(
   return record;
 }
 
-export async function replaceRolePermissions(
+async function replaceRolePermissions(
   rawDb: D1Database,
   roleId: string,
   permissionRecord: Record<Permission, boolean>,
@@ -64,7 +64,7 @@ export function defaultAnalyticsSettings(): AnalyticsSettings {
   };
 }
 
-export function normalizeAnalyticsWeights(settings: AnalyticsSettings): AnalyticsSettings {
+function normalizeAnalyticsWeights(settings: AnalyticsSettings): AnalyticsSettings {
   const weights = settings.modifier_weights;
   const weightSum = Object.values(weights).reduce((s, v) => s + v, 0);
   if (weightSum <= 0) return settings;
@@ -75,7 +75,7 @@ export function normalizeAnalyticsWeights(settings: AnalyticsSettings): Analytic
   return { ...settings, modifier_weights: normalized };
 }
 
-export function parseAnalyticsInput(record: Record<string, unknown>): AnalyticsSettings {
+function parseAnalyticsInput(record: Record<string, unknown>): AnalyticsSettings {
   const defaults = defaultAnalyticsSettings();
   const rawWeights = record.modifier_weights;
   const modifier_weights: Record<string, number> = { ...defaults.modifier_weights };
@@ -114,6 +114,18 @@ type AdminServiceDeps = {
   ws?: unknown;
   now?: () => Date;
 };
+
+function buildRoleDiff(
+  existing: { name: string; level: number; color: string | null },
+  input: { name?: string; level?: number; color?: string | null; permissions?: Record<string, boolean> },
+): Record<string, { from: unknown; to: unknown }> | null {
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
+  if (input.name !== undefined && input.name.trim() !== existing.name) diff.name = { from: existing.name, to: input.name.trim() };
+  if (input.level !== undefined && input.level !== existing.level) diff.level = { from: existing.level, to: input.level };
+  if (input.color !== undefined && (input.color ?? null) !== existing.color) diff.color = { from: existing.color, to: input.color ?? null };
+  if (input.permissions !== undefined) diff.permissions = { from: "changed", to: "changed" };
+  return Object.keys(diff).length > 0 ? diff : null;
+}
 
 export class AdminService {
   private readonly deps: AdminServiceDeps;
@@ -191,48 +203,63 @@ export class AdminService {
   }
 
   async batchDeactivate(actorId: string, userIds: string[]): Promise<ServiceResult<{ updated: number }>> {
-    const targetIds = userIds.filter((id) => id !== actorId);
-    if (targetIds.length === 0) return ok({ updated: 0 });
-    const guard = await this.assertBatchActionAllowed(actorId, targetIds);
-    if (!guard.ok) return guard.error;
-    const { existingUsers } = guard;
-    if (existingUsers.length > 0) {
-      const existingIds = existingUsers.map((r) => r.id);
-      await this.deps.db.update(users).set({ isActive: false, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
-      await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
-    }
-    const usernames = existingUsers.map((r) => r.username);
-    await this.deps.writeAuditLogDurable({ entityType: "user", action: "batch_deactivate", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
-    return ok({ updated: existingUsers.length });
+    return this.executeBatchAction(actorId, userIds, {
+      action: "batch_deactivate",
+      guarded: true, clearSessions: true, durable: true,
+      update: (ids, now) => this.deps.db.update(users).set({ isActive: false, updatedAt: now }).where(inArray(users.id, ids)),
+    });
   }
 
   async batchReactivate(actorId: string, userIds: string[]): Promise<ServiceResult<{ updated: number }>> {
-    const targetIds = userIds.filter((id) => id !== actorId);
-    if (targetIds.length === 0) return ok({ updated: 0 });
-    const existingUsers = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
-    if (existingUsers.length > 0) {
-      const existingIds = existingUsers.map((r) => r.id);
-      await this.deps.db.update(users).set({ isActive: true, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
-    }
-    const usernames = existingUsers.map((r) => r.username);
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_reactivate", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
-    return ok({ updated: existingUsers.length });
+    return this.executeBatchAction(actorId, userIds, {
+      action: "batch_reactivate",
+      guarded: false, clearSessions: false, durable: false,
+      update: (ids, now) => this.deps.db.update(users).set({ isActive: true, updatedAt: now }).where(inArray(users.id, ids)),
+    });
   }
 
   async batchDelete(actorId: string, userIds: string[]): Promise<ServiceResult<{ updated: number }>> {
+    return this.executeBatchAction(actorId, userIds, {
+      action: "batch_delete",
+      guarded: true, clearSessions: true, durable: true,
+      update: (ids, now) => this.deps.db.update(users).set({ isActive: false, deletedAt: now, updatedAt: now }).where(inArray(users.id, ids)),
+    });
+  }
+
+  private async executeBatchAction(
+    actorId: string,
+    userIds: string[],
+    opts: {
+      action: AuditAction;
+      guarded: boolean;
+      clearSessions: boolean;
+      durable: boolean;
+      update: (ids: string[], now: string) => Promise<unknown>;
+    },
+  ): Promise<ServiceResult<{ updated: number }>> {
     const targetIds = userIds.filter((id) => id !== actorId);
     if (targetIds.length === 0) return ok({ updated: 0 });
-    const guard = await this.assertBatchActionAllowed(actorId, targetIds);
-    if (!guard.ok) return guard.error;
-    const { existingUsers } = guard;
+
+    let existingUsers: { id: string; username: string }[];
+    if (opts.guarded) {
+      const guard = await this.assertBatchActionAllowed(actorId, targetIds);
+      if (!guard.ok) return guard.error;
+      existingUsers = guard.existingUsers;
+    } else {
+      existingUsers = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
+    }
+
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
-      const now = this.now().toISOString();
-      await this.deps.db.update(users).set({ isActive: false, deletedAt: now, updatedAt: now }).where(inArray(users.id, existingIds));
-      await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
+      await opts.update(existingIds, this.now().toISOString());
+      if (opts.clearSessions) {
+        await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
+      }
     }
+
     const usernames = existingUsers.map((r) => r.username);
-    await this.deps.writeAuditLogDurable({ entityType: "user", action: "batch_delete", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
+    const writeLog = opts.durable ? this.deps.writeAuditLogDurable : this.deps.writeAuditLog;
+    await writeLog({ entityType: "user", action: opts.action, actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
     return ok({ updated: existingUsers.length });
   }
 
@@ -384,7 +411,8 @@ export class AdminService {
     const permissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
     const assignedCountRow = (await this.deps.db.select({ count: sql<number>`count(*)` }).from(users).where(and(eq(users.role, roleId), isNull(users.deletedAt))).limit(1))[0];
     const assignedCount = Number(assignedCountRow?.count ?? 0);
-    await this.deps.writeAuditLogDurable({ entityType: "role", action: "update", actorId, entityId: roleId, diffTitle: updatedRole.name, detailText: JSON.stringify({ fields: input, assigned_user_count: assignedCount }) });
+    const roleDiff = buildRoleDiff(existing, input);
+    await this.deps.writeAuditLogDurable({ entityType: "role", action: "update", actorId, entityId: roleId, diffTitle: updatedRole.name, detailText: roleDiff ? JSON.stringify(roleDiff) : null });
     return ok(adminRoleSchema.parse({ id: updatedRole.id, name: updatedRole.name, level: updatedRole.level, color: updatedRole.color, is_builtin: updatedRole.isBuiltin, created_at: updatedRole.createdAt, updated_at: updatedRole.updatedAt, permissions: parsePermissionRecord(permissionRows), assigned_user_count: assignedCount }));
   }
 

@@ -8,22 +8,15 @@ import {
 } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import type { Bindings } from "../index";
 import { requirePermission } from "../middleware/rbac";
-import { writeAuditLog } from "../services/audit";
-import { publishEntityChanged } from "../services/push";
 import { WikiService } from "../services/WikiService";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
+import { withMedia } from "./service-factory";
 
 export const wikiRoutes = new Hono();
 
 function getService(c: Context): WikiService {
-  const env = c.env as Bindings;
-  return new WikiService(getDb(c), {
-    media: env.MEDIA,
-    writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
-  });
+  return new WikiService(getDb(c), withMedia(c));
 }
 
 async function requireWikiArticlesCreate(c: Context) { return requirePermission(c, "wiki.articles.create"); }

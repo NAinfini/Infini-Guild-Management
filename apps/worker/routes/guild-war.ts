@@ -11,19 +11,16 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { requirePermission } from "../middleware/rbac";
-import { writeAuditLog } from "../services/audit";
-import { publishEntityChanged } from "../services/push";
 import { GuildWarService } from "../services/GuildWarService";
 import { buildError, getDb, handleResult, parsePage, parseJsonBody, requireSessionUser } from "./_shared";
+import { withMedia } from "./service-factory";
 
 export const guildWarRoutes = new Hono();
 
 function getService(c: Context): GuildWarService {
   const env = c.env as Bindings;
   return new GuildWarService(getDb(c), {
-    media: env.MEDIA,
-    writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
+    ...withMedia(c),
     rawDb: env.DB,
   });
 }

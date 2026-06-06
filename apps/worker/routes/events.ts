@@ -12,7 +12,6 @@ import { Hono } from "hono";
 import { runEventInstanceGenerationCron } from "../crons/event-instance-gen";
 import type { Bindings } from "../index";
 import { getRequestUser, requirePermission } from "../middleware/rbac";
-import { writeAuditLog } from "../services/audit";
 import { users } from "../db/schema";
 import {
   EventService,
@@ -21,8 +20,8 @@ import {
   toRaffleWinnerPayload,
   toTemplatePayload,
 } from "../services/EventService";
-import { publishEntityChanged } from "../services/push";
 import { buildError, collectFiles, getDb, parseBoolean, parseJsonBody, parsePage, requireSessionUser, serveR2Object } from "./_shared";
+import { commonDeps } from "./service-factory";
 
 export const eventsRoutes = new Hono();
 
@@ -35,8 +34,7 @@ function getEventService(c: Context) {
       return row?.username ?? null;
     },
     materializeRecurringSeries: (templateId) => materializeRecurringSeries(c, templateId),
-    writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
+    ...commonDeps(c),
   });
   return svc;
 }

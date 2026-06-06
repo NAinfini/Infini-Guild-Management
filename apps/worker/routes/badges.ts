@@ -9,19 +9,15 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { requirePermission } from "../middleware/rbac";
-import { writeAuditLog } from "../services/audit";
-import { publishEntityChanged } from "../services/push";
 import { BadgeService } from "../services/BadgeService";
 import { handleResult, parseJsonBody } from "./_shared";
+import { commonDeps } from "./service-factory";
 
 export const badgeRoutes = new Hono();
 
 function getService(c: Context): BadgeService {
   const env = c.env as Bindings;
-  return new BadgeService(drizzle(env.DB), {
-    writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
-  });
+  return new BadgeService(drizzle(env.DB), commonDeps(c));
 }
 
 async function requireBadgesManage(c: Context) {
