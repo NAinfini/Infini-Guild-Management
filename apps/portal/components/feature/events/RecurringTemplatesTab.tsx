@@ -1,6 +1,7 @@
 import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
 import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
+import { tzOffsetToAnchorIso } from "./RecurringTemplateFormModal.helpers";
 import { PortalCard } from "@portal/components/shared/PortalCard";
 import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, UsersIcon } from "@portal/components/icons";
 import { Badge, Group, HoverCard, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
@@ -18,7 +19,7 @@ const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed"
 function buildRecurrenceSummary(
   t: (key: string, opts?: Record<string, unknown>) => string,
   rule: RecurringTemplate["recurrence_rule"],
-  startAtIso: string,
+  timezoneOffsetMinutes: number,
 ): string {
   if (!rule) return "";
   const freq = rule.frequency;
@@ -27,8 +28,9 @@ function buildRecurrenceSummary(
     return t("recurring.summary.daily", { interval });
   }
   if (freq === "weekly") {
+    const anchorIso = tzOffsetToAnchorIso(timezoneOffsetMinutes);
     const dayNames = (rule.daysOfWeek ?? [])
-      .map((d) => utcWeekdayToLocal(d, startAtIso))
+      .map((d) => utcWeekdayToLocal(d, anchorIso))
       .sort((a, b) => a - b)
       .map((d) => t(WEEKDAY_KEYS[d] ?? "weekday.sun"))
       .join(", ");
@@ -40,12 +42,6 @@ function buildRecurrenceSummary(
   return "";
 }
 
-function extractTime(iso: string | null): string {
-  if (!iso) return "--:--";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "--:--";
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
 
 type RecurringTemplatesTabProps = {
   canManage: boolean;
@@ -152,9 +148,9 @@ export function RecurringTemplatesTab({
           </PortalCard>
         ) : (
           templates.map((template) => {
-            const isPaused = template.archived_at !== null;
+            const isPaused = template.paused;
             const typeDef = EVENT_TYPES.find((et) => et === template.type);
-            const time = extractTime(template.start_at);
+            const time = template.start_time || "--:--";
             return (
               <PortalCard
                 key={template.id}
@@ -233,7 +229,7 @@ export function RecurringTemplatesTab({
                             <Text size="xs" c="dimmed">{time}</Text>
                           </Group>
                           <Text size="xs" c="dimmed">
-                            {buildRecurrenceSummary(t, template.recurrence_rule, template.start_at)}
+                            {buildRecurrenceSummary(t, template.recurrence_rule, template.timezone_offset_minutes)}
                           </Text>
                           {template.capacity != null && (
                             <Group gap={4} align="center">

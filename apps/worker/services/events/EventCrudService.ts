@@ -1,4 +1,4 @@
-import { createEventSchema, eventSchema, recurringTemplateSchema, updateEventSchema, LIMITS } from "@guild/shared";
+import { createEventSchema, eventSchema, updateEventSchema, LIMITS } from "@guild/shared";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
@@ -65,14 +65,9 @@ export type EventRow = {
   autoArchived: boolean;
   createdBy: string;
   updatedBy: string | null;
-  recurrenceRule: string | null;
   attachments: string;
   seriesId: string | null;
-  isSeriesParent: boolean;
   instanceDate: string | null;
-  lastGeneratedDate: string | null;
-  generationCount: number;
-  visibilityOffsetMinutes: number | null;
   winnerCount: number | null;
   createdAt: string;
   updatedAt: string;
@@ -84,9 +79,8 @@ const MAX_EVENT_IMAGE_BYTES = LIMITS.media.maxFileSize.eventImage;
 export type EventServiceDeps = {
   getEventById: (eventId: string) => Promise<EventRow | null>;
   getUsername: (userId: string) => Promise<string | null>;
-  materializeRecurringSeries: (templateId: string) => Promise<void>;
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
-  publishEntityChanged: (payload: { entityType: PushEntityType; entityId: string; hint: PushHint }) => Promise<void>;
+  publishEntityChanged: (payload: { entityType: PushEntityType; entityId: string; hint: PushHint; displayName?: string }) => Promise<void>;
   now?: () => string;
   createId?: () => string;
   createImageKey?: (eventId: string) => string;
@@ -166,10 +160,8 @@ export function toEventPayload(row: EventRow) {
     archived_at: row.archivedAt,
     created_by: row.createdBy,
     updated_by: row.updatedBy ?? null,
-    recurrence_rule: parseRecurrenceRule(row.recurrenceRule),
     attachments: parseAttachments(row.attachments),
     series_id: row.seriesId,
-    is_series_parent: row.isSeriesParent,
     instance_date: row.instanceDate,
     winner_count: row.winnerCount ?? null,
     created_at: row.createdAt,
@@ -177,32 +169,6 @@ export function toEventPayload(row: EventRow) {
   });
   if (!result.success) {
     throw new Error(`Invalid event data for id=${row.id}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
-  }
-  return result.data;
-}
-
-export function toTemplatePayload(row: EventRow) {
-  const result = recurringTemplateSchema.safeParse({
-    id: row.id,
-    type: row.type,
-    title: row.title,
-    description: row.description,
-    start_at: row.startAt,
-    end_at: row.endAt,
-    capacity: row.capacity,
-    recurrence_rule: parseRecurrenceRule(row.recurrenceRule),
-    auto_archive: row.autoArchive,
-    visibility_offset_minutes: row.visibilityOffsetMinutes ?? null,
-    visible_at: row.visibleAt ?? null,
-    archived_at: row.archivedAt,
-    created_by: row.createdBy,
-    last_generated_date: row.lastGeneratedDate,
-    generation_count: row.generationCount,
-    created_at: row.createdAt,
-    updated_at: row.updatedAt,
-  });
-  if (!result.success) {
-    throw new Error(`Invalid template data for id=${row.id}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
   }
   return result.data;
 }
@@ -239,11 +205,7 @@ export class EventCrudService {
       return err("VALIDATION_ERROR", `Max ${MAX_EVENT_ATTACHMENTS} attachments per event`);
     }
 
-    const recurrenceRuleJson = data.recurrence_rule
-      ? JSON.stringify(data.recurrence_rule)
-      : null;
     const now = this.now();
-    const isSeriesParent = recurrenceRuleJson !== null;
 
     await this.db.insert(events).values({
       id: eventId,
@@ -260,10 +222,8 @@ export class EventCrudService {
       autoArchived: false,
       archivedAt: null,
       createdBy: actorId,
-      recurrenceRule: recurrenceRuleJson,
       attachments: JSON.stringify(attachments),
       seriesId: null,
-      isSeriesParent,
       instanceDate: null,
       createdAt: now,
       updatedAt: now,
@@ -271,10 +231,6 @@ export class EventCrudService {
 
     if (data.type === "poll" && data.poll) {
       await this.pollRaffle.createPoll(eventId, data.poll);
-    }
-
-    if (isSeriesParent) {
-      await this.deps.materializeRecurringSeries(eventId);
     }
 
     const created = await this.deps.getEventById(eventId);
@@ -293,6 +249,13 @@ export class EventCrudService {
         start_at: created.startAt,
         end_at: created.endAt,
       }),
+    });
+
+    await this.deps.publishEntityChanged({
+      entityType: "event",
+      entityId: eventId,
+      hint: "event_created",
+      displayName: created.title,
     });
 
     return ok(created);
@@ -322,10 +285,6 @@ export class EventCrudService {
     if (data.auto_archive !== undefined) patch.autoArchive = data.auto_archive;
     if (data.archived_at !== undefined) patch.archivedAt = data.archived_at;
     if (data.attachments !== undefined) patch.attachments = JSON.stringify(data.attachments);
-    if (data.recurrence_rule !== undefined) {
-      patch.recurrenceRule = JSON.stringify(data.recurrence_rule);
-      patch.isSeriesParent = true;
-    }
 
     const pollDataProvided = (existing.type === "poll" || data.type === "poll") && data.poll;
     const hasVotes = pollDataProvided ? await this.pollRaffle.pollHasVotes(eventId) : false;
@@ -459,8 +418,6 @@ export class EventCrudService {
       if (JSON.stringify(data.attachments) !== JSON.stringify(existingKeys))
         diff.attachments = { from: existingKeys.length, to: data.attachments?.length ?? 0 };
     }
-    if (data.recurrence_rule !== undefined)
-      diffRecurrenceRule(existing.recurrenceRule, data.recurrence_rule, diff);
     return diff;
   }
 
@@ -521,14 +478,9 @@ export class EventCrudService {
     autoArchived: events.autoArchived,
     createdBy: events.createdBy,
     updatedBy: events.updatedBy,
-    recurrenceRule: events.recurrenceRule,
     attachments: events.attachments,
     seriesId: events.seriesId,
-    isSeriesParent: events.isSeriesParent,
     instanceDate: events.instanceDate,
-    lastGeneratedDate: events.lastGeneratedDate,
-    generationCount: events.generationCount,
-    visibilityOffsetMinutes: events.visibilityOffsetMinutes,
     winnerCount: events.winnerCount,
     createdAt: events.createdAt,
     updatedAt: events.updatedAt,
@@ -543,7 +495,7 @@ export class EventCrudService {
     startAfter?: string;
     startBefore?: string;
   }): SQL<unknown>[] {
-    const filters: SQL<unknown>[] = [eq(events.isSeriesParent, false)];
+    const filters: SQL<unknown>[] = [];
     if (params.typeFilter) {
       filters.push(eq(events.type, params.typeFilter as typeof events.type.enumValues[number]));
     }

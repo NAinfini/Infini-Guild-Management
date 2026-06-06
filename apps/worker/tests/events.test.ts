@@ -87,7 +87,6 @@ let memberUserId: string;
 
 // IDs created during tests for cleanup/reference
 let createdEventId: string;
-let createdRecurringParentId: string;
 
 // ── Setup / Teardown ────────────────────────────────────────────────
 
@@ -218,9 +217,9 @@ describe("Event CRUD", () => {
     expect((detail.payload as { archived_at: string | null }).archived_at).not.toBeNull();
   });
 
-  it("POST /api/events — create recurring weekly event", async () => {
+  it("POST /api/events — rejects recurrence_rule (recurring events use templates now)", async () => {
     const futureDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-    const { status, payload } = await api("/api/events", {
+    const { status } = await api("/api/events", {
       method: "POST",
       cookie: modCookie,
       body: {
@@ -231,16 +230,13 @@ describe("Event CRUD", () => {
         recurrence_rule: {
           frequency: "weekly",
           interval: 1,
-          daysOfWeek: [1, 4], // Monday, Thursday
+          daysOfWeek: [1, 4],
           endAfter: 8,
         },
       },
     });
 
-    expect(status).toBe(201);
-    expect((payload as { is_series_parent: boolean }).is_series_parent).toBe(true);
-    expect((payload as { recurrence_rule: string | null }).recurrence_rule).not.toBeNull();
-    createdRecurringParentId = (payload as { id: string }).id;
+    expect(status).toBe(400);
   });
 });
 
@@ -432,89 +428,6 @@ describe("Permission Checks", () => {
       cookie: modCookie,
     });
     expect(archive.status).toBe(200);
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════
-// D. Recurrence System (from spec)
-// ═══════════════════════════════════════════════════════════════════
-
-describe("Recurrence System", () => {
-  let seriesInstanceIds: string[] = [];
-
-  it("Recurring parent — series instances exist", async () => {
-    // Use start_after filter to find recently-generated future instances
-    // (the server caps limit at 100, so we filter by date to avoid pagination issues)
-    const startAfter = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString();
-    const { status, payload } = await api(
-      `/api/events?page=1&limit=100&start_after=${encodeURIComponent(startAfter)}`,
-      { cookie: modCookie },
-    );
-    expect(status).toBe(200);
-
-    const list = payload as { data: Array<{ id: string; series_id: string | null; is_series_parent: boolean }>; total: number };
-    const seriesInstances = list.data.filter(
-      (e) => e.series_id === createdRecurringParentId && !e.is_series_parent,
-    );
-
-    // Should have generated instances within the lookahead window
-    expect(seriesInstances.length).toBeGreaterThan(0);
-    seriesInstanceIds = seriesInstances.map((e) => e.id);
-  });
-
-  it("PATCH with recurrence_scope=this — only changes target instance", async () => {
-    if (seriesInstanceIds.length === 0) return; // skip if no instances
-
-    const instanceId = seriesInstanceIds[0];
-    const { status, payload } = await api(`/api/events/${instanceId}`, {
-      method: "PATCH",
-      cookie: modCookie,
-      body: {
-        title: "Custom Instance Title",
-        recurrence_scope: "this",
-      },
-    });
-
-    expect(status).toBe(200);
-    expect((payload as { title: string }).title).toBe("Custom Instance Title");
-
-    // Other instances should still have original title
-    if (seriesInstanceIds.length > 1) {
-      const other = await api(`/api/events/${seriesInstanceIds[1]}`, { cookie: modCookie });
-      expect((other.payload as { title: string }).title).toBe("Weekly Raid");
-    }
-  });
-
-  it("PATCH with recurrence_scope=future — changes target + future", async () => {
-    if (seriesInstanceIds.length < 3) return;
-
-    // Pick a middle instance
-    const middleIndex = Math.floor(seriesInstanceIds.length / 2);
-    const middleId = seriesInstanceIds[middleIndex];
-
-    const { status } = await api(`/api/events/${middleId}`, {
-      method: "PATCH",
-      cookie: modCookie,
-      body: {
-        description: "Future scope update",
-        recurrence_scope: "future",
-      },
-    });
-    expect(status).toBe(200);
-  });
-
-  it("PATCH with recurrence_scope=all — changes all instances", async () => {
-    if (seriesInstanceIds.length === 0) return;
-
-    const { status } = await api(`/api/events/${seriesInstanceIds[0]}`, {
-      method: "PATCH",
-      cookie: modCookie,
-      body: {
-        capacity: 50,
-        recurrence_scope: "all",
-      },
-    });
-    expect(status).toBe(200);
   });
 });
 

@@ -329,39 +329,24 @@ export function AppShell() {
     (entryId: string, type: string) => {
       markPushAsRead(entryId);
 
-      if (type === "announcement_published" || type === "announcement_changed") {
+      if (type === "announcement_published" || type === "announcement_created") {
         markFeatureAsRead("announcements");
         void navigate({ to: "/announcements" });
         return;
       }
 
-      if (type === "event_changed") {
+      if (type === "event_created") {
         void navigate({ to: "/events" });
         return;
       }
 
-      if (type === "wiki_changed") {
+      if (type === "wiki_created") {
         void navigate({ to: "/wiki" });
         return;
       }
 
-      if (type === "member_joined" || type === "member_changed") {
+      if (type === "member_joined") {
         markFeatureAsRead("members");
-        void navigate({ to: "/roster" });
-        return;
-      }
-
-      if (type === "gallery_changed") {
-        void navigate({ to: "/gallery" });
-        return;
-      }
-
-      if (type === "guild_war_changed") {
-        void navigate({ to: "/guild-war" });
-        return;
-      }
-
-      if (type === "badge_changed") {
         void navigate({ to: "/roster" });
         return;
       }

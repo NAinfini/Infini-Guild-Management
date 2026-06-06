@@ -60,20 +60,15 @@ dashboardRoutes.get("/summary", async (c) => {
         autoArchived: events.autoArchived,
         createdBy: events.createdBy,
         updatedBy: events.updatedBy,
-        recurrenceRule: events.recurrenceRule,
         attachments: events.attachments,
         seriesId: events.seriesId,
-        isSeriesParent: events.isSeriesParent,
         instanceDate: events.instanceDate,
-        lastGeneratedDate: events.lastGeneratedDate,
-        generationCount: events.generationCount,
-        visibilityOffsetMinutes: events.visibilityOffsetMinutes,
         winnerCount: events.winnerCount,
         createdAt: events.createdAt,
         updatedAt: events.updatedAt,
       })
       .from(events)
-      .where(and(isNull(events.archivedAt), eq(events.isSeriesParent, false), gte(events.startAt, window.start), lte(events.startAt, window.end)))
+      .where(and(isNull(events.archivedAt), gte(events.startAt, window.start), lte(events.startAt, window.end)))
       .orderBy(asc(events.startAt), asc(events.id))
       .limit(UPCOMING_EVENT_LIMIT),
     db

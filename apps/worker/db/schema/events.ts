@@ -1,5 +1,5 @@
-// Domain: Events & Signups
-// Tables: events, event_participants, event_polls, event_poll_options, event_poll_votes, event_raffle_winners
+// Domain: Events, Signups & Recurring Templates
+// Tables: events, recurring_templates, event_participants, event_polls, event_poll_options, event_poll_votes, event_raffle_winners
 // Dependencies: auth.users
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { activeGame } from "@guild/shared/games";
@@ -26,24 +26,45 @@ export const events = sqliteTable(
     autoArchived: integer("auto_archived", { mode: "boolean" }).notNull().default(false),
     createdBy: text("created_by").notNull().references(() => users.id),
     updatedBy: text("updated_by").references(() => users.id),
-    recurrenceRule: text("recurrence_rule"),
     attachments: text("attachments").notNull().default("[]"),
     seriesId: text("series_id"),
-    isSeriesParent: integer("is_series_parent", { mode: "boolean" }).notNull().default(false),
     instanceDate: text("instance_date"),
-    lastGeneratedDate: text("last_generated_date"),
-    generationCount: integer("generation_count").notNull().default(0),
-    visibilityOffsetMinutes: integer("visibility_offset_minutes"),
     winnerCount: integer("winner_count"),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
   (table) => ({
-    idxArchivedSeriesStart: index("idx_events_archived_series_start").on(table.archivedAt, table.isSeriesParent, table.startAt, table.id),
-    idxSeriesArchivedStart: index("idx_events_series_archived_start").on(table.isSeriesParent, table.archivedAt, table.startAt, table.id),
-    idxAutoArchiveDue: index("idx_events_auto_archive_due").on(table.autoArchive, table.autoArchived, table.archivedAt, table.isSeriesParent, table.endAt, table.startAt),
+    idxArchivedStart: index("idx_events_archived_start").on(table.archivedAt, table.startAt, table.id),
+    idxAutoArchiveDue: index("idx_events_auto_archive_due").on(table.autoArchive, table.autoArchived, table.archivedAt, table.endAt, table.startAt),
     uxSeriesInstance: uniqueIndex("ux_events_series_instance").on(table.seriesId, table.instanceDate),
     idxCreatedBy: index("idx_events_created_by").on(table.createdBy),
+  }),
+);
+
+export const recurringTemplates = sqliteTable(
+  "recurring_templates",
+  {
+    id: text("id").primaryKey(),
+    type: text("type", { enum: EVENT_TYPE_IDS }).notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    startTime: text("start_time").notNull(),
+    durationMinutes: integer("duration_minutes"),
+    capacity: integer("capacity"),
+    recurrenceRule: text("recurrence_rule").notNull(),
+    visibilityOffsetMinutes: integer("visibility_offset_minutes").notNull().default(0),
+    autoArchive: integer("auto_archive", { mode: "boolean" }).notNull().default(false),
+    attachments: text("attachments").notNull().default("[]"),
+    paused: integer("paused", { mode: "boolean" }).notNull().default(false),
+    createdBy: text("created_by").notNull().references(() => users.id),
+    lastGeneratedDate: text("last_generated_date"),
+    generationCount: integer("generation_count").notNull().default(0),
+    timezoneOffsetMinutes: integer("timezone_offset_minutes").notNull().default(0),
+    createdAt: text("created_at").notNull().default(nowUtc),
+    updatedAt: text("updated_at").notNull().default(nowUtc),
+  },
+  (table) => ({
+    idxActive: index("idx_recurring_templates_active").on(table.paused, table.createdAt, table.id),
   }),
 );
 
@@ -52,7 +73,7 @@ export const eventParticipants = sqliteTable(
   {
     id: text("id").primaryKey(),
     eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
-    userId: text("user_id").notNull().references(() => users.id),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     joinedAt: text("joined_at").notNull().default(nowUtc),
   },
   (table) => ({
@@ -93,7 +114,7 @@ export const eventPollVotes = sqliteTable(
     id: text("id").primaryKey(),
     eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
     optionId: text("option_id").notNull().references(() => eventPollOptions.id, { onDelete: "cascade" }),
-    userId: text("user_id").notNull().references(() => users.id),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     createdAt: text("created_at").notNull().default(nowUtc),
   },
   (table) => ({
@@ -108,7 +129,7 @@ export const eventRaffleWinners = sqliteTable(
   {
     id: text("id").primaryKey(),
     eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
-    userId: text("user_id").notNull().references(() => users.id),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     drawnAt: text("drawn_at").notNull().default(nowUtc),
   },
   (table) => ({

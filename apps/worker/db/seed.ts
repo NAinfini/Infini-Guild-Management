@@ -459,10 +459,8 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: null,
-      recurrenceRule: null,
       attachments: JSON.stringify(["/mock/scene-1.svg", "/mock/scene-2.svg"]),
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [1] weekly_mission - future, updated by mod
@@ -479,9 +477,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: moderatorIds[0]!,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [2] guild_war - active future war #1
@@ -498,10 +494,8 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: null,
-      recurrenceRule: null,
       attachments: JSON.stringify(["/mock/portrait-1.svg"]),
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [3] guild_war - active future war #2, updated
@@ -518,9 +512,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: moderatorIds[1]!,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [4] social - future
@@ -537,9 +529,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [5] social - future, created by mod
@@ -556,9 +546,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: moderatorIds[1]!,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [6] weekly_mission - archived (past)
@@ -575,9 +563,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: addDays(now, -7),
       createdBy: moderatorIds[0]!,
       updatedBy: adminId,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [7] guild_war - ARCHIVED war (past, finished)
@@ -594,9 +580,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: addDays(now, -14),
       createdBy: adminId,
       updatedBy: moderatorIds[0]!,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [8] other - locked signup
@@ -613,9 +597,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: moderatorIds[2]!,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [9] social - near-full capacity
@@ -632,9 +614,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: moderatorIds[0]!,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [10] weekly_mission - past, not archived
@@ -651,9 +631,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [11] guild_war - far future
@@ -670,9 +648,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: moderatorIds[1]!,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [12] other - no end time
@@ -689,9 +665,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [13] social - archived, old
@@ -708,9 +682,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: addDays(now, -55),
       createdBy: moderatorIds[0]!,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [14] poll - open, results after vote
@@ -727,9 +699,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: moderatorIds[0]!,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [15] poll - hidden results until close
@@ -746,9 +716,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [16] poll - closed
@@ -765,9 +733,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: moderatorIds[1]!,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
     // [17] raffle - drawn (ended, winners selected)
@@ -784,9 +750,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: adminId,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
       winnerCount: 3,
     },
@@ -804,76 +768,11 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: moderatorIds[0]!,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
       winnerCount: 2,
     },
-    // [19] weekly_mission - recurring template (isSeriesParent)
-    {
-      id: nanoid(),
-      type: "weekly_mission",
-      title: "Weekly Raid Night",
-      description: "Recurring weekly raid every Wednesday and Friday evening",
-      startAt: addDays(now, 3),
-      endAt: addDays(addHours(now, 2), 3),
-      capacity: 15,
-      pinned: false,
-      signupLocked: false,
-      archivedAt: null,
-      createdBy: adminId,
-      updatedBy: null,
-      recurrenceRule: JSON.stringify({ frequency: "weekly", interval: 1, daysOfWeek: [3, 5] }),
-      seriesId: null,
-      isSeriesParent: true,
-      instanceDate: null,
-      lastGeneratedDate: addDays(now, -4),
-      generationCount: 8,
-    },
-    // [20] guild_war - recurring template (isSeriesParent)
-    {
-      id: nanoid(),
-      type: "guild_war",
-      title: "Bi-Weekly War Practice",
-      description: "Practice war every other Saturday",
-      startAt: addDays(now, 6),
-      endAt: addDays(addHours(now, 3), 6),
-      capacity: 20,
-      pinned: false,
-      signupLocked: false,
-      archivedAt: null,
-      createdBy: moderatorIds[0]!,
-      updatedBy: null,
-      recurrenceRule: JSON.stringify({ frequency: "weekly", interval: 2, daysOfWeek: [6] }),
-      seriesId: null,
-      isSeriesParent: true,
-      instanceDate: null,
-      lastGeneratedDate: addDays(now, -10),
-      generationCount: 4,
-    },
-    // [21] social - recurring template (isSeriesParent)
-    {
-      id: nanoid(),
-      type: "social",
-      title: "Monthly Guild Meeting",
-      description: "First Sunday of every month - mandatory attendance",
-      startAt: addDays(now, 10),
-      endAt: addDays(addHours(now, 1), 10),
-      capacity: null,
-      pinned: true,
-      signupLocked: false,
-      archivedAt: null,
-      createdBy: adminId,
-      updatedBy: null,
-      recurrenceRule: JSON.stringify({ frequency: "monthly", interval: 1, dayOfMonth: 1 }),
-      seriesId: null,
-      isSeriesParent: true,
-      instanceDate: null,
-      lastGeneratedDate: addDays(now, -25),
-      generationCount: 3,
-    },
-    // [22] other - auto-archive enabled, past end
+    // [19] other - auto-archive enabled, past end
     {
       id: nanoid(),
       type: "other",
@@ -888,12 +787,10 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
-    // [23] guild_war - second archived war (to test multiple archived wars in dropdown)
+    // [20] guild_war - second archived war (to test multiple archived wars in dropdown)
     {
       id: nanoid(),
       type: "guild_war",
@@ -907,9 +804,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: addDays(now, -28),
       createdBy: adminId,
       updatedBy: null,
-      recurrenceRule: null,
       seriesId: null,
-      isSeriesParent: false,
       instanceDate: null,
     },
   ];
@@ -1008,7 +903,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   const raffleEventIds = new Set([drawnRaffleEventId, pendingRaffleEventId]);
   const participantRows: Array<typeof eventParticipants.$inferInsert> = [];
   for (const event of eventRows) {
-    if (event.type === "poll" || event.isSeriesParent || raffleEventIds.has(event.id)) {
+    if (event.type === "poll" || raffleEventIds.has(event.id)) {
       continue;
     }
     const count = event.archivedAt ? 3 : 6;
@@ -1021,9 +916,9 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       });
     }
   }
-  // Add moderators to some non-template, non-raffle events
+  // Add moderators to some non-raffle events
   for (const event of eventRows.slice(0, 5)) {
-    if (event.type === "poll" || event.isSeriesParent || raffleEventIds.has(event.id)) {
+    if (event.type === "poll" || raffleEventIds.has(event.id)) {
       continue;
     }
     for (const modId of moderatorIds) {
@@ -1177,10 +1072,10 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       createdBy: moderatorIds[1]!,
       updatedBy: null,
     },
-    // War Session E - linked to second archived war event [23]
+    // War Session E - linked to second archived war event [20]
     {
       id: nanoid(),
-      eventId: eventRows[23]!.id,
+      eventId: eventRows[20]!.id,
       warName: "War Session E",
       enemyName: "Storm Vanguard",
       result: "win",

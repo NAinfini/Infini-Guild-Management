@@ -73,7 +73,7 @@ export class SearchService {
       this.db
         .select({ id: events.id, title: events.title, type: events.type, startAt: events.startAt })
         .from(events)
-        .where(and(isNull(events.archivedAt), eq(events.isSeriesParent, false), or(sql`lower(${events.title}) LIKE ${pattern} ESCAPE '\\'`, sql`lower(${events.description}) LIKE ${pattern} ESCAPE '\\'`)!))
+        .where(and(isNull(events.archivedAt), or(sql`lower(${events.title}) LIKE ${pattern} ESCAPE '\\'`, sql`lower(${events.description}) LIKE ${pattern} ESCAPE '\\'`)!))
         .orderBy(events.startAt, events.id)
         .limit(perTypeLimit),
       this.db

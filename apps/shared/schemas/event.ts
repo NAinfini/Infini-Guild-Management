@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
 import { EVENT_TYPES } from "../constants/event-types";
-import { RECURRENCE_FREQUENCIES, RECURRENCE_SCOPES, POLL_RESULTS_VISIBILITIES } from "../constants/events";
+import { RECURRENCE_FREQUENCIES, POLL_RESULTS_VISIBILITIES } from "../constants/events";
 
 const L = LIMITS.content;
 
@@ -65,10 +65,8 @@ export const eventSchema = z.object({
   archived_at: z.string().nullable(),
   created_by: z.string(),
   updated_by: z.string().nullable(),
-  recurrence_rule: recurrenceRuleSchema.nullable(),
   attachments: eventAttachmentsSchema.default([]),
   series_id: z.string().nullable(),
-  is_series_parent: z.boolean(),
   instance_date: z.string().nullable(),
   poll: eventPollSchema.nullable().optional(),
   winner_count: z.number().int().nullable().optional(),
@@ -85,7 +83,6 @@ const eventMutationSchema = z.object({
   end_at: z.string().datetime().optional(),
   capacity: z.number().int().positive().optional(),
   attachments: eventAttachmentsSchema.optional(),
-  recurrence_rule: recurrenceRuleSchema.optional(),
   auto_archive: z.boolean().optional(),
   poll: pollSettingsSchema.optional(),
   winner_count: z.number().int().positive().optional(),
@@ -98,7 +95,6 @@ function refineEventRules(
     end_at?: string;
     poll?: unknown;
     capacity?: unknown;
-    recurrence_rule?: unknown;
     winner_count?: unknown;
   },
   ctx: z.RefinementCtx,
@@ -117,9 +113,6 @@ function refineEventRules(
     if (value.capacity !== undefined) {
       ctx.addIssue({ code: "custom", path: ["capacity"], message: "Poll events do not use capacity" });
     }
-    if (value.recurrence_rule !== undefined) {
-      ctx.addIssue({ code: "custom", path: ["recurrence_rule"], message: "Poll events cannot recur" });
-    }
   } else if (isUpdate ? (value.type !== undefined && value.poll !== undefined) : value.poll !== undefined) {
     ctx.addIssue({ code: "custom", path: ["poll"], message: "Only poll events can include poll settings" });
   }
@@ -129,9 +122,6 @@ function refineEventRules(
     }
     if (!isUpdate && !value.winner_count) {
       ctx.addIssue({ code: "custom", path: ["winner_count"], message: "Raffle events require winner_count" });
-    }
-    if (value.recurrence_rule !== undefined) {
-      ctx.addIssue({ code: "custom", path: ["recurrence_rule"], message: "Raffle events cannot recur" });
     }
   } else if (isUpdate ? (value.type !== undefined && value.winner_count !== undefined) : value.winner_count !== undefined) {
     ctx.addIssue({ code: "custom", path: ["winner_count"], message: "Only raffle events can include winner_count" });
@@ -144,7 +134,6 @@ export const updateEventSchema = eventMutationSchema.partial().extend({
   pinned: z.boolean().optional(),
   signup_locked: z.boolean().optional(),
   archived_at: z.string().datetime().nullable().optional(),
-  recurrence_scope: z.enum(RECURRENCE_SCOPES).optional(),
 }).superRefine((v, ctx) => refineEventRules(v, ctx, true));
 
 export const eventParticipantSchema = z.object({
@@ -165,17 +154,18 @@ export const recurringTemplateSchema = z.object({
   type: z.enum(EVENT_TYPES),
   title: z.string(),
   description: z.string().nullable(),
-  start_at: z.string(),
-  end_at: z.string().nullable(),
+  start_time: z.string(),
+  duration_minutes: z.number().int().nullable(),
   capacity: z.number().int().nullable(),
   recurrence_rule: recurrenceRuleSchema,
+  visibility_offset_minutes: z.number().int(),
   auto_archive: z.boolean(),
-  visibility_offset_minutes: z.number().nullable(),
-  visible_at: z.string().nullable(),
-  archived_at: z.string().nullable(),
+  attachments: eventAttachmentsSchema.default([]),
+  paused: z.boolean(),
   created_by: z.string(),
   last_generated_date: z.string().nullable(),
   generation_count: z.number().int(),
+  timezone_offset_minutes: z.number().int(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -184,12 +174,13 @@ export const createTemplateSchema = z.object({
   type: z.enum(EVENT_TYPES),
   title: z.string().min(L.eventTitle.min).max(L.eventTitle.max),
   description: z.string().max(L.eventDescription.max).optional(),
-  start_at: z.string().datetime(),
-  end_at: z.string().datetime().optional(),
+  start_time: z.string().regex(/^\d{2}:\d{2}$/),
+  duration_minutes: z.number().int().min(0).optional(),
   capacity: z.number().int().positive().optional(),
   recurrence_rule: recurrenceRuleSchema,
   visibility_offset_minutes: z.number().int().min(0).optional(),
   auto_archive: z.boolean().optional(),
+  timezone_offset_minutes: z.number().int(),
 });
 
 export const updateTemplateSchema = createTemplateSchema.partial();

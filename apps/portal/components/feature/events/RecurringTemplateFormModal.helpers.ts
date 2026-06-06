@@ -1,5 +1,5 @@
 import { EVENT_TYPES, type RecurringTemplate } from "@guild/shared";
-// Local↔UTC weekday conversion lives in the shared package so the portal and the
+// Local<->UTC weekday conversion lives in the shared package so the portal and the
 // backend cron cannot drift on the `daysOfWeek` = UTC-weekday contract.
 import { localWeekdayToUtc, utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
 
@@ -13,8 +13,9 @@ export type RecurringTemplateFormPayload = {
   type: (typeof EVENT_TYPES)[number];
   title: string;
   description?: string;
-  start_at: string;
-  end_at?: string;
+  start_time: string;
+  duration_minutes?: number;
+  timezone_offset_minutes: number;
   capacity?: number;
   recurrence_rule: {
     frequency: RecurrenceFreq;
@@ -36,6 +37,7 @@ export type RecurringTemplateFormState = {
   durationValue: number;
   durationUnit: DurationUnit;
   capacity: string;
+  visibilityOffsetDays: number | "";
   visibilityOffsetHours: number | "";
   visibilityOffsetMinutes: number | "";
   autoArchive: boolean;
@@ -50,60 +52,35 @@ export type RecurringTemplateFormState = {
 
 export const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 
-export function extractTimeFromIso(iso: string | null): string {
-  if (!iso) return "";
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return "";
-  const hours = String(parsed.getHours()).padStart(2, "0");
-  const minutes = String(parsed.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
+/**
+ * Build a synthetic ISO string whose local-vs-UTC day shift matches the given
+ * timezone offset in minutes.  This lets us reuse the existing
+ * `localWeekdayToUtc` / `utcWeekdayToLocal` helpers that expect an ISO anchor.
+ */
+export function tzOffsetToAnchorIso(offsetMinutes: number): string {
+  return new Date(Date.UTC(2026, 0, 4, 0, 0) - offsetMinutes * 60_000).toISOString();
 }
 
-export function computeDurationFromIso(startIso: string | null, endIso: string | null): { value: number; unit: DurationUnit } {
-  if (!startIso || !endIso) return { value: 2, unit: "hours" };
-  const startMs = Date.parse(startIso);
-  const endMs = Date.parse(endIso);
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
-    return { value: 2, unit: "hours" };
-  }
-  const diffMinutes = Math.round((endMs - startMs) / 60_000);
-  if (diffMinutes > 0 && diffMinutes < 60) {
-    return { value: diffMinutes, unit: "minutes" };
-  }
-  const diffHours = diffMinutes / 60;
-  if (Number.isInteger(diffHours)) {
-    return { value: diffHours, unit: "hours" };
-  }
-  return { value: diffMinutes, unit: "minutes" };
-}
-
-export function timeToTodayIso(time: string): string | undefined {
-  if (!time) return undefined;
-  const [hours, minutes] = time.split(":").map(Number) as [number, number];
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return undefined;
-  const date = new Date();
-  date.setHours(hours, minutes, 0, 0);
-  return date.toISOString();
-}
-
-export function addDuration(startIso: string, durationValue: number, durationUnit: DurationUnit): string {
-  const startMs = Date.parse(startIso);
-  const durationMs = durationUnit === "hours" ? durationValue * 3_600_000 : durationValue * 60_000;
-  return new Date(startMs + durationMs).toISOString();
+function durationFromMinutes(totalMinutes: number | null): { value: number; unit: DurationUnit } {
+  if (totalMinutes == null || totalMinutes <= 0) return { value: 2, unit: "hours" };
+  if (totalMinutes < 60) return { value: totalMinutes, unit: "minutes" };
+  if (totalMinutes % 60 === 0) return { value: totalMinutes / 60, unit: "hours" };
+  return { value: totalMinutes, unit: "minutes" };
 }
 
 export function buildFormState(template: RecurringTemplate | null): RecurringTemplateFormState {
-  const duration = computeDurationFromIso(template?.start_at ?? null, template?.end_at ?? null);
+  const duration = durationFromMinutes(template?.duration_minutes ?? null);
   const totalMinutes = template?.visibility_offset_minutes ?? null;
   const storedDays = template?.recurrence_rule?.daysOfWeek ?? [1, 3, 5];
-  const localDays = template?.start_at
-    ? storedDays.map((d) => utcWeekdayToLocal(d, template.start_at))
+  const anchorIso = template ? tzOffsetToAnchorIso(template.timezone_offset_minutes) : null;
+  const localDays = anchorIso
+    ? storedDays.map((d) => utcWeekdayToLocal(d, anchorIso))
     : storedDays;
   return {
     title: template?.title ?? "",
     eventType: (template?.type as (typeof EVENT_TYPES)[number]) ?? ("" as (typeof EVENT_TYPES)[number]),
     description: template?.description ?? "",
-    startTime: template ? extractTimeFromIso(template.start_at) : "",
+    startTime: template?.start_time ?? "",
     durationValue: duration.value,
     durationUnit: duration.unit,
     capacity: template?.capacity === null ? "" : String(template?.capacity ?? ""),
@@ -122,7 +99,8 @@ export function buildFormState(template: RecurringTemplate | null): RecurringTem
     recurrenceEndCount: template?.recurrence_rule?.endAfter
       ? String(template.recurrence_rule.endAfter)
       : "13",
-    visibilityOffsetHours: totalMinutes != null ? Math.floor(totalMinutes / 60) : "",
+    visibilityOffsetDays: totalMinutes != null ? Math.floor(totalMinutes / 1440) : "",
+    visibilityOffsetHours: totalMinutes != null ? Math.floor((totalMinutes % 1440) / 60) : "",
     visibilityOffsetMinutes: totalMinutes != null ? totalMinutes % 60 : "",
     autoArchive: template?.auto_archive ?? false,
   };

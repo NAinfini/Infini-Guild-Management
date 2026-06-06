@@ -10,7 +10,6 @@ export async function runRaffleDrawCron(env: Bindings): Promise<void> {
      WHERE e.type = 'raffle'
        AND e.winner_count > 0
        AND e.archived_at IS NULL
-       AND e.is_series_parent = 0
        AND e.end_at IS NOT NULL
        AND e.end_at <= ?1
        AND NOT EXISTS (SELECT 1 FROM event_raffle_winners w WHERE w.event_id = e.id)`,

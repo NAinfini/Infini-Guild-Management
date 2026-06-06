@@ -1,7 +1,7 @@
-import { and, eq, isNull, not } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { events } from "../db/schema";
+import { events, recurringTemplates } from "../db/schema";
 import type { Bindings } from "../index";
 import { logger } from "../utils/logger";
 
@@ -77,53 +77,47 @@ function toDateKey(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
-function computeEndAt(startAtIso: string, endAtIso: string | null, nextStartAtIso: string): string | null {
-  if (!endAtIso) {
+function parseStartTime(startTime: string, timezoneOffsetMinutes: number): { utcHour: number; utcMinute: number } | null {
+  const match = startTime.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+  const localHour = Number(match[1]);
+  const localMinute = Number(match[2]);
+  if (localHour < 0 || localHour > 23 || localMinute < 0 || localMinute > 59) {
     return null;
   }
 
-  const startMs = Date.parse(startAtIso);
-  const endMs = Date.parse(endAtIso);
-  const nextStartMs = Date.parse(nextStartAtIso);
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || !Number.isFinite(nextStartMs) || endMs <= startMs) {
-    return null;
-  }
-
-  return new Date(nextStartMs + (endMs - startMs)).toISOString();
+  const totalMinutesLocal = localHour * 60 + localMinute;
+  let totalMinutesUtc = totalMinutesLocal - timezoneOffsetMinutes;
+  totalMinutesUtc = ((totalMinutesUtc % 1440) + 1440) % 1440;
+  return { utcHour: Math.floor(totalMinutesUtc / 60), utcMinute: totalMinutesUtc % 60 };
 }
 
-/**
- * Compute the next occurrence date after `anchor` according to the recurrence rule.
- * Uses the template's `startAt` for time-of-day reference.
- */
-function computeNextOccurrence(anchor: Date, templateStart: Date, rule: RecurrenceRule): Date | null {
+function computeNextOccurrence(anchor: Date, utcHour: number, utcMinute: number, rule: RecurrenceRule, referenceDate: Date): Date | null {
   if (rule.frequency === "daily") {
     const next = new Date(anchor);
     next.setUTCDate(next.getUTCDate() + rule.interval);
-    // Preserve time-of-day from template
-    next.setUTCHours(templateStart.getUTCHours(), templateStart.getUTCMinutes(), templateStart.getUTCSeconds(), 0);
+    next.setUTCHours(utcHour, utcMinute, 0, 0);
     return isValidDate(next) ? next : null;
   }
 
   if (rule.frequency === "weekly") {
     const days = rule.daysOfWeek && rule.daysOfWeek.length > 0
       ? [...rule.daysOfWeek].sort((a, b) => a - b)
-      : [templateStart.getUTCDay()];
+      : [referenceDate.getUTCDay()];
 
-    // Start from the day after anchor and scan forward
     const cursor = new Date(anchor);
     cursor.setUTCDate(cursor.getUTCDate() + 1);
-    cursor.setUTCHours(templateStart.getUTCHours(), templateStart.getUTCMinutes(), templateStart.getUTCSeconds(), 0);
+    cursor.setUTCHours(utcHour, utcMinute, 0, 0);
 
-    // Scan up to interval * 7 + 7 days to find the next matching weekday
     const maxScan = rule.interval * 7 + 7;
     for (let i = 0; i < maxScan; i++) {
       const candidateDay = cursor.getUTCDay();
       if (days.includes(candidateDay)) {
-        // Check we're in a valid week (respecting interval)
-        const templateDay = new Date(Date.UTC(templateStart.getUTCFullYear(), templateStart.getUTCMonth(), templateStart.getUTCDate()));
+        const refDay = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate()));
         const cursorDay = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), cursor.getUTCDate()));
-        const daysDiff = Math.round((cursorDay.getTime() - templateDay.getTime()) / DAY_MS);
+        const daysDiff = Math.round((cursorDay.getTime() - refDay.getTime()) / DAY_MS);
         const weeksDiff = Math.floor(daysDiff / 7);
         if (weeksDiff >= 0 && weeksDiff % rule.interval === 0) {
           return cursor;
@@ -138,19 +132,19 @@ function computeNextOccurrence(anchor: Date, templateStart: Date, rule: Recurren
   const next = new Date(anchor);
   next.setUTCMonth(next.getUTCMonth() + rule.interval);
   if (rule.dayOfMonth) {
-    // Set to the target day, clamping to month's last day
     const year = next.getUTCFullYear();
     const month = next.getUTCMonth();
     const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
     next.setUTCDate(Math.min(rule.dayOfMonth, lastDay));
   }
-  next.setUTCHours(templateStart.getUTCHours(), templateStart.getUTCMinutes(), templateStart.getUTCSeconds(), 0);
+  next.setUTCHours(utcHour, utcMinute, 0, 0);
   return isValidDate(next) ? next : null;
 }
 
-export function computeHorizon(now: Date): Date {
+export function computeHorizon(now: Date, offsetMinutes = 0): Date {
   const horizon = new Date(now);
   horizon.setUTCDate(horizon.getUTCDate() + 3);
+  horizon.setTime(horizon.getTime() + offsetMinutes * 60_000);
   return horizon;
 }
 
@@ -159,33 +153,30 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
   const now = new Date();
   const MAX_CATCHUP = 10;
 
-  // Fetch active templates (is_series_parent = true, not archived, has recurrence_rule).
-  // When `templateId` is provided (request-triggered materialization), scope to that
-  // one series instead of scanning every template.
   const templates = await db
     .select({
-      id: events.id,
-      type: events.type,
-      title: events.title,
-      description: events.description,
-      startAt: events.startAt,
-      endAt: events.endAt,
-      capacity: events.capacity,
-      createdBy: events.createdBy,
-      recurrenceRule: events.recurrenceRule,
-      attachments: events.attachments,
-      lastGeneratedDate: events.lastGeneratedDate,
-      generationCount: events.generationCount,
-      visibilityOffsetMinutes: events.visibilityOffsetMinutes,
-      autoArchive: events.autoArchive,
+      id: recurringTemplates.id,
+      type: recurringTemplates.type,
+      title: recurringTemplates.title,
+      description: recurringTemplates.description,
+      startTime: recurringTemplates.startTime,
+      durationMinutes: recurringTemplates.durationMinutes,
+      capacity: recurringTemplates.capacity,
+      createdBy: recurringTemplates.createdBy,
+      recurrenceRule: recurringTemplates.recurrenceRule,
+      attachments: recurringTemplates.attachments,
+      lastGeneratedDate: recurringTemplates.lastGeneratedDate,
+      generationCount: recurringTemplates.generationCount,
+      visibilityOffsetMinutes: recurringTemplates.visibilityOffsetMinutes,
+      autoArchive: recurringTemplates.autoArchive,
+      timezoneOffsetMinutes: recurringTemplates.timezoneOffsetMinutes,
+      createdAt: recurringTemplates.createdAt,
     })
-    .from(events)
+    .from(recurringTemplates)
     .where(
       and(
-        eq(events.isSeriesParent, true),
-        isNull(events.archivedAt),
-        not(isNull(events.recurrenceRule)),
-        ...(options.templateId ? [eq(events.id, options.templateId)] : []),
+        eq(recurringTemplates.paused, false),
+        ...(options.templateId ? [eq(recurringTemplates.id, options.templateId)] : []),
       ),
     );
 
@@ -195,12 +186,17 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
       continue;
     }
 
-    const templateStart = new Date(template.startAt);
-    if (!isValidDate(templateStart)) {
+    const utcTime = parseStartTime(template.startTime, template.timezoneOffsetMinutes);
+    if (!utcTime) {
       continue;
     }
 
-    // Check end conditions
+    // Use createdAt as the reference date for recurrence anchoring
+    const referenceDate = new Date(template.createdAt);
+    if (!isValidDate(referenceDate)) {
+      continue;
+    }
+
     if (rule.endAfter && template.generationCount >= rule.endAfter) {
       continue;
     }
@@ -211,43 +207,49 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
       }
     }
 
-    // Determine anchor: last generated date or template start
-    let anchor = templateStart;
+    // Bug 2 fix: when lastGeneratedDate is null, anchor to one day before the reference
+    // so computeNextOccurrence naturally finds the reference date itself.
+    let anchor: Date;
     if (template.lastGeneratedDate) {
       const lastGenDate = new Date(`${template.lastGeneratedDate}T00:00:00Z`);
       if (isValidDate(lastGenDate)) {
-        // Use last generated date with template's time
-        lastGenDate.setUTCHours(templateStart.getUTCHours(), templateStart.getUTCMinutes(), templateStart.getUTCSeconds(), 0);
+        lastGenDate.setUTCHours(utcTime.utcHour, utcTime.utcMinute, 0, 0);
         anchor = lastGenDate;
+      } else {
+        anchor = new Date(referenceDate);
+        anchor.setUTCDate(anchor.getUTCDate() - 1);
+        anchor.setUTCHours(utcTime.utcHour, utcTime.utcMinute, 0, 0);
       }
+    } else {
+      anchor = new Date(referenceDate);
+      anchor.setUTCDate(anchor.getUTCDate() - 1);
+      anchor.setUTCHours(utcTime.utcHour, utcTime.utcMinute, 0, 0);
     }
 
-    const horizon = computeHorizon(now);
+    // Bug 1 fix: extend horizon by visibilityOffsetMinutes so events needing early creation are included
+    const horizon = computeHorizon(now, template.visibilityOffsetMinutes);
     let currentAnchor = anchor;
     let generationCount = template.generationCount;
     let catchupCount = 0;
     let lastDateKey: string | null = null;
 
     while (catchupCount < MAX_CATCHUP) {
-      const nextOccurrence = computeNextOccurrence(currentAnchor, templateStart, rule);
+      const nextOccurrence = computeNextOccurrence(currentAnchor, utcTime.utcHour, utcTime.utcMinute, rule, referenceDate);
       if (!nextOccurrence) {
         break;
       }
 
-      // Stop if beyond the lookahead horizon
       if (nextOccurrence > horizon) {
         break;
       }
 
-      // Respect creation offset: only create the instance when now >= start - offset
-      if (template.visibilityOffsetMinutes != null && template.visibilityOffsetMinutes > 0) {
+      if (template.visibilityOffsetMinutes > 0) {
         const createAt = new Date(nextOccurrence.getTime() - template.visibilityOffsetMinutes * 60_000);
         if (now < createAt) {
           break;
         }
       }
 
-      // Stop if beyond the rule's end date
       if (rule.endDate) {
         const endDate = new Date(rule.endDate);
         if (isValidDate(endDate) && nextOccurrence > endDate) {
@@ -257,15 +259,17 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
 
       const nextStartIso = nextOccurrence.toISOString();
       const nextDateKey = toDateKey(nextOccurrence);
+      const nextEndAt = template.durationMinutes != null
+        ? new Date(nextOccurrence.getTime() + template.durationMinutes * 60_000).toISOString()
+        : null;
 
-      // INSERT OR IGNORE: the UNIQUE constraint on (series_id, instance_date) prevents duplicates
       const result = await db.insert(events).values({
         id: nanoid(),
         type: template.type,
         title: template.title,
         description: template.description,
         startAt: nextStartIso,
-        endAt: computeEndAt(template.startAt, template.endAt, nextStartIso),
+        endAt: nextEndAt,
         capacity: template.capacity,
         pinned: false,
         signupLocked: false,
@@ -273,13 +277,9 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
         autoArchived: false,
         archivedAt: null,
         createdBy: template.createdBy,
-        recurrenceRule: null,
         attachments: template.attachments,
         seriesId: template.id,
-        isSeriesParent: false,
         instanceDate: nextDateKey,
-        lastGeneratedDate: null,
-        generationCount: 0,
         updatedAt: now.toISOString(),
       }).onConflictDoNothing({ target: [events.seriesId, events.instanceDate] });
 
@@ -291,7 +291,6 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
       currentAnchor = nextOccurrence;
       catchupCount += 1;
 
-      // Stop if endAfter limit reached
       if (rule.endAfter && generationCount >= rule.endAfter) {
         break;
       }
@@ -299,13 +298,13 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
 
     if (lastDateKey) {
       await db
-        .update(events)
+        .update(recurringTemplates)
         .set({
           lastGeneratedDate: lastDateKey,
           generationCount,
           updatedAt: now.toISOString(),
         })
-        .where(eq(events.id, template.id));
+        .where(eq(recurringTemplates.id, template.id));
     }
   }
 }

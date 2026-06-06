@@ -16,10 +16,10 @@ import {
 } from "@mantine/core";
 import { PlayerPauseIcon, PlayerPlayIcon, SaveIcon, PlusIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
-import { addDuration, buildFormState, localWeekdayToUtc, timeToTodayIso, WEEKDAY_KEYS, type DurationUnit, type RecurrenceEndMode, type RecurrenceFreq, type RecurringTemplateFormPayload, type RecurringTemplateFormState } from "./RecurringTemplateFormModal.helpers";
+import { buildFormState, localWeekdayToUtc, tzOffsetToAnchorIso, WEEKDAY_KEYS, type DurationUnit, type RecurrenceEndMode, type RecurrenceFreq, type RecurringTemplateFormPayload, type RecurringTemplateFormState } from "./RecurringTemplateFormModal.helpers";
 
 export type { RecurringTemplateFormPayload } from "./RecurringTemplateFormModal.helpers";
 
@@ -88,36 +88,43 @@ export function RecurringTemplateFormModal({
     recurrenceEndMode,
     recurrenceEndDate,
     recurrenceEndCount,
+    visibilityOffsetDays,
     visibilityOffsetHours,
     visibilityOffsetMinutes,
     autoArchive,
   } = formState;
 
   const handleSave = useCallback(() => {
-    const startIso = timeToTodayIso(startTime);
-    if (!startIso || !title.trim() || !eventType) {
+    if (!startTime || !title.trim() || !eventType) {
       notifyError(t("recurring.message.validationFailed"));
       return;
     }
 
-    const endIso = durationValue > 0 ? addDuration(startIso, durationValue, durationUnit) : undefined;
+    const durationMinutes = durationValue > 0
+      ? durationValue * (durationUnit === "hours" ? 60 : 1)
+      : undefined;
 
+    const timezoneOffsetMinutes = -new Date().getTimezoneOffset();
+    const anchorIso = tzOffsetToAnchorIso(timezoneOffsetMinutes);
+
+    const offsetD = typeof visibilityOffsetDays === "number" ? visibilityOffsetDays : 0;
     const offsetH = typeof visibilityOffsetHours === "number" ? visibilityOffsetHours : 0;
     const offsetM = typeof visibilityOffsetMinutes === "number" ? visibilityOffsetMinutes : 0;
-    const totalOffsetMinutes = offsetH * 60 + offsetM;
+    const totalOffsetMinutes = offsetD * 1440 + offsetH * 60 + offsetM;
 
     onSave({
       type: eventType,
       title: title.trim(),
       description: description.trim() || undefined,
-      start_at: startIso,
-      end_at: endIso,
+      start_time: startTime,
+      duration_minutes: durationMinutes,
+      timezone_offset_minutes: timezoneOffsetMinutes,
       capacity: capacity.trim() ? Math.max(1, Number.parseInt(capacity, 10)) : undefined,
       recurrence_rule: {
         frequency: recurrenceFreq,
         interval: Math.max(1, Number.parseInt(recurrenceInterval || "1", 10)),
         daysOfWeek: recurrenceFreq === "weekly"
-          ? Array.from(new Set(recurrenceDays.map((d) => localWeekdayToUtc(d, startIso)))).sort((a, b) => a - b)
+          ? Array.from(new Set(recurrenceDays.map((d) => localWeekdayToUtc(d, anchorIso)))).sort((a, b) => a - b)
           : undefined,
         dayOfMonth: recurrenceFreq === "monthly" ? Math.max(1, Math.min(31, Number.parseInt(recurrenceMonthDay || "1", 10))) : undefined,
         endAfter: recurrenceEndMode === "count" ? Math.max(1, Number.parseInt(recurrenceEndCount || "1", 10)) : undefined,
@@ -130,10 +137,32 @@ export function RecurringTemplateFormModal({
     startTime, durationValue, durationUnit, title, description, eventType, capacity,
     recurrenceFreq, recurrenceInterval, recurrenceDays, recurrenceMonthDay,
     recurrenceEndMode, recurrenceEndDate, recurrenceEndCount,
-    visibilityOffsetHours, visibilityOffsetMinutes, autoArchive, onSave, t,
+    visibilityOffsetDays, visibilityOffsetHours, visibilityOffsetMinutes, autoArchive, onSave, t,
   ]);
 
-  const isPaused = mode === "edit" && template?.archived_at !== null;
+  const offsetHint = useMemo(() => {
+    const d = typeof visibilityOffsetDays === "number" ? visibilityOffsetDays : 0;
+    const h = typeof visibilityOffsetHours === "number" ? visibilityOffsetHours : 0;
+    const m = typeof visibilityOffsetMinutes === "number" ? visibilityOffsetMinutes : 0;
+    const totalMin = d * 1440 + h * 60 + m;
+    if (totalMin <= 0 || !startTime) return null;
+    const [sh, sm] = startTime.split(":").map(Number) as [number, number];
+    if (!Number.isFinite(sh) || !Number.isFinite(sm)) return null;
+    const startTotalMin = sh * 60 + sm;
+    let createMin = startTotalMin - totalMin;
+    let daysBefore = 0;
+    while (createMin < 0) {
+      createMin += 1440;
+      daysBefore++;
+    }
+    const createH = String(Math.floor(createMin / 60)).padStart(2, "0");
+    const createM = String(createMin % 60).padStart(2, "0");
+    const timeStr = `${createH}:${createM}`;
+    if (daysBefore === 0) return t("recurring.field.visibilityOffsetEstimate", { time: timeStr });
+    return t("recurring.field.visibilityOffsetEstimateDaysBefore", { days: daysBefore, time: timeStr });
+  }, [visibilityOffsetDays, visibilityOffsetHours, visibilityOffsetMinutes, startTime, t]);
+
+  const isPaused = mode === "edit" && (template?.paused ?? false);
 
   return (
     <Modal
@@ -406,7 +435,20 @@ export function RecurringTemplateFormModal({
           <Stack gap={12} style={sectionStyle}>
             <div>
               <Text size="sm" fw={500} mb={4}>{t("recurring.field.visibilityOffset")}</Text>
-              <Group gap={8} wrap="nowrap" style={{ maxWidth: 300 }}>
+              <Group gap={8} wrap="nowrap" style={{ maxWidth: 420 }}>
+                <NumberInput
+                  value={visibilityOffsetDays}
+                  onChange={(value) =>
+                    setFormState((current) => ({
+                      ...current,
+                      visibilityOffsetDays: typeof value === "number" ? value : "",
+                    }))
+                  }
+                  min={0}
+                  hideControls
+                  suffix={` ${t("recurring.field.durationUnit.days").toLowerCase()}`}
+                  style={{ flex: 1 }}
+                />
                 <NumberInput
                   value={visibilityOffsetHours}
                   onChange={(value) =>
@@ -416,6 +458,7 @@ export function RecurringTemplateFormModal({
                     }))
                   }
                   min={0}
+                  max={23}
                   hideControls
                   suffix={` ${t("recurring.field.durationUnit.hours").toLowerCase()}`}
                   style={{ flex: 1 }}
@@ -435,7 +478,9 @@ export function RecurringTemplateFormModal({
                   style={{ flex: 1 }}
                 />
               </Group>
-              <Text size="xs" c="dimmed" mt={4}>{t("recurring.field.visibilityOffsetHint")}</Text>
+              <Text size="xs" c="dimmed" mt={4}>
+                {offsetHint ?? t("recurring.field.visibilityOffsetHint")}
+              </Text>
             </div>
             <Switch
               checked={autoArchive}
@@ -453,7 +498,7 @@ export function RecurringTemplateFormModal({
         <Group justify={mode === "edit" ? "space-between" : "flex-end"} wrap="wrap" gap={8}>
           {mode === "edit" && template && (
             <Group gap={8}>
-              {template.archived_at ? (
+              {template.paused ? (
                 <Button
                   variant="light"
                   color="green"

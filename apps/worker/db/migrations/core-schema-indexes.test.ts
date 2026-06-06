@@ -6,7 +6,7 @@ const schemaSql = readFileSync("apps/worker/db/migrations/0000_core_schema.sql",
 describe("core schema performance indexes", () => {
   it("includes composite indexes for hot list and filtered lookup queries", () => {
     const expectedIndexes = [
-      "idx_events_series_archived_start",
+      "idx_events_archived_start",
       "idx_war_history_event_created",
       "idx_audit_log_entity_created",
       "idx_audit_log_actor_created",

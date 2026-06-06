@@ -27,15 +27,20 @@ export const eventsRoutes = new Hono();
 
 function getEventService(c: Context) {
   const db = getDb(c);
-  const svc: EventService = new EventService(db as never, (c.env as Bindings).DB as never, (c.env as Bindings).MEDIA as never, {
-    getEventById: (eventId) => svc.getEventById(eventId),
-    getUsername: async (userId) => {
+  const deps = {
+    getEventById: (eventId: string) => svc.getEventById(eventId),
+    getUsername: async (userId: string) => {
       const row = (await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1))[0];
       return row?.username ?? null;
     },
-    materializeRecurringSeries: (templateId) => materializeRecurringSeries(c, templateId),
     ...commonDeps(c),
-  });
+  };
+  const templateDeps = {
+    getTemplateById: (templateId: string) => svc.getTemplateById(templateId),
+    materializeRecurringSeries: (templateId: string) => materializeRecurringSeries(c, templateId),
+    writeAuditLog: deps.writeAuditLog,
+  };
+  const svc: EventService = new EventService(db as never, (c.env as Bindings).DB as never, (c.env as Bindings).MEDIA as never, deps, templateDeps);
   return svc;
 }
 
@@ -241,8 +246,8 @@ eventsRoutes.patch("/templates/:id", async (c) => {
   const sessionUser = await requireEventTemplates(c);
   if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
-  const existing = await svc.getEventById(c.req.param("id"));
-  if (!existing || !existing.isSeriesParent) return buildError(c, "NOT_FOUND", "Template not found");
+  const existing = await svc.getTemplateById(c.req.param("id"));
+  if (!existing) return buildError(c, "NOT_FOUND", "Template not found");
   const body = await parseJsonBody(c);
   if (body instanceof Response) return body;
   const parsed = updateTemplateSchema.safeParse(body);
@@ -256,8 +261,8 @@ eventsRoutes.post("/templates/:id/pause", async (c) => {
   const sessionUser = await requireEventTemplates(c);
   if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
-  const existing = await svc.getEventById(c.req.param("id"));
-  if (!existing || !existing.isSeriesParent) return buildError(c, "NOT_FOUND", "Template not found");
+  const existing = await svc.getTemplateById(c.req.param("id"));
+  if (!existing) return buildError(c, "NOT_FOUND", "Template not found");
   await svc.pauseTemplate(sessionUser.id, existing.id, existing);
   return c.json({ ok: true });
 });
@@ -266,8 +271,8 @@ eventsRoutes.post("/templates/:id/resume", async (c) => {
   const sessionUser = await requireEventTemplates(c);
   if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
-  const existing = await svc.getEventById(c.req.param("id"));
-  if (!existing || !existing.isSeriesParent) return buildError(c, "NOT_FOUND", "Template not found");
+  const existing = await svc.getTemplateById(c.req.param("id"));
+  if (!existing) return buildError(c, "NOT_FOUND", "Template not found");
   await svc.resumeTemplate(sessionUser.id, existing.id, existing);
   return c.json({ ok: true });
 });
@@ -276,8 +281,8 @@ eventsRoutes.delete("/templates/:id", async (c) => {
   const sessionUser = await requireEventTemplates(c);
   if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
-  const existing = await svc.getEventById(c.req.param("id"));
-  if (!existing || !existing.isSeriesParent) return buildError(c, "NOT_FOUND", "Template not found");
+  const existing = await svc.getTemplateById(c.req.param("id"));
+  if (!existing) return buildError(c, "NOT_FOUND", "Template not found");
   await svc.deleteTemplate(sessionUser.id, existing.id, existing);
   return c.json({ ok: true });
 });

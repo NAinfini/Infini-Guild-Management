@@ -3,7 +3,6 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
 import { eventParticipants, events, users, warTeamMembers } from "../../db/schema";
-import { parseRecurrenceRule } from "../EventService";
 import { err, ok, type ServiceResult } from "../result";
 import {
   buildActiveEtag,
@@ -43,9 +42,9 @@ export class GuildWarActiveService extends GuildWarCoreService {
   }
 
   private async getEventPayload(eventId: string): Promise<EventPayload> {
-    const eventRow = (await this.db.select({ id: events.id, type: events.type, title: events.title, description: events.description, startAt: events.startAt, endAt: events.endAt, capacity: events.capacity, pinned: events.pinned, signupLocked: events.signupLocked, autoArchive: events.autoArchive, autoArchived: events.autoArchived, visibleAt: events.visibleAt, archivedAt: events.archivedAt, createdBy: events.createdBy, updatedBy: events.updatedBy, recurrenceRule: events.recurrenceRule, visibilityOffsetMinutes: events.visibilityOffsetMinutes, seriesId: events.seriesId, isSeriesParent: events.isSeriesParent, instanceDate: events.instanceDate, createdAt: events.createdAt, updatedAt: events.updatedAt }).from(events).where(eq(events.id, eventId)).limit(1))[0];
+    const eventRow = (await this.db.select({ id: events.id, type: events.type, title: events.title, description: events.description, startAt: events.startAt, endAt: events.endAt, capacity: events.capacity, pinned: events.pinned, signupLocked: events.signupLocked, autoArchive: events.autoArchive, autoArchived: events.autoArchived, visibleAt: events.visibleAt, archivedAt: events.archivedAt, createdBy: events.createdBy, updatedBy: events.updatedBy, seriesId: events.seriesId, instanceDate: events.instanceDate, createdAt: events.createdAt, updatedAt: events.updatedAt }).from(events).where(eq(events.id, eventId)).limit(1))[0];
     if (!eventRow) return null;
-    return eventSchema.parse({ id: eventRow.id, type: eventRow.type, title: eventRow.title, description: eventRow.description, start_at: eventRow.startAt, end_at: eventRow.endAt ?? null, capacity: eventRow.capacity ?? null, pinned: eventRow.pinned, signup_locked: eventRow.signupLocked, auto_archive: eventRow.autoArchive, auto_archived: eventRow.autoArchived, visible_at: eventRow.visibleAt ?? null, archived_at: eventRow.archivedAt ?? null, created_by: eventRow.createdBy, updated_by: eventRow.updatedBy ?? null, recurrence_rule: parseRecurrenceRule(eventRow.recurrenceRule), visibility_offset_minutes: eventRow.visibilityOffsetMinutes ?? null, series_id: eventRow.seriesId ?? null, is_series_parent: eventRow.isSeriesParent, instance_date: eventRow.instanceDate ?? null, created_at: eventRow.createdAt, updated_at: eventRow.updatedAt });
+    return eventSchema.parse({ id: eventRow.id, type: eventRow.type, title: eventRow.title, description: eventRow.description, start_at: eventRow.startAt, end_at: eventRow.endAt ?? null, capacity: eventRow.capacity ?? null, pinned: eventRow.pinned, signup_locked: eventRow.signupLocked, auto_archive: eventRow.autoArchive, auto_archived: eventRow.autoArchived, visible_at: eventRow.visibleAt ?? null, archived_at: eventRow.archivedAt ?? null, created_by: eventRow.createdBy, updated_by: eventRow.updatedBy ?? null, series_id: eventRow.seriesId ?? null, instance_date: eventRow.instanceDate ?? null, created_at: eventRow.createdAt, updated_at: eventRow.updatedAt });
   }
 
   private async getEventParticipantUserIds(eventId: string): Promise<string[]> {

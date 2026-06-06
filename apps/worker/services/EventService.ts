@@ -2,6 +2,7 @@ import { EventCrudService } from "./events/EventCrudService";
 import { EventParticipantService } from "./events/EventParticipantService";
 import { EventPollRaffleService } from "./events/EventPollRaffleService";
 import { EventTemplateService } from "./events/EventTemplateService";
+import type { TemplateRow, TemplateServiceDeps } from "./events/EventTemplateService";
 import type {
   CreateEventInput,
   DatabaseLike,
@@ -20,10 +21,10 @@ export {
   parseRecurrenceRule,
   toEventPayload,
   toRaffleWinnerPayload,
-  toTemplatePayload,
   type EventRow,
   type RaffleWinnerRow,
 } from "./events/EventCrudService";
+export { toTemplatePayload, type TemplateRow } from "./events/EventTemplateService";
 export { toParticipantPayload, type EventParticipantRow } from "./events/EventParticipantService";
 
 export class EventService {
@@ -32,10 +33,10 @@ export class EventService {
   private readonly templates: EventTemplateService;
   private readonly pollRaffle: EventPollRaffleService;
 
-  constructor(db: DatabaseLike, rawDb: RawDbLike, media: MediaLike, deps: EventServiceDeps) {
+  constructor(db: DatabaseLike, rawDb: RawDbLike, media: MediaLike, deps: EventServiceDeps, templateDeps: TemplateServiceDeps) {
     this.crud = new EventCrudService(db, rawDb, media, deps);
     this.participants = new EventParticipantService(db, rawDb, deps);
-    this.templates = new EventTemplateService(db, rawDb, deps);
+    this.templates = new EventTemplateService(db, rawDb, templateDeps);
     this.pollRaffle = new EventPollRaffleService(db, rawDb, deps);
   }
 
@@ -105,26 +106,30 @@ export class EventService {
   updateTemplate(
     actorId: string,
     templateId: string,
-    existing: EventRow,
+    existing: TemplateRow,
     data: Parameters<EventTemplateService["updateTemplate"]>[3],
   ) {
     return this.templates.updateTemplate(actorId, templateId, existing, data);
   }
 
-  pauseTemplate(actorId: string, templateId: string, existing: EventRow) {
+  pauseTemplate(actorId: string, templateId: string, existing: TemplateRow) {
     return this.templates.pauseTemplate(actorId, templateId, existing);
   }
 
-  resumeTemplate(actorId: string, templateId: string, existing: EventRow) {
+  resumeTemplate(actorId: string, templateId: string, existing: TemplateRow) {
     return this.templates.resumeTemplate(actorId, templateId, existing);
   }
 
-  deleteTemplate(actorId: string, templateId: string, existing: EventRow) {
+  deleteTemplate(actorId: string, templateId: string, existing: TemplateRow) {
     return this.templates.deleteTemplate(actorId, templateId, existing);
   }
 
   getEventById(eventId: string): Promise<EventRow | null> {
     return this.crud.getEventById(eventId);
+  }
+
+  getTemplateById(templateId: string): Promise<TemplateRow | null> {
+    return this.templates.getTemplateById(templateId);
   }
 
   listEvents(params: Parameters<EventCrudService["listEvents"]>[0]) {

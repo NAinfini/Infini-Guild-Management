@@ -1,7 +1,7 @@
 // Domain: Wiki
 // Tables: wiki_categories, wiki_articles
 // Dependencies: auth.users
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { type AnySQLiteColumn, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
 import { nowUtc } from "./shared";
 
@@ -12,7 +12,7 @@ export const wikiCategories = sqliteTable(
     name: text("name").notNull(),
     slug: text("slug").notNull().unique(),
     sortOrder: integer("sort_order").notNull().default(0),
-    parentId: text("parent_id"),
+    parentId: text("parent_id").references((): AnySQLiteColumn => wikiCategories.id, { onDelete: "set null" }),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },

@@ -243,7 +243,7 @@ export function EventCardsView({
           const participantActionDisabled = joinPending || leavePending || isArchived || (!isJoined && (event.signup_locked || isFull || hasEnded));
           const statusIndicators = (
             <>
-              {event.recurrence_rule && event.series_id ? (
+              {event.series_id ? (
                 <EventStatusIndicator
                   color="teal"
                   icon={<RefreshCwIcon size={16} />}

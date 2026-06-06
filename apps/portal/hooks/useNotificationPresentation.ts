@@ -44,63 +44,46 @@ function resolveSignalPayload(message: PushMessage, t: (key: string, options?: R
   }
 
   if (message.type === "entity_changed") {
-    switch (message.entity_type) {
-      case "event":
-        return {
-          key: `event:${message.entity_id}:${message.hint}`,
-          titleKey: "notification.type.eventReminder",
-          message: resolveHintMessage(message.hint, t),
-          color: "yellow",
-          frequencyHz: 660,
-        };
-      case "wiki":
-        return {
-          key: `wiki:${message.entity_id}:${message.hint}`,
-          titleKey: "notification.type.wiki",
-          message: resolveHintMessage(message.hint, t),
-          color: "blue",
-          frequencyHz: 660,
-        };
-      case "member_profile":
-        return {
-          key: `member:${message.entity_id}:${message.hint}`,
-          titleKey: "notification.type.memberOnline",
-          message: resolveHintMessage(message.hint, t),
-          color: "yellow",
-          frequencyHz: 660,
-        };
-      case "announcement":
-        return {
-          key: `announcement:${message.entity_id}:${message.hint}`,
-          titleKey: "notification.type.announcement",
-          message: resolveHintMessage(message.hint, t),
-          color: "blue",
-          frequencyHz: 660,
-        };
-      case "gallery":
-        return {
-          key: `gallery:${message.entity_id}:${message.hint}`,
-          titleKey: "notification.type.gallery",
-          message: resolveHintMessage(message.hint, t),
-          color: "blue",
-          frequencyHz: 660,
-        };
-      case "guild_war":
-        return {
-          key: `guild_war:${message.entity_id}:${message.hint}`,
-          titleKey: "notification.type.guildWar",
-          message: resolveHintMessage(message.hint, t),
-          color: "yellow",
-          frequencyHz: 660,
-        };
-      case "member_badge":
-        return {
-          key: `badge:${message.entity_id}:${message.hint}`,
-          titleKey: "notification.type.badge",
-          message: resolveHintMessage(message.hint, t),
-          color: "yellow",
-          frequencyHz: 660,
-        };
+    const hint = message.hint;
+
+    if (message.entity_type === "announcement" && hint === "announcement_created") {
+      return {
+        key: `announcement:${message.entity_id}:${hint}`,
+        titleKey: "notification.type.announcement",
+        message: resolveHintMessage(hint, t),
+        color: "blue",
+        frequencyHz: 660,
+      };
+    }
+
+    if (message.entity_type === "event" && hint === "event_created") {
+      return {
+        key: `event:${message.entity_id}:${hint}`,
+        titleKey: "notification.type.eventReminder",
+        message: resolveHintMessage(hint, t),
+        color: "yellow",
+        frequencyHz: 660,
+      };
+    }
+
+    if (message.entity_type === "wiki" && hint === "article_created") {
+      return {
+        key: `wiki:${message.entity_id}:${hint}`,
+        titleKey: "notification.type.wiki",
+        message: resolveHintMessage(hint, t),
+        color: "blue",
+        frequencyHz: 660,
+      };
+    }
+
+    if (message.entity_type === "member_profile" && hint === "member_joined") {
+      return {
+        key: `member:${message.entity_id}:${hint}`,
+        titleKey: "notification.type.memberOnline",
+        message: resolveHintMessage(hint, t),
+        color: "yellow",
+        frequencyHz: 660,
+      };
     }
   }
 

@@ -76,25 +76,40 @@ CREATE TABLE IF NOT EXISTS events (
   auto_archived INTEGER NOT NULL DEFAULT 0,
   created_by TEXT NOT NULL REFERENCES users(id),
   updated_by TEXT REFERENCES users(id),
-  recurrence_rule TEXT,
   attachments TEXT NOT NULL DEFAULT '[]',
   series_id TEXT,
-  is_series_parent INTEGER NOT NULL DEFAULT 0,
   instance_date TEXT,
+  winner_count INTEGER CHECK (winner_count > 0),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS recurring_templates (
+  id TEXT PRIMARY KEY NOT NULL,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  start_time TEXT NOT NULL,
+  duration_minutes INTEGER,
+  capacity INTEGER CHECK (capacity > 0),
+  recurrence_rule TEXT NOT NULL,
+  visibility_offset_minutes INTEGER NOT NULL DEFAULT 0,
+  auto_archive INTEGER NOT NULL DEFAULT 0,
+  attachments TEXT NOT NULL DEFAULT '[]',
+  paused INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT NOT NULL REFERENCES users(id),
   last_generated_date TEXT,
   generation_count INTEGER NOT NULL DEFAULT 0,
-  visibility_offset_minutes INTEGER,
-  winner_count INTEGER CHECK (winner_count > 0),
+  timezone_offset_minutes INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS event_participants (
   id TEXT PRIMARY KEY NOT NULL,
-  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  joined_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  UNIQUE(event_id, user_id)
+  event_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  joined_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS event_polls (
@@ -115,11 +130,17 @@ CREATE TABLE IF NOT EXISTS event_poll_options (
 
 CREATE TABLE IF NOT EXISTS event_poll_votes (
   id TEXT PRIMARY KEY NOT NULL,
-  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-  option_id TEXT NOT NULL REFERENCES event_poll_options(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  UNIQUE(event_id, option_id, user_id)
+  event_id TEXT NOT NULL,
+  option_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS event_raffle_winners (
+  id TEXT PRIMARY KEY NOT NULL,
+  event_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  drawn_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS announcements (
@@ -166,21 +187,19 @@ CREATE TABLE IF NOT EXISTS war_teams (
 
 CREATE TABLE IF NOT EXISTS war_team_members (
   id TEXT PRIMARY KEY NOT NULL,
-  war_team_id TEXT NOT NULL REFERENCES war_teams(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id),
+  war_team_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
   role_tag TEXT,
   sort_order INTEGER NOT NULL DEFAULT 0,
   stats TEXT,
-  note TEXT,
-  UNIQUE(war_team_id, user_id)
+  note TEXT
 );
 
 CREATE TABLE IF NOT EXISTS war_pool_members (
   id TEXT PRIMARY KEY NOT NULL,
-  war_history_id TEXT REFERENCES war_history(id) ON DELETE CASCADE,
-  event_id TEXT REFERENCES events(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  UNIQUE(war_history_id, user_id),
+  war_history_id TEXT,
+  event_id TEXT,
+  user_id TEXT NOT NULL,
   CHECK (event_id IS NOT NULL OR war_history_id IS NOT NULL)
 );
 
@@ -274,16 +293,18 @@ CREATE INDEX IF NOT EXISTS idx_sessions_created_at
   ON sessions(created_at);
 
 -- events
-CREATE INDEX IF NOT EXISTS idx_events_archived_series_start
-  ON events(archived_at, is_series_parent, start_at, id);
-CREATE INDEX IF NOT EXISTS idx_events_series_archived_start
-  ON events(is_series_parent, archived_at, start_at, id);
+CREATE INDEX IF NOT EXISTS idx_events_archived_start
+  ON events(archived_at, start_at, id);
 CREATE INDEX IF NOT EXISTS idx_events_auto_archive_due
-  ON events(auto_archive, auto_archived, archived_at, is_series_parent, end_at, start_at);
+  ON events(auto_archive, auto_archived, archived_at, end_at, start_at);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_events_series_instance
   ON events(series_id, instance_date);
 CREATE INDEX IF NOT EXISTS idx_events_created_by
   ON events(created_by);
+
+-- recurring_templates
+CREATE INDEX IF NOT EXISTS idx_recurring_templates_active
+  ON recurring_templates(paused, created_at, id);
 
 -- event_participants
 CREATE UNIQUE INDEX IF NOT EXISTS ux_event_participants_event_user
@@ -303,14 +324,9 @@ CREATE INDEX IF NOT EXISTS idx_event_poll_votes_event_user
 CREATE INDEX IF NOT EXISTS idx_event_poll_votes_option
   ON event_poll_votes(option_id);
 
-CREATE TABLE IF NOT EXISTS event_raffle_winners (
-  id TEXT PRIMARY KEY NOT NULL,
-  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  drawn_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  UNIQUE(event_id, user_id)
-);
-
+-- event_raffle_winners
+CREATE UNIQUE INDEX IF NOT EXISTS ux_event_raffle_winners_event_user
+  ON event_raffle_winners(event_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_event_raffle_winners_event
   ON event_raffle_winners(event_id);
 
