@@ -90,11 +90,11 @@ export function getAdminCapabilities(roles: AdminRole[], roleId: string): AdminC
   };
 }
 
-export function userHasPermission(user: User | null, permission: Permission): boolean {
+function userHasPermission(user: User | null, permission: Permission): boolean {
   return user?.permissions[permission] === true;
 }
 
-export function userHasAnyPermission(user: User | null, permissions: Permission[]): boolean {
+function userHasAnyPermission(user: User | null, permissions: Permission[]): boolean {
   if (!user) return false;
   return permissions.some((p) => user.permissions[p] === true);
 }

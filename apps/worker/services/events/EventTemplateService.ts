@@ -4,6 +4,7 @@ import { events } from "../../db/schema";
 import { err, ok, type ServiceErr, type ServiceResult } from "../result";
 import {
   EventCrudService,
+  diffRecurrenceRule,
   toTemplatePayload,
   type DatabaseLike,
   type EventRow,
@@ -211,8 +212,9 @@ export class EventTemplateService {
       diff.end_at = { from: existing.endAt, to: data.end_at ?? null };
     if (data.capacity !== undefined && (data.capacity ?? null) !== existing.capacity)
       diff.capacity = { from: existing.capacity, to: data.capacity ?? null };
-    if (data.recurrence_rule !== undefined)
-      diff.recurrence_rule = { from: "changed", to: "changed" };
+    if (data.recurrence_rule !== undefined) {
+      diffRecurrenceRule(existing.recurrenceRule, data.recurrence_rule, diff);
+    }
     if (data.visibility_offset_minutes !== undefined && (data.visibility_offset_minutes ?? null) !== (existing.visibilityOffsetMinutes ?? null))
       diff.visibility_offset_minutes = { from: existing.visibilityOffsetMinutes, to: data.visibility_offset_minutes ?? null };
     if (data.auto_archive !== undefined && data.auto_archive !== existing.autoArchive)

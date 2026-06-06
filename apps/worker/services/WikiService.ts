@@ -57,6 +57,33 @@ function toArticleListPayload(row: ArticleListRow) {
   };
 }
 
+function buildCategoryDiff(
+  existing: CategoryRow,
+  data: { name?: string; slug?: string; sort_order?: number; parent_id?: string | null },
+): Record<string, { from: unknown; to: unknown }> | null {
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
+  if (data.name !== undefined && data.name !== existing.name) diff.name = { from: existing.name, to: data.name };
+  if (data.slug !== undefined && slugify(data.slug) !== existing.slug) diff.slug = { from: existing.slug, to: slugify(data.slug) };
+  if (data.sort_order !== undefined && data.sort_order !== existing.sortOrder) diff.sort_order = { from: existing.sortOrder, to: data.sort_order };
+  if (data.parent_id !== undefined && (data.parent_id ?? null) !== existing.parentId) diff.parent_id = { from: existing.parentId, to: data.parent_id ?? null };
+  return Object.keys(diff).length > 0 ? diff : null;
+}
+
+function buildArticleDiff(
+  existing: ArticleRow,
+  data: { title?: string; slug?: string; category_id?: string; body_json?: string; sort_order?: number; pinned?: boolean; archived_at?: string | null },
+): Record<string, { from: unknown; to: unknown }> | null {
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
+  if (data.title !== undefined && data.title !== existing.title) diff.title = { from: existing.title, to: data.title };
+  if (data.slug !== undefined && slugify(data.slug) !== existing.slug) diff.slug = { from: existing.slug, to: slugify(data.slug) };
+  if (data.category_id !== undefined && data.category_id !== existing.categoryId) diff.category_id = { from: existing.categoryId, to: data.category_id };
+  if (data.body_json !== undefined && data.body_json !== existing.bodyJson) diff.body_json = { from: "changed", to: "changed" };
+  if (data.sort_order !== undefined && data.sort_order !== existing.sortOrder) diff.sort_order = { from: existing.sortOrder, to: data.sort_order };
+  if (data.pinned !== undefined && data.pinned !== existing.pinned) diff.pinned = { from: existing.pinned, to: data.pinned };
+  if (data.archived_at !== undefined && (data.archived_at ?? null) !== existing.archivedAt) diff.archived_at = { from: existing.archivedAt, to: data.archived_at ?? null };
+  return Object.keys(diff).length > 0 ? diff : null;
+}
+
 // --- Service ---
 
 export class WikiService {
@@ -150,7 +177,8 @@ export class WikiService {
     await this.db.update(wikiCategories).set(patch).where(eq(wikiCategories.id, categoryId));
     const updated = await this.getCategoryById(categoryId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated wiki category");
-    await this.deps.writeAuditLog({ entityType: "wiki_category", action: "update", actorId, entityId: categoryId, diffTitle: updated.name, detailText: JSON.stringify(data) });
+    const diff = buildCategoryDiff(existing, data);
+    await this.deps.writeAuditLog({ entityType: "wiki_category", action: "update", actorId, entityId: categoryId, diffTitle: updated.name, detailText: diff ? JSON.stringify(diff) : null });
     await this.deps.publishEntityChanged({ entityType: "wiki", entityId: categoryId, hint: "category_updated" });
     return ok(toCategoryPayload(updated));
   }
@@ -229,7 +257,8 @@ export class WikiService {
     await this.db.update(wikiArticles).set(patch).where(eq(wikiArticles.id, articleId));
     const updated = await this.getArticleById(articleId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated wiki article");
-    await this.deps.writeAuditLog({ entityType: "wiki_article", action: "update", actorId, entityId: articleId, diffTitle: updated.title, detailText: JSON.stringify(data) });
+    const diff = buildArticleDiff(existing, data);
+    await this.deps.writeAuditLog({ entityType: "wiki_article", action: "update", actorId, entityId: articleId, diffTitle: updated.title, detailText: diff ? JSON.stringify(diff) : null });
     await this.deps.publishEntityChanged({ entityType: "wiki", entityId: articleId, hint: "article_updated" });
     return ok(toArticlePayload(updated));
   }

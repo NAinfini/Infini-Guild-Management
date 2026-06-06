@@ -30,7 +30,6 @@ function renderAuditLogViewer(auditRows: AuditLogEntry[]) {
         onAuditPageChange={vi.fn()}
         isAdmin
         maskIdentifier={(value) => value}
-        formatAuditDiffHeader={() => ""}
         formatDateTime={(value) => value ?? ""}
       />
     </MantineProvider>,

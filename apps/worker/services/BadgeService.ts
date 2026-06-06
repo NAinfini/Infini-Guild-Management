@@ -118,6 +118,19 @@ function sanitizeBadgeUpdateInput(data: { name?: string; label_html?: string; co
   return ok(patch);
 }
 
+function buildBadgeDiff(
+  existing: BadgeRow,
+  data: { name?: string; label_html?: string; color?: string; description?: string; sort_order?: number },
+): Record<string, { from: unknown; to: unknown }> | null {
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
+  if (data.name !== undefined && data.name !== existing.name) diff.name = { from: existing.name, to: data.name };
+  if (data.label_html !== undefined && data.label_html !== existing.labelHtml) diff.label_html = { from: existing.labelHtml, to: data.label_html };
+  if (data.color !== undefined && data.color !== existing.color) diff.color = { from: existing.color, to: data.color };
+  if (data.description !== undefined && (data.description ?? null) !== existing.description) diff.description = { from: existing.description, to: data.description ?? null };
+  if (data.sort_order !== undefined && data.sort_order !== existing.sortOrder) diff.sort_order = { from: existing.sortOrder, to: data.sort_order };
+  return Object.keys(diff).length > 0 ? diff : null;
+}
+
 function toBadgePayload(row: BadgeRow) {
   return memberBadgeSchema.parse({
     id: row.id,
@@ -187,7 +200,8 @@ export class BadgeService {
     await this.db.update(memberBadges).set(patch).where(eq(memberBadges.id, badgeId));
     const updated = (await this.db.select(BADGE_COLS).from(memberBadges).where(eq(memberBadges.id, badgeId)).limit(1))[0];
     if (!updated) return err("SERVER_ERROR", "Failed to load updated badge");
-    await this.deps.writeAuditLog({ entityType: "member_badge", action: "update", actorId, entityId: badgeId, diffTitle: updated.name, detailText: JSON.stringify(safeData) });
+    const diff = buildBadgeDiff(existing, safeData);
+    await this.deps.writeAuditLog({ entityType: "member_badge", action: "update", actorId, entityId: badgeId, diffTitle: updated.name, detailText: diff ? JSON.stringify(diff) : null });
     return ok(toBadgePayload(updated));
   }
 

@@ -19,7 +19,6 @@ type AuditLogViewerProps = {
   onAuditPageChange: (nextPage: number) => void;
   isAdmin: boolean;
   maskIdentifier: (value: string, isAdmin: boolean) => string;
-  formatAuditDiffHeader: (diffTitle: string | null, detailText: string | null) => string;
   formatDateTime: (iso: string | null) => string;
   userMap?: Map<string, string>;
 };
@@ -33,14 +32,37 @@ type DetailData =
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
 
-function formatDiffValue(value: unknown): string {
+const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+function formatDiffValue(
+  value: unknown,
+  field?: string,
+  t?: (key: string, opts?: Record<string, unknown>) => string,
+  userMap?: Map<string, string>,
+): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "boolean") return value ? "✓" : "✗";
   if (typeof value === "number") return String(value);
-  if (typeof value === "object" && !Array.isArray(value)) {
-    return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    if (field === "recurrence_rule.daysOfWeek" && t) {
+      return value.map((d) => t(`audit.weekday.${DAY_KEYS[d as number] ?? d}`)).join(", ");
+    }
+    const resolved = value.map((v) => {
+      const s = String(v);
+      return (field && /user_id/i.test(field) && userMap?.has(s)) ? userMap.get(s)! : s;
+    });
+    if (resolved.length <= 5) return resolved.join(", ");
+    return `${resolved.slice(0, 5).join(", ")} (+${value.length - 5})`;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length <= 6) {
+      return entries.map(([k, v]) => `${k}: ${v ?? "—"}`).join(", ");
+    }
+    return entries.slice(0, 6).map(([k, v]) => `${k}: ${v ?? "—"}`).join(", ") + ` (+${entries.length - 6})`;
   }
   const str = String(value);
+  if (userMap?.has(str)) return userMap.get(str)!;
   if (ISO_DATE_RE.test(str)) {
     const d = new Date(str);
     if (!Number.isNaN(d.getTime())) {
@@ -63,7 +85,11 @@ function formatInfoValue(value: unknown, userMap?: Map<string, string>): string 
     return `${resolved.slice(0, 5).join(", ")} (+${resolved.length - 5})`;
   }
   if (typeof value === "object") {
-    return JSON.stringify(value);
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length <= 6) {
+      return entries.map(([k, v]) => `${k}: ${v ?? "—"}`).join(", ");
+    }
+    return entries.slice(0, 6).map(([k, v]) => `${k}: ${v ?? "—"}`).join(", ") + ` (+${entries.length - 6})`;
   }
   const str = String(value);
   if (userMap?.has(str)) return userMap.get(str)!;
@@ -100,7 +126,7 @@ function parseDetailData(
           entries: entries.map(([field, val]) => {
             const { from, to } = val as { from: unknown; to: unknown };
             const label = t?.(`audit.field.${field}`, { defaultValue: field }) ?? field;
-            return { field: label, from: formatDiffValue(from), to: formatDiffValue(to) };
+            return { field: label, from: formatDiffValue(from, field, t, userMap), to: formatDiffValue(to, field, t, userMap) };
           }),
         };
       }
@@ -270,7 +296,6 @@ export function AuditLogViewer({
   onAuditPageChange,
   isAdmin,
   maskIdentifier,
-  formatAuditDiffHeader: _formatAuditDiffHeader,
   formatDateTime,
   userMap,
 }: AuditLogViewerProps) {

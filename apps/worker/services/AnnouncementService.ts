@@ -66,6 +66,21 @@ function toListPayload(row: AnnouncementListRow) {
   };
 }
 
+function buildAnnouncementDiff(
+  existing: AnnouncementRow,
+  data: { title?: string; body_json?: string; pinned?: boolean; status?: AnnouncementStatus; publish_at?: string | null; expires_at?: string | null; archived_at?: string | null },
+): Record<string, { from: unknown; to: unknown }> | null {
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
+  if (data.title !== undefined && data.title !== existing.title) diff.title = { from: existing.title, to: data.title };
+  if (data.body_json !== undefined && data.body_json !== existing.bodyJson) diff.body_json = { from: "changed", to: "changed" };
+  if (data.pinned !== undefined && data.pinned !== existing.pinned) diff.pinned = { from: existing.pinned, to: data.pinned };
+  if (data.status !== undefined && data.status !== existing.status) diff.status = { from: existing.status, to: data.status };
+  if (data.publish_at !== undefined && (data.publish_at ?? null) !== existing.publishAt) diff.publish_at = { from: existing.publishAt, to: data.publish_at ?? null };
+  if (data.expires_at !== undefined && (data.expires_at ?? null) !== existing.expiresAt) diff.expires_at = { from: existing.expiresAt, to: data.expires_at ?? null };
+  if (data.archived_at !== undefined && (data.archived_at ?? null) !== existing.archivedAt) diff.archived_at = { from: existing.archivedAt, to: data.archived_at ?? null };
+  return Object.keys(diff).length > 0 ? diff : null;
+}
+
 // --- Service ---
 
 export class AnnouncementService {
@@ -170,7 +185,8 @@ export class AnnouncementService {
     const updated = await this.getById(announcementId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated announcement");
 
-    await this.deps.writeAuditLog({ entityType: "announcement", action: "update", actorId, entityId: announcementId, diffTitle: updated.title, detailText: JSON.stringify(data) });
+    const announcementDiff = buildAnnouncementDiff(existing, data);
+    await this.deps.writeAuditLog({ entityType: "announcement", action: "update", actorId, entityId: announcementId, diffTitle: updated.title, detailText: announcementDiff ? JSON.stringify(announcementDiff) : null });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_updated" });
     if (existing.status !== "published" && updated.status === "published") {
       await this.deps.publishAnnouncementPublished({ announcementId: updated.id, title: updated.title, publishedAt: updated.publishAt ?? updated.updatedAt });

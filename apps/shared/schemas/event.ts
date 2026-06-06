@@ -14,9 +14,9 @@ const recurrenceRuleSchema = z.object({
   endDate: z.string().datetime().optional(),
 });
 const eventAttachmentsSchema = z.array(z.string().min(1)).max(L.eventAttachments.max);
-export const pollResultsVisibilitySchema = z.enum(POLL_RESULTS_VISIBILITIES);
+const pollResultsVisibilitySchema = z.enum(POLL_RESULTS_VISIBILITIES);
 
-export const eventPollOptionSchema = z.object({
+const eventPollOptionSchema = z.object({
   id: z.string(),
   label: z.string(),
   vote_count: z.number().int().nonnegative(),

@@ -106,6 +106,32 @@ export function parseRecurrenceRule(value: string | null): unknown {
   }
 }
 
+type RecurrenceRuleObj = {
+  frequency?: string;
+  interval?: number;
+  daysOfWeek?: number[];
+  dayOfMonth?: number;
+  endAfter?: number;
+  endDate?: string;
+};
+
+export function diffRecurrenceRule(
+  existingJson: string | null,
+  newRule: unknown,
+  diff: Record<string, { from: unknown; to: unknown }>,
+): void {
+  const old: RecurrenceRuleObj = existingJson ? (JSON.parse(existingJson) as RecurrenceRuleObj) : {};
+  const nw = (newRule ?? {}) as RecurrenceRuleObj;
+  const FIELDS: (keyof RecurrenceRuleObj)[] = ["frequency", "interval", "daysOfWeek", "dayOfMonth", "endAfter", "endDate"];
+  for (const f of FIELDS) {
+    const o = old[f] ?? null;
+    const n = nw[f] ?? null;
+    if (JSON.stringify(o) !== JSON.stringify(n)) {
+      diff[`recurrence_rule.${f}`] = { from: o, to: n };
+    }
+  }
+}
+
 export function parseAttachments(value: string | null | undefined): string[] {
   if (!value) {
     return [];
@@ -434,7 +460,7 @@ export class EventCrudService {
         diff.attachments = { from: existingKeys.length, to: data.attachments?.length ?? 0 };
     }
     if (data.recurrence_rule !== undefined)
-      diff.recurrence_rule = { from: "changed", to: "changed" };
+      diffRecurrenceRule(existing.recurrenceRule, data.recurrence_rule, diff);
     return diff;
   }
 

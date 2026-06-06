@@ -29,6 +29,32 @@ type GuildWarFacade = Pick<
   replaceHistoryTeams(warHistoryId: string, snapshot: WarTemplateSnapshot): Promise<void>;
 };
 
+function buildWarHistoryDiff(
+  existing: { eventId: string | null; warName: string; enemyName: string | null; result: string | null; ownStats: Record<string, number | null> | null; enemyStats: Record<string, number | null> | null; durationMinutes: number | null; notes: string | null },
+  input: UpdateWarHistoryInput,
+): Record<string, { from: unknown; to: unknown }> | null {
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
+  if (input.event_id !== undefined && (input.event_id ?? null) !== existing.eventId) diff.event_id = { from: existing.eventId, to: input.event_id ?? null };
+  if (input.war_name !== undefined && input.war_name !== existing.warName) diff.war_name = { from: existing.warName, to: input.war_name };
+  if (input.enemy_name !== undefined && (input.enemy_name ?? null) !== existing.enemyName) diff.enemy_name = { from: existing.enemyName, to: input.enemy_name ?? null };
+  if (input.result !== undefined && (input.result ?? null) !== existing.result) diff.result = { from: existing.result, to: input.result ?? null };
+  if (input.own_stats !== undefined && JSON.stringify(input.own_stats ?? null) !== JSON.stringify(existing.ownStats)) diff.own_stats = { from: existing.ownStats, to: input.own_stats ?? null };
+  if (input.enemy_stats !== undefined && JSON.stringify(input.enemy_stats ?? null) !== JSON.stringify(existing.enemyStats)) diff.enemy_stats = { from: existing.enemyStats, to: input.enemy_stats ?? null };
+  if (input.duration_minutes !== undefined && (input.duration_minutes ?? null) !== existing.durationMinutes) diff.duration_minutes = { from: existing.durationMinutes, to: input.duration_minutes ?? null };
+  if (input.notes !== undefined && (input.notes ?? null) !== existing.notes) diff.notes = { from: existing.notes, to: input.notes ?? null };
+  return Object.keys(diff).length > 0 ? diff : null;
+}
+
+function buildMemberStatsDiff(
+  existing: { stats: Record<string, number | null> | null; note: string | null },
+  input: { stats?: unknown; note?: string | null },
+): Record<string, { from: unknown; to: unknown }> | null {
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
+  if (input.stats !== undefined && JSON.stringify(input.stats ?? null) !== JSON.stringify(existing.stats)) diff.stats = { from: existing.stats, to: input.stats ?? null };
+  if (input.note !== undefined && (input.note ?? null) !== existing.note) diff.note = { from: existing.note, to: input.note ?? null };
+  return Object.keys(diff).length > 0 ? diff : null;
+}
+
 export class GuildWarHistoryService extends GuildWarCoreService {
   constructor(db: DrizzleDb, deps: GuildWarServiceDeps, private readonly facade?: GuildWarFacade) {
     super(db, deps);
@@ -243,7 +269,8 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     await this.db.update(warHistory).set(patch).where(eq(warHistory.id, warId));
     const updated = await this.getWarHistoryById(warId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated war history");
-    await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "update", actorId, entityId: warId, diffTitle: updated.warName, detailText: JSON.stringify(input) });
+    const historyDiff = buildWarHistoryDiff(existing, input);
+    await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "update", actorId, entityId: warId, diffTitle: updated.warName, detailText: historyDiff ? JSON.stringify(historyDiff) : null });
     await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: warId, hint: "history_updated" });
     return ok(toWarHistoryPayload(updated));
   }
@@ -298,7 +325,8 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     const refreshed = (await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, stats: warTeamMembers.stats, note: warTeamMembers.note }).from(warTeamMembers).where(eq(warTeamMembers.id, memberRow.id)).limit(1))[0];
     if (!refreshed) return err("SERVER_ERROR", "Failed to load updated member stats");
     const targetUser = (await this.db.select({ username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
-    await this.deps.writeAuditLog({ entityType: "guild_war_member_stats", action: "update", actorId, entityId: `${warId}:${targetUserId}`, diffTitle: targetUser?.username ?? null, detailText: JSON.stringify(input) });
+    const memberDiff = buildMemberStatsDiff(memberRow, input);
+    await this.deps.writeAuditLog({ entityType: "guild_war_member_stats", action: "update", actorId, entityId: `${warId}:${targetUserId}`, diffTitle: targetUser?.username ?? null, detailText: memberDiff ? JSON.stringify(memberDiff) : null });
     return ok(toMemberPayload(refreshed));
   }
 
