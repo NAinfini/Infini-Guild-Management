@@ -1,7 +1,7 @@
 import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
 import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
-import { tzOffsetToAnchorIso } from "./RecurringTemplateFormModal.helpers";
+import { tzOffsetToAnchorIso, buildFormState, computeNextLifecyclePreview, formatLifecycleDate } from "./RecurringTemplateFormModal.helpers";
 import { PortalCard } from "@portal/components/shared/PortalCard";
 import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, UsersIcon } from "@portal/components/icons";
 import { Badge, Group, HoverCard, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
@@ -151,6 +151,8 @@ export function RecurringTemplatesTab({
             const isPaused = template.paused;
             const typeDef = EVENT_TYPES.find((et) => et === template.type);
             const time = template.start_time || "--:--";
+            const lifecycle = isPaused ? null : computeNextLifecyclePreview(buildFormState(template), template, "edit");
+            const nextCreationStr = lifecycle ? formatLifecycleDate(lifecycle.creationTime, i18n.language) : null;
             return (
               <PortalCard
                 key={template.id}
@@ -236,6 +238,11 @@ export function RecurringTemplatesTab({
                               <UsersIcon size={13} style={{ opacity: 0.5 }} />
                               <Text size="xs" c="dimmed">{template.capacity}</Text>
                             </Group>
+                          )}
+                          {nextCreationStr && (
+                            <Text size="xs" c="dimmed">
+                              {t("recurring.nextCreation", { date: nextCreationStr })}
+                            </Text>
                           )}
                         </Group>
                       </Stack>

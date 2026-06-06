@@ -2,7 +2,6 @@ import { EVENT_TYPES, type RecurringTemplate } from "@guild/shared";
 import {
   Badge,
   Button,
-  Divider,
   Group,
   Modal,
   NumberInput,
@@ -14,12 +13,25 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
-import { PlayerPauseIcon, PlayerPlayIcon, SaveIcon, PlusIcon, TrashIcon, XIcon } from "@portal/components/icons";
+import { CalendarRepeatIcon, PlayerPauseIcon, PlayerPlayIcon, SaveIcon, PlusIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
-import { buildFormState, localWeekdayToUtc, tzOffsetToAnchorIso, WEEKDAY_KEYS, type DurationUnit, type RecurrenceEndMode, type RecurrenceFreq, type RecurringTemplateFormPayload, type RecurringTemplateFormState } from "./RecurringTemplateFormModal.helpers";
+import {
+  buildFormState,
+  computeNextLifecyclePreview,
+  formatLifecycleDate,
+  localWeekdayToUtc,
+  tzOffsetToAnchorIso,
+  WEEKDAY_KEYS,
+  type DurationUnit,
+  type RecurrenceEndMode,
+  type RecurrenceFreq,
+  type RecurringTemplateFormPayload,
+  type RecurringTemplateFormState,
+} from "./RecurringTemplateFormModal.helpers";
+import "./RecurringTemplateFormModal.css";
 
 export type { RecurringTemplateFormPayload } from "./RecurringTemplateFormModal.helpers";
 
@@ -35,26 +47,6 @@ type RecurringTemplateFormModalProps = {
   onDelete?: (id: string) => void;
 };
 
-const sectionStyle: React.CSSProperties = {
-  padding: "12px 14px",
-  borderRadius: "var(--radius-sm, 8px)",
-  background: "var(--color-surface-elevated, #fff)",
-  border: "1px solid var(--color-border, #E2DDD6)",
-};
-
-const weekdayBtnBase: React.CSSProperties = {
-  width: 36,
-  height: 36,
-  borderRadius: "50%",
-  cursor: "pointer",
-  fontSize: 13,
-  padding: 0,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  transition: "all 150ms ease",
-};
-
 export function RecurringTemplateFormModal({
   open,
   mode,
@@ -66,7 +58,7 @@ export function RecurringTemplateFormModal({
   onResume,
   onDelete,
 }: RecurringTemplateFormModalProps) {
-  const { t } = useTranslation("events");
+  const { t, i18n } = useTranslation("events");
   const [formState, setFormState] = useState<RecurringTemplateFormState>(() => buildFormState(template));
 
   useEffect(() => {
@@ -140,29 +132,13 @@ export function RecurringTemplateFormModal({
     visibilityOffsetDays, visibilityOffsetHours, visibilityOffsetMinutes, autoArchive, onSave, t,
   ]);
 
-  const offsetHint = useMemo(() => {
-    const d = typeof visibilityOffsetDays === "number" ? visibilityOffsetDays : 0;
-    const h = typeof visibilityOffsetHours === "number" ? visibilityOffsetHours : 0;
-    const m = typeof visibilityOffsetMinutes === "number" ? visibilityOffsetMinutes : 0;
-    const totalMin = d * 1440 + h * 60 + m;
-    if (totalMin <= 0 || !startTime) return null;
-    const [sh, sm] = startTime.split(":").map(Number) as [number, number];
-    if (!Number.isFinite(sh) || !Number.isFinite(sm)) return null;
-    const startTotalMin = sh * 60 + sm;
-    let createMin = startTotalMin - totalMin;
-    let daysBefore = 0;
-    while (createMin < 0) {
-      createMin += 1440;
-      daysBefore++;
-    }
-    const createH = String(Math.floor(createMin / 60)).padStart(2, "0");
-    const createM = String(createMin % 60).padStart(2, "0");
-    const timeStr = `${createH}:${createM}`;
-    if (daysBefore === 0) return t("recurring.field.visibilityOffsetEstimate", { time: timeStr });
-    return t("recurring.field.visibilityOffsetEstimateDaysBefore", { days: daysBefore, time: timeStr });
-  }, [visibilityOffsetDays, visibilityOffsetHours, visibilityOffsetMinutes, startTime, t]);
+  const lifecycle = useMemo(
+    () => computeNextLifecyclePreview(formState, template, mode),
+    [formState, template, mode],
+  );
 
   const isPaused = mode === "edit" && (template?.paused ?? false);
+  const locale = i18n?.language ?? "en";
 
   return (
     <Modal
@@ -181,320 +157,348 @@ export function RecurringTemplateFormModal({
       closeOnClickOutside={false}
       closeOnEscape
       centered
-      size="lg"
+      size="xl"
     >
       <Stack gap={20}>
-        {/* ═══════ Event Details ═══════ */}
-        <div>
-          <Divider label={t("recurring.section.details")} labelPosition="left" mb={12} />
-          <Stack gap={12} style={sectionStyle}>
-            <Group grow wrap="wrap" align="flex-start">
-              <TextInput
-                label={t("field.title")}
-                value={title}
-                onChange={(event) =>
-                  setFormState((current) => ({ ...current, title: event.currentTarget.value }))
-                }
-                placeholder={t("field.title")}
-                style={{ flex: 2, minWidth: 180 }}
-              />
-              <Select
-                label={t("filter.type")}
-                value={eventType || null}
-                onChange={(value) =>
-                  setFormState((current) => ({
-                    ...current,
-                    eventType: (value ?? "") as (typeof EVENT_TYPES)[number],
-                  }))
-                }
-                data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
-                placeholder={t("recurring.field.typePlaceholder")}
-                clearable
-                style={{ flex: 1, minWidth: 140 }}
-              />
-            </Group>
-            <Textarea
-              label={t("field.description")}
-              value={description}
-              onChange={(event) =>
-                setFormState((current) => ({ ...current, description: event.currentTarget.value }))
-              }
-              minRows={2}
-              autosize
-              maxRows={5}
-              placeholder={t("field.description")}
-            />
-          </Stack>
-        </div>
-
-        {/* ═══════ Schedule ═══════ */}
-        <div>
-          <Divider label={t("recurring.section.schedule")} labelPosition="left" mb={12} />
-          <Stack gap={12} style={sectionStyle}>
-            <Group grow wrap="wrap" align="flex-end">
-              <TextInput
-                label={t("recurring.field.startTime")}
-                type="time"
-                value={startTime}
-                onChange={(event) =>
-                  setFormState((current) => ({ ...current, startTime: event.currentTarget.value }))
-                }
-                style={{ flex: 1, minWidth: 120 }}
-              />
-              <Group gap={8} align="flex-end" wrap="nowrap" style={{ flex: 1, minWidth: 180 }}>
-                <NumberInput
-                  label={t("recurring.field.duration")}
-                  value={durationValue}
-                  onChange={(value) =>
-                    setFormState((current) => ({
-                      ...current,
-                      durationValue: typeof value === "number" ? value : 0,
-                    }))
-                  }
-                  min={0}
-                  hideControls
-                  style={{ flex: 1 }}
+        <div className="rtf-columns">
+          {/* ═══════ Left Column ═══════ */}
+          <div className="rtf-col">
+            {/* Event Details */}
+            <div>
+              <div className="rtf-divider">
+                <span className="rtf-divider__label">{t("recurring.section.details")}</span>
+              </div>
+              <Stack gap={12} className="rtf-section">
+                <TextInput
+                  label={t("field.title")}
+                  value={title}
+                  onChange={(event) => {
+                    const val = event.currentTarget.value;
+                    setFormState((current) => ({ ...current, title: val }));
+                  }}
+                  placeholder={t("field.title")}
                 />
                 <Select
-                  value={durationUnit}
+                  label={t("filter.type")}
+                  value={eventType || null}
                   onChange={(value) =>
-                    value &&
                     setFormState((current) => ({
                       ...current,
-                      durationUnit: value as DurationUnit,
+                      eventType: (value ?? "") as (typeof EVENT_TYPES)[number],
                     }))
                   }
-                  data={[
-                    { value: "minutes", label: t("recurring.field.durationUnit.minutes") },
-                    { value: "hours", label: t("recurring.field.durationUnit.hours") },
-                  ]}
-                  style={{ width: 100 }}
+                  data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
+                  placeholder={t("recurring.field.typePlaceholder")}
+                  clearable
                 />
-              </Group>
-            </Group>
-            <TextInput
-              label={t("field.capacity")}
-              type="number"
-              value={capacity}
-              onChange={(event) =>
-                setFormState((current) => ({ ...current, capacity: event.currentTarget.value }))
-              }
-              placeholder={t("field.unlimited")}
-              style={{ maxWidth: 160 }}
-            />
-          </Stack>
-        </div>
-
-        {/* ═══════ Recurrence Pattern ═══════ */}
-        <div>
-          <Divider label={t("recurring.section.recurrence")} labelPosition="left" mb={12} />
-          <Stack gap={14} style={sectionStyle}>
-            <Group align="flex-end" gap={8}>
-              <Text size="sm" fw={500} pb={6}>{t("field.interval")}</Text>
-              <TextInput
-                type="number"
-                value={recurrenceInterval}
-                onChange={(event) =>
-                  setFormState((current) => ({
-                    ...current,
-                    recurrenceInterval: event.currentTarget.value,
-                  }))
-                }
-                style={{ width: 72 }}
-                min={1}
-              />
-              <Select
-                value={recurrenceFreq}
-                onChange={(value) =>
-                  value &&
-                  setFormState((current) => ({
-                    ...current,
-                    recurrenceFreq: value as RecurrenceFreq,
-                  }))
-                }
-                data={[
-                  { value: "daily", label: t("recurrence.freqDay") },
-                  { value: "weekly", label: t("recurrence.freqWeek") },
-                  { value: "monthly", label: t("recurrence.freqMonth") },
-                ]}
-                style={{ width: 120 }}
-              />
-            </Group>
-
-            {recurrenceFreq === "weekly" ? (
-              <Stack gap={4}>
-                <Text size="sm" fw={500}>{t("field.weekdays")}</Text>
-                <Group gap={4}>
-                  {WEEKDAY_KEYS.map((key, index) => {
-                    const isSelected = recurrenceDays.includes(index);
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => {
-                          if (isSelected) {
-                            setFormState((current) => ({
-                              ...current,
-                              recurrenceDays: current.recurrenceDays.filter((d) => d !== index),
-                            }));
-                          } else {
-                            setFormState((current) => ({
-                              ...current,
-                              recurrenceDays: [...current.recurrenceDays, index],
-                            }));
-                          }
-                        }}
-                        style={{
-                          ...weekdayBtnBase,
-                          border: isSelected ? "2px solid var(--color-primary, #D4A843)" : "1px solid var(--color-border, #E2DDD6)",
-                          background: isSelected ? "var(--color-primary, #D4A843)" : "transparent",
-                          color: isSelected ? "#fff" : "var(--color-text, #1A1815)",
-                          fontWeight: isSelected ? 600 : 400,
-                        }}
-                      >
-                        {t(key)}
-                      </button>
-                    );
-                  })}
-                </Group>
+                <Textarea
+                  label={t("field.description")}
+                  value={description}
+                  onChange={(event) => {
+                    const val = event.currentTarget.value;
+                    setFormState((current) => ({ ...current, description: val }));
+                  }}
+                  minRows={2}
+                  autosize
+                  maxRows={5}
+                  placeholder={t("field.description")}
+                />
               </Stack>
-            ) : null}
-
-            {recurrenceFreq === "monthly" ? (
-              <Select
-                label={t("field.monthDay")}
-                value={recurrenceMonthDay}
-                onChange={(value) =>
-                  value &&
-                  setFormState((current) => ({
-                    ...current,
-                    recurrenceMonthDay: value,
-                  }))
-                }
-                data={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
-                style={{ width: 100 }}
-              />
-            ) : null}
-
-            <Divider variant="dashed" />
-
-            <Stack gap={8}>
-              <Text size="sm" fw={500}>{t("recurrence.endLabel")}</Text>
-              <Radio.Group
-                value={recurrenceEndMode}
-                onChange={(value) =>
-                  setFormState((current) => ({
-                    ...current,
-                    recurrenceEndMode: value as RecurrenceEndMode,
-                  }))
-                }
-              >
-                <Stack gap={10}>
-                  <Radio value="never" label={t("recurrence.endNever")} />
-                  <Group gap={8} align="center">
-                    <Radio value="date" label={`${t("recurrence.endDate")}:`} />
-                    <TextInput
-                      type="date"
-                      value={recurrenceEndDate}
-                      onChange={(event) =>
-                        setFormState((current) => ({
-                          ...current,
-                          recurrenceEndDate: event.currentTarget.value,
-                        }))
-                      }
-                      disabled={recurrenceEndMode !== "date"}
-                      style={{ width: 170 }}
-                    />
-                  </Group>
-                  <Group gap={8} align="center">
-                    <Radio value="count" label={t("recurrence.endAfterLabel")} />
-                    <TextInput
-                      type="number"
-                      value={recurrenceEndCount}
-                      onChange={(event) =>
-                        setFormState((current) => ({
-                          ...current,
-                          recurrenceEndCount: event.currentTarget.value,
-                        }))
-                      }
-                      disabled={recurrenceEndMode !== "count"}
-                      style={{ width: 72 }}
-                      min={1}
-                    />
-                    <Text size="sm" c="dimmed">{t("recurrence.endAfterSuffix")}</Text>
-                  </Group>
-                </Stack>
-              </Radio.Group>
-            </Stack>
-          </Stack>
-        </div>
-
-        {/* ═══════ Options ═══════ */}
-        <div>
-          <Divider label={t("recurring.section.options")} labelPosition="left" mb={12} />
-          <Stack gap={12} style={sectionStyle}>
-            <div>
-              <Text size="sm" fw={500} mb={4}>{t("recurring.field.visibilityOffset")}</Text>
-              <Group gap={8} wrap="nowrap" style={{ maxWidth: 420 }}>
-                <NumberInput
-                  value={visibilityOffsetDays}
-                  onChange={(value) =>
-                    setFormState((current) => ({
-                      ...current,
-                      visibilityOffsetDays: typeof value === "number" ? value : "",
-                    }))
-                  }
-                  min={0}
-                  hideControls
-                  suffix={` ${t("recurring.field.durationUnit.days").toLowerCase()}`}
-                  style={{ flex: 1 }}
-                />
-                <NumberInput
-                  value={visibilityOffsetHours}
-                  onChange={(value) =>
-                    setFormState((current) => ({
-                      ...current,
-                      visibilityOffsetHours: typeof value === "number" ? value : "",
-                    }))
-                  }
-                  min={0}
-                  max={23}
-                  hideControls
-                  suffix={` ${t("recurring.field.durationUnit.hours").toLowerCase()}`}
-                  style={{ flex: 1 }}
-                />
-                <NumberInput
-                  value={visibilityOffsetMinutes}
-                  onChange={(value) =>
-                    setFormState((current) => ({
-                      ...current,
-                      visibilityOffsetMinutes: typeof value === "number" ? value : "",
-                    }))
-                  }
-                  min={0}
-                  max={59}
-                  hideControls
-                  suffix={` ${t("recurring.field.durationUnit.minutes").toLowerCase()}`}
-                  style={{ flex: 1 }}
-                />
-              </Group>
-              <Text size="xs" c="dimmed" mt={4}>
-                {offsetHint ?? t("recurring.field.visibilityOffsetHint")}
-              </Text>
             </div>
-            <Switch
-              checked={autoArchive}
-              onChange={(event) =>
-                setFormState((current) => ({ ...current, autoArchive: event.currentTarget.checked }))
-              }
-              label={t("field.autoArchive")}
-              description={t("field.autoArchiveHint")}
-            />
-          </Stack>
+
+            {/* Options */}
+            <div>
+              <div className="rtf-divider">
+                <span className="rtf-divider__label">{t("recurring.section.options")}</span>
+              </div>
+              <Stack gap={12} className="rtf-section">
+                <div>
+                  <Text size="sm" fw={500} mb={4}>{t("recurring.field.visibilityOffset")}</Text>
+                  <Group gap={8} wrap="nowrap">
+                    <NumberInput
+                      value={visibilityOffsetDays}
+                      onChange={(value) =>
+                        setFormState((current) => ({
+                          ...current,
+                          visibilityOffsetDays: typeof value === "number" ? value : "",
+                        }))
+                      }
+                      min={0}
+                      hideControls
+                      suffix={` ${t("recurring.field.durationUnit.days").toLowerCase()}`}
+                      style={{ flex: 1 }}
+                    />
+                    <NumberInput
+                      value={visibilityOffsetHours}
+                      onChange={(value) =>
+                        setFormState((current) => ({
+                          ...current,
+                          visibilityOffsetHours: typeof value === "number" ? value : "",
+                        }))
+                      }
+                      min={0}
+                      max={23}
+                      hideControls
+                      suffix={` ${t("recurring.field.durationUnit.hours").toLowerCase()}`}
+                      style={{ flex: 1 }}
+                    />
+                    <NumberInput
+                      value={visibilityOffsetMinutes}
+                      onChange={(value) =>
+                        setFormState((current) => ({
+                          ...current,
+                          visibilityOffsetMinutes: typeof value === "number" ? value : "",
+                        }))
+                      }
+                      min={0}
+                      max={59}
+                      hideControls
+                      suffix={` ${t("recurring.field.durationUnit.minutes").toLowerCase()}`}
+                      style={{ flex: 1 }}
+                    />
+                  </Group>
+                </div>
+                <Switch
+                  checked={autoArchive}
+                  onChange={(event) => {
+                    const val = event.currentTarget.checked;
+                    setFormState((current) => ({ ...current, autoArchive: val }));
+                  }}
+                  label={t("field.autoArchive")}
+                  description={t("field.autoArchiveHint")}
+                />
+              </Stack>
+            </div>
+
+            {/* Lifecycle Preview */}
+            <div className={`rtf-lifecycle${lifecycle ? "" : " rtf-lifecycle--empty"}`}>
+              <div className="rtf-lifecycle__title">
+                <CalendarRepeatIcon size={16} className="rtf-lifecycle__title-icon" />
+                <span>{t("recurring.lifecycle.title")}</span>
+              </div>
+              {lifecycle ? (
+                <div className="rtf-lifecycle__steps">
+                  <div className="rtf-lifecycle__step">
+                    <span className="rtf-lifecycle__step-label">{t("recurring.lifecycle.creation")}</span>
+                    <span className="rtf-lifecycle__step-value">{formatLifecycleDate(lifecycle.creationTime, locale)}</span>
+                  </div>
+                  <div className="rtf-lifecycle__step">
+                    <span className="rtf-lifecycle__step-label">{t("recurring.lifecycle.start")}</span>
+                    <span className="rtf-lifecycle__step-value">{formatLifecycleDate(lifecycle.startTime, locale)}</span>
+                  </div>
+                  {lifecycle.endTime && (
+                    <div className="rtf-lifecycle__step">
+                      <span className="rtf-lifecycle__step-label">{t("recurring.lifecycle.end")}</span>
+                      <span className="rtf-lifecycle__step-value">{formatLifecycleDate(lifecycle.endTime, locale)}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <span className="rtf-lifecycle__empty-text">{t("recurring.lifecycle.empty")}</span>
+              )}
+            </div>
+          </div>
+
+          {/* ═══════ Right Column ═══════ */}
+          <div className="rtf-col">
+            {/* Schedule & Recurrence */}
+            <div>
+              <div className="rtf-divider">
+                <span className="rtf-divider__label">{t("recurring.section.scheduleAndRecurrence")}</span>
+              </div>
+              <Stack gap={14} className="rtf-section">
+                <TextInput
+                  label={t("recurring.field.startTime")}
+                  type="time"
+                  value={startTime}
+                  onChange={(event) => {
+                    const val = event.currentTarget.value;
+                    setFormState((current) => ({ ...current, startTime: val }));
+                  }}
+                />
+                <Group gap={8} align="flex-end" wrap="nowrap">
+                  <NumberInput
+                    label={t("recurring.field.duration")}
+                    value={durationValue}
+                    onChange={(value) =>
+                      setFormState((current) => ({
+                        ...current,
+                        durationValue: typeof value === "number" ? value : 0,
+                      }))
+                    }
+                    min={0}
+                    hideControls
+                    style={{ flex: 1 }}
+                  />
+                  <Select
+                    value={durationUnit}
+                    onChange={(value) =>
+                      value &&
+                      setFormState((current) => ({
+                        ...current,
+                        durationUnit: value as DurationUnit,
+                      }))
+                    }
+                    data={[
+                      { value: "minutes", label: t("recurring.field.durationUnit.minutes") },
+                      { value: "hours", label: t("recurring.field.durationUnit.hours") },
+                    ]}
+                    style={{ width: 100 }}
+                  />
+                </Group>
+                <TextInput
+                  label={t("field.capacity")}
+                  type="number"
+                  value={capacity}
+                  onChange={(event) => {
+                    const val = event.currentTarget.value;
+                    setFormState((current) => ({ ...current, capacity: val }));
+                  }}
+                  placeholder={t("field.unlimited")}
+                  style={{ maxWidth: 160 }}
+                />
+
+                <div className="rtf-recurrence-divider" />
+
+                <div className="rtf-interval-row">
+                  <span className="rtf-interval-label">{t("field.interval")}</span>
+                  <TextInput
+                    type="number"
+                    value={recurrenceInterval}
+                    onChange={(event) => {
+                      const val = event.currentTarget.value;
+                      setFormState((current) => ({
+                        ...current,
+                        recurrenceInterval: val,
+                      }));
+                    }}
+                    style={{ width: 72 }}
+                    min={1}
+                  />
+                  <Select
+                    value={recurrenceFreq}
+                    onChange={(value) =>
+                      value &&
+                      setFormState((current) => ({
+                        ...current,
+                        recurrenceFreq: value as RecurrenceFreq,
+                      }))
+                    }
+                    data={[
+                      { value: "daily", label: t("recurrence.freqDay") },
+                      { value: "weekly", label: t("recurrence.freqWeek") },
+                      { value: "monthly", label: t("recurrence.freqMonth") },
+                    ]}
+                    style={{ width: 120 }}
+                  />
+                </div>
+
+                {recurrenceFreq === "weekly" ? (
+                  <Stack gap={4}>
+                    <Text size="sm" fw={500}>{t("field.weekdays")}</Text>
+                    <div className="rtf-weekday-grid">
+                      {WEEKDAY_KEYS.map((key, index) => {
+                        const isSelected = recurrenceDays.includes(index);
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            className={`rtf-weekday-btn${isSelected ? " rtf-weekday-btn--selected" : ""}`}
+                            onClick={() => {
+                              if (isSelected) {
+                                setFormState((current) => ({
+                                  ...current,
+                                  recurrenceDays: current.recurrenceDays.filter((d) => d !== index),
+                                }));
+                              } else {
+                                setFormState((current) => ({
+                                  ...current,
+                                  recurrenceDays: [...current.recurrenceDays, index],
+                                }));
+                              }
+                            }}
+                          >
+                            {t(key)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Stack>
+                ) : null}
+
+                {recurrenceFreq === "monthly" ? (
+                  <Select
+                    label={t("field.monthDay")}
+                    value={recurrenceMonthDay}
+                    onChange={(value) =>
+                      value &&
+                      setFormState((current) => ({
+                        ...current,
+                        recurrenceMonthDay: value,
+                      }))
+                    }
+                    data={Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))}
+                    style={{ width: 100 }}
+                  />
+                ) : null}
+
+                <Stack gap={8}>
+                  <Text size="sm" fw={500}>{t("recurrence.endLabel")}</Text>
+                  <Radio.Group
+                    value={recurrenceEndMode}
+                    onChange={(value) =>
+                      setFormState((current) => ({
+                        ...current,
+                        recurrenceEndMode: value as RecurrenceEndMode,
+                      }))
+                    }
+                  >
+                    <Stack gap={10}>
+                      <Radio value="never" label={t("recurrence.endNever")} />
+                      <Group gap={8} align="center">
+                        <Radio value="date" label={`${t("recurrence.endDate")}:`} />
+                        <TextInput
+                          type="date"
+                          value={recurrenceEndDate}
+                          onChange={(event) => {
+                            const val = event.currentTarget.value;
+                            setFormState((current) => ({
+                              ...current,
+                              recurrenceEndDate: val,
+                            }));
+                          }}
+                          disabled={recurrenceEndMode !== "date"}
+                          style={{ width: 170 }}
+                        />
+                      </Group>
+                      <Group gap={8} align="center">
+                        <Radio value="count" label={t("recurrence.endAfterLabel")} />
+                        <TextInput
+                          type="number"
+                          value={recurrenceEndCount}
+                          onChange={(event) => {
+                            const val = event.currentTarget.value;
+                            setFormState((current) => ({
+                              ...current,
+                              recurrenceEndCount: val,
+                            }));
+                          }}
+                          disabled={recurrenceEndMode !== "count"}
+                          style={{ width: 72 }}
+                          min={1}
+                        />
+                        <Text size="sm" c="dimmed">{t("recurrence.endAfterSuffix")}</Text>
+                      </Group>
+                    </Stack>
+                  </Radio.Group>
+                </Stack>
+              </Stack>
+            </div>
+          </div>
         </div>
 
-        {/* ═══════ Actions ═══════ */}
-        <Divider />
+        {/* ═══════ Actions (full width) ═══════ */}
+        <div className="rtf-actions-divider" />
         <Group justify={mode === "edit" ? "space-between" : "flex-end"} wrap="wrap" gap={8}>
           {mode === "edit" && template && (
             <Group gap={8}>
