@@ -153,7 +153,7 @@ export function RecurringTemplatesTab({
             const typeDef = EVENT_TYPES.find((et) => et === template.type);
             const time = template.start_time || "--:--";
             const lifecycle = isPaused ? null : computeNextLifecyclePreview(buildFormState(template), template, "edit");
-            const nextCreationStr = lifecycle ? formatLifecycleDate(lifecycle.creationTime, i18n.language) : null;
+            const lang = i18n.language;
             return (
               <PortalCard
                 key={template.id}
@@ -240,12 +240,26 @@ export function RecurringTemplatesTab({
                               <Text size="xs" c="dimmed">{template.capacity}</Text>
                             </Group>
                           )}
-                          {nextCreationStr && (
-                            <Text size="xs" c="dimmed">
-                              {t("recurring.nextCreation", { date: nextCreationStr })}
-                            </Text>
-                          )}
                         </Group>
+
+                        {lifecycle && (
+                          <Group gap={12} wrap="wrap" mt={4}>
+                            <Text size="xs" c="dimmed" style={{ fontVariantNumeric: "tabular-nums" }}>
+                              <Text span fw={600} c="dimmed" size="xs">{t("recurring.lifecycle.creation")}</Text>
+                              {" "}{formatLifecycleDate(lifecycle.creationTime, lang)}
+                            </Text>
+                            <Text size="xs" style={{ color: "var(--color-primary, #D4A843)", fontVariantNumeric: "tabular-nums" }}>
+                              <Text span fw={600} size="xs" style={{ color: "var(--color-primary, #D4A843)" }}>{t("recurring.lifecycle.start")}</Text>
+                              {" "}{formatLifecycleDate(lifecycle.startTime, lang)}
+                            </Text>
+                            {lifecycle.endTime && (
+                              <Text size="xs" c="dimmed" style={{ fontVariantNumeric: "tabular-nums" }}>
+                                <Text span fw={600} c="dimmed" size="xs">{t("recurring.lifecycle.end")}</Text>
+                                {" "}{formatLifecycleDate(lifecycle.endTime, lang)}
+                              </Text>
+                            )}
+                          </Group>
+                        )}
                       </Stack>
                     </Group>
 
