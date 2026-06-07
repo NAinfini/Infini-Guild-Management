@@ -243,18 +243,18 @@ export function RecurringTemplatesTab({
                         </Group>
 
                         {lifecycle && (
-                          <Group gap={12} wrap="wrap" mt={4}>
-                            <Text size="xs" c="dimmed" style={{ fontVariantNumeric: "tabular-nums" }}>
-                              <Text span fw={600} c="dimmed" size="xs">{t("recurring.lifecycle.creation")}</Text>
+                          <Group gap={14} wrap="wrap" mt={4}>
+                            <Text size="xs" style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-text-muted, #6B665E)" }}>
+                              <Text span fw={600} size="xs" style={{ opacity: 0.7 }}>{t("recurring.lifecycle.nextCreation")}</Text>
                               {" "}{formatLifecycleDate(lifecycle.creationTime, lang)}
                             </Text>
-                            <Text size="xs" style={{ color: "var(--color-primary, #D4A843)", fontVariantNumeric: "tabular-nums" }}>
-                              <Text span fw={600} size="xs" style={{ color: "var(--color-primary, #D4A843)" }}>{t("recurring.lifecycle.start")}</Text>
+                            <Text size="xs" fw={500} style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-primary, #D4A843)" }}>
+                              <Text span fw={700} size="xs" style={{ color: "var(--color-primary, #D4A843)" }}>{t("recurring.lifecycle.nextStart")}</Text>
                               {" "}{formatLifecycleDate(lifecycle.startTime, lang)}
                             </Text>
                             {lifecycle.endTime && (
-                              <Text size="xs" c="dimmed" style={{ fontVariantNumeric: "tabular-nums" }}>
-                                <Text span fw={600} c="dimmed" size="xs">{t("recurring.lifecycle.end")}</Text>
+                              <Text size="xs" style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-text-muted, #6B665E)" }}>
+                                <Text span fw={600} size="xs" style={{ opacity: 0.7 }}>{t("recurring.lifecycle.nextEnd")}</Text>
                                 {" "}{formatLifecycleDate(lifecycle.endTime, lang)}
                               </Text>
                             )}
