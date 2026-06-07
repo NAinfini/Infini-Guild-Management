@@ -193,9 +193,12 @@ export class EventTemplateService {
       patch.attachments = JSON.stringify(data.attachments);
     }
 
-    const needsRegen = data.start_time !== undefined || data.recurrence_rule !== undefined || data.timezone_offset_minutes !== undefined;
-    if (needsRegen) {
-      patch.lastGeneratedDate = null;
+    const scheduleChanged =
+      (data.start_time !== undefined && data.start_time !== existing.startTime) ||
+      (data.recurrence_rule !== undefined && JSON.stringify(data.recurrence_rule) !== existing.recurrenceRule) ||
+      (data.timezone_offset_minutes !== undefined && data.timezone_offset_minutes !== existing.timezoneOffsetMinutes);
+    if (scheduleChanged) {
+      patch.lastGeneratedDate = this.now().slice(0, 10);
       patch.generationCount = 0;
     }
 
@@ -213,7 +216,7 @@ export class EventTemplateService {
       detailText: JSON.stringify(this.buildTemplateUpdateDiff(existing, data)),
     });
 
-    if (needsRegen) {
+    if (scheduleChanged) {
       await this.deps.materializeRecurringSeries(templateId);
     }
 

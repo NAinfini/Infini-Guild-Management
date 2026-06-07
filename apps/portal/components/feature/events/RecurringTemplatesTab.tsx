@@ -20,6 +20,7 @@ function buildRecurrenceSummary(
   t: (key: string, opts?: Record<string, unknown>) => string,
   rule: RecurringTemplate["recurrence_rule"],
   timezoneOffsetMinutes: number,
+  startTime: string,
 ): string {
   if (!rule) return "";
   const freq = rule.frequency;
@@ -28,7 +29,7 @@ function buildRecurrenceSummary(
     return t("recurring.summary.daily", { interval });
   }
   if (freq === "weekly") {
-    const anchorIso = tzOffsetToAnchorIso(timezoneOffsetMinutes);
+    const anchorIso = tzOffsetToAnchorIso(timezoneOffsetMinutes, startTime);
     const dayNames = (rule.daysOfWeek ?? [])
       .map((d) => utcWeekdayToLocal(d, anchorIso))
       .sort((a, b) => a - b)
@@ -231,7 +232,7 @@ export function RecurringTemplatesTab({
                             <Text size="xs" c="dimmed">{time}</Text>
                           </Group>
                           <Text size="xs" c="dimmed">
-                            {buildRecurrenceSummary(t, template.recurrence_rule, template.timezone_offset_minutes)}
+                            {buildRecurrenceSummary(t, template.recurrence_rule, template.timezone_offset_minutes, template.start_time)}
                           </Text>
                           {template.capacity != null && (
                             <Group gap={4} align="center">

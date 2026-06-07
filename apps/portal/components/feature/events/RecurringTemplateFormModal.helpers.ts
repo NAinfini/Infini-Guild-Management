@@ -52,11 +52,16 @@ export const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekd
 
 /**
  * Build a synthetic ISO string whose local-vs-UTC day shift matches the given
- * timezone offset in minutes.  This lets us reuse the existing
- * `localWeekdayToUtc` / `utcWeekdayToLocal` helpers that expect an ISO anchor.
+ * timezone offset and start time.  The day-shift depends on the *actual event
+ * time*, not midnight — e.g. 17:00 in UTC+8 is 09:00 UTC (same day), while
+ * 00:00 in UTC+8 is 16:00 UTC the previous day.
  */
-export function tzOffsetToAnchorIso(offsetMinutes: number): string {
-  return new Date(Date.UTC(2026, 0, 4, 0, 0) - offsetMinutes * 60_000).toISOString();
+export function tzOffsetToAnchorIso(offsetMinutes: number, startTime = "12:00"): string {
+  const match = startTime.match(/^(\d{1,2}):(\d{2})$/);
+  const localHour = match ? Number(match[1]) : 12;
+  const localMinute = match ? Number(match[2]) : 0;
+  const baseMs = Date.UTC(2026, 0, 4, localHour, localMinute);
+  return new Date(baseMs - offsetMinutes * 60_000).toISOString();
 }
 
 function durationFromMinutes(totalMinutes: number | null): { value: number; unit: DurationUnit } {
@@ -70,7 +75,7 @@ export function buildFormState(template: RecurringTemplate | null): RecurringTem
   const duration = durationFromMinutes(template?.duration_minutes ?? null);
   const totalMinutes = template?.visibility_offset_minutes ?? null;
   const storedDays = template?.recurrence_rule?.daysOfWeek ?? [1, 3, 5];
-  const anchorIso = template ? tzOffsetToAnchorIso(template.timezone_offset_minutes) : null;
+  const anchorIso = template ? tzOffsetToAnchorIso(template.timezone_offset_minutes, template.start_time) : null;
   const localDays = anchorIso
     ? storedDays.map((d) => utcWeekdayToLocal(d, anchorIso))
     : storedDays;
@@ -193,7 +198,7 @@ export function computeNextLifecyclePreview(
   const utcTime = parseStartTimeToUtc(formState.startTime, timezoneOffsetMinutes);
   if (!utcTime) return null;
 
-  const anchorIso = tzOffsetToAnchorIso(timezoneOffsetMinutes);
+  const anchorIso = tzOffsetToAnchorIso(timezoneOffsetMinutes, formState.startTime);
   const interval = Math.max(1, Number.parseInt(formState.recurrenceInterval || "1", 10));
   const daysOfWeek =
     formState.recurrenceFreq === "weekly"

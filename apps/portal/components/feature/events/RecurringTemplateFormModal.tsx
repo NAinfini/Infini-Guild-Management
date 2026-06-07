@@ -97,7 +97,7 @@ export function RecurringTemplateFormModal({
       : undefined;
 
     const timezoneOffsetMinutes = -new Date().getTimezoneOffset();
-    const anchorIso = tzOffsetToAnchorIso(timezoneOffsetMinutes);
+    const anchorIso = tzOffsetToAnchorIso(timezoneOffsetMinutes, startTime);
 
     const offsetD = typeof visibilityOffsetDays === "number" ? visibilityOffsetDays : 0;
     const offsetH = typeof visibilityOffsetHours === "number" ? visibilityOffsetHours : 0;

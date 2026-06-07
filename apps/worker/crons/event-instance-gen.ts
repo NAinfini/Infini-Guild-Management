@@ -207,8 +207,8 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
       }
     }
 
-    // Bug 2 fix: when lastGeneratedDate is null, anchor to one day before the reference
-    // so computeNextOccurrence naturally finds the reference date itself.
+    // When lastGeneratedDate is null (new template or schedule reset), anchor to
+    // now so we only generate future events — never backfill past occurrences.
     let anchor: Date;
     if (template.lastGeneratedDate) {
       const lastGenDate = new Date(`${template.lastGeneratedDate}T00:00:00Z`);
@@ -216,12 +216,12 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
         lastGenDate.setUTCHours(utcTime.utcHour, utcTime.utcMinute, 0, 0);
         anchor = lastGenDate;
       } else {
-        anchor = new Date(referenceDate);
+        anchor = new Date(now);
         anchor.setUTCDate(anchor.getUTCDate() - 1);
         anchor.setUTCHours(utcTime.utcHour, utcTime.utcMinute, 0, 0);
       }
     } else {
-      anchor = new Date(referenceDate);
+      anchor = new Date(now);
       anchor.setUTCDate(anchor.getUTCDate() - 1);
       anchor.setUTCHours(utcTime.utcHour, utcTime.utcMinute, 0, 0);
     }
