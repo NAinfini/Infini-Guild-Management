@@ -45,9 +45,7 @@ describe("event instance generation horizon", () => {
         lastGeneratedDate: null,
         generationCount: 0,
         visibilityOffsetMinutes: 60,
-        autoArchive: true,
-        timezoneOffsetMinutes: 0,
-        createdAt: "2026-05-03T10:00:00.000Z",
+        autoArchive: true,        createdAt: "2026-05-03T10:00:00.000Z",
       },
     ];
     const db = {
@@ -95,9 +93,7 @@ describe("event instance generation horizon", () => {
         lastGeneratedDate: null,
         generationCount: 0,
         visibilityOffsetMinutes: 60,
-        autoArchive: false,
-        timezoneOffsetMinutes: 0,
-        createdAt: "2026-05-03T10:00:00.000Z",
+        autoArchive: false,        createdAt: "2026-05-03T10:00:00.000Z",
       },
     ];
     const rawPrepare = vi.fn((sql: string) => ({
@@ -151,9 +147,7 @@ describe("event instance generation horizon", () => {
         lastGeneratedDate: "2026-05-03",
         generationCount: 1,
         visibilityOffsetMinutes: 120,
-        autoArchive: false,
-        timezoneOffsetMinutes: 0,
-        createdAt: "2026-05-03T10:00:00.000Z",
+        autoArchive: false,        createdAt: "2026-05-03T10:00:00.000Z",
       },
     ];
     const db = {

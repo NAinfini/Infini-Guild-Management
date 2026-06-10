@@ -165,7 +165,6 @@ export const recurringTemplateSchema = z.object({
   created_by: z.string(),
   last_generated_date: z.string().nullable(),
   generation_count: z.number().int(),
-  timezone_offset_minutes: z.number().int(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -174,13 +173,14 @@ export const createTemplateSchema = z.object({
   type: z.enum(EVENT_TYPES),
   title: z.string().min(L.eventTitle.min).max(L.eventTitle.max),
   description: z.string().max(L.eventDescription.max).optional(),
+  // UTC wall-clock time "HH:mm" — the portal converts local input to UTC
+  // before submitting (see shared/utils/recurrence.ts contract).
   start_time: z.string().regex(/^\d{2}:\d{2}$/),
   duration_minutes: z.number().int().min(0).optional(),
   capacity: z.number().int().positive().optional(),
   recurrence_rule: recurrenceRuleSchema,
   visibility_offset_minutes: z.number().int().min(0).optional(),
   auto_archive: z.boolean().optional(),
-  timezone_offset_minutes: z.number().int(),
 });
 
 export const updateTemplateSchema = createTemplateSchema.partial();

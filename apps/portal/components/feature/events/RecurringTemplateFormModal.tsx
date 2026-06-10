@@ -22,6 +22,7 @@ import {
   buildFormState,
   computeNextLifecyclePreview,
   formatLifecycleDate,
+  localTimeToUtcTime,
   localWeekdayToUtc,
   tzOffsetToAnchorIso,
   WEEKDAY_KEYS,
@@ -96,8 +97,9 @@ export function RecurringTemplateFormModal({
       ? durationValue * (durationUnit === "hours" ? 60 : 1)
       : undefined;
 
-    const timezoneOffsetMinutes = -new Date().getTimezoneOffset();
-    const anchorIso = tzOffsetToAnchorIso(timezoneOffsetMinutes, startTime);
+    // Anchor on the event's actual instant (local time + current offset) so the
+    // local→UTC weekday conversion below is exact across midnight boundaries.
+    const anchorIso = tzOffsetToAnchorIso(-new Date().getTimezoneOffset(), startTime);
 
     const offsetD = typeof visibilityOffsetDays === "number" ? visibilityOffsetDays : 0;
     const offsetH = typeof visibilityOffsetHours === "number" ? visibilityOffsetHours : 0;
@@ -108,9 +110,8 @@ export function RecurringTemplateFormModal({
       type: eventType,
       title: title.trim(),
       description: description.trim() || undefined,
-      start_time: startTime,
+      start_time: localTimeToUtcTime(startTime),
       duration_minutes: durationMinutes,
-      timezone_offset_minutes: timezoneOffsetMinutes,
       capacity: capacity.trim() ? Math.max(1, Number.parseInt(capacity, 10)) : undefined,
       recurrence_rule: {
         frequency: recurrenceFreq,

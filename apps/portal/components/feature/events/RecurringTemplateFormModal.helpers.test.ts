@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { localWeekdayToUtc, utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
+import { localTimeToUtcTime, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
 
 describe("recurring template weekday timezone conversion", () => {
   it("round-trips every weekday through UTC and back, anchored on start_at", () => {
@@ -45,5 +46,26 @@ describe("recurring template weekday timezone conversion", () => {
     expect(utcWeekdayToLocal(3, "not-a-date")).toBe(3);
     expect(localWeekdayToUtc(2, "not-a-date")).toBe(2);
     expect(localWeekdayToUtc(5, "")).toBe(5);
+  });
+});
+
+describe("start time local↔UTC conversion", () => {
+  it("round-trips every conversion direction, independent of host timezone", () => {
+    for (const time of ["00:00", "04:30", "12:00", "23:59"]) {
+      expect(utcTimeToLocalTime(localTimeToUtcTime(time))).toBe(time);
+      expect(localTimeToUtcTime(utcTimeToLocalTime(time))).toBe(time);
+    }
+  });
+
+  it("applies the viewer's current offset and wraps at midnight", () => {
+    const offsetMinutes = -new Date().getTimezoneOffset();
+    const totalLocal = (((23 * 60 + 30 + offsetMinutes) % 1440) + 1440) % 1440;
+    const expected = `${String(Math.floor(totalLocal / 60)).padStart(2, "0")}:${String(totalLocal % 60).padStart(2, "0")}`;
+    expect(utcTimeToLocalTime("23:30")).toBe(expected);
+  });
+
+  it("returns invalid input verbatim so bad data stays visible", () => {
+    expect(utcTimeToLocalTime("not-a-time")).toBe("not-a-time");
+    expect(localTimeToUtcTime("25:00")).toBe("25:00");
   });
 });

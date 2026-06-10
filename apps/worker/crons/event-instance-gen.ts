@@ -78,21 +78,19 @@ function toDateKey(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
-function parseStartTime(startTime: string, timezoneOffsetMinutes: number): { utcHour: number; utcMinute: number } | null {
+// start_time is stored as UTC wall-clock "HH:mm" (the portal converts local→UTC
+// before persisting), so this only validates and splits — no timezone math.
+function parseStartTime(startTime: string): { utcHour: number; utcMinute: number } | null {
   const match = startTime.match(/^(\d{1,2}):(\d{2})$/);
   if (!match) {
     return null;
   }
-  const localHour = Number(match[1]);
-  const localMinute = Number(match[2]);
-  if (localHour < 0 || localHour > 23 || localMinute < 0 || localMinute > 59) {
+  const utcHour = Number(match[1]);
+  const utcMinute = Number(match[2]);
+  if (utcHour < 0 || utcHour > 23 || utcMinute < 0 || utcMinute > 59) {
     return null;
   }
-
-  const totalMinutesLocal = localHour * 60 + localMinute;
-  let totalMinutesUtc = totalMinutesLocal - timezoneOffsetMinutes;
-  totalMinutesUtc = ((totalMinutesUtc % 1440) + 1440) % 1440;
-  return { utcHour: Math.floor(totalMinutesUtc / 60), utcMinute: totalMinutesUtc % 60 };
+  return { utcHour, utcMinute };
 }
 
 function computeNextOccurrence(anchor: Date, utcHour: number, utcMinute: number, rule: RecurrenceRule, referenceDate: Date): Date | null {
@@ -170,7 +168,6 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
       generationCount: recurringTemplates.generationCount,
       visibilityOffsetMinutes: recurringTemplates.visibilityOffsetMinutes,
       autoArchive: recurringTemplates.autoArchive,
-      timezoneOffsetMinutes: recurringTemplates.timezoneOffsetMinutes,
       createdAt: recurringTemplates.createdAt,
     })
     .from(recurringTemplates)
@@ -187,7 +184,7 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
       continue;
     }
 
-    const utcTime = parseStartTime(template.startTime, template.timezoneOffsetMinutes);
+    const utcTime = parseStartTime(template.startTime);
     if (!utcTime) {
       continue;
     }

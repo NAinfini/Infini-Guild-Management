@@ -6,13 +6,13 @@ export const REFERRER_POLICY_VALUE = "strict-origin-when-cross-origin";
 export const X_CONTENT_TYPE_VALUE = "nosniff";
 
 export function buildSpaHtmlCsp(selfHost: string): string {
-  // index.html contains an inline <script> for the splash animation, so
-  // script-src must include 'unsafe-inline'. A nonce/hash approach would
-  // require build-time injection and is out of scope for this change.
+  // The splash animation lives in /splash.js (portal public dir), so no
+  // inline <script> exists in index.html and script-src stays 'self'-only.
+  // style-src keeps 'unsafe-inline': Mantine injects inline styles at runtime.
   const frameSrc = `frame-src ${EMBED_FRAME_SOURCES.join(" ")}`;
   return [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob:",

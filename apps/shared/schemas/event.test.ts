@@ -54,7 +54,6 @@ describe("event schemas", () => {
         created_by: "user-1",
         last_generated_date: null,
         generation_count: 0,
-        timezone_offset_minutes: -480,
         created_at: "2026-05-04T12:00:00.000Z",
         updated_at: "2026-05-04T12:00:00.000Z",
       }),
@@ -66,7 +65,6 @@ describe("event schemas", () => {
       start_time: "20:00",
       recurrence_rule: { frequency: "daily", interval: 1 },
       auto_archive: true,
-      timezone_offset_minutes: -480,
     })).toMatchObject({ auto_archive: true });
 
     expect(updateTemplateSchema.parse({ auto_archive: false })).toMatchObject({ auto_archive: false });

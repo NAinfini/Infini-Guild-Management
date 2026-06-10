@@ -1,12 +1,15 @@
 /**
- * Recurrence weekday timezone contract.
+ * Recurrence timezone contract.
  *
- * `recurrence_rule.daysOfWeek` is stored as **UTC weekdays** (0=Sun..6=Sat).
- * The backend cron (`event-instance-gen.ts`) operates purely in UTC, so the UI
- * must convert the user's locally-selected weekday(s) to UTC before persisting,
- * and convert back when displaying. Both conversions anchor their local↔UTC day
- * shift on the template's `start_at` instant so they are exact inverses across
- * DST boundaries and near-midnight times.
+ * The database stores recurrence schedules purely in UTC:
+ * - `recurring_templates.start_time` is a **UTC** wall-clock "HH:mm".
+ * - `recurrence_rule.daysOfWeek` are **UTC weekdays** (0=Sun..6=Sat).
+ *
+ * The backend cron (`event-instance-gen.ts`) does no timezone math at all; the
+ * UI converts the user's local time/weekday selection to UTC before persisting
+ * and back for display, using the viewer's *current* offset. Both weekday
+ * conversions anchor their local↔UTC day shift on an instant at the template's
+ * UTC time so they are exact inverses across near-midnight times.
  *
  * This is the single source of truth for that conversion — imported by the
  * portal so the frontend and backend cannot drift.

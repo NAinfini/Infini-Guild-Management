@@ -57,7 +57,6 @@ describe("RecurringTemplateFormModal", () => {
       generation_count: 0,
       last_generated_date: null,
       auto_archive: true,
-      timezone_offset_minutes: 480,
       created_at: "2026-03-20T12:00:00.000Z",
       updated_at: "2026-03-20T12:00:00.000Z",
       created_by: "user-1",

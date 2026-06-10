@@ -23,7 +23,6 @@ export type TemplateRow = {
   createdBy: string;
   lastGeneratedDate: string | null;
   generationCount: number;
-  timezoneOffsetMinutes: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -38,7 +37,6 @@ type CreateTemplateInput = {
   recurrence_rule: unknown;
   visibility_offset_minutes?: number | null;
   auto_archive?: boolean;
-  timezone_offset_minutes: number;
   attachments?: string[];
 };
 
@@ -52,7 +50,6 @@ type UpdateTemplateInput = {
   recurrence_rule?: unknown;
   visibility_offset_minutes?: number | null;
   auto_archive?: boolean;
-  timezone_offset_minutes?: number;
   attachments?: string[];
 };
 
@@ -80,7 +77,6 @@ const templateSelectFields = {
   createdBy: recurringTemplates.createdBy,
   lastGeneratedDate: recurringTemplates.lastGeneratedDate,
   generationCount: recurringTemplates.generationCount,
-  timezoneOffsetMinutes: recurringTemplates.timezoneOffsetMinutes,
   createdAt: recurringTemplates.createdAt,
   updatedAt: recurringTemplates.updatedAt,
 } as const;
@@ -102,7 +98,6 @@ export function toTemplatePayload(row: TemplateRow) {
     created_by: row.createdBy,
     last_generated_date: row.lastGeneratedDate,
     generation_count: row.generationCount,
-    timezone_offset_minutes: row.timezoneOffsetMinutes,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   });
@@ -143,7 +138,6 @@ export class EventTemplateService {
       createdBy: actorId,
       lastGeneratedDate: null,
       generationCount: 0,
-      timezoneOffsetMinutes: data.timezone_offset_minutes,
     });
 
     const created = await this.deps.getTemplateById(templateId);
@@ -180,17 +174,13 @@ export class EventTemplateService {
     if (data.auto_archive !== undefined) {
       patch.autoArchive = data.auto_archive;
     }
-    if (data.timezone_offset_minutes !== undefined) {
-      patch.timezoneOffsetMinutes = data.timezone_offset_minutes;
-    }
     if (data.attachments !== undefined) {
       patch.attachments = JSON.stringify(data.attachments);
     }
 
     const scheduleChanged =
       (data.start_time !== undefined && data.start_time !== existing.startTime) ||
-      (data.recurrence_rule !== undefined && JSON.stringify(data.recurrence_rule) !== existing.recurrenceRule) ||
-      (data.timezone_offset_minutes !== undefined && data.timezone_offset_minutes !== existing.timezoneOffsetMinutes);
+      (data.recurrence_rule !== undefined && JSON.stringify(data.recurrence_rule) !== existing.recurrenceRule);
     if (scheduleChanged) {
       patch.lastGeneratedDate = this.now().slice(0, 10);
       patch.generationCount = 0;
@@ -292,8 +282,6 @@ export class EventTemplateService {
       diff.visibility_offset_minutes = { from: existing.visibilityOffsetMinutes, to: data.visibility_offset_minutes ?? 0 };
     if (data.auto_archive !== undefined && data.auto_archive !== existing.autoArchive)
       diff.auto_archive = { from: existing.autoArchive, to: data.auto_archive };
-    if (data.timezone_offset_minutes !== undefined && data.timezone_offset_minutes !== existing.timezoneOffsetMinutes)
-      diff.timezone_offset_minutes = { from: existing.timezoneOffsetMinutes, to: data.timezone_offset_minutes };
     if (data.attachments !== undefined) {
       const existingKeys = parseAttachments(existing.attachments);
       if (JSON.stringify(data.attachments) !== JSON.stringify(existingKeys))

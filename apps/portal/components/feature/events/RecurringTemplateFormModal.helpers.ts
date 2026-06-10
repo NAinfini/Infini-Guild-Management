@@ -11,9 +11,9 @@ export type RecurringTemplateFormPayload = {
   type: (typeof EVENT_TYPES)[number];
   title: string;
   description?: string;
+  /** UTC wall-clock "HH:mm" — converted from the local form input before submit. */
   start_time: string;
   duration_minutes?: number;
-  timezone_offset_minutes: number;
   capacity?: number;
   recurrence_rule: {
     frequency: RecurrenceFreq;
@@ -64,6 +64,31 @@ export function tzOffsetToAnchorIso(offsetMinutes: number, startTime = "12:00"):
   return new Date(baseMs - offsetMinutes * 60_000).toISOString();
 }
 
+/** Shift an "HH:mm" wall-clock by deltaMinutes, wrapping at midnight. */
+function shiftHHmm(time: string, deltaMinutes: number): string | null {
+  const match = time.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return null;
+  const total = (((hour * 60 + minute + deltaMinutes) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Convert a stored UTC "HH:mm" to the viewer's local wall-clock for display.
+ * Returns the input verbatim if it is not a valid "HH:mm" so bad data stays
+ * visible instead of being masked.
+ */
+export function utcTimeToLocalTime(utcTime: string): string {
+  return shiftHHmm(utcTime, -new Date().getTimezoneOffset()) ?? utcTime;
+}
+
+/** Convert a locally-entered "HH:mm" to the UTC "HH:mm" to persist. */
+export function localTimeToUtcTime(localTime: string): string {
+  return shiftHHmm(localTime, new Date().getTimezoneOffset()) ?? localTime;
+}
+
 function durationFromMinutes(totalMinutes: number | null): { value: number; unit: DurationUnit } {
   if (totalMinutes == null || totalMinutes <= 0) return { value: 2, unit: "hours" };
   if (totalMinutes < 60) return { value: totalMinutes, unit: "minutes" };
@@ -75,7 +100,9 @@ export function buildFormState(template: RecurringTemplate | null): RecurringTem
   const duration = durationFromMinutes(template?.duration_minutes ?? null);
   const totalMinutes = template?.visibility_offset_minutes ?? null;
   const storedDays = template?.recurrence_rule?.daysOfWeek ?? [1, 3, 5];
-  const anchorIso = template ? tzOffsetToAnchorIso(template.timezone_offset_minutes, template.start_time) : null;
+  // start_time is stored as UTC; anchor on the instant at that UTC time so the
+  // weekday conversion matches the viewer's actual local offset.
+  const anchorIso = template ? tzOffsetToAnchorIso(0, template.start_time) : null;
   const localDays = anchorIso
     ? storedDays.map((d) => utcWeekdayToLocal(d, anchorIso))
     : storedDays;
@@ -83,7 +110,7 @@ export function buildFormState(template: RecurringTemplate | null): RecurringTem
     title: template?.title ?? "",
     eventType: (template?.type as (typeof EVENT_TYPES)[number]) ?? ("" as (typeof EVENT_TYPES)[number]),
     description: template?.description ?? "",
-    startTime: template?.start_time ?? "00:00",
+    startTime: template ? utcTimeToLocalTime(template.start_time) : "00:00",
     durationValue: duration.value,
     durationUnit: duration.unit,
     capacity: template?.capacity === null ? "" : String(template?.capacity ?? ""),

@@ -1,7 +1,7 @@
 import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
 import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
-import { tzOffsetToAnchorIso, buildFormState, computeNextLifecyclePreview, formatLifecycleDate } from "./RecurringTemplateFormModal.helpers";
+import { tzOffsetToAnchorIso, buildFormState, computeNextLifecyclePreview, formatLifecycleDate, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
 import { PortalCard } from "@portal/components/shared/PortalCard";
 import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, UsersIcon } from "@portal/components/icons";
 import { Badge, Group, HoverCard, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
@@ -19,7 +19,6 @@ const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed"
 function buildRecurrenceSummary(
   t: (key: string, opts?: Record<string, unknown>) => string,
   rule: RecurringTemplate["recurrence_rule"],
-  timezoneOffsetMinutes: number,
   startTime: string,
 ): string {
   if (!rule) return "";
@@ -29,7 +28,9 @@ function buildRecurrenceSummary(
     return t("recurring.summary.daily", { interval });
   }
   if (freq === "weekly") {
-    const anchorIso = tzOffsetToAnchorIso(timezoneOffsetMinutes, startTime);
+    // start_time is stored as UTC; anchor on that UTC instant for the
+    // UTC→local weekday conversion.
+    const anchorIso = tzOffsetToAnchorIso(0, startTime);
     const dayNames = (rule.daysOfWeek ?? [])
       .map((d) => utcWeekdayToLocal(d, anchorIso))
       .sort((a, b) => a - b)
@@ -151,7 +152,7 @@ export function RecurringTemplatesTab({
           templates.map((template) => {
             const isPaused = template.paused;
             const typeDef = EVENT_TYPES.find((et) => et === template.type);
-            const time = template.start_time || "--:--";
+            const time = template.start_time ? utcTimeToLocalTime(template.start_time) : "--:--";
             const lifecycle = isPaused ? null : computeNextLifecyclePreview(buildFormState(template), template, "edit");
             const lang = i18n.language;
             return (
@@ -232,7 +233,7 @@ export function RecurringTemplatesTab({
                             <Text size="xs" c="dimmed">{time}</Text>
                           </Group>
                           <Text size="xs" c="dimmed">
-                            {buildRecurrenceSummary(t, template.recurrence_rule, template.timezone_offset_minutes, template.start_time)}
+                            {buildRecurrenceSummary(t, template.recurrence_rule, template.start_time)}
                           </Text>
                           {template.capacity != null && (
                             <Group gap={4} align="center">

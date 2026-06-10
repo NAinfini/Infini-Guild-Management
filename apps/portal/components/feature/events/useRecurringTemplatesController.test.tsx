@@ -112,7 +112,6 @@ describe("useRecurringTemplatesController", () => {
       title: "Weekly Raid",
       description: "Bring food",
       start_time: "19:00",
-      timezone_offset_minutes: 480,
       recurrence_rule: {
         frequency: "weekly" as const,
         interval: 1,

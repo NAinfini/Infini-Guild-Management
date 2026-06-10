@@ -48,6 +48,8 @@ export const recurringTemplates = sqliteTable(
     type: text("type", { enum: EVENT_TYPE_IDS }).notNull(),
     title: text("title").notNull(),
     description: text("description"),
+    // UTC wall-clock "HH:mm"; the portal converts local↔UTC. The DB also has a
+    // legacy timezone_offset_minutes column (unused, kept for prod parity).
     startTime: text("start_time").notNull(),
     durationMinutes: integer("duration_minutes"),
     capacity: integer("capacity"),
@@ -59,7 +61,6 @@ export const recurringTemplates = sqliteTable(
     createdBy: text("created_by").notNull().references(() => users.id),
     lastGeneratedDate: text("last_generated_date"),
     generationCount: integer("generation_count").notNull().default(0),
-    timezoneOffsetMinutes: integer("timezone_offset_minutes").notNull().default(0),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
