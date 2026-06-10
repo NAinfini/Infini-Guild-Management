@@ -52,3 +52,18 @@ export const createWikiArticleSchema = z.object({
 export const updateWikiArticleSchema = createWikiArticleSchema.partial().extend({
   archived_at: z.string().datetime().nullable().optional(),
 });
+
+export const wikiRevisionListItemSchema = z.object({
+  id: z.string(),
+  article_id: z.string(),
+  revision: z.number().int(),
+  title: z.string(),
+  edited_by: z.string(),
+  edited_by_username: z.string().nullable(),
+  restored_from: z.number().int().nullable(),
+  created_at: z.string(),
+});
+
+export const wikiRevisionSchema = wikiRevisionListItemSchema.extend({
+  body_json: z.string(),
+});

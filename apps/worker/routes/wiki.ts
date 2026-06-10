@@ -106,6 +106,30 @@ wikiRoutes.patch("/articles/:id", async (c) => {
   return handleResult(c, result);
 });
 
+// --- Revision routes (editor-only: history is a moderation tool) ---
+
+wikiRoutes.get("/articles/:id/revisions", async (c) => {
+  await requireWikiArticlesEdit(c);
+  const result = await getService(c).listRevisions(c.req.param("id"));
+  return handleResult(c, result);
+});
+
+wikiRoutes.get("/articles/:id/revisions/:revision", async (c) => {
+  await requireWikiArticlesEdit(c);
+  const revision = Number.parseInt(c.req.param("revision"), 10);
+  if (!Number.isInteger(revision) || revision < 1) return buildError(c, "VALIDATION_ERROR", "Invalid revision number");
+  const result = await getService(c).getRevision(c.req.param("id"), revision);
+  return handleResult(c, result);
+});
+
+wikiRoutes.post("/articles/:id/revisions/:revision/restore", async (c) => {
+  const sessionUser = await requireWikiArticlesEdit(c);
+  const revision = Number.parseInt(c.req.param("revision"), 10);
+  if (!Number.isInteger(revision) || revision < 1) return buildError(c, "VALIDATION_ERROR", "Invalid revision number");
+  const result = await getService(c).restoreRevision(sessionUser.id, c.req.param("id"), revision);
+  return handleResult(c, result);
+});
+
 wikiRoutes.delete("/articles/:id", async (c) => {
   const sessionUser = await requirePermission(c, "wiki.articles.archive");
   const result = await getService(c).archiveArticle(sessionUser.id, c.req.param("id"));

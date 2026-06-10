@@ -49,7 +49,9 @@ export function useWikiPageController() {
   const [editorTab, setEditorTab] = useState<"article" | "categories">("article");
   const [mobilePane, setMobilePane] = useState<"list" | "article">("list");
   const [showEditorPane, editorPaneHandlers] = useDisclosure(false);
+  const [showHistory, historyHandlers] = useDisclosure(false);
   const isEditorPaneVisible = canEdit && showEditorPane;
+  const isHistoryOpen = canEdit && showHistory;
 
   const [articlesPage, setArticlesPage] = useState(1);
   const accumulatedArticlesRef = useRef<WikiArticle[]>([]);
@@ -332,6 +334,11 @@ export function useWikiPageController() {
     selectedSlug,
     selectedCategory,
     canEdit,
+
+    // revision history
+    isHistoryOpen,
+    openHistory: historyHandlers.open,
+    closeHistory: historyHandlers.close,
 
     // sub-editors
     articleEditor,

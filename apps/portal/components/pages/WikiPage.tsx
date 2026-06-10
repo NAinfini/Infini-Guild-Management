@@ -5,7 +5,7 @@ import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
 import { PortalCard } from "../shared/PortalCard";
 import { FilterToolbar } from "../shared/FilterToolbar";
-import { PencilIcon, PinIcon } from "@portal/components/icons";
+import { ClockIcon, PencilIcon, PinIcon } from "@portal/components/icons";
 import { Suspense, lazy, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
@@ -22,6 +22,9 @@ const LazyWikiArticleEditorCard = lazy(() =>
 );
 const LazyTipTapEditor = lazy(() =>
   import("@portal/components/shared/TipTapEditor").then((m) => ({ default: m.TipTapEditor })),
+);
+const LazyWikiHistoryModal = lazy(() =>
+  import("../feature/wiki/WikiHistoryModal").then((m) => ({ default: m.WikiHistoryModal })),
 );
 
 function formatDateTime(iso: string): string {
@@ -161,12 +164,20 @@ export function WikiPage() {
                     {controller.selectedArticle.title}
                   </Text>
                   {controller.canEdit ? (
-                    <DepthButton type="secondary" size="sm" onClick={controller.handleOpenArticleEditor} tooltip={{ label: t("editor.editWiki"), withArrow: true }}>
+                    <Group gap={6}>
+                      <DepthButton type="secondary" size="sm" onClick={controller.openHistory} tooltip={{ label: t("history.button"), withArrow: true }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                          <ClockIcon size={16} />
+                        </span>
+                        <VisuallyHidden>{t("history.button")}</VisuallyHidden>
+                      </DepthButton>
+                      <DepthButton type="secondary" size="sm" onClick={controller.handleOpenArticleEditor} tooltip={{ label: t("editor.editWiki"), withArrow: true }}>
                         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                           <PencilIcon size={16} />
                         </span>
                         <VisuallyHidden>{t("editor.editWiki")}</VisuallyHidden>
                       </DepthButton>
+                    </Group>
                   ) : null}
                 </Group>
                 <Group gap={6}>
@@ -288,6 +299,16 @@ export function WikiPage() {
           </Drawer>
         )}
       </div>
+
+      {controller.isHistoryOpen && controller.selectedArticle ? (
+        <Suspense fallback={null}>
+          <LazyWikiHistoryModal
+            opened={controller.isHistoryOpen}
+            onClose={controller.closeHistory}
+            article={controller.selectedArticle}
+          />
+        </Suspense>
+      ) : null}
     </PageLayout>
   );
 }

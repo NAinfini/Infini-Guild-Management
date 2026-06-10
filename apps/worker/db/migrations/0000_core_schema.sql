@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS recurring_templates (
   type TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
-  start_time TEXT NOT NULL,
+  start_time TEXT NOT NULL, -- UTC wall-clock "HH:mm" (since 2026-06; portal converts local<->UTC)
   duration_minutes INTEGER,
   capacity INTEGER CHECK (capacity > 0),
   recurrence_rule TEXT NOT NULL,
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS recurring_templates (
   created_by TEXT NOT NULL REFERENCES users(id),
   last_generated_date TEXT,
   generation_count INTEGER NOT NULL DEFAULT 0,
-  timezone_offset_minutes INTEGER NOT NULL DEFAULT 0,
+  timezone_offset_minutes INTEGER NOT NULL DEFAULT 0, -- legacy, unused since 2026-06 (start_time is UTC)
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -599,3 +599,21 @@ CREATE TABLE IF NOT EXISTS media_references (
 
 CREATE INDEX IF NOT EXISTS idx_media_references_key ON media_references(media_key);
 CREATE INDEX IF NOT EXISTS idx_media_references_entity ON media_references(entity_type, entity_id);
+
+
+-- ===== WIKI REVISIONS (per-save content snapshots) =====
+-- Revision N holds the article's title/body as of that save. Restore writes
+-- an old snapshot back as a new revision. Pruned to a per-article cap on write.
+
+CREATE TABLE IF NOT EXISTS wiki_revisions (
+  id TEXT PRIMARY KEY,
+  article_id TEXT NOT NULL REFERENCES wiki_articles(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  body_json TEXT NOT NULL,
+  edited_by TEXT NOT NULL REFERENCES users(id),
+  restored_from INTEGER,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_wiki_revisions_article_revision ON wiki_revisions(article_id, revision);

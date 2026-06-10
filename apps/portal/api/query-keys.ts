@@ -87,6 +87,8 @@ export const queryKeys = {
     articles: (categoryId: string, search: string, archivedMode: string, pinnedOnly: boolean, page?: number) =>
       [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, pinnedOnly, page ?? 1] as const,
     article: (slug: string | null) => [...queryKeys.wiki.all, "article", slug] as const,
+    revisions: (articleId: string | null) => [...queryKeys.wiki.all, "revisions", articleId] as const,
+    revision: (articleId: string | null, revision: number | null) => [...queryKeys.wiki.all, "revision", articleId, revision] as const,
   },
   badges: {
     all: ["badges"] as const,

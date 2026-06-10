@@ -96,6 +96,20 @@ describe("announcement and wiki permission mapping", () => {
     expect(mocks.requirePermission).toHaveBeenCalledWith(expect.anything(), "wiki.articles.archive");
   });
 
+  it("uses wiki.articles.edit for wiki revision list and restore routes", async () => {
+    const { wikiRoutes } = await import("./wiki");
+
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
+    const listResult = await wikiRoutes.request("/articles/article-1/revisions", { method: "GET" });
+    expect(listResult.status).toBe(401);
+    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "wiki.articles.edit");
+
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
+    const restoreResult = await wikiRoutes.request("/articles/article-1/revisions/2/restore", { method: "POST" });
+    expect(restoreResult.status).toBe(401);
+    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "wiki.articles.edit");
+  });
+
 });
 
 describe("gallery permission mapping", () => {

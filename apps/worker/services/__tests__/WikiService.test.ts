@@ -96,6 +96,24 @@ describe("WikiService", () => {
       // replaceMediaRefs calls db.batch with at least the DELETE statement
       expect(batchMock).toHaveBeenCalled();
     });
+
+    it("records revision 1 on article create", async () => {
+      const { rawDb } = createRawDb();
+      const { db, mocks } = createCrudDb(BASE_ARTICLE_ROW);
+      const deps = createDeps(rawDb);
+      const service = new WikiService(db as never, deps);
+
+      await service.createArticle("u1", {
+        title: "My Article",
+        category_id: "cat1",
+        body_json: '{"content":[]}',
+        sort_order: 0,
+        pinned: false,
+      });
+
+      // Two inserts: the article row and its initial revision snapshot
+      expect(mocks.insertMock).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("updateArticle", () => {
@@ -119,6 +137,47 @@ describe("WikiService", () => {
       await service.updateArticle("u1", "art1", { title: "New title" });
 
       expect(batchMock).not.toHaveBeenCalled();
+    });
+
+    it("records revision snapshots when the title changes", async () => {
+      const { rawDb } = createRawDb();
+      const { db, mocks } = createCrudDb(BASE_ARTICLE_ROW);
+      const deps = createDeps(rawDb);
+      const service = new WikiService(db as never, deps);
+
+      await service.updateArticle("u1", "art1", { title: "New title" });
+
+      // Legacy article (no revisions yet): baseline snapshot + new snapshot
+      expect(mocks.insertMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("does NOT record a revision when only pinned changes", async () => {
+      const { rawDb } = createRawDb();
+      const { db, mocks } = createCrudDb(BASE_ARTICLE_ROW);
+      const deps = createDeps(rawDb);
+      const service = new WikiService(db as never, deps);
+
+      await service.updateArticle("u1", "art1", { pinned: true });
+
+      expect(mocks.insertMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("restoreRevision", () => {
+    it("rejects restoring a revision identical to the current content", async () => {
+      const { rawDb } = createRawDb();
+      // Generic mock returns the same row for article and revision lookups,
+      // so title/body always match → identical-content guard must trigger.
+      const { db, mocks } = createCrudDb(BASE_ARTICLE_ROW);
+      const deps = createDeps(rawDb);
+      const service = new WikiService(db as never, deps);
+
+      const result = await service.restoreRevision("u1", "art1", 1);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.code).toBe("VALIDATION_ERROR");
+      expect(mocks.updateMock).not.toHaveBeenCalled();
+      expect(deps.writeAuditLog).not.toHaveBeenCalled();
     });
   });
 
