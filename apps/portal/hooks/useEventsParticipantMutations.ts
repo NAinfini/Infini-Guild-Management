@@ -57,7 +57,7 @@ export function useEventsParticipantMutations({
           centered: true,
         });
       }),
-    [],
+    [t],
   );
 
   const joinMutation = useMutation({

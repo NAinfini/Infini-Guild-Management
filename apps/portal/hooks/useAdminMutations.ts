@@ -2,7 +2,7 @@ import { modals } from "@mantine/modals";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createElement, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { notifySuccess, notifyWarning } from "../utils/notifications";
+import { notifySuccess, notifyWarning, notifyError } from "../utils/notifications";
 import type { MemberDetailFormState } from "../components/feature/admin/AdminMemberDetailModal";
 import type { ClassName } from "@guild/shared";
 import {
@@ -117,7 +117,12 @@ export function useAdminMutations({
       return result;
     },
     onSuccess: async (payload) => {
-      notifySuccess(t("message.memberCreatedPasswordCopied", { username: payload.username }));
+      try {
+        await copyPlainText(payload.temporary_password);
+        notifySuccess(t("message.memberCreatedPasswordCopied", { username: payload.username }));
+      } catch {
+        notifyError(t("message.memberCreatedPasswordNotCopied", { username: payload.username }));
+      }
       await invalidateAdminUsers();
     },
     onError: (error) => showError(error, t("message.memberCreateFailed")),
@@ -251,7 +256,19 @@ export function useAdminMutations({
       await invalidateAdminUsers();
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.all });
     },
-    onError: (error) => showError(error, t("message.memberProfileSaveFailed")),
+    onError: async (error) => {
+      await invalidateAdminUsers();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.all });
+      if (error instanceof Error && error.message === "Profile saved but role update failed") {
+        notifyError(t("message.memberProfileSavedRoleFailed"));
+        return;
+      }
+      if (error instanceof Error && error.message === "Profile and role saved but status update failed") {
+        notifyError(t("message.memberProfileSavedStatusFailed"));
+        return;
+      }
+      showError(error, t("message.memberProfileSaveFailed"));
+    },
   });
 
   const createRoleMutation = useMutation({

@@ -6,7 +6,6 @@ import {
   warTeamMemberSchema,
   warTeamSchema,
 } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -18,6 +17,7 @@ import {
   warTeamMembers,
   warTeams,
 } from "../../db/schema";
+import type { WriteAuditLogInput } from "../audit";
 
 export type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 
@@ -68,7 +68,7 @@ export type WarTemplateSnapshot = {
   pool_members: Array<{ user_id: string }>;
 };
 
-type AuditLogInput = { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
+type AuditLogInput = WriteAuditLogInput;
 export type SaveTeamsInput = z.infer<typeof saveTeamsPayloadSchema>;
 export type MoveMembersInput = Array<{ user_id: string; to: string }>;
 export type RoleTagUpdatesInput = Array<{ user_id: string; role_tag: string | null }>;
@@ -119,10 +119,28 @@ export function buildWarEtag(warId: string, updatedAt: string): string {
   return `"war-${warId}-${updatedAt}"`;
 }
 
+/**
+ * djb2-style hash of a string: fast, deterministic, no dependencies.
+ * Produces a 32-bit unsigned integer as a hex string.
+ */
+function djb2Hash(value: string): string {
+  let h = 5381;
+  for (let i = 0; i < value.length; i++) {
+    h = (((h << 5) + h) ^ value.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(16);
+}
+
 export function buildActiveEtag(eventId: string, teams: WarTeamRow[], members: WarTeamMemberRow[]): string {
-  const teamCount = teams.length;
-  const memberCount = members.length;
-  return `"active-${eventId}-${teamCount}-${memberCount}"`;
+  // Incorporate a deterministic digest of the actual roster composition so that
+  // member swaps that leave counts unchanged still produce a new ETag (fix for
+  // stale 304 responses when only roster membership changed).
+  // Sorted by memberId:teamId:sortOrder to make the hash order-independent.
+  const rosterParts = members
+    .map((m) => `${m.id}:${m.warTeamId}:${m.sortOrder}`)
+    .sort();
+  const digest = djb2Hash(rosterParts.join("|"));
+  return `"active-${eventId}-${teams.length}-${members.length}-${digest}"`;
 }
 
 // --- Service class ---

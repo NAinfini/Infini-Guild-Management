@@ -1,5 +1,5 @@
 import { gameDataSchema, type GameDataInput } from "@guild/shared/schemas/equipment-calc";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import { desc, eq, inArray, not } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { gameData } from "../db/schema/game-data";
@@ -8,7 +8,6 @@ import { ok, err, type ServiceResult } from "./result";
 import { validateUploadBytes } from "./media";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
-type AuditLogInput = { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
 type SemanticValidationResult = { ok: true } | { ok: false; message: string };
 
 export type GameDataServiceDeps = {

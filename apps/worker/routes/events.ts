@@ -47,7 +47,7 @@ function getEventService(c: Context) {
 async function requireEventCreate(c: Context) { return requirePermission(c, "events.create"); }
 async function requireEventEdit(c: Context) { return requirePermission(c, "events.edit"); }
 async function requireEventArchive(c: Context) { return requirePermission(c, "events.archive"); }
-async function requireEventDelete(c: Context) { return requirePermission(c, "events.delete"); }
+async function requireEventDelete(c: Context) { return requirePermission(c, "events.delete", { freshPermissions: true }); }
 async function requireEventTemplates(c: Context) { return requirePermission(c, "events.templates"); }
 
 async function parseCreateEventRequest(c: Context): Promise<{ body: unknown; files: File[] } | Response> {
@@ -86,7 +86,6 @@ eventsRoutes.get("/", async (c) => {
 
 eventsRoutes.post("/batch-details", async (c) => {
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids))
     return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
   const ids = ((body as { ids: string[] }).ids).filter((id) => typeof id === "string" && id.length > 0);
@@ -111,7 +110,6 @@ eventsRoutes.get("/:id", async (c) => {
 
 eventsRoutes.post("/", async (c) => {
   const sessionUser = await requireEventCreate(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const parsed_req = await parseCreateEventRequest(c);
   if (parsed_req instanceof Response) return parsed_req;
   const { body, files } = parsed_req;
@@ -124,12 +122,10 @@ eventsRoutes.post("/", async (c) => {
 
 eventsRoutes.patch("/:id", async (c) => {
   const sessionUser = await requireEventEdit(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Event not found");
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = updateEventSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid update event payload", parsed.error.flatten());
   const result = await svc.updateEvent(sessionUser.id, existing.id, existing, parsed.data);
@@ -139,7 +135,6 @@ eventsRoutes.patch("/:id", async (c) => {
 
 eventsRoutes.delete("/:id", async (c) => {
   const sessionUser = await requireEventArchive(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Event not found");
@@ -149,7 +144,6 @@ eventsRoutes.delete("/:id", async (c) => {
 
 eventsRoutes.delete("/:id/destroy", async (c) => {
   const sessionUser = await requireEventDelete(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Event not found");
@@ -159,7 +153,6 @@ eventsRoutes.delete("/:id/destroy", async (c) => {
 
 eventsRoutes.post("/:id/images", async (c) => {
   const sessionUser = await requireEventEdit(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Event not found");
@@ -170,23 +163,19 @@ eventsRoutes.post("/:id/images", async (c) => {
 
 eventsRoutes.post("/:id/join", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const result = await getEventService(c).joinEvent(sessionUser.id, c.req.param("id"));
   return result.ok ? c.json(toParticipantPayload(result.participant), 201) : buildError(c, result.code, result.message);
 });
 
 eventsRoutes.delete("/:id/leave", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const result = await getEventService(c).leaveEvent(sessionUser.id, c.req.param("id"));
   return result.ok ? c.json({ ok: true }) : buildError(c, result.code, result.message);
 });
 
 eventsRoutes.post("/:id/poll/vote", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = pollVoteSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid poll vote payload", parsed.error.flatten());
   const result = await getEventService(c).votePoll(sessionUser.id, c.req.param("id"), parsed.data.option_ids);
@@ -195,16 +184,13 @@ eventsRoutes.post("/:id/poll/vote", async (c) => {
 
 eventsRoutes.post("/:id/raffle/draw", async (c) => {
   const sessionUser = await requireEventEdit(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const result = await getEventService(c).drawRaffleWinners(sessionUser.id, c.req.param("id"));
   return result.ok ? c.json({ data: result.winners.map(toRaffleWinnerPayload) }) : buildError(c, result.code, result.message);
 });
 
 eventsRoutes.post("/:id/participants", async (c) => {
   const sessionUser = await requireEventEdit(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = eventParticipantsBatchSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid participant payload", parsed.error.flatten());
   const result = await getEventService(c).addParticipants(sessionUser.id, c.req.param("id"), parsed.data.user_ids);
@@ -213,9 +199,7 @@ eventsRoutes.post("/:id/participants", async (c) => {
 
 eventsRoutes.delete("/:id/participants", async (c) => {
   const sessionUser = await requireEventEdit(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = eventParticipantsBatchSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid participant payload", parsed.error.flatten());
   const result = await getEventService(c).removeParticipants(sessionUser.id, c.req.param("id"), parsed.data.user_ids);
@@ -225,16 +209,13 @@ eventsRoutes.delete("/:id/participants", async (c) => {
 // --- Templates ---
 
 eventsRoutes.get("/templates/list", async (c) => {
-  const sessionUser = await requireEventTemplates(c);
-  if (sessionUser instanceof Response) return sessionUser;
+  await requireEventTemplates(c);
   return c.json({ data: await getEventService(c).listTemplates() });
 });
 
 eventsRoutes.post("/templates", async (c) => {
   const sessionUser = await requireEventTemplates(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = createTemplateSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid template payload", parsed.error.flatten());
   const result = await getEventService(c).createTemplate(sessionUser.id, parsed.data);
@@ -244,12 +225,10 @@ eventsRoutes.post("/templates", async (c) => {
 
 eventsRoutes.patch("/templates/:id", async (c) => {
   const sessionUser = await requireEventTemplates(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getTemplateById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Template not found");
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = updateTemplateSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid template update payload", parsed.error.flatten());
   const result = await svc.updateTemplate(sessionUser.id, existing.id, existing, parsed.data);
@@ -259,7 +238,6 @@ eventsRoutes.patch("/templates/:id", async (c) => {
 
 eventsRoutes.post("/templates/:id/pause", async (c) => {
   const sessionUser = await requireEventTemplates(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getTemplateById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Template not found");
@@ -269,7 +247,6 @@ eventsRoutes.post("/templates/:id/pause", async (c) => {
 
 eventsRoutes.post("/templates/:id/resume", async (c) => {
   const sessionUser = await requireEventTemplates(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const svc = getEventService(c);
   const existing = await svc.getTemplateById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Template not found");
@@ -278,8 +255,7 @@ eventsRoutes.post("/templates/:id/resume", async (c) => {
 });
 
 eventsRoutes.delete("/templates/:id", async (c) => {
-  const sessionUser = await requireEventTemplates(c);
-  if (sessionUser instanceof Response) return sessionUser;
+  const sessionUser = await requirePermission(c, "events.templates", { freshPermissions: true });
   const svc = getEventService(c);
   const existing = await svc.getTemplateById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Template not found");

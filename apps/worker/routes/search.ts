@@ -5,8 +5,7 @@ import { getDb, handleResult, requireSessionUser } from "./_shared";
 export const searchRoutes = new Hono();
 
 searchRoutes.get("/", async (c) => {
-  const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
+  await requireSessionUser(c);
 
   const service = new SearchService(getDb(c));
   const result = await service.search({

@@ -49,9 +49,7 @@ announcementsRoutes.get("/:id", async (c) => {
 
 announcementsRoutes.post("/", async (c) => {
   const sessionUser = await requireAnnouncementCreate(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = createAnnouncementSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid announcement payload", parsed.error.flatten());
   const result = await getService(c).create(sessionUser.id, parsed.data);
@@ -61,9 +59,7 @@ announcementsRoutes.post("/", async (c) => {
 
 announcementsRoutes.patch("/:id", async (c) => {
   const sessionUser = await requireAnnouncementEdit(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = updateAnnouncementSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid announcement payload", parsed.error.flatten());
   const ifMatchHeader = c.req.header("If-Match");
@@ -74,25 +70,20 @@ announcementsRoutes.patch("/:id", async (c) => {
 
 announcementsRoutes.delete("/:id", async (c) => {
   const sessionUser = await requirePermission(c, "announcements.archive");
-  if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).archive(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 announcementsRoutes.delete("/:id/permanent", async (c) => {
-  const sessionUser = await requirePermission(c, "announcements.delete");
-  if (sessionUser instanceof Response) return sessionUser;
+  const sessionUser = await requirePermission(c, "announcements.delete", { freshPermissions: true });
   const result = await getService(c).permanentDelete(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 announcementsRoutes.post("/:id/images", async (c) => {
   const sessionUser = await requireAnnouncementEdit(c);
-  if (sessionUser instanceof Response) return sessionUser;
 
-  const formOrError = await safeFormData(c);
-  if (formOrError instanceof Response) return formOrError;
-  const form = formOrError;
+  const form = await safeFormData(c);
   const files = collectFiles(form);
 
   if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");

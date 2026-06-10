@@ -55,10 +55,14 @@ describe("event instance generation horizon", () => {
       insert: vi.fn(() => ({
         values: vi.fn((values: unknown) => {
           insertedValues.push(values);
-          return { onConflictDoNothing: vi.fn().mockResolvedValue({ meta: { changes: 1 } }) };
+          return { onConflictDoNothing: vi.fn().mockReturnValue({ /* stmt object for db.batch */ }) };
         }),
       })),
       update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
+      // db.batch returns one D1Result per statement
+      batch: vi.fn().mockImplementation((stmts: unknown[]) =>
+        Promise.resolve(stmts.map(() => ({ meta: { changes: 1 } }))),
+      ),
     };
     drizzleMock.mockReturnValue(db);
 
@@ -71,6 +75,59 @@ describe("event instance generation horizon", () => {
     for (const val of insertedValues) {
       expect(val).not.toHaveProperty("visibleAt");
     }
+  });
+
+  it("writes media references for generated instances with attachments", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-04T09:30:00.000Z"));
+    const templates = [
+      {
+        id: "tpl-3",
+        type: "social",
+        title: "Attachment Run",
+        description: null,
+        startTime: "10:00",
+        durationMinutes: 60,
+        capacity: null,
+        createdBy: "user-1",
+        recurrenceRule: JSON.stringify({ frequency: "daily", interval: 1 }),
+        attachments: JSON.stringify(["events/tpl-3/images/banner.png"]),
+        lastGeneratedDate: null,
+        generationCount: 0,
+        visibilityOffsetMinutes: 60,
+        autoArchive: false,
+        timezoneOffsetMinutes: 0,
+        createdAt: "2026-05-03T10:00:00.000Z",
+      },
+    ];
+    const rawPrepare = vi.fn((sql: string) => ({
+      bind: vi.fn((...bindings: unknown[]) => ({
+        sql,
+        bindings,
+        run: vi.fn().mockResolvedValue({ meta: { changes: 1 } }),
+      })),
+    }));
+    const rawBatch = vi.fn().mockResolvedValue([]);
+    const db = {
+      select: vi.fn(() => ({ from: vi.fn(() => ({ where: vi.fn().mockResolvedValue(templates) })) })),
+      insert: vi.fn(() => ({
+        values: vi.fn(() => ({ onConflictDoNothing: vi.fn().mockReturnValue({}) })),
+      })),
+      update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
+      batch: vi.fn().mockImplementation((stmts: unknown[]) =>
+        Promise.resolve(stmts.map(() => ({ meta: { changes: 1 } }))),
+      ),
+    };
+    drizzleMock.mockReturnValue(db);
+
+    const mockDb = { prepare: rawPrepare, batch: rawBatch };
+    await runEventInstanceGenerationCron({ DB: mockDb } as never);
+
+    // replaceMediaRefs is called for the inserted instance
+    expect(rawBatch).toHaveBeenCalled();
+    const batchArgs = ((rawBatch as ReturnType<typeof vi.fn>).mock.calls[0] as [unknown[]])[0];
+    // batch has at least 2 statements: DELETE + INSERT for media_references
+    expect(batchArgs.length).toBeGreaterThanOrEqual(2);
   });
 
   it("delays instance creation until now >= start - offset", async () => {
@@ -104,10 +161,13 @@ describe("event instance generation horizon", () => {
       insert: vi.fn(() => ({
         values: vi.fn((values: unknown) => {
           insertedValues.push(values);
-          return { onConflictDoNothing: vi.fn().mockResolvedValue({ meta: { changes: 1 } }) };
+          return { onConflictDoNothing: vi.fn().mockReturnValue({ /* stmt object for db.batch */ }) };
         }),
       })),
       update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
+      batch: vi.fn().mockImplementation((stmts: unknown[]) =>
+        Promise.resolve(stmts.map(() => ({ meta: { changes: 1 } }))),
+      ),
     };
     drizzleMock.mockReturnValue(db);
 

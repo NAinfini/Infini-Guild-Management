@@ -102,14 +102,19 @@ describe("GuildWarService helpers", () => {
     const writeAuditLog = vi.fn().mockResolvedValue(undefined);
     const select = vi.fn((fields: Record<string, unknown>) => ({
       from: vi.fn(() => ({
-        where: vi.fn().mockResolvedValue(
-          "maxSort" in fields
-            ? [{ maxSort: 1 }]
-            : [
-                { id: "u-1", username: "Alpha" },
-                { id: "u-2", username: "Beta" },
-              ],
-        ),
+        where: vi.fn((_filter: unknown) => {
+          // GROUP BY query for max sort_order has a .groupBy() continuation
+          if ("maxSort" in fields) {
+            return {
+              groupBy: vi.fn().mockResolvedValue([{ warTeamId: "team-1", maxSort: 1 }]),
+            };
+          }
+          // Username fetch query resolves directly
+          return Promise.resolve([
+            { id: "u-1", username: "Alpha" },
+            { id: "u-2", username: "Beta" },
+          ]);
+        }),
       })),
     }));
     const service = new GuildWarService({ select } as never, {

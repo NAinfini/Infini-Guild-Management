@@ -1,9 +1,11 @@
 import { ERROR_STATUS, LIMITS, type ErrorCode, type StandardErrorResponse } from "@guild/shared";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
+import { HTTPException } from "hono/http-exception";
 import type { ZodTypeAny } from "zod";
 import type { Bindings } from "../index";
 import { getRequestUser } from "../middleware/rbac";
+import type { SessionUser } from "../services/auth";
 export { parsePage } from "../utils/pagination";
 
 type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
@@ -46,6 +48,15 @@ export function buildError(c: Context, code: ErrorCode, message: string, details
   return c.json(body, ERROR_STATUS[code] as ErrorStatusCode);
 }
 
+/**
+ * Throws an HTTPException carrying a fully-formed standard error envelope.
+ * The global error handler returns the carried Response as-is, so helpers can
+ * fail a request from any depth without `instanceof Response` plumbing.
+ */
+export function throwError(c: Context, code: ErrorCode, message: string, details?: unknown): never {
+  throw new HTTPException(ERROR_STATUS[code] as ErrorStatusCode, { res: buildError(c, code, message, details) });
+}
+
 export function handleResult(
   c: Context,
   result: { ok: true; data: unknown } | { ok: false; code: ErrorCode; message: string; details?: unknown },
@@ -61,30 +72,31 @@ export function parseBoolean(value: string | undefined): boolean | undefined {
   return undefined;
 }
 
-export async function parseJsonBody(c: Context, schema?: ZodTypeAny): Promise<unknown | Response> {
+export async function parseJsonBody(c: Context, schema?: ZodTypeAny): Promise<unknown> {
   let body: unknown;
   try {
     body = await c.req.json();
   } catch {
-    return buildError(c, "VALIDATION_ERROR", "Invalid JSON body");
+    throwError(c, "VALIDATION_ERROR", "Invalid JSON body");
   }
   if (schema) {
     const parsed = schema.safeParse(body);
-    if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid request body", parsed.error.flatten());
+    if (!parsed.success) throwError(c, "VALIDATION_ERROR", "Invalid request body", parsed.error.flatten());
     return parsed.data;
   }
   return body;
 }
 
-export async function safeFormData(c: Context): Promise<FormData | Response> {
+export async function safeFormData(c: Context): Promise<FormData> {
   try {
     return await c.req.formData();
   } catch {
-    return buildError(c, "VALIDATION_ERROR", "Invalid or missing form data");
+    throwError(c, "VALIDATION_ERROR", "Invalid or missing form data");
   }
 }
 
-export async function requireSessionUser(c: Context) {
+export async function requireSessionUser(c: Context): Promise<SessionUser> {
   const user = await getRequestUser(c);
-  return user ?? buildError(c, "UNAUTHORIZED", "Authentication required");
+  if (!user) throwError(c, "UNAUTHORIZED", "Authentication required");
+  return user;
 }

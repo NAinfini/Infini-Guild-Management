@@ -582,3 +582,20 @@ CREATE TABLE IF NOT EXISTS game_data (
 );
 
 CREATE INDEX IF NOT EXISTS idx_game_data_created_at ON game_data(created_at);
+
+
+-- ===== MEDIA REFERENCES (orphan-cleanup reference counting) =====
+-- One row per (R2 key, referencing entity) pair. Maintained on entity write
+-- paths; the media-orphan-cleanup cron deletes R2 objects with no rows here
+-- (after a grace period) instead of scanning content tables.
+
+CREATE TABLE IF NOT EXISTS media_references (
+  media_key TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  PRIMARY KEY (media_key, entity_type, entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_media_references_key ON media_references(media_key);
+CREATE INDEX IF NOT EXISTS idx_media_references_entity ON media_references(entity_type, entity_id);

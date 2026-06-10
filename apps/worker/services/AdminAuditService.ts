@@ -1,5 +1,5 @@
 import { auditLogSchema } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import { and, desc, eq, gte, lte, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { auditLog, users } from "../db/schema";
@@ -81,15 +81,6 @@ type ResolvedAuditLogQuery = {
   startAt: string;
   endAt: string;
   format: "csv" | "json";
-};
-
-type AuditLogInput = {
-  entityType: AuditEntityType;
-  action: AuditAction;
-  actorId: string;
-  entityId: string;
-  diffTitle?: string | null;
-  detailText?: string | null;
 };
 
 type AdminAuditServiceDeps = {

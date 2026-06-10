@@ -1,3 +1,4 @@
+import { HTTPException } from "hono/http-exception";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -77,23 +78,21 @@ beforeEach(() => {
 describe("announcement and wiki permission mapping", () => {
   it("uses announcements.archive for announcement archive route", async () => {
     const { announcementsRoutes } = await import("./announcements");
-    const response = new Response("blocked", { status: 418 });
-    mocks.requirePermission.mockResolvedValueOnce(response);
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
 
     const result = await announcementsRoutes.request("/announcement-1", { method: "DELETE" });
 
-    expect(result.status).toBe(418);
+    expect(result.status).toBe(401);
     expect(mocks.requirePermission).toHaveBeenCalledWith(expect.anything(), "announcements.archive");
   });
 
   it("uses wiki.articles.archive for wiki article archive route", async () => {
     const { wikiRoutes } = await import("./wiki");
-    const response = new Response("blocked", { status: 418 });
-    mocks.requirePermission.mockResolvedValueOnce(response);
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
 
     const result = await wikiRoutes.request("/articles/article-1", { method: "DELETE" });
 
-    expect(result.status).toBe(418);
+    expect(result.status).toBe(401);
     expect(mocks.requirePermission).toHaveBeenCalledWith(expect.anything(), "wiki.articles.archive");
   });
 
@@ -107,8 +106,6 @@ describe("gallery permission mapping", () => {
       role: "member",
       permissions: new Set(["gallery.delete"]),
     });
-    mocks.requirePermission.mockResolvedValueOnce(new Response("blocked", { status: 418 }));
-
     const result = await galleryRoutes.request("/item-1", { method: "DELETE" }, { DB: {}, MEDIA: {} });
 
     expect(result.status).toBe(200);
@@ -121,23 +118,21 @@ describe("gallery permission mapping", () => {
 describe("guild-war permission mapping", () => {
   it("requires guildwar.teams.edit for team save route", async () => {
     const { guildWarRoutes } = await import("./guild-war");
-    const response = new Response("blocked", { status: 418 });
-    mocks.requirePermission.mockResolvedValueOnce(response);
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
 
     const result = await guildWarRoutes.request("/save-teams", { method: "POST" });
 
-    expect(result.status).toBe(418);
+    expect(result.status).toBe(401);
     expect(mocks.requirePermission).toHaveBeenCalledWith(expect.anything(), "guildwar.teams.edit");
   });
 
   it("requires guildwar.history.edit for history member stat updates", async () => {
     const { guildWarRoutes } = await import("./guild-war");
-    const response = new Response("blocked", { status: 418 });
-    mocks.requirePermission.mockResolvedValueOnce(response);
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
 
     const result = await guildWarRoutes.request("/history/war-1/member-stats/user-1", { method: "PATCH" });
 
-    expect(result.status).toBe(418);
+    expect(result.status).toBe(401);
     expect(mocks.requirePermission).toHaveBeenCalledWith(expect.anything(), "guildwar.history.edit");
   });
 

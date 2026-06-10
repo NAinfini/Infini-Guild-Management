@@ -2,14 +2,14 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
 import { LIMITS } from "@guild/shared/config/limits";
-import { DEFAULT_FEATURE_FLAGS, type FeatureFlags } from "@guild/shared/config/features";
+import { DEFAULT_FEATURE_FLAGS, featureFlagsSchema, type FeatureFlags } from "@guild/shared/config/features";
 import { logger } from "./utils/logger";
 import { runDailyMaintenanceCron, runQuarterHourlyMaintenanceCron } from "./crons/maintenance";
 import { WebSocketDO } from "./durable-objects/WebSocketDO";
 import { etagMiddleware } from "./middleware/etag";
 import { handleAppError } from "./middleware/error-handler";
 import { createRateLimitMiddleware } from "./middleware/rate-limit";
-import { securityHeadersMiddleware } from "./middleware/security-headers";
+import { buildSpaHtmlCsp, HSTS_VALUE, REFERRER_POLICY_VALUE, securityHeadersMiddleware, X_CONTENT_TYPE_VALUE } from "./middleware/security-headers";
 import { sessionMiddleware } from "./middleware/session";
 import { resolveSession, type SessionUser } from "./services/auth";
 import { adminRoutes } from "./routes/admin";
@@ -175,7 +175,17 @@ app.get("/api/site-config", (c) => {
   const features: FeatureFlags = { ...DEFAULT_FEATURE_FLAGS };
   if (env.FEATURES) {
     try {
-      const overrides = JSON.parse(env.FEATURES) as Partial<FeatureFlags>;
+      const parsed = JSON.parse(env.FEATURES);
+      const validKeys = new Set(Object.keys(DEFAULT_FEATURE_FLAGS));
+      const unknownKeys = Object.keys(parsed as object).filter((k) => !validKeys.has(k));
+      if (unknownKeys.length > 0) {
+        logger.error("FEATURES env var contains unknown keys — they will be ignored. Fix the FEATURES environment variable.", { unknownKeys, featuresRaw: env.FEATURES });
+      }
+      const validation = featureFlagsSchema.partial().safeParse(parsed);
+      if (!validation.success) {
+        logger.error("FEATURES env var contains invalid types — invalid fields will be ignored. Fix the FEATURES environment variable.", { issues: validation.error.issues, featuresRaw: env.FEATURES });
+      }
+      const overrides = (validation.success ? validation.data : parsed) as Partial<FeatureFlags>;
       for (const key of Object.keys(features) as (keyof FeatureFlags)[]) {
         if (typeof overrides[key] === "boolean") features[key] = overrides[key];
       }
@@ -280,21 +290,34 @@ export default {
     }
     const assetResponse = await env.ASSETS.fetch(request);
     const contentType = assetResponse.headers.get("content-type") ?? "";
+    const selfHost = url.host;
     if (contentType.includes("text/html")) {
       let html = await assetResponse.text();
       html = html.replaceAll("{{SITE_NAME}}", env.SITE_NAME);
       html = html.replaceAll("{{SITE_LOGO_URL}}", env.SITE_LOGO_URL);
       const response = new Response(html, assetResponse);
       response.headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+      response.headers.set("X-Content-Type-Options", X_CONTENT_TYPE_VALUE);
+      response.headers.set("X-Frame-Options", "DENY");
+      response.headers.set("Strict-Transport-Security", HSTS_VALUE);
+      response.headers.set("Referrer-Policy", REFERRER_POLICY_VALUE);
+      response.headers.set("Content-Security-Policy", buildSpaHtmlCsp(selfHost));
       return response;
     }
     const filename = url.pathname.split("/").pop() ?? "";
     if (/\.[0-9a-f]{8,}\.[a-z0-9]+$/i.test(filename)) {
       const immutableResponse = new Response(assetResponse.body, assetResponse);
       immutableResponse.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+      immutableResponse.headers.set("X-Content-Type-Options", X_CONTENT_TYPE_VALUE);
+      immutableResponse.headers.set("Strict-Transport-Security", HSTS_VALUE);
+      immutableResponse.headers.set("Referrer-Policy", REFERRER_POLICY_VALUE);
       return immutableResponse;
     }
-    return assetResponse;
+    const genericResponse = new Response(assetResponse.body, assetResponse);
+    genericResponse.headers.set("X-Content-Type-Options", X_CONTENT_TYPE_VALUE);
+    genericResponse.headers.set("Strict-Transport-Security", HSTS_VALUE);
+    genericResponse.headers.set("Referrer-Policy", REFERRER_POLICY_VALUE);
+    return genericResponse;
   },
   scheduled: async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
     const tasks: Promise<void>[] = [];

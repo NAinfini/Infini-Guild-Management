@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import { events, recurringTemplates } from "../db/schema";
 import type { Bindings } from "../index";
 import { logger } from "../utils/logger";
+import { replaceMediaRefs, extractAttachmentKeys } from "../services/media-references";
 
 type RecurrenceRule = {
   frequency: "daily" | "weekly" | "monthly";
@@ -231,7 +232,11 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
     let currentAnchor = anchor;
     let generationCount = template.generationCount;
     let catchupCount = 0;
-    let lastDateKey: string | null = null;
+
+    // Collect per-template insert statements so they can be batched with the
+    // template UPDATE in a single D1 round-trip instead of N+1 separate awaits.
+    type InsertStmt = ReturnType<ReturnType<ReturnType<typeof db.insert>["values"]>["onConflictDoNothing"]>;
+    const pendingInserts: Array<{ stmt: InsertStmt; dateKey: string; eventId: string; attachments: string }> = [];
 
     while (catchupCount < MAX_CATCHUP) {
       const nextOccurrence = computeNextOccurrence(currentAnchor, utcTime.utcHour, utcTime.utcMinute, rule, referenceDate);
@@ -263,30 +268,31 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
         ? new Date(nextOccurrence.getTime() + template.durationMinutes * 60_000).toISOString()
         : null;
 
-      const result = await db.insert(events).values({
-        id: nanoid(),
-        type: template.type,
-        title: template.title,
-        description: template.description,
-        startAt: nextStartIso,
-        endAt: nextEndAt,
-        capacity: template.capacity,
-        pinned: false,
-        signupLocked: false,
-        autoArchive: template.autoArchive,
-        autoArchived: false,
-        archivedAt: null,
-        createdBy: template.createdBy,
+      const eventId = nanoid();
+      pendingInserts.push({
+        stmt: db.insert(events).values({
+          id: eventId,
+          type: template.type,
+          title: template.title,
+          description: template.description,
+          startAt: nextStartIso,
+          endAt: nextEndAt,
+          capacity: template.capacity,
+          pinned: false,
+          signupLocked: false,
+          autoArchive: template.autoArchive,
+          autoArchived: false,
+          archivedAt: null,
+          createdBy: template.createdBy,
+          attachments: template.attachments,
+          seriesId: template.id,
+          instanceDate: nextDateKey,
+          updatedAt: now.toISOString(),
+        }).onConflictDoNothing({ target: [events.seriesId, events.instanceDate] }),
+        dateKey: nextDateKey,
+        eventId,
         attachments: template.attachments,
-        seriesId: template.id,
-        instanceDate: nextDateKey,
-        updatedAt: now.toISOString(),
-      }).onConflictDoNothing({ target: [events.seriesId, events.instanceDate] });
-
-      if (result.meta.changes > 0) {
-        generationCount += 1;
-        lastDateKey = nextDateKey;
-      }
+      });
 
       currentAnchor = nextOccurrence;
       catchupCount += 1;
@@ -295,6 +301,31 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
         break;
       }
     }
+
+    if (pendingInserts.length === 0) {
+      continue;
+    }
+
+    // Batch all insert statements for this template in one D1 round-trip.
+    // D1 Drizzle .batch() accepts an array at runtime even though the TypeScript
+    // overload requires a tuple. Cast via unknown to bypass the tuple constraint.
+    const insertStmts = pendingInserts.map((p) => p.stmt) as unknown as Parameters<typeof db.batch>[0];
+    const batchResults = await db.batch(insertStmts);
+
+    let lastDateKey: string | null = null;
+    const mediaRefPromises: Promise<void>[] = [];
+    for (let i = 0; i < pendingInserts.length; i++) {
+      const result = batchResults[i] as D1Result;
+      if (result.meta.changes > 0) {
+        generationCount += 1;
+        lastDateKey = pendingInserts[i]!.dateKey;
+        const keys = extractAttachmentKeys(pendingInserts[i]!.attachments);
+        if (keys.length > 0) {
+          mediaRefPromises.push(replaceMediaRefs(env.DB, "event", pendingInserts[i]!.eventId, keys));
+        }
+      }
+    }
+    await Promise.all(mediaRefPromises);
 
     if (lastDateKey) {
       await db

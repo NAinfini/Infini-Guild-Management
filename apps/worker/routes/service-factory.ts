@@ -16,6 +16,7 @@ export function withMedia(c: Context) {
   return {
     ...commonDeps(c),
     media: (c.env as Bindings).MEDIA,
+    rawDb: (c.env as Bindings).DB,
   };
 }
 

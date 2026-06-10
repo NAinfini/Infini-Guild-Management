@@ -39,24 +39,25 @@ describe("resolveSession", () => {
     });
   });
 
-  it("loads permission rows from database for admin sessions", async () => {
-    const sessionRow = {
-      sessionId: "sess-1",
-      expiresAt: "2099-01-01T00:00:00.000Z",
-      sessionCreatedAt: "2026-05-01T00:00:00.000Z",
-      userId: "admin-1",
-      roleId: "admin",
-      isActive: true,
-      deletedAt: null,
-    };
-    const permissionRows = [{ permission: "admin.users.view", granted: true }];
-    const limit = vi.fn().mockResolvedValue([sessionRow]);
-    const where = vi
-      .fn()
-      .mockReturnValueOnce({ limit })
-      .mockResolvedValueOnce(permissionRows);
-    const innerJoin = vi.fn(() => ({ where }));
-    const from = vi.fn(() => ({ innerJoin, where }));
+  it("loads permission rows from database for admin sessions via single joined query", async () => {
+    // The joined query returns one row per permission (all session/user fields repeated).
+    const joinedRows = [
+      {
+        sessionId: "sess-1",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        sessionCreatedAt: "2026-05-01T00:00:00.000Z",
+        userId: "admin-1",
+        roleId: "admin",
+        isActive: true,
+        deletedAt: null,
+        permission: "admin.users.view",
+        granted: true,
+      },
+    ];
+    const where = vi.fn().mockResolvedValue(joinedRows);
+    const leftJoin = vi.fn(() => ({ where }));
+    const innerJoin = vi.fn(() => ({ leftJoin }));
+    const from = vi.fn(() => ({ innerJoin }));
     const select = vi.fn(() => ({ from }));
     mocks.drizzle.mockReturnValue({ select });
 
@@ -64,33 +65,34 @@ describe("resolveSession", () => {
 
     expect(resolved?.user.roleId).toBe("admin");
     expect(resolved?.user.permissions.has("admin.users.view")).toBe(true);
-    expect(select).toHaveBeenCalledTimes(2);
+    // Single query covers session + user + permissions
+    expect(select).toHaveBeenCalledTimes(1);
   });
 
-  it("caches non-admin permission rows for read session resolution and bypasses cache for fresh permission checks", async () => {
-    const sessionRow = {
-      sessionId: "sess-1",
-      expiresAt: "2099-01-01T00:00:00.000Z",
-      sessionCreatedAt: "2026-05-01T00:00:00.000Z",
-      userId: "mod-1",
-      roleId: "moderator",
-      isActive: true,
-      deletedAt: null,
-    };
-    const permissionRows = [{ permission: "events.create", granted: true }];
-    const limit = vi.fn().mockResolvedValue([sessionRow]);
-    const where = vi
-      .fn()
-      .mockReturnValueOnce({ limit })
-      .mockResolvedValueOnce(permissionRows)
-      .mockReturnValueOnce({ limit })
-      .mockReturnValueOnce({ limit })
-      .mockResolvedValueOnce(permissionRows);
-    const innerJoin = vi.fn(() => ({ where }));
-    const from = vi.fn(() => ({ innerJoin, where }));
+  it("deduplicates per-request calls and treats freshPermissions as no-op (permissions always fresh)", async () => {
+    // All three resolveSession calls use the same per-request dedup cache when on the same context.
+    // Calls on different contexts each issue one query.
+    const joinedRows = [
+      {
+        sessionId: "sess-1",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        sessionCreatedAt: "2026-05-01T00:00:00.000Z",
+        userId: "mod-1",
+        roleId: "moderator",
+        isActive: true,
+        deletedAt: null,
+        permission: "events.create",
+        granted: true,
+      },
+    ];
+    const where = vi.fn().mockResolvedValue(joinedRows);
+    const leftJoin = vi.fn(() => ({ where }));
+    const innerJoin = vi.fn(() => ({ leftJoin }));
+    const from = vi.fn(() => ({ innerJoin }));
     const select = vi.fn(() => ({ from }));
     mocks.drizzle.mockReturnValue({ select });
 
+    // Three separate contexts → three separate DB queries (no cross-request caching)
     const first = await resolveSession(createContext() as never);
     const second = await resolveSession(createContext() as never);
     const fresh = await resolveSession(createContext() as never, { freshPermissions: true });
@@ -98,6 +100,7 @@ describe("resolveSession", () => {
     expect(first?.user.permissions.has("events.create")).toBe(true);
     expect(second?.user.permissions.has("events.create")).toBe(true);
     expect(fresh?.user.permissions.has("events.create")).toBe(true);
-    expect(select).toHaveBeenCalledTimes(5);
+    // Each context issues exactly one joined query
+    expect(select).toHaveBeenCalledTimes(3);
   });
 });

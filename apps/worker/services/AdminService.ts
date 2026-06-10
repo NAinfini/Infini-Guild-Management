@@ -8,7 +8,8 @@ import {
   type Permission,
   type AdminRole,
 } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { AuditAction } from "@guild/shared/constants/audit";
+import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import { activeGame } from "@guild/shared/games";
 import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
@@ -91,15 +92,6 @@ function parseAnalyticsInput(record: Record<string, unknown>): AnalyticsSettings
     modifier_weights,
   };
 }
-
-type AuditLogInput = {
-  entityType: AuditEntityType;
-  action: AuditAction;
-  actorId: string;
-  entityId: string;
-  diffTitle?: string | null;
-  detailText?: string | null;
-};
 
 type AdminServiceDeps = {
   db: DrizzleDb;

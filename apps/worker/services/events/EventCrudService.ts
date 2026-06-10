@@ -1,5 +1,5 @@
 import { createEventSchema, eventSchema, updateEventSchema, LIMITS } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { WriteAuditLogInput as AuditLogInput } from "../audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -18,6 +18,7 @@ import {
   toRaffleWinnerPayload,
   type RaffleWinnerRow,
 } from "./EventPollRaffleService";
+import { replaceMediaRefs, deleteMediaRefs, extractAttachmentKeys } from "../media-references";
 
 export { toParticipantPayload, type EventParticipantRow } from "./EventParticipantService";
 export { toRaffleWinnerPayload, type RaffleWinnerRow } from "./EventPollRaffleService";
@@ -38,15 +39,6 @@ export type RawDbLike = {
 
 export type MediaLike = {
   put: (key: string, value: ArrayBuffer, options: { httpMetadata: { contentType: string } }) => Promise<unknown> | unknown;
-};
-
-type AuditLogInput = {
-  entityType: AuditEntityType;
-  action: AuditAction;
-  actorId: string;
-  entityId: string;
-  diffTitle?: string | null;
-  detailText?: string | null;
 };
 
 export type EventRow = {
@@ -238,6 +230,8 @@ export class EventCrudService {
       throw new Error("Failed to load created event");
     }
 
+    await replaceMediaRefs(this.rawDb as unknown as D1Database, "event", eventId, extractAttachmentKeys(created.attachments));
+
     await this.deps.writeAuditLog({
       entityType: "event",
       action: "create",
@@ -305,6 +299,8 @@ export class EventCrudService {
       throw new Error("Failed to load updated event");
     }
 
+    await replaceMediaRefs(this.rawDb as unknown as D1Database, "event", eventId, extractAttachmentKeys(updated.attachments));
+
     await this.deps.writeAuditLog({
       entityType: "event",
       action: "update",
@@ -351,6 +347,8 @@ export class EventCrudService {
       this.rawDb.prepare("DELETE FROM events WHERE id = ?1").bind(eventId),
     ]);
 
+    await deleteMediaRefs(this.rawDb as unknown as D1Database, "event", eventId);
+
     await this.deps.writeAuditLog({
       entityType: "event",
       action: "delete",
@@ -378,6 +376,8 @@ export class EventCrudService {
         updatedAt: this.now(),
       })
       .where(eq(events.id, eventId));
+
+    await replaceMediaRefs(this.rawDb as unknown as D1Database, "event", eventId, attachments);
 
     await this.deps.writeAuditLog({
       entityType: "event",

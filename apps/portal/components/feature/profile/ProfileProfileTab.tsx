@@ -8,7 +8,7 @@ import { DepthButton } from "@portal/components/shared/DepthButton";
 import { Avatar, Button, Divider, FileButton, Grid, Group, NumberInput, Progress, Select, Stack, Text, TextInput, Textarea } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { ExternalLinkIcon, PlusIcon, TrashIcon, UploadIcon, UserIcon } from "@portal/components/icons";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import DOMPurify from "dompurify";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
@@ -106,6 +106,11 @@ export function ProfileProfileTab({
 }: ProfileProfileTabProps) {
   const { t } = useTranslation("profile");
 
+  const safeTitleHtml = useMemo(
+    () => (titleHtml ? DOMPurify.sanitize(titleHtml) : ""),
+    [titleHtml],
+  );
+
   const imageItems: ImageGridEditorItem[] = imageList.map((key) => ({
     id: key,
     src: resolveProfileMediaUrl(key),
@@ -171,7 +176,7 @@ export function ProfileProfileTab({
               {titleHtml ? (
                 <div style={{ marginTop: 6 }}>
                   <Text c="dimmed" size="xs" mb={4}>{t("field.titlePreview")}</Text>
-                  <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(titleHtml) }} />
+                  <div dangerouslySetInnerHTML={{ __html: safeTitleHtml }} />
                 </div>
               ) : null}
               <Textarea

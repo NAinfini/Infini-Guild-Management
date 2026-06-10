@@ -8,6 +8,7 @@ import {
   fetchGuildWarHistoryBatch,
 } from "../../services/GuildWarService";
 import { queryKeys } from "../../api/query-keys";
+import { useShallow } from "zustand/react/shallow";
 import { useGuildWarStore, type AnalyticsDatePreset } from "../../stores/guildWar";
 import { copyPlainText } from "../../utils/copy";
 import { useGuildWarAnalyticsComputed } from "./useGuildWarAnalyticsComputed";
@@ -82,7 +83,46 @@ export function useGuildWarAnalytics({
     setModifierWeights,
     modifierWeightsInitialized,
     setModifierWeightsInitialized,
-  } = useGuildWarStore();
+  } = useGuildWarStore(
+    useShallow((s) => ({
+      analyticsMode: s.analyticsMode,
+      setAnalyticsMode: s.setAnalyticsMode,
+      analyticsSelectedMetrics: s.analyticsSelectedMetrics,
+      setAnalyticsSelectedMetrics: s.setAnalyticsSelectedMetrics,
+      analyticsOnlyParticipated: s.analyticsOnlyParticipated,
+      setAnalyticsOnlyParticipated: s.setAnalyticsOnlyParticipated,
+      analyticsDatePreset: s.analyticsDatePreset,
+      setAnalyticsDatePreset: s.setAnalyticsDatePreset,
+      analyticsSelectedWarIds: s.analyticsSelectedWarIds,
+      setAnalyticsSelectedWarIds: s.setAnalyticsSelectedWarIds,
+      analyticsFocusedUser: s.analyticsFocusedUser,
+      setAnalyticsFocusedUser: s.setAnalyticsFocusedUser,
+      analyticsSelectedUsers: s.analyticsSelectedUsers,
+      setAnalyticsSelectedUsers: s.setAnalyticsSelectedUsers,
+      analyticsAggregation: s.analyticsAggregation,
+      setAnalyticsAggregation: s.setAnalyticsAggregation,
+      analyticsMinParticipation: s.analyticsMinParticipation,
+      setAnalyticsMinParticipation: s.setAnalyticsMinParticipation,
+      analyticsTopN: s.analyticsTopN,
+      setAnalyticsTopN: s.setAnalyticsTopN,
+      analyticsSelectedTeams: s.analyticsSelectedTeams,
+      setAnalyticsSelectedTeams: s.setAnalyticsSelectedTeams,
+      analyticsTeamAggregation: s.analyticsTeamAggregation,
+      setAnalyticsTeamAggregation: s.setAnalyticsTeamAggregation,
+      analyticsNormEnabled: s.analyticsNormEnabled,
+      setAnalyticsNormEnabled: s.setAnalyticsNormEnabled,
+      analyticsShowDeviation: s.analyticsShowDeviation,
+      setAnalyticsShowDeviation: s.setAnalyticsShowDeviation,
+      analyticsShowContribution: s.analyticsShowContribution,
+      setAnalyticsShowContribution: s.setAnalyticsShowContribution,
+      analyticsHeatmapEnabled: s.analyticsHeatmapEnabled,
+      setAnalyticsHeatmapEnabled: s.setAnalyticsHeatmapEnabled,
+      modifierWeights: s.modifierWeights,
+      setModifierWeights: s.setModifierWeights,
+      modifierWeightsInitialized: s.modifierWeightsInitialized,
+      setModifierWeightsInitialized: s.setModifierWeightsInitialized,
+    })),
+  );
 
   const analyticsWarIds = useMemo(() => {
     if (historyRows.length === 0) {

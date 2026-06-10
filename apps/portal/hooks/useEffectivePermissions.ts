@@ -21,7 +21,7 @@ export function useEffectivePermissions(): {
     queryKey: queryKeys.admin.roles(),
     queryFn: fetchRoles,
     enabled: Boolean(user),
-    staleTime: Infinity,
+    staleTime: 5 * 60_000,
   });
 
   const roles: AdminRole[] = rolesQuery.data ?? [];

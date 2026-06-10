@@ -31,8 +31,7 @@ async function requireGuildWarHistoryEditor(c: Context) { return requirePermissi
 // --- Routes ---
 
 guildWarRoutes.get("/active", async (c) => {
-  const user = await requireSessionUser(c);
-  if (user instanceof Response) return user;
+  await requireSessionUser(c);
   const result = await getService(c).getActive(c.req.query("event_id"));
   return handleResult(c, result);
 });
@@ -44,9 +43,7 @@ guildWarRoutes.get("/concluded-event-ids", async (c) => {
 
 guildWarRoutes.post("/save-teams", async (c) => {
   const user = await requireGuildWarTeamsEdit(c);
-  if (user instanceof Response) return user;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = saveTeamsPayloadSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid save teams payload", parsed.error.flatten());
   const etagFromHeader = c.req.header("If-Match");
@@ -57,9 +54,7 @@ guildWarRoutes.post("/save-teams", async (c) => {
 
 guildWarRoutes.post("/move", async (c) => {
   const user = await requireGuildWarTeamsEdit(c);
-  if (user instanceof Response) return user;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = moveGuildWarMemberSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid move payload", parsed.error.flatten());
   const etagFromHeader = c.req.header("If-Match");
@@ -70,9 +65,7 @@ guildWarRoutes.post("/move", async (c) => {
 
 guildWarRoutes.patch("/role-tag", async (c) => {
   const user = await requireGuildWarTeamsEdit(c);
-  if (user instanceof Response) return user;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = updateGuildWarRoleTagsSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role tag update payload", parsed.error.flatten());
   const result = await getService(c).setRoleTags(user.id, parsed.data.event_id, parsed.data.updates);
@@ -81,9 +74,7 @@ guildWarRoutes.patch("/role-tag", async (c) => {
 
 guildWarRoutes.post("/conclude", async (c) => {
   const user = await requireGuildWarTeamsEdit(c);
-  if (user instanceof Response) return user;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = concludeWarPayloadSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid conclude payload", parsed.error.flatten());
   const result = await getService(c).concludeWar(user.id, parsed.data.event_id, parsed.data.war_info, parsed.data.member_stats);
@@ -91,8 +82,7 @@ guildWarRoutes.post("/conclude", async (c) => {
 });
 
 guildWarRoutes.get("/export", async (c) => {
-  const user = await requireGuildWarHistoryEditor(c);
-  if (user instanceof Response) return user;
+  await requireGuildWarHistoryEditor(c);
   const format = (c.req.query("format") ?? "csv").trim().toLowerCase();
   if (format !== "csv" && format !== "json") return buildError(c, "VALIDATION_ERROR", "format must be csv or json");
   const result = await getService(c).exportHistory(format, { dateFrom: c.req.query("date_from"), dateTo: c.req.query("date_to"), eventId: c.req.query("event_id") });
@@ -102,8 +92,7 @@ guildWarRoutes.get("/export", async (c) => {
 });
 
 guildWarRoutes.get("/history", async (c) => {
-  const user = await requireSessionUser(c);
-  if (user instanceof Response) return user;
+  await requireSessionUser(c);
   const page = parsePage(c.req.query("page"), 1);
   const limit = Math.min(100, parsePage(c.req.query("limit"), 20));
   const result = await getService(c).listHistory(page, limit, { dateFrom: c.req.query("date_from"), dateTo: c.req.query("date_to") });
@@ -111,10 +100,8 @@ guildWarRoutes.get("/history", async (c) => {
 });
 
 guildWarRoutes.post("/history/batch", async (c) => {
-  const user = await requireSessionUser(c);
-  if (user instanceof Response) return user;
+  await requireSessionUser(c);
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
   const ids = ((body as { ids: string[] }).ids).filter((id) => typeof id === "string" && id.length > 0);
   if (ids.length === 0) return c.json({ data: [] });
@@ -124,17 +111,14 @@ guildWarRoutes.post("/history/batch", async (c) => {
 });
 
 guildWarRoutes.get("/history/:id", async (c) => {
-  const user = await requireSessionUser(c);
-  if (user instanceof Response) return user;
+  await requireSessionUser(c);
   const result = await getService(c).getHistoryDetail(c.req.param("id"));
   return handleResult(c, result);
 });
 
 guildWarRoutes.post("/history", async (c) => {
   const user = await requireGuildWarHistoryEditor(c);
-  if (user instanceof Response) return user;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = createWarHistorySchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid war history payload", parsed.error.flatten());
   const result = await getService(c).createHistory(user.id, parsed.data);
@@ -144,9 +128,7 @@ guildWarRoutes.post("/history", async (c) => {
 
 guildWarRoutes.patch("/history/:id", async (c) => {
   const user = await requireGuildWarHistoryEditor(c);
-  if (user instanceof Response) return user;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = updateWarHistorySchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid war history payload", parsed.error.flatten());
   const result = await getService(c).updateHistory(user.id, c.req.param("id"), parsed.data);
@@ -154,17 +136,14 @@ guildWarRoutes.patch("/history/:id", async (c) => {
 });
 
 guildWarRoutes.delete("/history/:id", async (c) => {
-  const user = await requireGuildWarHistoryEditor(c);
-  if (user instanceof Response) return user;
+  const user = await requirePermission(c, "guildwar.history.edit", { freshPermissions: true });
   const result = await getService(c).deleteHistory(user.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 guildWarRoutes.post("/history/batch-delete", async (c) => {
-  const user = await requireGuildWarHistoryEditor(c);
-  if (user instanceof Response) return user;
+  const user = await requirePermission(c, "guildwar.history.edit", { freshPermissions: true });
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
   const ids = ((body as { ids: string[] }).ids).filter((id) => typeof id === "string" && id.length > 0);
   if (ids.length === 0) return c.json({ ok: true, deleted: 0 });
@@ -175,9 +154,7 @@ guildWarRoutes.post("/history/batch-delete", async (c) => {
 
 guildWarRoutes.patch("/history/:id/member-stats/batch", async (c) => {
   const user = await requireGuildWarHistoryEditor(c);
-  if (user instanceof Response) return user;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { updates?: unknown }).updates)) return buildError(c, "VALIDATION_ERROR", "Body must contain an updates array");
   const updates = (body as { updates: Array<{ user_id: string; stats: unknown }> }).updates;
   if (updates.length === 0) return c.json({ data: [] });
@@ -193,9 +170,7 @@ guildWarRoutes.patch("/history/:id/member-stats/batch", async (c) => {
 
 guildWarRoutes.patch("/history/:id/member-stats/:userId", async (c) => {
   const user = await requireGuildWarHistoryEditor(c);
-  if (user instanceof Response) return user;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = updateMemberStatsSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid member stats payload", parsed.error.flatten());
   const result = await getService(c).updateMemberStats(user.id, c.req.param("id"), c.req.param("userId"), parsed.data);
@@ -203,8 +178,7 @@ guildWarRoutes.patch("/history/:id/member-stats/:userId", async (c) => {
 });
 
 guildWarRoutes.get("/analytics", async (c) => {
-  const user = await requireSessionUser(c);
-  if (user instanceof Response) return user;
+  await requireSessionUser(c);
   const warIdsRaw = c.req.queries("war_ids") ?? [];
   const userIdsRaw = c.req.queries("user_ids") ?? [];
   const warIds = warIdsRaw.flatMap((item) => item.split(",")).map((item) => item.trim()).filter(Boolean);

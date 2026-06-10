@@ -1,10 +1,11 @@
 import { recurringTemplateSchema } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { WriteAuditLogInput as AuditLogInput } from "../audit";
 import { asc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { recurringTemplates } from "../../db/schema";
 import { ok, type ServiceResult } from "../result";
 import { diffRecurrenceRule, parseAttachments, parseRecurrenceRule, type DatabaseLike, type RawDbLike } from "./EventCrudService";
+import { replaceMediaRefs, deleteMediaRefs, extractAttachmentKeys } from "../media-references";
 
 export type TemplateRow = {
   id: string;
@@ -53,15 +54,6 @@ type UpdateTemplateInput = {
   auto_archive?: boolean;
   timezone_offset_minutes?: number;
   attachments?: string[];
-};
-
-type AuditLogInput = {
-  entityType: AuditEntityType;
-  action: AuditAction;
-  actorId: string;
-  entityId: string;
-  diffTitle?: string | null;
-  detailText?: string | null;
 };
 
 export type TemplateServiceDeps = {
@@ -157,6 +149,8 @@ export class EventTemplateService {
     const created = await this.deps.getTemplateById(templateId);
     if (!created) throw new Error("Failed to load created template");
 
+    await replaceMediaRefs(this.rawDb as unknown as D1Database, "recurring_template", templateId, extractAttachmentKeys(created.attachments));
+
     await this.deps.writeAuditLog({
       entityType: "recurring_template",
       action: "create",
@@ -207,6 +201,8 @@ export class EventTemplateService {
     const updated = await this.deps.getTemplateById(templateId);
     if (!updated) throw new Error("Failed to load updated template");
 
+    await replaceMediaRefs(this.rawDb as unknown as D1Database, "recurring_template", templateId, extractAttachmentKeys(updated.attachments));
+
     await this.deps.writeAuditLog({
       entityType: "recurring_template",
       action: "update",
@@ -254,6 +250,8 @@ export class EventTemplateService {
       this.rawDb.prepare("UPDATE events SET series_id = NULL WHERE series_id = ?1").bind(templateId),
       this.rawDb.prepare("DELETE FROM recurring_templates WHERE id = ?1").bind(templateId),
     ]);
+
+    await deleteMediaRefs(this.rawDb as unknown as D1Database, "recurring_template", templateId);
 
     await this.deps.writeAuditLog({
       entityType: "recurring_template",

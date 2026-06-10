@@ -306,10 +306,10 @@ export class GuildWarHistoryService extends GuildWarCoreService {
       stmts.push(this.deps.rawDb.prepare("DELETE FROM war_history WHERE id = ?1").bind(warId));
     }
     await this.deps.rawDb.batch(stmts);
-    for (const row of existingRows) {
-      await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "delete", actorId, entityId: row.id, diffTitle: row.warName });
-      await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: row.id, hint: "history_deleted" });
-    }
+    await Promise.all(existingRows.map((row) => Promise.all([
+      this.deps.writeAuditLog({ entityType: "guild_war_history", action: "delete", actorId, entityId: row.id, diffTitle: row.warName }),
+      this.deps.publishEntityChanged({ entityType: "guild_war", entityId: row.id, hint: "history_deleted" }),
+    ])));
     return ok({ ok: true, deleted: existingIds.length });
   }
 

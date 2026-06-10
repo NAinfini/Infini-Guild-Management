@@ -395,18 +395,24 @@ export class UserService {
       activeFilter: params.activeFilter,
     }));
 
-    const rows = await this.db.select(userProfileSelect).from(users)
+    const dataQuery = this.db.select(userProfileSelect).from(users)
       .leftJoin(memberProfiles, eq(memberProfiles.userId, users.id))
       .where(whereClause).orderBy(users.createdAt, users.id)
       .limit(params.limit).offset(offset);
 
     let total: number;
     let totalPages: number;
+    let rows: Awaited<typeof dataQuery>;
     if (params.includeTotal) {
-      const countRow = await this.db.select({ count: sql<number>`count(*)` }).from(users).where(whereClause);
+      const [dataRows, countRow] = await Promise.all([
+        dataQuery,
+        this.db.select({ count: sql<number>`count(*)` }).from(users).where(whereClause),
+      ]);
+      rows = dataRows;
       total = Number(countRow[0]?.count ?? 0);
       totalPages = Math.max(1, Math.ceil(total / params.limit));
     } else {
+      rows = await dataQuery;
       total = offset + rows.length;
       totalPages = rows.length < params.limit ? params.page : params.page + 1;
     }
@@ -478,7 +484,8 @@ export class UserService {
       entityId: targetUserId, diffTitle: updated.data.user.username,
       detailText: diff ? JSON.stringify(diff) : null,
     });
-    await this.deps.publishEntityChanged({ entityType: "member_profile", entityId: targetUserId, hint: "profile_updated" });
+    const profileHint = sessionUser.id === targetUserId ? "profile_updated" : "profile_moderated";
+    await this.deps.publishEntityChanged({ entityType: "member_profile", entityId: targetUserId, hint: profileHint });
     return ok(toProfilePayload(updated.data.profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includePrivate: true }));
   }
 

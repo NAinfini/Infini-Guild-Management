@@ -1,7 +1,7 @@
 import {
   announcementSchema,
 } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -9,11 +9,11 @@ import { nanoid } from "nanoid";
 import { announcements } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, likeEscaped } from "./helpers";
+import { replaceMediaRefs, deleteMediaRefs, extractRichTextMediaKeys } from "./media-references";
 
 // --- Types ---
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
-type AuditLogInput = { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
 type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: PushHint };
 type AnnouncementPublishedInput = { announcementId: string; title: string; publishedAt: string };
 
@@ -27,6 +27,7 @@ type AnnouncementRow = {
 
 export type AnnouncementServiceDeps = {
   media: R2Bucket;
+  rawDb: D1Database;
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
   publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
   publishAnnouncementPublished: (input: AnnouncementPublishedInput) => Promise<void>;
@@ -146,6 +147,7 @@ export class AnnouncementService {
 
     const created = await this.getById(announcementId);
     if (!created) return err("SERVER_ERROR", "Failed to create announcement");
+    await replaceMediaRefs(this.deps.rawDb, "announcement", announcementId, extractRichTextMediaKeys(created.bodyJson, "announcement", announcementId));
     await this.deps.writeAuditLog({ entityType: "announcement", action: "create", actorId, entityId: announcementId, diffTitle: created.title });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_created" });
     if (created.status === "published") {
@@ -185,6 +187,9 @@ export class AnnouncementService {
     const updated = await this.getById(announcementId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated announcement");
 
+    if (data.body_json !== undefined) {
+      await replaceMediaRefs(this.deps.rawDb, "announcement", announcementId, extractRichTextMediaKeys(updated.bodyJson, "announcement", announcementId));
+    }
     const announcementDiff = buildAnnouncementDiff(existing, data);
     await this.deps.writeAuditLog({ entityType: "announcement", action: "update", actorId, entityId: announcementId, diffTitle: updated.title, detailText: announcementDiff ? JSON.stringify(announcementDiff) : null });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_updated" });
@@ -208,6 +213,7 @@ export class AnnouncementService {
     const existing = await this.getById(announcementId);
     if (!existing) return err("NOT_FOUND", "Announcement not found");
     await this.db.delete(announcements).where(eq(announcements.id, announcementId));
+    await deleteMediaRefs(this.deps.rawDb, "announcement", announcementId);
     await this.deps.writeAuditLog({ entityType: "announcement", action: "delete", actorId, entityId: announcementId, diffTitle: existing.title });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_deleted" });
     return ok({ ok: true });
@@ -218,6 +224,9 @@ export class AnnouncementService {
     if (!existing) return err("NOT_FOUND", "Announcement not found");
     const keys: string[] = [];
     for (const file of files) {
+      // No media_references entry here: keys are added when the body_json referencing
+      // them is saved (replaceMediaRefs). Unsaved uploads are orphans caught by the
+      // media-orphan-cleanup cron's 48 h grace period.
       const key = `announcement/${announcementId}/images/${Date.now()}_${nanoid()}`;
       await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
       keys.push(key);

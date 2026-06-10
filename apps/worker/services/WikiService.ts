@@ -2,7 +2,7 @@ import {
   wikiArticleSchema,
   wikiCategorySchema,
 } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, asc, desc, eq, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -10,11 +10,11 @@ import { nanoid } from "nanoid";
 import { wikiArticles, wikiCategories } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, likeEscaped } from "./helpers";
+import { replaceMediaRefs, deleteMediaRefs, extractRichTextMediaKeys } from "./media-references";
 
 // --- Types ---
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
-type AuditLogInput = { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
 
 type CategoryRow = { id: string; name: string; slug: string; sortOrder: number; parentId: string | null; createdAt: string; updatedAt: string };
 type ArticleRow = { id: string; title: string; slug: string; categoryId: string; bodyJson: string; sortOrder: number; pinned: boolean; archivedAt: string | null; createdBy: string; updatedBy: string | null; createdAt: string; updatedAt: string; updatedByUsername: string | null };
@@ -23,6 +23,7 @@ type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: 
 
 export type WikiServiceDeps = {
   media: R2Bucket;
+  rawDb: D1Database;
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
   publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
 };
@@ -229,6 +230,7 @@ export class WikiService {
     await this.db.insert(wikiArticles).values({ id: articleId, title: data.title, slug, categoryId: data.category_id, bodyJson: data.body_json, sortOrder: data.sort_order, pinned: data.pinned, archivedAt: null, createdBy: actorId });
     const created = await this.getArticleById(articleId);
     if (!created) return err("SERVER_ERROR", "Failed to create wiki article");
+    await replaceMediaRefs(this.deps.rawDb, "wiki_article", articleId, extractRichTextMediaKeys(created.bodyJson, "wiki", articleId));
     await this.deps.writeAuditLog({ entityType: "wiki_article", action: "create", actorId, entityId: articleId, diffTitle: created.title });
     await this.deps.publishEntityChanged({ entityType: "wiki", entityId: articleId, hint: "article_created" });
     return ok(toArticlePayload(created));
@@ -257,6 +259,9 @@ export class WikiService {
     await this.db.update(wikiArticles).set(patch).where(eq(wikiArticles.id, articleId));
     const updated = await this.getArticleById(articleId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated wiki article");
+    if (data.body_json !== undefined) {
+      await replaceMediaRefs(this.deps.rawDb, "wiki_article", articleId, extractRichTextMediaKeys(updated.bodyJson, "wiki", articleId));
+    }
     const diff = buildArticleDiff(existing, data);
     await this.deps.writeAuditLog({ entityType: "wiki_article", action: "update", actorId, entityId: articleId, diffTitle: updated.title, detailText: diff ? JSON.stringify(diff) : null });
     await this.deps.publishEntityChanged({ entityType: "wiki", entityId: articleId, hint: "article_updated" });
@@ -277,6 +282,7 @@ export class WikiService {
     const existing = await this.getArticleById(articleId);
     if (!existing) return err("NOT_FOUND", "Wiki article not found");
     await this.db.delete(wikiArticles).where(eq(wikiArticles.id, articleId));
+    await deleteMediaRefs(this.deps.rawDb, "wiki_article", articleId);
     await this.deps.writeAuditLog({ entityType: "wiki_article", action: "delete", actorId, entityId: articleId, diffTitle: existing.title });
     await this.deps.publishEntityChanged({ entityType: "wiki", entityId: articleId, hint: "article_deleted" });
     return ok({ ok: true });
@@ -287,6 +293,9 @@ export class WikiService {
     if (!existing) return err("NOT_FOUND", "Wiki article not found");
     const keys: string[] = [];
     for (const file of files) {
+      // No media_references entry here: keys are added when the body_json referencing
+      // them is saved (replaceMediaRefs). Unsaved uploads are orphans caught by the
+      // media-orphan-cleanup cron's 48 h grace period.
       const key = `wiki/${articleId}/images/${Date.now()}_${nanoid()}`;
       await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
       keys.push(key);

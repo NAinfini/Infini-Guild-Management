@@ -1,4 +1,9 @@
 import { forwardRef } from "react";
+import {
+  TIPTAP_DEFAULT_JSON as _TIPTAP_DEFAULT_JSON,
+  buildTipTapEditorLabels as _buildTipTapEditorLabels,
+  type TipTapEditorLabels as _TipTapEditorLabels,
+} from "./tiptap-meta";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Color from "@tiptap/extension-color";
 import Highlight from "@tiptap/extension-highlight";
@@ -33,63 +38,8 @@ import "./tiptap-editor.css";
 
 type EditorMode = "json" | "html";
 
-export type TipTapEditorLabels = {
-  bold: string;
-  italic: string;
-  underline: string;
-  strike: string;
-  link: string;
-  unlink: string;
-  h1: string;
-  h2: string;
-  h3: string;
-  bullet: string;
-  number: string;
-  quote: string;
-  code: string;
-  table: string;
-  addCol: string;
-  addRow: string;
-  delCol: string;
-  delRow: string;
-  delTable: string;
-  image: string;
-  textColor: string;
-  customTextColor: string;
-  highlight: string;
-  customHighlightColor: string;
-  clearFormatting: string;
-  alignLeft: string;
-  alignCenter: string;
-  alignRight: string;
-  divider: string;
-  taskList: string;
-  undo: string;
-  redo: string;
-  moreFormatting: string;
-  moreInsert: string;
-  close: string;
-  slashCommands: string;
-  linkPrompt: string;
-  imageInserted: string;
-  imageUploadFailed: string;
-  uploading: string;
-  youtube: string;
-  bilibili: string;
-  videoUrl: string;
-  embedVideo: string;
-  details: string;
-  findReplace: string;
-  findPlaceholder: string;
-  replacePlaceholder: string;
-  findNext: string;
-  findPrev: string;
-  replaceOne: string;
-  replaceAllLabel: string;
-  tableOfContents: string;
-  words: string;
-  characters: string;
-};
+// Re-exported from tiptap-meta for backward compatibility.
+export type TipTapEditorLabels = _TipTapEditorLabels;
 
 const DEFAULT_LABELS: TipTapEditorLabels = {
   bold: "Bold",
@@ -149,65 +99,8 @@ const DEFAULT_LABELS: TipTapEditorLabels = {
   characters: "characters",
 };
 
-export function buildTipTapEditorLabels(t: (key: string) => string): TipTapEditorLabels {
-  return {
-    bold: t("toolbar.bold"),
-    italic: t("toolbar.italic"),
-    underline: t("toolbar.underline"),
-    strike: t("toolbar.strike"),
-    link: t("toolbar.link"),
-    unlink: t("toolbar.unlink"),
-    h1: t("toolbar.h1"),
-    h2: t("toolbar.h2"),
-    h3: t("toolbar.h3"),
-    bullet: t("toolbar.bullet"),
-    number: t("toolbar.number"),
-    quote: t("toolbar.quote"),
-    code: t("toolbar.code"),
-    table: t("toolbar.table"),
-    addCol: t("toolbar.addCol"),
-    addRow: t("toolbar.addRow"),
-    delCol: t("toolbar.delCol"),
-    delRow: t("toolbar.delRow"),
-    delTable: t("toolbar.delTable"),
-    image: t("toolbar.image"),
-    textColor: t("toolbar.textColor"),
-    customTextColor: t("toolbar.customTextColor"),
-    highlight: t("toolbar.highlight"),
-    customHighlightColor: t("toolbar.customHighlightColor"),
-    clearFormatting: t("toolbar.clearFormatting"),
-    alignLeft: t("toolbar.alignLeft"),
-    alignCenter: t("toolbar.alignCenter"),
-    alignRight: t("toolbar.alignRight"),
-    divider: t("toolbar.divider"),
-    taskList: t("toolbar.taskList"),
-    undo: t("toolbar.undo"),
-    redo: t("toolbar.redo"),
-    moreFormatting: t("toolbar.moreFormatting"),
-    moreInsert: t("toolbar.moreInsert"),
-    close: t("toolbar.close"),
-    slashCommands: t("slashCommands"),
-    linkPrompt: t("toolbar.linkPrompt"),
-    imageInserted: t("message.imageInserted"),
-    imageUploadFailed: t("message.imageUploadFailed"),
-    uploading: t("upload.uploading"),
-    youtube: t("toolbar.youtube"),
-    bilibili: t("toolbar.bilibili"),
-    videoUrl: t("toolbar.videoUrl"),
-    embedVideo: t("toolbar.embedVideo"),
-    details: t("toolbar.details"),
-    findReplace: t("toolbar.findReplace"),
-    findPlaceholder: t("toolbar.findPlaceholder"),
-    replacePlaceholder: t("toolbar.replacePlaceholder"),
-    findNext: t("toolbar.findNext"),
-    findPrev: t("toolbar.findPrev"),
-    replaceOne: t("toolbar.replaceOne"),
-    replaceAllLabel: t("toolbar.replaceAllLabel"),
-    tableOfContents: t("toolbar.tableOfContents"),
-    words: t("toolbar.words"),
-    characters: t("toolbar.characters"),
-  };
-}
+// Re-exported from tiptap-meta for backward compatibility.
+export const buildTipTapEditorLabels = _buildTipTapEditorLabels;
 
 export type TipTapEditorProps = {
   value: string;
@@ -230,10 +123,7 @@ type SlashCommand = {
   run: (editor: Editor) => void;
 };
 
-const DEFAULT_DOC_JSON = JSON.stringify({
-  type: "doc",
-  content: [{ type: "paragraph" }],
-});
+const DEFAULT_DOC_JSON = _TIPTAP_DEFAULT_JSON;
 
 function parseContent(value: string, mode: EditorMode): Content {
   if (!value.trim()) {
@@ -678,4 +568,5 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
   }
 );
 
-export const TIPTAP_DEFAULT_JSON = DEFAULT_DOC_JSON;
+// Re-exported from tiptap-meta for backward compatibility.
+export const TIPTAP_DEFAULT_JSON = _TIPTAP_DEFAULT_JSON;

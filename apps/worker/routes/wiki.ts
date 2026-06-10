@@ -40,9 +40,7 @@ wikiRoutes.get("/categories", async (c) => {
 
 wikiRoutes.post("/categories", async (c) => {
   const sessionUser = await requireWikiCategoriesManage(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = createWikiCategorySchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki category payload", parsed.error.flatten());
   const result = await getService(c).createCategory(sessionUser.id, parsed.data);
@@ -52,9 +50,7 @@ wikiRoutes.post("/categories", async (c) => {
 
 wikiRoutes.patch("/categories/:id", async (c) => {
   const sessionUser = await requireWikiCategoriesManage(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = updateWikiCategorySchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki category payload", parsed.error.flatten());
   const result = await getService(c).updateCategory(sessionUser.id, c.req.param("id"), parsed.data);
@@ -62,8 +58,7 @@ wikiRoutes.patch("/categories/:id", async (c) => {
 });
 
 wikiRoutes.delete("/categories/:id", async (c) => {
-  const sessionUser = await requireWikiCategoriesManage(c);
-  if (sessionUser instanceof Response) return sessionUser;
+  const sessionUser = await requirePermission(c, "wiki.categories.manage", { freshPermissions: true });
   const result = await getService(c).deleteCategory(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
@@ -92,9 +87,7 @@ wikiRoutes.get("/articles/:slug", async (c) => {
 
 wikiRoutes.post("/articles", async (c) => {
   const sessionUser = await requireWikiArticlesCreate(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = createWikiArticleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki article payload", parsed.error.flatten());
   const result = await getService(c).createArticle(sessionUser.id, parsed.data);
@@ -104,9 +97,7 @@ wikiRoutes.post("/articles", async (c) => {
 
 wikiRoutes.patch("/articles/:id", async (c) => {
   const sessionUser = await requireWikiArticlesEdit(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = updateWikiArticleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki article payload", parsed.error.flatten());
   const ifMatchHeader = c.req.header("If-Match");
@@ -117,25 +108,20 @@ wikiRoutes.patch("/articles/:id", async (c) => {
 
 wikiRoutes.delete("/articles/:id", async (c) => {
   const sessionUser = await requirePermission(c, "wiki.articles.archive");
-  if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).archiveArticle(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 wikiRoutes.delete("/articles/:id/permanent", async (c) => {
-  const sessionUser = await requirePermission(c, "wiki.articles.delete");
-  if (sessionUser instanceof Response) return sessionUser;
+  const sessionUser = await requirePermission(c, "wiki.articles.delete", { freshPermissions: true });
   const result = await getService(c).permanentDeleteArticle(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 wikiRoutes.post("/articles/:id/images", async (c) => {
   const sessionUser = await requireWikiArticlesEdit(c);
-  if (sessionUser instanceof Response) return sessionUser;
 
-  const formOrError = await safeFormData(c);
-  if (formOrError instanceof Response) return formOrError;
-  const form = formOrError;
+  const form = await safeFormData(c);
   const files = collectFiles(form);
 
   if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");

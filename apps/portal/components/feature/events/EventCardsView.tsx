@@ -1,4 +1,5 @@
 ﻿import type { Event, MemberProfile, User } from "@guild/shared";
+import { activeGame } from "@guild/shared/games";
 import { Badge, Button, Group, HoverCard, Modal, SimpleGrid, Stack, Text, ThemeIcon } from "@mantine/core";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
@@ -37,15 +38,14 @@ import { EventCardAvatarStrip } from "./EventCardAvatarStrip";
 import { EventDetailModal } from "./EventDetailModal";
 import "./EventCardsView.css";
 
-const EVENT_TYPE_COLORS: Record<string, string> = {
-  weekly_mission: "blue",
-  guild_war: "red",
-  social: "grape",
-  poll: "teal",
-  raffle: "pink",
-  other: "gray",
-};
+// Derived from game config — single source of truth.
+const EVENT_TYPE_COLORS: Record<string, string> = Object.fromEntries(
+  activeGame.eventTypes.map((et) => [et.id, et.color]),
+);
 
+// Icons are not carried in the game config (config stores string identifiers like
+// "TargetOutlined", not React nodes). The local map is keyed on event type ids;
+// unknown types fall back to CalendarEventIcon via the ?? below.
 const EVENT_TYPE_ICONS: Record<string, React.ReactNode> = {
   weekly_mission: <TargetArrowIcon size={12} />,
   guild_war: <SwordsIcon size={12} />,
@@ -316,7 +316,7 @@ export function EventCardsView({
                     variant="light"
                     color={typeColor}
                     className="event-card__type-badge"
-                    leftSection={EVENT_TYPE_ICONS[event.type] ?? EVENT_TYPE_ICONS.other}
+                    leftSection={EVENT_TYPE_ICONS[event.type] ?? EVENT_TYPE_ICONS["other"]}
                   >
                     {t(`common:eventType.${event.type}`)}
                   </Badge>

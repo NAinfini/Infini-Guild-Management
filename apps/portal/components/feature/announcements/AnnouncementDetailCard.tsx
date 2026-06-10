@@ -7,6 +7,7 @@ import {
   Alert,
   Badge,
   Button,
+  Card,
   Divider,
   Group,
   Menu,
@@ -18,13 +19,17 @@ import {
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { format } from "date-fns";
-import { type ReactNode, useEffect, useMemo } from "react";
+import { type ReactNode, lazy, Suspense, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ArchiveIcon, CalendarTimeIcon, ChevronDownIcon, NoteIcon, PinIcon, SendIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { notifyError } from "../../../utils/notifications";
 import { PencilOutlined } from "@portal/utils/icons";
 import { EmptyState } from "../../shared/EmptyState";
-import { TipTapEditor, buildTipTapEditorLabels } from "@portal/components/shared/TipTapEditor";
+import { buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
+
+const LazyTipTapEditor = lazy(() =>
+  import("@portal/components/shared/TipTapEditor").then((m) => ({ default: m.TipTapEditor })),
+);
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "-";
@@ -243,14 +248,16 @@ export function AnnouncementDetailCard({
               </Group>
 
               {/* Rendered body (read-only TipTap) */}
-              <TipTapEditor
-                value={bodyJson}
-                onChange={() => {}}
-                placeholder=""
-                editable={false}
-                onImageUpload={onImageUpload}
-                labels={editorLabels}
-              />
+              <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
+                <LazyTipTapEditor
+                  value={bodyJson}
+                  onChange={() => {}}
+                  placeholder=""
+                  editable={false}
+                  onImageUpload={onImageUpload}
+                  labels={editorLabels}
+                />
+              </Suspense>
 
               {/* Footer metadata */}
               <Text c="dimmed" size="sm">
@@ -271,14 +278,16 @@ export function AnnouncementDetailCard({
                     placeholder={t("field.title")}
                     aria-label={t("aria.title")}
                   />
-                  <TipTapEditor
-                    value={bodyJson}
-                    onChange={onBodyJsonChange}
-                    placeholder={t("field.body")}
-                    editable={true}
-                    onImageUpload={onImageUpload}
-                    labels={editorLabels}
-                  />
+                  <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
+                    <LazyTipTapEditor
+                      value={bodyJson}
+                      onChange={onBodyJsonChange}
+                      placeholder={t("field.body")}
+                      editable={true}
+                      onImageUpload={onImageUpload}
+                      labels={editorLabels}
+                    />
+                  </Suspense>
                 </Stack>
               </div>
 

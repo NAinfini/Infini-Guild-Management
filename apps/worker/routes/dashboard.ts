@@ -10,11 +10,10 @@ import {
   warTeamMembers,
   warTeams,
 } from "../db/schema";
-import { getRequestUser } from "../middleware/rbac";
 import { parseStringArray } from "../services/helpers";
 import { toEventPayload, type EventRow } from "../services/EventService";
 import { toWarHistoryPayload } from "../services/GuildWarService";
-import { getDb } from "./_shared";
+import { getDb, requireSessionUser } from "./_shared";
 
 export const dashboardRoutes = new Hono();
 
@@ -32,8 +31,8 @@ function initials(name: string): string {
 }
 
 dashboardRoutes.get("/summary", async (c) => {
+  const viewer = await requireSessionUser(c);
   const db = getDb(c);
-  const viewer = await getRequestUser(c);
   const window = weekWindow();
 
   const [memberStatsRows, upcomingEventRows, recentWarRows, warStatsRows] = await Promise.all([
@@ -72,7 +71,21 @@ dashboardRoutes.get("/summary", async (c) => {
       .orderBy(asc(events.startAt), asc(events.id))
       .limit(UPCOMING_EVENT_LIMIT),
     db
-      .select()
+      .select({
+        id: warHistory.id,
+        eventId: warHistory.eventId,
+        warName: warHistory.warName,
+        enemyName: warHistory.enemyName,
+        result: warHistory.result,
+        ownStats: warHistory.ownStats,
+        enemyStats: warHistory.enemyStats,
+        durationMinutes: warHistory.durationMinutes,
+        notes: warHistory.notes,
+        createdBy: warHistory.createdBy,
+        updatedBy: warHistory.updatedBy,
+        createdAt: warHistory.createdAt,
+        updatedAt: warHistory.updatedAt,
+      })
       .from(warHistory)
       .orderBy(desc(warHistory.createdAt), desc(warHistory.id))
       .limit(RECENT_WAR_LIMIT),
@@ -124,7 +137,7 @@ dashboardRoutes.get("/summary", async (c) => {
   const participantsByEvent = new Map<string, unknown[]>();
   const mySignupEventIds = new Set<string>();
   for (const row of participantRows) {
-    if (viewer?.id && row.userId === viewer.id) {
+    if (row.userId === viewer.id) {
       mySignupEventIds.add(row.eventId);
     }
     const list = participantsByEvent.get(row.eventId) ?? [];

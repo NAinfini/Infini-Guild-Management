@@ -1,4 +1,5 @@
 import type { Event as GuildEvent } from "@guild/shared";
+import { activeGame } from "@guild/shared/games";
 import { PortalCard } from "../../shared/PortalCard";
 import { Badge, Button, Group, HoverCard, Popover, Stack, Text, ThemeIcon } from "@mantine/core";
 import { addDays, format, getDate, getDay, getMonth, isSameDay, startOfMonth, startOfWeek } from "date-fns";
@@ -9,13 +10,11 @@ import "./EventMonthView.css";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 
-const EVENT_TYPE_COLORS: Record<string, string> = {
-  weekly_mission: "blue",
-  guild_war: "red",
-  social: "grape",
-  poll: "teal",
-  other: "gray",
-};
+// Derived from game config — single source of truth, includes all configured types
+// (weekly_mission, guild_war, social, poll, raffle, other, and any future additions).
+const EVENT_TYPE_COLORS: Record<string, string> = Object.fromEntries(
+  activeGame.eventTypes.map((et) => [et.id, et.color]),
+);
 
 function buildAvailabilityOverlayStyle(intensity: number, maxCount: number): CSSProperties | undefined {
   if (!maxCount || intensity <= 0) {

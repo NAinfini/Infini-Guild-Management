@@ -247,10 +247,10 @@ describe("Admin route auth guard", () => {
       return undefined;
     });
 
-    // Drizzle chain mock: select().from().innerJoin().where().limit() => []
-    const limit = vi.fn().mockResolvedValue([]);
-    const where = vi.fn(() => ({ limit }));
-    const innerJoin = vi.fn(() => ({ where }));
+    // Drizzle chain mock: select().from().innerJoin().leftJoin().where() => []
+    const where = vi.fn().mockResolvedValue([]);
+    const leftJoin = vi.fn(() => ({ where }));
+    const innerJoin = vi.fn(() => ({ leftJoin }));
     const from = vi.fn(() => ({ innerJoin }));
     const select = vi.fn(() => ({ from }));
     mocks.drizzle.mockReturnValue({ select });

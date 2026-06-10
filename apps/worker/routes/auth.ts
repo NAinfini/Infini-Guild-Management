@@ -44,7 +44,6 @@ function getService(c: Context): AuthService {
 
 authRoutes.post("/login", async (c) => {
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = loginSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid login payload", parsed.error.flatten());
 
@@ -83,7 +82,6 @@ authRoutes.post("/register/:inviteCode", async (c) => {
   const inviteCode = c.req.param("inviteCode");
   if (!inviteCode) return buildError(c, "VALIDATION_ERROR", "Missing invite code");
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid registration payload", parsed.error.flatten());
   const result = await getService(c).register(inviteCode, parsed.data.username, parsed.data.password);

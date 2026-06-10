@@ -7,6 +7,19 @@ const stubTemplateDeps = {
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 };
 
+function makeRawDb() {
+  return {
+    prepare: vi.fn((sql: string) => ({
+      bind: vi.fn((...bindings: unknown[]) => ({
+        sql,
+        bindings,
+        run: vi.fn().mockResolvedValue({ meta: { changes: 1 } }),
+      })),
+    })),
+    batch: vi.fn().mockResolvedValue([]),
+  };
+}
+
 function createEventRow(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: "evt-1",
@@ -51,7 +64,8 @@ describe("worker EventService", () => {
         }),
       );
     const writeAuditLog = vi.fn().mockResolvedValue(undefined);
-    const service = new EventService(db as never, {} as never, media as never, {
+    const rawDb = makeRawDb();
+    const service = new EventService(db as never, rawDb as never, media as never, {
       getEventById,
       getUsername: vi.fn().mockResolvedValue("TestUser"),
       writeAuditLog,
@@ -96,6 +110,8 @@ describe("worker EventService", () => {
     expect(created).toEqual(expect.objectContaining({ ok: true }));
     const createdData = (created as { ok: true; data: { attachments: string } }).data;
     expect(parseAttachments(createdData.attachments)).toEqual(["events/evt-1/images/poster.png"]);
+    // replaceMediaRefs is called after insert
+    expect(rawDb.batch).toHaveBeenCalled();
   });
 
   it("updates event auto-archive settings", async () => {
@@ -105,7 +121,7 @@ describe("worker EventService", () => {
       update: vi.fn(() => ({ set: updateSet })),
       delete: vi.fn(),
     };
-    const service = new EventService(db as never, {} as never, { put: vi.fn() } as never, {
+    const service = new EventService(db as never, makeRawDb() as never, { put: vi.fn() } as never, {
       getEventById: vi.fn().mockResolvedValue(createEventRow({ autoArchive: true })),
       getUsername: vi.fn().mockResolvedValue(null),
       writeAuditLog: vi.fn().mockResolvedValue(undefined),
@@ -154,7 +170,8 @@ describe("worker EventService", () => {
     };
     const media = { put: vi.fn().mockResolvedValue(undefined) };
     const writeAuditLog = vi.fn().mockResolvedValue(undefined);
-    const service = new EventService(db as never, {} as never, media as never, {
+    const rawDb = makeRawDb();
+    const service = new EventService(db as never, rawDb as never, media as never, {
       getEventById: vi.fn(),
       getUsername: vi.fn().mockResolvedValue(null),
       writeAuditLog,
@@ -272,7 +289,7 @@ describe("worker EventService", () => {
   it("removes active guild-war team data when destroying an event", async () => {
     const batch = vi.fn().mockResolvedValue([]);
     const prepare = vi.fn((sql: string) => ({
-      bind: vi.fn((...bindings: unknown[]) => ({ sql, bindings })),
+      bind: vi.fn((...bindings: unknown[]) => ({ sql, bindings, run: vi.fn().mockResolvedValue({ meta: { changes: 1 } }) })),
     }));
     const service = new EventService({} as never, { prepare, batch } as never, { put: vi.fn() } as never, {
       getEventById: vi.fn(),
@@ -288,6 +305,7 @@ describe("worker EventService", () => {
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM war_teams WHERE event_id"));
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM war_pool_members WHERE event_id"));
     expect(batch).toHaveBeenCalledTimes(1);
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM media_references"));
   });
 
   it("rejects leaving archived events", async () => {
@@ -351,7 +369,8 @@ describe("worker EventService", () => {
     expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ type: "poll", capacity: null }));
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO event_polls"));
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO event_poll_options"));
-    expect(batch).toHaveBeenCalledTimes(1);
+    // batch is called once for poll creation and once for replaceMediaRefs
+    expect(batch).toHaveBeenCalledTimes(2);
   });
 
   it("rejects normal signups for poll events", async () => {

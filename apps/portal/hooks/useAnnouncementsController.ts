@@ -1,5 +1,5 @@
 import { type Announcement, type PaginatedResponse } from "@guild/shared";
-import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/TipTapEditor";
+import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/tiptap-meta";
 import { notifications } from "@mantine/notifications";
 import { modals } from "@mantine/modals";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";

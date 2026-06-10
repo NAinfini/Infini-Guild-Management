@@ -67,11 +67,8 @@ galleryRoutes.get("/", async (c) => {
 
 galleryRoutes.post("/images", async (c) => {
   const sessionUser = await requireGalleryUploader(c);
-  if (sessionUser instanceof Response) return sessionUser;
 
-  const formOrError = await safeFormData(c);
-  if (formOrError instanceof Response) return formOrError;
-  const form = formOrError;
+  const form = await safeFormData(c);
   const captionsRaw = form.getAll("captions");
   const files = collectFiles(form);
 
@@ -92,9 +89,7 @@ galleryRoutes.post("/images", async (c) => {
 
 galleryRoutes.post("/videos", async (c) => {
   const sessionUser = await requireGalleryUploader(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = createGalleryItemSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid gallery video payload", parsed.error.flatten());
   if (parsed.data.type !== "video") return buildError(c, "VALIDATION_ERROR", "type must be video for this endpoint");
@@ -105,16 +100,13 @@ galleryRoutes.post("/videos", async (c) => {
 
 galleryRoutes.delete("/:id", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).deleteItem(sessionUser.id, sessionUser.permissions.has("gallery.delete"), c.req.param("id"));
   return handleResult(c, result);
 });
 
 galleryRoutes.post("/batch-delete", async (c) => {
-  const sessionUser = await requirePermission(c, "gallery.delete");
-  if (sessionUser instanceof Response) return sessionUser;
+  const sessionUser = await requirePermission(c, "gallery.delete", { freshPermissions: true });
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
   const ids = (body as { ids: string[] }).ids.filter((id) => typeof id === "string" && id.length > 0);
   if (ids.length === 0) return c.json({ ok: true, deleted: 0 });

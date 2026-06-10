@@ -174,9 +174,22 @@ export class GuildWarActiveService extends GuildWarCoreService {
     for (const move of teamMoves) {
       movesByTeam.set(move.to, [...(movesByTeam.get(move.to) ?? []), move]);
     }
+
+    const destinationTeamIds = [...movesByTeam.keys()];
+    const maxSortRows = destinationTeamIds.length > 0
+      ? await this.db
+          .select({
+            warTeamId: warTeamMembers.warTeamId,
+            maxSort: sql<number>`coalesce(max(${warTeamMembers.sortOrder}), -1)`,
+          })
+          .from(warTeamMembers)
+          .where(inArray(warTeamMembers.warTeamId, destinationTeamIds))
+          .groupBy(warTeamMembers.warTeamId)
+      : [];
+    const maxSortByTeam = new Map(maxSortRows.map((r) => [r.warTeamId, Number(r.maxSort)]));
+
     for (const [teamId, teamGroup] of movesByTeam) {
-      const maxRow = (await this.db.select({ maxSort: sql<number>`coalesce(max(${warTeamMembers.sortOrder}), -1)` }).from(warTeamMembers).where(eq(warTeamMembers.warTeamId, teamId)))[0];
-      let nextSort = Number(maxRow?.maxSort ?? -1) + 1;
+      let nextSort = (maxSortByTeam.get(teamId) ?? -1) + 1;
       for (const move of teamGroup) {
         stmts.push(rawDb.prepare("INSERT INTO war_team_members (id, war_team_id, user_id, sort_order) VALUES (?1, ?2, ?3, ?4)").bind(nanoid(), teamId, move.user_id, nextSort));
         nextSort += 1;

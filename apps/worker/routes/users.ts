@@ -1,7 +1,7 @@
 import { deleteProfileImagesSchema, type Role } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { createPasswordHash, destroySession, resolveSession, verifyPassword } from "../services/auth";
+import { createPasswordHash, destroySession, verifyPassword } from "../services/auth";
 import { deleteMediaObject, storeProfileAudio, storeProfileImage } from "../services/media";
 import { UserService } from "../services/UserService";
 import { BadgeService } from "../services/BadgeService";
@@ -36,11 +36,10 @@ usersRoutes.get("/image", async (c) => {
 });
 
 usersRoutes.get("/", async (c) => {
-  const resolved = await resolveSession(c);
-  const sessionUser = resolved?.user ?? null;
+  const sessionUser = await requireSessionUser(c);
   const query = c.req.query();
 
-  const isAdmin = sessionUser?.permissions.has("admin.users.view") === true;
+  const isAdmin = sessionUser.permissions.has("admin.users.view") === true;
   const explicitActive = parseBoolean(query.active);
   const activeFilter = explicitActive ?? (isAdmin ? undefined : true);
 
@@ -68,12 +67,12 @@ usersRoutes.get("/", async (c) => {
 });
 
 usersRoutes.get("/stats", async (c) => {
+  await requireSessionUser(c);
   return handleResult(c, await getUserService(c).getUserStats());
 });
 
 usersRoutes.get("/:id", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const result = await getUserService(c).getUser(sessionUser, c.req.param("id"));
   if (!result.ok) return handleResult(c, result);
   const userData = result.data as { user: { id: string }; profile: unknown };
@@ -83,15 +82,12 @@ usersRoutes.get("/:id", async (c) => {
 
 usersRoutes.patch("/:id/profile", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   return handleResult(c, await getUserService(c).updateProfile(sessionUser, c.req.param("id"), body));
 });
 
 usersRoutes.post("/:id/media/images", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
 
   let form: FormData;
   try { form = await c.req.formData(); } catch {
@@ -104,9 +100,7 @@ usersRoutes.post("/:id/media/images", async (c) => {
 
 usersRoutes.delete("/:id/media/images", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = deleteProfileImagesSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid image delete payload", parsed.error.flatten());
   return handleResult(c, await getUserService(c).deleteProfileImages(sessionUser, c.req.param("id"), parsed.data.keys));
@@ -114,7 +108,6 @@ usersRoutes.delete("/:id/media/images", async (c) => {
 
 usersRoutes.post("/:id/media/avatar", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
 
   let form: FormData;
   try { form = await c.req.formData(); } catch {
@@ -128,13 +121,11 @@ usersRoutes.post("/:id/media/avatar", async (c) => {
 
 usersRoutes.delete("/:id/media/avatar", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   return handleResult(c, await getUserService(c).deleteAvatar(sessionUser, c.req.param("id")));
 });
 
 usersRoutes.post("/:id/media/audio", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
 
   let form: FormData;
   try { form = await c.req.formData(); } catch {
@@ -148,22 +139,17 @@ usersRoutes.post("/:id/media/audio", async (c) => {
 
 usersRoutes.delete("/:id/media/audio", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   return handleResult(c, await getUserService(c).deleteProfileAudio(sessionUser, c.req.param("id")));
 });
 
 usersRoutes.post("/:id/change-password", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   return handleResult(c, await getUserService(c).changePassword(sessionUser, c.req.param("id"), body));
 });
 
 usersRoutes.post("/:id/change-username", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   return handleResult(c, await getUserService(c).changeUsername(sessionUser, c.req.param("id"), body));
 });
