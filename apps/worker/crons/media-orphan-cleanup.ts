@@ -116,8 +116,14 @@ async function runBackfill(db: D1Database): Promise<void> {
   });
 }
 
-export async function runMediaOrphanCleanupCron(env: Bindings): Promise<void> {
-  // ── Soft-deleted user purge (unchanged) ──────────────────────────────────
+export type MediaCleanupSummary = {
+  deletedUserMediaKeys: number;
+  backfillRan: boolean;
+  prefixes: Array<{ prefix: string; objectsSeen: number; candidates: number; orphansDeleted: number }>;
+};
+
+/** Purge media of users soft-deleted longer than the retention window. */
+async function purgeSoftDeletedUserMedia(env: Bindings): Promise<number> {
   const deletedUsers = await env.DB.prepare(
     `SELECT id FROM users WHERE deleted_at IS NOT NULL AND deleted_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${SOFT_DELETE_RETENTION_DAYS} days')`,
   ).all<{ id: string }>();
@@ -125,23 +131,32 @@ export async function runMediaOrphanCleanupCron(env: Bindings): Promise<void> {
     .map((row) => row.id)
     .filter((value): value is string => typeof value === "string" && value.length > 0);
 
+  let deletedKeys = 0;
   for (const userId of deletedUserIds) {
     const profileKeys = await listAllObjects(env.MEDIA, `members/${userId}/`);
     const keys = profileKeys.map((o) => o.key);
     if (keys.length > 0) {
       await env.MEDIA.delete(keys);
+      deletedKeys += keys.length;
     }
   }
+  return deletedKeys;
+}
+
+export async function runMediaOrphanCleanupCron(env: Bindings): Promise<MediaCleanupSummary> {
+  const deletedUserMediaKeys = await purgeSoftDeletedUserMedia(env);
 
   // ── Backfill if media_references table is empty ──────────────────────────
   const countRow = await env.DB.prepare("SELECT COUNT(*) AS cnt FROM media_references").first<{ cnt: number }>();
-  if ((countRow?.cnt ?? 0) === 0) {
+  const backfillRan = (countRow?.cnt ?? 0) === 0;
+  if (backfillRan) {
     await runBackfill(env.DB);
   }
 
   // ── Orphan cleanup per prefix ─────────────────────────────────────────────
   const graceMs = GRACE_HOURS * 60 * 60 * 1000;
   const now = Date.now();
+  const prefixSummaries: MediaCleanupSummary["prefixes"] = [];
 
   for (const prefix of CLEANUP_PREFIXES) {
     const allObjects = await listAllObjects(env.MEDIA, prefix);
@@ -171,5 +186,14 @@ export async function runMediaOrphanCleanupCron(env: Bindings): Promise<void> {
         deleted: orphanKeys.length,
       });
     }
+
+    prefixSummaries.push({
+      prefix,
+      objectsSeen: allObjects.length,
+      candidates: candidateKeys.length,
+      orphansDeleted: orphanKeys.length,
+    });
   }
+
+  return { deletedUserMediaKeys, backfillRan, prefixes: prefixSummaries };
 }

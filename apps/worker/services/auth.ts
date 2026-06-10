@@ -51,7 +51,7 @@ const textEncoder = new TextEncoder();
  * Permissions are now always-fresh via the joined session query, so the
  * per-isolate cache no longer exists.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 export function clearPermissionCache(_roleId?: RoleId): void {
   // no-op — permissions are fetched fresh on every session resolution
 }

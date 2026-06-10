@@ -13,6 +13,7 @@ import { buildSpaHtmlCsp, HSTS_VALUE, REFERRER_POLICY_VALUE, securityHeadersMidd
 import { sessionMiddleware } from "./middleware/session";
 import { resolveSession, type SessionUser } from "./services/auth";
 import { adminRoutes } from "./routes/admin";
+import { adminMaintenanceRoutes } from "./routes/admin-maintenance";
 import { announcementsRoutes } from "./routes/announcements";
 import { authRoutes } from "./routes/auth";
 import { dashboardRoutes } from "./routes/dashboard";
@@ -281,6 +282,7 @@ app.route("/api/gallery", galleryRoutes);
 app.route("/api/badges", badgeRoutes);
 app.route("/api/game-data", gameDataRoutes);
 app.route("/api/admin", adminRoutes);
+app.route("/api/admin/maintenance", adminMaintenanceRoutes);
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {

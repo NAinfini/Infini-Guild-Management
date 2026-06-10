@@ -6,7 +6,6 @@ import { runAuditArchiveCron } from "./audit-archive";
 import { runErrorLogCleanupCron } from "./error-log-cleanup";
 import { runEventAutoArchiveCron } from "./event-auto-archive";
 import { runEventInstanceGenerationCron } from "./event-instance-gen";
-import { runMediaOrphanCleanupCron } from "./media-orphan-cleanup";
 import { runRaffleDrawCron } from "./raffle-draw";
 import { runSessionCleanupCron } from "./session-cleanup";
 
@@ -15,9 +14,12 @@ export type MaintenanceJob = {
   run: (env: Bindings) => Promise<void>;
 };
 
+// media-orphan-cleanup is intentionally NOT scheduled: its full R2 prefix scans
+// are the most expensive maintenance work and orphan growth is slow. Trigger it
+// on demand via POST /api/admin/maintenance/media-orphan-cleanup instead
+// (also covers soft-deleted-user media purge).
 export const DAILY_MAINTENANCE_JOBS: readonly MaintenanceJob[] = [
   { name: "audit-archive", run: runAuditArchiveCron },
-  { name: "media-orphan-cleanup", run: runMediaOrphanCleanupCron },
   { name: "error-log-cleanup", run: runErrorLogCleanupCron },
 ];
 

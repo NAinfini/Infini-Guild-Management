@@ -102,7 +102,7 @@ export function useRosterPageController() {
     // closeMemberProfile is defined in the same render scope and reads/writes
     // selectedRef (a stable ref), so it does not need to be in deps.
     // Using selectedRef.current avoids capturing stale `selected` state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [debouncedSearch, classFilter]);
 
   useEffect(() => {

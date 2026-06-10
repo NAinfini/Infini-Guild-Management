@@ -203,6 +203,7 @@ const ACTION_COLOR_MAP = {
   download_raw_ndjson_gz: "gray",
   raffle_draw: "cyan",
   rollback: "red",
+  run: "orange",
   upload: "green",
   upload_icon: "grape",
 } satisfies Record<AuditAction, ActionColor>;
@@ -231,6 +232,7 @@ const ENTITY_COLOR_MAP = {
   guild_war_member_stats: "red",
   audit_log_export: "gray",
   audit_archive_export: "gray",
+  media_cleanup: "gray",
   seed: "gray",
   wiki: "cyan",
 } satisfies Record<AuditEntityType, ActionColor>;
