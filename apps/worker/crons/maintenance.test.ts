@@ -5,6 +5,7 @@ describe("cron maintenance schedules", () => {
   it("runs daily maintenance at midnight UTC", () => {
     expect(DAILY_MAINTENANCE_JOBS.map((job) => job.name)).toEqual([
       "audit-archive",
+      "media-orphan-cleanup",
       "error-log-cleanup",
     ]);
   });
