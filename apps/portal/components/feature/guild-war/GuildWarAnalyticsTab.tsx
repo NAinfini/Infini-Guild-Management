@@ -30,6 +30,7 @@ import {
   AdjustmentsIcon,
   CopyIcon,
 } from "@portal/components/icons";
+import { activeGame } from "@guild/shared/games";
 import { BarChart, LineChart, RadarChart } from "echarts/charts";
 import {
   GridComponent,
@@ -58,7 +59,7 @@ echarts.use([
   CanvasRenderer,
 ]);
 
-type AnalyticsMode = "player" | "rankings" | "teams" | "radar";
+type AnalyticsMode = "player" | "rankings" | "teams" | "radar" | "wars";
 type AnalyticsMetricKey =
   | "kills"
   | "deaths"
@@ -77,7 +78,13 @@ type GuildWarAnalyticsTabProps = {
   chartThemeName: string;
   chartThemeConfig: EChartsThemeConfig;
   loadErrorMessage: string;
+  canManageWeights: boolean;
 };
+
+const WAR_STAT_OPTIONS = activeGame.war.teamObjectives.map((objective) => ({
+  value: objective.key,
+  labelKey: objective.label.replace(/^guild-war:/, ""),
+}));
 
 const ANALYTICS_METRIC_OPTIONS: Array<{
   value: AnalyticsMetricKey;
@@ -100,6 +107,7 @@ export function GuildWarAnalyticsTab({
   chartThemeName,
   chartThemeConfig,
   loadErrorMessage,
+  canManageWeights,
 }: GuildWarAnalyticsTabProps) {
   const { t } = useTranslation("guild-war");
   const [normExpanded, setNormExpanded] = useState(false);
@@ -137,6 +145,7 @@ export function GuildWarAnalyticsTab({
               { label: t("analytics.toolbar.mode.rankings"), value: "rankings" },
               { label: t("analytics.toolbar.mode.teams"), value: "teams" },
               { label: t("analytics.toolbar.mode.radar"), value: "radar" },
+              { label: t("analytics.toolbar.mode.wars"), value: "wars" },
             ]}
           />
         </div>
@@ -169,6 +178,23 @@ export function GuildWarAnalyticsTab({
       ) : null}
 
       {isError ? <Alert color="yellow">{loadErrorMessage}</Alert> : null}
+
+      {/* Wars mode: win/loss record summary */}
+      {!isLoading && !isError && analytics.analyticsMode === "wars" ? (
+        <Group gap={16} className="gwa-war-summary">
+          {activeGame.war.resultOptions.map((result) => (
+            <Text key={result} size="sm">
+              <Text span fw={600}>{t(`conclude.result.${result}`)}</Text>
+              {" "}{analytics.analyticsWarSummary.counts.get(result) ?? 0}
+            </Text>
+          ))}
+          {analytics.analyticsWarSummary.winRate !== null ? (
+            <Text size="sm" fw={600} c="var(--color-primary, #D4A843)">
+              {t("analytics.wars.winRate", { rate: analytics.analyticsWarSummary.winRate })}
+            </Text>
+          ) : null}
+        </Group>
+      ) : null}
 
       {/* Main content: left sidebar + chart + right sidebar */}
       {!isLoading && !isError ? (
@@ -270,7 +296,7 @@ export function GuildWarAnalyticsTab({
                       />
                       <NumberInput
                         hideControls
-                        min={1}
+                        min={0}
                         max={200}
                         value={analytics.analyticsMinParticipation}
                         onChange={(value) =>
@@ -306,20 +332,32 @@ export function GuildWarAnalyticsTab({
             {/* ── Right sidebar: metrics + options + data table ── */}
             {!chartExpanded ? (
               <div className="gwa-sidebar gwa-sidebar--right">
-                {/* Metric selector */}
-                <div className="gwa-sidebar__section">
-                  <div className="gwa-toolbar__label">{t("analytics.metrics.title")}</div>
-                  <GuildWarAnalyticsListBox
-                    items={metricOptions}
-                    selected={analytics.analyticsSelectedMetrics}
-                    onChange={(values) =>
-                      analytics.setAnalyticsSelectedMetrics(
-                        values.slice(0, 5) as AnalyticsMetricKey[],
-                      )
-                    }
-                    maxSelect={5}
-                  />
-                </div>
+                {/* Metric selector (member metrics) / war objective selector */}
+                {analytics.analyticsMode === "wars" ? (
+                  <div className="gwa-sidebar__section">
+                    <div className="gwa-toolbar__label">{t("analytics.warStat.title")}</div>
+                    <Select
+                      value={analytics.analyticsWarStat}
+                      aria-label={t("analytics.warStat.title")}
+                      onChange={(value) => value && analytics.setAnalyticsWarStat(value)}
+                      data={WAR_STAT_OPTIONS.map((opt) => ({ value: opt.value, label: t(opt.labelKey) }))}
+                    />
+                  </div>
+                ) : (
+                  <div className="gwa-sidebar__section">
+                    <div className="gwa-toolbar__label">{t("analytics.metrics.title")}</div>
+                    <GuildWarAnalyticsListBox
+                      items={metricOptions}
+                      selected={analytics.analyticsSelectedMetrics}
+                      onChange={(values) =>
+                        analytics.setAnalyticsSelectedMetrics(
+                          values.slice(0, 5) as AnalyticsMetricKey[],
+                        )
+                      }
+                      maxSelect={5}
+                    />
+                  </div>
+                )}
 
                 {/* Player options */}
                 {analytics.analyticsMode === "player" ? (
@@ -367,84 +405,91 @@ export function GuildWarAnalyticsTab({
                   </div>
                 ) : null}
 
-                {/* Normalization */}
-                <div className="gwa-sidebar__section">
-                  <UnstyledButton
-                    onClick={() => setNormExpanded(!normExpanded)}
-                    className="gwa-norm-toggle"
-                  >
-                    <AdjustmentsIcon size={14} />
-                    <Text size="xs" fw={500}>{t("analytics.normalization")}</Text>
-                    <Switch
-                      checked={analytics.analyticsNormEnabled}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        analytics.setAnalyticsNormEnabled(e.currentTarget.checked);
-                      }}
-                      size="xs"
-                      styles={{ track: { cursor: "pointer" } }}
-                    />
-                  </UnstyledButton>
-                  <Collapse in={normExpanded && analytics.analyticsNormEnabled}>
-                    <div className="gwa-norm-panel">
-                      <Text size="xs" c="dimmed" mb={8}>
-                        {t("analytics.normalization.refDuration", {
-                          minutes: analytics.referenceDuration,
-                        })}
-                      </Text>
-                      <Text size="xs" c="dimmed" ff="monospace" mb={8}>
-                        {t("analytics.normalization.equationDesc")}
-                      </Text>
-                      <div className="gwa-norm-weights">
-                        {(["kda", "towers", "credits", "distance", "basehp"] as const).map(
-                          (key) => (
-                            <Group key={key} gap={8} wrap="nowrap" align="center">
-                              <Text size="xs" fw={500} style={{ width: 64, flexShrink: 0 }}>
-                                {t(`analytics.normalization.weight.${key}`)}
-                              </Text>
-                              <Slider
-                                style={{ flex: 1, minWidth: 60 }}
-                                min={0}
-                                max={100}
-                                step={1}
-                                value={Math.round((analytics.modifierWeights[key] ?? 0) * 100)}
-                                onChange={(val) =>
-                                  analytics.setModifierWeights({
-                                    ...analytics.modifierWeights,
-                                    [key]: val / 100,
-                                  })
-                                }
-                                size="sm"
-                                label={(val) => `${val}%`}
-                              />
-                              <Text
-                                size="xs"
-                                fw={600}
-                                c="dimmed"
-                                style={{ width: 38, textAlign: "right", flexShrink: 0 }}
-                              >
-                                {((analytics.modifierWeights[key] ?? 0) * 100).toFixed(0)}%
-                              </Text>
-                            </Group>
-                          ),
-                        )}
+                {/* Normalization — not applicable to war-level own/enemy raw comparison */}
+                {analytics.analyticsMode !== "wars" ? (
+                  <div className="gwa-sidebar__section">
+                    <UnstyledButton
+                      onClick={() => setNormExpanded(!normExpanded)}
+                      className="gwa-norm-toggle"
+                    >
+                      <AdjustmentsIcon size={14} />
+                      <Text size="xs" fw={500}>{t("analytics.normalization")}</Text>
+                      <Switch
+                        checked={analytics.analyticsNormEnabled}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          analytics.setAnalyticsNormEnabled(e.currentTarget.checked);
+                        }}
+                        size="xs"
+                        styles={{ track: { cursor: "pointer" } }}
+                      />
+                    </UnstyledButton>
+                    <Collapse in={normExpanded && analytics.analyticsNormEnabled}>
+                      <div className="gwa-norm-panel">
+                        <Text size="xs" c="dimmed" mb={8}>
+                          {t("analytics.normalization.refDuration", {
+                            minutes: analytics.referenceDuration,
+                          })}
+                        </Text>
+                        <Text size="xs" c="dimmed" ff="monospace" mb={8}>
+                          {t("analytics.normalization.equationDesc")}
+                        </Text>
+                        <div className="gwa-norm-weights">
+                          {(["kda", "towers", "credits", "distance", "basehp"] as const).map(
+                            (key) => (
+                              <Group key={key} gap={8} wrap="nowrap" align="center">
+                                <Text size="xs" fw={500} style={{ width: 64, flexShrink: 0 }}>
+                                  {t(`analytics.normalization.weight.${key}`)}
+                                </Text>
+                                {/* Weights are a shared baseline: only moderators may tune them */}
+                                {canManageWeights ? (
+                                  <Slider
+                                    style={{ flex: 1, minWidth: 60 }}
+                                    min={0}
+                                    max={100}
+                                    step={1}
+                                    value={Math.round((analytics.modifierWeights[key] ?? 0) * 100)}
+                                    onChange={(val) =>
+                                      analytics.setModifierWeights({
+                                        ...analytics.modifierWeights,
+                                        [key]: val / 100,
+                                      })
+                                    }
+                                    size="sm"
+                                    label={(val) => `${val}%`}
+                                  />
+                                ) : (
+                                  <div style={{ flex: 1 }} />
+                                )}
+                                <Text
+                                  size="xs"
+                                  fw={600}
+                                  c="dimmed"
+                                  style={{ width: 38, textAlign: "right", flexShrink: 0 }}
+                                >
+                                  {((analytics.modifierWeights[key] ?? 0) * 100).toFixed(0)}%
+                                </Text>
+                              </Group>
+                            ),
+                          )}
+                        </div>
+                        <Text size="xs" c="dimmed" mt={6}>
+                          {t("analytics.normalization.weightsTotal", {
+                            total:
+                              (
+                                ((analytics.modifierWeights.kda ?? 0) +
+                                  (analytics.modifierWeights.towers ?? 0) +
+                                  (analytics.modifierWeights.credits ?? 0) +
+                                  (analytics.modifierWeights.distance ?? 0) +
+                                  (analytics.modifierWeights.basehp ?? 0)) *
+                                100
+                              ).toFixed(0) + "%",
+                          })}
+                        </Text>
                       </div>
-                      <Text size="xs" c="dimmed" mt={6}>
-                        {t("analytics.normalization.weightsTotal", {
-                          total:
-                            (
-                              ((analytics.modifierWeights.kda ?? 0) +
-                                (analytics.modifierWeights.towers ?? 0) +
-                                (analytics.modifierWeights.credits ?? 0) +
-                                (analytics.modifierWeights.distance ?? 0) +
-                                (analytics.modifierWeights.basehp ?? 0)) *
-                              100
-                            ).toFixed(0) + "%",
-                        })}
-                      </Text>
-                    </div>
-                  </Collapse>
-                </div>
+                    </Collapse>
+                  </div>
+                ) : null}
 
               </div>
             ) : null}

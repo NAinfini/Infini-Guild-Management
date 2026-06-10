@@ -57,10 +57,10 @@ export function useGuildWarAnalytics({
     setAnalyticsDatePreset,
     analyticsSelectedWarIds,
     setAnalyticsSelectedWarIds,
-    analyticsFocusedUser,
-    setAnalyticsFocusedUser,
     analyticsSelectedUsers,
     setAnalyticsSelectedUsers,
+    analyticsWarStat,
+    setAnalyticsWarStat,
     analyticsAggregation,
     setAnalyticsAggregation,
     analyticsMinParticipation,
@@ -95,10 +95,10 @@ export function useGuildWarAnalytics({
       setAnalyticsDatePreset: s.setAnalyticsDatePreset,
       analyticsSelectedWarIds: s.analyticsSelectedWarIds,
       setAnalyticsSelectedWarIds: s.setAnalyticsSelectedWarIds,
-      analyticsFocusedUser: s.analyticsFocusedUser,
-      setAnalyticsFocusedUser: s.setAnalyticsFocusedUser,
       analyticsSelectedUsers: s.analyticsSelectedUsers,
       setAnalyticsSelectedUsers: s.setAnalyticsSelectedUsers,
+      analyticsWarStat: s.analyticsWarStat,
+      setAnalyticsWarStat: s.setAnalyticsWarStat,
       analyticsAggregation: s.analyticsAggregation,
       setAnalyticsAggregation: s.setAnalyticsAggregation,
       analyticsMinParticipation: s.analyticsMinParticipation,
@@ -158,14 +158,13 @@ export function useGuildWarAnalytics({
       const res = await fetchGuildWarHistoryBatch(analyticsWarIds);
       return res.data;
     },
-    enabled: analyticsWarIds.length > 0 && (analyticsMode !== "player" || Boolean(analyticsFocusedUser)),
+    enabled: analyticsWarIds.length > 0,
     staleTime: Infinity,
     placeholderData: keepPreviousData,
   });
 
   const analyticsRows = analyticsQuery.data?.member_stats ?? [];
   const analyticsWarDetails = analyticsDetailsQuery.data ?? [];
-  const analyticsWarsCount = analyticsWarIds.length;
 
   const analyticsWarOptions = useMemo(
     () =>
@@ -207,10 +206,13 @@ export function useGuildWarAnalytics({
     analyticsSelectedTeams,
     analyticsTeamAggregation,
     analyticsSelectedUsers,
+    analyticsOnlyParticipated,
     analyticsNormEnabled,
     analyticsShowDeviation,
     analyticsShowContribution,
     analyticsWarDetails,
+    analyticsWars: analyticsQuery.data?.wars ?? [],
+    analyticsWarStat,
     analyticsRows,
     warNormContext,
     referenceDuration,
@@ -222,23 +224,10 @@ export function useGuildWarAnalytics({
   });
 
   useEffect(() => {
-    if (!analyticsFocusedUser && computed.analyticsSelectableUserIds.length > 0) {
-      setAnalyticsFocusedUser(computed.analyticsSelectableUserIds[0] ?? "");
-    }
-  }, [analyticsFocusedUser, computed.analyticsSelectableUserIds]);
-
-  useEffect(() => {
     if (analyticsSelectedWarIds.length > 0) {
       setAnalyticsDatePreset("all");
     }
   }, [analyticsSelectedWarIds]);
-
-  const analyticsFocusLabel = useMemo(() => {
-    if (analyticsMode === "player") {
-      return analyticsFocusedUser || "none";
-    }
-    return computed.analyticsFocusLabel;
-  }, [analyticsFocusedUser, analyticsMode, computed.analyticsFocusLabel]);
 
   const applyAnalyticsSelection = (nextSelection: string[]) => {
     const result = guildWarService.applyAnalyticsSelection(nextSelection);
@@ -248,21 +237,6 @@ export function useGuildWarAnalytics({
       message.warning(t("analytics.largeCompareWarning", { count: result.warning.count }));
     }
     setAnalyticsSelectedUsers(result.selection);
-  };
-
-  const copyAnalyticsSnapshot = async () => {
-    const lines = [
-      t("analytics.snapshotTitle"),
-      `Mode: ${analyticsMode}`,
-      `Metric: ${computed.analyticsMetricLabel}`,
-      `Wars: ${analyticsWarsCount}`,
-      `Focus: ${analyticsFocusLabel}`,
-      ...computed.analyticsTableRows
-        .slice(0, 5)
-        .map((row, index) => `${index + 1}. ${JSON.stringify(row)}`),
-    ];
-    await copyPlainText(lines.join("\n"));
-    message.success(t("message.snapshotCopied"));
   };
 
   const copyAnalyticsCsv = async () => {
@@ -305,9 +279,9 @@ export function useGuildWarAnalytics({
     analyticsDatePreset,
     analyticsSelectedWarIds,
     setAnalyticsSelectedWarIds,
-    analyticsFocusedUser,
-    setAnalyticsFocusedUser,
     analyticsSelectedUsers,
+    analyticsWarStat,
+    setAnalyticsWarStat,
     analyticsAggregation,
     setAnalyticsAggregation,
     analyticsMinParticipation,
@@ -334,14 +308,13 @@ export function useGuildWarAnalytics({
     analyticsUserIdToUsername: computed.analyticsUserIdToUsername,
     analyticsTeamOptions: computed.analyticsTeamOptions,
     analyticsMetricLabel: computed.analyticsMetricLabel,
+    analyticsWarSummary: computed.analyticsWarSummary,
     analyticsChartOption: computed.analyticsChartOption,
     analyticsRadarOption: computed.analyticsRadarOption,
     analyticsTableRows: computed.analyticsTableRows,
     analyticsTableColumns: computed.analyticsTableColumns,
     analyticsTableHeatmapRanges: computed.analyticsTableHeatmapRanges,
-    analyticsFocusLabel,
     applyAnalyticsSelection,
-    copyAnalyticsSnapshot,
     copyAnalyticsCsv,
     handleAnalyticsDatePresetChange,
     getNormalizedMetricValue: computed.getNormalizedMetricValue,

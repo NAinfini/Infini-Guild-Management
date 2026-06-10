@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { activeGame } from "@guild/shared/games";
 
-type AnalyticsMode = "player" | "rankings" | "teams" | "radar";
+type AnalyticsMode = "player" | "rankings" | "teams" | "radar" | "wars";
 type AnalyticsMetricKey = string;
 type AnalyticsAggregation = "total" | "average" | "best" | "median";
 export type AnalyticsDatePreset = "5" | "10" | "20" | "all";
@@ -19,8 +19,8 @@ type GuildWarStoreState = {
   analyticsOnlyParticipated: boolean;
   analyticsDatePreset: AnalyticsDatePreset;
   analyticsSelectedWarIds: string[];
-  analyticsFocusedUser: string;
   analyticsSelectedUsers: string[];
+  analyticsWarStat: string;
   analyticsAggregation: AnalyticsAggregation;
   analyticsMinParticipation: number;
   analyticsTopN: number;
@@ -45,8 +45,8 @@ type GuildWarStoreState = {
   setAnalyticsOnlyParticipated: (analyticsOnlyParticipated: boolean) => void;
   setAnalyticsDatePreset: (analyticsDatePreset: AnalyticsDatePreset) => void;
   setAnalyticsSelectedWarIds: (analyticsSelectedWarIds: string[]) => void;
-  setAnalyticsFocusedUser: (analyticsFocusedUser: string) => void;
   setAnalyticsSelectedUsers: (analyticsSelectedUsers: string[]) => void;
+  setAnalyticsWarStat: (analyticsWarStat: string) => void;
   setAnalyticsAggregation: (analyticsAggregation: AnalyticsAggregation) => void;
   setAnalyticsMinParticipation: (analyticsMinParticipation: number) => void;
   setAnalyticsTopN: (analyticsTopN: number) => void;
@@ -76,8 +76,8 @@ export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   analyticsOnlyParticipated: true,
   analyticsDatePreset: "10",
   analyticsSelectedWarIds: [],
-  analyticsFocusedUser: "",
   analyticsSelectedUsers: [],
+  analyticsWarStat: activeGame.war.teamObjectives[0]?.key ?? "kills",
   analyticsAggregation: "total",
   analyticsMinParticipation: 1,
   analyticsTopN: 10,
@@ -102,8 +102,8 @@ export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   setAnalyticsOnlyParticipated: (analyticsOnlyParticipated) => set({ analyticsOnlyParticipated }),
   setAnalyticsDatePreset: (analyticsDatePreset) => set({ analyticsDatePreset }),
   setAnalyticsSelectedWarIds: (analyticsSelectedWarIds) => set({ analyticsSelectedWarIds }),
-  setAnalyticsFocusedUser: (analyticsFocusedUser) => set({ analyticsFocusedUser }),
   setAnalyticsSelectedUsers: (analyticsSelectedUsers) => set({ analyticsSelectedUsers }),
+  setAnalyticsWarStat: (analyticsWarStat) => set({ analyticsWarStat }),
   setAnalyticsAggregation: (analyticsAggregation) => set({ analyticsAggregation }),
   setAnalyticsMinParticipation: (analyticsMinParticipation) => set({ analyticsMinParticipation }),
   setAnalyticsTopN: (analyticsTopN) => set({ analyticsTopN }),

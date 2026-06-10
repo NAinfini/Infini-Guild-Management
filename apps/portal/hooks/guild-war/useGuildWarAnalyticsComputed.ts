@@ -21,6 +21,20 @@ type WarDetail = {
       stats: Record<string, number | null> | null;
     }>;
   }>;
+  pool?: Array<{
+    userId: string;
+    username?: string | null;
+  }>;
+};
+
+type AnalyticsWar = {
+  id: string;
+  war_name: string;
+  created_at: string;
+  enemy_name: string | null;
+  result: string | null;
+  own_stats: Record<string, number | null> | null;
+  enemy_stats: Record<string, number | null> | null;
 };
 
 type UseGuildWarAnalyticsComputedParams = {
@@ -32,10 +46,13 @@ type UseGuildWarAnalyticsComputedParams = {
   analyticsSelectedTeams: string[];
   analyticsTeamAggregation: "total" | "average";
   analyticsSelectedUsers: string[];
+  analyticsOnlyParticipated: boolean;
   analyticsNormEnabled: boolean;
   analyticsShowDeviation: boolean;
   analyticsShowContribution: boolean;
   analyticsWarDetails: WarDetail[];
+  analyticsWars: AnalyticsWar[];
+  analyticsWarStat: string;
   analyticsRows: Array<{ user_id: string }>;
   warNormContext: Map<string, { durationMinutes: number | null; modifier: number }>;
   referenceDuration: number;
@@ -71,10 +88,13 @@ export function useGuildWarAnalyticsComputed({
   analyticsSelectedTeams,
   analyticsTeamAggregation,
   analyticsSelectedUsers,
+  analyticsOnlyParticipated,
   analyticsNormEnabled,
   analyticsShowDeviation,
   analyticsShowContribution,
   analyticsWarDetails,
+  analyticsWars,
+  analyticsWarStat,
   analyticsRows,
   warNormContext,
   referenceDuration,
@@ -104,6 +124,11 @@ export function useGuildWarAnalyticsComputed({
           map.set(member.user_id, member.username);
         }
       }
+      for (const poolMember of war.pool ?? []) {
+        if (poolMember.username && !map.has(poolMember.userId)) {
+          map.set(poolMember.userId, poolMember.username);
+        }
+      }
     }
     return map;
   }, [analyticsWarDetails]);
@@ -118,6 +143,52 @@ export function useGuildWarAnalyticsComputed({
       (left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
     );
   }, [analyticsWarDetails]);
+
+  // Player mode: optionally drop wars where none of the selected members fought,
+  // so absent wars don't render as empty x-axis gaps.
+  const playerTimeline = useMemo(() => {
+    if (!analyticsOnlyParticipated || analyticsSelectedUsers.length === 0) {
+      return analyticsTimeline;
+    }
+    return analyticsTimeline.filter((war) =>
+      analyticsSelectedUsers.some((userId) => war.member_stats.some((member) => member.user_id === userId)),
+    );
+  }, [analyticsOnlyParticipated, analyticsSelectedUsers, analyticsTimeline]);
+
+  // Wars mode: war-level own vs enemy comparison for the selected objective stat.
+  const analyticsWarOverviewRows = useMemo(() => {
+    const sorted = [...analyticsWars].sort(
+      (left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
+    );
+    return sorted.map((war) => {
+      const own = war.own_stats?.[analyticsWarStat] ?? null;
+      const enemy = war.enemy_stats?.[analyticsWarStat] ?? null;
+      return {
+        key: war.id,
+        war_name: war.war_name,
+        created_at: war.created_at.slice(0, 10),
+        enemy_name: war.enemy_name ?? "—",
+        result: war.result ? t(`conclude.result.${war.result}`) : "—",
+        own,
+        enemy,
+        margin: own !== null && enemy !== null ? own - enemy : null,
+      };
+    });
+  }, [analyticsWars, analyticsWarStat, t]);
+
+  const analyticsWarSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const war of analyticsWars) {
+      if (war.result) counts.set(war.result, (counts.get(war.result) ?? 0) + 1);
+    }
+    const decided = Array.from(counts.values()).reduce((sum, value) => sum + value, 0);
+    const wins = counts.get("win") ?? 0;
+    return {
+      counts,
+      decided,
+      winRate: decided > 0 ? Number(((wins / decided) * 100).toFixed(0)) : null,
+    };
+  }, [analyticsWars]);
 
   const getNormalizedMetricValue = useCallback(
     (warId: string, member: Parameters<typeof metricValueFromWarMember>[0], metric: AnalyticsMetricKey): number => {
@@ -154,21 +225,35 @@ export function useGuildWarAnalyticsComputed({
   const analyticsRankingRows = useMemo(() => {
     const primaryMetric = analyticsSelectedMetrics[0] ?? "damage";
     const valuesByUser = new Map<string, number[]>();
+    const poolCountByUser = new Map<string, number>();
     for (const war of analyticsTimeline) {
       for (const member of war.member_stats) {
         const current = valuesByUser.get(member.user_id) ?? [];
         current.push(getNormalizedMetricValue(war.id, member, primaryMetric));
         valuesByUser.set(member.user_id, current);
       }
+      for (const poolMember of war.pool ?? []) {
+        poolCountByUser.set(poolMember.userId, (poolCountByUser.get(poolMember.userId) ?? 0) + 1);
+      }
+    }
+    // Rostered-but-never-fought members surface when min participation is 0.
+    for (const userId of poolCountByUser.keys()) {
+      if (!valuesByUser.has(userId)) valuesByUser.set(userId, []);
     }
     return Array.from(valuesByUser.entries())
-      .map(([userId, values]) => ({
-        key: userId,
-        user_id: userId,
-        participation: values.length,
-        score: Number(aggregateValues(values, analyticsAggregation).toFixed(2)),
-        stdDev: computeStdDev(values),
-      }))
+      .map(([userId, values]) => {
+        // Pool snapshots can be missing for old wars; never report a rate > 100%.
+        const poolWars = Math.max(poolCountByUser.get(userId) ?? 0, values.length);
+        return {
+          key: userId,
+          user_id: userId,
+          participation: values.length,
+          poolWars,
+          attendanceRate: poolWars > 0 ? Number(((values.length / poolWars) * 100).toFixed(0)) : null,
+          score: Number(aggregateValues(values, analyticsAggregation).toFixed(2)),
+          stdDev: computeStdDev(values),
+        };
+      })
       .filter((row) => row.participation >= analyticsMinParticipation)
       .sort((left, right) => right.score - left.score)
       .slice(0, analyticsTopN);
@@ -249,7 +334,7 @@ export function useGuildWarAnalyticsComputed({
 
   const analyticsPlayerRows = useMemo(() => {
     if (analyticsSelectedUsers.length === 0) return [];
-    return analyticsTimeline.map((war) => {
+    return playerTimeline.map((war) => {
       const row: Record<string, unknown> = {
         key: war.id,
         war_name: war.war_name,
@@ -264,9 +349,28 @@ export function useGuildWarAnalyticsComputed({
       });
       return row;
     });
-  }, [analyticsSelectedUsers, analyticsSelectedMetrics, analyticsTimeline, getNormalizedMetricValueOrNull]);
+  }, [analyticsSelectedUsers, analyticsSelectedMetrics, playerTimeline, getNormalizedMetricValueOrNull]);
 
   const analyticsChartOption = useMemo(() => {
+    if (analyticsMode === "wars") {
+      return {
+        color: chartPalette,
+        tooltip: { trigger: "axis" },
+        legend: { type: "scroll" },
+        xAxis: {
+          type: "category",
+          data: analyticsWarOverviewRows.map((row) => row.war_name),
+          axisLabel: { rotate: 18 },
+        },
+        yAxis: { type: "value" },
+        series: [
+          { type: "bar", name: t("analytics.wars.own"), data: analyticsWarOverviewRows.map((row) => row.own) },
+          { type: "bar", name: t("analytics.wars.enemy"), data: analyticsWarOverviewRows.map((row) => row.enemy) },
+          { type: "line", name: t("analytics.wars.margin"), smooth: true, data: analyticsWarOverviewRows.map((row) => row.margin) },
+        ],
+      };
+    }
+
     if (analyticsMode === "player") {
       const series: Array<{ type: string; name: string; smooth: boolean; data: unknown[] }> = [];
 
@@ -274,7 +378,7 @@ export function useGuildWarAnalyticsComputed({
         // Deviation mode: compute team average per war per metric, show % deviation
         analyticsSelectedUsers.forEach((userId, userIndex) => {
           analyticsSelectedMetrics.forEach((metric, metricIndex) => {
-            const data = analyticsTimeline.map((war) => {
+            const data = playerTimeline.map((war) => {
               const allValues = war.member_stats.map((m) => getNormalizedMetricValue(war.id, m, metric));
               const teamAvg = allValues.length > 0 ? allValues.reduce((s, v) => s + v, 0) / allValues.length : 0;
               const playerVal = analyticsPlayerRows.find((r) => r.key === war.id)?.[`user${userIndex}_metric${metricIndex}`] as number | null;
@@ -476,9 +580,11 @@ export function useGuildWarAnalyticsComputed({
     analyticsTeamSeriesByMetric,
     analyticsTimeline,
     analyticsUserIdToUsername,
+    analyticsWarOverviewRows,
     chartPalette,
     getNormalizedMetricValue,
     getMetricLabelKey,
+    playerTimeline,
     t,
   ]);
 
@@ -555,6 +661,9 @@ export function useGuildWarAnalyticsComputed({
   ]);
 
   const analyticsTableRows = useMemo(() => {
+    if (analyticsMode === "wars") {
+      return analyticsWarOverviewRows;
+    }
     if (analyticsMode === "player") {
       return analyticsPlayerRows;
     }
@@ -586,9 +695,20 @@ export function useGuildWarAnalyticsComputed({
         ),
       };
     });
-  }, [analyticsMode, analyticsPlayerRows, analyticsRankingRows, analyticsRankingRowsByMetric, analyticsSelectedMetrics, analyticsTeamSeries, analyticsUserIdToUsername]);
+  }, [analyticsMode, analyticsPlayerRows, analyticsRankingRows, analyticsRankingRowsByMetric, analyticsSelectedMetrics, analyticsTeamSeries, analyticsUserIdToUsername, analyticsWarOverviewRows]);
 
   const analyticsTableColumns = useMemo<AnalyticsTableColumn[]>(() => {
+    if (analyticsMode === "wars") {
+      return [
+        { title: t("analytics.table.war"), dataIndex: "war_name", key: "war_name" },
+        { title: t("analytics.table.date"), dataIndex: "created_at", key: "created_at" },
+        { title: t("analytics.table.enemy"), dataIndex: "enemy_name", key: "enemy_name" },
+        { title: t("analytics.table.result"), dataIndex: "result", key: "result" },
+        { title: t("analytics.wars.own"), dataIndex: "own", key: "own" },
+        { title: t("analytics.wars.enemy"), dataIndex: "enemy", key: "enemy" },
+        { title: t("analytics.wars.margin"), dataIndex: "margin", key: "margin" },
+      ];
+    }
     if (analyticsMode === "player") {
       const columns: AnalyticsTableColumn[] = [
         { title: t("analytics.table.war"), dataIndex: "war_name", key: "war_name" },
@@ -611,6 +731,8 @@ export function useGuildWarAnalyticsComputed({
         { title: t("analytics.table.rank"), dataIndex: "rank", key: "rank" },
         { title: t("analytics.table.member"), dataIndex: "user_id", key: "user_id" },
         { title: t("analytics.table.wars"), dataIndex: "participation", key: "participation" },
+        { title: t("analytics.table.poolWars"), dataIndex: "poolWars", key: "poolWars" },
+        { title: t("analytics.table.attendance"), dataIndex: "attendanceRate", key: "attendanceRate" },
       ];
       if (analyticsSelectedMetrics.length <= 1) {
         columns.push({ title: t("analytics.table.score"), dataIndex: "score", key: "score" });
@@ -638,7 +760,7 @@ export function useGuildWarAnalyticsComputed({
   const analyticsTableHeatmapRanges = useMemo(() => {
     const ranges = new Map<string, { min: number; max: number }>();
     const numericKeys = analyticsTableColumns
-      .filter((col) => col.key !== "war_name" && col.key !== "created_at" && col.key !== "result" && col.key !== "rank" && col.key !== "user_id" && col.key !== "team_name")
+      .filter((col) => col.key !== "war_name" && col.key !== "created_at" && col.key !== "result" && col.key !== "enemy_name" && col.key !== "rank" && col.key !== "user_id" && col.key !== "team_name")
       .map((col) => col.dataIndex ?? col.key);
     for (const key of numericKeys) {
       let min = Infinity;
@@ -657,16 +779,6 @@ export function useGuildWarAnalyticsComputed({
     return ranges;
   }, [analyticsTableColumns, analyticsTableRows]);
 
-  const analyticsFocusLabel = useMemo(() => {
-    if (analyticsMode === "player") {
-      return "none";
-    }
-    if (analyticsMode === "rankings") {
-      return `${analyticsAggregation} • top ${analyticsTopN}`;
-    }
-    return analyticsSelectedTeams.join(", ") || t("analytics.allTeams");
-  }, [analyticsAggregation, analyticsMode, analyticsSelectedTeams, analyticsTopN, t]);
-
   return {
     analyticsSelectableUserIds,
     analyticsUserIdToUsername,
@@ -679,12 +791,12 @@ export function useGuildWarAnalyticsComputed({
     analyticsTeamSeries,
     analyticsTeamSeriesByMetric,
     analyticsPlayerRows,
+    analyticsWarSummary,
     analyticsChartOption,
     analyticsRadarOption,
     analyticsTableRows,
     analyticsTableColumns,
     analyticsTableHeatmapRanges,
-    analyticsFocusLabel,
     getNormalizedMetricValue,
     getNormalizedMetricValueOrNull,
   };
