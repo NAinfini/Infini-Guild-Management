@@ -99,6 +99,7 @@
   "notification.hint.history_created": "History created",
   "notification.hint.history_updated": "History updated",
   "notification.hint.history_deleted": "History deleted",
+  "notification.hint.storage_updated": "Storage updated",
   "notification.empty": "No notifications yet",
   "loadError": "Unable to load data. Please try again later.",
   "loadErrorRetry": "Failed to refresh. Showing cached data.",

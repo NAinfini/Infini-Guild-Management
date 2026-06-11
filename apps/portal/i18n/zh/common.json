@@ -99,6 +99,7 @@
   "notification.hint.history_created": "战史已创建",
   "notification.hint.history_updated": "战史已更新",
   "notification.hint.history_deleted": "战史已删除",
+  "notification.hint.storage_updated": "仓库已更新",
   "notification.empty": "暂无通知",
   "loadError": "数据加载失败，请稍后重试。",
   "loadErrorRetry": "刷新失败，显示缓存数据。",
