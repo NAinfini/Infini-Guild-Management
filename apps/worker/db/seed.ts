@@ -1666,8 +1666,8 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       },
       transactions: [
         { type: "intake", quantityDelta: 5, actorId: adminId, note: "公会战战利品入库", createdAt: addDays(now, -35) },
-        { type: "distribute", quantityDelta: -1, recipientUserId: memberIds[0]!, actorId: adminId, note: "6/7 战局分发", createdAt: addDays(now, -4) },
-        { type: "distribute", quantityDelta: -1, recipientUserId: memberIds[2]!, actorId: adminId, note: "6/7 战局分发", createdAt: addDays(now, -4) },
+        { type: "distribute", quantityDelta: -1, recipientUserId: memberIds[0]!, actorId: adminId, note: "战局分发", createdAt: addDays(now, -4) },
+        { type: "distribute", quantityDelta: -1, recipientUserId: memberIds[2]!, actorId: adminId, note: "战局分发", createdAt: addDays(now, -4) },
         { type: "adjust", quantityDelta: -1, actorId: moderatorIds[0]!, note: "盘点修正", createdAt: addDays(now, -2) },
       ],
     },
@@ -1683,7 +1683,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       },
       transactions: [
         { type: "intake", quantityDelta: 8, actorId: moderatorIds[0]!, note: "批量打造入库", createdAt: addDays(now, -30) },
-        { type: "distribute", quantityDelta: -2, recipientUserId: memberIds[1]!, actorId: moderatorIds[0]!, note: "6/7 战局分发", createdAt: addDays(now, -4) },
+        { type: "distribute", quantityDelta: -2, recipientUserId: memberIds[1]!, actorId: moderatorIds[0]!, note: "战局分发", createdAt: addDays(now, -4) },
       ],
     },
     {
@@ -1715,8 +1715,10 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       },
       transactions: [
         { type: "intake", quantityDelta: 200, actorId: adminId, note: "周常采集入库", createdAt: addDays(now, -25) },
-        { type: "distribute", quantityDelta: -30, recipientUserId: memberIds[6]!, actorId: moderatorIds[0]!, note: "6/7 战局分发", createdAt: addDays(now, -4) },
+        { type: "distribute", quantityDelta: -30, recipientUserId: memberIds[6]!, actorId: moderatorIds[0]!, note: "战局分发", createdAt: addDays(now, -4) },
         { type: "intake", quantityDelta: 20, actorId: memberIds[3]!, note: "成员存入", createdAt: addDays(now, -2) },
+        // Member self-withdrawal: actor and recipient are the same regular member.
+        { type: "distribute", quantityDelta: -10, recipientUserId: memberIds[3]!, actorId: memberIds[3]!, note: "成员取出", createdAt: addHours(now, -36) },
         { type: "adjust", quantityDelta: -5, actorId: adminId, note: "盘点修正", createdAt: addDays(now, -1) },
       ],
     },
@@ -1749,7 +1751,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       },
       transactions: [
         { type: "intake", quantityDelta: 1000, actorId: adminId, note: "赛季结算入账", createdAt: addDays(now, -15) },
-        { type: "distribute", quantityDelta: -100, recipientUserId: memberIds[4]!, actorId: adminId, note: "6/7 战局分发", createdAt: addDays(now, -4) },
+        { type: "distribute", quantityDelta: -100, recipientUserId: memberIds[4]!, actorId: adminId, note: "战局分发", createdAt: addDays(now, -4) },
         { type: "adjust", quantityDelta: 10, actorId: adminId, note: "盘点修正", createdAt: addDays(now, -1) },
       ],
     },

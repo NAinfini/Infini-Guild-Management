@@ -7,6 +7,7 @@
 // reconciles: SUM(quantity_delta) per item === current quantity.
 // recipient_user_id is SET NULL (not cascade) so deleting a user keeps the
 // ledger row. No sort_order columns — ordering is a frontend concern.
+import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
 import { nowUtc } from "./shared";
@@ -47,7 +48,7 @@ export const storageItems = sqliteTable(
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
   (table) => ({
-    idxStorage: index("idx_storage_items_storage").on(table.storageId, table.categoryId),
+    idxStorageCategory: index("idx_storage_items_storage_category").on(table.storageId, table.categoryId),
   }),
 );
 
@@ -69,7 +70,7 @@ export const storageTransactions = sqliteTable(
   {
     id: text("id").primaryKey(),
     itemId: text("item_id").notNull().references(() => storageItems.id, { onDelete: "cascade" }),
-    type: text("type").notNull(), // intake | distribute | adjust
+    type: text("type", { enum: ["intake", "distribute", "adjust"] }).notNull(),
     quantityDelta: integer("quantity_delta").notNull(),
     recipientUserId: text("recipient_user_id").references(() => users.id, { onDelete: "set null" }),
     note: text("note"),
@@ -77,7 +78,13 @@ export const storageTransactions = sqliteTable(
     createdAt: text("created_at").notNull().default(nowUtc),
   },
   (table) => ({
-    idxItem: index("idx_storage_tx_item").on(table.itemId, table.createdAt),
-    idxRecipient: index("idx_storage_tx_recipient").on(table.recipientUserId, table.createdAt),
+    idxItem: index("idx_storage_transactions_item").on(table.itemId, table.createdAt),
+    // Partial: only distribute rows carry a recipient; intake/adjust rows are NULL.
+    idxRecipient: index("idx_storage_transactions_recipient")
+      .on(table.recipientUserId, table.createdAt)
+      .where(sql`${table.recipientUserId} IS NOT NULL`),
+    // Guild-wide recent-activity ledger. created_at is not unique — queries
+    // MUST tie-break: ORDER BY created_at DESC, id DESC.
+    idxCreated: index("idx_storage_transactions_created").on(table.createdAt),
   }),
 );

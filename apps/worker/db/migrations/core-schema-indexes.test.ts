@@ -11,6 +11,9 @@ describe("core schema performance indexes", () => {
       "idx_audit_log_entity_created",
       "idx_audit_log_actor_created",
       "idx_wiki_categories_sort",
+      "idx_storage_transactions_item",
+      "idx_storage_transactions_recipient",
+      "idx_storage_transactions_created",
     ];
 
     for (const indexName of expectedIndexes) {

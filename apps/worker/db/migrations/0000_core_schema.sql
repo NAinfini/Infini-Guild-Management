@@ -636,7 +636,7 @@ CREATE INDEX IF NOT EXISTS idx_member_absences_user_end ON member_absences(user_
 CREATE INDEX IF NOT EXISTS idx_member_absences_end_start ON member_absences(end_date, start_date);
 
 
--- ============ GUILD STORAGE ============
+-- ===== GUILD STORAGE =====
 -- Stock invariant: storage_items.quantity changes only via an atomic
 -- "UPDATE quantity + INSERT storage_transactions" batch, so
 -- SUM(quantity_delta) per item always equals the current quantity.
@@ -671,7 +671,7 @@ CREATE TABLE IF NOT EXISTS storage_items (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_storage_items_storage ON storage_items(storage_id, category_id);
+CREATE INDEX IF NOT EXISTS idx_storage_items_storage_category ON storage_items(storage_id, category_id);
 
 CREATE TABLE IF NOT EXISTS storage_item_images (
   id TEXT PRIMARY KEY,
@@ -685,7 +685,7 @@ CREATE INDEX IF NOT EXISTS idx_storage_item_images_item ON storage_item_images(i
 CREATE TABLE IF NOT EXISTS storage_transactions (
   id TEXT PRIMARY KEY,
   item_id TEXT NOT NULL REFERENCES storage_items(id) ON DELETE CASCADE,
-  type TEXT NOT NULL, -- intake | distribute | adjust
+  type TEXT NOT NULL CHECK (type IN ('intake', 'distribute', 'adjust')),
   quantity_delta INTEGER NOT NULL,
   recipient_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
   note TEXT,
@@ -693,5 +693,7 @@ CREATE TABLE IF NOT EXISTS storage_transactions (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_storage_tx_item ON storage_transactions(item_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_storage_tx_recipient ON storage_transactions(recipient_user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_storage_transactions_item ON storage_transactions(item_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_storage_transactions_recipient ON storage_transactions(recipient_user_id, created_at) WHERE recipient_user_id IS NOT NULL;
+-- Guild-wide recent-activity ledger; created_at is not unique — order by created_at DESC, id DESC.
+CREATE INDEX IF NOT EXISTS idx_storage_transactions_created ON storage_transactions(created_at);
