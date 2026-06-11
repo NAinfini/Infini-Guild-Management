@@ -634,3 +634,64 @@ CREATE TABLE IF NOT EXISTS member_absences (
 
 CREATE INDEX IF NOT EXISTS idx_member_absences_user_end ON member_absences(user_id, end_date);
 CREATE INDEX IF NOT EXISTS idx_member_absences_end_start ON member_absences(end_date, start_date);
+
+
+-- ============ GUILD STORAGE ============
+-- Stock invariant: storage_items.quantity changes only via an atomic
+-- "UPDATE quantity + INSERT storage_transactions" batch, so
+-- SUM(quantity_delta) per item always equals the current quantity.
+-- recipient_user_id is SET NULL (not cascade) so deleting a user keeps the ledger row.
+
+CREATE TABLE IF NOT EXISTS storages (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS storage_categories (
+  id TEXT PRIMARY KEY,
+  storage_id TEXT NOT NULL REFERENCES storages(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_storage_categories_storage ON storage_categories(storage_id);
+
+CREATE TABLE IF NOT EXISTS storage_items (
+  id TEXT PRIMARY KEY,
+  storage_id TEXT NOT NULL REFERENCES storages(id) ON DELETE CASCADE,
+  category_id TEXT REFERENCES storage_categories(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  quantity INTEGER NOT NULL DEFAULT 0,
+  allow_member_deposit INTEGER NOT NULL DEFAULT 0,
+  allow_member_withdraw INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_storage_items_storage ON storage_items(storage_id, category_id);
+
+CREATE TABLE IF NOT EXISTS storage_item_images (
+  id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL REFERENCES storage_items(id) ON DELETE CASCADE,
+  r2_key TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_storage_item_images_item ON storage_item_images(item_id);
+
+CREATE TABLE IF NOT EXISTS storage_transactions (
+  id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL REFERENCES storage_items(id) ON DELETE CASCADE,
+  type TEXT NOT NULL, -- intake | distribute | adjust
+  quantity_delta INTEGER NOT NULL,
+  recipient_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  note TEXT,
+  actor_id TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_storage_tx_item ON storage_transactions(item_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_storage_tx_recipient ON storage_transactions(recipient_user_id, created_at);

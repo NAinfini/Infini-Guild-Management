@@ -21,6 +21,10 @@ import {
   roles,
   recurringTemplates,
   sessions,
+  storageCategories,
+  storageItems,
+  storages,
+  storageTransactions,
   userAuthPassword,
   users,
   warHistory,
@@ -36,6 +40,11 @@ import type { Bindings } from "../index";
 import { createPasswordHash } from "../services/auth";
 
 const ALL_TABLES = [
+  "storage_transactions",
+  "storage_item_images",
+  "storage_items",
+  "storage_categories",
+  "storages",
   "game_data",
   "audit_log",
   "error_log",
@@ -1615,6 +1624,149 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       createdAt: addHours(now, -1),
     },
   ]);
+
+  // ════════════════════════════════════════════
+  // ── Guild Storage ──
+  // ════════════════════════════════════════════
+
+  const equipStorageId = nanoid();
+  const supplyStorageId = nanoid();
+  const storageRows: Array<typeof storages.$inferInsert> = [
+    { id: equipStorageId, name: "装备仓库", description: "公会战利品与装备", createdAt: addDays(now, -40) },
+    { id: supplyStorageId, name: "帮会物资", description: "日常材料与资金", createdAt: addDays(now, -40) },
+  ];
+  await batchInsert(db, storages, storageRows, 2);
+
+  const weaponCategoryId = nanoid();
+  const armorCategoryId = nanoid();
+  const materialCategoryId = nanoid();
+  const storageCategoryRows: Array<typeof storageCategories.$inferInsert> = [
+    { id: weaponCategoryId, storageId: equipStorageId, name: "武器", createdAt: addDays(now, -40) },
+    { id: armorCategoryId, storageId: equipStorageId, name: "防具", createdAt: addDays(now, -40) },
+    { id: materialCategoryId, storageId: supplyStorageId, name: "材料", createdAt: addDays(now, -40) },
+  ];
+  await batchInsert(db, storageCategories, storageCategoryRows, 3);
+
+  // Ledger invariant: each item's quantity is DERIVED from its transaction
+  // deltas below (quantity = sum of quantityDelta), so they cannot drift.
+  type StorageTransactionSeed = Omit<typeof storageTransactions.$inferInsert, "id" | "itemId">;
+  const storageItemSeeds: Array<{
+    item: Omit<typeof storageItems.$inferInsert, "quantity">;
+    transactions: StorageTransactionSeed[];
+  }> = [
+    {
+      item: {
+        id: nanoid(),
+        storageId: equipStorageId,
+        categoryId: weaponCategoryId,
+        name: "玄铁重剑",
+        description: "公会战掉落的稀有武器",
+        createdAt: addDays(now, -35),
+        updatedAt: addDays(now, -2),
+      },
+      transactions: [
+        { type: "intake", quantityDelta: 5, actorId: adminId, note: "公会战战利品入库", createdAt: addDays(now, -35) },
+        { type: "distribute", quantityDelta: -1, recipientUserId: memberIds[0]!, actorId: adminId, note: "6/7 战局分发", createdAt: addDays(now, -4) },
+        { type: "distribute", quantityDelta: -1, recipientUserId: memberIds[2]!, actorId: adminId, note: "6/7 战局分发", createdAt: addDays(now, -4) },
+        { type: "adjust", quantityDelta: -1, actorId: moderatorIds[0]!, note: "盘点修正", createdAt: addDays(now, -2) },
+      ],
+    },
+    {
+      item: {
+        id: nanoid(),
+        storageId: equipStorageId,
+        categoryId: weaponCategoryId,
+        name: "百炼长枪",
+        description: "制式武器，按需分发",
+        createdAt: addDays(now, -30),
+        updatedAt: addDays(now, -4),
+      },
+      transactions: [
+        { type: "intake", quantityDelta: 8, actorId: moderatorIds[0]!, note: "批量打造入库", createdAt: addDays(now, -30) },
+        { type: "distribute", quantityDelta: -2, recipientUserId: memberIds[1]!, actorId: moderatorIds[0]!, note: "6/7 战局分发", createdAt: addDays(now, -4) },
+      ],
+    },
+    {
+      item: {
+        id: nanoid(),
+        storageId: equipStorageId,
+        categoryId: armorCategoryId,
+        name: "寒铁护甲",
+        description: "前排坦克专用防具",
+        createdAt: addDays(now, -28),
+        updatedAt: addDays(now, -3),
+      },
+      transactions: [
+        { type: "intake", quantityDelta: 4, actorId: adminId, note: "公会战战利品入库", createdAt: addDays(now, -28) },
+        { type: "adjust", quantityDelta: 1, actorId: adminId, note: "盘点修正", createdAt: addDays(now, -3) },
+      ],
+    },
+    {
+      item: {
+        id: nanoid(),
+        storageId: supplyStorageId,
+        categoryId: materialCategoryId,
+        name: "精铁矿石",
+        description: "打造装备的基础材料，成员可自助存取",
+        allowMemberDeposit: true,
+        allowMemberWithdraw: true,
+        createdAt: addDays(now, -25),
+        updatedAt: addDays(now, -1),
+      },
+      transactions: [
+        { type: "intake", quantityDelta: 200, actorId: adminId, note: "周常采集入库", createdAt: addDays(now, -25) },
+        { type: "distribute", quantityDelta: -30, recipientUserId: memberIds[6]!, actorId: moderatorIds[0]!, note: "6/7 战局分发", createdAt: addDays(now, -4) },
+        { type: "intake", quantityDelta: 20, actorId: memberIds[3]!, note: "成员存入", createdAt: addDays(now, -2) },
+        { type: "adjust", quantityDelta: -5, actorId: adminId, note: "盘点修正", createdAt: addDays(now, -1) },
+      ],
+    },
+    {
+      item: {
+        id: nanoid(),
+        storageId: supplyStorageId,
+        categoryId: materialCategoryId,
+        name: "灵芝草药",
+        description: "炼药材料，欢迎成员捐赠",
+        allowMemberDeposit: true,
+        createdAt: addDays(now, -20),
+        updatedAt: addDays(now, -2),
+      },
+      transactions: [
+        { type: "intake", quantityDelta: 50, actorId: moderatorIds[1]!, note: "采购入库", createdAt: addDays(now, -20) },
+        { type: "intake", quantityDelta: 10, actorId: memberIds[7]!, note: "成员存入", createdAt: addDays(now, -2) },
+      ],
+    },
+    {
+      // Uncategorized item — exercises the nullable category_id path.
+      item: {
+        id: nanoid(),
+        storageId: supplyStorageId,
+        categoryId: null,
+        name: "帮会资金券",
+        description: "公会公共资金，仅管理员操作",
+        createdAt: addDays(now, -15),
+        updatedAt: addDays(now, -1),
+      },
+      transactions: [
+        { type: "intake", quantityDelta: 1000, actorId: adminId, note: "赛季结算入账", createdAt: addDays(now, -15) },
+        { type: "distribute", quantityDelta: -100, recipientUserId: memberIds[4]!, actorId: adminId, note: "6/7 战局分发", createdAt: addDays(now, -4) },
+        { type: "adjust", quantityDelta: 10, actorId: adminId, note: "盘点修正", createdAt: addDays(now, -1) },
+      ],
+    },
+  ];
+
+  const storageItemRows: Array<typeof storageItems.$inferInsert> = [];
+  const storageTransactionRows: Array<typeof storageTransactions.$inferInsert> = [];
+  for (const seed of storageItemSeeds) {
+    const quantity = seed.transactions.reduce((sum, tx) => sum + tx.quantityDelta, 0);
+    storageItemRows.push({ ...seed.item, quantity });
+    for (const tx of seed.transactions) {
+      storageTransactionRows.push({ id: nanoid(), itemId: seed.item.id, ...tx });
+    }
+  }
+  await batchInsert(db, storageItems, storageItemRows, 5);
+  await batchInsert(db, storageTransactions, storageTransactionRows, 8);
+  // NOTE: no storage_item_images rows — mock R2 has no objects, keys would dangle.
 
   // ════════════════════════════════════════════
   // ── Game Data ──
