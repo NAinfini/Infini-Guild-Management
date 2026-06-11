@@ -385,6 +385,8 @@
   "audit.entityType.member_badge": "Badge",
   "audit.entityType.media_cleanup": "Media Cleanup",
   "audit.entityType.member_absence": "Absence",
+  "audit.entityType.storage_item": "Storage Item",
+  "audit.entityType.storage_transaction": "Storage Ledger",
   "audit.action.create": "Created",
   "audit.action.update": "Updated",
   "audit.action.delete": "Deleted",

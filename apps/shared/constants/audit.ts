@@ -21,6 +21,8 @@ export const AUDIT_ENTITY_TYPES = [
   "recurring_template",
   "role",
   "seed",
+  "storage_item",
+  "storage_transaction",
   "user",
   "user_auth",
   "wiki",

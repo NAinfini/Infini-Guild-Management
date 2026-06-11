@@ -40,6 +40,7 @@ export const PERMISSIONS = [
   "wiki.categories.manage",
   "admin.badges.manage",
   "admin.gameData.manage",
+  "admin.storage.manage",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

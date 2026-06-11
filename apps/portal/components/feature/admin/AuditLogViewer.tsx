@@ -155,7 +155,7 @@ function parseDetailData(
   return null;
 }
 
-type ActionColor = "blue" | "green" | "red" | "yellow" | "grape" | "cyan" | "orange" | "gray";
+type ActionColor = "blue" | "green" | "red" | "yellow" | "grape" | "cyan" | "orange" | "gray" | "teal";
 
 const ACTION_COLOR_MAP = {
   create: "green",
@@ -235,6 +235,8 @@ const ENTITY_COLOR_MAP = {
   audit_archive_export: "gray",
   media_cleanup: "gray",
   seed: "gray",
+  storage_item: "cyan",
+  storage_transaction: "teal",
   wiki: "cyan",
 } satisfies Record<AuditEntityType, ActionColor>;
 

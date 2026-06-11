@@ -5,6 +5,7 @@ export const PUSH_ENTITY_TYPES = [
   "guild_war",
   "member_badge",
   "member_profile",
+  "storage",
   "wiki",
 ] as const;
 
@@ -44,6 +45,7 @@ export const PUSH_HINTS = [
   "profile_updated",
   "raffle_drawn",
   "role_tags_updated",
+  "storage_updated",
   "teams_saved",
   "video_created",
   "war_concluded",
@@ -86,6 +88,7 @@ export const MEMBER_BROADCAST_HINTS: ReadonlySet<PushHint> = new Set([
   "poll_voted",
   "profile_updated",
   "raffle_drawn",
+  "storage_updated",
   "teams_saved",
   "video_created",
   "war_concluded",

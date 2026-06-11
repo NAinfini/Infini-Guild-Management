@@ -385,6 +385,8 @@
   "audit.entityType.member_badge": "徽章",
   "audit.entityType.media_cleanup": "媒体清理",
   "audit.entityType.member_absence": "请假",
+  "audit.entityType.storage_item": "仓库物品",
+  "audit.entityType.storage_transaction": "仓库流水",
   "audit.action.create": "创建",
   "audit.action.update": "更新",
   "audit.action.delete": "删除",
