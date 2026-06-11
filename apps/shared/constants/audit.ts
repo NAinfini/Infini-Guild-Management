@@ -15,6 +15,7 @@ export const AUDIT_ENTITY_TYPES = [
   "guild_war_member_stats",
   "invite_link",
   "media_cleanup",
+  "member_absence",
   "member_badge",
   "member_profile",
   "recurring_template",

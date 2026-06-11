@@ -68,8 +68,6 @@ type ProfilePatch = {
   audioKey?: string | null;
   videoUrls?: string;
   availability?: string | null;
-  vacationStart?: string | null;
-  vacationEnd?: string | null;
   notes?: string | null;
   updatedAt?: string;
 };
@@ -212,8 +210,6 @@ function buildProfilePatch(
   if (payload.availability !== undefined) {
     patch.availability = payload.availability === null ? null : JSON.stringify(payload.availability);
   }
-  if (payload.vacation_start !== undefined) patch.vacationStart = payload.vacation_start;
-  if (payload.vacation_end !== undefined) patch.vacationEnd = payload.vacation_end;
   if ("notes" in payload && payload.notes !== undefined) patch.notes = payload.notes;
   patch.updatedAt = new Date().toISOString();
   return patch;
@@ -230,8 +226,6 @@ function buildProfileDiff(
     ["titleHtml", "titleHtml"],
     ["bio", "bio"],
     ["notes", "notes"],
-    ["vacationStart", "vacationStart"],
-    ["vacationEnd", "vacationEnd"],
     ["availability", "availability"],
   ];
   for (const [patchKey, oldKey] of fieldMap) {
@@ -285,8 +279,10 @@ const userProfileSelect = {
   audioKey: memberProfiles.audioKey,
   videoUrls: memberProfiles.videoUrls,
   availability: memberProfiles.availability,
-  vacationStart: memberProfiles.vacationStart,
-  vacationEnd: memberProfiles.vacationEnd,
+  // Derived from the absence history (current-or-next absence); the legacy
+  // member_profiles.vacation_start/vacation_end columns are no longer read.
+  vacationStart: sql<string | null>`(SELECT ma.start_date FROM member_absences ma WHERE ma.user_id = ${users.id} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_start"),
+  vacationEnd: sql<string | null>`(SELECT ma.end_date FROM member_absences ma WHERE ma.user_id = ${users.id} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_end"),
   notes: memberProfiles.notes,
   profileCreatedAt: memberProfiles.createdAt,
   profileUpdatedAt: memberProfiles.updatedAt,

@@ -1,4 +1,4 @@
-import type { MemberProfile, PaginatedResponse, User, UserBadge } from "@guild/shared";
+import type { MemberAbsence, MemberProfile, PaginatedResponse, User, UserBadge } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { apiRequest } from "../client";
 
@@ -69,4 +69,13 @@ export function fetchUsersStats(): Promise<UsersStatsResponse> {
 
 export function fetchUserDetail(userId: string): Promise<UserDetailResponse> {
   return apiRequest<UserDetailResponse>(`/api/users/${userId}`);
+}
+
+export function fetchAbsencesWindow(from: string, to: string): Promise<{ data: MemberAbsence[] }> {
+  const query = new URLSearchParams({ from, to });
+  return apiRequest<{ data: MemberAbsence[] }>(`/api/users/absences?${query.toString()}`);
+}
+
+export function fetchUserAbsences(userId: string): Promise<{ data: MemberAbsence[] }> {
+  return apiRequest<{ data: MemberAbsence[] }>(`/api/users/${userId}/absences`);
 }

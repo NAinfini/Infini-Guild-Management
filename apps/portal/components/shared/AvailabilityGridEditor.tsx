@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import { Badge, Button, Card, Group, Stack, Text, TextInput } from "@mantine/core";
+import { Badge, Button, Group, Stack, Text } from "@mantine/core";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
@@ -26,9 +26,6 @@ export type AvailabilityGridLabels = {
   timezoneNote: string;
   clearAll: string;
   gridHint: string;
-  vacation: string;
-  startDate: string;
-  endDate: string;
   dayMon: string;
   dayTue: string;
   dayWed: string;
@@ -42,9 +39,6 @@ const DEFAULT_LABELS: AvailabilityGridLabels = {
   timezoneNote: "Times shown in your local timezone",
   clearAll: "Clear all",
   gridHint: "Click and drag to select available time slots",
-  vacation: "Vacation",
-  startDate: "Start date",
-  endDate: "End date",
   dayMon: "Mon",
   dayTue: "Tue",
   dayWed: "Wed",
@@ -56,13 +50,7 @@ const DEFAULT_LABELS: AvailabilityGridLabels = {
 
 type AvailabilityGridEditorProps = {
   value: Record<string, unknown> | null;
-  vacationStart: string;
-  vacationEnd: string;
-  onChange: (next: {
-    availability: AvailabilityPayload;
-    vacationStart: string;
-    vacationEnd: string;
-  }) => void;
+  onChange: (next: { availability: AvailabilityPayload }) => void;
   labels?: Partial<AvailabilityGridLabels>;
   className?: string;
   style?: CSSProperties;
@@ -187,8 +175,6 @@ for (let h = 0; h < 24; h++) {
 export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGridEditorProps>(
   function AvailabilityGridEditor({
     value,
-    vacationStart,
-    vacationEnd,
     onChange,
     labels: labelsProp,
     className,
@@ -198,8 +184,6 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
     const labels = { ...DEFAULT_LABELS, ...labelsProp };
     const [grid, setGrid] = useState<GridState>(() => parseValue(value));
     const gridRef = useRef<GridState>(grid);
-    const [vacationStartValue, setVacationStartValue] = useState(vacationStart);
-    const [vacationEndValue, setVacationEndValue] = useState(vacationEnd);
     const [isDragging, setIsDragging] = useState(false);
     const isDraggingRef = useRef(false);
     const paintModeRef = useRef<boolean>(true);
@@ -215,27 +199,11 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
       gridRef.current = grid;
     }, [grid]);
 
-    useEffect(() => {
-      setVacationStartValue(vacationStart);
-    }, [vacationStart]);
-
-    useEffect(() => {
-      setVacationEndValue(vacationEnd);
-    }, [vacationEnd]);
-
     const emit = useCallback(
-      (
-        nextGrid: GridState,
-        nextVacationStart = vacationStartValue,
-        nextVacationEnd = vacationEndValue,
-      ) => {
-        onChange({
-          availability: toPayload(nextGrid),
-          vacationStart: nextVacationStart,
-          vacationEnd: nextVacationEnd,
-        });
+      (nextGrid: GridState) => {
+        onChange({ availability: toPayload(nextGrid) });
       },
-      [onChange, vacationStartValue, vacationEndValue],
+      [onChange],
     );
 
     const toggleCell = useCallback(
@@ -451,36 +419,6 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
         <Text c="dimmed" size="xs" ta="center">
           {labels.gridHint}
         </Text>
-
-        <Card withBorder padding="sm">
-          <Text fw={600} mb={8}>{labels.vacation}</Text>
-          <Group wrap="wrap" align="flex-start">
-            <Stack gap={4}>
-              <Text c="dimmed" size="sm">{labels.startDate}</Text>
-              <TextInput
-                type="date"
-                value={vacationStartValue}
-                onChange={(event) => {
-                  const nextValue = event.currentTarget.value;
-                  setVacationStartValue(nextValue);
-                  emit(grid, nextValue, vacationEndValue);
-                }}
-              />
-            </Stack>
-            <Stack gap={4}>
-              <Text c="dimmed" size="sm">{labels.endDate}</Text>
-              <TextInput
-                type="date"
-                value={vacationEndValue}
-                onChange={(event) => {
-                  const nextValue = event.currentTarget.value;
-                  setVacationEndValue(nextValue);
-                  emit(grid, vacationStartValue, nextValue);
-                }}
-              />
-            </Stack>
-          </Group>
-        </Card>
       </Stack>
     );
   }

@@ -43,6 +43,7 @@ export {
 
 export const guildWarQueryKeys = queryKeys.guildWar;
 export const usersQueryKeys = queryKeys.users;
+export const absenceQueryKeys = queryKeys.absences;
 
 export const ANALYTICS_SELECTION_SOFT_CAP = 10;
 const ANALYTICS_SELECTION_HARD_CAP = 20;

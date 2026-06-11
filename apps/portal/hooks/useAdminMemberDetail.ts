@@ -15,8 +15,6 @@ const DEFAULT_FORM: MemberDetailFormState = {
   titleHtml: "",
   bio: "",
   notes: "",
-  vacationStart: "",
-  vacationEnd: "",
   role: "member",
   isActive: true,
 };
@@ -58,8 +56,6 @@ export function useAdminMemberDetail({
       titleHtml: target.profile.title_html ?? "",
       bio: target.profile.bio ?? "",
       notes: target.profile.notes ?? "",
-      vacationStart: target.profile.vacation_start ? target.profile.vacation_start.slice(0, 10) : "",
-      vacationEnd: target.profile.vacation_end ? target.profile.vacation_end.slice(0, 10) : "",
       role: target.user.role,
       isActive: target.user.is_active,
     };

@@ -25,8 +25,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
   const [videoDraft, setVideoDraft] = useState("");
   const [videoList, setVideoList] = useState<string[]>([]);
   const [imageList, setImageList] = useState<string[]>([]);
-  const [vacationStart, setVacationStart] = useState("");
-  const [vacationEnd, setVacationEnd] = useState("");
   const [availabilityData, setAvailabilityData] = useState<Record<string, unknown> | null>(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -45,8 +43,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     setClassList(profile.classes);
     setVideoList(profile.video_urls);
     setImageList(profile.images);
-    setVacationStart(profile.vacation_start ?? "");
-    setVacationEnd(profile.vacation_end ?? "");
     setAvailabilityData((profile.availability ?? null) as Record<string, unknown> | null);
   }, [profile]);
 
@@ -174,8 +170,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
       JSON.stringify(classList) !== JSON.stringify(profile.classes) ||
       JSON.stringify(videoList) !== JSON.stringify(profile.video_urls) ||
       JSON.stringify(imageList) !== JSON.stringify(profile.images) ||
-      vacationStart !== (profile.vacation_start ?? "") ||
-      vacationEnd !== (profile.vacation_end ?? "") ||
       JSON.stringify(availabilityData ?? null) !== JSON.stringify(profile.availability ?? null)
     );
   }, [
@@ -186,8 +180,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     power,
     profile,
     titleHtml,
-    vacationEnd,
-    vacationStart,
     videoList,
   ]);
 
@@ -208,10 +200,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     setVideoList,
     imageList,
     setImageList,
-    vacationStart,
-    setVacationStart,
-    vacationEnd,
-    setVacationEnd,
     availabilityData,
     setAvailabilityData,
     currentPassword,

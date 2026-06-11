@@ -54,6 +54,7 @@ type UseGuildWarAnalyticsComputedParams = {
   analyticsWars: AnalyticsWar[];
   analyticsWarStat: string;
   analyticsRows: Array<{ user_id: string }>;
+  analyticsAbsences: Array<{ user_id: string; start_date: string; end_date: string }>;
   warNormContext: Map<string, { durationMinutes: number | null; modifier: number }>;
   referenceDuration: number;
   chartPalette: string[];
@@ -96,6 +97,7 @@ export function useGuildWarAnalyticsComputed({
   analyticsWars,
   analyticsWarStat,
   analyticsRows,
+  analyticsAbsences,
   warNormContext,
   referenceDuration,
   chartPalette,
@@ -225,31 +227,56 @@ export function useGuildWarAnalyticsComputed({
   const analyticsRankingRows = useMemo(() => {
     const primaryMetric = analyticsSelectedMetrics[0] ?? "damage";
     const valuesByUser = new Map<string, number[]>();
-    const poolCountByUser = new Map<string, number>();
+    const poolEntriesByUser = new Map<string, Array<{ warId: string; date: string }>>();
+    const foughtWarIdsByUser = new Map<string, Set<string>>();
     for (const war of analyticsTimeline) {
+      const warDate = war.created_at.slice(0, 10);
       for (const member of war.member_stats) {
         const current = valuesByUser.get(member.user_id) ?? [];
         current.push(getNormalizedMetricValue(war.id, member, primaryMetric));
         valuesByUser.set(member.user_id, current);
+        const fought = foughtWarIdsByUser.get(member.user_id) ?? new Set<string>();
+        fought.add(war.id);
+        foughtWarIdsByUser.set(member.user_id, fought);
       }
       for (const poolMember of war.pool ?? []) {
-        poolCountByUser.set(poolMember.userId, (poolCountByUser.get(poolMember.userId) ?? 0) + 1);
+        const entries = poolEntriesByUser.get(poolMember.userId) ?? [];
+        entries.push({ warId: war.id, date: warDate });
+        poolEntriesByUser.set(poolMember.userId, entries);
       }
     }
     // Rostered-but-never-fought members surface when min participation is 0.
-    for (const userId of poolCountByUser.keys()) {
+    for (const userId of poolEntriesByUser.keys()) {
       if (!valuesByUser.has(userId)) valuesByUser.set(userId, []);
+    }
+    const absenceRangesByUser = new Map<string, Array<{ start: string; end: string }>>();
+    for (const absence of analyticsAbsences) {
+      const ranges = absenceRangesByUser.get(absence.user_id) ?? [];
+      ranges.push({ start: absence.start_date, end: absence.end_date });
+      absenceRangesByUser.set(absence.user_id, ranges);
     }
     return Array.from(valuesByUser.entries())
       .map(([userId, values]) => {
+        const poolEntries = poolEntriesByUser.get(userId) ?? [];
+        // Rostered-but-not-fought wars covered by a reported absence are excused
+        // from the attendance denominator.
+        const fought = foughtWarIdsByUser.get(userId);
+        const ranges = absenceRangesByUser.get(userId) ?? [];
+        const excused = poolEntries.filter(
+          (entry) =>
+            !fought?.has(entry.warId)
+            && ranges.some((range) => range.start <= entry.date && entry.date <= range.end),
+        ).length;
         // Pool snapshots can be missing for old wars; never report a rate > 100%.
-        const poolWars = Math.max(poolCountByUser.get(userId) ?? 0, values.length);
+        const poolWars = Math.max(poolEntries.length, values.length);
+        const effectivePool = Math.max(poolWars - excused, values.length);
         return {
           key: userId,
           user_id: userId,
           participation: values.length,
           poolWars,
-          attendanceRate: poolWars > 0 ? Number(((values.length / poolWars) * 100).toFixed(0)) : null,
+          excused,
+          attendanceRate: effectivePool > 0 ? Number(((values.length / effectivePool) * 100).toFixed(0)) : null,
           score: Number(aggregateValues(values, analyticsAggregation).toFixed(2)),
           stdDev: computeStdDev(values),
         };
@@ -257,7 +284,7 @@ export function useGuildWarAnalyticsComputed({
       .filter((row) => row.participation >= analyticsMinParticipation)
       .sort((left, right) => right.score - left.score)
       .slice(0, analyticsTopN);
-  }, [analyticsAggregation, analyticsSelectedMetrics, analyticsMinParticipation, analyticsTimeline, analyticsTopN, getNormalizedMetricValue]);
+  }, [analyticsAbsences, analyticsAggregation, analyticsSelectedMetrics, analyticsMinParticipation, analyticsTimeline, analyticsTopN, getNormalizedMetricValue]);
 
   const analyticsRankingRowsByMetric = useMemo(() => {
     const userPool = new Set(analyticsRankingRows.map((row) => row.user_id));
@@ -732,6 +759,7 @@ export function useGuildWarAnalyticsComputed({
         { title: t("analytics.table.member"), dataIndex: "user_id", key: "user_id" },
         { title: t("analytics.table.wars"), dataIndex: "participation", key: "participation" },
         { title: t("analytics.table.poolWars"), dataIndex: "poolWars", key: "poolWars" },
+        { title: t("analytics.table.excused"), dataIndex: "excused", key: "excused" },
         { title: t("analytics.table.attendance"), dataIndex: "attendanceRate", key: "attendanceRate" },
       ];
       if (analyticsSelectedMetrics.length <= 1) {

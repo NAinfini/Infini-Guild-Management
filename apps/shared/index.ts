@@ -10,6 +10,7 @@ export * from "./constants/errors";
 
 export * from "./schemas/auth";
 export * from "./schemas/user";
+export * from "./schemas/absence";
 export * from "./schemas/event";
 export * from "./schemas/announcement";
 export * from "./schemas/guild-war";

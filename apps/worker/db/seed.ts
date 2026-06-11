@@ -12,6 +12,7 @@ import {
   events,
   galleryItems,
   inviteLinks,
+  memberAbsences,
   memberBadgeAssignments,
   memberBadges,
   memberProfileClasses,
@@ -56,6 +57,7 @@ const ALL_TABLES = [
   "announcements",
   "member_badge_assignments",
   "member_badges",
+  "member_absences",
   "member_profile_classes",
   "member_profiles",
   "sessions",
@@ -301,8 +303,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   const profileRows: Array<typeof memberProfiles.$inferInsert> = [];
   for (let index = 0; index < memberIds.length; index += 1) {
     const userId = memberIds[index]!;
-    const vacationStart = index === 5 ? addDays(now, -1) : index === 11 ? addDays(now, 7) : null;
-    const vacationEnd = index === 5 ? addDays(now, 3) : index === 11 ? addDays(now, 14) : null;
+    const onVacation = index === 5 || index === 11;
     const profileImages = index % 4 === 3 ? [] : [seedMockAsset("portrait", index)];
     const profileVideos = index % 6 === 0 ? ["https://www.youtube.com/watch?v=aqz-KE-bpKQ"] : [];
     profileRows.push({
@@ -320,9 +321,9 @@ export async function seedDatabase(env: Bindings): Promise<void> {
         weekendAfternoon: index % 3 === 0,
         guildWarNight: index % 4 !== 0,
       }),
-      vacationStart,
-      vacationEnd,
-      notes: index % 5 === 0 ? "High priority member" : vacationStart ? "Vacation scheduled" : null,
+      vacationStart: null,
+      vacationEnd: null,
+      notes: index % 5 === 0 ? "High priority member" : onVacation ? "Vacation scheduled" : null,
     });
   }
 
@@ -362,6 +363,14 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     ...profileRows,
   ];
   await batchInsert(db, memberProfiles, allProfileRows, 5);
+
+  // Absence history (请假) — one current, one upcoming, one past entry.
+  const absenceRows: Array<typeof memberAbsences.$inferInsert> = [
+    { id: nanoid(), userId: memberIds[5]!, startDate: addDays(now, -1).slice(0, 10), endDate: addDays(now, 3).slice(0, 10), note: "Seed: current absence" },
+    { id: nanoid(), userId: memberIds[11]!, startDate: addDays(now, 7).slice(0, 10), endDate: addDays(now, 14).slice(0, 10), note: "Seed: upcoming absence" },
+    { id: nanoid(), userId: memberIds[5]!, startDate: addDays(now, -30).slice(0, 10), endDate: addDays(now, -25).slice(0, 10), note: null },
+  ];
+  await batchInsert(db, memberAbsences, absenceRows);
   await batchInsert(
     db,
     memberProfileClasses,

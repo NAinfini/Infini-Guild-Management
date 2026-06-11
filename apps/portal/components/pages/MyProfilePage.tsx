@@ -279,12 +279,9 @@ export function MyProfilePage() {
 
             <Tabs.Panel value="availability" pt="md">
               <ProfileAvailabilityTab
+                userId={user?.id}
                 availabilityData={form.availabilityData}
-                vacationStart={form.vacationStart}
-                vacationEnd={form.vacationEnd}
                 onAvailabilityChange={form.setAvailabilityData}
-                onVacationStartChange={form.setVacationStart}
-                onVacationEndChange={form.setVacationEnd}
                 onSaveAvailability={mutations.saveProfile}
                 savePending={mutations.saveProfileMutation.isPending}
                 isDirty={form.isDirty}

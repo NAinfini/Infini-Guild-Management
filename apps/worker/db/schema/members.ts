@@ -1,5 +1,5 @@
 // Domain: Member Profiles
-// Tables: member_profiles, member_profile_classes
+// Tables: member_profiles, member_profile_classes, member_absences
 // Dependencies: auth.users
 import { index, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
@@ -23,6 +23,25 @@ export const memberProfiles = sqliteTable("member_profiles", {
   createdAt: text("created_at").notNull().default(nowUtc),
   updatedAt: text("updated_at").notNull().default(nowUtc),
 });
+
+// Absence (请假) history — source of truth for member vacations.
+// member_profiles.vacation_start/vacation_end are legacy columns kept for
+// prod parity; reads derive them from this table (current-or-next absence).
+export const memberAbsences = sqliteTable(
+  "member_absences",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    startDate: text("start_date").notNull(), // YYYY-MM-DD (UTC date)
+    endDate: text("end_date").notNull(), // YYYY-MM-DD (UTC date), inclusive
+    note: text("note"),
+    createdAt: text("created_at").notNull().default(nowUtc),
+  },
+  (table) => ({
+    idxUserEnd: index("idx_member_absences_user_end").on(table.userId, table.endDate),
+    idxEndStart: index("idx_member_absences_end_start").on(table.endDate, table.startDate),
+  }),
+);
 
 export const memberProfileClasses = sqliteTable(
   "member_profile_classes",

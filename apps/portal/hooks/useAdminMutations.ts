@@ -232,8 +232,6 @@ export function useAdminMutations({
         classes: form.classes as ClassName[],
         title_html: form.titleHtml || null,
         bio: form.bio || null,
-        vacation_start: form.vacationStart ? new Date(form.vacationStart).toISOString() : null,
-        vacation_end: form.vacationEnd ? new Date(form.vacationEnd).toISOString() : null,
         notes: form.notes || null,
       });
       try {

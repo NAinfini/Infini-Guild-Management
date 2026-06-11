@@ -35,6 +35,7 @@ type GuildWarDragBoardProps = {
   teamIndexMap?: Map<string, number>;
   onAddToPool?: () => void;
   onDraftNameChange?: (containerId: string, value: string) => void;
+  absentUserIds?: Set<string>;
 };
 
 const snapCenterToCursor: Modifier = ({ activatorEvent, draggingNodeRect, transform }) => {
@@ -77,6 +78,7 @@ export function GuildWarDragBoard({
   teamIndexMap,
   onAddToPool,
   onDraftNameChange,
+  absentUserIds,
 }: GuildWarDragBoardProps) {
   const { t } = useTranslation("guild-war");
   const poolColumn = dragColumns.find((column) => column.containerId === "pool");
@@ -116,6 +118,7 @@ export function GuildWarDragBoard({
         teamIndexMap={teamIndexMap}
         onAddToPool={onAddToPool}
         onDraftNameChange={onDraftNameChange}
+        absentUserIds={absentUserIds}
       />
 
       <DragOverlay modifiers={[snapCenterToCursor]} dropAnimation={null}>

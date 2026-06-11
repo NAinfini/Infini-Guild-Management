@@ -7,6 +7,7 @@ import {
   fetchGuildWarAnalytics,
   fetchGuildWarHistoryBatch,
 } from "../../services/GuildWarService";
+import { fetchAbsencesWindow } from "../../services/UserService";
 import { queryKeys } from "../../api/query-keys";
 import { useShallow } from "zustand/react/shallow";
 import { useGuildWarStore, type AnalyticsDatePreset } from "../../stores/guildWar";
@@ -166,6 +167,31 @@ export function useGuildWarAnalytics({
   const analyticsRows = analyticsQuery.data?.member_stats ?? [];
   const analyticsWarDetails = analyticsDetailsQuery.data ?? [];
 
+  // Absence (请假) window covering all selected wars — used to excuse
+  // rostered-but-absent members from the attendance denominator.
+  const absencesWindow = useMemo(() => {
+    if (analyticsWarDetails.length === 0) {
+      return null;
+    }
+    let from = analyticsWarDetails[0]!.created_at.slice(0, 10);
+    let to = from;
+    for (const war of analyticsWarDetails) {
+      const date = war.created_at.slice(0, 10);
+      if (date < from) from = date;
+      if (date > to) to = date;
+    }
+    return { from, to };
+  }, [analyticsWarDetails]);
+
+  const absencesQuery = useQuery({
+    queryKey: queryKeys.absences.window(absencesWindow?.from ?? "", absencesWindow?.to ?? ""),
+    queryFn: () => fetchAbsencesWindow(absencesWindow!.from, absencesWindow!.to),
+    enabled: Boolean(absencesWindow),
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+  });
+  const analyticsAbsences = useMemo(() => absencesQuery.data?.data ?? [], [absencesQuery.data]);
+
   const analyticsWarOptions = useMemo(
     () =>
       historyRows.map((row) => ({
@@ -214,6 +240,7 @@ export function useGuildWarAnalytics({
     analyticsWars: analyticsQuery.data?.wars ?? [],
     analyticsWarStat,
     analyticsRows,
+    analyticsAbsences,
     warNormContext,
     referenceDuration,
     chartPalette,

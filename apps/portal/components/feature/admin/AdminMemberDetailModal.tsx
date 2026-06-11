@@ -1,4 +1,5 @@
 import { CLASS_NAMES, type AdminRole } from "@guild/shared";
+import { AbsenceManagerCard } from "../../shared/AbsenceManagerCard";
 import { PortalCard } from "../../shared/PortalCard";
 import {
   Badge,
@@ -14,7 +15,6 @@ import {
   Tabs,
   Text,
   Textarea,
-  TextInput,
 } from "@mantine/core";
 import { SaveIcon } from "@portal/components/icons";
 import type { ReactNode } from "react";
@@ -30,8 +30,6 @@ type MemberDetailFormState = {
   titleHtml: string;
   bio: string;
   notes: string;
-  vacationStart: string;
-  vacationEnd: string;
   role: string;
   isActive: boolean;
 };
@@ -192,28 +190,13 @@ export function AdminMemberDetailModal({
               </Stack>
             </Tabs.Panel>
 
-            {/* Status: Vacation + Notes */}
+            {/* Status: Absences + Notes */}
             <Tabs.Panel value="status">
               <Stack gap={16}>
                 <PortalCard interactive={false}>
                   <div className={styles.sectionBody}>
                     <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.vacation")}</Text>
-                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                      <TextInput
-                        label={t("detail.field.vacationStart")}
-                        placeholder={t("detail.placeholder.dateFormat")}
-                        value={form.vacationStart}
-                        onChange={(event) => onFormChange({ vacationStart: event.currentTarget.value })}
-                        type="date"
-                      />
-                      <TextInput
-                        label={t("detail.field.vacationEnd")}
-                        placeholder={t("detail.placeholder.dateFormat")}
-                        value={form.vacationEnd}
-                        onChange={(event) => onFormChange({ vacationEnd: event.currentTarget.value })}
-                        type="date"
-                      />
-                    </SimpleGrid>
+                    <AbsenceManagerCard userId={member.user.id} />
                   </div>
                 </PortalCard>
 

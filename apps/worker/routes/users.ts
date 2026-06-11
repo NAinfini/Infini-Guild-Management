@@ -5,6 +5,7 @@ import { createPasswordHash, destroySession, verifyPassword } from "../services/
 import { deleteMediaObject, storeProfileAudio, storeProfileImage } from "../services/media";
 import { UserService } from "../services/UserService";
 import { BadgeService } from "../services/BadgeService";
+import { MemberAbsenceService } from "../services/MemberAbsenceService";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, requireSessionUser, serveR2Object } from "./_shared";
 import { commonDeps } from "./service-factory";
 
@@ -25,6 +26,12 @@ function getUserService(c: Context) {
 function getBadgeService(c: Context) {
   return new BadgeService(getDb(c), commonDeps(c));
 }
+
+function getAbsenceService(c: Context) {
+  return new MemberAbsenceService(getDb(c), commonDeps(c));
+}
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // --- Routes ---
 
@@ -71,6 +78,17 @@ usersRoutes.get("/stats", async (c) => {
   return handleResult(c, await getUserService(c).getUserStats());
 });
 
+// Static path: registered before "/:id" so it never resolves as a user id.
+usersRoutes.get("/absences", async (c) => {
+  await requireSessionUser(c);
+  const from = c.req.query("from");
+  const to = c.req.query("to");
+  if (!from || !to || !ISO_DATE_RE.test(from) || !ISO_DATE_RE.test(to) || from > to) {
+    return buildError(c, "VALIDATION_ERROR", "from/to query parameters must be YYYY-MM-DD with from <= to");
+  }
+  return handleResult(c, await getAbsenceService(c).listWindow(from, to));
+});
+
 usersRoutes.get("/:id", async (c) => {
   const sessionUser = await requireSessionUser(c);
   const result = await getUserService(c).getUser(sessionUser, c.req.param("id"));
@@ -84,6 +102,22 @@ usersRoutes.patch("/:id/profile", async (c) => {
   const sessionUser = await requireSessionUser(c);
   const body = await parseJsonBody(c);
   return handleResult(c, await getUserService(c).updateProfile(sessionUser, c.req.param("id"), body));
+});
+
+usersRoutes.get("/:id/absences", async (c) => {
+  await requireSessionUser(c);
+  return handleResult(c, await getAbsenceService(c).listForUser(c.req.param("id")));
+});
+
+usersRoutes.post("/:id/absences", async (c) => {
+  const sessionUser = await requireSessionUser(c);
+  const body = await parseJsonBody(c);
+  return handleResult(c, await getAbsenceService(c).create(sessionUser, c.req.param("id"), body));
+});
+
+usersRoutes.delete("/:id/absences/:absenceId", async (c) => {
+  const sessionUser = await requireSessionUser(c);
+  return handleResult(c, await getAbsenceService(c).remove(sessionUser, c.req.param("id"), c.req.param("absenceId")));
 });
 
 usersRoutes.post("/:id/media/images", async (c) => {

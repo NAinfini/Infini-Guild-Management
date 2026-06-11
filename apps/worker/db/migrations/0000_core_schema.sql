@@ -617,3 +617,20 @@ CREATE TABLE IF NOT EXISTS wiki_revisions (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_wiki_revisions_article_revision ON wiki_revisions(article_id, revision);
+
+
+-- ===== MEMBER ABSENCES (请假 history) =====
+-- Source of truth for member vacations. member_profiles.vacation_start/vacation_end
+-- are legacy columns; read paths derive them from the current-or-next absence here.
+
+CREATE TABLE IF NOT EXISTS member_absences (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_member_absences_user_end ON member_absences(user_id, end_date);
+CREATE INDEX IF NOT EXISTS idx_member_absences_end_start ON member_absences(end_date, start_date);

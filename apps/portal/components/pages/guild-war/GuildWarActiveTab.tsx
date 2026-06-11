@@ -7,8 +7,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "../../../hooks/useAppError";
-import { concludeGuildWar, guildWarQueryKeys, moveGuildWarMember, usersQueryKeys } from "../../../services/GuildWarService";
-import { fetchAllUsersListWithOptions } from "../../../services/UserService";
+import { absenceQueryKeys, concludeGuildWar, guildWarQueryKeys, moveGuildWarMember, usersQueryKeys } from "../../../services/GuildWarService";
+import { fetchAbsencesWindow, fetchAllUsersListWithOptions } from "../../../services/UserService";
 import { notifySuccess } from "../../../utils/notifications";
 import { useQuery } from "@tanstack/react-query";
 import type { ConcludeWarMember, ConcludeWarSubmitData } from "../../feature/guild-war/ConcludeWarModal";
@@ -72,6 +72,19 @@ export function GuildWarActiveTab({
     queryFn: () => fetchAllUsersListWithOptions(),
     staleTime: 10 * 60_000,
   });
+
+  // Absences (请假) covering the war date — marks members on the drag board.
+  const warDate = activeQuery.data?.event?.start_at?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+  const absencesQuery = useQuery({
+    queryKey: absenceQueryKeys.window(warDate, warDate),
+    queryFn: () => fetchAbsencesWindow(warDate, warDate),
+    enabled: Boolean(selectedEventId),
+    staleTime: 60_000,
+  });
+  const absentUserIds = useMemo(
+    () => new Set((absencesQuery.data?.data ?? []).map((absence) => absence.user_id)),
+    [absencesQuery.data],
+  );
 
   // --- Add to Pool ---
   const [addToPoolOpen, addToPoolHandlers] = useDisclosure(false);
@@ -344,6 +357,7 @@ export function GuildWarActiveTab({
           onAddToPool={canManageActive && selectedEventId ? () => addToPoolHandlers.open() : undefined}
           onDraftNameChange={canManageActive ? guildWarDrag.handleDraftNameChange : undefined}
           disabled={!selectedEventId}
+          absentUserIds={absentUserIds}
         />
       </Suspense>
 

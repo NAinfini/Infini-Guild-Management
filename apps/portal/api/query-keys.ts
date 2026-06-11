@@ -9,6 +9,11 @@ export const queryKeys = {
     roster: (viewMode: "external" | "default") => [...queryKeys.users.all, "roster", viewMode] as const,
     stats: () => [...queryKeys.users.all, "stats"] as const,
   },
+  absences: {
+    all: ["absences"] as const,
+    window: (from: string, to: string) => [...queryKeys.absences.all, "window", from, to] as const,
+    user: (userId: string | undefined) => [...queryKeys.absences.all, "user", userId] as const,
+  },
   myProfile: {
     all: ["my-profile"] as const,
     detail: (userId: string | undefined) => [...queryKeys.myProfile.all, userId] as const,
