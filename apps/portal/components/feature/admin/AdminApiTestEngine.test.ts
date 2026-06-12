@@ -782,7 +782,6 @@ describe("AdminApiTestEngine request preparation", () => {
       "POST /api/storage/items/:id/transactions?fixture=intake",
       "POST /api/storage/items/:id/transactions?fixture=distribute",
       "POST /api/storage/items/:id/transactions?fixture=adjust",
-      "POST /api/storage/intake-batch",
       "GET /api/storage/items",
       "GET /api/storage/items/:id",
       "GET /api/storage/transactions?page=1&limit=5",
@@ -854,7 +853,7 @@ describe("AdminApiTestEngine request preparation", () => {
     const visibleStorageEndpoints = filtered.find((category) => category.key === "storage")?.endpoints ?? [];
     const visibleEndpointKeys = visibleStorageEndpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`);
 
-    expect(storageEndpoints).toHaveLength(20);
+    expect(storageEndpoints).toHaveLength(19);
     expect(visibleStorageEndpoints).toHaveLength(storageEndpoints.length);
     expect(visibleEndpointKeys).toEqual(storageEndpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
     expect(visibleEndpointKeys).toEqual(expect.arrayContaining([
@@ -869,7 +868,6 @@ describe("AdminApiTestEngine request preparation", () => {
       "POST /api/storage/items/:id/transactions?fixture=intake",
       "POST /api/storage/items/:id/transactions?fixture=distribute",
       "POST /api/storage/items/:id/transactions?fixture=adjust",
-      "POST /api/storage/intake-batch",
       "DELETE /api/storage/items/:id",
       "DELETE /api/storage/storages/:storageId/categories/:id",
       "DELETE /api/storage/storages/:id",
@@ -1015,10 +1013,6 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(parseJsonBody(distribute)).toMatchObject({ type: "distribute", quantity: 1, recipient_user_id: "member-1" });
     expect(parseJsonBody(adjust)).toMatchObject({ type: "adjust", target_quantity: 6 });
     expect(JSON.stringify([intake, distribute, adjust])).not.toContain("seed-item");
-    expect(JSON.stringify(prepareEndpointRequest(
-      { label: "Storage Batch Intake", method: "POST", path: "/api/storage/intake-batch" },
-      ctx,
-    ))).not.toContain("seed-item");
   });
 
   it("captures storage fixture ids from storage responses", () => {
@@ -1135,6 +1129,7 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys).toEqual(expect.arrayContaining([
       "GET /api/health",
       "GET /api/site-config",
+      "GET /api/onboarding",
       "GET /api/admin/status",
       "GET /api/admin/analytics-settings",
       "GET /api/dashboard/summary",
@@ -1151,6 +1146,7 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys).toEqual(expect.arrayContaining([
       "GET /api/game-data",
       "GET /api/game-data/versions",
+      "GET /api/admin/site-config",
       "GET /api/users/absences?from=2026-01-01&to=2026-01-31",
       "GET /api/users/:id/absences",
       "GET /api/wiki/articles/:id/revisions",
@@ -1158,6 +1154,28 @@ describe("AdminApiTestEngine request preparation", () => {
       "GET /api/admin/audit-archive/download",
       "GET /api/admin/audit-archive/download/file",
     ]));
+  });
+
+  it("exposes site config health checks as read-only endpoints", () => {
+    const categories = buildApiCategories((key) => key);
+    const endpointKeys = categories
+      .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
+    const visibleWithoutSiteConfigPermission = filterApiCategoriesForPermissions(categories, {
+      "admin.siteConfig.manage": false,
+    }).flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
+    const visibleWithSiteConfigPermission = filterApiCategoriesForPermissions(categories, {
+      "admin.siteConfig.manage": true,
+    }).flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
+
+    expect(endpointKeys).toEqual(expect.arrayContaining([
+      "GET /api/site-config",
+      "GET /api/onboarding",
+      "GET /api/admin/site-config",
+    ]));
+    expect(visibleWithoutSiteConfigPermission).not.toContain("GET /api/admin/site-config");
+    expect(visibleWithSiteConfigPermission).toContain("GET /api/admin/site-config");
+    expect(endpointKeys).not.toContain("PATCH /api/admin/site-config");
+    expect(endpointKeys).not.toContain("POST /api/admin/site-config/onboarding/publish");
   });
 
   it("prepares additional production read endpoints without mutating existing database state", () => {

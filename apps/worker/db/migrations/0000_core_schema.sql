@@ -259,6 +259,40 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS site_config (
+  id TEXT PRIMARY KEY NOT NULL,
+  site_name TEXT NOT NULL,
+  site_logo_url TEXT NOT NULL,
+  feature_flags_json TEXT NOT NULL,
+  media_policy_json TEXT NOT NULL,
+  pagination_policy_json TEXT NOT NULL,
+  storage_policy_json TEXT NOT NULL,
+  absence_policy_json TEXT NOT NULL,
+  analytics_settings_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS onboarding_config (
+  id TEXT PRIMARY KEY NOT NULL,
+  title TEXT NOT NULL,
+  body_json TEXT NOT NULL,
+  checklist_json TEXT NOT NULL DEFAULT '[]',
+  require_ack INTEGER NOT NULL DEFAULT 1,
+  published_at TEXT,
+  updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS member_onboarding_state (
+  user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  completed_item_ids_json TEXT NOT NULL DEFAULT '[]',
+  acknowledged_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY NOT NULL,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -455,6 +489,40 @@ INSERT OR IGNORE INTO roles (id, name, level, color, is_builtin) VALUES
   ('moderator', 'Moderator', 500, 'blue', 1),
   ('member', 'Member', 100, 'gray', 1);
 
+INSERT OR IGNORE INTO site_config (
+  id,
+  site_name,
+  site_logo_url,
+  feature_flags_json,
+  media_policy_json,
+  pagination_policy_json,
+  storage_policy_json,
+  absence_policy_json,
+  analytics_settings_json
+) VALUES
+  (
+    'default',
+    'Infini 公会',
+    '/logo.webp',
+    '{"announcements":true,"events":true,"guildWar":true,"gallery":true,"wiki":true,"tools":true,"equipmentCalc":true,"storage":true}',
+    '{"max_file_size_bytes":{"profile_image":5242880,"profile_audio":20971520,"announcement_image":5242880,"wiki_image":5242880,"event_image":5242880,"gallery_image":10485760},"quotas":{"profile":10,"announcement":10,"gallery":20,"wiki":10}}',
+    '{"admin":50,"announcements":50,"events":100,"gallery":24,"guild_war":20,"users":500,"wiki":50}',
+    '{"images_per_item":5}',
+    '{"max_span_days":366,"max_entries_per_user":20}',
+    '{"reference_duration_minutes":30,"modifier_weights":{"credits":0.3,"kda":0.3,"basehp":0.15,"towers":0.1,"distance":0.15}}'
+  );
+
+INSERT OR IGNORE INTO onboarding_config (id, title, body_json, checklist_json, require_ack, published_at, updated_by) VALUES
+  (
+    'default',
+    'Member onboarding',
+    '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Welcome to the guild. Review the rules before joining events, claiming storage, or participating in guild war planning."}]},{"type":"paragraph","content":[{"type":"text","text":"Keep your profile current and contact leadership when your availability, name, role, or class changes."}]}]}',
+    '[{"id":"read-rules","label":"Read guild rules","description":"Understand expectations for events, storage, guild war, and member communication.","required":true},{"id":"complete-profile","label":"Complete your profile","description":"Add your power, class, availability, and contact details.","required":true},{"id":"ask-questions","label":"Ask questions early","description":"Contact leadership if any rule or workflow is unclear.","required":false}]',
+    1,
+    NULL,
+    NULL
+  );
+
 INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   -- admin (full access)
   ('admin', 'admin.users.view', 1),
@@ -472,6 +540,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('admin', 'admin.roles.manage', 1),
   ('admin', 'admin.analytics.view', 1),
   ('admin', 'admin.analytics.manage', 1),
+  ('admin', 'admin.siteConfig.manage', 1),
   ('admin', 'guildwar.teams.edit', 1),
 
   ('admin', 'guildwar.history.edit', 1),
@@ -514,6 +583,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('moderator', 'admin.roles.manage', 0),
   ('moderator', 'admin.analytics.view', 1),
   ('moderator', 'admin.analytics.manage', 0),
+  ('moderator', 'admin.siteConfig.manage', 0),
   ('moderator', 'guildwar.teams.edit', 1),
 
   ('moderator', 'guildwar.history.edit', 1),
@@ -556,6 +626,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('member', 'admin.roles.manage', 0),
   ('member', 'admin.analytics.view', 0),
   ('member', 'admin.analytics.manage', 0),
+  ('member', 'admin.siteConfig.manage', 0),
   ('member', 'guildwar.teams.edit', 0),
 
   ('member', 'guildwar.history.edit', 0),

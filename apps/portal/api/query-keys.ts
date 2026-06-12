@@ -59,6 +59,14 @@ export const queryKeys = {
     item: (id: string | null) => [...queryKeys.storage.all, "item", id] as const,
     transactions: (filter: string, page: number) => [...queryKeys.storage.all, "transactions", filter, page] as const,
   },
+  siteConfig: {
+    all: ["site-config"] as const,
+    admin: () => [...queryKeys.siteConfig.all, "admin"] as const,
+  },
+  onboarding: {
+    all: ["onboarding"] as const,
+    me: () => [...queryKeys.onboarding.all, "me"] as const,
+  },
   dashboard: {
     all: ["dashboard"] as const,
     summary: () => [...queryKeys.dashboard.all, "summary"] as const,

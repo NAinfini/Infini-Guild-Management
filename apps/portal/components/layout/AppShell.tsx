@@ -41,8 +41,6 @@ function isWikiPath(pathname: string): boolean {
   return pathname === "/wiki" || pathname.startsWith("/wiki/");
 }
 
-const HAS_VIEW_TRANSITIONS = typeof document !== "undefined" && "startViewTransition" in document;
-
 const HEADER_TITLE_OVERRIDES: Record<string, string> = {
   "/profile": "nav.profile",
   "/settings": "nav.settings",
@@ -63,7 +61,7 @@ function AnimatedOutlet({ pathname, enabled }: { pathname: string; enabled: bool
   const [animKey, setAnimKey] = useState(0);
   const prevPathRef = useRef(pathname);
 
-  const useFallbackAnim = enabled && !HAS_VIEW_TRANSITIONS;
+  const useFallbackAnim = enabled;
 
   useEffect(() => {
     if (pathname !== prevPathRef.current) {
@@ -135,8 +133,6 @@ export function AppShell() {
   useEffect(() => {
     void i18n.changeLanguage(locale);
     document.documentElement.dataset.locale = locale;
-    if (locale === "zh") {
-    }
   }, [locale]);
 
   useEffect(() => {
@@ -194,9 +190,8 @@ export function AppShell() {
       });
     };
 
-    const onForbidden = (event: Event) => {
-      const detail = (event as CustomEvent<{ message?: string }>).detail;
-      setPermissionBanner(detail?.message ?? t("nav.permissionDenied"));
+    const onForbidden = () => {
+      setPermissionBanner(t("nav.permissionDenied"));
     };
 
     window.addEventListener("guild-api-unauthorized", onUnauthorized as EventListener);

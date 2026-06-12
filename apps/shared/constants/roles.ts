@@ -19,6 +19,7 @@ export const PERMISSIONS = [
   "admin.analytics.manage",
   "admin.roles.view",
   "admin.roles.manage",
+  "admin.siteConfig.manage",
   "guildwar.teams.edit",
   "guildwar.history.edit",
   "events.create",

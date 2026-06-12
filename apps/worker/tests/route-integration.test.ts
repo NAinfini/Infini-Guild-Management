@@ -335,6 +335,12 @@ describe("Origin / CSRF protection", () => {
 
 describe("GET /api/site-config", () => {
   it("returns site configuration without authentication", async () => {
+    const limit = vi.fn().mockResolvedValue([]);
+    const where = vi.fn(() => ({ limit }));
+    const from = vi.fn(() => ({ where }));
+    const select = vi.fn(() => ({ from }));
+    mocks.drizzle.mockReturnValue({ select });
+
     const res = await appRequest("/api/site-config");
     expect(res.status).toBe(200);
 

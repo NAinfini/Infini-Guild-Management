@@ -1,7 +1,6 @@
-﻿import { notifications } from "@mantine/notifications";
+import { notifications } from "@mantine/notifications";
 import i18n from "i18next";
 import { useCallback } from "react";
-import { ZodError } from "zod";
 import { isApiRequestError } from "../api/client";
 import { portalToast } from "../overlays";
 
@@ -15,35 +14,6 @@ function showErrorToast(text: string) {
       withCloseButton: true,
     });
   }
-}
-
-function formatZodError(error: ZodError): string {
-  return error.issues
-    .map((issue) => {
-      const field = issue.path.length > 0 ? issue.path.join(".") : null;
-      return field ? `${field}: ${issue.message}` : issue.message;
-    })
-    .join("; ");
-}
-
-function formatValidationDetails(details: unknown): string | null {
-  if (!details || typeof details !== "object") return null;
-  const d = details as Record<string, unknown>;
-  const fieldErrors = d.fieldErrors as Record<string, string[]> | undefined;
-  if (fieldErrors && typeof fieldErrors === "object") {
-    const parts: string[] = [];
-    for (const [field, messages] of Object.entries(fieldErrors)) {
-      if (Array.isArray(messages) && messages.length > 0) {
-        parts.push(`${field}: ${messages.join(", ")}`);
-      }
-    }
-    if (parts.length > 0) return parts.join("; ");
-  }
-  const formErrors = d.formErrors as string[] | undefined;
-  if (Array.isArray(formErrors) && formErrors.length > 0) {
-    return formErrors.join("; ");
-  }
-  return null;
 }
 
 export function presentAppError(error: unknown, fallbackMessage = i18n.t("common:errors.generic", { defaultValue: "Something went wrong" })): void {
@@ -69,18 +39,16 @@ export function presentAppError(error: unknown, fallbackMessage = i18n.t("common
       );
       return;
     }
-    const detailsMessage = formatValidationDetails(error.details);
-    showErrorToast(detailsMessage || error.message || fallbackMessage);
-    return;
-  }
-
-  if (error instanceof ZodError) {
-    showErrorToast(formatZodError(error) || fallbackMessage);
+    if (error.errorCode === "VALIDATION_ERROR") {
+      showErrorToast(fallbackMessage);
+      return;
+    }
+    showErrorToast(fallbackMessage);
     return;
   }
 
   if (error instanceof Error) {
-    showErrorToast(error.message || fallbackMessage);
+    showErrorToast(error.name === "ZodError" ? fallbackMessage : error.message || fallbackMessage);
     return;
   }
 

@@ -34,6 +34,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       endpoints: [
         { label: t("status.api.ep.healthCheck"), method: "GET", path: "/api/health" },
         { label: t("status.api.ep.siteConfig"), method: "GET", path: "/api/site-config" },
+        { label: t("status.api.ep.memberOnboarding"), method: "GET", path: "/api/onboarding" },
         { label: t("status.api.ep.adminStatus"), method: "GET", path: "/api/admin/status" },
         { label: t("status.api.ep.analyticsSettings"), method: "GET", path: "/api/admin/analytics-settings" },
         { label: t("status.api.ep.updateAnalyticsSettings"), method: "PATCH", path: "/api/admin/analytics-settings" },
@@ -194,7 +195,6 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.storageTransactionIntake"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=intake" },
         { label: t("status.api.ep.storageTransactionDistribute"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=distribute" },
         { label: t("status.api.ep.storageTransactionAdjust"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=adjust" },
-        { label: t("status.api.ep.storageIntakeBatch"), method: "POST", path: "/api/storage/intake-batch" },
         { label: t("status.api.ep.listStorageTransactions"), method: "GET", path: "/api/storage/transactions?page=1&limit=5" },
         { label: t("status.api.ep.deleteStorageItem"), method: "DELETE", path: "/api/storage/items/:id" },
         { label: t("status.api.ep.deleteStorageCategory"), method: "DELETE", path: "/api/storage/storages/:storageId/categories/:id" },
@@ -270,6 +270,13 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       ],
     },
     {
+      key: "adminSiteConfig",
+      label: t("status.api.cat.adminSiteConfig"),
+      endpoints: [
+        { label: t("status.api.ep.adminSiteConfig"), method: "GET", path: "/api/admin/site-config" },
+      ],
+    },
+    {
       key: "adminErrorLog",
       label: t("status.api.cat.adminErrorLog"),
       endpoints: [
@@ -323,6 +330,7 @@ function publicEndpoint(): EndpointPermissionRequirement {
 function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermissionRequirement {
   const key = `${endpoint.method} ${endpoint.path}`;
   if (key === "GET /api/admin/status") return requiresAll("admin.status.view");
+  if (key === "GET /api/admin/site-config") return requiresAll("admin.siteConfig.manage");
   if (endpoint.path.startsWith("/api/admin/error-log")) return requiresAll("admin.status.view");
   if (key === "GET /api/admin/analytics-settings") return requiresAll("admin.analytics.view");
   if (key === "PATCH /api/admin/analytics-settings") return requiresAll("admin.analytics.manage");
@@ -401,7 +409,7 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
   }
   if (endpoint.path.startsWith("/api/storage")) {
     if (endpoint.method === "GET") return publicEndpoint();
-    if (endpoint.path.includes("/transactions") || endpoint.path.includes("/intake-batch")) return requiresStoragePermission("admin.storage.stock");
+    if (endpoint.path.includes("/transactions")) return requiresStoragePermission("admin.storage.stock");
     if (endpoint.path.includes("/items")) return requiresStoragePermission("admin.storage.items");
     return requiresStoragePermission("admin.storage.structure");
   }

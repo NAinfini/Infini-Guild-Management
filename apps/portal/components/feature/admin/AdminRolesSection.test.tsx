@@ -29,6 +29,7 @@ vi.mock("../../../stores/auth", () => ({
 
 const permissions = {
   "admin.roles.manage": true,
+  "admin.siteConfig.manage": true,
   "admin.storage.structure": true,
   "admin.storage.items": true,
   "admin.storage.stock": true,
@@ -73,5 +74,12 @@ describe("AdminRolesSection storage permissions", () => {
     expect(screen.getByText("admin.storage.items")).toBeInTheDocument();
     expect(screen.getByText("admin.storage.stock")).toBeInTheDocument();
     expect(screen.queryByText("admin.storage.manage")).not.toBeInTheDocument();
+  });
+
+  it("renders site config permission control in the system permission group", () => {
+    renderRolesSection();
+
+    expect(screen.getByText("roles.category.adminSystem")).toBeInTheDocument();
+    expect(screen.getByText("admin.siteConfig.manage")).toBeInTheDocument();
   });
 });

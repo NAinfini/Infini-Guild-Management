@@ -105,6 +105,5 @@
   "message.itemDeleted": "Item deleted.",
   "message.imagesUploaded": "Images uploaded.",
   "message.imageDeleted": "Image deleted.",
-  "message.transactionSaved": "Ledger entry saved.",
-  "message.batchSaved": "Batch intake saved."
+  "message.transactionSaved": "Ledger entry saved."
 }

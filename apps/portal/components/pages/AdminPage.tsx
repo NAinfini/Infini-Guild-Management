@@ -35,6 +35,9 @@ const LazyAdminBadgesSection = lazy(() =>
 const LazyAdminGameDataSection = lazy(() =>
   import("../feature/admin/AdminGameDataSection").then((mod) => ({ default: mod.AdminGameDataSection })),
 );
+const LazyAdminSiteConfigSection = lazy(() =>
+  import("../feature/admin/AdminSiteConfigSection").then((mod) => ({ default: mod.AdminSiteConfigSection })),
+);
 const LazyAdminMemberDetailModal = lazy(() =>
   import("../feature/admin/AdminMemberDetailModal").then((mod) => ({ default: mod.AdminMemberDetailModal })),
 );
@@ -114,6 +117,8 @@ export function AdminPage() {
     statusHealthLogs,
     statusLatencyMs,
     statusQuery,
+    siteConfigMutations,
+    siteConfigQuery,
     tabAccess,
     updateRoleMutation,
     updateMemberProfileMutation,
@@ -147,6 +152,7 @@ export function AdminPage() {
           {tabAccess.invite ? <Tabs.Tab value="invite">{t("tab.invite")}</Tabs.Tab> : null}
           {tabAccess.audit ? <Tabs.Tab value="audit">{t("tab.audit")}</Tabs.Tab> : null}
           {tabAccess.roles ? <Tabs.Tab value="roles">{t("tab.roles")}</Tabs.Tab> : null}
+          {tabAccess.siteConfig ? <Tabs.Tab value="siteConfig">{t("tab.siteConfig")}</Tabs.Tab> : null}
           {tabAccess.badges ? <Tabs.Tab value="badges">{t("tab.badges")}</Tabs.Tab> : null}
           {tabAccess.gameData ? <Tabs.Tab value="gameData">{t("tab.gameData")}</Tabs.Tab> : null}
           {tabAccess.status ? <Tabs.Tab value="status">{t("tab.status")}</Tabs.Tab> : null}
@@ -286,6 +292,23 @@ export function AdminPage() {
           </Suspense>
           </ErrorBoundary>
         </Tabs.Panel>
+        ) : null}
+
+        {tabAccess.siteConfig ? (
+          <Tabs.Panel value="siteConfig" pt="sm">
+            <ErrorBoundary>
+            <Suspense fallback={suspenseFallback}>
+              <LazyAdminSiteConfigSection
+                data={siteConfigQuery.data ?? null}
+                loading={siteConfigQuery.isLoading}
+                saving={siteConfigMutations.updateSiteConfigMutation.isPending || siteConfigMutations.updateOnboardingMutation.isPending}
+                logoUploading={siteConfigMutations.uploadSiteLogoMutation.isPending}
+                onSaveSite={(payload) => siteConfigMutations.updateSiteConfigMutation.mutate(payload)}
+                onUploadLogo={(file) => siteConfigMutations.uploadSiteLogoMutation.mutate(file)}
+              />
+            </Suspense>
+            </ErrorBoundary>
+          </Tabs.Panel>
         ) : null}
 
         {tabAccess.badges ? (

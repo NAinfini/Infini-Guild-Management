@@ -13,7 +13,6 @@ export {
   deleteStorageCategory,
   deleteStorageItem,
   deleteStorageItemImage,
-  intakeStorageBatch,
   updateStorage,
   updateStorageCategory,
   updateStorageItem,

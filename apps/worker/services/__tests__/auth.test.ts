@@ -69,6 +69,35 @@ describe("resolveSession", () => {
     expect(select).toHaveBeenCalledTimes(1);
   });
 
+  it("does not synthesize missing admin permissions outside database rows", async () => {
+    const joinedRows = [
+      {
+        sessionId: "sess-1",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        sessionCreatedAt: "2026-05-01T00:00:00.000Z",
+        userId: "admin-1",
+        roleId: "admin",
+        isActive: true,
+        deletedAt: null,
+        permission: "admin.users.view",
+        granted: true,
+      },
+    ];
+    const where = vi.fn().mockResolvedValue(joinedRows);
+    const leftJoin = vi.fn(() => ({ where }));
+    const innerJoin = vi.fn(() => ({ leftJoin }));
+    const from = vi.fn(() => ({ innerJoin }));
+    const select = vi.fn(() => ({ from }));
+    mocks.drizzle.mockReturnValue({ select });
+
+    const resolved = await resolveSession(createContext() as never);
+
+    expect(resolved?.user.roleId).toBe("admin");
+    expect(resolved?.user.permissions.has("admin.users.view")).toBe(true);
+    expect(resolved?.user.permissions.has("admin.siteConfig.manage")).toBe(false);
+    expect(resolved?.user.permissions.has("admin.storage.stock")).toBe(false);
+  });
+
   it("deduplicates per-request calls and treats freshPermissions as no-op (permissions always fresh)", async () => {
     // All three resolveSession calls use the same per-request dedup cache when on the same context.
     // Calls on different contexts each issue one query.

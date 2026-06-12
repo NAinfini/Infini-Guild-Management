@@ -3,7 +3,6 @@ import {
   createStorageItemSchema,
   createStorageSchema,
   createStorageTransactionSchema,
-  storageIntakeBatchSchema,
   updateStorageItemSchema,
   type CreateStorageCategoryPayload,
   type CreateStorageItemPayload,
@@ -11,7 +10,6 @@ import {
   type CreateStorageTransactionPayload,
   type Storage,
   type StorageCategory,
-  type StorageIntakeBatchPayload,
   type StorageItem,
   type StorageTransaction,
   type UpdateStorageItemPayload,
@@ -70,8 +68,4 @@ export function deleteStorageItemImage(itemId: string, imageId: string): Promise
 
 export function createStorageTransaction(itemId: string, payload: CreateStorageTransactionPayload): Promise<StorageTransaction> {
   return apiRequest<StorageTransaction>(`/api/storage/items/${itemId}/transactions`, { method: "POST", bodyJson: createStorageTransactionSchema.parse(payload) });
-}
-
-export function intakeStorageBatch(payload: StorageIntakeBatchPayload): Promise<{ ok: true; count: number }> {
-  return apiRequest<{ ok: true; count: number }>("/api/storage/intake-batch", { method: "POST", bodyJson: storageIntakeBatchSchema.parse(payload) });
 }

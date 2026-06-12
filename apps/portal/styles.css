@@ -298,6 +298,44 @@ html[data-locale="zh"] {
   to { transform: rotate(360deg); }
 }
 
+/* ── Route loading fallback ── */
+.route-loading {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl, 24px);
+}
+
+.route-loading__card {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--color-primary, #D4A843) 16%, transparent);
+  border-radius: var(--radius-md, 12px);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent);
+  box-shadow:
+    var(--shadow-sm, 0 1px 3px rgba(10, 10, 15, 0.08)),
+    0 0 24px color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
+  animation: contentFadeIn 0.2s ease both;
+}
+
+.route-loading__spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent);
+  border-top-color: var(--color-primary, #D4A843);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.route-loading__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--color-text, #1A1815) 72%, transparent);
+}
+
 /* ── EmptyState ── */
 .empty-state {
   display: flex;
@@ -393,6 +431,11 @@ html[data-locale="zh"] {
 @media (prefers-reduced-motion: reduce) {
   .mantine-Skeleton-root::after {
     animation: none !important;
+  }
+
+  .route-loading__card,
+  .route-loading__spinner {
+    animation: none;
   }
 
   .mantine-Card-root,

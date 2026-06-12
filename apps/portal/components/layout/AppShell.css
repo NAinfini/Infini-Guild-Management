@@ -394,7 +394,12 @@
   border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 90%, transparent);
   color: color-mix(in srgb, var(--color-text, #1A1815) 72%, transparent);
-  transition: all var(--transition-normal);
+  transition:
+    color var(--transition-normal),
+    border-color var(--transition-normal),
+    background var(--transition-normal),
+    box-shadow var(--transition-normal),
+    transform var(--transition-normal);
 }
 
 .app-header-icon-btn:hover {
@@ -484,17 +489,28 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  background: linear-gradient(135deg, var(--color-text, #1A1815) 40%, var(--color-primary, #D4A843) 70%, var(--color-secondary, #8B7355));
-  background-size: 200% auto;
+  color: var(--color-text, #1A1815);
+  background:
+    linear-gradient(
+      105deg,
+      var(--color-text, #1A1815) 0%,
+      color-mix(in srgb, var(--color-primary, #D4A843) 88%, #ffffff 12%) 36%,
+      color-mix(in srgb, var(--color-accent, #C17F3E) 72%, var(--color-primary, #D4A843) 28%) 52%,
+      color-mix(in srgb, var(--color-secondary, #8B7355) 70%, var(--color-text, #1A1815) 30%) 68%,
+      var(--color-text, #1A1815) 100%
+    );
+  background-size: 260% auto;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: pageHeaderShimmer 6s ease-in-out infinite;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent));
+  animation: pageHeaderShimmer 5.5s cubic-bezier(0.45, 0, 0.25, 1) infinite;
 }
 
 @keyframes pageHeaderShimmer {
   0%, 100% { background-position: 0% center; }
-  50% { background-position: 200% center; }
+  48% { background-position: 100% center; }
+  70% { background-position: 82% center; }
 }
 
 .app-profile-trigger {
@@ -641,63 +657,6 @@
 .app-route-slide-in {
   animation: route-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
-
-/* ── View Transition API: old page slides out, new page slides in ── */
-
-@keyframes vt-slide-out {
-  from {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(min(-30vw, -300px)) scale(0.96);
-  }
-}
-
-@keyframes vt-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(min(40vw, 400px));
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-::view-transition-old(root) {
-  animation: vt-slide-out 0.3s cubic-bezier(0.4, 0, 1, 1) both;
-}
-
-::view-transition-new(root) {
-  animation: vt-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-/* Exclude sidebar, header, and bottom nav from the view transition */
-.app-sider {
-  view-transition-name: sidebar;
-}
-
-.app-header {
-  view-transition-name: header;
-}
-
-.app-bottom-nav {
-  view-transition-name: bottom-nav;
-}
-
-/* Keep excluded elements static (no animation) */
-::view-transition-old(sidebar),
-::view-transition-new(sidebar),
-::view-transition-old(header),
-::view-transition-new(header),
-::view-transition-old(bottom-nav),
-::view-transition-new(bottom-nav) {
-  animation: none;
-}
-
-
 
 .app-bottom-nav {
   position: fixed;
@@ -854,9 +813,6 @@
   }
   .app-header__page-title {
     animation: none;
-    background: none;
-    -webkit-text-fill-color: unset;
-    color: var(--color-text, #1A1815);
   }
   .app-nav-item::after {
     display: none;

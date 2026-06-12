@@ -285,7 +285,12 @@
 }
 
 .storage-item-card__preview:focus-visible {
-  outline: none;
+  outline: 2px solid var(--color-primary, #d4a843);
+  outline-offset: 3px;
+  border-color: color-mix(in srgb, var(--color-primary, #d4a843) 55%, transparent);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--color-primary, #d4a843) 16%, transparent),
+    0 0 18px color-mix(in srgb, var(--color-primary, #d4a843) 12%, transparent);
 }
 
 .storage-item-card__image,

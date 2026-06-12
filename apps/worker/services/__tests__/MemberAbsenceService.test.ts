@@ -6,6 +6,10 @@ function createDeps() {
   return {
     writeAuditLog: vi.fn().mockResolvedValue(undefined),
     publishEntityChanged: vi.fn().mockResolvedValue(undefined),
+    getAbsencePolicy: vi.fn().mockResolvedValue({
+      max_span_days: 366,
+      max_entries_per_user: 20,
+    }),
   };
 }
 
@@ -35,9 +39,9 @@ describe("createMemberAbsenceSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects non-ISO dates and oversized spans", () => {
+  it("rejects non-ISO dates and leaves span enforcement to service policy", () => {
     expect(createMemberAbsenceSchema.safeParse({ start_date: "06/15/2026", end_date: "2026-06-20" }).success).toBe(false);
-    expect(createMemberAbsenceSchema.safeParse({ start_date: "2026-06-15", end_date: "2028-06-20" }).success).toBe(false);
+    expect(createMemberAbsenceSchema.safeParse({ start_date: "2026-06-15", end_date: "2028-06-20" }).success).toBe(true);
   });
 
   it("accepts a valid range with optional note", () => {
@@ -88,12 +92,31 @@ describe("MemberAbsenceService.create", () => {
     expect(deps.publishEntityChanged).toHaveBeenCalledWith(expect.objectContaining({ entityType: "member_profile", hint: "profile_updated" }));
   });
 
-  it("rejects new absences once the per-user cap is reached", async () => {
+  it("rejects ranges longer than the configured absence policy", async () => {
+    const select = vi
+      .fn()
+      .mockReturnValueOnce(targetLookup({ role: "member", deletedAt: null, username: "Alpha" }));
+    const deps = createDeps();
+    deps.getAbsencePolicy.mockResolvedValueOnce({ max_span_days: 30, max_entries_per_user: 20 });
+    const service = new MemberAbsenceService({ select } as never, deps);
+
+    const result = await service.create(
+      { id: "u-1", role: "member", permissions: new Set() },
+      "u-1",
+      { start_date: "2026-06-15", end_date: "2026-07-20" },
+    );
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+  });
+
+  it("rejects new absences once the configured per-user cap is reached", async () => {
     const select = vi
       .fn()
       .mockReturnValueOnce(targetLookup({ role: "member", deletedAt: null, username: "Alpha" }))
-      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ count: 20 }]) })) });
-    const service = new MemberAbsenceService({ select } as never, createDeps());
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ count: 2 }]) })) });
+    const deps = createDeps();
+    deps.getAbsencePolicy.mockResolvedValueOnce({ max_span_days: 366, max_entries_per_user: 2 });
+    const service = new MemberAbsenceService({ select } as never, deps);
 
     const result = await service.create(
       { id: "u-1", role: "member", permissions: new Set() },

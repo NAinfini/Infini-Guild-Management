@@ -10,10 +10,13 @@ import {
 import { queryKeys } from "../../api/query-keys";
 import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { getAdminCapabilities } from "../../utils/permissions";
+import { fetchAdminSiteConfig } from "../../services/SiteConfigService";
+import type { AdminCapabilities } from "../../utils/permissions";
 
 type UseAdminDataOptions = {
   isModerator: boolean;
   userRole: string;
+  effectivePermissions?: AdminCapabilities;
   auditPage: number;
   auditSearch: string;
   auditDateFrom: string;
@@ -26,6 +29,7 @@ export function useAdminData(options: UseAdminDataOptions) {
   const {
     isModerator,
     userRole,
+    effectivePermissions,
     auditPage,
     auditSearch,
     auditDateFrom,
@@ -42,7 +46,8 @@ export function useAdminData(options: UseAdminDataOptions) {
   });
 
   const roles = rolesQuery.data ?? [];
-  const permissions = getAdminCapabilities(roles, userRole);
+  const rolePermissions = getAdminCapabilities(roles, userRole);
+  const permissions = rolesQuery.isSuccess ? rolePermissions : effectivePermissions ?? rolePermissions;
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
@@ -100,6 +105,13 @@ export function useAdminData(options: UseAdminDataOptions) {
     staleTime: 5 * 60_000,
   });
 
+  const siteConfigQuery = useQuery({
+    queryKey: queryKeys.siteConfig.admin(),
+    queryFn: fetchAdminSiteConfig,
+    enabled: permissions.canManageSiteConfig,
+    staleTime: 5 * 60_000,
+  });
+
   return {
     usersQuery,
     inviteLinksQuery,
@@ -107,6 +119,7 @@ export function useAdminData(options: UseAdminDataOptions) {
     auditLogQuery,
     auditMonthsQuery,
     rolesQuery,
+    siteConfigQuery,
     statusQuery,
     permissions,
   };

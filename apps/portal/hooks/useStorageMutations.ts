@@ -3,7 +3,6 @@ import type {
   CreateStorageItemPayload,
   CreateStoragePayload,
   CreateStorageTransactionPayload,
-  StorageIntakeBatchPayload,
   UpdateStorageItemPayload,
 } from "@guild/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -18,7 +17,6 @@ import {
   deleteStorageCategory,
   deleteStorageItem,
   deleteStorageItemImage,
-  intakeStorageBatch,
   updateStorage,
   updateStorageCategory,
   updateStorageItem,
@@ -107,12 +105,6 @@ export function useStorageMutations() {
     onError,
   });
 
-  const intakeBatchMutation = useMutation({
-    mutationFn: (payload: StorageIntakeBatchPayload) => intakeStorageBatch(payload),
-    onSuccess: async () => { notifySuccess(t("message.batchSaved")); await invalidateStorage(); },
-    onError,
-  });
-
   return {
     createStorageMutation,
     updateStorageMutation,
@@ -126,6 +118,5 @@ export function useStorageMutations() {
     uploadImagesMutation,
     deleteImageMutation,
     createTransactionMutation,
-    intakeBatchMutation,
   };
 }

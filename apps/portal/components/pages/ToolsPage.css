@@ -223,7 +223,12 @@ a.tool-card__btn {
   color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
-  transition: all var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .sandbox__typo-btn:hover {

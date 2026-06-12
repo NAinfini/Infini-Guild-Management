@@ -3,7 +3,6 @@ import {
   createStorageItemSchema,
   createStorageSchema,
   createStorageTransactionSchema,
-  storageIntakeBatchSchema,
   updateStorageItemSchema,
 } from "@guild/shared";
 import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
@@ -247,41 +246,6 @@ export class StorageService {
     await this.deps.publishEntityChanged({ entityType: "storage", entityId: itemId, hint: "storage_updated" });
     const tx = await getStorageTransactionPayload(this.deps.rawDb, txId);
     return ok(tx ?? { id: txId, item_id: itemId, type: parsed.data.type, quantity_delta: delta });
-  }
-
-  async intakeBatch(sessionUser: SessionUser, body: unknown): Promise<ServiceResult<{ ok: true; count: number }>> {
-    const parsed = storageIntakeBatchSchema.safeParse(body);
-    if (!parsed.success) return err("VALIDATION_ERROR", "Invalid intake batch payload", parsed.error.flatten());
-    const ids = [...new Set(parsed.data.entries.map((entry) => entry.item_id))];
-    const itemRows = await this.db.select().from(storageItems).where(inArray(storageItems.id, ids));
-    if (itemRows.length !== ids.length) return err("NOT_FOUND", "One or more items were not found");
-    const itemById = new Map(itemRows.map((item) => [item.id, item]));
-    const statements = [];
-    for (const entry of parsed.data.entries) {
-      const item = itemById.get(entry.item_id);
-      if (!item) return err("NOT_FOUND", "One or more items were not found");
-      const txId = nanoid();
-      statements.push(
-        this.deps.rawDb.prepare("UPDATE storage_items SET quantity = quantity + ?1, updated_at = ?2 WHERE id = ?3").bind(entry.quantity, nowIso(), entry.item_id),
-        this.deps.rawDb.prepare("INSERT INTO storage_transactions (id, item_id, type, quantity_delta, recipient_user_id, note, actor_id) VALUES (?1, ?2, 'intake', ?3, NULL, ?4, ?5)")
-          .bind(txId, entry.item_id, entry.quantity, parsed.data.note ?? null, sessionUser.id),
-      );
-    }
-    await this.deps.rawDb.batch(statements);
-    await this.deps.writeAuditLog({
-      entityType: "storage_transaction",
-      action: "batch_intake",
-      actorId: sessionUser.id,
-      entityId: "batch",
-      diffTitle: `${parsed.data.entries.length} items`,
-      detailText: JSON.stringify({
-        count: parsed.data.entries.length,
-        item_ids: parsed.data.entries.map((entry) => entry.item_id),
-        note: parsed.data.note ?? null,
-      }),
-    });
-    await this.deps.publishEntityChanged({ entityType: "storage", entityId: "batch", hint: "storage_updated" });
-    return ok({ ok: true, count: parsed.data.entries.length });
   }
 
   async listTransactions(options: { itemId?: string; recipientUserId?: string; page: number; limit: number }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {

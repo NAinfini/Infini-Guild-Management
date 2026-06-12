@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
+import { PERMISSIONS } from "@guild/shared";
 import {
   announcements,
   auditLog,
@@ -21,6 +22,7 @@ import {
   roles,
   recurringTemplates,
   sessions,
+  onboardingConfig,
   storageCategories,
   storageItems,
   storages,
@@ -34,6 +36,7 @@ import {
   wikiArticles,
   wikiCategories,
   gameData,
+  siteConfig,
 } from "./schema";
 import seedGameData from "@guild/shared/calculator/seed-data.json";
 import type { Bindings } from "../index";
@@ -69,6 +72,9 @@ const ALL_TABLES = [
   "member_absences",
   "member_profile_classes",
   "member_profiles",
+  "member_onboarding_state",
+  "onboarding_config",
+  "site_config",
   "sessions",
   "role_permissions",
   "roles",
@@ -91,47 +97,24 @@ import { activeGame } from "@guild/shared/games";
 
 const CLASSES = activeGame.classes.map((c) => c.id);
 
-const ROLE_PERMISSION_KEYS = [
-  "admin.users.view",
-  "admin.users.edit",
-  "admin.users.role",
-  "admin.users.activate",
-  "admin.users.delete",
-  "admin.users.password",
-  "admin.invite.view",
-  "admin.invite.manage",
-  "admin.audit.view",
-  "admin.audit.export",
-  "admin.status.view",
-  "admin.roles.view",
-  "admin.roles.manage",
-  "admin.analytics.view",
-  "admin.analytics.manage",
-  "guildwar.teams.edit",
-  "guildwar.history.edit",
-  "events.create",
-  "events.edit",
-  "events.archive",
-  "events.delete",
-  "events.templates",
-  "announcements.create",
-  "announcements.edit",
-  "announcements.archive",
-  "announcements.delete",
-  "gallery.upload",
-  "gallery.manage",
-  "gallery.delete",
-  "wiki.articles.create",
-  "wiki.articles.edit",
-  "wiki.articles.archive",
-  "wiki.articles.delete",
-  "wiki.categories.manage",
-  "admin.badges.manage",
-  "admin.gameData.manage",
-  "admin.storage.structure",
-  "admin.storage.items",
-  "admin.storage.stock",
-  "admin.storage.manage",
+const DEFAULT_ONBOARDING_BODY_JSON = JSON.stringify({
+  type: "doc",
+  content: [
+    {
+      type: "paragraph",
+      content: [{ type: "text", text: "Welcome to the guild. Review the rules before joining events, claiming storage, or participating in guild war planning." }],
+    },
+    {
+      type: "paragraph",
+      content: [{ type: "text", text: "Keep your profile current and contact leadership when your availability, name, role, or class changes." }],
+    },
+  ],
+});
+
+const DEFAULT_ONBOARDING_CHECKLIST = [
+  { id: "read-rules", label: "Read guild rules", description: "Understand expectations for events, storage, guild war, and member communication.", required: true },
+  { id: "complete-profile", label: "Complete your profile", description: "Add your power, class, availability, and contact details.", required: true },
+  { id: "ask-questions", label: "Ask questions early", description: "Contact leadership if any rule or workflow is unclear.", required: false },
 ] as const;
 
 const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
@@ -251,7 +234,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   await batchInsert(db, roles, roleRows, 3);
 
   const rolePermissionRows: Array<typeof rolePermissions.$inferInsert> = [];
-  for (const permission of ROLE_PERMISSION_KEYS) {
+  for (const permission of PERMISSIONS) {
     rolePermissionRows.push({ roleId: "admin", permission, granted: true });
     rolePermissionRows.push({ roleId: "moderator", permission, granted: MODERATOR_GRANTED_PERMISSIONS.has(permission) });
     rolePermissionRows.push({ roleId: "member", permission, granted: MEMBER_GRANTED_PERMISSIONS.has(permission) });
@@ -291,6 +274,73 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   ];
 
   await batchInsert(db, users, userRows);
+
+  await db.insert(siteConfig).values({
+    id: "default",
+    siteName: "Infini 公会",
+    siteLogoUrl: "/logo.webp",
+    featureFlagsJson: JSON.stringify({
+      announcements: true,
+      events: true,
+      guildWar: true,
+      gallery: true,
+      wiki: true,
+      tools: true,
+      equipmentCalc: true,
+      storage: true,
+    }),
+    mediaPolicyJson: JSON.stringify({
+      max_file_size_bytes: {
+        profile_image: 5 * 1024 * 1024,
+        profile_audio: 20 * 1024 * 1024,
+        announcement_image: 5 * 1024 * 1024,
+        wiki_image: 5 * 1024 * 1024,
+        event_image: 5 * 1024 * 1024,
+        gallery_image: 10 * 1024 * 1024,
+      },
+      quotas: {
+        profile: 10,
+        announcement: 10,
+        gallery: 20,
+        wiki: 10,
+      },
+    }),
+    paginationPolicyJson: JSON.stringify({
+      admin: 50,
+      announcements: 50,
+      events: 100,
+      gallery: 24,
+      guild_war: 20,
+      users: 500,
+      wiki: 50,
+    }),
+    storagePolicyJson: JSON.stringify({
+      images_per_item: 5,
+    }),
+    absencePolicyJson: JSON.stringify({
+      max_span_days: 366,
+      max_entries_per_user: 20,
+    }),
+    analyticsSettingsJson: JSON.stringify({
+      reference_duration_minutes: 30,
+      modifier_weights: {
+        credits: 0.3,
+        kda: 0.3,
+        basehp: 0.15,
+        towers: 0.1,
+        distance: 0.15,
+      },
+    }),
+  });
+  await db.insert(onboardingConfig).values({
+    id: "default",
+    title: "Member onboarding",
+    bodyJson: DEFAULT_ONBOARDING_BODY_JSON,
+    checklistJson: JSON.stringify(DEFAULT_ONBOARDING_CHECKLIST),
+    requireAck: true,
+    publishedAt: null,
+    updatedBy: adminId,
+  });
 
   const passwords = new Map<string, string>([
     [adminId, "admin123"],

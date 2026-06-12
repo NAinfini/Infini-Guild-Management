@@ -18,10 +18,11 @@ import { useAppError } from "./useAppError";
 import { useEffectivePermissions } from "./useEffectivePermissions";
 import { useLoadWarningToast } from "./useLoadWarningToast";
 import { useAdminData } from "./data/useAdminData";
+import { useSiteConfigMutations } from "./useSiteConfigMutations";
 
 export const BATCH_SELECTION_LIMIT = 50;
 
-const ADMIN_TABS = ["member", "invite", "audit", "roles", "badges", "gameData", "status"] as const;
+const ADMIN_TABS = ["member", "invite", "audit", "roles", "siteConfig", "badges", "gameData", "status"] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
 
 function isAdminTab(value: string): value is AdminTab {
@@ -56,6 +57,20 @@ export function useAdminPageController() {
     setAuditDatePreset,
   } = useAdminAuditFilter();
 
+  const effectiveAdminPermissions = useMemo(() => ({
+    canAccessAdmin: userCanAccessAdmin(user),
+    canViewUsers: canManagePermission(["admin.users.view"]),
+    canViewInvites: canManagePermission(["admin.invite.view"]),
+    canViewAudit: canManagePermission(["admin.audit.view"]),
+    canExportAudit: canManagePermission(["admin.audit.export"]),
+    canViewRoles: canManagePermission(["admin.roles.view", "admin.roles.manage"]),
+    canManageRoles: canManagePermission(["admin.roles.manage"]),
+    canViewStatus: canManagePermission(["admin.status.view"]),
+    canManageBadges: canManagePermission(["admin.badges.manage"]),
+    canManageGameData: canManagePermission(["admin.gameData.manage"]),
+    canManageSiteConfig: canManagePermission(["admin.siteConfig.manage"]),
+  }), [canManagePermission, user]);
+
   const {
     usersQuery,
     inviteLinksQuery,
@@ -63,11 +78,13 @@ export function useAdminPageController() {
     auditLogQuery,
     auditMonthsQuery,
     rolesQuery,
+    siteConfigQuery,
     statusQuery,
     permissions,
   } = useAdminData({
     isModerator: userCanAccessAdmin(user),
     userRole: viewingAs,
+    effectivePermissions: effectiveAdminPermissions,
     auditPage: auditFilter.page,
     auditSearch: auditFilter.search,
     auditDateFrom: auditFilter.dateFrom,
@@ -123,17 +140,22 @@ export function useAdminPageController() {
   const canManageGameData = rolesLoaded
     ? permissions.canManageGameData
     : canManagePermission(["admin.gameData.manage"]);
+  const canManageSiteConfig = rolesLoaded
+    ? permissions.canManageSiteConfig
+    : canManagePermission(["admin.siteConfig.manage"]);
   const tabAccess = useMemo<Record<AdminTab, boolean>>(() => ({
     member: canViewUsers,
     invite: canViewInvites,
     audit: canViewAudit,
     roles: canViewRoles,
+    siteConfig: canManageSiteConfig,
     badges: canManageBadges,
     gameData: canManageGameData,
     status: canViewStatus,
   }), [
     canManageBadges,
     canManageGameData,
+    canManageSiteConfig,
     canViewAudit,
     canViewInvites,
     canViewRoles,
@@ -144,6 +166,7 @@ export function useAdminPageController() {
     return ADMIN_TABS.find((tab) => tabAccess[tab]) ?? null;
   }, [tabAccess]);
   const badgesController = useAdminBadgesController(canManageBadges);
+  const siteConfigMutations = useSiteConfigMutations({ showError });
 
   useEffect(() => {
     if (rolesLoaded && !tabAccess[activeTab] && firstAvailableTab) {
@@ -289,6 +312,7 @@ export function useAdminPageController() {
       auditLogQuery.isError ||
       auditMonthsQuery.isError ||
       rolesQuery.isError ||
+      siteConfigQuery.isError ||
       statusQuery.isError,
     t("common:loadErrorRetry"),
   );
@@ -329,6 +353,8 @@ export function useAdminPageController() {
     statusHealthLogs,
     statusLatencyMs,
     statusQuery,
+    siteConfigQuery,
+    siteConfigMutations,
     tabAccess,
     userColumns,
     userMap,

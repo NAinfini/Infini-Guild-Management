@@ -545,7 +545,12 @@
   color: color-mix(in srgb, var(--color-text, #1A1815) 55%, transparent);
   background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
-  transition: all 0.15s;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
 .ecm__pool-filter-btn:hover {

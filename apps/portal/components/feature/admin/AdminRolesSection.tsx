@@ -106,7 +106,7 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
   },
   {
     labelKey: "roles.category.adminSystem",
-    permissions: ["admin.status.view", "admin.roles.view", "admin.roles.manage"],
+    permissions: ["admin.status.view", "admin.roles.view", "admin.roles.manage", "admin.siteConfig.manage"],
   },
   {
     labelKey: "roles.category.storage",
@@ -156,6 +156,7 @@ const PERM_META: Record<string, PermMeta> = {
   "admin.status.view":     { icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "blue" },
   "admin.roles.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
   "admin.roles.manage":    { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "red", danger: true },
+  "admin.siteConfig.manage": { icon: <SettingsIcon size={PERM_ICON_SIZE} />,         color: "teal" },
   "admin.analytics.view":  { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
   "admin.analytics.manage":{ icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "teal" },
   "guildwar.teams.edit":   { icon: <SwordsIcon size={PERM_ICON_SIZE} />,             color: "orange" },

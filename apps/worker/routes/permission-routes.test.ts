@@ -1,6 +1,20 @@
 import { HTTPException } from "hono/http-exception";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const fakeCacheStore = new Map<string, Response>();
+const fakeCache = {
+  match: async (req: Request) => fakeCacheStore.get(req.url) ?? null,
+  put: async (req: Request, res: Response) => {
+    fakeCacheStore.set(req.url, res.clone());
+  },
+  delete: async (req: Request) => fakeCacheStore.delete(req.url),
+};
+
+vi.stubGlobal("caches", {
+  open: async () => fakeCache,
+  default: fakeCache,
+});
+
 const mocks = vi.hoisted(() => ({
   requirePermission: vi.fn(),
   getRequestUser: vi.fn(),
@@ -59,11 +73,29 @@ vi.mock("../services/SearchService", () => ({
   }),
 }));
 
+const siteConfigServiceMethods = vi.hoisted(() => ({
+  getPublicConfig: vi.fn().mockResolvedValue({ ok: true, data: { site_name: "Guild", site_logo_url: "/logo.webp" } }),
+  getAdminConfig: vi.fn().mockResolvedValue({ ok: true, data: { site: {}, onboarding: {} } }),
+  updateAdminConfig: vi.fn().mockResolvedValue({ ok: true, data: { site: {}, onboarding: {} } }),
+  uploadSiteLogo: vi.fn().mockResolvedValue({ ok: true, data: { site: {}, onboarding: {} } }),
+  updateOnboardingConfig: vi.fn().mockResolvedValue({ ok: true, data: { site: {}, onboarding: {} } }),
+  getMemberOnboarding: vi.fn().mockResolvedValue({ ok: true, data: { config: {}, state: {}, is_complete: false } }),
+  updateMemberProgress: vi.fn().mockResolvedValue({ ok: true, data: { config: {}, state: {}, is_complete: false } }),
+  acknowledgeOnboarding: vi.fn().mockResolvedValue({ ok: true, data: { config: {}, state: {}, is_complete: true } }),
+}));
+
+vi.mock("../services/SiteConfigService", () => ({
+  SiteConfigService: vi.fn(function SiteConfigServiceMock(this: typeof siteConfigServiceMethods) {
+    Object.assign(this, siteConfigServiceMethods);
+  }),
+}));
+
 vi.mock("drizzle-orm/d1", () => ({
   drizzle: vi.fn(() => ({})),
 }));
 
 beforeEach(() => {
+  fakeCacheStore.clear();
   mocks.requirePermission.mockReset();
   mocks.getRequestUser.mockReset();
   galleryDeleteItem.mockClear();
@@ -71,6 +103,9 @@ beforeEach(() => {
     method.mockClear();
   }
   for (const method of Object.values(searchServiceMethods)) {
+    method.mockClear();
+  }
+  for (const method of Object.values(siteConfigServiceMethods)) {
     method.mockClear();
   }
 });
@@ -193,5 +228,98 @@ describe("search route visibility", () => {
     expect(result.status).toBe(200);
     expect(searchServiceMethods.search).toHaveBeenCalledWith({ query: " ab ", limit: "100" });
     expect(body).toEqual({ data: [{ id: "result-1", title: "Result", subtitle: "Search", type: "wiki", to: "/wiki" }] });
+  });
+});
+
+describe("site config and onboarding permission mapping", () => {
+  it("allows public site config without a session", async () => {
+    const { siteConfigRoutes } = await import("./site-config");
+
+    const result = await siteConfigRoutes.request("/", { method: "GET" }, { DB: {} });
+
+    expect(result.status).toBe(200);
+    expect(mocks.getRequestUser).not.toHaveBeenCalled();
+    expect(mocks.requirePermission).not.toHaveBeenCalled();
+    expect(siteConfigServiceMethods.getPublicConfig).toHaveBeenCalled();
+  });
+
+  it("returns public site config from the mounted app route", async () => {
+    const { app } = await import("../index");
+
+    const result = await app.request("/api/site-config", { method: "GET" }, {
+      DB: {},
+      SIGNING_SECRET: "test-secret",
+      SITE_NAME: "Test Guild",
+      SITE_LOGO_URL: "/test-logo.webp",
+    });
+    const body = await result.json() as { site_name: string; site_logo_url: string };
+
+    expect(result.status).toBe(200);
+    expect(body.site_name).toBe("Guild");
+    expect(body.site_logo_url).toBe("/logo.webp");
+    expect(siteConfigServiceMethods.getPublicConfig).toHaveBeenCalled();
+    expect(mocks.getRequestUser).not.toHaveBeenCalled();
+    expect(mocks.requirePermission).not.toHaveBeenCalled();
+  });
+
+  it("uses standard service error status mapping for mounted public site config", async () => {
+    const { app } = await import("../index");
+    siteConfigServiceMethods.getPublicConfig.mockResolvedValueOnce({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Missing site config",
+    });
+
+    const result = await app.request("/api/site-config", { method: "GET" }, {
+      DB: {},
+      SIGNING_SECRET: "test-secret",
+      SITE_NAME: "Test Guild",
+      SITE_LOGO_URL: "/test-logo.webp",
+    });
+    const body = await result.json() as { error_code: string };
+
+    expect(result.status).toBe(404);
+    expect(body.error_code).toBe("NOT_FOUND");
+  });
+
+  it("requires admin.siteConfig.manage for admin site config reads and writes", async () => {
+    const { adminRoutes } = await import("./admin");
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
+
+    const readResult = await adminRoutes.request("/site-config", { method: "GET" }, { DB: {} });
+
+    expect(readResult.status).toBe(401);
+    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage");
+
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
+    const writeResult = await adminRoutes.request("/site-config", {
+      method: "PATCH",
+      body: JSON.stringify({ site_name: "Guild" }),
+      headers: { "Content-Type": "application/json" },
+    }, { DB: {} });
+
+    expect(writeResult.status).toBe(401);
+    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage", { freshPermissions: true });
+
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
+    const form = new FormData();
+    form.set("file", new File(["logo"], "logo.webp", { type: "image/webp" }));
+    const uploadResult = await adminRoutes.request("/site-config/logo", {
+      method: "POST",
+      body: form,
+    }, { DB: {} });
+
+    expect(uploadResult.status).toBe(401);
+    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage", { freshPermissions: true });
+  });
+
+  it("requires a session for member onboarding progress", async () => {
+    const { onboardingRoutes } = await import("./site-config");
+    mocks.getRequestUser.mockResolvedValueOnce(null);
+
+    const result = await onboardingRoutes.request("/", { method: "GET" }, { DB: {} });
+
+    expect(result.status).toBe(401);
+    expect(siteConfigServiceMethods.getMemberOnboarding).not.toHaveBeenCalled();
   });
 });

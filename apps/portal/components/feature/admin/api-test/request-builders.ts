@@ -1135,15 +1135,6 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     case "POST /api/storage/items/:id/images":
       return buildFormRequest(path, [["file", createTinyPngFile()]]);
 
-    case "POST /api/storage/intake-batch":
-      if (!context.createdStorageItemId) {
-        return skipEndpoint(path, "Missing created storage item id for batch intake");
-      }
-      return buildJsonRequest(path, {
-        entries: [{ item_id: context.createdStorageItemId, quantity: 2 }],
-        note: "[systemtest] API storage batch intake",
-      });
-
     default:
       return { path };
   }

@@ -1,4 +1,4 @@
-import { LIMITS, createMemberAbsenceSchema, memberAbsenceSchema, type Role } from "@guild/shared";
+import { createMemberAbsenceSchema, memberAbsenceSchema, type Role, type SiteAbsencePolicy } from "@guild/shared";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
@@ -21,7 +21,19 @@ export type MemberAbsenceServiceDeps = {
     detailText?: string | null;
   }) => Promise<void>;
   publishEntityChanged: (input: { entityType: PushEntityType; entityId: string; hint: PushHint }) => Promise<void>;
+  getAbsencePolicy?: () => Promise<SiteAbsencePolicy>;
 };
+
+const DEFAULT_ABSENCE_POLICY: SiteAbsencePolicy = {
+  max_span_days: 366,
+  max_entries_per_user: 20,
+};
+
+function daysInclusive(startDate: string, endDate: string): number {
+  const start = Date.parse(`${startDate}T00:00:00Z`);
+  const end = Date.parse(`${endDate}T00:00:00Z`);
+  return Math.floor((end - start) / (24 * 60 * 60 * 1000)) + 1;
+}
 
 function toAbsencePayload(row: {
   id: string;
@@ -109,11 +121,17 @@ export class MemberAbsenceService {
     const parsed = createMemberAbsenceSchema.safeParse(body);
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid absence payload", parsed.error.flatten());
 
+    const policy = await (this.deps.getAbsencePolicy?.() ?? Promise.resolve(DEFAULT_ABSENCE_POLICY));
+    const spanDays = daysInclusive(parsed.data.start_date, parsed.data.end_date);
+    if (spanDays > policy.max_span_days) {
+      return err("VALIDATION_ERROR", `Absence cannot span more than ${policy.max_span_days} days`);
+    }
+
     const countRow = (
       await this.db.select({ count: sql<number>`count(*)` }).from(memberAbsences).where(eq(memberAbsences.userId, targetUserId))
     )[0];
-    if (Number(countRow?.count ?? 0) >= LIMITS.content.absencesPerUser.max) {
-      return err("VALIDATION_ERROR", `Absence limit reached (max ${LIMITS.content.absencesPerUser.max}); delete old entries first`);
+    if (Number(countRow?.count ?? 0) >= policy.max_entries_per_user) {
+      return err("VALIDATION_ERROR", `Absence limit reached (max ${policy.max_entries_per_user}); delete old entries first`);
     }
 
     const id = nanoid();

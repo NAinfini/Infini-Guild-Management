@@ -67,6 +67,7 @@ export type TipTapEditorLabels = {
   replaceOne: string;
   replaceAllLabel: string;
   tableOfContents: string;
+  wordCount: string;
   words: string;
   characters: string;
 };
@@ -126,6 +127,7 @@ export function buildTipTapEditorLabels(t: (key: string) => string): TipTapEdito
     replaceOne: t("toolbar.replaceOne"),
     replaceAllLabel: t("toolbar.replaceAllLabel"),
     tableOfContents: t("toolbar.tableOfContents"),
+    wordCount: t("toolbar.wordCount"),
     words: t("toolbar.words"),
     characters: t("toolbar.characters"),
   };

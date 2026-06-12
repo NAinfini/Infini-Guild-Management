@@ -5,7 +5,13 @@ import {
   createAdminMemberSchema,
   createInviteLinkSchema,
   createRoleSchema,
+  featureFlagsSchema,
+  siteAbsencePolicySchema,
+  siteMediaPolicySchema,
+  sitePaginationPolicySchema,
+  siteStoragePolicySchema,
   updateRoleSchema,
+  updateOnboardingConfigSchema,
 } from "@guild/shared";
 import { desc, eq, sql } from "drizzle-orm";
 import type { Context } from "hono";
@@ -20,6 +26,7 @@ import { AdminAuditService, AuditLogQueryError } from "../services/AdminAuditSer
 import { createPasswordHash } from "../services/auth";
 import { errorLog } from "../db/schema/error-log";
 import { buildError, getDb, handleResult, parseBoolean, parseJsonBody, parsePage } from "./_shared";
+import { getSiteConfigService } from "./site-config";
 
 const generateInviteCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 16);
 const generateTemporaryPassword = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", 12);
@@ -40,6 +47,20 @@ const systemTestSummarySchema = z.object({
   })).max(100),
 });
 
+const adminSiteConfigUpdateSchema = z.object({
+  site_name: z.string().trim().min(1).max(100).optional(),
+  site_logo_url: z.string().trim().min(1).max(500).optional(),
+  features: featureFlagsSchema.partial().optional(),
+  media_policy: siteMediaPolicySchema.partial().optional(),
+  pagination_policy: sitePaginationPolicySchema.partial().optional(),
+  storage_policy: siteStoragePolicySchema.partial().optional(),
+  absence_policy: siteAbsencePolicySchema.partial().optional(),
+  analytics_settings: analyticsSettingsSchema.optional(),
+  onboarding: updateOnboardingConfigSchema.optional(),
+}).refine((value) => Object.keys(value).length > 0, {
+  message: "At least one site config field is required",
+});
+
 function getAdminService(c: Context) {
   const env = c.env as Bindings;
   const db = getDb(c);
@@ -54,6 +75,8 @@ function getAdminService(c: Context) {
     generateTemporaryPassword: () => generateTemporaryPassword(),
     rawDb: env.DB,
     ws: env.WS,
+    envSiteName: env.SITE_NAME,
+    envSiteLogoUrl: env.SITE_LOGO_URL,
   });
 }
 
@@ -235,6 +258,39 @@ adminRoutes.delete("/roles/:id", async (c) => {
 });
 
 // Status
+adminRoutes.get("/site-config", async (c) => {
+  await requirePermission(c, "admin.siteConfig.manage");
+  return handleResult(c, await getSiteConfigService(c).getAdminConfig());
+});
+
+adminRoutes.patch("/site-config", async (c) => {
+  const sessionUser = await requirePermission(c, "admin.siteConfig.manage", { freshPermissions: true });
+  const body = await parseJsonBody(c);
+  const parsed = adminSiteConfigUpdateSchema.safeParse(body);
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid site config payload", parsed.error.flatten());
+  return handleResult(c, await getSiteConfigService(c).updateAdminConfig(sessionUser.id, parsed.data));
+});
+
+adminRoutes.post("/site-config/logo", async (c) => {
+  const sessionUser = await requirePermission(c, "admin.siteConfig.manage", { freshPermissions: true });
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return buildError(c, "VALIDATION_ERROR", "Request must be multipart/form-data");
+  }
+  const file = form.get("file");
+  if (!(file instanceof File)) return buildError(c, "VALIDATION_ERROR", "Logo file is required");
+  return handleResult(c, await getSiteConfigService(c).uploadSiteLogo(sessionUser.id, file));
+});
+
+adminRoutes.patch("/site-config/onboarding", async (c) => {
+  const sessionUser = await requirePermission(c, "admin.siteConfig.manage", { freshPermissions: true });
+  const parsed = updateOnboardingConfigSchema.safeParse(await parseJsonBody(c));
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid onboarding payload", parsed.error.flatten());
+  return handleResult(c, await getSiteConfigService(c).updateOnboardingConfig(sessionUser.id, parsed.data));
+});
+
 adminRoutes.get("/status", async (c) => {
   await requirePermission(c, "admin.status.view", { freshPermissions: false });
   const result = await getAdminService(c).getStatus();

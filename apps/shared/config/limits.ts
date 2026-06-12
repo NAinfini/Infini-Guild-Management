@@ -50,7 +50,6 @@ export const LIMITS = {
     storageItemDescription: { max: 2000 },
     storageNote: { max: 200 },
     storageImagesPerItem: { max: 5 },
-    storageIntakeBatch: { max: 50 },
     storageTransactionQuantity: { max: 1_000_000 },
     warName: { min: 1, max: 200 },
     warEnemyName: { max: 200 },

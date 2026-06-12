@@ -23,6 +23,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { Alert, Button, Card, Group, Modal, Progress, Stack, Text } from "@mantine/core";
 import DOMPurify from "dompurify";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { common, createLowlight } from "lowlight";
 import { Bilibili, isValidBilibiliUrl } from "./tiptap-ext-bilibili";
 import { SearchReplace } from "./tiptap-ext-search-replace";
@@ -95,6 +96,7 @@ const DEFAULT_LABELS: TipTapEditorLabels = {
   replaceOne: "Replace",
   replaceAllLabel: "Replace all",
   tableOfContents: "Table of Contents",
+  wordCount: "{{words}} words · {{characters}} characters",
   words: "words",
   characters: "characters",
 };
@@ -184,6 +186,12 @@ function serializeValue(editor: Editor, mode: EditorMode): string {
   return sanitizeTipTapHtml(editor.getHTML());
 }
 
+function formatWordCount(template: string, words: number, characters: number): string {
+  return template
+    .replace("{{words}}", String(words))
+    .replace("{{characters}}", String(characters));
+}
+
 function removeSlashTrigger(editor: Editor): void {
   const position = editor.state.selection.from;
   if (position <= 1) return;
@@ -208,7 +216,9 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
     labels: labelsProp,
     ...rest
   }, ref) {
-    const labels = useMemo(() => ({ ...DEFAULT_LABELS, ...labelsProp }), [labelsProp]);
+    const { t } = useTranslation("editor");
+    const translatedLabels = useMemo(() => buildTipTapEditorLabels(t), [t]);
+    const labels = useMemo(() => ({ ...DEFAULT_LABELS, ...translatedLabels, ...labelsProp }), [translatedLabels, labelsProp]);
     const effectiveReadOnly = editable === undefined ? readOnly : !editable;
     const [slashOpen, setSlashOpen] = useState(false);
     const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -483,7 +493,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
 
             {!effectiveReadOnly ? (
               <Text size="xs" c="dimmed" ta="right" className="infini-tiptap-word-count">
-                {charCount.words()} {labels.words} · {charCount.characters()} {labels.characters}
+                {formatWordCount(labels.wordCount, charCount.words(), charCount.characters())}
               </Text>
             ) : null}
           </div>

@@ -5,18 +5,19 @@ import {
   adminRoleSchema,
   inviteLinkSchema,
   inviteLinkStatsSchema,
+  DEFAULT_SITE_ANALYTICS_SETTINGS,
   type Permission,
   type AdminRole,
 } from "@guild/shared";
 import type { AuditAction } from "@guild/shared/constants/audit";
 import type { WriteAuditLogInput as AuditLogInput } from "./audit";
-import { activeGame } from "@guild/shared/games";
 import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { inviteLinks, rolePermissions, roles, sessions, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult, type ServiceErr } from "./result";
 import type { MediaLike } from "./AdminAuditService";
 import { clearPermissionCache } from "./auth";
+import { SiteConfigService } from "./SiteConfigService";
 
 export type { MediaLike } from "./AdminAuditService";
 
@@ -26,8 +27,6 @@ export type AnalyticsSettings = {
   reference_duration_minutes: number;
   modifier_weights: Record<string, number>;
 };
-
-const ANALYTICS_SETTINGS_KEY = "config/analytics-settings.json";
 
 function emptyPermissionRecord(): Record<Permission, boolean> {
   return Object.fromEntries(PERMISSIONS.map((p) => [p, false])) as Record<Permission, boolean>;
@@ -59,38 +58,7 @@ async function replaceRolePermissions(
 }
 
 export function defaultAnalyticsSettings(): AnalyticsSettings {
-  return {
-    reference_duration_minutes: 30,
-    modifier_weights: { ...activeGame.war.modifierWeights },
-  };
-}
-
-function normalizeAnalyticsWeights(settings: AnalyticsSettings): AnalyticsSettings {
-  const weights = settings.modifier_weights;
-  const weightSum = Object.values(weights).reduce((s, v) => s + v, 0);
-  if (weightSum <= 0) return settings;
-  const normalized: Record<string, number> = {};
-  for (const [key, val] of Object.entries(weights)) {
-    normalized[key] = Number((val / weightSum).toFixed(4));
-  }
-  return { ...settings, modifier_weights: normalized };
-}
-
-function parseAnalyticsInput(record: Record<string, unknown>): AnalyticsSettings {
-  const defaults = defaultAnalyticsSettings();
-  const rawWeights = record.modifier_weights;
-  const modifier_weights: Record<string, number> = { ...defaults.modifier_weights };
-  if (typeof rawWeights === "object" && rawWeights !== null) {
-    for (const [key, val] of Object.entries(rawWeights as Record<string, unknown>)) {
-      if (typeof val === "number") modifier_weights[key] = val;
-    }
-  }
-  return {
-    reference_duration_minutes:
-      typeof record.reference_duration_minutes === "number" && record.reference_duration_minutes > 0
-        ? record.reference_duration_minutes : defaults.reference_duration_minutes,
-    modifier_weights,
-  };
+  return DEFAULT_SITE_ANALYTICS_SETTINGS;
 }
 
 type AdminServiceDeps = {
@@ -105,6 +73,8 @@ type AdminServiceDeps = {
   rawDb: D1Database;
   ws?: unknown;
   now?: () => Date;
+  envSiteName: string;
+  envSiteLogoUrl: string;
 };
 
 function buildRoleDiff(
@@ -340,7 +310,7 @@ export class AdminService {
     return ok({ temporary_password: temporaryPassword });
   }
 
-  async listRoles(): Promise<ServiceResult<unknown[]>> {
+  async listRoles(): Promise<ServiceResult<AdminRole[]>> {
     const roleRows = await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).orderBy(desc(roles.level), roles.name);
     const roleIds = roleRows.map((r) => r.id);
     const permissionRows = roleIds.length > 0 ? await this.deps.db.select({ roleId: rolePermissions.roleId, permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(inArray(rolePermissions.roleId, roleIds)) : [];
@@ -429,12 +399,12 @@ export class AdminService {
     let dbStatus = "ok";
     let r2Status = "ok";
     const dbChecks: Record<string, string> = {};
-    const requiredTables = ["users", "member_profiles", "roles", "role_permissions"] as const;
+    const requiredTables = ["users", "member_profiles", "roles", "role_permissions", "site_config"] as const;
 
     const dbCheck = (async () => {
       try {
         const rows = await this.deps.rawDb
-          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'member_profiles', 'roles', 'role_permissions')")
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'member_profiles', 'roles', 'role_permissions', 'site_config')")
           .all<{ name: string }>();
         const found = new Set(rows.results.map((r) => r.name));
         for (const table of requiredTables) dbChecks[table] = found.has(table) ? "ok" : "missing";
@@ -447,7 +417,7 @@ export class AdminService {
 
     const r2Check = (async () => {
       try {
-        await this.deps.media.head(ANALYTICS_SETTINGS_KEY);
+        await this.deps.media.head("__healthcheck__");
       } catch {
         r2Status = "error";
       }
@@ -458,31 +428,11 @@ export class AdminService {
   }
 
   async getAnalyticsSettings(): Promise<ServiceResult<AnalyticsSettings>> {
-    const object = await this.deps.media.get(ANALYTICS_SETTINGS_KEY);
-    if (!object) return ok(defaultAnalyticsSettings());
-    try {
-      const parsed = JSON.parse(await object.text()) as AnalyticsSettings;
-      return ok({ ...defaultAnalyticsSettings(), ...parsed });
-    } catch {
-      return ok(defaultAnalyticsSettings());
-    }
+    return this.getSiteConfigService().getAnalyticsSettings();
   }
 
   async updateAnalyticsSettings(actorId: string, input: Record<string, unknown>): Promise<ServiceResult<AnalyticsSettings>> {
-    const previous = await this.getAnalyticsSettings();
-    const settings = normalizeAnalyticsWeights(parseAnalyticsInput(input));
-    await this.deps.media.put(ANALYTICS_SETTINGS_KEY, JSON.stringify(settings), { httpMetadata: { contentType: "application/json" } });
-    const oldSettings = previous.ok ? previous.data : null;
-    const diff: Record<string, { from: unknown; to: unknown }> = {};
-    if (oldSettings) {
-      for (const key of Object.keys(settings) as (keyof AnalyticsSettings)[]) {
-        const oldVal = oldSettings[key];
-        const newVal = settings[key];
-        if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) diff[key] = { from: oldVal, to: newVal };
-      }
-    }
-    await this.deps.writeAuditLog({ entityType: "analytics_settings", action: "update", actorId, entityId: "default", diffTitle: "Analytics", detailText: Object.keys(diff).length > 0 ? JSON.stringify(diff) : null });
-    return ok(settings);
+    return this.getSiteConfigService().updateAnalyticsSettings(actorId, input);
   }
 
   private async assertBatchActionAllowed(
@@ -526,5 +476,14 @@ export class AdminService {
 
   private now() {
     return this.deps.now?.() ?? new Date();
+  }
+
+  private getSiteConfigService() {
+    return new SiteConfigService(this.deps.db, {
+      writeAuditLog: this.deps.writeAuditLog,
+      now: this.deps.now,
+      envSiteName: this.deps.envSiteName,
+      envSiteLogoUrl: this.deps.envSiteLogoUrl,
+    });
   }
 }

@@ -1,4 +1,4 @@
-import { ALLOWED_IMAGE_TYPES, FILE_SIZE_LIMITS, storageIntakeBatchSchema, type Permission } from "@guild/shared";
+import { ALLOWED_IMAGE_TYPES, type Permission } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
@@ -37,10 +37,6 @@ async function requireStorageStructureManager(c: Context) {
 
 async function requireStorageItemManager(c: Context) {
   return requireStoragePermission(c, "admin.storage.items");
-}
-
-async function requireStorageStockManager(c: Context) {
-  return requireStoragePermission(c, "admin.storage.stock");
 }
 
 storageRoutes.get("/image", async (c) => {
@@ -84,11 +80,6 @@ storageRoutes.patch("/storages/:storageId/categories/:id", async (c) => {
 storageRoutes.delete("/storages/:storageId/categories/:id", async (c) => {
   const user = await requireStorageStructureManager(c);
   return handleResult(c, await getService(c).deleteCategory(user.id, c.req.param("storageId"), c.req.param("id")));
-});
-
-storageRoutes.post("/intake-batch", async (c) => {
-  const user = await requireStorageStockManager(c);
-  return handleResult(c, await getService(c).intakeBatch(user, await parseJsonBody(c, storageIntakeBatchSchema)));
 });
 
 storageRoutes.get("/transactions", async (c) => {
@@ -137,9 +128,11 @@ storageRoutes.post("/items/:id/images", async (c) => {
   const form = await safeFormData(c);
   const files = collectFiles(form);
   if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
+  const mediaPolicy = await withMedia(c).getMediaPolicy();
+  const maxImageBytes = mediaPolicy.max_file_size_bytes.gallery_image;
   for (const file of files) {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) return buildError(c, "VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-    if (file.size > FILE_SIZE_LIMITS.galleryImage) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
+    if (file.size > maxImageBytes) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
   }
   const fileData = await Promise.all(files.map(async (file) => ({ data: await file.arrayBuffer(), contentType: file.type || "application/octet-stream", name: file.name })));
   return handleResult(c, await getService(c).uploadImages(user.id, c.req.param("id"), fileData), 201);

@@ -1,7 +1,6 @@
 import {
   ALLOWED_IMAGE_TYPES,
-  FILE_SIZE_LIMITS,
-  IMAGE_QUOTAS,
+  DEFAULT_SITE_MEDIA_POLICY,
   PERMISSIONS,
   adminUpdateProfileSchema,
   changePasswordSchema,
@@ -12,6 +11,7 @@ import {
   userSchema,
   type Permission,
   type Role,
+  type SiteMediaPolicy,
 } from "@guild/shared";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
@@ -101,6 +101,7 @@ export type UserServiceDeps = {
   verifyPassword: (password: string, salt: string, hash: string) => Promise<boolean>;
   createPasswordHash: (password: string) => Promise<{ passwordHash: string; salt: string }>;
   destroySession: () => Promise<void>;
+  getMediaPolicy?: () => Promise<SiteMediaPolicy>;
 };
 
 // --- Helpers ---
@@ -491,17 +492,19 @@ export class UserService {
     if (access.status === "forbidden") return err("FORBIDDEN", "You cannot upload media for this profile");
     if (files.length === 0) return err("VALIDATION_ERROR", "No files provided");
 
+    const mediaPolicy = await (this.deps.getMediaPolicy?.() ?? Promise.resolve(DEFAULT_SITE_MEDIA_POLICY));
+    const maxImageBytes = mediaPolicy.max_file_size_bytes.profile_image;
     for (const file of files) {
       if (!ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number]))
         return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-      if (file.size > FILE_SIZE_LIMITS.profileImage)
-        return err("VALIDATION_ERROR", `Image exceeds ${FILE_SIZE_LIMITS.profileImage} bytes`);
+      if (file.size > maxImageBytes)
+        return err("VALIDATION_ERROR", `Image exceeds ${maxImageBytes} bytes`);
     }
 
     const profile = await this.ensureProfile(targetUserId);
     const existing = parseStringArray(profile.images);
     const avatarCount = profile.avatarKey ? 1 : 0;
-    if (existing.length + avatarCount + files.length > IMAGE_QUOTAS.profile)
+    if (existing.length + avatarCount + files.length > mediaPolicy.quotas.profile)
       return err("CONFLICT", "Profile image quota exceeded");
 
     const stored = await captureUploadValidation(() => Promise.all(files.map((file) => this.deps.storeProfileImage(targetUserId, file))));
@@ -552,13 +555,15 @@ export class UserService {
 
     if (!ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number]))
       return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-    if (file.size > FILE_SIZE_LIMITS.profileImage)
-      return err("VALIDATION_ERROR", `Image exceeds ${FILE_SIZE_LIMITS.profileImage} bytes`);
+    const mediaPolicy = await (this.deps.getMediaPolicy?.() ?? Promise.resolve(DEFAULT_SITE_MEDIA_POLICY));
+    const maxImageBytes = mediaPolicy.max_file_size_bytes.profile_image;
+    if (file.size > maxImageBytes)
+      return err("VALIDATION_ERROR", `Image exceeds ${maxImageBytes} bytes`);
 
     const profile = await this.ensureProfile(targetUserId);
     const existing = parseStringArray(profile.images);
     const avatarCount = profile.avatarKey ? 1 : 0;
-    if (existing.length + avatarCount + 1 - avatarCount > IMAGE_QUOTAS.profile)
+    if (existing.length + avatarCount + 1 - avatarCount > mediaPolicy.quotas.profile)
       return err("CONFLICT", "Profile image quota exceeded");
 
     const stored = await captureUploadValidation(() => this.deps.storeProfileImage(targetUserId, file));
@@ -603,8 +608,10 @@ export class UserService {
     const allowedAudioTypes = ["audio/ogg", "audio/webm", "audio/mp4", "audio/mpeg", "audio/wav"];
     if (audioFile.type && !allowedAudioTypes.includes(audioFile.type))
       return err("VALIDATION_ERROR", `Invalid audio type: ${audioFile.type}`);
-    if (audioFile.size > FILE_SIZE_LIMITS.profileAudio)
-      return err("VALIDATION_ERROR", `Audio exceeds ${FILE_SIZE_LIMITS.profileAudio} bytes`);
+    const mediaPolicy = await (this.deps.getMediaPolicy?.() ?? Promise.resolve(DEFAULT_SITE_MEDIA_POLICY));
+    const maxAudioBytes = mediaPolicy.max_file_size_bytes.profile_audio;
+    if (audioFile.size > maxAudioBytes)
+      return err("VALIDATION_ERROR", `Audio exceeds ${maxAudioBytes} bytes`);
 
     const profile = await this.ensureProfile(targetUserId);
     const stored = await captureUploadValidation(() => this.deps.storeProfileAudio(targetUserId, audioFile));

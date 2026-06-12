@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
 import { LIMITS } from "@guild/shared/config/limits";
-import { DEFAULT_FEATURE_FLAGS, featureFlagsSchema, type FeatureFlags } from "@guild/shared/config/features";
 import { logger } from "./utils/logger";
 import { runDailyMaintenanceCron, runQuarterHourlyMaintenanceCron } from "./crons/maintenance";
 import { WebSocketDO } from "./durable-objects/WebSocketDO";
@@ -22,6 +21,7 @@ import { galleryRoutes } from "./routes/gallery";
 import { guildWarRoutes } from "./routes/guild-war";
 import { searchRoutes } from "./routes/search";
 import { storageRoutes } from "./routes/storage";
+import { onboardingRoutes, siteConfigRoutes } from "./routes/site-config";
 import { usersRoutes } from "./routes/users";
 import { wikiRoutes } from "./routes/wiki";
 import { badgeRoutes } from "./routes/badges";
@@ -37,7 +37,6 @@ export type Bindings = {
   SIGNING_SECRET: string;
   SITE_NAME: string;
   SITE_LOGO_URL: string;
-  FEATURES?: string;
 };
 
 type Variables = {
@@ -104,6 +103,7 @@ function isUploadPath(path: string): boolean {
   return (
     path.includes("/media/images") ||
     path.includes("/media/audio") ||
+    path.endsWith("/site-config/logo") ||
     path.includes("/gallery/images") ||
     path.includes("/storage/items/") && path.endsWith("/images") ||
     (path.endsWith("/images") && (path.includes("/announcements/") || path.includes("/events/") || path.includes("/wiki/articles/"))) ||
@@ -171,34 +171,6 @@ app.get("/api/health", async (c) => {
     return c.json({ ok: false, request_id: c.get("requestId") }, 503);
   }
   return c.json({ ok: true, request_id: c.get("requestId") });
-});
-
-app.get("/api/site-config", (c) => {
-  const env = c.env as Bindings;
-  const features: FeatureFlags = { ...DEFAULT_FEATURE_FLAGS };
-  if (env.FEATURES) {
-    try {
-      const parsed = JSON.parse(env.FEATURES);
-      const validKeys = new Set(Object.keys(DEFAULT_FEATURE_FLAGS));
-      const unknownKeys = Object.keys(parsed as object).filter((k) => !validKeys.has(k));
-      if (unknownKeys.length > 0) {
-        logger.error("FEATURES env var contains unknown keys — they will be ignored. Fix the FEATURES environment variable.", { unknownKeys, featuresRaw: env.FEATURES });
-      }
-      const validation = featureFlagsSchema.partial().safeParse(parsed);
-      if (!validation.success) {
-        logger.error("FEATURES env var contains invalid types — invalid fields will be ignored. Fix the FEATURES environment variable.", { issues: validation.error.issues, featuresRaw: env.FEATURES });
-      }
-      const overrides = (validation.success ? validation.data : parsed) as Partial<FeatureFlags>;
-      for (const key of Object.keys(features) as (keyof FeatureFlags)[]) {
-        if (typeof overrides[key] === "boolean") features[key] = overrides[key];
-      }
-    } catch (e) { logger.error("Malformed FEATURES var — ignoring overrides, using defaults. Fix the FEATURES environment variable.", { error: String(e), featuresRaw: env.FEATURES }); }
-  }
-  return c.json({
-    site_name: env.SITE_NAME,
-    site_logo_url: env.SITE_LOGO_URL,
-    features,
-  });
 });
 
 app.use("/api/auth/login", authRateLimit);
@@ -284,6 +256,8 @@ app.route("/api/gallery", galleryRoutes);
 app.route("/api/badges", badgeRoutes);
 app.route("/api/game-data", gameDataRoutes);
 app.route("/api/storage", storageRoutes);
+app.route("/api/site-config", siteConfigRoutes);
+app.route("/api/onboarding", onboardingRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/admin/maintenance", adminMaintenanceRoutes);
 

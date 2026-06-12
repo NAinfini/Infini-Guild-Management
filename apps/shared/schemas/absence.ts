@@ -24,14 +24,7 @@ export const createMemberAbsenceSchema = z
   .refine((value) => value.start_date <= value.end_date, {
     message: "end_date must not be before start_date",
     path: ["end_date"],
-  })
-  .refine(
-    (value) => {
-      const span = Date.parse(`${value.end_date}T00:00:00Z`) - Date.parse(`${value.start_date}T00:00:00Z`);
-      return span <= L.absenceSpanDays.max * 24 * 60 * 60 * 1000;
-    },
-    { message: `Absence cannot span more than ${L.absenceSpanDays.max} days`, path: ["end_date"] },
-  );
+  });
 
 export type MemberAbsence = z.infer<typeof memberAbsenceSchema>;
 export type CreateMemberAbsencePayload = z.input<typeof createMemberAbsenceSchema>;

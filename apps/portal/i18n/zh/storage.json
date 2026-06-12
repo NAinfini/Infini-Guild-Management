@@ -105,6 +105,5 @@
   "message.itemDeleted": "物品已删除。",
   "message.imagesUploaded": "图片已上传。",
   "message.imageDeleted": "图片已删除。",
-  "message.transactionSaved": "流水已保存。",
-  "message.batchSaved": "批量入库已保存。"
+  "message.transactionSaved": "流水已保存。"
 }

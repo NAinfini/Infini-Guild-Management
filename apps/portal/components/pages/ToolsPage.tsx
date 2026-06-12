@@ -48,7 +48,7 @@ export function ToolsPage() {
   const [sandboxOpened, sandboxHandlers] = useDisclosure(false);
   const [diceOpened, diceHandlers] = useDisclosure(false);
   const [equipCalcOpened, equipCalcHandlers] = useDisclosure(false);
-  const equipCalcEnabled = useSiteConfigStore((s) => s.features.equipmentCalc);
+  const equipCalcEnabled = useSiteConfigStore((s) => s.features.tools);
 
   const [titleText, setTitleText] = useState(() => t("sandbox.defaultTitle"));
   const [color, setColor] = useState("#1f6feb");

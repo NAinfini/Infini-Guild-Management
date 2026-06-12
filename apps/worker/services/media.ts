@@ -103,6 +103,18 @@ export async function storeProfileImage(c: Context, userId: string, file: File):
   return key;
 }
 
+export async function storeSiteLogo(c: Context, file: File): Promise<string> {
+  const name = sanitizeFilename(file, ".webp");
+  const key = `site/logo/${name}`;
+  const buffer = await file.arrayBuffer();
+  const validation = validateUploadBytes(buffer, normalizeContentType(file, "application/octet-stream"), new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"]));
+  if (!validation.ok) throw new Error(validation.message);
+  await getMediaBucket(c).put(key, buffer, {
+    httpMetadata: { contentType: validation.contentType },
+  });
+  return key;
+}
+
 export async function storeProfileAudio(c: Context, userId: string, file: File): Promise<string> {
   const name = sanitizeFilename(file, ".opus");
   const key = `members/${userId}/audio/${name}`;

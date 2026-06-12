@@ -68,6 +68,7 @@ function createDeps(firstRow: unknown = TX_ROW) {
       media: { put: vi.fn().mockResolvedValue({}) } as never,
       writeAuditLog: vi.fn().mockResolvedValue(undefined),
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),
+      getStoragePolicy: vi.fn().mockResolvedValue({ images_per_item: 5 }),
     },
   };
 }
@@ -207,36 +208,6 @@ describe("StorageService.applyTransaction", () => {
   });
 });
 
-describe("StorageService.intakeBatch", () => {
-  it("updates every item, writes every ledger row, and logs the batch intake", async () => {
-    const { deps, rawDb } = createDeps();
-    const service = new StorageService({ select: selectQueue([[ITEM, { ...ITEM, id: "item-2", name: "Stone" }]]) } as never, deps);
-
-    const result = await service.intakeBatch(manager(), {
-      entries: [
-        { item_id: "item-1", quantity: 2 },
-        { item_id: "item-2", quantity: 5 },
-      ],
-    });
-
-    expect(result).toEqual({ ok: true, data: { ok: true, count: 2 } });
-    const batch = rawDb.batch.mock.calls[0]?.[0] as unknown[];
-    expect(batch).toHaveLength(4);
-    expect(deps.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({
-      entityType: "storage_transaction",
-      action: "batch_intake",
-      actorId: "admin-1",
-      entityId: "batch",
-      diffTitle: "2 items",
-      detailText: JSON.stringify({
-        count: 2,
-        item_ids: ["item-1", "item-2"],
-        note: null,
-      }),
-    }));
-  });
-});
-
 describe("StorageService structural audits", () => {
   it("logs storage changes as storage entities", async () => {
     const { deps } = createDeps();
@@ -286,6 +257,20 @@ describe("StorageService.uploadImages", () => {
 
     const result = await service.uploadImages(manager().id, "item-1", [
       { data: new ArrayBuffer(1), contentType: "image/png", name: "extra.png" },
+    ]);
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+  });
+
+  it("uses the configured per-item image cap", async () => {
+    const { deps } = createDeps();
+    deps.getStoragePolicy.mockResolvedValueOnce({ images_per_item: 2 });
+    const existingImages = [{ id: "img-1", itemId: "item-1", r2Key: "k-1", createdAt: "now" }];
+    const service = new StorageService({ select: selectQueue([[ITEM], existingImages]) } as never, deps);
+
+    const result = await service.uploadImages(manager().id, "item-1", [
+      { data: new ArrayBuffer(1), contentType: "image/png", name: "one.png" },
+      { data: new ArrayBuffer(1), contentType: "image/png", name: "two.png" },
     ]);
 
     expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });

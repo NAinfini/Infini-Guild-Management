@@ -12,3 +12,4 @@ export * from "./error-log";
 export * from "./game-data";
 export * from "./media-references";
 export * from "./storage";
+export * from "./site-config";

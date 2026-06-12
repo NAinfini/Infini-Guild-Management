@@ -68,18 +68,14 @@ const LazyRosterPage = lazy(() =>
 );
 
 function RouteLoadingFallback(): ReactNode {
+  const { t } = useTranslation("common");
+
   return (
-    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div
-        style={{
-          width: 28,
-          height: 28,
-          border: "3px solid color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent)",
-          borderTopColor: "var(--color-primary, #D4A843)",
-          borderRadius: "50%",
-          animation: "spin 0.7s linear infinite",
-        }}
-      />
+    <div className="route-loading" role="status" aria-live="polite">
+      <div className="route-loading__card">
+        <div className="route-loading__spinner" aria-hidden="true" />
+        <span className="route-loading__label">{t("message.loading")}</span>
+      </div>
     </div>
   );
 }
@@ -421,7 +417,7 @@ const wikiSlugRoute = createRoute({
 
 const ADMIN_SEARCH_SCHEMA = z.object({
   member: z.string().optional(),
-  tab: z.enum(["member", "invite", "audit", "roles", "badges", "status", "gameData"]).optional(),
+  tab: z.enum(["member", "invite", "audit", "roles", "siteConfig", "badges", "status", "gameData"]).optional(),
 });
 
 const adminRoute = createRoute({
@@ -466,7 +462,7 @@ const routeTree = rootRoute.addChildren([
   ]),
 ]);
 
-const router = createRouter({ routeTree, defaultViewTransition: true });
+const router = createRouter({ routeTree, defaultViewTransition: false });
 
 router.subscribe("onBeforeLoad", () => nprogress.start());
 router.subscribe("onResolved", () => nprogress.complete());

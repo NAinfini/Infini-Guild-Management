@@ -7,23 +7,24 @@ import { TrashIcon, UserCircleIcon } from "@portal/components/icons";
 import { IconGripVertical } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CLASS_COLOR_GROUP } from "@guild/shared/constants/classes";
-import { queryKeys } from "../../api/query-keys";
-import { deleteAvatar, uploadAvatar, uploadProfileAudio, uploadProfileImages } from "../../services/UserService";
+import { uploadProfileAudio, uploadProfileImages } from "../../services/UserService";
 import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
 import { useProfileData } from "../../hooks/data/useProfileData";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useMediaUpload } from "../../hooks/useMediaUpload";
 import { useProfileFormState } from "../../hooks/useProfileFormState";
 import { useProfileMutations } from "../../hooks/useProfileMutations";
+import { useProfileAvatarMutations } from "../../hooks/useProfileAvatarMutations";
+import { useMemberOnboardingData } from "../../hooks/data/useSiteConfigData";
+import { useMemberOnboardingMutations } from "../../hooks/useSiteConfigMutations";
 import { useAuthStore } from "../../stores/auth";
 import { useAppError } from "../../hooks/useAppError";
-import { notifySuccess } from "../../utils/notifications";
 import { ProfileAccountTab } from "../feature/profile/ProfileAccountTab";
 import { ProfileAvailabilityTab } from "../feature/profile/ProfileAvailabilityTab";
 import { ProfilePreviewCard } from "../feature/profile/ProfilePreviewCard";
 import { ProfileProfileTab } from "../feature/profile/ProfileProfileTab";
+import { MemberOnboardingCard } from "../feature/onboarding/MemberOnboardingCard";
 import { PageLayout } from "../layout/PageLayout";
 import "./MyProfilePage.css";
 
@@ -140,33 +141,12 @@ export function MyProfilePage() {
     audioUploader,
   });
 
-  const queryClient = useQueryClient();
   const { showError } = useAppError();
-
-  const avatarUploadMutation = useMutation({
-    mutationFn: (file: File) => {
-      if (!user) throw new Error("Missing user session");
-      return uploadAvatar(user.id, file);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
-      notifySuccess(t("message.avatarUploaded"));
-    },
-    onError: (error) => showError(error, t("message.avatarUploadFailed")),
-  });
-
-  const avatarDeleteMutation = useMutation({
-    mutationFn: () => {
-      if (!user) throw new Error("Missing user session");
-      return deleteAvatar(user.id);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
-      notifySuccess(t("message.avatarRemoved"));
-    },
-    onError: (error) => showError(error, t("message.avatarRemoveFailed")),
+  const { onboardingQuery } = useMemberOnboardingData(Boolean(user));
+  const onboardingMutations = useMemberOnboardingMutations({ showError });
+  const { avatarUploadMutation, avatarDeleteMutation } = useProfileAvatarMutations({
+    userId: user?.id,
+    showError,
   });
 
   const profile = profileQuery.data?.profile;
@@ -214,6 +194,7 @@ export function MyProfilePage() {
             <Tabs.List>
               <Tabs.Tab value="profile">{t("tab.profile")}</Tabs.Tab>
               <Tabs.Tab value="availability">{t("tab.availability")}</Tabs.Tab>
+              <Tabs.Tab value="onboarding">{t("tab.onboarding")}</Tabs.Tab>
               <Tabs.Tab value="account">{t("tab.account")}</Tabs.Tab>
             </Tabs.List>
 
@@ -285,6 +266,17 @@ export function MyProfilePage() {
                 onSaveAvailability={mutations.saveProfile}
                 savePending={mutations.saveProfileMutation.isPending}
                 isDirty={form.isDirty}
+              />
+            </Tabs.Panel>
+
+            <Tabs.Panel value="onboarding" pt="md">
+              <MemberOnboardingCard
+                onboarding={onboardingQuery.data ?? null}
+                loading={onboardingQuery.isLoading}
+                updating={onboardingMutations.updateOnboardingProgressMutation.isPending}
+                acknowledging={onboardingMutations.acknowledgeOnboardingMutation.isPending}
+                onProgressChange={(completedItemIds) => onboardingMutations.updateOnboardingProgressMutation.mutate({ completed_item_ids: completedItemIds })}
+                onAcknowledge={() => onboardingMutations.acknowledgeOnboardingMutation.mutate()}
               />
             </Tabs.Panel>
 

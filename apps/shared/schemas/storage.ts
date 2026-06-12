@@ -97,11 +97,6 @@ export const createStorageTransactionSchema = z
     message: "target_quantity required for adjust",
   });
 
-export const storageIntakeBatchSchema = z.object({
-  entries: z.array(z.object({ item_id: z.string(), quantity: txQuantity })).min(1).max(L.storageIntakeBatch.max),
-  note: z.string().trim().max(L.storageNote.max).optional().nullable(),
-});
-
 export type Storage = z.infer<typeof storageSchema>;
 export type StorageCategory = z.infer<typeof storageCategorySchema>;
 export type StorageItem = z.infer<typeof storageItemSchema>;
@@ -111,4 +106,3 @@ export type CreateStorageCategoryPayload = z.input<typeof createStorageCategoryS
 export type CreateStorageItemPayload = z.input<typeof createStorageItemSchema>;
 export type UpdateStorageItemPayload = z.input<typeof updateStorageItemSchema>;
 export type CreateStorageTransactionPayload = z.input<typeof createStorageTransactionSchema>;
-export type StorageIntakeBatchPayload = z.input<typeof storageIntakeBatchSchema>;

@@ -18,7 +18,7 @@ export function AppErrorOverlay() {
   useEffect(() => {
     const onConflict = (event: Event) => {
       const detail = (event as CustomEvent<ConflictDetail>).detail;
-      const messageText = detail?.message ?? i18n.t("common:errors.conflict");
+      const messageText = i18n.t("common:errors.conflict");
       const extra = [
         detail?.errorCode ? `${i18n.t("common:errors.codeLabel")}: ${detail.errorCode}` : null,
         detail?.requestId ? `${i18n.t("common:errors.requestLabel")}: ${detail.requestId}` : null,

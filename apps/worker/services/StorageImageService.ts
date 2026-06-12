@@ -1,4 +1,4 @@
-import { LIMITS } from "@guild/shared";
+import { DEFAULT_SITE_STORAGE_POLICY, type SiteStoragePolicy } from "@guild/shared";
 import { and, eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
@@ -16,6 +16,7 @@ type StorageImageDeps = {
   rawDb: D1Database;
   writeAuditLog: (input: WriteAuditLogInput) => Promise<void>;
   publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
+  getStoragePolicy?: () => Promise<SiteStoragePolicy>;
 };
 
 function nowIso(): string {
@@ -34,7 +35,8 @@ export async function uploadStorageImages(db: DrizzleDb, deps: StorageImageDeps,
   const item = await getItemRow(db, itemId);
   if (!item) return err("NOT_FOUND", "Item not found");
   const existing = await getImages(db, itemId);
-  const maxImages = LIMITS.content.storageImagesPerItem.max;
+  const policy = await (deps.getStoragePolicy?.() ?? Promise.resolve(DEFAULT_SITE_STORAGE_POLICY));
+  const maxImages = policy.images_per_item;
   if (existing.length + files.length > maxImages) return err("VALIDATION_ERROR", `Maximum ${maxImages} images per item`);
   const inserted: StorageImageRow[] = [];
   for (const file of files) {

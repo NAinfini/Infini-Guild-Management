@@ -19,6 +19,7 @@ export * from "./schemas/gallery";
 export * from "./schemas/admin";
 export * from "./schemas/badge";
 export * from "./schemas/storage";
+export * from "./schemas/site-config";
 export * from "./schemas/equipment-calc";
 
 export * from "./calculator/types";

@@ -62,6 +62,7 @@ const labels: TipTapEditorLabels = {
   replaceOne: "Replace",
   replaceAllLabel: "Replace all",
   tableOfContents: "Table of Contents",
+  wordCount: "{{words}} words · {{characters}} characters",
   words: "words",
   characters: "characters",
 };
