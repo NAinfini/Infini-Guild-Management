@@ -53,10 +53,10 @@ const ENTITY_QUERY_KEYS = {
   event: [queryKeys.events.all, queryKeys.dashboard.all, queryKeys.guildWar.events()],
   wiki: [queryKeys.wiki.all],
   gallery: [queryKeys.gallery.all],
+  storage: [queryKeys.storage.all],
   guild_war: [queryKeys.guildWar.all],
   member_profile: [queryKeys.users.all, queryKeys.myProfile.all],
   member_badge: [],
-  storage: [], // query keys wired when the storage portal page lands
 } satisfies Record<PushEntityType, readonly (readonly string[])[]>;
 
 function AnimatedOutlet({ pathname, enabled }: { pathname: string; enabled: boolean }) {

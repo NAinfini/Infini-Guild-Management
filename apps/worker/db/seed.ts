@@ -128,6 +128,10 @@ const ROLE_PERMISSION_KEYS = [
   "wiki.categories.manage",
   "admin.badges.manage",
   "admin.gameData.manage",
+  "admin.storage.structure",
+  "admin.storage.items",
+  "admin.storage.stock",
+  "admin.storage.manage",
 ] as const;
 
 const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([

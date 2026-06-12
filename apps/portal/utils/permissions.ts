@@ -9,6 +9,9 @@ const ADMIN_ACCESS_PERMISSIONS: Permission[] = [
   "admin.roles.view",
   "admin.badges.manage",
   "admin.gameData.manage",
+  "admin.storage.structure",
+  "admin.storage.items",
+  "admin.storage.stock",
   "admin.roles.manage",
 ];
 

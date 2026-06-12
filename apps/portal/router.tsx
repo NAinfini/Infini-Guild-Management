@@ -47,6 +47,7 @@ const LazyDashboardPage = lazy(() =>
 );
 const LazyEventsPage = lazy(() => import("./components/pages/EventsPage").then((mod) => ({ default: mod.EventsPage })));
 const LazyGalleryPage = lazy(() => import("./components/pages/GalleryPage").then((mod) => ({ default: mod.GalleryPage })));
+const LazyStoragePage = lazy(() => import("./components/pages/StoragePage").then((mod) => ({ default: mod.StoragePage })));
 const LazyGuildWarPage = lazy(() =>
   import("./components/pages/GuildWarPage").then((mod) => ({ default: mod.GuildWarPage })),
 );
@@ -119,6 +120,14 @@ function GalleryRoutePage() {
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
       <LazyGalleryPage />
+    </Suspense>
+  );
+}
+
+function StorageRoutePage() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <LazyStoragePage />
     </Suspense>
   );
 }
@@ -392,6 +401,12 @@ const galleryRoute = createRoute({
   component: GalleryRoutePage,
 });
 
+const storageRoute = createRoute({
+  getParentRoute: () => authenticatedOnlyRoute,
+  path: "/storage",
+  component: StorageRoutePage,
+});
+
 const wikiRoute = createRoute({
   getParentRoute: () => authenticatedOnlyRoute,
   path: "/wiki",
@@ -443,6 +458,7 @@ const routeTree = rootRoute.addChildren([
     announcementsRoute,
     guildWarRoute,
     galleryRoute,
+    storageRoute,
     wikiRoute,
     wikiSlugRoute,
     profileRoute,

@@ -21,3 +21,7 @@ export function resolveEventMediaUrl(key: string): string {
 export function resolveGalleryMediaUrl(key: string): string {
   return buildMediaUrl("/api/gallery/image", key);
 }
+
+export function resolveStorageMediaUrl(key: string): string {
+  return buildMediaUrl("/api/storage/image", key);
+}

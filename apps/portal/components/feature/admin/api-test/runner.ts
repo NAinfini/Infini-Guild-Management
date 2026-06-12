@@ -2,6 +2,9 @@ import { type EndpointDef, type EndpointResult, type PreparedEndpointRequest, is
 
 export const API_TEST_GAP_GET_MS = 90;
 export const API_TEST_GAP_MUTATION_MS = 900;
+export const SYSTEM_TEST_HEADER = "X-System-Test";
+export const SYSTEM_TEST_AUDIT_HEADER = "X-System-Test-Audit";
+export const SYSTEM_TEST_HEADER_VALUE = "admin-console-api";
 
 export function waitWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
   if (ms <= 0) {
@@ -80,7 +83,11 @@ export async function runEndpointTest(
 
   const started = performance.now();
   try {
-    const mergedHeaders: Record<string, string> = { ...prepared.headers };
+    const mergedHeaders: Record<string, string> = {
+      ...prepared.headers,
+      [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE,
+      [SYSTEM_TEST_AUDIT_HEADER]: "suppress",
+    };
     if (endpoint.method === "POST" || endpoint.method === "PATCH" || endpoint.method === "DELETE") {
       mergedHeaders["X-Requested-With"] = "XMLHttpRequest";
     }

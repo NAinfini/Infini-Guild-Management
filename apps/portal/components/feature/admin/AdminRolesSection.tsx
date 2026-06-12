@@ -24,6 +24,7 @@ import {
   BookTextIcon,
   CalendarDaysIcon,
   CheckIcon,
+  ClipboardIcon,
   EyeIcon,
   GalleryThumbnailsIcon,
   LockIcon,
@@ -36,6 +37,7 @@ import {
   TrashIcon,
   UploadIcon,
   UserCheckIcon,
+  WarehouseIcon,
   XIcon,
 } from "@portal/components/icons";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -107,6 +109,10 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
     permissions: ["admin.status.view", "admin.roles.view", "admin.roles.manage"],
   },
   {
+    labelKey: "roles.category.storage",
+    permissions: ["admin.storage.structure", "admin.storage.items", "admin.storage.stock"],
+  },
+  {
     labelKey: "roles.category.adminAnalytics",
     permissions: ["admin.analytics.view", "admin.analytics.manage"],
   },
@@ -171,6 +177,9 @@ const PERM_META: Record<string, PermMeta> = {
   "wiki.articles.archive": { icon: <ArchiveIcon size={PERM_ICON_SIZE} />,            color: "grape" },
   "wiki.articles.delete":  { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
   "wiki.categories.manage":{ icon: <BookTextIcon size={PERM_ICON_SIZE} />,           color: "teal" },
+  "admin.storage.structure": { icon: <WarehouseIcon size={PERM_ICON_SIZE} />,         color: "teal" },
+  "admin.storage.items":     { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
+  "admin.storage.stock":     { icon: <ClipboardIcon size={PERM_ICON_SIZE} />,         color: "orange" },
 };
 
 const DEFAULT_META: PermMeta = { icon: <SettingsIcon size={PERM_ICON_SIZE} />, color: "gray" };

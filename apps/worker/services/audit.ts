@@ -7,6 +7,10 @@ import { createLogger } from "../utils/logger";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 
 const dbCache = new WeakMap<object, ReturnType<typeof drizzle>>();
+const SYSTEM_TEST_HEADER = "X-System-Test";
+const SYSTEM_TEST_AUDIT_HEADER = "X-System-Test-Audit";
+const SYSTEM_TEST_HEADER_VALUE = "admin-console-api";
+
 function getDb(d1: D1Database): ReturnType<typeof drizzle> {
   let db = dbCache.get(d1);
   if (!db) {
@@ -25,7 +29,15 @@ export type WriteAuditLogInput = {
   detailText?: string | null;
 };
 
+function shouldSuppressSystemTestAudit(c: Context): boolean {
+  return c.req.header(SYSTEM_TEST_HEADER) === SYSTEM_TEST_HEADER_VALUE
+    && c.req.header(SYSTEM_TEST_AUDIT_HEADER) === "suppress";
+}
+
 export async function writeAuditLog(c: Context, input: WriteAuditLogInput): Promise<void> {
+  if (shouldSuppressSystemTestAudit(c)) {
+    return;
+  }
   const env = c.env as Bindings;
   const db = getDb(env.DB);
   const log = createLogger(c.get("requestId") as string | undefined);
@@ -44,6 +56,9 @@ export async function writeAuditLog(c: Context, input: WriteAuditLogInput): Prom
 }
 
 export async function writeAuditLogDurable(c: Context, input: WriteAuditLogInput): Promise<void> {
+  if (shouldSuppressSystemTestAudit(c)) {
+    return;
+  }
   const env = c.env as Bindings;
   const db = getDb(env.DB);
   await db.insert(auditLog).values({

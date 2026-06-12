@@ -32,6 +32,9 @@ import {
   readRetryAfterSeconds,
   runEndpointTest,
   STALE_ARTIFACT_PROBES,
+  SYSTEM_TEST_AUDIT_HEADER,
+  SYSTEM_TEST_HEADER,
+  SYSTEM_TEST_HEADER_VALUE,
   truncateJson,
   waitWithAbort,
   type CategoryDef,
@@ -94,12 +97,15 @@ export function AdminStatusTab({
   const [resultMap, setResultMap] = useState<Map<string, EndpointResult>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
   const contextRef = useRef<TestRunContext>(createInitialTestRunContext());
+  const runLogRef = useRef<DebugLogEntry[]>([]);
 
   const pushLog = useCallback((entry: DebugLogEntry) => {
+    runLogRef.current = [...runLogRef.current, entry];
     setDebugLogs((prev) => [...prev, entry]);
   }, []);
 
   const clearRunConsole = useCallback(() => {
+    runLogRef.current = [];
     setDebugLogs([]);
     if (typeof window !== "undefined" && window.console?.clear) {
       window.console.clear();
@@ -198,6 +204,8 @@ export function AdminStatusTab({
           signal,
           headers: {
             "X-Requested-With": "XMLHttpRequest",
+            [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE,
+            [SYSTEM_TEST_AUDIT_HEADER]: "suppress",
             ...(step.jsonBody !== undefined ? { "Content-Type": "application/json" } : {}),
           },
         };
@@ -254,7 +262,15 @@ export function AdminStatusTab({
       const started = performance.now();
       const ranAt = new Date().toISOString();
       try {
-        const response = await fetch(probe.path, { method: "GET", credentials: "include", signal });
+        const response = await fetch(probe.path, {
+          method: "GET",
+          credentials: "include",
+          signal,
+          headers: {
+            [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE,
+            [SYSTEM_TEST_AUDIT_HEADER]: "suppress",
+          },
+        });
         const latencyMs = Math.round(performance.now() - started);
         const raw = await response.text();
         let parsed: unknown = null;
@@ -297,6 +313,38 @@ export function AdminStatusTab({
     }
   }, [pushLog]);
 
+  const writeSystemTestAuditSummary = useCallback(async (logs: DebugLogEntry[], signal: AbortSignal) => {
+    const endpointLogs = logs.filter((entry) => entry.category !== "Cleanup" && entry.category !== "Stale Data");
+    const failed = endpointLogs.filter((entry) =>
+      entry.error !== null || entry.status === null || entry.status >= 400,
+    );
+    const payload = {
+      total: endpointLogs.length,
+      passed: endpointLogs.length - failed.length,
+      failed: failed.length,
+      errors: failed.map((entry) => ({
+        category: entry.category,
+        label: entry.label,
+        method: entry.method,
+        path: entry.path,
+        status: entry.status,
+        error: entry.error,
+      })),
+    };
+    await fetch("/api/admin/status/system-test-audit", {
+      method: "POST",
+      credentials: "include",
+      signal,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE,
+        [SYSTEM_TEST_AUDIT_HEADER]: "summary",
+      },
+      body: JSON.stringify(payload),
+    });
+  }, []);
+
   const runCategory = useCallback(async (category: CategoryDef) => {
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -331,14 +379,16 @@ export function AdminStatusTab({
       if (!controller.signal.aborted) {
         await runCleanup(controller.signal);
         await runStaleArtifactScan(controller.signal);
+        await writeSystemTestAuditSummary(runLogRef.current, controller.signal);
       }
     } finally {
       setRunningAll(false);
       setSuppressed(false);
     }
-  }, [clearRunConsole, runCategoryInternal, runCleanup, runStaleArtifactScan, setSuppressed, visibleApiCategories]);
+  }, [clearRunConsole, runCategoryInternal, runCleanup, runStaleArtifactScan, setSuppressed, visibleApiCategories, writeSystemTestAuditSummary]);
 
   const clearDebug = useCallback(() => {
+    runLogRef.current = [];
     setDebugLogs([]);
     setResultMap(new Map());
     contextRef.current = createInitialTestRunContext();

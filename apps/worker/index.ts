@@ -21,6 +21,7 @@ import { eventsRoutes } from "./routes/events";
 import { galleryRoutes } from "./routes/gallery";
 import { guildWarRoutes } from "./routes/guild-war";
 import { searchRoutes } from "./routes/search";
+import { storageRoutes } from "./routes/storage";
 import { usersRoutes } from "./routes/users";
 import { wikiRoutes } from "./routes/wiki";
 import { badgeRoutes } from "./routes/badges";
@@ -104,6 +105,7 @@ function isUploadPath(path: string): boolean {
     path.includes("/media/images") ||
     path.includes("/media/audio") ||
     path.includes("/gallery/images") ||
+    path.includes("/storage/items/") && path.endsWith("/images") ||
     (path.endsWith("/images") && (path.includes("/announcements/") || path.includes("/events/") || path.includes("/wiki/articles/"))) ||
     (path.endsWith("/icons") && path.includes("/game-data/"))
   );
@@ -136,7 +138,7 @@ app.use(
       if (origin !== allowedOrigin) return null;
       return origin;
     },
-    allowHeaders: ["Content-Type", "If-None-Match", "If-Match", "X-Signature", "X-Timestamp", "X-Request-Id", "X-Requested-With"],
+    allowHeaders: ["Content-Type", "If-None-Match", "If-Match", "X-Signature", "X-Timestamp", "X-Request-Id", "X-Requested-With", "X-System-Test", "X-System-Test-Audit"],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
     maxAge: 86400,
@@ -281,6 +283,7 @@ app.route("/api/wiki", wikiRoutes);
 app.route("/api/gallery", galleryRoutes);
 app.route("/api/badges", badgeRoutes);
 app.route("/api/game-data", gameDataRoutes);
+app.route("/api/storage", storageRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/admin/maintenance", adminMaintenanceRoutes);
 

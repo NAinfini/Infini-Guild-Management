@@ -7,7 +7,7 @@
 // deleted, call deleteMediaRefs. Failures throw — callers surface them like
 // any other write failure (no silent degradation).
 
-export type MediaRefEntityType = "gallery_item" | "event" | "recurring_template" | "announcement" | "wiki_article";
+export type MediaRefEntityType = "gallery_item" | "event" | "recurring_template" | "announcement" | "wiki_article" | "storage_item";
 
 /** SQLite bound-parameter budget per statement; keep chunks comfortably below. */
 const IN_CHUNK_SIZE = 50;

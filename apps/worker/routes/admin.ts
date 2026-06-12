@@ -11,6 +11,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { customAlphabet, nanoid } from "nanoid";
+import { z } from "zod";
 import type { Bindings } from "../index";
 import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog, writeAuditLogDurable } from "../services/audit";
@@ -24,6 +25,20 @@ const generateInviteCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 16
 const generateTemporaryPassword = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", 12);
 
 export const adminRoutes = new Hono();
+
+const systemTestSummarySchema = z.object({
+  total: z.number().int().min(0),
+  passed: z.number().int().min(0),
+  failed: z.number().int().min(0),
+  errors: z.array(z.object({
+    category: z.string().max(120),
+    label: z.string().max(160),
+    method: z.string().max(12),
+    path: z.string().max(500),
+    status: z.number().int().nullable(),
+    error: z.string().max(500).nullable(),
+  })).max(100),
+});
 
 function getAdminService(c: Context) {
   const env = c.env as Bindings;
@@ -224,6 +239,22 @@ adminRoutes.get("/status", async (c) => {
   await requirePermission(c, "admin.status.view", { freshPermissions: false });
   const result = await getAdminService(c).getStatus();
   return handleResult(c, result);
+});
+
+adminRoutes.post("/status/system-test-audit", async (c) => {
+  const sessionUser = await requirePermission(c, "admin.status.view", { freshPermissions: false });
+  const parsed = systemTestSummarySchema.safeParse(await parseJsonBody(c));
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid system test summary", parsed.error.flatten());
+  const { total, passed, failed, errors } = parsed.data;
+  await writeAuditLogDurable(c, {
+    entityType: "system_test",
+    action: "run",
+    actorId: sessionUser.id,
+    entityId: "admin-console-api",
+    diffTitle: `Full system test: ${passed}/${total} passed`,
+    detailText: JSON.stringify({ total, passed, failed, errors }),
+  });
+  return c.json({ ok: true });
 });
 
 // Analytics Settings

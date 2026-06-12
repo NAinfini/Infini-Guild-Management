@@ -76,6 +76,24 @@ export function captureContextFromResponse(
     if (endpoint.path === "/api/users/:id/media/images") {
       next.uploadedImageKey = null;
     }
+    if (endpoint.path === "/api/storage/items/:id" && next.createdStorageItemId === next.storageItemId) {
+      next.createdStorageItemId = null;
+      next.storageItemId = null;
+      next.createdStorageImageId = null;
+      next.storageImageKey = null;
+    }
+    if (endpoint.path === "/api/storage/items/:id/images/:imageId") {
+      next.createdStorageImageId = null;
+      next.storageImageKey = null;
+    }
+    if (endpoint.path === "/api/storage/storages/:storageId/categories/:id" && next.createdStorageCategoryId === next.storageCategoryId) {
+      next.createdStorageCategoryId = null;
+      next.storageCategoryId = null;
+    }
+    if (endpoint.path === "/api/storage/storages/:id" && next.createdStorageId === next.storageId) {
+      next.createdStorageId = null;
+      next.storageId = null;
+    }
     return next;
   }
 
@@ -425,6 +443,63 @@ export function captureContextFromResponse(
         next.createdBadgeId = id ?? next.createdBadgeId;
       }
     }
+    return next;
+  }
+
+  if (endpoint.path === "/api/storage") {
+    if (Array.isArray(payload.data)) {
+      const first = firstArrayItem(payload.data);
+      next.storageId = readString(first?.id) ?? next.storageId;
+      const categories = Array.isArray(first?.categories) ? first.categories : [];
+      const firstCategory = categories.find((item): item is Record<string, unknown> => isRecord(item));
+      next.storageCategoryId = readString(firstCategory?.id) ?? next.storageCategoryId;
+    }
+    return next;
+  }
+
+  if (endpoint.path === "/api/storage/storages") {
+    const id = readString(payload.id);
+    next.storageId = id ?? next.storageId;
+    if (endpoint.method === "POST") {
+      next.createdStorageId = id ?? next.createdStorageId;
+    }
+    return next;
+  }
+
+  if (endpoint.path === "/api/storage/storages/:storageId/categories") {
+    const id = readString(payload.id);
+    next.storageCategoryId = id ?? next.storageCategoryId;
+    if (endpoint.method === "POST") {
+      next.createdStorageCategoryId = id ?? next.createdStorageCategoryId;
+    }
+    return next;
+  }
+
+  if (endpoint.path === "/api/storage/items") {
+    if (Array.isArray(payload.data)) {
+      const first = firstArrayItem(payload.data);
+      next.storageItemId = readString(first?.id) ?? next.storageItemId;
+    } else {
+      const id = readString(payload.id);
+      next.storageItemId = id ?? next.storageItemId;
+      if (endpoint.method === "POST") {
+        next.createdStorageItemId = id ?? next.createdStorageItemId;
+      }
+    }
+    return next;
+  }
+
+  if (endpoint.path === "/api/storage/items/:id") {
+    next.storageItemId = readString(payload.id) ?? next.storageItemId;
+    return next;
+  }
+
+  if (endpoint.path === "/api/storage/items/:id/images" && endpoint.method === "POST") {
+    const firstImage = Array.isArray(result.parsedJson)
+      ? result.parsedJson.find((item): item is Record<string, unknown> => isRecord(item))
+      : null;
+    next.createdStorageImageId = readString(firstImage?.id) ?? next.createdStorageImageId;
+    next.storageImageKey = readString(firstImage?.r2_key) ?? next.storageImageKey;
     return next;
   }
 

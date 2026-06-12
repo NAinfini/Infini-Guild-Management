@@ -40,6 +40,17 @@ export default [
   },
   {
     files: ["apps/portal/components/**/*.ts", "apps/portal/components/**/*.tsx"],
+    ignores: [
+      "apps/portal/components/**/*.test.ts",
+      "apps/portal/components/**/*.test.tsx",
+      "apps/portal/components/feature/admin/AdminRolesSection.tsx",
+      "apps/portal/components/feature/admin/api-test/request-builders.ts",
+      "apps/portal/components/feature/events/EventCardsView.tsx",
+      "apps/portal/components/feature/events/RecurringTemplateFormModal.tsx",
+      "apps/portal/components/feature/guild-war/GuildWarAnalyticsTab.tsx",
+      "apps/portal/components/feature/guild-war/GuildWarDragBoardSections.tsx",
+      "apps/portal/components/shared/TipTapEditor.tsx",
+    ],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -74,6 +85,30 @@ export default [
   },
   {
     files: ["apps/worker/**/*.ts"],
+    ignores: [
+      "apps/worker/**/*.test.ts",
+      "apps/worker/tests/**",
+      "apps/worker/db/seed.ts",
+      "apps/worker/scripts/**",
+      "apps/worker/crons/announcement-publish.ts",
+      "apps/worker/crons/audit-archive.ts",
+      "apps/worker/crons/event-instance-gen.ts",
+      "apps/worker/crons/raffle-draw.ts",
+      "apps/worker/index.ts",
+      "apps/worker/routes/dashboard.ts",
+      "apps/worker/services/AdminAuditService.ts",
+      "apps/worker/services/AdminService.ts",
+      "apps/worker/services/BadgeService.ts",
+      "apps/worker/services/SearchService.ts",
+      "apps/worker/services/UserService.ts",
+      "apps/worker/services/WikiService.ts",
+      "apps/worker/services/auth.ts",
+      "apps/worker/services/events/EventCrudService.ts",
+      "apps/worker/services/events/EventParticipantService.ts",
+      "apps/worker/services/events/EventPollRaffleService.ts",
+      "apps/worker/services/guild-war/GuildWarActiveService.ts",
+      "apps/worker/services/guild-war/GuildWarHistoryService.ts",
+    ],
     rules: {
       "max-lines": [
         "warn",

@@ -494,6 +494,10 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('admin', 'wiki.categories.manage', 1),
   ('admin', 'admin.badges.manage', 1),
   ('admin', 'admin.gameData.manage', 1),
+  ('admin', 'admin.storage.structure', 1),
+  ('admin', 'admin.storage.items', 1),
+  ('admin', 'admin.storage.stock', 1),
+  ('admin', 'admin.storage.manage', 1),
   -- moderator (limited access)
   ('moderator', 'admin.users.view', 1),
   ('moderator', 'admin.users.edit', 1),
@@ -532,6 +536,10 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('moderator', 'wiki.categories.manage', 1),
   ('moderator', 'admin.badges.manage', 0),
   ('moderator', 'admin.gameData.manage', 0),
+  ('moderator', 'admin.storage.structure', 0),
+  ('moderator', 'admin.storage.items', 0),
+  ('moderator', 'admin.storage.stock', 0),
+  ('moderator', 'admin.storage.manage', 0),
   -- member (minimal access)
   ('member', 'admin.users.view', 0),
   ('member', 'admin.users.edit', 0),
@@ -569,7 +577,11 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('member', 'wiki.articles.delete', 0),
   ('member', 'wiki.categories.manage', 0),
   ('member', 'admin.badges.manage', 0),
-  ('member', 'admin.gameData.manage', 0);
+  ('member', 'admin.gameData.manage', 0),
+  ('member', 'admin.storage.structure', 0),
+  ('member', 'admin.storage.items', 0),
+  ('member', 'admin.storage.stock', 0),
+  ('member', 'admin.storage.manage', 0);
 
 -- ===== GAME DATA (Equipment Calculator) =====
 

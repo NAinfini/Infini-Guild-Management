@@ -35,6 +35,8 @@ import {
   VolumeIcon,
   VolumeOffIcon,
   FileSearchIcon,
+  ArchiveIcon,
+  WarehouseIcon,
 } from "../components/icons";
 
 interface IconHandle {
@@ -73,6 +75,8 @@ export const EyeOutlined = withAnimated(EyeIcon);
 export const GoToOutlined = withAnimated(ExternalLinkIcon);
 export const SearchOutlined = withAnimated(SearchIcon);
 export const FileSearchOutlined = withAnimated(FileSearchIcon);
+export const ArchiveOutlined = withAnimated(ArchiveIcon);
+export const WarehouseOutlined = withAnimated(WarehouseIcon);
 export const FormatPainterOutlined = withAnimated(BrushIcon);
 export const PushpinOutlined = withAnimated(PinIcon);
 export const LeftOutlined = withAnimated(ChevronLeftIcon);

@@ -32,7 +32,6 @@ export const storageItemSchema = z.object({
 });
 
 export const STORAGE_TRANSACTION_TYPES = ["intake", "distribute", "adjust"] as const;
-export const STORAGE_ADJUST_DIRECTIONS = ["in", "out"] as const;
 
 export const storageTransactionSchema = z.object({
   id: z.string(),
@@ -78,20 +77,24 @@ export const createStorageItemSchema = storageItemWriteBaseSchema.extend({
 export const updateStorageItemSchema = storageItemWriteBaseSchema.partial();
 
 const txQuantity = z.number().int().min(1).max(L.storageTransactionQuantity.max);
+const txTargetQuantity = z.number().int().min(0).max(L.storageTransactionQuantity.max);
 
 export const createStorageTransactionSchema = z
   .object({
     type: z.enum(STORAGE_TRANSACTION_TYPES),
-    quantity: txQuantity, // always positive on the wire; service derives the sign
-    direction: z.enum(STORAGE_ADJUST_DIRECTIONS).optional(), // REQUIRED for adjust; ignored otherwise
+    quantity: txQuantity.optional(), // intake/distribute only; always positive on the wire
+    target_quantity: txTargetQuantity.optional(), // adjust only; service derives the delta
     recipient_user_id: z.string().optional().nullable(),
     note: z.string().trim().max(L.storageNote.max).optional().nullable(),
+  })
+  .refine((v) => v.type === "adjust" || v.quantity !== undefined, {
+    message: "quantity required for intake and distribute",
   })
   .refine((v) => v.type !== "distribute" || Boolean(v.recipient_user_id), {
     message: "recipient_user_id required for distribute",
   })
-  .refine((v) => v.type !== "adjust" || v.direction !== undefined, {
-    message: "direction required for adjust",
+  .refine((v) => v.type !== "adjust" || v.target_quantity !== undefined, {
+    message: "target_quantity required for adjust",
   });
 
 export const storageIntakeBatchSchema = z.object({

@@ -52,6 +52,13 @@ export const queryKeys = {
     list: (sortOrder: string, typeFilter: string, dateFrom: string, dateTo: string, search: string) =>
       [...queryKeys.gallery.all, sortOrder, typeFilter, dateFrom, dateTo, search] as const,
   },
+  storage: {
+    all: ["storage"] as const,
+    tree: () => [...queryKeys.storage.all, "tree"] as const,
+    items: (storageId: string, categoryId: string | null, search: string) => [...queryKeys.storage.all, "items", storageId, categoryId, search] as const,
+    item: (id: string | null) => [...queryKeys.storage.all, "item", id] as const,
+    transactions: (filter: string, page: number) => [...queryKeys.storage.all, "transactions", filter, page] as const,
+  },
   dashboard: {
     all: ["dashboard"] as const,
     summary: () => [...queryKeys.dashboard.all, "summary"] as const,
