@@ -324,21 +324,24 @@ const authenticatedOnlyRoute = createRoute({
   component: Outlet,
 });
 
+// Guest users may browse public site content. Put read-only feature routes
+// on rootRoute; keep user, moderator, and admin-only pages under
+// authenticatedOnlyRoute.
 const dashboardRoute = createRoute({
-  getParentRoute: () => authenticatedOnlyRoute,
+  getParentRoute: () => rootRoute,
   path: "/",
   component: DashboardRoutePage,
 });
 
 const eventsRoute = createRoute({
-  getParentRoute: () => authenticatedOnlyRoute,
+  getParentRoute: () => rootRoute,
   path: "/events",
   validateSearch: (search) => EVENTS_ROUTE_SEARCH_SCHEMA.parse(search),
   component: EventsRoutePage,
 });
 
 const eventDetailRoute = createRoute({
-  getParentRoute: () => authenticatedOnlyRoute,
+  getParentRoute: () => rootRoute,
   path: "/events/$id",
   beforeLoad: async ({ params }) => {
     let detailTitle: string | undefined;
@@ -362,7 +365,7 @@ const eventDetailRoute = createRoute({
 });
 
 const rosterRoute = createRoute({
-  getParentRoute: () => authenticatedOnlyRoute,
+  getParentRoute: () => rootRoute,
   path: "/roster",
   component: RosterRoutePage,
 });
@@ -379,20 +382,20 @@ const profileRoute = createRoute({
 });
 
 const announcementsRoute = createRoute({
-  getParentRoute: () => authenticatedOnlyRoute,
+  getParentRoute: () => rootRoute,
   path: "/announcements",
   component: AnnouncementsRoutePage,
 });
 
 const guildWarRoute = createRoute({
-  getParentRoute: () => authenticatedOnlyRoute,
+  getParentRoute: () => rootRoute,
   path: "/guild-war",
   validateSearch: (search) => GUILD_WAR_SEARCH_SCHEMA.parse(search),
   component: GuildWarRoutePage,
 });
 
 const galleryRoute = createRoute({
-  getParentRoute: () => authenticatedOnlyRoute,
+  getParentRoute: () => rootRoute,
   path: "/gallery",
   component: GalleryRoutePage,
 });
@@ -404,13 +407,13 @@ const storageRoute = createRoute({
 });
 
 const wikiRoute = createRoute({
-  getParentRoute: () => authenticatedOnlyRoute,
+  getParentRoute: () => rootRoute,
   path: "/wiki",
   component: WikiRoutePage,
 });
 
 const wikiSlugRoute = createRoute({
-  getParentRoute: () => authenticatedOnlyRoute,
+  getParentRoute: () => rootRoute,
   path: "/wiki/$slug",
   component: WikiRoutePage,
 });
@@ -441,22 +444,25 @@ const adminRoute = createRoute({
   component: AdminRoutePage,
 });
 
+// Public browsing routes are listed before the authenticated branch so guests
+// can view the website without being redirected to /login.
 const routeTree = rootRoute.addChildren([
+  dashboardRoute,
+  eventsRoute,
+  eventDetailRoute,
+  rosterRoute,
+  announcementsRoute,
+  guildWarRoute,
+  galleryRoute,
+  wikiRoute,
+  wikiSlugRoute,
   publicSettingsRoute,
   publicToolsRoute,
   loginRoute,
   registerRoute,
+  // User, moderator, and admin-only features stay locked behind session checks.
   authenticatedOnlyRoute.addChildren([
-    dashboardRoute,
-    eventsRoute,
-    eventDetailRoute,
-    rosterRoute,
-    announcementsRoute,
-    guildWarRoute,
-    galleryRoute,
     storageRoute,
-    wikiRoute,
-    wikiSlugRoute,
     profileRoute,
     adminRoute,
   ]),

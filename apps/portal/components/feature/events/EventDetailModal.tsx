@@ -254,18 +254,21 @@ export function EventDetailModal({
                       {!event.poll.can_vote || hasEnded || event.archived_at ? (
                         <Text size="xs" c="dimmed">{hasEnded ? t("poll.status.closed") : t("poll.status.readOnly")}</Text>
                       ) : null}
-                      <Button
-                        color="teal"
-                        size="sm"
-                        loading={votePending}
-                        disabled={event === null || !event.poll.can_vote || !onVotePoll || hasEnded || Boolean(event.archived_at) || selectedOptionIds.length === 0}
-                        onClick={() => {
-                          onVotePoll?.(event.id, selectedOptionIds);
-                          setLocalHasVoted(true);
-                        }}
-                      >
-                        {localHasVoted ? t("poll.update") : t("poll.vote")}
-                      </Button>
+                      {/* Voting is an authenticated interaction. Guests can read poll results but get no vote action. */}
+                      {onVotePoll ? (
+                        <Button
+                          color="teal"
+                          size="sm"
+                          loading={votePending}
+                          disabled={event === null || !event.poll.can_vote || hasEnded || Boolean(event.archived_at) || selectedOptionIds.length === 0}
+                          onClick={() => {
+                            onVotePoll(event.id, selectedOptionIds);
+                            setLocalHasVoted(true);
+                          }}
+                        >
+                          {localHasVoted ? t("poll.update") : t("poll.vote")}
+                        </Button>
+                      ) : null}
                     </div>
                   </Stack>
                 </section>
