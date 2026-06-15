@@ -13,7 +13,8 @@ import {
 import { parseStringArray } from "../services/helpers";
 import { toEventPayload, type EventRow } from "../services/EventService";
 import { toWarHistoryPayload } from "../services/GuildWarService";
-import { getDb, requireSessionUser } from "./_shared";
+import { getRequestUser } from "../middleware/rbac";
+import { getDb } from "./_shared";
 
 export const dashboardRoutes = new Hono();
 
@@ -31,7 +32,9 @@ function initials(name: string): string {
 }
 
 dashboardRoutes.get("/summary", async (c) => {
-  const viewer = await requireSessionUser(c);
+  // Public dashboard read: guests can view site activity, but user-specific
+  // fields such as my_signup_event_ids stay empty without a session.
+  const viewer = await getRequestUser(c);
   const db = getDb(c);
   const window = weekWindow();
 
@@ -137,7 +140,7 @@ dashboardRoutes.get("/summary", async (c) => {
   const participantsByEvent = new Map<string, unknown[]>();
   const mySignupEventIds = new Set<string>();
   for (const row of participantRows) {
-    if (row.userId === viewer.id) {
+    if (viewer && row.userId === viewer.id) {
       mySignupEventIds.add(row.eventId);
     }
     const list = participantsByEvent.get(row.eventId) ?? [];

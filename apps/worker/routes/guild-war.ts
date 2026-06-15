@@ -12,7 +12,7 @@ import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { requirePermission } from "../middleware/rbac";
 import { GuildWarService } from "../services/GuildWarService";
-import { buildError, getDb, handleResult, parsePage, parseJsonBody, requireSessionUser } from "./_shared";
+import { buildError, getDb, handleResult, parsePage, parseJsonBody } from "./_shared";
 import { withMedia } from "./service-factory";
 
 export const guildWarRoutes = new Hono();
@@ -31,7 +31,8 @@ async function requireGuildWarHistoryEditor(c: Context) { return requirePermissi
 // --- Routes ---
 
 guildWarRoutes.get("/active", async (c) => {
-  await requireSessionUser(c);
+  // Guest-visible read route: browsing war boards/history is public; team
+  // editing, concluding wars, exports, and stat mutations remain permission-gated.
   const result = await getService(c).getActive(c.req.query("event_id"));
   return handleResult(c, result);
 });
@@ -92,7 +93,7 @@ guildWarRoutes.get("/export", async (c) => {
 });
 
 guildWarRoutes.get("/history", async (c) => {
-  await requireSessionUser(c);
+  // Guest-visible read route; write/export routes below retain stricter guards.
   const page = parsePage(c.req.query("page"), 1);
   const limit = Math.min(100, parsePage(c.req.query("limit"), 20));
   const result = await getService(c).listHistory(page, limit, { dateFrom: c.req.query("date_from"), dateTo: c.req.query("date_to") });
@@ -100,7 +101,7 @@ guildWarRoutes.get("/history", async (c) => {
 });
 
 guildWarRoutes.post("/history/batch", async (c) => {
-  await requireSessionUser(c);
+  // Read-only batch detail lookup used by the public history UI; this is not a mutation.
   const body = await parseJsonBody(c);
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
   const ids = ((body as { ids: string[] }).ids).filter((id) => typeof id === "string" && id.length > 0);
@@ -111,7 +112,7 @@ guildWarRoutes.post("/history/batch", async (c) => {
 });
 
 guildWarRoutes.get("/history/:id", async (c) => {
-  await requireSessionUser(c);
+  // Guest-visible read route; edit/delete/member-stat routes stay protected.
   const result = await getService(c).getHistoryDetail(c.req.param("id"));
   return handleResult(c, result);
 });
@@ -178,7 +179,7 @@ guildWarRoutes.patch("/history/:id/member-stats/:userId", async (c) => {
 });
 
 guildWarRoutes.get("/analytics", async (c) => {
-  await requireSessionUser(c);
+  // Guest-visible aggregate analytics; no user/mod/admin capability is granted here.
   const warIdsRaw = c.req.queries("war_ids") ?? [];
   const userIdsRaw = c.req.queries("user_ids") ?? [];
   const warIds = warIdsRaw.flatMap((item) => item.split(",")).map((item) => item.trim()).filter(Boolean);

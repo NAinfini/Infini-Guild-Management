@@ -443,16 +443,18 @@ export class UserService {
     });
   }
 
-  async getUser(sessionUser: SessionUser, targetUserId: string): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
+  async getUser(sessionUser: SessionUser | null, targetUserId: string): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
     const loaded = await this.loadUserWithProfile(targetUserId);
     if (!loaded) return err("NOT_FOUND", "User not found");
-    if (!loaded.data.user.isActive && !sessionUser.permissions.has("admin.users.view")) {
+    if (!loaded.data.user.isActive && sessionUser?.permissions.has("admin.users.view") !== true) {
       return err("NOT_FOUND", "User not found");
     }
     const profile = loaded.profileExists ? loaded.data.profile : await this.ensureProfile(targetUserId);
+    const canViewPrivateProfile = Boolean(sessionUser);
+    const canViewNotes = sessionUser?.permissions.has("admin.users.view") === true;
     return ok({
       user: toUserPayload(loaded.data.user),
-      profile: toProfilePayload(profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includePrivate: true }),
+      profile: toProfilePayload(profile, { includeNotes: canViewNotes, includePrivate: canViewPrivateProfile }),
     });
   }
 

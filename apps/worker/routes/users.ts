@@ -6,6 +6,7 @@ import { deleteMediaObject, storeProfileAudio, storeProfileImage } from "../serv
 import { UserService } from "../services/UserService";
 import { BadgeService } from "../services/BadgeService";
 import { MemberAbsenceService } from "../services/MemberAbsenceService";
+import { getRequestUser } from "../middleware/rbac";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, requireSessionUser, serveR2Object } from "./_shared";
 import { commonDeps } from "./service-factory";
 
@@ -43,12 +44,14 @@ usersRoutes.get("/image", async (c) => {
 });
 
 usersRoutes.get("/", async (c) => {
-  const sessionUser = await requireSessionUser(c);
+  // Guest-visible read route: public visitors may browse the roster, while
+  // UserService hides private/user-only profile fields when sessionUser is null.
+  const sessionUser = await getRequestUser(c);
   const query = c.req.query();
 
-  const isAdmin = sessionUser.permissions.has("admin.users.view") === true;
+  const isAdmin = sessionUser?.permissions.has("admin.users.view") === true;
   const explicitActive = parseBoolean(query.active);
-  const activeFilter = explicitActive ?? (isAdmin ? undefined : true);
+  const activeFilter = isAdmin ? explicitActive : true;
 
   const result = await getUserService(c).listUsers({
     page: parsePage(query.page, 1),
@@ -74,7 +77,7 @@ usersRoutes.get("/", async (c) => {
 });
 
 usersRoutes.get("/stats", async (c) => {
-  await requireSessionUser(c);
+  // Public website summary data; no user/mod/admin-only fields are returned.
   return handleResult(c, await getUserService(c).getUserStats());
 });
 
@@ -90,7 +93,9 @@ usersRoutes.get("/absences", async (c) => {
 });
 
 usersRoutes.get("/:id", async (c) => {
-  const sessionUser = await requireSessionUser(c);
+  // Guest-visible read route: details are public, but private profile fields
+  // remain hidden unless an authenticated viewer is present.
+  const sessionUser = await getRequestUser(c);
   const result = await getUserService(c).getUser(sessionUser, c.req.param("id"));
   if (!result.ok) return handleResult(c, result);
   const userData = result.data as { user: { id: string }; profile: unknown };

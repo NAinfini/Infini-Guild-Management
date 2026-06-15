@@ -197,28 +197,28 @@ describe("guild-war permission mapping", () => {
     ["GET /analytics", "/analytics?war_ids=war-1&user_ids=user-1", { method: "GET" }],
   ] as const;
 
-  it.each(anonymousGuildWarReadRoutes)("rejects anonymous guild-war read access for %s", async (_label, path, init) => {
+  it.each(anonymousGuildWarReadRoutes)("allows anonymous guild-war read access for %s", async (_label, path, init) => {
     const { guildWarRoutes } = await import("./guild-war");
     mocks.getRequestUser.mockResolvedValueOnce(null);
 
     const result = await guildWarRoutes.request(path, init, { DB: {}, MEDIA: {} });
 
-    expect(result.status).toBe(401);
+    expect(result.status).toBe(200);
   });
 });
 
 describe("search route visibility", () => {
-  it("rejects anonymous search access", async () => {
+  it("allows anonymous search access", async () => {
     const { searchRoutes } = await import("./search");
     mocks.getRequestUser.mockResolvedValueOnce(null);
 
     const result = await searchRoutes.request("/?q=ab", { method: "GET" }, { DB: {} });
 
-    expect(result.status).toBe(401);
-    expect(searchServiceMethods.search).not.toHaveBeenCalled();
+    expect(result.status).toBe(200);
+    expect(searchServiceMethods.search).toHaveBeenCalledWith({ query: "ab", limit: undefined });
   });
 
-  it("requires a session and delegates query parsing to SearchService", async () => {
+  it("delegates query parsing to SearchService for authenticated requests", async () => {
     const { searchRoutes } = await import("./search");
     mocks.getRequestUser.mockResolvedValueOnce({ id: "u-1", role: "member", permissions: new Set() });
 
