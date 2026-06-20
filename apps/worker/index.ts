@@ -111,6 +111,12 @@ function isUploadPath(path: string): boolean {
   );
 }
 
+export function isImmutableBuildAssetPath(pathname: string): boolean {
+  if (!pathname.startsWith("/assets/")) return false;
+  const filename = pathname.split("/").pop() ?? "";
+  return /(?:^|[-.])[A-Za-z0-9_-]{8,}\.(?:css|js|mjs|woff2?|png|jpe?g|webp|svg)$/i.test(filename);
+}
+
 app.use("*", async (c, next) => {
   c.set("requestId", crypto.randomUUID());
   await next();
@@ -275,7 +281,7 @@ export default {
       html = html.replaceAll("{{SITE_NAME}}", env.SITE_NAME);
       html = html.replaceAll("{{SITE_LOGO_URL}}", env.SITE_LOGO_URL);
       const response = new Response(html, assetResponse);
-      response.headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+      response.headers.set("Cache-Control", "no-cache, no-store, must-revalidate, no-transform");
       response.headers.set("X-Content-Type-Options", X_CONTENT_TYPE_VALUE);
       response.headers.set("X-Frame-Options", "DENY");
       response.headers.set("Strict-Transport-Security", HSTS_VALUE);
@@ -283,8 +289,7 @@ export default {
       response.headers.set("Content-Security-Policy", buildSpaHtmlCsp(selfHost));
       return response;
     }
-    const filename = url.pathname.split("/").pop() ?? "";
-    if (/\.[0-9a-f]{8,}\.[a-z0-9]+$/i.test(filename)) {
+    if (isImmutableBuildAssetPath(url.pathname)) {
       const immutableResponse = new Response(assetResponse.body, assetResponse);
       immutableResponse.headers.set("Cache-Control", "public, max-age=31536000, immutable");
       immutableResponse.headers.set("X-Content-Type-Options", X_CONTENT_TYPE_VALUE);
