@@ -69,4 +69,44 @@ describe("AdminAuditService", () => {
     expect(result.body).toContain("actor_id,actor_username");
     expect(result.body).toContain("\"admin-user-id\",\"GuildAdmin\"");
   });
+
+  it("rejects an archive token when the authenticated actor does not match", async () => {
+    const archiveKey = "audit-archive/2026/05/audit.ndjson.gz";
+    const manifest = JSON.stringify({
+      month: "2026-05",
+      generated_at: "2026-05-31T00:00:00.000Z",
+      total_rows: 1,
+      entities: { user: 1 },
+      files: [{ key: archiveKey, row_count: 1, size_bytes: 16 }],
+    });
+    const media = {
+      get: vi.fn(async (key: string) => key.endsWith("manifest.json")
+        ? { text: async () => manifest, body: null, arrayBuffer: async () => new ArrayBuffer(0) }
+        : { text: async () => "", body: new ReadableStream(), arrayBuffer: async () => new ArrayBuffer(0) }),
+      put: vi.fn(),
+      head: vi.fn(),
+      list: vi.fn(),
+    };
+    const limit = vi.fn().mockResolvedValue([]);
+    const where = vi.fn(() => ({ limit }));
+    const from = vi.fn(() => ({ where }));
+    const service = new AdminAuditService({
+      db: { select: vi.fn(() => ({ from })) } as never,
+      media: media as never,
+      writeAuditLog: vi.fn(),
+      generateId: () => "nonce-1",
+      signingSecret: "test-secret",
+    });
+    const links = await service.getArchiveDownloadLinks("admin-a", "2026-05", (token) => token);
+    expect(links.ok).toBe(true);
+    if (!links.ok) return;
+    const token = (links.data as { files: Array<{ url: string }> }).files[0]!.url;
+    const verifyForActor = service.verifyAndGetArchiveFile.bind(service) as unknown as
+      (signedToken: string, actorId: string) => ReturnType<AdminAuditService["verifyAndGetArchiveFile"]>;
+
+    const result = await verifyForActor(token, "admin-b");
+
+    expect(result).toEqual({ ok: false, code: "FORBIDDEN", message: "Archive token belongs to another user" });
+    expect(media.get).toHaveBeenCalledTimes(1);
+  });
 });

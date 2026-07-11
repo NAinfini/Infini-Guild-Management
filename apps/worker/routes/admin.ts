@@ -345,10 +345,10 @@ adminRoutes.get("/audit-archive/download", async (c) => {
 });
 
 adminRoutes.get("/audit-archive/download/file", async (c) => {
-  await requirePermission(c, "admin.audit.export");
+  const sessionUser = await requirePermission(c, "admin.audit.export");
   const token = c.req.query("token");
   if (!token) return buildError(c, "VALIDATION_ERROR", "token query parameter required");
-  const result = await getAdminAuditService(c).verifyAndGetArchiveFile(token);
+  const result = await getAdminAuditService(c).verifyAndGetArchiveFile(token, sessionUser.id);
   if (!result.ok) return buildError(c, result.code, result.message, result.details);
   return new Response(result.data.body, { headers: { "Content-Type": "application/gzip", "Content-Disposition": `attachment; filename="${result.data.filename}"` } });
 });

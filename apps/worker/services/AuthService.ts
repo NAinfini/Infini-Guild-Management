@@ -158,10 +158,10 @@ export class AuthService {
     const passwordRecord = await this.deps.createPasswordHash(password);
     const rawDb = this.deps.rawDb;
 
-    const inviteUpdateResult = await rawDb.prepare(
-      `UPDATE invite_links SET used_count = used_count + 1 WHERE code = ? AND revoked_at IS NULL AND used_count < max_uses AND (expires_at IS NULL OR expires_at > ?)`,
-    ).bind(inviteCode, nowIso).run();
-    if ((inviteUpdateResult.meta?.changes ?? 0) === 0) return err("CONFLICT", "Invite link is no longer available");
+    const redeemedInvite = await rawDb.prepare(
+      `UPDATE invite_links SET used_count = used_count + 1 WHERE code = ? AND revoked_at IS NULL AND used_count < max_uses AND (expires_at IS NULL OR expires_at > ?) RETURNING id`,
+    ).bind(inviteCode, nowIso).first<{ id: string }>();
+    if (!redeemedInvite) return err("CONFLICT", "Invite link is no longer available");
 
     try {
       await rawDb.batch([
@@ -178,7 +178,7 @@ export class AuthService {
     const createdUser = (await this.db.select(USER_COLS).from(users).where(eq(users.id, userId)).limit(1))[0];
     if (!createdUser) return err("SERVER_ERROR", "Failed to load created user");
     await this.deps.createSession(userId);
-    await this.deps.writeAuditLog({ entityType: "user", action: "register", actorId: userId, entityId: userId, diffTitle: username, detailText: JSON.stringify({ invite_code: inviteCode }) });
+    await this.deps.writeAuditLog({ entityType: "user", action: "register", actorId: userId, entityId: userId, diffTitle: username, detailText: JSON.stringify({ invite_id: redeemedInvite.id }) });
     await this.deps.publishEntityChanged?.({ entityType: "member_profile", entityId: userId, hint: "member_joined", displayName: createdUser.username });
     const extra = await this.resolveUserPermissions("member");
     return ok({ user: toUserPayload(createdUser, extra) });

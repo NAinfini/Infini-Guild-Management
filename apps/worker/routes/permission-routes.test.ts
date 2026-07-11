@@ -44,6 +44,7 @@ vi.mock("../services/WikiService", () => ({
 }));
 
 const galleryDeleteItem = vi.hoisted(() => vi.fn().mockResolvedValue({ ok: true, data: { ok: true } }));
+const galleryUploadImages = vi.hoisted(() => vi.fn().mockResolvedValue({ ok: true, data: [] }));
 const guildWarServiceMethods = vi.hoisted(() => ({
   getActive: vi.fn().mockResolvedValue({ ok: true, data: { data: null } }),
   listHistory: vi.fn().mockResolvedValue({ ok: true, data: { data: [], total: 0, page: 1, limit: 20, total_pages: 0 } }),
@@ -56,8 +57,9 @@ const searchServiceMethods = vi.hoisted(() => ({
 }));
 
 vi.mock("../services/GalleryService", () => ({
-  GalleryService: vi.fn(function GalleryServiceMock(this: { deleteItem: typeof galleryDeleteItem }) {
+  GalleryService: vi.fn(function GalleryServiceMock(this: { deleteItem: typeof galleryDeleteItem; uploadImages: typeof galleryUploadImages }) {
     this.deleteItem = galleryDeleteItem;
+    this.uploadImages = galleryUploadImages;
   }),
 }));
 
@@ -99,6 +101,7 @@ beforeEach(() => {
   mocks.requirePermission.mockReset();
   mocks.getRequestUser.mockReset();
   galleryDeleteItem.mockClear();
+  galleryUploadImages.mockClear();
   for (const method of Object.values(guildWarServiceMethods)) {
     method.mockClear();
   }
@@ -148,6 +151,18 @@ describe("announcement and wiki permission mapping", () => {
 });
 
 describe("gallery permission mapping", () => {
+  it("rejects files whose bytes do not match the declared image type", async () => {
+    const { galleryRoutes } = await import("./gallery");
+    mocks.requirePermission.mockResolvedValueOnce({ id: "u-1", permissions: new Set(["gallery.upload"]) });
+    const form = new FormData();
+    form.append("files", new File(["<html>not an image</html>"], "fake.png", { type: "image/png" }));
+
+    const result = await galleryRoutes.request("/images", { method: "POST", body: form }, { DB: {}, MEDIA: {} });
+
+    expect(result.status).toBe(400);
+    expect(galleryUploadImages).not.toHaveBeenCalled();
+  });
+
   it("uses session auth and passes gallery.delete capability for gallery item delete", async () => {
     const { galleryRoutes } = await import("./gallery");
     mocks.getRequestUser.mockResolvedValueOnce({

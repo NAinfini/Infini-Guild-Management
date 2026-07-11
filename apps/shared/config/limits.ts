@@ -1,4 +1,8 @@
 export const LIMITS = {
+  requestBody: {
+    ordinary: 1024 * 1024,
+    upload: 32 * 1024 * 1024,
+  },
   media: {
     allowedImageTypes: [
       "image/jpeg",

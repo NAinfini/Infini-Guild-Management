@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { GalleryService } from "../services/GalleryService";
+import { validateUploadBytes } from "../services/media";
 import { buildError, collectFiles, getDb, handleResult, parseJsonBody, requireSessionUser, safeFormData, serveR2Object } from "./_shared";
 import { withMedia } from "./service-factory";
 
@@ -81,7 +82,14 @@ galleryRoutes.post("/images", async (c) => {
   const captions = files.map((_, i) => { const raw = captionsRaw[i]; return typeof raw === "string" && raw.trim() ? raw.trim() : null; });
   if (captions.find((c) => c !== null && c.length > GALLERY_CAPTION_MAX_LENGTH)) return buildError(c, "VALIDATION_ERROR", `caption must be ${GALLERY_CAPTION_MAX_LENGTH} characters or less`);
 
-  const fileData = await Promise.all(files.map(async (f) => ({ data: await f.arrayBuffer(), contentType: f.type || "application/octet-stream", name: f.name })));
+  const allowedTypes = new Set<string>(ALLOWED_IMAGE_TYPES);
+  const fileData: Array<{ data: ArrayBuffer; contentType: string; name: string }> = [];
+  for (const file of files) {
+    const data = await file.arrayBuffer();
+    const validation = validateUploadBytes(data, file.type || "application/octet-stream", allowedTypes);
+    if (!validation.ok) return buildError(c, "VALIDATION_ERROR", validation.message);
+    fileData.push({ data, contentType: validation.contentType, name: file.name });
+  }
   const result = await getService(c).uploadImages(sessionUser.id, fileData, captions);
   if (!result.ok) return buildError(c, result.code, result.message, result.details);
   return c.json({ data: result.data }, 201);

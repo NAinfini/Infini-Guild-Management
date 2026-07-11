@@ -400,6 +400,34 @@ describe("GET /api/site-config", () => {
   });
 });
 
+describe("API request body limits", () => {
+  it("rejects ordinary API bodies larger than 1 MiB before route parsing", async () => {
+    const res = await appRequest("/api/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://portal.example.com",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify({ username: "test", password: "x".repeat(1024 * 1024) }),
+    });
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ error_code: "VALIDATION_ERROR" });
+  });
+
+  it("classifies upload paths for the 32 MiB request limit", async () => {
+    const { getApiRequestBodyLimit } = await import("../index");
+
+    expect(getApiRequestBodyLimit("/api/gallery/images")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/events")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/game-data")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/users/user-1/media/avatar")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/auth/login")).toBe(1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/not-real/gallery/images")).toBe(1024 * 1024);
+  });
+});
+
 // =========================================================================
 // 9. Public read APIs used by guest pages
 // =========================================================================

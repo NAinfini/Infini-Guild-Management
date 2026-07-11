@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
+import { bodyLimit } from "hono/body-limit";
 import { LIMITS } from "@guild/shared/config/limits";
 import { logger } from "./utils/logger";
 import { runDailyMaintenanceCron, runQuarterHourlyMaintenanceCron } from "./crons/maintenance";
@@ -101,14 +102,20 @@ function rejectBadOrigin(c: Context<{ Bindings: Bindings; Variables: Variables }
 
 function isUploadPath(path: string): boolean {
   return (
-    path.includes("/media/images") ||
-    path.includes("/media/audio") ||
-    path.endsWith("/site-config/logo") ||
-    path.includes("/gallery/images") ||
-    path.includes("/storage/items/") && path.endsWith("/images") ||
-    (path.endsWith("/images") && (path.includes("/announcements/") || path.includes("/events/") || path.includes("/wiki/articles/"))) ||
-    (path.endsWith("/icons") && path.includes("/game-data/"))
+    path === "/api/events" ||
+    path === "/api/gallery/images" ||
+    path === "/api/game-data" ||
+    path === "/api/game-data/icons" ||
+    path === "/api/admin/site-config/logo" ||
+    /^\/api\/users\/[^/]+\/media\/(?:images|avatar|audio)$/.test(path) ||
+    /^\/api\/(?:announcements|events)\/[^/]+\/images$/.test(path) ||
+    /^\/api\/wiki\/articles\/[^/]+\/images$/.test(path) ||
+    /^\/api\/storage\/items\/[^/]+\/images$/.test(path)
   );
+}
+
+export function getApiRequestBodyLimit(path: string): number {
+  return isUploadPath(path) ? LIMITS.requestBody.upload : LIMITS.requestBody.ordinary;
 }
 
 export function isImmutableBuildAssetPath(pathname: string): boolean {
@@ -205,6 +212,17 @@ app.use("/api/*", async (c, next) => {
   }
 
   await next();
+});
+app.use("/api/*", async (c, next) => {
+  if (!isMutationMethod(c.req.method)) return next();
+  return bodyLimit({
+    maxSize: getApiRequestBodyLimit(c.req.path),
+    onError: () => c.json({
+      error_code: "VALIDATION_ERROR",
+      message: "Request body too large",
+      request_id: c.get("requestId"),
+    }, 413),
+  })(c, next);
 });
 app.use("/api/*", etagMiddleware);
 

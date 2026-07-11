@@ -465,11 +465,12 @@ export class AdminAuditService {
     return ok({ month, expires_in_seconds: AUDIT_ARCHIVE_DOWNLOAD_TTL_SECONDS, files: downloadFiles });
   }
 
-  async verifyAndGetArchiveFile(token: string): Promise<ServiceResult<{ body: ReadableStream; contentType: string; contentEncoding?: string; filename: string; actorId: string; month: string; key: string }>> {
+  async verifyAndGetArchiveFile(token: string, expectedActorId: string): Promise<ServiceResult<{ body: ReadableStream; contentType: string; contentEncoding?: string; filename: string; actorId: string; month: string; key: string }>> {
     if (!token) return err("VALIDATION_ERROR", "token is required");
     if (!this.deps.signingSecret) return err("SERVER_ERROR", "Archive signing is not configured");
     const payload = await verifyArchiveDownloadToken(this.deps.signingSecret, token);
     if (!payload) return err("UNAUTHORIZED", "Invalid or expired download token");
+    if (payload.actor_id !== expectedActorId) return err("FORBIDDEN", "Archive token belongs to another user");
     if (!payload.key.startsWith(`${AUDIT_ARCHIVE_PREFIX}/`)) return err("FORBIDDEN", "Invalid archive object key");
     const object = await this.deps.media.get(payload.key);
     if (!object || !object.body) return err("NOT_FOUND", "Archive file not found");

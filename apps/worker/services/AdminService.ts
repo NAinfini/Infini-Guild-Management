@@ -121,24 +121,24 @@ export class AdminService {
     await this.deps.db.insert(inviteLinks).values({ id: inviteId, code, createdBy: actorId, maxUses, usedCount: 0, expiresAt, revokedAt: null });
     const created = (await this.deps.db.select({ id: inviteLinks.id, code: inviteLinks.code, createdBy: inviteLinks.createdBy, maxUses: inviteLinks.maxUses, usedCount: inviteLinks.usedCount, expiresAt: inviteLinks.expiresAt, createdAt: inviteLinks.createdAt, revokedAt: inviteLinks.revokedAt }).from(inviteLinks).where(eq(inviteLinks.id, inviteId)).limit(1))[0];
     if (!created) return err("SERVER_ERROR", "Failed to create invite link");
-    await this.deps.writeAuditLog({ entityType: "invite_link", action: "create", actorId, entityId: inviteId, diffTitle: code, detailText: JSON.stringify({ max_uses: maxUses, expires_at: expiresAt }) });
+    await this.deps.writeAuditLog({ entityType: "invite_link", action: "create", actorId, entityId: inviteId, diffTitle: inviteId, detailText: JSON.stringify({ max_uses: maxUses, expires_at: expiresAt }) });
     return ok(inviteLinkSchema.parse({ id: created.id, code: created.code, created_by: created.createdBy, max_uses: created.maxUses, used_count: created.usedCount, expires_at: created.expiresAt, created_at: created.createdAt, revoked_at: created.revokedAt }));
   }
 
   async revokeInviteLink(actorId: string, inviteId: string): Promise<ServiceResult<void>> {
-    const existing = (await this.deps.db.select({ id: inviteLinks.id, code: inviteLinks.code, revokedAt: inviteLinks.revokedAt }).from(inviteLinks).where(eq(inviteLinks.id, inviteId)).limit(1))[0];
+    const existing = (await this.deps.db.select({ id: inviteLinks.id, revokedAt: inviteLinks.revokedAt }).from(inviteLinks).where(eq(inviteLinks.id, inviteId)).limit(1))[0];
     if (!existing) return err("NOT_FOUND", "Invite link not found");
     if (existing.revokedAt !== null) return err("CONFLICT", "Invite link already revoked");
     await this.deps.db.update(inviteLinks).set({ revokedAt: this.now().toISOString() }).where(eq(inviteLinks.id, inviteId));
-    await this.deps.writeAuditLog({ entityType: "invite_link", action: "revoke", actorId, entityId: inviteId, diffTitle: existing.code });
+    await this.deps.writeAuditLog({ entityType: "invite_link", action: "revoke", actorId, entityId: inviteId, diffTitle: inviteId });
     return ok(undefined);
   }
 
   async deleteInviteLink(actorId: string, inviteId: string): Promise<ServiceResult<void>> {
-    const existing = (await this.deps.db.select({ id: inviteLinks.id, code: inviteLinks.code }).from(inviteLinks).where(eq(inviteLinks.id, inviteId)).limit(1))[0];
+    const existing = (await this.deps.db.select({ id: inviteLinks.id }).from(inviteLinks).where(eq(inviteLinks.id, inviteId)).limit(1))[0];
     if (!existing) return err("NOT_FOUND", "Invite link not found");
     await this.deps.db.delete(inviteLinks).where(eq(inviteLinks.id, inviteId));
-    await this.deps.writeAuditLog({ entityType: "invite_link", action: "delete", actorId, entityId: inviteId, diffTitle: existing.code });
+    await this.deps.writeAuditLog({ entityType: "invite_link", action: "delete", actorId, entityId: inviteId, diffTitle: inviteId });
     return ok(undefined);
   }
 

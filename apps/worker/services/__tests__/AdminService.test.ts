@@ -72,6 +72,48 @@ function createService(db: unknown): AdminService {
 }
 
 describe("AdminService role assignment guardrails", () => {
+  it("records the invite id instead of the invite code in create audit logs", async () => {
+    const inviteRow = {
+      id: "invite-id-1",
+      code: "SECRET-INVITE-CODE",
+      createdBy: "admin-1",
+      maxUses: 2,
+      usedCount: 0,
+      expiresAt: null,
+      createdAt: "2026-05-18T00:00:00.000Z",
+      revokedAt: null,
+    };
+    const values = vi.fn().mockResolvedValue(undefined);
+    const insert = vi.fn(() => ({ values }));
+    const limit = vi.fn().mockResolvedValue([inviteRow]);
+    const where = vi.fn(() => ({ limit }));
+    const from = vi.fn(() => ({ where }));
+    const select = vi.fn(() => ({ from }));
+    const writeAuditLog = vi.fn();
+    const service = new AdminService({
+      db: { insert, select } as never,
+      media: {} as never,
+      rawDb: {} as never,
+      writeAuditLog,
+      writeAuditLogDurable: vi.fn(),
+      createPasswordHash: vi.fn(),
+      generateId: () => "invite-id-1",
+      generateInviteCode: () => "SECRET-INVITE-CODE",
+      generateTemporaryPassword: () => "temporary-password",
+      now: () => new Date("2026-05-18T00:00:00.000Z"),
+      envSiteName: "Env Guild",
+      envSiteLogoUrl: "/env-logo.webp",
+    });
+
+    await service.createInviteLink("admin-1", 2, null);
+
+    expect(writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      entityId: "invite-id-1",
+      diffTitle: "invite-id-1",
+    }));
+    expect(JSON.stringify(writeAuditLog.mock.calls)).not.toContain("SECRET-INVITE-CODE");
+  });
+
   it("reports built-in admin permissions from database rows without synthesizing missing grants", async () => {
     const select = vi
       .fn()
