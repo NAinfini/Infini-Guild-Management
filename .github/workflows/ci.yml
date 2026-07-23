@@ -33,6 +33,8 @@ jobs:
 
       - run: node scripts/check-no-secrets.mjs --ci
 
+      - run: node --test scripts/check-no-secrets.test.mjs
+
       - run: pnpm typecheck
 
       - run: pnpm lint

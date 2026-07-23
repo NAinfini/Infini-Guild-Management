@@ -1,0 +1,3 @@
+# Local development only. Copy this file to `.dev.vars`.
+# Generate a unique random value and never commit the populated file.
+SIGNING_SECRET=replace-with-a-random-secret
