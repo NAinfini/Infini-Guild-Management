@@ -301,9 +301,11 @@ export function AdminPage() {
               <LazyAdminSiteConfigSection
                 data={siteConfigQuery.data ?? null}
                 loading={siteConfigQuery.isLoading}
-                saving={siteConfigMutations.updateSiteConfigMutation.isPending || siteConfigMutations.updateOnboardingMutation.isPending}
+                saving={siteConfigMutations.updateSiteConfigMutation.isPending}
+                onboardingSaving={siteConfigMutations.updateOnboardingMutation.isPending}
                 logoUploading={siteConfigMutations.uploadSiteLogoMutation.isPending}
                 onSaveSite={(payload) => siteConfigMutations.updateSiteConfigMutation.mutate(payload)}
+                onSaveOnboarding={(payload) => siteConfigMutations.updateOnboardingMutation.mutate(payload)}
                 onUploadLogo={(file) => siteConfigMutations.uploadSiteLogoMutation.mutate(file)}
               />
             </Suspense>

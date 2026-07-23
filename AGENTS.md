@@ -10,8 +10,8 @@
 - **Database:** Cloudflare D1 (SQLite) via Drizzle ORM
 - **Object Storage:** Cloudflare R2
 - **Realtime:** Cloudflare Durable Objects (WebSocket)
-- **Package manager:** pnpm 10.6.2
-- **Node.js:** 20+
+- **Package manager:** pnpm 11.17.0
+- **Node.js:** 24.18+
 
 ## Commands
 

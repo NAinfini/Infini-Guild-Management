@@ -1,5 +1,6 @@
 {
   "title": "Equipment Calculator",
+  "dataVersion": "Data version",
   "description": "Plan and optimize your gear builds",
   "pool": {
     "title": "Equipment Pool",

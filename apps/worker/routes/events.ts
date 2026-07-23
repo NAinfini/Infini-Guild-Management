@@ -21,7 +21,7 @@ import {
   toTemplatePayload,
 } from "../services/EventService";
 import { buildError, collectFiles, getDb, parseBoolean, parseJsonBody, parsePage, requireSessionUser, serveR2Object } from "./_shared";
-import { commonDeps } from "./service-factory";
+import { commonDeps, getMediaPolicy } from "./service-factory";
 
 export const eventsRoutes = new Hono();
 
@@ -33,6 +33,7 @@ function getEventService(c: Context) {
       const row = (await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1))[0];
       return row?.username ?? null;
     },
+    getMediaPolicy: () => getMediaPolicy(c),
     ...commonDeps(c),
   };
   const templateDeps = {

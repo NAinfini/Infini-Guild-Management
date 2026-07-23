@@ -129,7 +129,7 @@ storageRoutes.post("/items/:id/images", async (c) => {
   const files = collectFiles(form);
   if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
   const mediaPolicy = await withMedia(c).getMediaPolicy();
-  const maxImageBytes = mediaPolicy.max_file_size_bytes.gallery_image;
+  const maxImageBytes = mediaPolicy.max_file_size_bytes.storage_image;
   for (const file of files) {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) return buildError(c, "VALIDATION_ERROR", `Invalid file type: ${file.name}`);
     if (file.size > maxImageBytes) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);

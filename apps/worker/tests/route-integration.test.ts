@@ -108,9 +108,16 @@ type Bindings = import("../index").Bindings;
 let app: Hono<{ Bindings: Bindings; Variables: { requestId: string; user: unknown } }>;
 
 /** Minimal mock bindings that satisfy the Bindings type. */
-function createMockEnv(): Bindings {
+function createMockEnv(featureFlags?: Record<string, boolean>): Bindings {
+  const db = {
+    prepare: () => ({
+      bind: () => ({
+        first: async () => featureFlags ? { value: JSON.stringify(featureFlags) } : null,
+      }),
+    }),
+  };
   return {
-    DB: {} as D1Database,
+    DB: db as unknown as D1Database,
     MEDIA: {} as R2Bucket,
     WS: {} as DurableObjectNamespace,
     ASSETS: { fetch: () => new Response("not found", { status: 404 }) } as unknown as Fetcher,
@@ -492,6 +499,27 @@ describe("Guest read API access", () => {
     expect(history.status).toBe(200);
     expect(analytics.status).toBe(200);
     expect(active.status).toBe(200);
+  });
+
+  it("returns 404 for a disabled feature API", async () => {
+    const env = createMockEnv({
+      announcements: true,
+      events: false,
+      guildWar: true,
+      gallery: true,
+      wiki: true,
+      tools: true,
+      equipmentCalc: true,
+      storage: true,
+    });
+
+    const res = await app.request("/api/events", undefined, env);
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({
+      error_code: "NOT_FOUND",
+      message: "Feature is disabled",
+    });
   });
 
   it("returns global search without authentication", async () => {

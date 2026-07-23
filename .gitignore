@@ -1,10 +1,20 @@
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Build, coverage, and tool output
 dist/
+build/
 .wrangler/
-.agents/
-.trellis/
-.claude/
-.codex/
+.vite/
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+blob-report/
+.cache/
+.eslintcache
+*.tsbuildinfo
 
 # Environment files and local secrets
 **/.env
@@ -36,20 +46,24 @@ id_ed25519*
 *.dump
 *.bak
 
+# Local data and private working notes
 *.local
+backups/
 calculators/
-docs/
-.vite/
-coverage/
+docs/plans/
 
 # Temporary files
 *.log
 *.tmp
 *.temp
-.cache/
-
-# Database backups
-backups/
+.tmp/
+tmp/
+temp/
+*.pid
+*.pid.lock
+*.orig
+*.rej
+*.tgz
 
 # OS / editor noise
 .DS_Store
@@ -60,9 +74,8 @@ Thumbs.db
 *.swo
 *~
 
-# Build artifacts
-*.tsbuildinfo
-
-# Test output
-test-results/
-playwright-report/
+# Local AI/developer tooling
+.agents/
+.trellis/
+.claude/
+.codex/

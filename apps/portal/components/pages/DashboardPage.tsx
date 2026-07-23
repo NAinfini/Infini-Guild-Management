@@ -14,6 +14,7 @@ import {
   type DashboardSummaryEvent,
 } from "../../services/DashboardService";
 import { useAuthStore } from "../../stores/auth";
+import { useSiteConfigStore } from "../../stores/site-config";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import { PageLayout } from "../layout/PageLayout";
 import {
@@ -132,6 +133,8 @@ export function DashboardPage() {
   const { t } = useTranslation("dashboard");
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
+  const eventsEnabled = useSiteConfigStore((state) => state.features.events);
+  const guildWarEnabled = useSiteConfigStore((state) => state.features.guildWar);
   const isExternalView = useExternalView();
   const now = useMemo(() => getDashboardNow(), []);
 
@@ -195,7 +198,7 @@ export function DashboardPage() {
       className="dashboard-page"
     >
       <Grid gutter={16} align="flex-start">
-        <Grid.Col span={{ base: 12, xl: "auto" }}>
+        {eventsEnabled ? <Grid.Col span={{ base: 12, xl: "auto" }}>
           <Stack gap={16}>
             {!isExternalView && (
               <Skeleton visible={summaryQuery.isLoading} radius={8}>
@@ -212,9 +215,9 @@ export function DashboardPage() {
               />
             </Skeleton>
           </Stack>
-        </Grid.Col>
+        </Grid.Col> : null}
 
-        <Grid.Col span={{ base: 12, xl: isExternalView ? 6 : 4 }}>
+        <Grid.Col span={{ base: 12, xl: eventsEnabled ? (isExternalView ? 6 : 4) : 12 }}>
           <Stack gap={16}>
             <Skeleton visible={summaryQuery.isLoading} radius={8}>
               <ActiveMembersCard
@@ -225,7 +228,7 @@ export function DashboardPage() {
               />
             </Skeleton>
 
-            <Skeleton visible={summaryQuery.isLoading} radius={8}>
+            {guildWarEnabled ? <Skeleton visible={summaryQuery.isLoading} radius={8}>
               <LastWarCard
                 recentWars={recentWars}
                 warMvps={recentWarMvps}
@@ -237,7 +240,7 @@ export function DashboardPage() {
                   });
                 }}
               />
-            </Skeleton>
+            </Skeleton> : null}
           </Stack>
         </Grid.Col>
       </Grid>

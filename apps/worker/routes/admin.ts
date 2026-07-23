@@ -5,13 +5,9 @@ import {
   createAdminMemberSchema,
   createInviteLinkSchema,
   createRoleSchema,
-  featureFlagsSchema,
-  siteAbsencePolicySchema,
-  siteMediaPolicySchema,
-  sitePaginationPolicySchema,
-  siteStoragePolicySchema,
   updateRoleSchema,
   updateOnboardingConfigSchema,
+  updateSiteConfigSchema,
 } from "@guild/shared";
 import { desc, eq, sql } from "drizzle-orm";
 import type { Context } from "hono";
@@ -45,20 +41,6 @@ const systemTestSummarySchema = z.object({
     status: z.number().int().nullable(),
     error: z.string().max(500).nullable(),
   })).max(100),
-});
-
-const adminSiteConfigUpdateSchema = z.object({
-  site_name: z.string().trim().min(1).max(100).optional(),
-  site_logo_url: z.string().trim().min(1).max(500).optional(),
-  features: featureFlagsSchema.partial().optional(),
-  media_policy: siteMediaPolicySchema.partial().optional(),
-  pagination_policy: sitePaginationPolicySchema.partial().optional(),
-  storage_policy: siteStoragePolicySchema.partial().optional(),
-  absence_policy: siteAbsencePolicySchema.partial().optional(),
-  analytics_settings: analyticsSettingsSchema.optional(),
-  onboarding: updateOnboardingConfigSchema.optional(),
-}).refine((value) => Object.keys(value).length > 0, {
-  message: "At least one site config field is required",
 });
 
 function getAdminService(c: Context) {
@@ -266,7 +248,7 @@ adminRoutes.get("/site-config", async (c) => {
 adminRoutes.patch("/site-config", async (c) => {
   const sessionUser = await requirePermission(c, "admin.siteConfig.manage", { freshPermissions: true });
   const body = await parseJsonBody(c);
-  const parsed = adminSiteConfigUpdateSchema.safeParse(body);
+  const parsed = updateSiteConfigSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid site config payload", parsed.error.flatten());
   return handleResult(c, await getSiteConfigService(c).updateAdminConfig(sessionUser.id, parsed.data));
 });

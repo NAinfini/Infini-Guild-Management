@@ -7,6 +7,7 @@ import { logger } from "./utils/logger";
 import { runDailyMaintenanceCron, runQuarterHourlyMaintenanceCron } from "./crons/maintenance";
 import { WebSocketDO } from "./durable-objects/WebSocketDO";
 import { etagMiddleware } from "./middleware/etag";
+import { featureGateMiddleware } from "./middleware/feature-gate";
 import { handleAppError } from "./middleware/error-handler";
 import { createRateLimitMiddleware } from "./middleware/rate-limit";
 import { buildSpaHtmlCsp, HSTS_VALUE, PERMISSIONS_POLICY_VALUE, REFERRER_POLICY_VALUE, securityHeadersMiddleware, X_CONTENT_TYPE_VALUE } from "./middleware/security-headers";
@@ -267,6 +268,8 @@ app.get("/ws", async (c) => {
   const stub = c.env.WS.get(objectId);
   return stub.fetch(c.req.raw);
 });
+
+app.use("/api/*", featureGateMiddleware);
 
 app.route("/api/auth", authRoutes);
 app.route("/api/dashboard", dashboardRoutes);

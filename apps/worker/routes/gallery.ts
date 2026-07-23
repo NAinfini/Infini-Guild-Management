@@ -1,6 +1,5 @@
 import {
   ALLOWED_IMAGE_TYPES,
-  FILE_SIZE_LIMITS,
   createGalleryItemSchema,
 } from "@guild/shared";
 import type { Context } from "hono";
@@ -10,7 +9,7 @@ import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { GalleryService } from "../services/GalleryService";
 import { validateUploadBytes } from "../services/media";
 import { buildError, collectFiles, getDb, handleResult, parseJsonBody, requireSessionUser, safeFormData, serveR2Object } from "./_shared";
-import { withMedia } from "./service-factory";
+import { hasMediaQuotaCapacity, withMedia } from "./service-factory";
 
 export const galleryRoutes = new Hono();
 
@@ -74,9 +73,13 @@ galleryRoutes.post("/images", async (c) => {
   const files = collectFiles(form);
 
   if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
+  const mediaPolicy = await withMedia(c).getMediaPolicy();
+  if (files.length > mediaPolicy.quotas.gallery) {
+    return buildError(c, "VALIDATION_ERROR", `Maximum ${mediaPolicy.quotas.gallery} gallery images per upload`);
+  }
   for (const file of files) {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) return buildError(c, "VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-    if (file.size > FILE_SIZE_LIMITS.galleryImage) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
+    if (file.size > mediaPolicy.max_file_size_bytes.gallery_image) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
   }
 
   const captions = files.map((_, i) => { const raw = captionsRaw[i]; return typeof raw === "string" && raw.trim() ? raw.trim() : null; });
@@ -89,6 +92,14 @@ galleryRoutes.post("/images", async (c) => {
     const validation = validateUploadBytes(data, file.type || "application/octet-stream", allowedTypes);
     if (!validation.ok) return buildError(c, "VALIDATION_ERROR", validation.message);
     fileData.push({ data, contentType: validation.contentType, name: file.name });
+  }
+  if (!await hasMediaQuotaCapacity(
+    c,
+    `gallery/images/${sessionUser.id}/`,
+    files.length,
+    mediaPolicy.quotas.gallery,
+  )) {
+    return buildError(c, "VALIDATION_ERROR", `Gallery image quota is ${mediaPolicy.quotas.gallery}`);
   }
   const result = await getService(c).uploadImages(sessionUser.id, fileData, captions);
   if (!result.ok) return buildError(c, result.code, result.message, result.details);

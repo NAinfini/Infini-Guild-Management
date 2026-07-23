@@ -1,3 +1,4 @@
+import { DEFAULT_FEATURE_FLAGS, type FeatureFlags } from "@guild/shared";
 import { and, desc, eq, isNull, like, or, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import {
@@ -29,6 +30,7 @@ export type SearchResult = {
 type SearchInput = {
   query?: string;
   limit?: string;
+  features?: FeatureFlags;
 };
 
 const MIN_QUERY_LENGTH = 2;
@@ -54,6 +56,7 @@ export class SearchService {
     if (query.length < MIN_QUERY_LENGTH) return ok({ data: [] });
 
     const limit = parseLimit(input.limit);
+    const features = input.features ?? DEFAULT_FEATURE_FLAGS;
     const perTypeLimit = Math.max(3, Math.ceil(limit / 3));
     const pattern = likePattern(query);
     const [userRows, eventRows, announcementRows, wikiRows, galleryRows, warRows] = await Promise.all([
@@ -113,46 +116,46 @@ export class SearchService {
           entity_id: row.id,
           role: row.role,
         })),
-        ...eventRows.map((row): SearchResult => ({
+        ...(features.events ? eventRows.map((row): SearchResult => ({
           id: row.id,
           title: row.title,
           subtitle: `${row.type} · ${new Date(row.startAt).toLocaleDateString("en-US")}`,
           type: "event",
           to: "/events",
           entity_id: row.id,
-        })),
-        ...announcementRows.map((row): SearchResult => ({
+        })) : []),
+        ...(features.announcements ? announcementRows.map((row): SearchResult => ({
           id: row.id,
           title: row.title,
           subtitle: "Announcement",
           type: "announcement",
           to: "/announcements",
           entity_id: row.id,
-        })),
-        ...wikiRows.map((row): SearchResult => ({
+        })) : []),
+        ...(features.wiki ? wikiRows.map((row): SearchResult => ({
           id: row.id,
           title: row.title,
           subtitle: "Wiki article",
           type: "wiki",
           to: "/wiki",
           entity_id: row.slug,
-        })),
-        ...galleryRows.map((row): SearchResult => ({
+        })) : []),
+        ...(features.gallery ? galleryRows.map((row): SearchResult => ({
           id: row.id,
           title: row.caption?.trim() || `${row.type[0]?.toUpperCase()}${row.type.slice(1)} item`,
           subtitle: "Gallery",
           type: "gallery",
           to: "/gallery",
           entity_id: row.id,
-        })),
-        ...warRows.map((row): SearchResult => ({
+        })) : []),
+        ...(features.guildWar ? warRows.map((row): SearchResult => ({
           id: row.id,
           title: row.warName,
           subtitle: row.enemyName ? `vs ${row.enemyName}` : "Guild war",
           type: "war",
           to: "/guild-war",
           entity_id: row.id,
-        })),
+        })) : []),
       ].slice(0, limit),
     });
   }

@@ -291,12 +291,14 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     }),
     mediaPolicyJson: JSON.stringify({
       max_file_size_bytes: {
+        site_logo: 2 * 1024 * 1024,
         profile_image: 5 * 1024 * 1024,
         profile_audio: 20 * 1024 * 1024,
         announcement_image: 5 * 1024 * 1024,
         wiki_image: 5 * 1024 * 1024,
         event_image: 5 * 1024 * 1024,
         gallery_image: 10 * 1024 * 1024,
+        storage_image: 5 * 1024 * 1024,
       },
       quotas: {
         profile: 10,
@@ -304,15 +306,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
         gallery: 20,
         wiki: 10,
       },
-    }),
-    paginationPolicyJson: JSON.stringify({
-      admin: 50,
-      announcements: 50,
-      events: 100,
-      gallery: 24,
-      guild_war: 20,
-      users: 500,
-      wiki: 50,
     }),
     storagePolicyJson: JSON.stringify({
       images_per_item: 5,

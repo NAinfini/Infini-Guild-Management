@@ -17,6 +17,19 @@
   flex-shrink: 0;
 }
 
+.ecm__data-version {
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.ecm__data-version .mantine-Text-root:last-child {
+  max-width: min(42vw, 320px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .ecm__body {
   display: flex;
   flex: 1;

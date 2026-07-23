@@ -7,11 +7,13 @@
 Built as one Cloudflare Worker plus one React app, with shared TypeScript contracts across the stack.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb?logo=react)](https://react.dev/)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-f38020?logo=cloudflare)](https://workers.cloudflare.com/)
 
 [English](./README.md) | [中文](./README.zh.md)
+
+[Setup guide](./SETUP.md) · [Public release checklist](./OPEN_SOURCE_CHECKLIST.md) · [Security policy](./SECURITY.md)
 
 </div>
 
@@ -40,7 +42,7 @@ The deployment model is also simple: the React portal is built into static asset
 | Search | `Cmd+K` / `Ctrl+K` command search across portal content |
 | Realtime | WebSocket updates through Cloudflare Durable Objects |
 | Localization | English and Chinese translations |
-| Feature flags | Per-module switches through shared config or Worker vars |
+| Feature flags | Per-module switches through Admin → Site Config |
 
 ## Architecture
 
@@ -58,7 +60,7 @@ The shared package is the contract layer. Backend routes validate with shared Zo
 | Layer | Stack |
 | --- | --- |
 | Frontend | React 19, Vite 8, TanStack Router, TanStack Query, Mantine 8, Tailwind CSS 4, Zustand 5 |
-| Rich content and charts | TipTap 3, ECharts 5 |
+| Rich content and charts | TipTap 3, ECharts 6 |
 | Backend | Hono on Cloudflare Workers, Drizzle ORM, Cloudflare D1 |
 | Storage | Cloudflare R2 for media and audit archives |
 | Realtime | Cloudflare Durable Objects with WebSocket connections |
@@ -70,8 +72,8 @@ The shared package is the contract layer. Backend routes validate with shared Zo
 
 ### Prerequisites
 
-- Node.js 20+
-- pnpm 10+
+- Node.js 24 LTS (24.18.0 or newer)
+- pnpm 11.17.0
 - A Cloudflare account for deployed environments
 
 Local development does not require a Cloudflare account.
@@ -80,10 +82,11 @@ Local development does not require a Cloudflare account.
 
 ```bash
 pnpm install
+pnpm setup:local
 pnpm dev
 ```
 
-`pnpm dev` rebuilds the local D1 database, starts the Worker and portal dev servers, and seeds mock data.
+`pnpm setup:local` creates ignored local configuration and a random development signing secret without overwriting existing files. `pnpm dev` then rebuilds the local D1 database, starts the Worker and portal dev servers, and seeds mock data.
 
 Open `http://localhost:5173` and sign in with one of the seeded accounts:
 
@@ -97,12 +100,16 @@ Open `http://localhost:5173` and sign in with one of the seeded accounts:
 
 | Command | Purpose |
 | --- | --- |
+| `pnpm setup:local` | Safely create ignored local configuration and a random secret |
+| `pnpm setup:admin -- --env=production` | Create the first administrator in an empty production database |
+| `pnpm config:check -- --env=production` | Check production bindings and placeholders before deployment |
 | `pnpm dev` | Rebuild local DB, start Worker and portal, seed data |
 | `pnpm dev:all` | Start Worker and portal without rebuilding or seeding |
 | `pnpm dev:worker` | Start the Worker API at `http://127.0.0.1:8787` |
 | `pnpm dev:portal` | Start the Vite portal dev server |
 | `pnpm build` | Build the portal SPA |
 | `pnpm build:worker` | Dry-run a Worker deployment |
+| `pnpm deploy:production` | Preflight, build, and deploy the production site |
 | `pnpm typecheck` | Run TypeScript checking for the workspace |
 | `pnpm lint` | Run ESLint for portal and worker code |
 | `pnpm test` | Run Vitest |
@@ -216,61 +223,35 @@ Place the logo under `apps/portal/public/`, or replace the existing `guild-logo.
 
 ### 5. Toggle optional modules
 
-Feature defaults live in `apps/shared/config/features.ts`:
+Site owners can change modules without editing code. Sign in as an administrator and open **Admin → Site Config → Features**.
+
+The code-level defaults, used for new database rows, live in `apps/shared/config/features.ts`:
 
 ```typescript
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   announcements: true,
   events: true,
-  guildWar: false,
+  guildWar: true,
   gallery: true,
   wiki: true,
   tools: true,
   equipmentCalc: true,
+  storage: true,
 };
-```
-
-You can also override feature flags per environment with the `FEATURES` Worker variable:
-
-```jsonc
-"vars": {
-  "FEATURES": "{\"guildWar\":false,\"wiki\":false}"
-}
 ```
 
 ## Deployment
 
-### Staging
+Follow the beginner-friendly [self-hosting setup guide](./SETUP.md). It covers Cloudflare login, D1 and R2 creation, secrets, migrations, the first administrator, `workers.dev`, custom domains, updates, and troubleshooting.
+
+After the one-time setup, production releases use:
 
 ```bash
-# 1. Create a staging D1 database and R2 bucket in Cloudflare.
-
-# 2. Copy apps/worker/wrangler.example.jsonc → apps/worker/wrangler.jsonc
-#    and fill in [env.staging] with your staging IDs and PORTAL_ORIGIN.
-
-# 3. Apply migrations to staging.
-wrangler d1 migrations apply guild-portal-db-staging --config apps/worker/wrangler.jsonc --env staging
-
-# 4. Deploy to staging.
-pnpm deploy:staging
+pnpm exec wrangler d1 migrations apply DB --remote --env production --config apps/worker/wrangler.jsonc
+pnpm deploy:production
 ```
 
-Staging uses separate D1 and R2 bindings. `workers_dev = true` gives the staging Worker a `*.workers.dev` URL without requiring a custom domain.
-
-### Production
-
-```bash
-# 1. Create the production D1 database and R2 bucket in Cloudflare.
-
-# 2. Fill in your wrangler.jsonc [env.production] with production IDs.
-#    Set secrets: wrangler secret put SIGNING_SECRET --env production
-
-# 3. Apply migrations.
-wrangler d1 migrations apply <your-db> --config apps/worker/wrangler.jsonc --env production
-
-# 4. Deploy the Worker and bundled portal assets.
-wrangler deploy --config apps/worker/wrangler.jsonc --env production
-```
+The repository does not create a default production password. Use `pnpm setup:admin -- --env=production` exactly once, after migrations, to create the first administrator securely.
 
 ## Environment Variables
 
@@ -279,11 +260,10 @@ wrangler deploy --config apps/worker/wrangler.jsonc --env production
 | Variable | Description |
 | --- | --- |
 | `ENVIRONMENT` | `development`, `staging`, or `production` |
-| `PORTAL_ORIGIN` | Allowed CORS origin |
+| `PORTAL_ORIGIN` | Optional allowed origin for a separately hosted portal; leave empty for same-origin hosting |
 | `SIGNING_SECRET` | HMAC secret for audit archive download tokens |
 | `SITE_NAME` | Guild name shown in the UI |
 | `SITE_LOGO_URL` | Path to the logo image served by the portal |
-| `FEATURES` | JSON object that overrides feature flags, such as `{"guildWar":false}` |
 
 ### Portal (`apps/portal/.env.local`)
 
@@ -321,6 +301,8 @@ Rate limits are applied by route group: auth, mutations, uploads, and API reads 
 - Rich text HTML is sanitized before display.
 - Login errors are generic to avoid username enumeration.
 - Security headers include HSTS, CSP, `X-Frame-Options: DENY`, and `nosniff`.
+
+Report vulnerabilities privately according to [SECURITY.md](./SECURITY.md).
 
 ## Scheduled Jobs
 

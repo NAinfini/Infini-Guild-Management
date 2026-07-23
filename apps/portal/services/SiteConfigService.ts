@@ -16,7 +16,7 @@ export function fetchAdminSiteConfig(): Promise<AdminSiteConfigResponse> {
   return apiRequest<AdminSiteConfigResponse>("/api/admin/site-config");
 }
 
-export function updateAdminSiteConfig(payload: UpdateSiteConfigPayload & { onboarding?: UpdateOnboardingConfigPayload }): Promise<AdminSiteConfigResponse> {
+export function updateAdminSiteConfig(payload: UpdateSiteConfigPayload): Promise<AdminSiteConfigResponse> {
   return apiRequest<AdminSiteConfigResponse>("/api/admin/site-config", {
     method: "PATCH",
     bodyJson: payload as Record<string, unknown>,

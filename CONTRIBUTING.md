@@ -1,10 +1,10 @@
 # Contributing to Infini Guild Management
 
-Thank you for your interest in contributing. This document outlines the rules and expectations for all contributors. **Read the entire document before submitting any code.**
+Thank you for your interest in contributing. Start with [SETUP.md](./SETUP.md), and ask for help through the setup issue form if the local environment does not start.
 
 ## Ground rules
 
-1. **No drive-by PRs.** Open an issue first to discuss the change. PRs without a linked issue will be closed.
+1. **Discuss large changes first.** Bug fixes and small documentation improvements can go directly to a pull request. Open an issue before major features or architectural changes.
 2. **One concern per PR.** Each pull request must address exactly one feature, bug fix, or refactor. Do not bundle unrelated changes.
 3. **Full-stack consistency.** Changes to the worker API must include corresponding updates to shared schemas and portal queries/mutations. Changes to the database schema must include matching SQL migrations.
 
@@ -18,7 +18,7 @@ Thank you for your interest in contributing. This document outlines the rules an
 | `chore/<name>` | Tooling, CI, docs, dependencies |
 
 - Branch from `main`. Rebase onto `main` before requesting review.
-- No merge commits — use **rebase and fast-forward** only.
+- Keep the branch focused and up to date with `main`.
 
 ## Commit messages
 
@@ -50,15 +50,14 @@ Commits that do not follow this format will be rejected by CI.
 
 ### TypeScript
 - **Strict mode** — no `any`, no `@ts-ignore`, no `@ts-expect-error` without a linked issue number.
-- All exports must have explicit types. No inferred return types on exported functions.
-- Prefer `interface` over `type` for object shapes.
+- Use shared Zod-inferred types when a schema exists.
+- Follow the existing file's type style; component props use `type` aliases.
 
 ### React (Portal)
 - Function components only — no class components.
-- Use CSS Modules or Mantine component props for styling — no inline styles.
+- Use co-located CSS and existing Mantine/theme tokens.
 - No `useEffect` for derived state — use `useMemo` or computed values.
-- Data fetching must go through TanStack Query (`apps/portal/api/queries/`).
-- Mutations must go through TanStack Query (`apps/portal/api/mutations/`).
+- Components receive data through hooks or services; do not import the raw API client directly.
 
 ### Backend (Worker)
 - All request validation must use Zod schemas from `apps/shared/schemas/`.
@@ -135,11 +134,11 @@ apps/
 
 Before requesting review, confirm:
 
-- [ ] Issue is linked in the PR description
+- [ ] Related issue is linked when one exists
 - [ ] Branch is rebased on latest `main`
 - [ ] `pnpm typecheck` passes with zero errors
 - [ ] Commit messages follow Conventional Commits
-- [ ] No `any`, `@ts-ignore`, or hardcoded design values
+- [ ] No unjustified `any`, `@ts-ignore`, or hardcoded design values
 - [ ] Shared schemas updated if API contract changed
 - [ ] SQL migration generated if schema changed (`pnpm db:generate`)
 - [ ] i18n keys added for new UI text (both `en/` and `zh/`)
@@ -149,7 +148,6 @@ Before requesting review, confirm:
 
 ## What will get your PR rejected
 
-- Skipping the issue-first rule
 - Bundling multiple concerns
 - Breaking existing API contracts
 - Zod schema / Drizzle schema / SQL migration desync

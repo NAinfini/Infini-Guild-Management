@@ -76,6 +76,22 @@
   line-height: 1.5;
 }
 
+.tool-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.tool-card__meta .mantine-Text-root:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .tool-card__external-icon {
   display: inline-block;
   vertical-align: middle;

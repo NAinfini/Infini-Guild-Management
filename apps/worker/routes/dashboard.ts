@@ -15,6 +15,7 @@ import { toEventPayload, type EventRow } from "../services/EventService";
 import { toWarHistoryPayload } from "../services/GuildWarService";
 import { getRequestUser } from "../middleware/rbac";
 import { getDb } from "./_shared";
+import { getFeatureFlags } from "./service-factory";
 
 export const dashboardRoutes = new Hono();
 
@@ -35,6 +36,7 @@ dashboardRoutes.get("/summary", async (c) => {
   // Public dashboard read: guests can view site activity, but user-specific
   // fields such as my_signup_event_ids stay empty without a session.
   const viewer = await getRequestUser(c);
+  const features = await getFeatureFlags(c);
   const db = getDb(c);
   const window = weekWindow();
 
@@ -191,14 +193,14 @@ dashboardRoutes.get("/summary", async (c) => {
   return c.json({
     active_member_count: Number(memberStats?.activeMembers ?? 0),
     total_member_count: Number(memberStats?.totalMembers ?? 0),
-    active_events_count: upcomingEventRows.length,
-    all_war_win_rate: allWarWinRate,
-    upcoming_events: upcomingEventRows.map((row) => ({
+    active_events_count: features.events ? upcomingEventRows.length : 0,
+    all_war_win_rate: features.guildWar ? allWarWinRate : 0,
+    upcoming_events: features.events ? upcomingEventRows.map((row) => ({
       ...toEventPayload(row as EventRow),
       participants: participantsByEvent.get(row.id) ?? [],
-    })),
-    my_signup_event_ids: Array.from(mySignupEventIds),
-    recent_wars: recentWarRows.map(toWarHistoryPayload),
-    recent_war_mvps: recentWarMvps,
+    })) : [],
+    my_signup_event_ids: features.events ? Array.from(mySignupEventIds) : [],
+    recent_wars: features.guildWar ? recentWarRows.map(toWarHistoryPayload) : [],
+    recent_war_mvps: features.guildWar ? recentWarMvps : [],
   });
 });

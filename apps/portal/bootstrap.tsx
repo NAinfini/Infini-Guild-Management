@@ -91,9 +91,11 @@ function dismissSplash(): void {
 
 export async function mountApp(root: Root): Promise<void> {
   await i18nReady;
-  void loadSiteConfig().catch((error: unknown) => {
+  try {
+    await loadSiteConfig();
+  } catch (error: unknown) {
     console.error("[bootstrap] Failed to load site config", error);
-  });
+  }
   root.render(
     <StrictMode>
       <ErrorBoundary>

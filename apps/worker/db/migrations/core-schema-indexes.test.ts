@@ -49,7 +49,6 @@ describe("core schema site config baseline data", () => {
     const expectedColumns = [
       "feature_flags_json TEXT NOT NULL",
       "media_policy_json TEXT NOT NULL",
-      "pagination_policy_json TEXT NOT NULL",
       "storage_policy_json TEXT NOT NULL",
       "absence_policy_json TEXT NOT NULL",
       "analytics_settings_json TEXT NOT NULL",

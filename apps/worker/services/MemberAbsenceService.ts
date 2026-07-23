@@ -1,4 +1,10 @@
-import { createMemberAbsenceSchema, memberAbsenceSchema, type Role, type SiteAbsencePolicy } from "@guild/shared";
+import {
+  DEFAULT_SITE_ABSENCE_POLICY,
+  createMemberAbsenceSchema,
+  memberAbsenceSchema,
+  type Role,
+  type SiteAbsencePolicy,
+} from "@guild/shared";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
@@ -22,11 +28,6 @@ export type MemberAbsenceServiceDeps = {
   }) => Promise<void>;
   publishEntityChanged: (input: { entityType: PushEntityType; entityId: string; hint: PushHint }) => Promise<void>;
   getAbsencePolicy?: () => Promise<SiteAbsencePolicy>;
-};
-
-const DEFAULT_ABSENCE_POLICY: SiteAbsencePolicy = {
-  max_span_days: 366,
-  max_entries_per_user: 20,
 };
 
 function daysInclusive(startDate: string, endDate: string): number {
@@ -121,7 +122,7 @@ export class MemberAbsenceService {
     const parsed = createMemberAbsenceSchema.safeParse(body);
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid absence payload", parsed.error.flatten());
 
-    const policy = await (this.deps.getAbsencePolicy?.() ?? Promise.resolve(DEFAULT_ABSENCE_POLICY));
+    const policy = await (this.deps.getAbsencePolicy?.() ?? Promise.resolve(DEFAULT_SITE_ABSENCE_POLICY));
     const spanDays = daysInclusive(parsed.data.start_date, parsed.data.end_date);
     if (spanDays > policy.max_span_days) {
       return err("VALIDATION_ERROR", `Absence cannot span more than ${policy.max_span_days} days`);

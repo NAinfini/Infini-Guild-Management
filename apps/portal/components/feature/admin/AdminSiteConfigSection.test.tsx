@@ -24,23 +24,10 @@ const siteConfig: AdminSiteConfigResponse = {
     site_logo_url: "/logo.png",
     features: DEFAULT_FEATURE_FLAGS,
     media_policy: DEFAULT_SITE_MEDIA_POLICY,
-    pagination_policy: {
-      admin: 50,
-      announcements: 50,
-      events: 100,
-      gallery: 24,
-      guild_war: 20,
-      users: 500,
-      wiki: 50,
-    },
     storage_policy: DEFAULT_SITE_STORAGE_POLICY,
     absence_policy: {
       max_span_days: 366,
       max_entries_per_user: 20,
-    },
-    analytics_settings: {
-      reference_duration_minutes: 30,
-      modifier_weights: {},
     },
     created_at: "2026-06-12T00:00:00.000Z",
     updated_at: "2026-06-12T00:00:00.000Z",
@@ -61,15 +48,17 @@ const siteConfig: AdminSiteConfigResponse = {
   },
 };
 
-function renderSiteConfig(onSaveSite = vi.fn()) {
+function renderSiteConfig(onSaveSite = vi.fn(), onSaveOnboarding = vi.fn()) {
   return render(
     <MantineProvider>
       <AdminSiteConfigSection
         data={siteConfig}
         loading={false}
         saving={false}
+        onboardingSaving={false}
         logoUploading={false}
         onSaveSite={onSaveSite}
+        onSaveOnboarding={onSaveOnboarding}
         onUploadLogo={vi.fn()}
       />
     </MantineProvider>,
@@ -89,19 +78,17 @@ describe("AdminSiteConfigSection layout", () => {
   });
 
   it("renders onboarding enable control and sends enabled state on save", () => {
-    const onSaveSite = vi.fn();
-    renderSiteConfig(onSaveSite);
+    const onSaveOnboarding = vi.fn();
+    renderSiteConfig(vi.fn(), onSaveOnboarding);
 
     const onboardingSwitch = screen.getByRole("switch", { name: "siteConfig.field.onboardingEnabled" });
     expect(onboardingSwitch).not.toBeChecked();
 
     fireEvent.click(onboardingSwitch);
-    fireEvent.click(screen.getByRole("button", { name: "siteConfig.action.saveAll" }));
+    fireEvent.click(screen.getByRole("button", { name: "siteConfig.action.saveOnboarding" }));
 
-    expect(onSaveSite).toHaveBeenCalledWith(expect.objectContaining({
-      onboarding: expect.objectContaining({
-        enabled: true,
-      }),
+    expect(onSaveOnboarding).toHaveBeenCalledWith(expect.objectContaining({
+      enabled: true,
     }));
   });
 

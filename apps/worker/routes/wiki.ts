@@ -1,6 +1,5 @@
 import {
   ALLOWED_IMAGE_TYPES,
-  FILE_SIZE_LIMITS,
   createWikiArticleSchema,
   createWikiCategorySchema,
   updateWikiCategorySchema,
@@ -11,7 +10,7 @@ import { Hono } from "hono";
 import { requirePermission } from "../middleware/rbac";
 import { WikiService } from "../services/WikiService";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
-import { withMedia } from "./service-factory";
+import { hasMediaQuotaCapacity, withMedia } from "./service-factory";
 
 export const wikiRoutes = new Hono();
 
@@ -149,9 +148,21 @@ wikiRoutes.post("/articles/:id/images", async (c) => {
   const files = collectFiles(form);
 
   if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
+  const mediaPolicy = await withMedia(c).getMediaPolicy();
+  if (files.length > mediaPolicy.quotas.wiki) {
+    return buildError(c, "VALIDATION_ERROR", `Maximum ${mediaPolicy.quotas.wiki} wiki images per upload`);
+  }
   for (const file of files) {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) return buildError(c, "VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-    if (file.size > FILE_SIZE_LIMITS.wikiImage) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
+    if (file.size > mediaPolicy.max_file_size_bytes.wiki_image) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
+  }
+  if (!await hasMediaQuotaCapacity(
+    c,
+    `wiki/${c.req.param("id")}/images/`,
+    files.length,
+    mediaPolicy.quotas.wiki,
+  )) {
+    return buildError(c, "VALIDATION_ERROR", `Wiki image quota is ${mediaPolicy.quotas.wiki}`);
   }
 
   const fileData = await Promise.all(files.map(async (f) => ({ data: await f.arrayBuffer(), contentType: f.type || "application/octet-stream" })));

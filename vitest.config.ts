@@ -19,7 +19,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["apps/**/*.test.ts", "apps/**/*.test.tsx"],
+    include: ["apps/**/*.test.ts", "apps/**/*.test.tsx", "scripts/**/*.test.ts"],
     exclude: ["apps/worker/tests/events.test.ts", "apps/worker/tests/contracts/**"],
     environmentMatchGlobs: [
       ["apps/portal/**/*.test.ts", "jsdom"],

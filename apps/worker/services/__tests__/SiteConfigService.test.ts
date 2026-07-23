@@ -49,15 +49,6 @@ const SEEDED_SITE_ROW = {
       wiki: 10,
     },
   }),
-  paginationPolicyJson: JSON.stringify({
-    admin: 50,
-    announcements: 50,
-    events: 100,
-    gallery: 24,
-    guild_war: 20,
-    users: 500,
-    wiki: 50,
-  }),
   storagePolicyJson: JSON.stringify({
     images_per_item: 5,
   }),
@@ -147,22 +138,32 @@ describe("SiteConfigService", () => {
       media_policy: expect.objectContaining({
         max_file_size_bytes: expect.objectContaining({ gallery_image: 10485760 }),
       }),
-      pagination_policy: expect.objectContaining({ guild_war: 20 }),
       storage_policy: { images_per_item: 5 },
       absence_policy: { max_span_days: 366, max_entries_per_user: 20 },
     });
   });
 
-  it("returns analytics settings from D1 site config for admin config", async () => {
+  it("keeps analytics settings out of general admin site config", async () => {
     const { service } = createService([[SEEDED_SITE_ROW], [SEEDED_ONBOARDING_ROW]]);
 
     const result = await service.getAdminConfig();
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data.site.analytics_settings).toEqual({
-      reference_duration_minutes: 45,
-      modifier_weights: { kills: 0.7, basehp: 0.3 },
+    expect(result.data.site).not.toHaveProperty("analytics_settings");
+  });
+
+  it("returns analytics settings through the dedicated analytics API service", async () => {
+    const { service } = createService([[SEEDED_SITE_ROW]]);
+
+    const result = await service.getAnalyticsSettings();
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        reference_duration_minutes: 45,
+        modifier_weights: { kills: 0.7, basehp: 0.3 },
+      },
     });
   });
 
@@ -198,13 +199,11 @@ describe("SiteConfigService", () => {
 
     const result = await service.updateAdminConfig("admin-1", {
       site_name: "New Guild",
-      site_logo_url: "/new.webp",
     });
 
     expect(result.ok).toBe(true);
     expect(calls.set).toHaveBeenCalledWith(expect.objectContaining({
       siteName: "New Guild",
-      siteLogoUrl: "/new.webp",
     }));
     expect(deps.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({
       entityType: "site_config",

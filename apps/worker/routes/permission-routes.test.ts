@@ -96,6 +96,16 @@ vi.mock("drizzle-orm/d1", () => ({
   drizzle: vi.fn(() => ({})),
 }));
 
+function createPolicyDb() {
+  return {
+    prepare: vi.fn(() => ({
+      bind: vi.fn(() => ({
+        first: vi.fn().mockResolvedValue(null),
+      })),
+    })),
+  };
+}
+
 beforeEach(() => {
   fakeCacheStore.clear();
   mocks.requirePermission.mockReset();
@@ -157,7 +167,7 @@ describe("gallery permission mapping", () => {
     const form = new FormData();
     form.append("files", new File(["<html>not an image</html>"], "fake.png", { type: "image/png" }));
 
-    const result = await galleryRoutes.request("/images", { method: "POST", body: form }, { DB: {}, MEDIA: {} });
+    const result = await galleryRoutes.request("/images", { method: "POST", body: form }, { DB: createPolicyDb(), MEDIA: {} });
 
     expect(result.status).toBe(400);
     expect(galleryUploadImages).not.toHaveBeenCalled();
@@ -227,21 +237,29 @@ describe("search route visibility", () => {
     const { searchRoutes } = await import("./search");
     mocks.getRequestUser.mockResolvedValueOnce(null);
 
-    const result = await searchRoutes.request("/?q=ab", { method: "GET" }, { DB: {} });
+    const result = await searchRoutes.request("/?q=ab", { method: "GET" }, { DB: createPolicyDb() });
 
     expect(result.status).toBe(200);
-    expect(searchServiceMethods.search).toHaveBeenCalledWith({ query: "ab", limit: undefined });
+    expect(searchServiceMethods.search).toHaveBeenCalledWith({
+      query: "ab",
+      limit: undefined,
+      features: expect.objectContaining({ events: true, guildWar: true, wiki: true }),
+    });
   });
 
   it("delegates query parsing to SearchService for authenticated requests", async () => {
     const { searchRoutes } = await import("./search");
     mocks.getRequestUser.mockResolvedValueOnce({ id: "u-1", role: "member", permissions: new Set() });
 
-    const result = await searchRoutes.request("/?q=%20ab%20&limit=100", { method: "GET" }, { DB: {} });
+    const result = await searchRoutes.request("/?q=%20ab%20&limit=100", { method: "GET" }, { DB: createPolicyDb() });
     const body = await result.json();
 
     expect(result.status).toBe(200);
-    expect(searchServiceMethods.search).toHaveBeenCalledWith({ query: " ab ", limit: "100" });
+    expect(searchServiceMethods.search).toHaveBeenCalledWith({
+      query: " ab ",
+      limit: "100",
+      features: expect.objectContaining({ events: true, guildWar: true, wiki: true }),
+    });
     expect(body).toEqual({ data: [{ id: "result-1", title: "Result", subtitle: "Search", type: "wiki", to: "/wiki" }] });
   });
 });

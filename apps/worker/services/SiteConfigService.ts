@@ -3,7 +3,6 @@ import {
   DEFAULT_SITE_ABSENCE_POLICY,
   DEFAULT_SITE_ANALYTICS_SETTINGS,
   DEFAULT_SITE_MEDIA_POLICY,
-  DEFAULT_SITE_PAGINATION_POLICY,
   DEFAULT_SITE_STORAGE_POLICY,
   adminSiteConfigResponseSchema,
   memberOnboardingResponseSchema,
@@ -14,7 +13,6 @@ import {
   siteAnalyticsSettingsSchema,
   siteConfigSchema,
   siteMediaPolicySchema,
-  sitePaginationPolicySchema,
   siteStoragePolicySchema,
   updateMemberOnboardingSchema,
   updateOnboardingConfigSchema,
@@ -76,7 +74,6 @@ function mapSiteConfig(row: SiteConfigRow | null, deps: SiteConfigDeps) {
     site_logo_url: row?.siteLogoUrl ?? deps.envSiteLogoUrl,
     features: parseJsonOrDefault(row?.featureFlagsJson, featureFlagsSchema, DEFAULT_FEATURE_FLAGS),
     media_policy: parseJsonOrDefault(row?.mediaPolicyJson, siteMediaPolicySchema, DEFAULT_SITE_MEDIA_POLICY),
-    pagination_policy: parseJsonOrDefault(row?.paginationPolicyJson, sitePaginationPolicySchema, DEFAULT_SITE_PAGINATION_POLICY),
     storage_policy: parseJsonOrDefault(row?.storagePolicyJson, siteStoragePolicySchema, DEFAULT_SITE_STORAGE_POLICY),
     absence_policy: parseJsonOrDefault(row?.absencePolicyJson, siteAbsencePolicySchema, DEFAULT_SITE_ABSENCE_POLICY),
     analytics_settings: parseJsonOrDefault(row?.analyticsSettingsJson, siteAnalyticsSettingsSchema, DEFAULT_SITE_ANALYTICS_SETTINGS),
@@ -232,16 +229,13 @@ export class SiteConfigService {
     return ok(next);
   }
 
-  async updateAdminConfig(actorId: string, input: UpdateSiteConfigPayload & { onboarding?: UpdateOnboardingConfigPayload }): Promise<ServiceResult<AdminSiteConfigResponse>> {
+  async updateAdminConfig(actorId: string, input: UpdateSiteConfigPayload): Promise<ServiceResult<AdminSiteConfigResponse>> {
     const siteInput = {
       ...(input.site_name !== undefined ? { site_name: input.site_name } : {}),
-      ...(input.site_logo_url !== undefined ? { site_logo_url: input.site_logo_url } : {}),
       ...(input.features !== undefined ? { features: input.features } : {}),
       ...(input.media_policy !== undefined ? { media_policy: input.media_policy } : {}),
-      ...(input.pagination_policy !== undefined ? { pagination_policy: input.pagination_policy } : {}),
       ...(input.storage_policy !== undefined ? { storage_policy: input.storage_policy } : {}),
       ...(input.absence_policy !== undefined ? { absence_policy: input.absence_policy } : {}),
-      ...(input.analytics_settings !== undefined ? { analytics_settings: input.analytics_settings } : {}),
     };
     const siteFieldCount = Object.keys(siteInput).length;
     if (siteFieldCount > 0) {
@@ -252,7 +246,6 @@ export class SiteConfigService {
     const nowIso = this.nowIso();
     const sitePatch: Partial<typeof siteConfig.$inferInsert> = { updatedAt: nowIso };
     if (input.site_name !== undefined) sitePatch.siteName = input.site_name.trim();
-    if (input.site_logo_url !== undefined) sitePatch.siteLogoUrl = input.site_logo_url.trim();
     if (input.features !== undefined) {
       const current = mapSiteConfig(previous, this.deps);
       sitePatch.featureFlagsJson = JSON.stringify({ ...current.features, ...input.features });
@@ -272,10 +265,6 @@ export class SiteConfigService {
         },
       });
     }
-    if (input.pagination_policy !== undefined) {
-      const current = mapSiteConfig(previous, this.deps);
-      sitePatch.paginationPolicyJson = JSON.stringify({ ...current.pagination_policy, ...input.pagination_policy });
-    }
     if (input.storage_policy !== undefined) {
       const current = mapSiteConfig(previous, this.deps);
       sitePatch.storagePolicyJson = JSON.stringify({ ...current.storage_policy, ...input.storage_policy });
@@ -284,18 +273,6 @@ export class SiteConfigService {
       const current = mapSiteConfig(previous, this.deps);
       sitePatch.absencePolicyJson = JSON.stringify({ ...current.absence_policy, ...input.absence_policy });
     }
-    if (input.analytics_settings !== undefined) {
-      const current = mapSiteConfig(previous, this.deps);
-      sitePatch.analyticsSettingsJson = JSON.stringify(normalizeAnalyticsWeights(siteAnalyticsSettingsSchema.parse({
-        ...current.analytics_settings,
-        ...input.analytics_settings,
-        modifier_weights: {
-          ...current.analytics_settings.modifier_weights,
-          ...(input.analytics_settings.modifier_weights ?? {}),
-        },
-      })));
-    }
-
     if (siteFieldCount > 0) {
       if (previous) {
         await this.db.update(siteConfig).set(sitePatch).where(eq(siteConfig.id, DEFAULT_ID));
@@ -306,7 +283,6 @@ export class SiteConfigService {
           siteLogoUrl: sitePatch.siteLogoUrl ?? this.deps.envSiteLogoUrl,
           featureFlagsJson: sitePatch.featureFlagsJson ?? JSON.stringify(DEFAULT_FEATURE_FLAGS),
           mediaPolicyJson: sitePatch.mediaPolicyJson ?? JSON.stringify(DEFAULT_SITE_MEDIA_POLICY),
-          paginationPolicyJson: sitePatch.paginationPolicyJson ?? JSON.stringify(DEFAULT_SITE_PAGINATION_POLICY),
           storagePolicyJson: sitePatch.storagePolicyJson ?? JSON.stringify(DEFAULT_SITE_STORAGE_POLICY),
           absencePolicyJson: sitePatch.absencePolicyJson ?? JSON.stringify(DEFAULT_SITE_ABSENCE_POLICY),
           analyticsSettingsJson: sitePatch.analyticsSettingsJson ?? JSON.stringify(DEFAULT_SITE_ANALYTICS_SETTINGS),
@@ -325,11 +301,6 @@ export class SiteConfigService {
       });
     }
 
-    if (input.onboarding !== undefined) {
-      const updated = await this.updateOnboardingConfig(actorId, input.onboarding);
-      if (!updated.ok) return updated;
-    }
-
     return this.getAdminConfig();
   }
 
@@ -338,14 +309,14 @@ export class SiteConfigService {
     const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"];
     if (!allowedTypes.includes(file.type)) return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
     const siteRow = await this.getSiteRow();
-    const maxLogoBytes = mapSiteConfig(siteRow, this.deps).media_policy.max_file_size_bytes.profile_image;
+    const maxLogoBytes = mapSiteConfig(siteRow, this.deps).media_policy.max_file_size_bytes.site_logo;
     if (file.size > maxLogoBytes) return err("VALIDATION_ERROR", `Logo exceeds ${maxLogoBytes} bytes`);
     const stored = await captureUploadValidation(() => this.deps.storeSiteLogo!(file));
     if (!stored.ok) return stored;
 
     const previousKey = siteLogoKeyFromUrl(siteRow?.siteLogoUrl ?? this.deps.envSiteLogoUrl);
     const nextUrl = siteLogoUrlForKey(stored.data);
-    const updated = await this.updateAdminConfig(actorId, { site_logo_url: nextUrl });
+    const updated = await this.updateSiteLogoUrl(actorId, nextUrl);
     if (!updated.ok) {
       if (this.deps.deleteMediaObject) await this.deps.deleteMediaObject(stored.data);
       return updated;
@@ -480,7 +451,6 @@ export class SiteConfigService {
       siteLogoUrl: this.deps.envSiteLogoUrl,
       featureFlagsJson: JSON.stringify(DEFAULT_FEATURE_FLAGS),
       mediaPolicyJson: JSON.stringify(DEFAULT_SITE_MEDIA_POLICY),
-      paginationPolicyJson: JSON.stringify(DEFAULT_SITE_PAGINATION_POLICY),
       storagePolicyJson: JSON.stringify(DEFAULT_SITE_STORAGE_POLICY),
       absencePolicyJson: JSON.stringify(DEFAULT_SITE_ABSENCE_POLICY),
       analyticsSettingsJson: JSON.stringify(DEFAULT_SITE_ANALYTICS_SETTINGS),
@@ -488,6 +458,23 @@ export class SiteConfigService {
       updatedAt: nowIso,
     });
     return this.getSiteRow();
+  }
+
+  private async updateSiteLogoUrl(actorId: string, siteLogoUrl: string): Promise<ServiceResult<AdminSiteConfigResponse>> {
+    await this.ensureSiteRow();
+    await this.db.update(siteConfig).set({
+      siteLogoUrl,
+      updatedAt: this.nowIso(),
+    }).where(eq(siteConfig.id, DEFAULT_ID));
+    await this.deps.writeAuditLog({
+      entityType: "site_config",
+      action: "update",
+      actorId,
+      entityId: DEFAULT_ID,
+      diffTitle: "Site Config",
+      detailText: JSON.stringify({ fields: ["siteLogoUrl"] }),
+    });
+    return this.getAdminConfig();
   }
 
   private async getOnboardingRow(): Promise<OnboardingConfigRow | null> {

@@ -11,7 +11,6 @@ export const siteConfig = sqliteTable("site_config", {
   siteLogoUrl: text("site_logo_url").notNull(),
   featureFlagsJson: text("feature_flags_json").notNull(),
   mediaPolicyJson: text("media_policy_json").notNull(),
-  paginationPolicyJson: text("pagination_policy_json").notNull(),
   storagePolicyJson: text("storage_policy_json").notNull(),
   absencePolicyJson: text("absence_policy_json").notNull(),
   analyticsSettingsJson: text("analytics_settings_json").notNull(),

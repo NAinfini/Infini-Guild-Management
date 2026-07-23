@@ -17,13 +17,16 @@ export const LIMITS = {
       gallery: 20,
       wiki: 10,
     },
+    configurableQuotaMax: 100,
     maxFileSize: {
+      siteLogo: 2 * 1024 * 1024,
       profileImage: 5 * 1024 * 1024,
       profileAudio: 20 * 1024 * 1024,
       announcementImage: 5 * 1024 * 1024,
       wikiImage: 5 * 1024 * 1024,
       eventImage: 5 * 1024 * 1024,
       galleryImage: 10 * 1024 * 1024,
+      storageImage: 5 * 1024 * 1024,
     },
   },
   content: {
@@ -83,3 +86,8 @@ export const LIMITS = {
 } as const;
 
 export type Limits = typeof LIMITS;
+
+// Multipart requests need room for field names and boundaries below the
+// request-wide upload ceiling.
+export const MAX_CONFIGURABLE_MEDIA_FILE_BYTES =
+  LIMITS.requestBody.upload - LIMITS.requestBody.ordinary;

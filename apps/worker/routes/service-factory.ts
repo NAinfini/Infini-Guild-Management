@@ -1,11 +1,14 @@
 import type { Context } from "hono";
 import {
+  DEFAULT_FEATURE_FLAGS,
   DEFAULT_SITE_ABSENCE_POLICY,
   DEFAULT_SITE_MEDIA_POLICY,
   DEFAULT_SITE_STORAGE_POLICY,
+  featureFlagsSchema,
   siteAbsencePolicySchema,
   siteMediaPolicySchema,
   siteStoragePolicySchema,
+  type FeatureFlags,
   type SiteAbsencePolicy,
   type SiteMediaPolicy,
   type SiteStoragePolicy,
@@ -15,7 +18,7 @@ import { writeAuditLog, type WriteAuditLogInput } from "../services/audit";
 import { publishEntityChanged, publishAnnouncementPublished } from "../services/push";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 
-type PolicyColumn = "absence_policy_json" | "media_policy_json" | "storage_policy_json";
+type PolicyColumn = "absence_policy_json" | "feature_flags_json" | "media_policy_json" | "storage_policy_json";
 
 async function readSitePolicy<T>(
   c: Context,
@@ -39,12 +42,26 @@ export function getAbsencePolicy(c: Context): Promise<SiteAbsencePolicy> {
   return readSitePolicy(c, "absence_policy_json", siteAbsencePolicySchema, DEFAULT_SITE_ABSENCE_POLICY);
 }
 
+export function getFeatureFlags(c: Context): Promise<FeatureFlags> {
+  return readSitePolicy(c, "feature_flags_json", featureFlagsSchema, DEFAULT_FEATURE_FLAGS);
+}
+
 export function getMediaPolicy(c: Context): Promise<SiteMediaPolicy> {
   return readSitePolicy(c, "media_policy_json", siteMediaPolicySchema, DEFAULT_SITE_MEDIA_POLICY);
 }
 
 export function getStoragePolicy(c: Context): Promise<SiteStoragePolicy> {
   return readSitePolicy(c, "storage_policy_json", siteStoragePolicySchema, DEFAULT_SITE_STORAGE_POLICY);
+}
+
+export async function hasMediaQuotaCapacity(
+  c: Context,
+  prefix: string,
+  incomingCount: number,
+  quota: number,
+): Promise<boolean> {
+  const result = await (c.env as Bindings).MEDIA.list({ prefix, limit: quota });
+  return result.objects.length + incomingCount <= quota;
 }
 
 export function commonDeps(c: Context) {

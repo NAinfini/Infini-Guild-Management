@@ -1,4 +1,11 @@
-import { createEventSchema, eventSchema, updateEventSchema, LIMITS } from "@guild/shared";
+import {
+  DEFAULT_SITE_MEDIA_POLICY,
+  createEventSchema,
+  eventSchema,
+  updateEventSchema,
+  LIMITS,
+  type SiteMediaPolicy,
+} from "@guild/shared";
 import type { WriteAuditLogInput as AuditLogInput } from "../audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
@@ -66,8 +73,6 @@ export type EventRow = {
 };
 
 const MAX_EVENT_ATTACHMENTS = LIMITS.content.eventAttachments.max;
-const MAX_EVENT_IMAGE_BYTES = LIMITS.media.maxFileSize.eventImage;
-
 export type EventServiceDeps = {
   getEventById: (eventId: string) => Promise<EventRow | null>;
   getUsername: (userId: string) => Promise<string | null>;
@@ -76,6 +81,7 @@ export type EventServiceDeps = {
   now?: () => string;
   createId?: () => string;
   createImageKey?: (eventId: string) => string;
+  getMediaPolicy?: () => Promise<SiteMediaPolicy>;
 };
 
 export type CreateEventInput = z.infer<typeof createEventSchema>;
@@ -437,12 +443,14 @@ export class EventCrudService {
       return err("VALIDATION_ERROR", `Max ${MAX_EVENT_ATTACHMENTS} attachments per event`);
     }
 
+    const mediaPolicy = await (this.deps.getMediaPolicy?.() ?? Promise.resolve(DEFAULT_SITE_MEDIA_POLICY));
+    const maxEventImageBytes = mediaPolicy.max_file_size_bytes.event_image;
     const keys: string[] = [];
     for (const file of files) {
       if (!file.type.startsWith("image/")) {
         return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
       }
-      if (file.size > MAX_EVENT_IMAGE_BYTES) {
+      if (file.size > maxEventImageBytes) {
         return err("VALIDATION_ERROR", `File too large: ${file.name}`);
       }
       const key = this.deps.createImageKey?.(eventId) ?? `events/${eventId}/images/${Date.now()}_${nanoid()}`;

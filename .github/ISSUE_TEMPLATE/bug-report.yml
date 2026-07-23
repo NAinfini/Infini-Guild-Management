@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a reproducible problem after setup succeeds.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For installation problems, use the Setup help form. For vulnerabilities, use Security Advisories instead of a public issue.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Sign in as...
+        2. Open...
+        3. Click...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and deployment
+      placeholder: Chrome 138, workers.dev deployment, latest main
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed all private guild data and credentials from this report.
+          required: true

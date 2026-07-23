@@ -60,5 +60,6 @@
   "dice.noHistory": "暂无记录，点击投掷！",
   "dice.result": "{{count}}d{{sides}} → {{results}} = {{total}}",
   "equipCalc.title": "装备计算器",
-  "equipCalc.description": "规划和优化你的装备搭配"
+  "equipCalc.description": "规划和优化你的装备搭配",
+  "equipCalc.versionLabel": "数据版本"
 }

@@ -1,4 +1,5 @@
 import type {
+  FeatureFlags,
   MemberProfile,
   User,
 } from "@guild/shared";
@@ -23,6 +24,7 @@ import { apiRequest } from "./api/client";
 import { fetchEventDetail } from "./api/queries/events";
 import { AppShell } from "./components/layout/AppShell";
 import { useAuthStore } from "./stores/auth";
+import { useSiteConfigStore } from "./stores/site-config";
 import { buildEventWorkbenchSearch, EVENTS_ROUTE_SEARCH_SCHEMA, sanitizeEventsRouteSearch } from "./utils/event-navigation";
 import { isExternalViewSearch } from "./utils/external-view";
 
@@ -37,6 +39,18 @@ const GUILD_WAR_SEARCH_SCHEMA = z.object({
   tab: z.enum(["active", "history", "analytics"]).optional(),
   warName: z.string().optional(),
 });
+
+export function isRouteFeatureEnabled(feature: keyof FeatureFlags): boolean {
+  const features = useSiteConfigStore.getState().features;
+  if (feature === "equipmentCalc") return features.tools && features.equipmentCalc;
+  return features[feature];
+}
+
+function requireRouteFeature(feature: keyof FeatureFlags): void {
+  if (!isRouteFeatureEnabled(feature)) {
+    throw redirect({ to: "/" });
+  }
+}
 
 const LazyAdminPage = lazy(() => import("./components/pages/AdminPage").then((mod) => ({ default: mod.AdminPage })));
 const LazyAnnouncementsPage = lazy(() =>
@@ -288,6 +302,7 @@ const publicSettingsRoute = createRoute({
 const publicToolsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tools",
+  beforeLoad: () => requireRouteFeature("tools"),
   component: ToolsRoutePage,
 });
 
@@ -336,6 +351,7 @@ const dashboardRoute = createRoute({
 const eventsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/events",
+  beforeLoad: () => requireRouteFeature("events"),
   validateSearch: (search) => EVENTS_ROUTE_SEARCH_SCHEMA.parse(search),
   component: EventsRoutePage,
 });
@@ -344,6 +360,7 @@ const eventDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/events/$id",
   beforeLoad: async ({ params }) => {
+    requireRouteFeature("events");
     let detailTitle: string | undefined;
     try {
       const detail = await fetchEventDetail(params.id);
@@ -384,12 +401,14 @@ const profileRoute = createRoute({
 const announcementsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/announcements",
+  beforeLoad: () => requireRouteFeature("announcements"),
   component: AnnouncementsRoutePage,
 });
 
 const guildWarRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/guild-war",
+  beforeLoad: () => requireRouteFeature("guildWar"),
   validateSearch: (search) => GUILD_WAR_SEARCH_SCHEMA.parse(search),
   component: GuildWarRoutePage,
 });
@@ -397,24 +416,28 @@ const guildWarRoute = createRoute({
 const galleryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/gallery",
+  beforeLoad: () => requireRouteFeature("gallery"),
   component: GalleryRoutePage,
 });
 
 const storageRoute = createRoute({
   getParentRoute: () => authenticatedOnlyRoute,
   path: "/storage",
+  beforeLoad: () => requireRouteFeature("storage"),
   component: StorageRoutePage,
 });
 
 const wikiRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/wiki",
+  beforeLoad: () => requireRouteFeature("wiki"),
   component: WikiRoutePage,
 });
 
 const wikiSlugRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/wiki/$slug",
+  beforeLoad: () => requireRouteFeature("wiki"),
   component: WikiRoutePage,
 });
 

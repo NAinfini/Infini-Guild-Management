@@ -1,5 +1,6 @@
 {
   "title": "装备计算器",
+  "dataVersion": "数据版本",
   "description": "规划和优化你的装备搭配",
   "pool": {
     "title": "装备池",

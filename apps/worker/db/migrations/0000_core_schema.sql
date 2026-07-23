@@ -265,7 +265,6 @@ CREATE TABLE IF NOT EXISTS site_config (
   site_logo_url TEXT NOT NULL,
   feature_flags_json TEXT NOT NULL,
   media_policy_json TEXT NOT NULL,
-  pagination_policy_json TEXT NOT NULL,
   storage_policy_json TEXT NOT NULL,
   absence_policy_json TEXT NOT NULL,
   analytics_settings_json TEXT NOT NULL,
@@ -495,7 +494,6 @@ INSERT OR IGNORE INTO site_config (
   site_logo_url,
   feature_flags_json,
   media_policy_json,
-  pagination_policy_json,
   storage_policy_json,
   absence_policy_json,
   analytics_settings_json
@@ -505,8 +503,7 @@ INSERT OR IGNORE INTO site_config (
     'Infini 公会',
     '/logo.webp',
     '{"announcements":true,"events":true,"guildWar":true,"gallery":true,"wiki":true,"tools":true,"equipmentCalc":true,"storage":true}',
-    '{"max_file_size_bytes":{"profile_image":5242880,"profile_audio":20971520,"announcement_image":5242880,"wiki_image":5242880,"event_image":5242880,"gallery_image":10485760},"quotas":{"profile":10,"announcement":10,"gallery":20,"wiki":10}}',
-    '{"admin":50,"announcements":50,"events":100,"gallery":24,"guild_war":20,"users":500,"wiki":50}',
+    '{"max_file_size_bytes":{"site_logo":2097152,"profile_image":5242880,"profile_audio":20971520,"announcement_image":5242880,"wiki_image":5242880,"event_image":5242880,"gallery_image":10485760,"storage_image":5242880},"quotas":{"profile":10,"announcement":10,"gallery":20,"wiki":10}}',
     '{"images_per_item":5}',
     '{"max_span_days":366,"max_entries_per_user":20}',
     '{"reference_duration_minutes":30,"modifier_weights":{"credits":0.3,"kda":0.3,"basehp":0.15,"towers":0.1,"distance":0.15}}'

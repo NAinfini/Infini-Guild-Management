@@ -1,7 +1,10 @@
 import {
   DEFAULT_FEATURE_FLAGS,
+  DEFAULT_SITE_ABSENCE_POLICY,
   DEFAULT_SITE_MEDIA_POLICY,
   DEFAULT_SITE_STORAGE_POLICY,
+  LIMITS,
+  MAX_CONFIGURABLE_MEDIA_FILE_BYTES,
   type AdminSiteConfigResponse,
   type FeatureFlags,
   type OnboardingChecklistItem,
@@ -18,8 +21,10 @@ type AdminSiteConfigSectionProps = {
   data: AdminSiteConfigResponse | null;
   loading: boolean;
   saving: boolean;
+  onboardingSaving: boolean;
   logoUploading: boolean;
-  onSaveSite: (payload: UpdateSiteConfigPayload & { onboarding?: UpdateOnboardingConfigPayload }) => void;
+  onSaveSite: (payload: UpdateSiteConfigPayload) => void;
+  onSaveOnboarding: (payload: UpdateOnboardingConfigPayload) => void;
   onUploadLogo: (file: File) => void;
 };
 
@@ -37,7 +42,7 @@ type SiteConfigInfoProps = {
   badge?: string;
 };
 
-const FEATURE_KEYS: Array<keyof FeatureFlags> = ["announcements", "events", "guildWar", "gallery", "wiki", "tools", "storage"];
+const FEATURE_KEYS: Array<keyof FeatureFlags> = ["announcements", "events", "guildWar", "gallery", "wiki", "tools", "equipmentCalc", "storage"];
 
 const FEATURE_INFO_META: Record<keyof FeatureFlags, { icon: ReactNode; color: string }> = {
   announcements: { icon: <BookTextIcon size={16} />, color: "yellow" },
@@ -97,8 +102,10 @@ export function AdminSiteConfigSection({
   data,
   loading,
   saving,
+  onboardingSaving,
   logoUploading,
   onSaveSite,
+  onSaveOnboarding,
   onUploadLogo,
 }: AdminSiteConfigSectionProps) {
   const { t } = useTranslation("admin");
@@ -112,6 +119,7 @@ export function AdminSiteConfigSection({
   const [features, setFeatures] = useState<FeatureFlags>({ ...DEFAULT_FEATURE_FLAGS });
   const [mediaPolicy, setMediaPolicy] = useState<AdminSiteConfigResponse["site"]["media_policy"]>(DEFAULT_SITE_MEDIA_POLICY);
   const [storagePolicy, setStoragePolicy] = useState<AdminSiteConfigResponse["site"]["storage_policy"]>(DEFAULT_SITE_STORAGE_POLICY);
+  const [absencePolicy, setAbsencePolicy] = useState<AdminSiteConfigResponse["site"]["absence_policy"]>(DEFAULT_SITE_ABSENCE_POLICY);
 
   useEffect(() => {
     if (!data) return;
@@ -125,6 +133,7 @@ export function AdminSiteConfigSection({
     setFeatures(data.site.features ?? DEFAULT_FEATURE_FLAGS);
     setMediaPolicy(data.site.media_policy ?? DEFAULT_SITE_MEDIA_POLICY);
     setStoragePolicy(data.site.storage_policy ?? DEFAULT_SITE_STORAGE_POLICY);
+    setAbsencePolicy(data.site.absence_policy ?? DEFAULT_SITE_ABSENCE_POLICY);
   }, [data]);
 
   const validChecklist = useMemo(
@@ -167,13 +176,17 @@ export function AdminSiteConfigSection({
       features,
       media_policy: mediaPolicy,
       storage_policy: storagePolicy,
-      onboarding: {
-        title: onboardingTitle,
-        body_json: onboardingBody,
-        checklist: validChecklist,
-        enabled: onboardingEnabled,
-        require_ack: requireAck,
-      },
+      absence_policy: absencePolicy,
+    });
+  };
+
+  const handleSaveOnboarding = () => {
+    onSaveOnboarding({
+      title: onboardingTitle,
+      body_json: onboardingBody,
+      checklist: validChecklist,
+      enabled: onboardingEnabled,
+      require_ack: requireAck,
     });
   };
 
@@ -311,6 +324,7 @@ export function AdminSiteConfigSection({
                     label={t(`siteConfig.fileSize.${key}`)}
                     value={formatMb(value)}
                     min={1}
+                    max={formatMb(MAX_CONFIGURABLE_MEDIA_FILE_BYTES)}
                     suffix=" MB"
                     hideControls
                     onChange={(next) => setMediaPolicy((current) => ({
@@ -338,6 +352,7 @@ export function AdminSiteConfigSection({
                     label={t(`siteConfig.quota.${key}`)}
                     value={value}
                     min={1}
+                    max={LIMITS.media.configurableQuotaMax}
                     hideControls
                     onChange={(next) => setMediaPolicy((current) => ({
                       ...current,
@@ -351,7 +366,38 @@ export function AdminSiteConfigSection({
                   label={t("siteConfig.storage.imagesPerItem")}
                   value={storagePolicy.images_per_item}
                   min={1}
+                  max={LIMITS.content.storageImagesPerItem.max}
                   onChange={(next) => setStoragePolicy((current) => ({ ...current, images_per_item: numberOr(next, current.images_per_item) }))}
+                />
+              </SimpleGrid>
+            </Stack>
+
+            <Stack gap={12} className="site-config-subpanel">
+              <Text size="sm" fw={700}>{t("siteConfig.policy.absences")}</Text>
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                <NumberInput
+                  size="sm"
+                  hideControls
+                  label={t("siteConfig.absence.maxSpanDays")}
+                  value={absencePolicy.max_span_days}
+                  min={1}
+                  max={LIMITS.content.absenceSpanDays.max}
+                  onChange={(next) => setAbsencePolicy((current) => ({
+                    ...current,
+                    max_span_days: numberOr(next, current.max_span_days),
+                  }))}
+                />
+                <NumberInput
+                  size="sm"
+                  hideControls
+                  label={t("siteConfig.absence.maxEntriesPerUser")}
+                  value={absencePolicy.max_entries_per_user}
+                  min={1}
+                  max={LIMITS.content.absencesPerUser.max}
+                  onChange={(next) => setAbsencePolicy((current) => ({
+                    ...current,
+                    max_entries_per_user: numberOr(next, current.max_entries_per_user),
+                  }))}
                 />
               </SimpleGrid>
             </Stack>
@@ -370,6 +416,15 @@ export function AdminSiteConfigSection({
               />
             </div>
             <Text size="xs" fw={700} c="dimmed">{t("siteConfig.summary.onboarding", { count: validChecklist.length })}</Text>
+            <Button
+              size="compact-sm"
+              variant="light"
+              loading={onboardingSaving}
+              leftSection={<SaveIcon size={14} />}
+              onClick={handleSaveOnboarding}
+            >
+              {t("siteConfig.action.saveOnboarding")}
+            </Button>
           </div>
 
           <div className="site-config-onboarding-layout">

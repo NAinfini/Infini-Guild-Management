@@ -6,6 +6,9 @@
     "@guild/shared/*": "../shared/*"
   },
   "compatibility_date": "2025-01-01",
+  "secrets": {
+    "required": ["SIGNING_SECRET"]
+  },
   // Static assets are served through the Worker so the SPA shell can receive
   // runtime site metadata. Keep placement local to the visitor; Smart Placement
   // can move asset binding reads away from China users and increase latency.
@@ -18,7 +21,7 @@
   "vars": {
     "ENVIRONMENT": "development",
     "PORTAL_ORIGIN": "http://localhost:5173",
-    "SITE_NAME": "YOUR_SITE_NAME",
+    "SITE_NAME": "My Guild",
     "SITE_LOGO_URL": "/guild-logo.webp"
   },
   "d1_databases": [
@@ -57,15 +60,17 @@
   },
 
   // ── Production environment ──────────────────────────────────────────
-  // Deploy with: wrangler deploy --env production
-  // Secrets (set via `wrangler secret put --env production`):
-  //   SIGNING_SECRET
+  // Start with workers.dev so a custom domain is optional.
+  // Deploy with: pnpm deploy:production
   "env": {
     "production": {
-      "workers_dev": false,
-      "routes": [
-        { "pattern": "YOUR_DOMAIN.com", "custom_domain": true }
-      ],
+      "workers_dev": true,
+      // For a custom domain managed by Cloudflare, change workers_dev to false
+      // and uncomment the next line:
+      // "routes": [{ "pattern": "guild.example.com", "custom_domain": true }],
+      "secrets": {
+        "required": ["SIGNING_SECRET"]
+      },
       "assets": {
         "directory": "../portal/dist",
         "not_found_handling": "single-page-application",
@@ -74,8 +79,10 @@
       },
       "vars": {
         "ENVIRONMENT": "production",
-        "PORTAL_ORIGIN": "https://YOUR_DOMAIN.com",
-        "SITE_NAME": "YOUR_SITE_NAME",
+        // Same-origin deployments can leave this empty. Set it only when a
+        // separately hosted portal must call this Worker.
+        "PORTAL_ORIGIN": "",
+        "SITE_NAME": "My Guild",
         "SITE_LOGO_URL": "/guild-logo.webp"
       },
       "r2_buckets": [
@@ -103,11 +110,12 @@
     },
 
     // ── Staging environment ────────────────────────────────────────────
-    // Deploy with: wrangler deploy --env staging
-    // Secrets (set via `wrangler secret put --env staging`):
-    //   SIGNING_SECRET
+    // Deploy with: pnpm deploy:staging
     "staging": {
       "workers_dev": true,
+      "secrets": {
+        "required": ["SIGNING_SECRET"]
+      },
       "assets": {
         "directory": "../portal/dist",
         "not_found_handling": "single-page-application",
@@ -116,8 +124,8 @@
       },
       "vars": {
         "ENVIRONMENT": "staging",
-        "PORTAL_ORIGIN": "https://YOUR_STAGING_DOMAIN.com",
-        "SITE_NAME": "YOUR_SITE_NAME",
+        "PORTAL_ORIGIN": "",
+        "SITE_NAME": "My Guild Staging",
         "SITE_LOGO_URL": "/guild-logo.webp"
       },
       "r2_buckets": [
