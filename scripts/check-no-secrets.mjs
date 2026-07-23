@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const patterns = [
@@ -23,10 +23,10 @@ const ciMode = process.argv.includes("--ci");
 
 let files;
 if (ciMode) {
-  const tracked = execSync("git ls-files -- apps/ scripts/", { encoding: "utf8" }).trim();
+  const tracked = execFileSync("git", ["ls-files", "--", "apps/", "scripts/"], { encoding: "utf8" }).trim();
   files = tracked.split("\n").filter(Boolean);
 } else {
-  const staged = execSync("git diff --cached --name-only --diff-filter=ACM", { encoding: "utf8" }).trim();
+  const staged = execFileSync("git", ["diff", "--cached", "--name-only", "--diff-filter=ACM"], { encoding: "utf8" }).trim();
   if (!staged) process.exit(0);
   files = staged.split("\n").filter(Boolean);
 }
@@ -37,7 +37,7 @@ let failed = false;
 // (.gitignore alone does not untrack files committed before they were ignored.)
 const FORBIDDEN_TRACKED = [/(^|\/)wrangler\.jsonc$/, /(^|\/)\.dev\.vars$/, /(^|\/)\.env(\.|$)/];
 try {
-  const allTracked = execSync("git ls-files", { encoding: "utf8" }).trim().split("\n").filter(Boolean);
+  const allTracked = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
   for (const file of allTracked) {
     if (FORBIDDEN_TRACKED.some((re) => re.test(file))) {
       console.error(`[secret-check] ❌ ${file} is committed to git — it may contain real resource IDs or secrets. Run: git rm --cached "${file}"`);
@@ -54,7 +54,7 @@ for (const file of files) {
 
   let content;
   try {
-    content = ciMode ? readFileSync(file, "utf8") : execSync(`git show :${file}`, { encoding: "utf8" });
+    content = ciMode ? readFileSync(file, "utf8") : execFileSync("git", ["show", `:${file}`], { encoding: "utf8" });
   } catch {
     continue;
   }

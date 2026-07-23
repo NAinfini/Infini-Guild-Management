@@ -1,6 +1,7 @@
 import { activeGame } from "@guild/shared/games";
 import { and, asc, desc, eq, gte, inArray, lte, type SQL } from "drizzle-orm";
 import { warHistory, warTeams } from "../../db/schema";
+import { neutralizeSpreadsheetFormula } from "../../utils/csv";
 import { ok, type ServiceResult } from "../result";
 import {
   GuildWarCoreService,
@@ -15,7 +16,8 @@ import {
 function toCsvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
   const text = String(value);
-  return `"${text.replaceAll('"', '""')}"`;
+  const safe = neutralizeSpreadsheetFormula(text);
+  return `"${safe.replaceAll('"', '""')}"`;
 }
 
 function buildWarHistoryCsv(rows: WarHistoryRow[], creatorMap: Map<string, string>): string {

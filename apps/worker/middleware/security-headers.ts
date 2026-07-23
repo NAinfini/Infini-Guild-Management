@@ -4,6 +4,7 @@ import { EMBED_FRAME_SOURCES } from "@guild/shared/utils/video";
 export const HSTS_VALUE = "max-age=31536000; includeSubDomains; preload";
 export const REFERRER_POLICY_VALUE = "strict-origin-when-cross-origin";
 export const X_CONTENT_TYPE_VALUE = "nosniff";
+export const PERMISSIONS_POLICY_VALUE = "camera=(), microphone=(), geolocation=()";
 
 export function buildSpaHtmlCsp(selfHost: string): string {
   // The splash animation lives in /splash.js (portal public dir), so no
@@ -34,7 +35,7 @@ export async function securityHeadersMiddleware(c: Context, next: Next): Promise
   c.header("X-Frame-Options", "DENY");
   c.header("Strict-Transport-Security", HSTS_VALUE);
   c.header("Referrer-Policy", REFERRER_POLICY_VALUE);
-  c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  c.header("Permissions-Policy", PERMISSIONS_POLICY_VALUE);
   c.header(
     "Content-Security-Policy",
     `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; ${connectSrc}; font-src 'self'; object-src 'none'; ${frameSrc}; frame-ancestors 'none'`,

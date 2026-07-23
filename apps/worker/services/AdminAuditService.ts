@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { auditLog, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, likeEscaped } from "./helpers";
+import { neutralizeSpreadsheetFormula } from "../utils/csv";
 import { parsePage } from "../utils/pagination";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
@@ -150,7 +151,8 @@ function serializeAuditLogRow(row: AuditLogRow) {
 
 function csvCell(value: string | null) {
   const normalized = value ?? "";
-  return `"${normalized.replace(/"/g, "\"\"")}"`;
+  const safe = neutralizeSpreadsheetFormula(normalized);
+  return `"${safe.replace(/"/g, "\"\"")}"`;
 }
 
 function archiveMonthPaths(month: string): { manifestKey: string } {

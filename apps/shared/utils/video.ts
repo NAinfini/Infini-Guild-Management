@@ -1,6 +1,7 @@
 function safeUrl(value: string): URL | null {
   try {
-    return new URL(value);
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed : null;
   } catch {
     return null;
   }
@@ -29,7 +30,7 @@ export const EMBED_FRAME_SOURCES = [
 ] as const;
 
 function hostMatches(host: string, candidates: readonly string[]): boolean {
-  return candidates.some((h) => host.includes(h));
+  return candidates.some((candidate) => host === candidate || host.endsWith(`.${candidate}`));
 }
 
 export function isDirectPlayableVideoUrl(url: string): boolean {
@@ -48,7 +49,7 @@ export function isEmbeddableVideoUrl(url: string): boolean {
     return false;
   }
   const host = parsed.hostname.toLowerCase();
-  if (host.includes("douyin.com")) {
+  if (hostMatches(host, ["douyin.com"])) {
     return false;
   }
   return hostMatches(host, EMBEDDABLE_VIDEO_HOSTS);
@@ -73,32 +74,32 @@ export function toEmbedVideoUrl(url: string): string {
   const host = parsed.hostname.toLowerCase();
   const pathname = parsed.pathname;
 
-  if (host.includes("youtu.be")) {
+  if (hostMatches(host, ["youtu.be"])) {
     const id = pathname.slice(1).split("/")[0] ?? "";
     if (!id) return url;
     return `https://www.youtube.com/embed/${id}`;
   }
 
-  if (host.includes("youtube.com")) {
+  if (hostMatches(host, ["youtube.com"])) {
     const id = parsed.searchParams.get("v") ?? "";
     if (!id) return url;
     return `https://www.youtube.com/embed/${id}`;
   }
 
-  if (host.includes("bilibili.com")) {
+  if (hostMatches(host, ["bilibili.com"])) {
     const segments = pathname.split("/").filter(Boolean);
     const bvid = segments.find((segment) => /^BV/i.test(segment)) ?? "";
     if (!bvid) return url;
     return `https://player.bilibili.com/player.html?bvid=${bvid}`;
   }
 
-  if (host.includes("vimeo.com")) {
+  if (hostMatches(host, ["vimeo.com"])) {
     const id = pathname.split("/").filter(Boolean).at(-1) ?? "";
     if (!id) return url;
     return `https://player.vimeo.com/video/${id}`;
   }
 
-  if (host.includes("tiktok.com")) {
+  if (hostMatches(host, ["tiktok.com"])) {
     const segments = pathname.split("/").filter(Boolean);
     const videoIndex = segments.indexOf("video");
     const videoId = videoIndex >= 0 ? segments[videoIndex + 1] ?? "" : "";
@@ -115,17 +116,17 @@ export function getVideoThumbnailUrl(url: string): string | null {
 
   const host = parsed.hostname.toLowerCase();
 
-  if (host.includes("youtu.be")) {
+  if (hostMatches(host, ["youtu.be"])) {
     const id = parsed.pathname.slice(1).split("/")[0] ?? "";
     return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : null;
   }
 
-  if (host.includes("youtube.com")) {
+  if (hostMatches(host, ["youtube.com"])) {
     const id = parsed.searchParams.get("v") ?? "";
     return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : null;
   }
 
-  if (host.includes("bilibili.com")) {
+  if (hostMatches(host, ["bilibili.com"])) {
     return null;
   }
 

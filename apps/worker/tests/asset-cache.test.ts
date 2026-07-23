@@ -39,6 +39,7 @@ describe("asset response headers", () => {
 
     expect(await response.text()).toContain("<title>Guild</title>");
     expect(response.headers.get("Cache-Control")).toContain("no-transform");
+    expect(response.headers.get("Permissions-Policy")).toContain("camera=()");
   });
 
   it("marks Vite hashed build assets as immutable in browser cache", async () => {

@@ -9,7 +9,7 @@ import { WebSocketDO } from "./durable-objects/WebSocketDO";
 import { etagMiddleware } from "./middleware/etag";
 import { handleAppError } from "./middleware/error-handler";
 import { createRateLimitMiddleware } from "./middleware/rate-limit";
-import { buildSpaHtmlCsp, HSTS_VALUE, REFERRER_POLICY_VALUE, securityHeadersMiddleware, X_CONTENT_TYPE_VALUE } from "./middleware/security-headers";
+import { buildSpaHtmlCsp, HSTS_VALUE, PERMISSIONS_POLICY_VALUE, REFERRER_POLICY_VALUE, securityHeadersMiddleware, X_CONTENT_TYPE_VALUE } from "./middleware/security-headers";
 import { sessionMiddleware } from "./middleware/session";
 import { resolveSession, type SessionUser } from "./services/auth";
 import { adminRoutes } from "./routes/admin";
@@ -304,6 +304,7 @@ export default {
       response.headers.set("X-Frame-Options", "DENY");
       response.headers.set("Strict-Transport-Security", HSTS_VALUE);
       response.headers.set("Referrer-Policy", REFERRER_POLICY_VALUE);
+      response.headers.set("Permissions-Policy", PERMISSIONS_POLICY_VALUE);
       response.headers.set("Content-Security-Policy", buildSpaHtmlCsp(selfHost));
       return response;
     }

@@ -70,6 +70,26 @@ describe("AdminAuditService", () => {
     expect(result.body).toContain("\"admin-user-id\",\"GuildAdmin\"");
   });
 
+  it("neutralizes spreadsheet formulas in CSV exports", async () => {
+    const orderBy = vi.fn().mockResolvedValue([{
+      ...row,
+      diffTitle: "=HYPERLINK(\"https://evil.example\",\"open\")",
+    }]);
+    const where = vi.fn(() => ({ orderBy }));
+    const leftJoin = vi.fn(() => ({ where }));
+    const from = vi.fn(() => ({ leftJoin }));
+    const select = vi.fn(() => ({ from }));
+
+    const result = await createService({ select }).exportAuditLogs("admin-user-id", {
+      format: "csv",
+      start_at: "2026-05-22T00:00:00.000Z",
+      end_at: "2026-05-22T23:59:59.999Z",
+    });
+
+    expect(result.body).toContain("\"'=HYPERLINK(\"\"https://evil.example\"\",\"\"open\"\")\"");
+    expect(result.body).not.toContain("\",\"=HYPERLINK");
+  });
+
   it("rejects an archive token when the authenticated actor does not match", async () => {
     const archiveKey = "audit-archive/2026/05/audit.ndjson.gz";
     const manifest = JSON.stringify({

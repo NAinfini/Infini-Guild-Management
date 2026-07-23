@@ -24,7 +24,7 @@ vi.mock("drizzle-orm/d1", () => ({
 }));
 
 describe("audit log system-test filtering", () => {
-  it("suppresses per-endpoint audit writes from Admin Console system tests", async () => {
+  it("does not let client-controlled system-test headers suppress audit writes", async () => {
     const { c } = createContext({
       "X-System-Test": "admin-console-api",
       "X-System-Test-Audit": "suppress",
@@ -37,8 +37,14 @@ describe("audit log system-test filtering", () => {
       entityId: "event-1",
     });
 
-    expect(c.executionCtx.waitUntil).not.toHaveBeenCalled();
-    expect(dbMock.insert).not.toHaveBeenCalled();
+    expect(c.executionCtx.waitUntil).toHaveBeenCalledTimes(1);
+    expect(dbMock.insert).toHaveBeenCalledTimes(1);
+    expect(dbMock.values).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: "event",
+      action: "create",
+      actorId: "admin-1",
+      entityId: "event-1",
+    }));
   });
 
   it("still writes the durable full system test summary audit entry", async () => {
