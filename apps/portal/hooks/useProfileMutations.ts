@@ -41,8 +41,6 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
         classes: form.classList,
         video_urls: form.videoList,
         images: form.imageList,
-        vacation_start: form.vacationStart || null,
-        vacation_end: form.vacationEnd || null,
         availability: form.availabilityData,
       });
     },

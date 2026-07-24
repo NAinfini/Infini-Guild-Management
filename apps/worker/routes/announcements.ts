@@ -1,29 +1,20 @@
 import {
   ALLOWED_IMAGE_TYPES,
-  FILE_SIZE_LIMITS,
   createAnnouncementSchema,
   hasAnyPermission,
   updateAnnouncementSchema,
 } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import type { Bindings } from "../index";
 import { getRequestUser, requirePermission } from "../middleware/rbac";
-import { writeAuditLog } from "../services/audit";
-import { publishAnnouncementPublished, publishEntityChanged } from "../services/push";
 import { AnnouncementService } from "../services/AnnouncementService";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
+import { hasMediaQuotaCapacity, withMediaAndPublishAnnouncement } from "./service-factory";
 
 export const announcementsRoutes = new Hono();
 
 function getService(c: Context): AnnouncementService {
-  const env = c.env as Bindings;
-  return new AnnouncementService(getDb(c), {
-    media: env.MEDIA,
-    writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (input) => publishEntityChanged(c, input),
-    publishAnnouncementPublished: (input) => publishAnnouncementPublished(c, input),
-  });
+  return new AnnouncementService(getDb(c), withMediaAndPublishAnnouncement(c));
 }
 
 async function requireAnnouncementCreate(c: Context) { return requirePermission(c, "announcements.create"); }
@@ -57,9 +48,7 @@ announcementsRoutes.get("/:id", async (c) => {
 
 announcementsRoutes.post("/", async (c) => {
   const sessionUser = await requireAnnouncementCreate(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = createAnnouncementSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid announcement payload", parsed.error.flatten());
   const result = await getService(c).create(sessionUser.id, parsed.data);
@@ -69,9 +58,7 @@ announcementsRoutes.post("/", async (c) => {
 
 announcementsRoutes.patch("/:id", async (c) => {
   const sessionUser = await requireAnnouncementEdit(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = updateAnnouncementSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid announcement payload", parsed.error.flatten());
   const ifMatchHeader = c.req.header("If-Match");
@@ -82,31 +69,38 @@ announcementsRoutes.patch("/:id", async (c) => {
 
 announcementsRoutes.delete("/:id", async (c) => {
   const sessionUser = await requirePermission(c, "announcements.archive");
-  if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).archive(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 announcementsRoutes.delete("/:id/permanent", async (c) => {
-  const sessionUser = await requirePermission(c, "announcements.delete");
-  if (sessionUser instanceof Response) return sessionUser;
+  const sessionUser = await requirePermission(c, "announcements.delete", { freshPermissions: true });
   const result = await getService(c).permanentDelete(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 announcementsRoutes.post("/:id/images", async (c) => {
   const sessionUser = await requireAnnouncementEdit(c);
-  if (sessionUser instanceof Response) return sessionUser;
 
-  const formOrError = await safeFormData(c);
-  if (formOrError instanceof Response) return formOrError;
-  const form = formOrError;
+  const form = await safeFormData(c);
   const files = collectFiles(form);
 
   if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
+  const mediaPolicy = await withMediaAndPublishAnnouncement(c).getMediaPolicy();
+  if (files.length > mediaPolicy.quotas.announcement) {
+    return buildError(c, "VALIDATION_ERROR", `Maximum ${mediaPolicy.quotas.announcement} announcement images per upload`);
+  }
   for (const file of files) {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) return buildError(c, "VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-    if (file.size > FILE_SIZE_LIMITS.announcementImage) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
+    if (file.size > mediaPolicy.max_file_size_bytes.announcement_image) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
+  }
+  if (!await hasMediaQuotaCapacity(
+    c,
+    `announcement/${c.req.param("id")}/images/`,
+    files.length,
+    mediaPolicy.quotas.announcement,
+  )) {
+    return buildError(c, "VALIDATION_ERROR", `Announcement image quota is ${mediaPolicy.quotas.announcement}`);
   }
 
   const fileData = await Promise.all(files.map(async (f) => ({ data: await f.arrayBuffer(), contentType: f.type || "application/octet-stream" })));

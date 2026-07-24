@@ -1,7 +1,7 @@
 ﻿import { PortalCard } from "../../shared/PortalCard";
 import { Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import type { UploadStatus, UploadTask } from "./shared";
+import type { UploadStatus, UploadTask } from "@portal/types/media";
 
 const PROGRESS_BY_STATUS = {
   queued: 0,

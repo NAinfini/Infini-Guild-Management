@@ -45,9 +45,9 @@
   font-size: 28px;
   line-height: 1;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 12%, var(--color-surface, #ffffff));
-  color: var(--color-primary, #3b82f6);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 14%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 12%, var(--color-surface, #ffffff));
+  color: var(--color-primary, #D4A843);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 14%, transparent);
   transform: rotate(0deg) scale(1);
   will-change: transform;
   transition:
@@ -58,7 +58,7 @@
 
 .tool-card:hover .tool-card__icon {
   transform: rotate(12deg) scale(1.18);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 22%, var(--color-surface, #ffffff));
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 22%, var(--color-surface, #ffffff));
   box-shadow: var(--shadow-primary-md);
 }
 
@@ -74,6 +74,22 @@
 .tool-card__description {
   font-size: 13px;
   line-height: 1.5;
+}
+
+.tool-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.tool-card__meta .mantine-Text-root:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .tool-card__external-icon {
@@ -96,9 +112,9 @@ a.tool-card__btn {
 
 .sandbox__topbar {
   padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-text, #111827) 2%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 2%, transparent);
 }
 
 .sandbox__workspace {
@@ -114,7 +130,7 @@ a.tool-card__btn {
   gap: 16px;
   min-width: 0;
   padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 74%, transparent);
 }
@@ -186,14 +202,14 @@ a.tool-card__btn {
   border-radius: var(--radius-pill);
   cursor: pointer;
   font-size: 11px;
-  color: color-mix(in srgb, var(--color-text, #111827) 70%, transparent);
-  background: color-mix(in srgb, var(--color-text, #111827) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 70%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
   transition: background 100ms ease;
 }
 
 .sandbox__recent-btn:hover {
-  background: color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
 }
 
 .sandbox__recent-dot {
@@ -220,22 +236,27 @@ a.tool-card__btn {
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  color: color-mix(in srgb, var(--color-text, #111827) 65%, transparent);
-  background: color-mix(in srgb, var(--color-text, #111827) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
-  transition: all var(--transition-fast);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .sandbox__typo-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 25%, transparent);
-  color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 25%, transparent);
+  color: var(--color-primary, #D4A843);
 }
 
 .sandbox__typo-btn--active {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 14%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 35%, transparent);
-  color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 35%, transparent);
+  color: var(--color-primary, #D4A843);
 }
 
 .sandbox__slider-row {
@@ -246,7 +267,7 @@ a.tool-card__btn {
 }
 
 .sandbox__slider-icon {
-  color: color-mix(in srgb, var(--color-text, #111827) 45%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 45%, transparent);
   flex-shrink: 0;
 }
 
@@ -270,7 +291,7 @@ a.tool-card__btn {
 .sandbox__preview-card {
   border-radius: var(--radius-md);
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
 }
 
 .sandbox__preview-bg {
@@ -281,7 +302,7 @@ a.tool-card__btn {
   padding: 24px 20px;
   background:
     repeating-conic-gradient(
-      color-mix(in srgb, var(--color-text, #111827) 6%, transparent) 0% 25%,
+      color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent) 0% 25%,
       transparent 0% 50%
     ) 0 0 / 16px 16px;
 }
@@ -294,16 +315,16 @@ a.tool-card__btn {
 
 .sandbox__preview-meta {
   padding: 8px 14px;
-  border-top: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
-  background: color-mix(in srgb, var(--color-text, #111827) 3%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
 }
 
 .sandbox__code-block {
   position: relative;
   padding: 12px 40px 12px 14px;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-text, #111827) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
   overflow-x: auto;
 }
 
@@ -312,7 +333,7 @@ a.tool-card__btn {
   font-size: 12px;
   line-height: 1.6;
   word-break: break-all;
-  color: color-mix(in srgb, var(--color-text, #111827) 80%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 80%, transparent);
 }
 
 .sandbox__override-textarea textarea {
@@ -328,17 +349,17 @@ a.tool-card__btn {
   width: 22px;
   height: 22px;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 16%, transparent);
   border-radius: var(--radius-sm, 4px);
   background: transparent;
-  color: color-mix(in srgb, var(--color-text, #111827) 52%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 52%, transparent);
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
 
 .sandbox__copy-icon-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
-  color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
+  color: var(--color-primary, #D4A843);
 }
 
 @media (max-width: 900px) {
@@ -387,13 +408,13 @@ a.tool-card__btn {
   font-size: 14px;
   font-weight: 600;
   color: #fff;
-  background: var(--color-primary, #3b82f6);
+  background: var(--color-primary, #D4A843);
   transition: background 150ms ease, transform 100ms ease, box-shadow 150ms ease;
 }
 
 .dice__roll-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 85%, #000);
-  box-shadow: var(--shadow-primary-md, 0 4px 12px rgba(59, 130, 246, 0.35));
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 85%, #000);
+  box-shadow: var(--shadow-primary-md, 0 4px 12px rgba(212, 168, 67, 0.35));
 }
 
 .dice__roll-btn:active:not(:disabled) {
@@ -405,7 +426,7 @@ a.tool-card__btn {
 }
 
 .dice__roll-btn--rolling {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 70%, #000);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 70%, #000);
   animation: dice-pulse 600ms ease-in-out infinite;
 }
 
@@ -430,8 +451,8 @@ a.tool-card__btn {
   gap: 12px;
   padding: 20px 16px;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-text, #111827) 3%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
 }
 
 .dice__results--rolling {
@@ -462,16 +483,16 @@ a.tool-card__btn {
   font-size: 20px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--color-primary, #3b82f6);
+  color: var(--color-primary, #D4A843);
   background: var(--color-surface, #ffffff);
-  border: 2px solid color-mix(in srgb, var(--color-primary, #3b82f6) 30%, transparent);
+  border: 2px solid color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
   transition: transform 200ms ease, border-color 200ms ease;
 }
 
 .dice__die--spinning {
   animation: dice-die-bounce 120ms ease-in-out infinite alternate;
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 50%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 50%, transparent);
 }
 
 @keyframes dice-die-bounce {
@@ -489,7 +510,7 @@ a.tool-card__btn {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
   padding-top: 12px;
 }
 
@@ -507,7 +528,7 @@ a.tool-card__btn {
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-text, #111827) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 50%, transparent);
   transition: color 120ms ease;
 }
 
@@ -527,12 +548,12 @@ a.tool-card__btn {
 .dice__history-item {
   padding: 6px 10px;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-text, #111827) 3%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
   animation: dice-history-in 200ms ease-out;
 }
 
 .dice__history-item:first-child {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
 }
 
 @keyframes dice-history-in {

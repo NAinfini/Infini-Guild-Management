@@ -11,6 +11,7 @@ import { EquipmentCalcModal } from "./EquipmentCalcModal";
 let queryState: {
   data?: {
     data: ReturnType<typeof gameDataSchema.parse>;
+    version: string;
     schemaVersion: number;
   };
   isLoading: boolean;
@@ -107,6 +108,7 @@ describe("EquipmentCalcModal", () => {
       isError: false,
       data: {
         data: gameDataSchema.parse(seedGameData),
+        version: "workbook-2026-06-27-7d9f97f8",
         schemaVersion: 1,
       },
     };
@@ -118,6 +120,22 @@ describe("EquipmentCalcModal", () => {
     expect(screen.getByText("stats.breakdown")).toBeInTheDocument();
   });
 
+  it("shows the active calculator data version", () => {
+    queryState = {
+      isLoading: false,
+      isError: false,
+      data: {
+        data: gameDataSchema.parse(seedGameData),
+        version: "workbook-2026-06-27-7d9f97f8",
+        schemaVersion: 1,
+      },
+    };
+    renderModal();
+
+    expect(screen.getByText("dataVersion")).toBeInTheDocument();
+    expect(screen.getByText("workbook-2026-06-27-7d9f97f8")).toBeInTheDocument();
+  });
+
   it("creates new loadouts with reference calculator defaults", async () => {
     const gameData = gameDataSchema.parse(seedGameData);
     queryState = {
@@ -125,6 +143,7 @@ describe("EquipmentCalcModal", () => {
       isError: false,
       data: {
         data: gameData,
+        version: "workbook-2026-06-27-7d9f97f8",
         schemaVersion: 1,
       },
     };
@@ -133,11 +152,11 @@ describe("EquipmentCalcModal", () => {
     await userEvent.click(screen.getByLabelText("panels.config"));
     await userEvent.click(await screen.findByTitle("loadout.add"));
 
-    const defaultClass = gameData.classes[0];
+    const defaultClass = gameData.classes[0]!;
     expect(storeState.addLoadout).toHaveBeenCalledWith("loadout.defaultName", defaultClass, {
       armoryType: defaultClass.substring(0, 2),
       setId: gameData.defaultSets[defaultClass],
-      xinfaSlots: gameData.xinfaRules[defaultClass].default,
+      xinfaSlots: gameData.xinfaRules[defaultClass]!.default,
     });
   });
 
@@ -148,16 +167,17 @@ describe("EquipmentCalcModal", () => {
       isError: false,
       data: {
         data: gameData,
+        version: "workbook-2026-06-27-7d9f97f8",
         schemaVersion: 1,
       },
     };
     renderModal();
 
-    const defaultClass = gameData.classes[0];
+    const defaultClass = gameData.classes[0]!;
     expect(storeState.addLoadout).toHaveBeenCalledWith("loadout.defaultName", defaultClass, {
       armoryType: defaultClass.substring(0, 2),
       setId: gameData.defaultSets[defaultClass],
-      xinfaSlots: gameData.xinfaRules[defaultClass].default,
+      xinfaSlots: gameData.xinfaRules[defaultClass]!.default,
     });
   });
 });

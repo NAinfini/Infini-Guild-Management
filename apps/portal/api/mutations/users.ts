@@ -1,8 +1,11 @@
 import {
   changePasswordSchema,
   changeUsernameSchema,
+  createMemberAbsenceSchema,
   deleteProfileImagesSchema,
   updateProfileSchema,
+  type CreateMemberAbsencePayload,
+  type MemberAbsence,
   type MemberProfile,
 } from "@guild/shared";
 import type { z } from "zod";
@@ -76,6 +79,20 @@ export function deleteProfileImages(userId: string, keys: string[]): Promise<{ o
 
 export function deleteProfileAudio(userId: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/users/${userId}/media/audio`, {
+    method: "DELETE",
+  });
+}
+
+export function createMemberAbsence(userId: string, payload: CreateMemberAbsencePayload): Promise<MemberAbsence> {
+  const bodyJson = createMemberAbsenceSchema.parse(payload);
+  return apiRequest<MemberAbsence>(`/api/users/${userId}/absences`, {
+    method: "POST",
+    bodyJson,
+  });
+}
+
+export function deleteMemberAbsence(userId: string, absenceId: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/users/${userId}/absences/${absenceId}`, {
     method: "DELETE",
   });
 }

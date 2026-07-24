@@ -147,8 +147,8 @@ describe("EventDetailModal", () => {
             id: "event-1",
             title: "Next activity?",
             type: "poll",
-            start_at: "2026-06-12T16:00:00.000Z",
-            end_at: "2026-06-12T18:00:00.000Z",
+            start_at: "2099-06-12T16:00:00.000Z",
+            end_at: "2099-06-12T18:00:00.000Z",
             description: null,
             capacity: null,
             attachments: [],
@@ -198,5 +198,45 @@ describe("EventDetailModal", () => {
 
     expect(onVotePoll).toHaveBeenCalledWith("event-1", ["opt-1", "opt-2"]);
     expect(screen.queryByRole("button", { name: /button\.join/i })).not.toBeInTheDocument();
+  });
+
+  it("does not show poll voting controls without a vote handler", () => {
+    render(
+      <MantineProvider>
+        <EventDetailModal
+          event={{
+            id: "event-1",
+            title: "Next activity?",
+            type: "poll",
+            start_at: "2026-06-12T16:00:00.000Z",
+            end_at: "2099-06-12T18:00:00.000Z",
+            description: null,
+            capacity: null,
+            attachments: [],
+            poll: {
+              results_visibility: "after_vote",
+              show_voter_names: false,
+              has_voted: false,
+              can_vote: true,
+              options: [
+                { id: "opt-1", label: "Raid", vote_count: 2, voter_ids: ["user-1"], voted_by_me: false },
+                { id: "opt-2", label: "Dungeon", vote_count: 0, voter_ids: [], voted_by_me: false },
+              ],
+            },
+          } as never}
+          members={[]}
+          allUsers={[{ user: { id: "user-1", username: "member-1" }, profile: {} }] as never}
+          canManage={false}
+          onClose={() => {}}
+          onAddParticipant={() => {}}
+          onRemoveParticipant={() => {}}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByText("Raid")).toBeInTheDocument();
+    expect(screen.getByText("Dungeon")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /poll\.vote/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /poll\.update/i })).not.toBeInTheDocument();
   });
 });

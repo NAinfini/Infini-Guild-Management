@@ -22,7 +22,7 @@ function makeEquipment(id: string, stat: string, value: number): Equipment {
   };
 }
 
-function makeLoadout(classId = gameData.classes[0]): Loadout {
+function makeLoadout(classId = gameData.classes[0]!): Loadout {
   return {
     id: "loadout",
     name: "Loadout",
@@ -149,7 +149,7 @@ describe("findBestBuild", () => {
 
     expect(results.length).toBeGreaterThan(1);
     for (let index = 1; index < results.length; index += 1) {
-      expect(results[index - 1].graduationRate).toBeGreaterThanOrEqual(results[index].graduationRate);
+      expect(results[index - 1]!.graduationRate).toBeGreaterThanOrEqual(results[index]!.graduationRate);
     }
   });
 

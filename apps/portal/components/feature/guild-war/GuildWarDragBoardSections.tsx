@@ -67,6 +67,7 @@ type DraggableMemberCardProps = {
   disabled: boolean;
   selected: boolean;
   isMatched: boolean;
+  isAbsent: boolean;
   userId: string;
   onSelectMember: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
   onOpenMember?: (userId: string) => void;
@@ -81,6 +82,7 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
   disabled,
   selected,
   isMatched,
+  isAbsent,
   userId,
   onSelectMember,
   onOpenMember,
@@ -156,7 +158,14 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
     >
       <div className="guild-war-member-card__progress" />
       <Stack gap={2}>
-        <Text size="sm" fw={500}>{username}</Text>
+        <Group gap={6} wrap="nowrap">
+          <Text size="sm" fw={500} truncate>{username}</Text>
+          {isAbsent ? (
+            <Badge color="orange" size="xs" variant="light" style={{ flexShrink: 0 }}>
+              {t("active.absent")}
+            </Badge>
+          ) : null}
+        </Group>
         <Group gap={8} wrap="nowrap">
           <Text c="dimmed" size="xs">{memberClass}</Text>
           <Text c="dimmed" size="xs">
@@ -187,6 +196,7 @@ type DroppableMemberColumnProps = {
   onAddToPool?: () => void;
   onDraftNameChange?: (containerId: string, value: string) => void;
   isDragActive?: boolean;
+  absentUserIds?: Set<string>;
 };
 
 export function DroppableMemberColumn({
@@ -208,6 +218,7 @@ export function DroppableMemberColumn({
   onAddToPool,
   onDraftNameChange,
   isDragActive,
+  absentUserIds,
 }: DroppableMemberColumnProps) {
   const { isOver, setNodeRef } = useDroppable({
     id: `container:${column.containerId}`,
@@ -403,6 +414,7 @@ export function DroppableMemberColumn({
               userId={member.userId}
               disabled={!canDrag || column.locked}
               selected={selectedUserIds.has(member.userId)}
+              isAbsent={absentUserIds?.has(member.userId) ?? false}
               isMatched={
                 activeSearch.trim().length > 0
                 && `${member.username} ${member.class} ${member.power}`.toLowerCase().includes(activeSearch.toLowerCase())
@@ -547,6 +559,7 @@ type GuildWarDragBoardLayoutProps = {
   teamIndexMap?: Map<string, number>;
   onAddToPool?: () => void;
   onDraftNameChange?: (containerId: string, value: string) => void;
+  absentUserIds?: Set<string>;
 };
 
 export function GuildWarDragBoardLayout({
@@ -571,6 +584,7 @@ export function GuildWarDragBoardLayout({
   teamIndexMap,
   onAddToPool,
   onDraftNameChange,
+  absentUserIds,
 }: GuildWarDragBoardLayoutProps) {
   return (
     <div className={`guild-war-dnd-split ${disabled ? "guild-war-dnd-split--disabled" : ""}`}>
@@ -588,6 +602,7 @@ export function GuildWarDragBoardLayout({
               onOpenMember={onOpenMember}
               onAddToPool={onAddToPool}
               isDragActive={Boolean(activeDragItem)}
+              absentUserIds={absentUserIds}
             />
           ) : null}
           <TrashDropZone visible={Boolean(activeDragItem)} />
@@ -616,6 +631,7 @@ export function GuildWarDragBoardLayout({
               teamCount={teamCount}
               onDraftNameChange={onDraftNameChange}
               isDragActive={Boolean(activeDragItem)}
+              absentUserIds={absentUserIds}
             />
           ))}
         </Stack>

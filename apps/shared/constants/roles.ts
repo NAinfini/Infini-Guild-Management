@@ -19,6 +19,7 @@ export const PERMISSIONS = [
   "admin.analytics.manage",
   "admin.roles.view",
   "admin.roles.manage",
+  "admin.siteConfig.manage",
   "guildwar.teams.edit",
   "guildwar.history.edit",
   "events.create",
@@ -40,6 +41,10 @@ export const PERMISSIONS = [
   "wiki.categories.manage",
   "admin.badges.manage",
   "admin.gameData.manage",
+  "admin.storage.structure",
+  "admin.storage.items",
+  "admin.storage.stock",
+  "admin.storage.manage",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

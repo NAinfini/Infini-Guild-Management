@@ -1,4 +1,4 @@
-import type { PaginatedResponse, WikiArticle, WikiCategory } from "@guild/shared";
+import type { PaginatedResponse, WikiArticle, WikiCategory, WikiRevision, WikiRevisionListItem } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { apiRequest } from "../client";
 
@@ -27,4 +27,12 @@ export function fetchWikiArticles(params: {
 
 export function fetchWikiArticleBySlug(slug: string): Promise<WikiArticle> {
   return apiRequest<WikiArticle>(`/api/wiki/articles/${slug}`);
+}
+
+export function fetchWikiArticleRevisions(articleId: string): Promise<WikiRevisionListItem[]> {
+  return apiRequest<WikiRevisionListItem[]>(`/api/wiki/articles/${articleId}/revisions`);
+}
+
+export function fetchWikiArticleRevision(articleId: string, revision: number): Promise<WikiRevision> {
+  return apiRequest<WikiRevision>(`/api/wiki/articles/${articleId}/revisions/${revision}`);
 }

@@ -1,9 +1,10 @@
 import { ERROR_STATUS } from "@guild/shared";
 import type { Permission, StandardErrorResponse } from "@guild/shared";
 import type { Context } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { resolveSession, type SessionUser } from "../services/auth";
 
-type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
+type ErrorStatusCode = 401 | 403;
 
 function buildError(c: Context, code: "UNAUTHORIZED" | "FORBIDDEN", message: string): Response {
   const requestId = (c.get("requestId") as string | undefined) ?? crypto.randomUUID();
@@ -21,10 +22,16 @@ export async function getRequestUser(c: Context): Promise<SessionUser | null> {
   return (await resolveSession(c))?.user ?? null;
 }
 
-export async function requirePermission(c: Context, permission: Permission, options?: { freshPermissions?: boolean }): Promise<SessionUser | Response> {
+/**
+ * Resolves the session and enforces a permission. Throws an HTTPException
+ * carrying a standard error envelope (caught by the global error handler)
+ * instead of returning a Response, so route handlers never need
+ * `instanceof Response` checks.
+ */
+export async function requirePermission(c: Context, permission: Permission, options?: { freshPermissions?: boolean }): Promise<SessionUser> {
   const fresh = options?.freshPermissions ?? false;
   const user = (await resolveSession(c, { freshPermissions: fresh }))?.user ?? null;
-  if (!user) return buildError(c, "UNAUTHORIZED", "Authentication required");
-  if (!user.permissions.has(permission)) return buildError(c, "FORBIDDEN", "Insufficient permission");
+  if (!user) throw new HTTPException(401, { res: buildError(c, "UNAUTHORIZED", "Authentication required") });
+  if (!user.permissions.has(permission)) throw new HTTPException(403, { res: buildError(c, "FORBIDDEN", "Insufficient permission") });
   return user;
 }

@@ -3,9 +3,9 @@ import { CalendarOffIcon } from "@portal/components/icons";
 import { InfiniTable, useReactTable } from "@portal/components/shared/InfiniTable";
 import { useTranslation } from "react-i18next";
 import { resolveResultTagColor } from "@portal/utils/guild-war";
+import type { HistorySummaryRow } from "@portal/types/guild-war";
 import { EmptyState } from "../../shared/EmptyState";
 import { PortalCard } from "../../shared/PortalCard";
-import type { HistorySummaryRow } from "./WarHistoryTab";
 
 type WarHistoryTableProps = {
   historyDateFrom: string;
@@ -146,6 +146,8 @@ export function WarHistoryTable({
                 {filteredHistoryRows.length > 0 ? (
                   <InfiniTable
                     table={summaryTable}
+                    virtualize
+                    maxHeight="65vh"
                     onRowClick={(row) => onRowClick(row.original.id)}
                     rowClassName={(row) => {
                       const classes: string[] = [];

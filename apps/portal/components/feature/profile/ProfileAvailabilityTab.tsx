@@ -2,26 +2,21 @@ import { FloatingSaveBar } from "../../shared/FloatingSaveBar";
 import { Stack } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { AvailabilityGridEditor } from "@portal/components/shared/AvailabilityGridEditor";
+import { AbsenceManagerCard } from "@portal/components/shared/AbsenceManagerCard";
 
 type ProfileAvailabilityTabProps = {
+  userId: string | undefined;
   availabilityData: Record<string, unknown> | null;
-  vacationStart: string;
-  vacationEnd: string;
   onAvailabilityChange: (value: Record<string, unknown>) => void;
-  onVacationStartChange: (value: string) => void;
-  onVacationEndChange: (value: string) => void;
   onSaveAvailability: () => void;
   savePending: boolean;
   isDirty: boolean;
 };
 
 export function ProfileAvailabilityTab({
+  userId,
   availabilityData,
-  vacationStart,
-  vacationEnd,
   onAvailabilityChange,
-  onVacationStartChange,
-  onVacationEndChange,
   onSaveAvailability,
   savePending,
   isDirty,
@@ -31,15 +26,10 @@ export function ProfileAvailabilityTab({
     <Stack gap={16}>
       <AvailabilityGridEditor
         value={availabilityData}
-        vacationStart={vacationStart}
-        vacationEnd={vacationEnd}
         labels={{
           timezoneNote: t("availability.editor.timezoneNote"),
           clearAll: t("availability.editor.clearAll"),
           gridHint: t("availability.editor.gridHint"),
-          vacation: t("availability.editor.vacation"),
-          startDate: t("availability.editor.startDate"),
-          endDate: t("availability.editor.endDate"),
           dayMon: t("availability.editor.dayMon"),
           dayTue: t("availability.editor.dayTue"),
           dayWed: t("availability.editor.dayWed"),
@@ -48,12 +38,11 @@ export function ProfileAvailabilityTab({
           daySat: t("availability.editor.daySat"),
           daySun: t("availability.editor.daySun"),
         }}
-        onChange={({ availability, vacationStart: nextVacationStart, vacationEnd: nextVacationEnd }) => {
+        onChange={({ availability }) => {
           onAvailabilityChange((availability ?? null) as Record<string, unknown>);
-          onVacationStartChange(nextVacationStart);
-          onVacationEndChange(nextVacationEnd);
         }}
       />
+      <AbsenceManagerCard userId={userId} />
       <FloatingSaveBar isDirty={isDirty} saving={savePending} onSave={onSaveAvailability} />
     </Stack>
   );

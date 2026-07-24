@@ -61,6 +61,14 @@ export function handleAppError(error: unknown, c: Context): Response {
   const log = createLogger(c.get("requestId") as string | undefined);
 
   if (error instanceof HTTPException) {
+    // Guards and parsers throw HTTPException carrying a fully-formed standard
+    // error envelope (see throwError in routes/_shared.ts) — return it as-is.
+    if (error.res) {
+      if (error.status >= 500) {
+        persistError(c, error.message || "HTTPException 5xx", error.stack);
+      }
+      return error.res;
+    }
     const status = toStatusCode(error.status);
     const message = status >= 500 ? "Internal server error" : error.message || "Request failed";
     if (status >= 500) {

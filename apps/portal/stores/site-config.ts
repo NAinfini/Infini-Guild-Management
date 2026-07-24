@@ -5,7 +5,10 @@ type SiteConfig = {
   siteName: string;
   siteLogoUrl: string;
   features: FeatureFlags;
-  setSiteConfig: (name: string, logoUrl: string) => void;
+  setSiteConfig: (config: {
+    siteName: string;
+    siteLogoUrl: string;
+  }) => void;
   setFeatures: (features: Partial<FeatureFlags>) => void;
 };
 
@@ -13,6 +16,9 @@ export const useSiteConfigStore = create<SiteConfig>((set) => ({
   siteName: "",
   siteLogoUrl: "",
   features: { ...DEFAULT_FEATURE_FLAGS },
-  setSiteConfig: (name, logoUrl) => set({ siteName: name, siteLogoUrl: logoUrl }),
+  setSiteConfig: (config) => set({
+    siteName: config.siteName,
+    siteLogoUrl: config.siteLogoUrl,
+  }),
   setFeatures: (features) => set((state) => ({ features: { ...state.features, ...features } })),
 }));

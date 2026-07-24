@@ -46,6 +46,7 @@
   "toolbar.replaceOne": "替换",
   "toolbar.replaceAllLabel": "全部替换",
   "toolbar.tableOfContents": "目录",
+  "toolbar.wordCount": "{{words}} 字 · {{characters}} 字符",
   "toolbar.words": "字",
   "toolbar.characters": "字符",
   "slashCommands": "快捷命令",

@@ -11,6 +11,7 @@ import {
   TeamOutlined,
   ThunderboltOutlined,
   ToolOutlined,
+  WarehouseOutlined,
 } from "../../utils/icons";
 import { useSiteConfigStore } from "../../stores/site-config";
 import type { IconProps } from "@tabler/icons-react";
@@ -50,6 +51,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/events", labelKey: "nav.events", icon: CalendarOutlined, featureFlag: "events" },
   { to: "/guild-war", labelKey: "nav.guild-war", icon: ThunderboltOutlined, featureFlag: "guildWar" },
   { to: "/gallery", labelKey: "nav.gallery", icon: PictureOutlined, featureFlag: "gallery" },
+  { to: "/storage", labelKey: "nav.storage", icon: WarehouseOutlined, featureFlag: "storage" },
   { to: "/wiki", labelKey: "nav.wiki", icon: BookOutlined, featureFlag: "wiki" },
   { to: "/tools", labelKey: "nav.tools", icon: ToolOutlined, featureFlag: "tools" },
   {

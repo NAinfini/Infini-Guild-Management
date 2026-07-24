@@ -19,7 +19,7 @@ import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
 
 const portalTheme = createTheme({
-  primaryColor: "portal-blue",
+  primaryColor: "portal-gold",
   fontFamily: '"Inter", system-ui, sans-serif',
   fontFamilyMonospace: '"JetBrains Mono", "Fira Code", monospace',
   headings: { fontFamily: '"Inter", system-ui, sans-serif', fontWeight: "700" },
@@ -42,41 +42,41 @@ const portalTheme = createTheme({
   },
 
   colors: {
-    "portal-blue": [
-      "#EBF2FF", // 0 – lightest tint
-      "#D6E4FF", // 1
-      "#ADC8FF", // 2
-      "#84ABFF", // 3
-      "#5B8EFF", // 4
-      "#3B82F6", // 5 – base (--color-primary)
-      "#2563EB", // 6
-      "#1D4ED8", // 7
-      "#1E40AF", // 8
-      "#1E3A8A", // 9 – darkest
+    "portal-gold": [
+      "#FBF6EA",
+      "#F5EACC",
+      "#EDDA9E",
+      "#E5C96F",
+      "#DCB94A",
+      "#D4A843",
+      "#B8922F",
+      "#9A7B26",
+      "#7D641E",
+      "#604D17",
     ],
-    "portal-violet": [
-      "#F1ECFF",
-      "#E4D9FF",
-      "#C9B3FF",
-      "#AE8DFF",
-      "#9B74FF",
-      "#8B5CF6", // 5 – base (--color-secondary)
-      "#7C3AED",
-      "#6D28D9",
-      "#5B21B6",
-      "#4C1D95",
+    "portal-bronze": [
+      "#F5F0EB",
+      "#EAE0D6",
+      "#D5C1AC",
+      "#C0A283",
+      "#AB8362",
+      "#8B7355",
+      "#756047",
+      "#5F4E3A",
+      "#493C2D",
+      "#332B20",
     ],
-    "portal-cyan": [
-      "#ECFEFF",
-      "#CFFAFE",
-      "#A5F3FC",
-      "#67E8F9",
-      "#22D3EE",
-      "#06B6D4", // 5 – base (--color-accent)
-      "#0891B2",
-      "#0E7490",
-      "#155E75",
-      "#164E63",
+    "portal-copper": [
+      "#FDF2EA",
+      "#FAE3D0",
+      "#F4C7A1",
+      "#EEAB72",
+      "#D99450",
+      "#C17F3E",
+      "#A66B33",
+      "#8A5729",
+      "#6E441F",
+      "#533216",
     ],
   },
 

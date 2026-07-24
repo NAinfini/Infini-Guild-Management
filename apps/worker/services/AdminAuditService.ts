@@ -1,11 +1,12 @@
 import { auditLogSchema } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import { and, desc, eq, gte, lte, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { auditLog, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, likeEscaped } from "./helpers";
-import { parsePage } from "../routes/_shared";
+import { neutralizeSpreadsheetFormula } from "../utils/csv";
+import { parsePage } from "../utils/pagination";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
 
@@ -83,15 +84,6 @@ type ResolvedAuditLogQuery = {
   format: "csv" | "json";
 };
 
-type AuditLogInput = {
-  entityType: AuditEntityType;
-  action: AuditAction;
-  actorId: string;
-  entityId: string;
-  diffTitle?: string | null;
-  detailText?: string | null;
-};
-
 type AdminAuditServiceDeps = {
   db: DrizzleDb;
   media: MediaLike;
@@ -159,7 +151,8 @@ function serializeAuditLogRow(row: AuditLogRow) {
 
 function csvCell(value: string | null) {
   const normalized = value ?? "";
-  return `"${normalized.replace(/"/g, "\"\"")}"`;
+  const safe = neutralizeSpreadsheetFormula(normalized);
+  return `"${safe.replace(/"/g, "\"\"")}"`;
 }
 
 function archiveMonthPaths(month: string): { manifestKey: string } {
@@ -474,11 +467,12 @@ export class AdminAuditService {
     return ok({ month, expires_in_seconds: AUDIT_ARCHIVE_DOWNLOAD_TTL_SECONDS, files: downloadFiles });
   }
 
-  async verifyAndGetArchiveFile(token: string): Promise<ServiceResult<{ body: ReadableStream; contentType: string; contentEncoding?: string; filename: string; actorId: string; month: string; key: string }>> {
+  async verifyAndGetArchiveFile(token: string, expectedActorId: string): Promise<ServiceResult<{ body: ReadableStream; contentType: string; contentEncoding?: string; filename: string; actorId: string; month: string; key: string }>> {
     if (!token) return err("VALIDATION_ERROR", "token is required");
     if (!this.deps.signingSecret) return err("SERVER_ERROR", "Archive signing is not configured");
     const payload = await verifyArchiveDownloadToken(this.deps.signingSecret, token);
     if (!payload) return err("UNAUTHORIZED", "Invalid or expired download token");
+    if (payload.actor_id !== expectedActorId) return err("FORBIDDEN", "Archive token belongs to another user");
     if (!payload.key.startsWith(`${AUDIT_ARCHIVE_PREFIX}/`)) return err("FORBIDDEN", "Invalid archive object key");
     const object = await this.deps.media.get(payload.key);
     if (!object || !object.body) return err("NOT_FOUND", "Archive file not found");

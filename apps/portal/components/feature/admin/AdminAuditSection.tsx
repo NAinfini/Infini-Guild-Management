@@ -3,7 +3,7 @@ import { Button, Group, Stack, TextInput } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
-import { formatAuditDiffHeader, formatDateTime, maskIdentifier } from "../../../utils/admin";
+import { formatDateTime, maskIdentifier } from "../../../utils/admin";
 import { canManageRoles, canViewStatus } from "../../../utils/permissions";
 import { AuditLogViewer } from "./AuditLogViewer";
 import { AuditArchiveExplorer } from "./AuditArchiveExplorer";
@@ -127,7 +127,6 @@ export function AdminAuditSection({
         onAuditPageChange={onAuditPageChange}
         isAdmin={isAdmin}
         maskIdentifier={maskIdentifier}
-        formatAuditDiffHeader={formatAuditDiffHeader}
         formatDateTime={formatDateTime}
         userMap={userMap}
       />

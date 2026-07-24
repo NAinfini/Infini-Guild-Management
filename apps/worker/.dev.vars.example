@@ -1,0 +1,3 @@
+# Local development only. `pnpm setup:local` copies this file and generates
+# a unique value. Never commit the populated `.dev.vars` file.
+SIGNING_SECRET=replace-with-a-random-secret

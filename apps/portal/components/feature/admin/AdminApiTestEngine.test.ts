@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildJsonRequest,
   buildCleanupSteps,
   buildApiCategories,
   captureContextFromResponse,
@@ -7,12 +8,17 @@ import {
   filterApiCategoriesForPermissions,
   prepareEndpointRequest,
   resolveEndpointPath,
+  runEndpointTest,
   type TestRunContext,
 } from "./AdminApiTestEngine";
 
 function contextWith(values: Partial<TestRunContext>): TestRunContext {
   return { ...createInitialTestRunContext(), ...values };
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("AdminApiTestEngine cleanup planning", () => {
   it("permanently deletes test-created content before parent records", () => {
@@ -64,6 +70,42 @@ describe("AdminApiTestEngine cleanup planning", () => {
         path: "/api/admin/users/batch/delete",
         jsonBody: { user_ids: ["created-1"] },
         clearContext: { adminCreatedUserId: null, adminCreatedUsername: null, adminCreatedUserPassword: null },
+      },
+    ]);
+  });
+
+  it("cleans up storage fixtures from item to category to storage", () => {
+    const steps = buildCleanupSteps(contextWith({
+      createdStorageId: "storage-1",
+      createdStorageCategoryId: "category-1",
+      createdStorageItemId: "item-1",
+      createdStorageImageId: "image-1",
+    } as Partial<TestRunContext>));
+
+    expect(steps.slice(0, 4)).toEqual([
+      {
+        label: "Cleanup: Storage Image",
+        method: "DELETE",
+        path: "/api/storage/items/item-1/images/image-1",
+        clearContext: { createdStorageImageId: null, storageImageKey: null },
+      },
+      {
+        label: "Cleanup: Storage Item",
+        method: "DELETE",
+        path: "/api/storage/items/item-1",
+        clearContext: { createdStorageItemId: null },
+      },
+      {
+        label: "Cleanup: Storage Category",
+        method: "DELETE",
+        path: "/api/storage/storages/storage-1/categories/category-1",
+        clearContext: { createdStorageCategoryId: null },
+      },
+      {
+        label: "Cleanup: Storage",
+        method: "DELETE",
+        path: "/api/storage/storages/storage-1",
+        clearContext: { createdStorageId: null },
       },
     ]);
   });
@@ -525,7 +567,7 @@ describe("AdminApiTestEngine request preparation", () => {
       createdEventId: "event-1",
       createdGuildWarEventId: "war-event-1",
       createdConcludedWarHistoryId: "war-history-1",
-      badgeId: "badge-1",
+      createdBadgeId: "badge-1",
     });
 
     const mutationEndpoints = [
@@ -727,6 +769,25 @@ describe("AdminApiTestEngine request preparation", () => {
       "GET /api/admin/audit-log?page=1&limit=5",
       "GET /api/admin/audit-log/export?format=json",
       "GET /api/admin/error-log?page=1&limit=5",
+      "GET /api/storage",
+      "POST /api/storage/storages",
+      "PATCH /api/storage/storages/:id",
+      "POST /api/storage/storages/:storageId/categories",
+      "PATCH /api/storage/storages/:storageId/categories/:id",
+      "POST /api/storage/items",
+      "PATCH /api/storage/items/:id",
+      "POST /api/storage/items/:id/images",
+      "GET /api/storage/image",
+      "DELETE /api/storage/items/:id/images/:imageId",
+      "POST /api/storage/items/:id/transactions?fixture=intake",
+      "POST /api/storage/items/:id/transactions?fixture=distribute",
+      "POST /api/storage/items/:id/transactions?fixture=adjust",
+      "GET /api/storage/items",
+      "GET /api/storage/items/:id",
+      "GET /api/storage/transactions?page=1&limit=5",
+      "DELETE /api/storage/items/:id",
+      "DELETE /api/storage/storages/:storageId/categories/:id",
+      "DELETE /api/storage/storages/:id",
     ];
 
     expect(expectedRoutes.filter((route) => !endpointKeys.has(route))).toEqual([]);
@@ -780,6 +841,37 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys).not.toContain("POST /api/events");
     expect(endpointKeys).not.toContain("GET /api/events/templates/list");
     expect(endpointKeys).not.toContain("GET /api/guild-war/export?format=json");
+  });
+
+  it("exposes every storage smoke endpoint when the current user has storage management permission", () => {
+    const categories = buildApiCategories((key) => key);
+    const storageEndpoints = categories.find((category) => category.key === "storage")?.endpoints ?? [];
+
+    const filtered = filterApiCategoriesForPermissions(categories, {
+      "admin.storage.manage": true,
+    });
+    const visibleStorageEndpoints = filtered.find((category) => category.key === "storage")?.endpoints ?? [];
+    const visibleEndpointKeys = visibleStorageEndpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`);
+
+    expect(storageEndpoints).toHaveLength(19);
+    expect(visibleStorageEndpoints).toHaveLength(storageEndpoints.length);
+    expect(visibleEndpointKeys).toEqual(storageEndpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
+    expect(visibleEndpointKeys).toEqual(expect.arrayContaining([
+      "POST /api/storage/storages",
+      "PATCH /api/storage/storages/:id",
+      "POST /api/storage/storages/:storageId/categories",
+      "PATCH /api/storage/storages/:storageId/categories/:id",
+      "POST /api/storage/items",
+      "PATCH /api/storage/items/:id",
+      "POST /api/storage/items/:id/images",
+      "DELETE /api/storage/items/:id/images/:imageId",
+      "POST /api/storage/items/:id/transactions?fixture=intake",
+      "POST /api/storage/items/:id/transactions?fixture=distribute",
+      "POST /api/storage/items/:id/transactions?fixture=adjust",
+      "DELETE /api/storage/items/:id",
+      "DELETE /api/storage/storages/:storageId/categories/:id",
+      "DELETE /api/storage/storages/:id",
+    ]));
   });
 
   it("only exposes lifecycle mutation smoke tests when cleanup permissions are also available", () => {
@@ -846,6 +938,140 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys).toContain("POST /api/guild-war/save-teams");
   });
 
+  it("prepares storage lifecycle requests only against disposable storage fixtures", () => {
+    const createStorage = prepareEndpointRequest(
+      { label: "Create Storage", method: "POST", path: "/api/storage/storages" },
+      createInitialTestRunContext(),
+    );
+    const createStorageBody = parseJsonBody(createStorage) as Record<string, unknown>;
+    expect(createStorageBody.name).toContain("[systemtest]");
+
+    const ctx = contextWith({
+      storageId: "seed-storage",
+      storageCategoryId: "seed-category",
+      storageItemId: "seed-item",
+      createdStorageId: "storage-1",
+      createdStorageCategoryId: "category-1",
+      createdStorageItemId: "item-1",
+      createdStorageImageId: "image-1",
+      storageImageKey: "storage/items/item-1/image-1",
+      adminCreatedUserId: "member-1",
+    } as Partial<TestRunContext>);
+
+    expect(resolveEndpointPath(
+      { label: "Update Storage", method: "PATCH", path: "/api/storage/storages/:id" },
+      ctx,
+    ).path).toBe("/api/storage/storages/storage-1");
+    expect(resolveEndpointPath(
+      { label: "Delete Storage", method: "DELETE", path: "/api/storage/storages/:id" },
+      ctx,
+    ).path).toBe("/api/storage/storages/storage-1");
+    expect(resolveEndpointPath(
+      { label: "Update Category", method: "PATCH", path: "/api/storage/storages/:storageId/categories/:id" },
+      ctx,
+    ).path).toBe("/api/storage/storages/storage-1/categories/category-1");
+    expect(resolveEndpointPath(
+      { label: "Delete Category", method: "DELETE", path: "/api/storage/storages/:storageId/categories/:id" },
+      ctx,
+    ).path).toBe("/api/storage/storages/storage-1/categories/category-1");
+    expect(resolveEndpointPath(
+      { label: "Update Item", method: "PATCH", path: "/api/storage/items/:id" },
+      ctx,
+    ).path).toBe("/api/storage/items/item-1");
+    expect(resolveEndpointPath(
+      { label: "Delete Item", method: "DELETE", path: "/api/storage/items/:id" },
+      ctx,
+    ).path).toBe("/api/storage/items/item-1");
+    expect(resolveEndpointPath(
+      { label: "Storage Image", method: "GET", path: "/api/storage/image" },
+      ctx,
+    ).path).toBe("/api/storage/image?key=storage%2Fitems%2Fitem-1%2Fimage-1");
+    expect(resolveEndpointPath(
+      { label: "Delete Storage Image", method: "DELETE", path: "/api/storage/items/:id/images/:imageId" },
+      ctx,
+    ).path).toBe("/api/storage/items/item-1/images/image-1");
+    expect(prepareEndpointRequest(
+      { label: "Upload Storage Image", method: "POST", path: "/api/storage/items/:id/images" },
+      ctx,
+    ).body).toBeInstanceOf(FormData);
+    const intake = prepareEndpointRequest(
+      { label: "Storage Intake", method: "POST", path: "/api/storage/items/:id/transactions?fixture=intake" },
+      ctx,
+    );
+    const distribute = prepareEndpointRequest(
+      { label: "Storage Distribute", method: "POST", path: "/api/storage/items/:id/transactions?fixture=distribute" },
+      ctx,
+    );
+    const adjust = prepareEndpointRequest(
+      { label: "Storage Adjust", method: "POST", path: "/api/storage/items/:id/transactions?fixture=adjust" },
+      ctx,
+    );
+    expect(intake.path).toBe("/api/storage/items/item-1/transactions");
+    expect(distribute.path).toBe("/api/storage/items/item-1/transactions");
+    expect(adjust.path).toBe("/api/storage/items/item-1/transactions");
+    expect(parseJsonBody(intake)).toMatchObject({ type: "intake", quantity: 3 });
+    expect(parseJsonBody(distribute)).toMatchObject({ type: "distribute", quantity: 1, recipient_user_id: "member-1" });
+    expect(parseJsonBody(adjust)).toMatchObject({ type: "adjust", target_quantity: 6 });
+    expect(JSON.stringify([intake, distribute, adjust])).not.toContain("seed-item");
+  });
+
+  it("captures storage fixture ids from storage responses", () => {
+    const storageCtx = captureContextFromResponse(
+      createInitialTestRunContext(),
+      { label: "Create Storage", method: "POST", path: "/api/storage/storages" },
+      {
+        status: 201,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-06-11T00:00:00.000Z",
+        parsedJson: { id: "storage-1", name: "[systemtest] Storage" },
+      },
+    );
+    const categoryCtx = captureContextFromResponse(
+      storageCtx,
+      { label: "Create Storage Category", method: "POST", path: "/api/storage/storages/:storageId/categories" },
+      {
+        status: 201,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-06-11T00:00:00.000Z",
+        parsedJson: { id: "category-1", name: "[systemtest] Category" },
+      },
+    );
+    const itemCtx = captureContextFromResponse(
+      categoryCtx,
+      { label: "Create Storage Item", method: "POST", path: "/api/storage/items" },
+      {
+        status: 201,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-06-11T00:00:00.000Z",
+        parsedJson: { id: "item-1", name: "[systemtest] Item" },
+      },
+    );
+    const imageCtx = captureContextFromResponse(
+      itemCtx,
+      { label: "Upload Storage Image", method: "POST", path: "/api/storage/items/:id/images" },
+      {
+        status: 201,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-06-11T00:00:00.000Z",
+        parsedJson: [{ id: "image-1", r2_key: "storage/items/item-1/image-1" }],
+      },
+    );
+
+    expect(imageCtx.createdStorageId).toBe("storage-1");
+    expect(imageCtx.createdStorageCategoryId).toBe("category-1");
+    expect(imageCtx.createdStorageItemId).toBe("item-1");
+    expect(imageCtx.createdStorageImageId).toBe("image-1");
+    expect(imageCtx.storageImageKey).toBe("storage/items/item-1/image-1");
+  });
+
   it("runs admin batch delete against the admin-created test user", () => {
     const prepared = prepareEndpointRequest(
       { label: "Batch Delete", method: "PATCH", path: "/api/admin/users/batch/delete" },
@@ -896,6 +1122,104 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys).toContain("GET /api/guild-war/concluded-event-ids");
   });
 
+  it("covers production system health endpoints without self-auditing the summary writer", () => {
+    const endpointKeys = buildApiCategories((key) => key)
+      .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
+
+    expect(endpointKeys).toEqual(expect.arrayContaining([
+      "GET /api/health",
+      "GET /api/site-config",
+      "GET /api/onboarding",
+      "GET /api/admin/status",
+      "GET /api/admin/analytics-settings",
+      "GET /api/dashboard/summary",
+      "GET /api/search?q=systemtest&limit=5",
+      "GET /api/admin/error-log?page=1&limit=5",
+    ]));
+    expect(endpointKeys).not.toContain("POST /api/admin/status/system-test-audit");
+  });
+
+  it("covers additional production read endpoints in the admin system health runner", () => {
+    const endpointKeys = buildApiCategories((key) => key)
+      .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
+
+    expect(endpointKeys).toEqual(expect.arrayContaining([
+      "GET /api/game-data",
+      "GET /api/game-data/versions",
+      "GET /api/admin/site-config",
+      "GET /api/users/absences?from=2026-01-01&to=2026-01-31",
+      "GET /api/users/:id/absences",
+      "GET /api/wiki/articles/:id/revisions",
+      "GET /api/wiki/articles/:id/revisions/1",
+      "GET /api/admin/audit-archive/download",
+      "GET /api/admin/audit-archive/download/file",
+    ]));
+  });
+
+  it("exposes site config health checks as read-only endpoints", () => {
+    const categories = buildApiCategories((key) => key);
+    const endpointKeys = categories
+      .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
+    const visibleWithoutSiteConfigPermission = filterApiCategoriesForPermissions(categories, {
+      "admin.siteConfig.manage": false,
+    }).flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
+    const visibleWithSiteConfigPermission = filterApiCategoriesForPermissions(categories, {
+      "admin.siteConfig.manage": true,
+    }).flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
+
+    expect(endpointKeys).toEqual(expect.arrayContaining([
+      "GET /api/site-config",
+      "GET /api/onboarding",
+      "GET /api/admin/site-config",
+    ]));
+    expect(visibleWithoutSiteConfigPermission).not.toContain("GET /api/admin/site-config");
+    expect(visibleWithSiteConfigPermission).toContain("GET /api/admin/site-config");
+    expect(endpointKeys).not.toContain("PATCH /api/admin/site-config");
+    expect(endpointKeys).not.toContain("POST /api/admin/site-config/onboarding/publish");
+  });
+
+  it("prepares additional production read endpoints without mutating existing database state", () => {
+    const ctx = contextWith({
+      adminCreatedUserId: "test-user",
+      wikiArticleId: "wiki-article",
+      auditArchiveMonth: "2026-06",
+      auditArchiveDownloadToken: "download-token",
+    });
+
+    expect(resolveEndpointPath(
+      { label: "User Absences", method: "GET", path: "/api/users/:id/absences" },
+      ctx,
+    ).path).toBe("/api/users/test-user/absences");
+    expect(resolveEndpointPath(
+      { label: "Wiki Revisions", method: "GET", path: "/api/wiki/articles/:id/revisions" },
+      ctx,
+    ).path).toBe("/api/wiki/articles/wiki-article/revisions");
+    expect(resolveEndpointPath(
+      { label: "Wiki Revision Detail", method: "GET", path: "/api/wiki/articles/:id/revisions/1" },
+      ctx,
+    ).path).toBe("/api/wiki/articles/wiki-article/revisions/1");
+    expect(prepareEndpointRequest(
+      { label: "Archive Download", method: "GET", path: "/api/admin/audit-archive/download" },
+      ctx,
+    ).path).toBe("/api/admin/audit-archive/download?month=2026-06&format=raw_ndjson_gz");
+    expect(prepareEndpointRequest(
+      { label: "Archive File", method: "GET", path: "/api/admin/audit-archive/download/file" },
+      ctx,
+    ).path).toBe("/api/admin/audit-archive/download/file?token=download-token");
+  });
+
+  it("requires status permission for admin production health endpoints", () => {
+    const categories = buildApiCategories((key) => key);
+    const filtered = filterApiCategoriesForPermissions(categories, {
+      "admin.analytics.view": true,
+    });
+    const endpointKeys = filtered.flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
+
+    expect(endpointKeys).not.toContain("GET /api/admin/status");
+    expect(endpointKeys).not.toContain("GET /api/admin/error-log?page=1&limit=5");
+    expect(endpointKeys).toContain("GET /api/admin/analytics-settings");
+  });
+
   it("covers destructive website actions using test-created fixture IDs", () => {
     const endpointKeys = buildApiCategories((key) => key)
       .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
@@ -931,6 +1255,70 @@ describe("AdminApiTestEngine request preparation", () => {
     ).path).toBe("/api/events/created-event/destroy");
   });
 
+  it("skips global configuration mutations instead of touching existing database state", () => {
+    const prepared = prepareEndpointRequest(
+      { label: "Update Analytics Settings", method: "PATCH", path: "/api/admin/analytics-settings" },
+      createInitialTestRunContext(),
+    );
+
+    expect(prepared.path).toBe("/api/admin/analytics-settings");
+    expect(prepared.skipReason).toContain("global analytics settings");
+    expect(prepared.optionalSkip).toBe(true);
+  });
+
+  it("skips mutable smoke requests when only seeded fixture ids are available", () => {
+    const seededOnly = contextWith({
+      eventId: "seed-event",
+      announcementId: "seed-announcement",
+      wikiCategoryId: "seed-category",
+      wikiArticleId: "seed-article",
+      eventTemplateId: "seed-template",
+      warHistoryId: "seed-war",
+      warEventId: "seed-war-event",
+      adminRoleId: "seed-role",
+      badgeId: "seed-badge",
+      inviteLinkId: "seed-invite",
+      storageId: "seed-storage",
+      storageCategoryId: "seed-storage-category",
+      storageItemId: "seed-storage-item",
+    });
+
+    const unsafeEndpoints = [
+      { label: "Update Event", method: "PATCH" as const, path: "/api/events/:id" },
+      { label: "Archive Event", method: "DELETE" as const, path: "/api/events/:id" },
+      { label: "Update Announcement", method: "PATCH" as const, path: "/api/announcements/:id" },
+      { label: "Archive Announcement", method: "DELETE" as const, path: "/api/announcements/:id" },
+      { label: "Update Wiki Category", method: "PATCH" as const, path: "/api/wiki/categories/:id" },
+      { label: "Delete Wiki Category", method: "DELETE" as const, path: "/api/wiki/categories/:id" },
+      { label: "Update Wiki Article", method: "PATCH" as const, path: "/api/wiki/articles/:id" },
+      { label: "Archive Wiki Article", method: "DELETE" as const, path: "/api/wiki/articles/:id" },
+      { label: "Update Event Template", method: "PATCH" as const, path: "/api/events/templates/:id" },
+      { label: "Delete Event Template", method: "DELETE" as const, path: "/api/events/templates/:id" },
+      { label: "Save Teams", method: "POST" as const, path: "/api/guild-war/save-teams" },
+      { label: "Move Member", method: "POST" as const, path: "/api/guild-war/move" },
+      { label: "Role Tag", method: "PATCH" as const, path: "/api/guild-war/role-tag" },
+      { label: "Update History", method: "PATCH" as const, path: "/api/guild-war/history/:id" },
+      { label: "Delete History", method: "DELETE" as const, path: "/api/guild-war/history/:id" },
+      { label: "Update Role", method: "PATCH" as const, path: "/api/admin/roles/:id" },
+      { label: "Delete Role", method: "DELETE" as const, path: "/api/admin/roles/:id" },
+      { label: "Update Badge", method: "PATCH" as const, path: "/api/badges/:id" },
+      { label: "Delete Badge", method: "DELETE" as const, path: "/api/badges/:id" },
+      { label: "Delete Invite", method: "DELETE" as const, path: "/api/admin/invite-links/:id/permanent" },
+      { label: "Update Storage", method: "PATCH" as const, path: "/api/storage/storages/:id" },
+      { label: "Delete Storage", method: "DELETE" as const, path: "/api/storage/storages/:id" },
+      { label: "Update Storage Category", method: "PATCH" as const, path: "/api/storage/storages/:storageId/categories/:id" },
+      { label: "Delete Storage Category", method: "DELETE" as const, path: "/api/storage/storages/:storageId/categories/:id" },
+      { label: "Update Storage Item", method: "PATCH" as const, path: "/api/storage/items/:id" },
+      { label: "Delete Storage Item", method: "DELETE" as const, path: "/api/storage/items/:id" },
+    ];
+
+    for (const endpoint of unsafeEndpoints) {
+      const prepared = prepareEndpointRequest(endpoint, seededOnly);
+      expect(prepared.skipReason, `${endpoint.method} ${endpoint.path}`).toBeDefined();
+      expect(JSON.stringify(prepared), `${endpoint.method} ${endpoint.path}`).not.toContain("seed-");
+    }
+  });
+
   it("runs guild-war conclude after active-team mutations and batch-deletes only test-created history", () => {
     const guildWarKeys = buildApiCategories((key) => key)
       .find((category) => category.key === "guildWar")
@@ -952,6 +1340,30 @@ describe("AdminApiTestEngine request preparation", () => {
         createdConcludedWarHistoryId: "concluded-war",
       }),
     ))).toEqual({ ids: ["concluded-war"] });
+  });
+
+  it("marks system test endpoint requests so backend audit keeps only the full-run summary", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await runEndpointTest(
+      { label: "Create Event", method: "POST", path: "/api/events" },
+      buildJsonRequest("/api/events", { title: "[systemtest] Event" }),
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/events",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-System-Test": "admin-console-api",
+          "X-System-Test-Audit": "suppress",
+        }),
+      }),
+    );
   });
 
 });

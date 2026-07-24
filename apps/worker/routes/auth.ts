@@ -6,12 +6,11 @@ import { LIMITS } from "@guild/shared/config/limits";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { createPasswordHash, createSession, destroySession, resolveSession, verifyPassword } from "../services/auth";
+import { createPasswordHash, createSession, deleteUserSessions, destroySession, resolveSession, verifyPassword } from "../services/auth";
 import { AuthService } from "../services/AuthService";
-import { writeAuditLog } from "../services/audit";
-import { publishEntityChanged } from "../services/push";
 import { createRateLimitMiddleware } from "../middleware/rate-limit";
 import { buildError, getDb, handleResult, parseJsonBody } from "./_shared";
+import { commonDeps } from "./service-factory";
 
 export const authRoutes = new Hono();
 
@@ -36,8 +35,8 @@ function getService(c: Context): AuthService {
     verifyPassword,
     createSession: async (userId, opts) => { await createSession(c, userId, opts); },
     destroySession: (sessionId) => destroySession(c, sessionId),
-    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
-    writeAuditLog: (input) => writeAuditLog(c, input),
+    deleteUserSessions: (userId) => deleteUserSessions(c, userId),
+    ...commonDeps(c),
   });
 }
 
@@ -45,7 +44,6 @@ function getService(c: Context): AuthService {
 
 authRoutes.post("/login", async (c) => {
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = loginSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid login payload", parsed.error.flatten());
 
@@ -84,7 +82,6 @@ authRoutes.post("/register/:inviteCode", async (c) => {
   const inviteCode = c.req.param("inviteCode");
   if (!inviteCode) return buildError(c, "VALIDATION_ERROR", "Missing invite code");
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid registration payload", parsed.error.flatten());
   const result = await getService(c).register(inviteCode, parsed.data.username, parsed.data.password);

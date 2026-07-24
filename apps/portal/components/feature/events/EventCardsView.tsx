@@ -1,4 +1,5 @@
 ﻿import type { Event, MemberProfile, User } from "@guild/shared";
+import { activeGame } from "@guild/shared/games";
 import { Badge, Button, Group, HoverCard, Modal, SimpleGrid, Stack, Text, ThemeIcon } from "@mantine/core";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
@@ -37,15 +38,14 @@ import { EventCardAvatarStrip } from "./EventCardAvatarStrip";
 import { EventDetailModal } from "./EventDetailModal";
 import "./EventCardsView.css";
 
-const EVENT_TYPE_COLORS: Record<string, string> = {
-  weekly_mission: "blue",
-  guild_war: "red",
-  social: "grape",
-  poll: "teal",
-  raffle: "pink",
-  other: "gray",
-};
+// Derived from game config — single source of truth.
+const EVENT_TYPE_COLORS: Record<string, string> = Object.fromEntries(
+  activeGame.eventTypes.map((et) => [et.id, et.color]),
+);
 
+// Icons are not carried in the game config (config stores string identifiers like
+// "TargetOutlined", not React nodes). The local map is keyed on event type ids;
+// unknown types fall back to CalendarEventIcon via the ?? below.
 const EVENT_TYPE_ICONS: Record<string, React.ReactNode> = {
   weekly_mission: <TargetArrowIcon size={12} />,
   guild_war: <SwordsIcon size={12} />,
@@ -191,6 +191,7 @@ export function EventCardsView({
   const [detailModalEvent, setDetailModalEvent] = useState<Event | null>(null);
   const [archiveConfirmEvent, setArchiveConfirmEvent] = useState<Event | null>(null);
   const detailModalMembers = detailModalEvent ? (eventMembersMap.get(detailModalEvent.id) ?? []) : [];
+  const now = new Date();
 
   if (events.length === 0) {
     return (
@@ -221,7 +222,7 @@ export function EventCardsView({
           const participantMembers = eventMembersMap.get(event.id) ?? [];
           const isPoll = event.type === "poll";
           const isRaffle = event.type === "raffle";
-          const hasEnded = event.end_at != null && new Date(event.end_at) < new Date();
+          const hasEnded = event.end_at != null && new Date(event.end_at) < now;
           const raffleHasDrawn = isRaffle && (event.raffle_winners?.length ?? 0) > 0;
           const pollVoterMembers = isPoll && event.poll
             ? (() => {
@@ -237,12 +238,12 @@ export function EventCardsView({
           const isJoined = currentUserId ? members.some((m) => m.user.id === currentUserId) : false;
           const isFocused = focusedEventId === event.id;
           const isArchived = Boolean(event.archived_at);
-          const visibleMembers = members.length > 10 ? members.slice(0, 9) : members.slice(0, 10);
-          const hiddenMembersCount = members.length > 10 ? members.length - visibleMembers.length : 0;
+          const visibleMembers = members;
+          const hiddenMembersCount = 0;
           const participantActionDisabled = joinPending || leavePending || isArchived || (!isJoined && (event.signup_locked || isFull || hasEnded));
           const statusIndicators = (
             <>
-              {event.recurrence_rule && event.series_id ? (
+              {event.series_id ? (
                 <EventStatusIndicator
                   color="teal"
                   icon={<RefreshCwIcon size={16} />}
@@ -315,7 +316,7 @@ export function EventCardsView({
                     variant="light"
                     color={typeColor}
                     className="event-card__type-badge"
-                    leftSection={EVENT_TYPE_ICONS[event.type] ?? EVENT_TYPE_ICONS.other}
+                    leftSection={EVENT_TYPE_ICONS[event.type] ?? EVENT_TYPE_ICONS["other"]}
                   >
                     {t(`common:eventType.${event.type}`)}
                   </Badge>

@@ -21,29 +21,33 @@ export function useEffectivePermissions(): {
     queryKey: queryKeys.admin.roles(),
     queryFn: fetchRoles,
     enabled: Boolean(user),
-    staleTime: Infinity,
+    staleTime: 5 * 60_000,
   });
 
   const roles: AdminRole[] = rolesQuery.data ?? [];
+  const configuredRole = roles.find((r) => r.id === viewingAs);
+  const canUseSessionPermissions = Boolean(user) && viewingAs === user?.role && !configuredRole;
 
   const canManage = (permissions: Permission[]): boolean => {
     if (viewingAs === "external") return false;
-    const role = roles.find((r) => r.id === viewingAs);
-    if (!role) return false;
-    return permissions.some((p) => role.permissions[p] === true);
+    if (configuredRole) return permissions.some((p) => configuredRole.permissions[p] === true);
+    if (canUseSessionPermissions) return permissions.some((p) => user?.permissions[p] === true);
+    return false;
   };
 
-  const isModerator = viewingAs !== "external" && roles.some(
-    (r) => r.id === viewingAs && [
+  const isModerator = viewingAs !== "external" && [
       "admin.users.view",
       "admin.invite.view",
       "admin.audit.view",
       "admin.status.view",
       "admin.analytics.view",
+      "admin.siteConfig.manage",
       "admin.badges.manage",
+      "admin.storage.structure",
+      "admin.storage.items",
+      "admin.storage.stock",
       "admin.roles.manage",
-    ].some((p) => (r.permissions as Record<string, boolean>)[p] === true),
-  );
+    ].some((permission) => canManage([permission as Permission]));
 
   return { viewingAs, isModerator, canManage };
 }

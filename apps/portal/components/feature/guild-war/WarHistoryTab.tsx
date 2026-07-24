@@ -1,66 +1,17 @@
 import { Stack } from "@mantine/core";
 import type { ReactNode } from "react";
 import type { WarHistoryTabController } from "@portal/hooks/guild-war/useWarHistoryTabController";
+import type {
+  AnalyticsMetricKey,
+  HistoryDetailData,
+  HistoryMemberStat,
+  HistoryMvpSummary,
+  HistorySummaryRow,
+  HistoryViewMode,
+} from "@portal/types/guild-war";
 import type { EChartsThemeConfig } from "../../../theme/echarts";
 import { WarHistoryTable } from "./WarHistoryTable";
 import { WarHistoryDetail } from "./WarHistoryDetail";
-
-
-export type HistoryViewMode = "table" | "chart";
-export type AnalyticsMetricKey = string;
-
-export type HistoryMemberStatsUpdate = {
-  userId: string;
-  payload: Partial<Record<string, number>>;
-};
-
-export type HistorySummaryRow = {
-  id: string;
-  war_name: string;
-  enemy_name: string | null;
-  result: string | null;
-  created_at: string;
-  own_stats: Record<string, number | null> | null;
-  enemy_stats: Record<string, number | null> | null;
-};
-
-export type HistoryMemberStat = {
-  id: string;
-  user_id: string;
-  username?: string;
-  role_tag: string | null;
-  stats: Record<string, number | null> | null;
-};
-
-type HistoryDetailTeam = {
-  id: string;
-  team_name: string;
-  notes: string | null;
-  members: Array<{
-    user_id: string;
-    username?: string;
-    role_tag: string | null;
-  }>;
-};
-
-export type HistoryDetailData = {
-  id: string;
-  war_name: string;
-  enemy_name: string | null;
-  result: string | null;
-  own_stats: Record<string, number | null> | null;
-  enemy_stats: Record<string, number | null> | null;
-  notes: string | null;
-  member_stats: HistoryMemberStat[];
-  teams: HistoryDetailTeam[];
-};
-
-export type HistoryMvpSummary = {
-  damage: string;
-  healing: string;
-  building: string;
-  damageTaken: string;
-};
 
 type WarHistoryTabProps = {
   heading: ReactNode;

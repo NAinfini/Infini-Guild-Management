@@ -12,9 +12,12 @@ import { runSessionCleanupCron } from "./session-cleanup";
 
 export type MaintenanceJob = {
   name: string;
-  run: (env: Bindings) => Promise<void>;
+  // Result is ignored by the dispatcher; jobs may return a summary for manual runs.
+  run: (env: Bindings) => Promise<unknown>;
 };
 
+// media-orphan-cleanup runs once per day here (never in the 15-minute group);
+// it can also be triggered on demand via POST /api/admin/maintenance/media-orphan-cleanup.
 export const DAILY_MAINTENANCE_JOBS: readonly MaintenanceJob[] = [
   { name: "audit-archive", run: runAuditArchiveCron },
   { name: "media-orphan-cleanup", run: runMediaOrphanCleanupCron },

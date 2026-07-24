@@ -10,7 +10,6 @@ export async function runRaffleDrawCron(env: Bindings): Promise<void> {
      WHERE e.type = 'raffle'
        AND e.winner_count > 0
        AND e.archived_at IS NULL
-       AND e.is_series_parent = 0
        AND e.end_at IS NOT NULL
        AND e.end_at <= ?1
        AND NOT EXISTS (SELECT 1 FROM event_raffle_winners w WHERE w.event_id = e.id)`,
@@ -20,14 +19,26 @@ export async function runRaffleDrawCron(env: Bindings): Promise<void> {
 
   const events = (rows.results ?? []) as Array<{ id: string; winner_count: number }>;
 
-  for (const event of events) {
-    const participantRows = await env.DB.prepare(
-      "SELECT user_id FROM event_participants WHERE event_id = ?1",
-    )
-      .bind(event.id)
-      .all();
+  if (events.length === 0) return;
 
-    const pool = ((participantRows.results ?? []) as Array<{ user_id: string }>).map((r) => r.user_id);
+  // Fetch all participants for all eligible events in one query, then group by event_id in JS.
+  const eventIds = events.map((e) => e.id);
+  const placeholders = eventIds.map((_, i) => `?${i + 1}`).join(", ");
+  const allParticipantRows = await env.DB.prepare(
+    `SELECT event_id, user_id FROM event_participants WHERE event_id IN (${placeholders})`,
+  )
+    .bind(...eventIds)
+    .all();
+
+  const participantsByEventId = new Map<string, string[]>();
+  for (const r of (allParticipantRows.results ?? []) as Array<{ event_id: string; user_id: string }>) {
+    const list = participantsByEventId.get(r.event_id) ?? [];
+    list.push(r.user_id);
+    participantsByEventId.set(r.event_id, list);
+  }
+
+  for (const event of events) {
+    const pool = participantsByEventId.get(event.id) ?? [];
     if (pool.length === 0) continue;
 
     const winnerCount = Math.min(event.winner_count, pool.length);

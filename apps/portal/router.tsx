@@ -1,4 +1,5 @@
 import type {
+  FeatureFlags,
   MemberProfile,
   User,
 } from "@guild/shared";
@@ -23,6 +24,7 @@ import { apiRequest } from "./api/client";
 import { fetchEventDetail } from "./api/queries/events";
 import { AppShell } from "./components/layout/AppShell";
 import { useAuthStore } from "./stores/auth";
+import { useSiteConfigStore } from "./stores/site-config";
 import { buildEventWorkbenchSearch, EVENTS_ROUTE_SEARCH_SCHEMA, sanitizeEventsRouteSearch } from "./utils/event-navigation";
 import { isExternalViewSearch } from "./utils/external-view";
 
@@ -38,6 +40,18 @@ const GUILD_WAR_SEARCH_SCHEMA = z.object({
   warName: z.string().optional(),
 });
 
+export function isRouteFeatureEnabled(feature: keyof FeatureFlags): boolean {
+  const features = useSiteConfigStore.getState().features;
+  if (feature === "equipmentCalc") return features.tools && features.equipmentCalc;
+  return features[feature];
+}
+
+function requireRouteFeature(feature: keyof FeatureFlags): void {
+  if (!isRouteFeatureEnabled(feature)) {
+    throw redirect({ to: "/" });
+  }
+}
+
 const LazyAdminPage = lazy(() => import("./components/pages/AdminPage").then((mod) => ({ default: mod.AdminPage })));
 const LazyAnnouncementsPage = lazy(() =>
   import("./components/pages/AnnouncementsPage").then((mod) => ({ default: mod.AnnouncementsPage })),
@@ -47,6 +61,7 @@ const LazyDashboardPage = lazy(() =>
 );
 const LazyEventsPage = lazy(() => import("./components/pages/EventsPage").then((mod) => ({ default: mod.EventsPage })));
 const LazyGalleryPage = lazy(() => import("./components/pages/GalleryPage").then((mod) => ({ default: mod.GalleryPage })));
+const LazyStoragePage = lazy(() => import("./components/pages/StoragePage").then((mod) => ({ default: mod.StoragePage })));
 const LazyGuildWarPage = lazy(() =>
   import("./components/pages/GuildWarPage").then((mod) => ({ default: mod.GuildWarPage })),
 );
@@ -67,18 +82,14 @@ const LazyRosterPage = lazy(() =>
 );
 
 function RouteLoadingFallback(): ReactNode {
+  const { t } = useTranslation("common");
+
   return (
-    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div
-        style={{
-          width: 28,
-          height: 28,
-          border: "3px solid color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent)",
-          borderTopColor: "var(--color-primary, #3b82f6)",
-          borderRadius: "50%",
-          animation: "spin 0.7s linear infinite",
-        }}
-      />
+    <div className="route-loading" role="status" aria-live="polite">
+      <div className="route-loading__card">
+        <div className="route-loading__spinner" aria-hidden="true" />
+        <span className="route-loading__label">{t("message.loading")}</span>
+      </div>
     </div>
   );
 }
@@ -119,6 +130,14 @@ function GalleryRoutePage() {
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
       <LazyGalleryPage />
+    </Suspense>
+  );
+}
+
+function StorageRoutePage() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <LazyStoragePage />
     </Suspense>
   );
 }
@@ -226,7 +245,7 @@ function NotFoundPage(): ReactNode {
     <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
       <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.15 }}>404</span>
       <span style={{ fontSize: 16, fontWeight: 600 }}>{t("notFound.title")}</span>
-      <a href="/" style={{ fontSize: 14, color: "var(--color-primary, #3b82f6)" }}>{t("notFound.backHome")}</a>
+      <a href="/" style={{ fontSize: 14, color: "var(--color-primary, #D4A843)" }}>{t("notFound.backHome")}</a>
     </div>
   );
 }
@@ -245,7 +264,7 @@ function RouteErrorFallback(): ReactNode {
           padding: "8px 20px",
           borderRadius: 8,
           border: "none",
-          background: "var(--color-primary, #3b82f6)",
+          background: "var(--color-primary, #D4A843)",
           color: "#fff",
           fontSize: 14,
           fontWeight: 600,
@@ -283,6 +302,7 @@ const publicSettingsRoute = createRoute({
 const publicToolsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tools",
+  beforeLoad: () => requireRouteFeature("tools"),
   component: ToolsRoutePage,
 });
 
@@ -319,6 +339,9 @@ const authenticatedOnlyRoute = createRoute({
   component: Outlet,
 });
 
+// Guest users may browse public site content. Put read-only feature routes
+// on rootRoute; keep user, moderator, and admin-only pages under
+// authenticatedOnlyRoute.
 const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
@@ -328,6 +351,7 @@ const dashboardRoute = createRoute({
 const eventsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/events",
+  beforeLoad: () => requireRouteFeature("events"),
   validateSearch: (search) => EVENTS_ROUTE_SEARCH_SCHEMA.parse(search),
   component: EventsRoutePage,
 });
@@ -336,6 +360,7 @@ const eventDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/events/$id",
   beforeLoad: async ({ params }) => {
+    requireRouteFeature("events");
     let detailTitle: string | undefined;
     try {
       const detail = await fetchEventDetail(params.id);
@@ -376,12 +401,14 @@ const profileRoute = createRoute({
 const announcementsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/announcements",
+  beforeLoad: () => requireRouteFeature("announcements"),
   component: AnnouncementsRoutePage,
 });
 
 const guildWarRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/guild-war",
+  beforeLoad: () => requireRouteFeature("guildWar"),
   validateSearch: (search) => GUILD_WAR_SEARCH_SCHEMA.parse(search),
   component: GuildWarRoutePage,
 });
@@ -389,24 +416,34 @@ const guildWarRoute = createRoute({
 const galleryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/gallery",
+  beforeLoad: () => requireRouteFeature("gallery"),
   component: GalleryRoutePage,
+});
+
+const storageRoute = createRoute({
+  getParentRoute: () => authenticatedOnlyRoute,
+  path: "/storage",
+  beforeLoad: () => requireRouteFeature("storage"),
+  component: StorageRoutePage,
 });
 
 const wikiRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/wiki",
+  beforeLoad: () => requireRouteFeature("wiki"),
   component: WikiRoutePage,
 });
 
 const wikiSlugRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/wiki/$slug",
+  beforeLoad: () => requireRouteFeature("wiki"),
   component: WikiRoutePage,
 });
 
 const ADMIN_SEARCH_SCHEMA = z.object({
   member: z.string().optional(),
-  tab: z.enum(["member", "invite", "audit", "roles", "badges", "status", "gameData"]).optional(),
+  tab: z.enum(["member", "invite", "audit", "roles", "siteConfig", "badges", "status", "gameData"]).optional(),
 });
 
 const adminRoute = createRoute({
@@ -430,11 +467,9 @@ const adminRoute = createRoute({
   component: AdminRoutePage,
 });
 
+// Public browsing routes are listed before the authenticated branch so guests
+// can view the website without being redirected to /login.
 const routeTree = rootRoute.addChildren([
-  publicSettingsRoute,
-  publicToolsRoute,
-  loginRoute,
-  registerRoute,
   dashboardRoute,
   eventsRoute,
   eventDetailRoute,
@@ -444,13 +479,19 @@ const routeTree = rootRoute.addChildren([
   galleryRoute,
   wikiRoute,
   wikiSlugRoute,
+  publicSettingsRoute,
+  publicToolsRoute,
+  loginRoute,
+  registerRoute,
+  // User, moderator, and admin-only features stay locked behind session checks.
   authenticatedOnlyRoute.addChildren([
+    storageRoute,
     profileRoute,
     adminRoute,
   ]),
 ]);
 
-const router = createRouter({ routeTree, defaultViewTransition: true });
+const router = createRouter({ routeTree, defaultViewTransition: false });
 
 router.subscribe("onBeforeLoad", () => nprogress.start());
 router.subscribe("onResolved", () => nprogress.complete());

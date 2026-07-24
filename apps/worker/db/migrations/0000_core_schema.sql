@@ -76,25 +76,40 @@ CREATE TABLE IF NOT EXISTS events (
   auto_archived INTEGER NOT NULL DEFAULT 0,
   created_by TEXT NOT NULL REFERENCES users(id),
   updated_by TEXT REFERENCES users(id),
-  recurrence_rule TEXT,
   attachments TEXT NOT NULL DEFAULT '[]',
   series_id TEXT,
-  is_series_parent INTEGER NOT NULL DEFAULT 0,
   instance_date TEXT,
+  winner_count INTEGER CHECK (winner_count > 0),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS recurring_templates (
+  id TEXT PRIMARY KEY NOT NULL,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  start_time TEXT NOT NULL, -- UTC wall-clock "HH:mm" (since 2026-06; portal converts local<->UTC)
+  duration_minutes INTEGER,
+  capacity INTEGER CHECK (capacity > 0),
+  recurrence_rule TEXT NOT NULL,
+  visibility_offset_minutes INTEGER NOT NULL DEFAULT 0,
+  auto_archive INTEGER NOT NULL DEFAULT 0,
+  attachments TEXT NOT NULL DEFAULT '[]',
+  paused INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT NOT NULL REFERENCES users(id),
   last_generated_date TEXT,
   generation_count INTEGER NOT NULL DEFAULT 0,
-  visibility_offset_minutes INTEGER,
-  winner_count INTEGER CHECK (winner_count > 0),
+  timezone_offset_minutes INTEGER NOT NULL DEFAULT 0, -- legacy, unused since 2026-06 (start_time is UTC)
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS event_participants (
   id TEXT PRIMARY KEY NOT NULL,
-  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  joined_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  UNIQUE(event_id, user_id)
+  event_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  joined_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS event_polls (
@@ -115,11 +130,17 @@ CREATE TABLE IF NOT EXISTS event_poll_options (
 
 CREATE TABLE IF NOT EXISTS event_poll_votes (
   id TEXT PRIMARY KEY NOT NULL,
-  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-  option_id TEXT NOT NULL REFERENCES event_poll_options(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  UNIQUE(event_id, option_id, user_id)
+  event_id TEXT NOT NULL,
+  option_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS event_raffle_winners (
+  id TEXT PRIMARY KEY NOT NULL,
+  event_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  drawn_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS announcements (
@@ -166,21 +187,19 @@ CREATE TABLE IF NOT EXISTS war_teams (
 
 CREATE TABLE IF NOT EXISTS war_team_members (
   id TEXT PRIMARY KEY NOT NULL,
-  war_team_id TEXT NOT NULL REFERENCES war_teams(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id),
+  war_team_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
   role_tag TEXT,
   sort_order INTEGER NOT NULL DEFAULT 0,
   stats TEXT,
-  note TEXT,
-  UNIQUE(war_team_id, user_id)
+  note TEXT
 );
 
 CREATE TABLE IF NOT EXISTS war_pool_members (
   id TEXT PRIMARY KEY NOT NULL,
-  war_history_id TEXT REFERENCES war_history(id) ON DELETE CASCADE,
-  event_id TEXT REFERENCES events(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  UNIQUE(war_history_id, user_id),
+  war_history_id TEXT,
+  event_id TEXT,
+  user_id TEXT NOT NULL,
   CHECK (event_id IS NOT NULL OR war_history_id IS NOT NULL)
 );
 
@@ -240,6 +259,39 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS site_config (
+  id TEXT PRIMARY KEY NOT NULL,
+  site_name TEXT NOT NULL,
+  site_logo_url TEXT NOT NULL,
+  feature_flags_json TEXT NOT NULL,
+  media_policy_json TEXT NOT NULL,
+  storage_policy_json TEXT NOT NULL,
+  absence_policy_json TEXT NOT NULL,
+  analytics_settings_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS onboarding_config (
+  id TEXT PRIMARY KEY NOT NULL,
+  title TEXT NOT NULL,
+  body_json TEXT NOT NULL,
+  checklist_json TEXT NOT NULL DEFAULT '[]',
+  require_ack INTEGER NOT NULL DEFAULT 1,
+  published_at TEXT,
+  updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS member_onboarding_state (
+  user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  completed_item_ids_json TEXT NOT NULL DEFAULT '[]',
+  acknowledged_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY NOT NULL,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -274,16 +326,18 @@ CREATE INDEX IF NOT EXISTS idx_sessions_created_at
   ON sessions(created_at);
 
 -- events
-CREATE INDEX IF NOT EXISTS idx_events_archived_series_start
-  ON events(archived_at, is_series_parent, start_at, id);
-CREATE INDEX IF NOT EXISTS idx_events_series_archived_start
-  ON events(is_series_parent, archived_at, start_at, id);
+CREATE INDEX IF NOT EXISTS idx_events_archived_start
+  ON events(archived_at, start_at, id);
 CREATE INDEX IF NOT EXISTS idx_events_auto_archive_due
-  ON events(auto_archive, auto_archived, archived_at, is_series_parent, end_at, start_at);
+  ON events(auto_archive, auto_archived, archived_at, end_at, start_at);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_events_series_instance
   ON events(series_id, instance_date);
 CREATE INDEX IF NOT EXISTS idx_events_created_by
   ON events(created_by);
+
+-- recurring_templates
+CREATE INDEX IF NOT EXISTS idx_recurring_templates_active
+  ON recurring_templates(paused, created_at, id);
 
 -- event_participants
 CREATE UNIQUE INDEX IF NOT EXISTS ux_event_participants_event_user
@@ -303,14 +357,9 @@ CREATE INDEX IF NOT EXISTS idx_event_poll_votes_event_user
 CREATE INDEX IF NOT EXISTS idx_event_poll_votes_option
   ON event_poll_votes(option_id);
 
-CREATE TABLE IF NOT EXISTS event_raffle_winners (
-  id TEXT PRIMARY KEY NOT NULL,
-  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  drawn_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  UNIQUE(event_id, user_id)
-);
-
+-- event_raffle_winners
+CREATE UNIQUE INDEX IF NOT EXISTS ux_event_raffle_winners_event_user
+  ON event_raffle_winners(event_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_event_raffle_winners_event
   ON event_raffle_winners(event_id);
 
@@ -439,6 +488,38 @@ INSERT OR IGNORE INTO roles (id, name, level, color, is_builtin) VALUES
   ('moderator', 'Moderator', 500, 'blue', 1),
   ('member', 'Member', 100, 'gray', 1);
 
+INSERT OR IGNORE INTO site_config (
+  id,
+  site_name,
+  site_logo_url,
+  feature_flags_json,
+  media_policy_json,
+  storage_policy_json,
+  absence_policy_json,
+  analytics_settings_json
+) VALUES
+  (
+    'default',
+    'Infini 公会',
+    '/logo.webp',
+    '{"announcements":true,"events":true,"guildWar":true,"gallery":true,"wiki":true,"tools":true,"equipmentCalc":true,"storage":true}',
+    '{"max_file_size_bytes":{"site_logo":2097152,"profile_image":5242880,"profile_audio":20971520,"announcement_image":5242880,"wiki_image":5242880,"event_image":5242880,"gallery_image":10485760,"storage_image":5242880},"quotas":{"profile":10,"announcement":10,"gallery":20,"wiki":10}}',
+    '{"images_per_item":5}',
+    '{"max_span_days":366,"max_entries_per_user":20}',
+    '{"reference_duration_minutes":30,"modifier_weights":{"credits":0.3,"kda":0.3,"basehp":0.15,"towers":0.1,"distance":0.15}}'
+  );
+
+INSERT OR IGNORE INTO onboarding_config (id, title, body_json, checklist_json, require_ack, published_at, updated_by) VALUES
+  (
+    'default',
+    'Member onboarding',
+    '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Welcome to the guild. Review the rules before joining events, claiming storage, or participating in guild war planning."}]},{"type":"paragraph","content":[{"type":"text","text":"Keep your profile current and contact leadership when your availability, name, role, or class changes."}]}]}',
+    '[{"id":"read-rules","label":"Read guild rules","description":"Understand expectations for events, storage, guild war, and member communication.","required":true},{"id":"complete-profile","label":"Complete your profile","description":"Add your power, class, availability, and contact details.","required":true},{"id":"ask-questions","label":"Ask questions early","description":"Contact leadership if any rule or workflow is unclear.","required":false}]',
+    1,
+    NULL,
+    NULL
+  );
+
 INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   -- admin (full access)
   ('admin', 'admin.users.view', 1),
@@ -456,6 +537,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('admin', 'admin.roles.manage', 1),
   ('admin', 'admin.analytics.view', 1),
   ('admin', 'admin.analytics.manage', 1),
+  ('admin', 'admin.siteConfig.manage', 1),
   ('admin', 'guildwar.teams.edit', 1),
 
   ('admin', 'guildwar.history.edit', 1),
@@ -478,6 +560,10 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('admin', 'wiki.categories.manage', 1),
   ('admin', 'admin.badges.manage', 1),
   ('admin', 'admin.gameData.manage', 1),
+  ('admin', 'admin.storage.structure', 1),
+  ('admin', 'admin.storage.items', 1),
+  ('admin', 'admin.storage.stock', 1),
+  ('admin', 'admin.storage.manage', 1),
   -- moderator (limited access)
   ('moderator', 'admin.users.view', 1),
   ('moderator', 'admin.users.edit', 1),
@@ -494,6 +580,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('moderator', 'admin.roles.manage', 0),
   ('moderator', 'admin.analytics.view', 1),
   ('moderator', 'admin.analytics.manage', 0),
+  ('moderator', 'admin.siteConfig.manage', 0),
   ('moderator', 'guildwar.teams.edit', 1),
 
   ('moderator', 'guildwar.history.edit', 1),
@@ -516,6 +603,10 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('moderator', 'wiki.categories.manage', 1),
   ('moderator', 'admin.badges.manage', 0),
   ('moderator', 'admin.gameData.manage', 0),
+  ('moderator', 'admin.storage.structure', 0),
+  ('moderator', 'admin.storage.items', 0),
+  ('moderator', 'admin.storage.stock', 0),
+  ('moderator', 'admin.storage.manage', 0),
   -- member (minimal access)
   ('member', 'admin.users.view', 0),
   ('member', 'admin.users.edit', 0),
@@ -532,6 +623,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('member', 'admin.roles.manage', 0),
   ('member', 'admin.analytics.view', 0),
   ('member', 'admin.analytics.manage', 0),
+  ('member', 'admin.siteConfig.manage', 0),
   ('member', 'guildwar.teams.edit', 0),
 
   ('member', 'guildwar.history.edit', 0),
@@ -553,7 +645,11 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('member', 'wiki.articles.delete', 0),
   ('member', 'wiki.categories.manage', 0),
   ('member', 'admin.badges.manage', 0),
-  ('member', 'admin.gameData.manage', 0);
+  ('member', 'admin.gameData.manage', 0),
+  ('member', 'admin.storage.structure', 0),
+  ('member', 'admin.storage.items', 0),
+  ('member', 'admin.storage.stock', 0),
+  ('member', 'admin.storage.manage', 0);
 
 -- ===== GAME DATA (Equipment Calculator) =====
 
@@ -566,3 +662,118 @@ CREATE TABLE IF NOT EXISTS game_data (
 );
 
 CREATE INDEX IF NOT EXISTS idx_game_data_created_at ON game_data(created_at);
+
+
+-- ===== MEDIA REFERENCES (orphan-cleanup reference counting) =====
+-- One row per (R2 key, referencing entity) pair. Maintained on entity write
+-- paths; the media-orphan-cleanup cron deletes R2 objects with no rows here
+-- (after a grace period) instead of scanning content tables.
+
+CREATE TABLE IF NOT EXISTS media_references (
+  media_key TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  PRIMARY KEY (media_key, entity_type, entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_media_references_key ON media_references(media_key);
+CREATE INDEX IF NOT EXISTS idx_media_references_entity ON media_references(entity_type, entity_id);
+
+
+-- ===== WIKI REVISIONS (per-save content snapshots) =====
+-- Revision N holds the article's title/body as of that save. Restore writes
+-- an old snapshot back as a new revision. Pruned to a per-article cap on write.
+
+CREATE TABLE IF NOT EXISTS wiki_revisions (
+  id TEXT PRIMARY KEY,
+  article_id TEXT NOT NULL REFERENCES wiki_articles(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  body_json TEXT NOT NULL,
+  edited_by TEXT NOT NULL REFERENCES users(id),
+  restored_from INTEGER,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_wiki_revisions_article_revision ON wiki_revisions(article_id, revision);
+
+
+-- ===== MEMBER ABSENCES (请假 history) =====
+-- Source of truth for member vacations. member_profiles.vacation_start/vacation_end
+-- are legacy columns; read paths derive them from the current-or-next absence here.
+
+CREATE TABLE IF NOT EXISTS member_absences (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_member_absences_user_end ON member_absences(user_id, end_date);
+CREATE INDEX IF NOT EXISTS idx_member_absences_end_start ON member_absences(end_date, start_date);
+
+
+-- ===== GUILD STORAGE =====
+-- Stock invariant: storage_items.quantity changes only via an atomic
+-- "UPDATE quantity + INSERT storage_transactions" batch, so
+-- SUM(quantity_delta) per item always equals the current quantity.
+-- recipient_user_id is SET NULL (not cascade) so deleting a user keeps the ledger row.
+
+CREATE TABLE IF NOT EXISTS storages (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS storage_categories (
+  id TEXT PRIMARY KEY,
+  storage_id TEXT NOT NULL REFERENCES storages(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_storage_categories_storage ON storage_categories(storage_id);
+
+CREATE TABLE IF NOT EXISTS storage_items (
+  id TEXT PRIMARY KEY,
+  storage_id TEXT NOT NULL REFERENCES storages(id) ON DELETE CASCADE,
+  category_id TEXT REFERENCES storage_categories(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  quantity INTEGER NOT NULL DEFAULT 0,
+  allow_member_deposit INTEGER NOT NULL DEFAULT 0,
+  allow_member_withdraw INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_storage_items_storage_category ON storage_items(storage_id, category_id);
+
+CREATE TABLE IF NOT EXISTS storage_item_images (
+  id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL REFERENCES storage_items(id) ON DELETE CASCADE,
+  r2_key TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_storage_item_images_item ON storage_item_images(item_id);
+
+CREATE TABLE IF NOT EXISTS storage_transactions (
+  id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL REFERENCES storage_items(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('intake', 'distribute', 'adjust')),
+  quantity_delta INTEGER NOT NULL,
+  recipient_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  note TEXT,
+  actor_id TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_storage_transactions_item ON storage_transactions(item_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_storage_transactions_recipient ON storage_transactions(recipient_user_id, created_at) WHERE recipient_user_id IS NOT NULL;
+-- Guild-wide recent-activity ledger; created_at is not unique — order by created_at DESC, id DESC.
+CREATE INDEX IF NOT EXISTS idx_storage_transactions_created ON storage_transactions(created_at);

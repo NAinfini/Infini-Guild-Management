@@ -3,6 +3,7 @@ export {
   createWikiCategory,
   deleteWikiArticle,
   deleteWikiCategory,
+  restoreWikiArticleRevision,
   updateWikiArticle,
   updateWikiCategory,
   uploadWikiArticleImages,
@@ -15,6 +16,8 @@ export type {
 } from "../api/mutations/wiki";
 export {
   fetchWikiArticleBySlug,
+  fetchWikiArticleRevision,
+  fetchWikiArticleRevisions,
   fetchWikiArticles,
   fetchWikiCategories,
 } from "../api/queries/wiki";

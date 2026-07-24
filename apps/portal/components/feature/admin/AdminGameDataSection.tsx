@@ -86,9 +86,8 @@ export function AdminGameDataSection() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.gameData.all });
       notifySuccess(t("gameData.rollbackSuccess"));
     },
-    onError: (err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      notifyError(message);
+    onError: () => {
+      notifyError(t("gameData.rollbackFailed"));
     },
   });
 

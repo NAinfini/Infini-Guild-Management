@@ -321,7 +321,7 @@ export function calculateGraduationRate(
   if (!options?.skipExcelRate) {
     const roundedStats = { ...rawStats };
     for (const key of Object.keys(roundedStats)) {
-      const val = roundedStats[key];
+      const val = roundedStats[key]!;
       const isPct = gameData.percentStats.includes(key) ||
         key.includes("率") || key.includes("增效") || key.includes("加成") || key.includes("增伤") || key.includes("穿透");
       roundedStats[key] = isPct ? parseFloat(val.toFixed(1)) : Math.round(val);

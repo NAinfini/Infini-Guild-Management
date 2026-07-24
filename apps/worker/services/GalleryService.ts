@@ -1,5 +1,5 @@
 import { galleryItemSchema } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, asc, desc, eq, gte, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -7,11 +7,11 @@ import { nanoid } from "nanoid";
 import { galleryItems, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern } from "./helpers";
+import { replaceMediaRefs, deleteMediaRefs, deleteMediaRefsBulk } from "./media-references";
 
 // --- Types ---
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
-type AuditLogInput = { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
 
 export type GalleryRow = {
   id: string;
@@ -103,6 +103,7 @@ export class GalleryService {
       const putResult = await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
       if (!putResult) return err("SERVER_ERROR", "Failed to upload media file");
       await this.db.insert(galleryItems).values({ id: itemId, type: "image", url: key, caption, uploadedBy: actorId });
+      await replaceMediaRefs(this.deps.rawDb, "gallery_item", itemId, [key]);
       created.push({ id: itemId, type: "image", url: key, caption, uploadedBy: actorId, uploadedByName: null, createdAt: new Date().toISOString() });
     }
     await this.deps.writeAuditLog({ entityType: "gallery_item", action: "upload_images", actorId, entityId: "batch", diffTitle: `${created.length} items`, detailText: JSON.stringify({ count: created.length, captioned_count: created.filter((item) => Boolean(item.caption)).length }) });
@@ -115,7 +116,7 @@ export class GalleryService {
     await this.db.insert(galleryItems).values({ id: itemId, type: "video", url, caption, uploadedBy: actorId });
     const created = await this.getItemById(itemId);
     if (!created) return err("SERVER_ERROR", "Failed to create gallery item");
-    await this.deps.writeAuditLog({ entityType: "gallery_item", action: "create_video", actorId, entityId: itemId, diffTitle: caption });
+    await this.deps.writeAuditLog({ entityType: "gallery_item", action: "create_video", actorId, entityId: itemId, diffTitle: caption ?? url });
     await this.deps.publishEntityChanged({ entityType: "gallery", entityId: itemId, hint: "video_created" });
     return ok(toGalleryPayload(created));
   }
@@ -127,8 +128,9 @@ export class GalleryService {
     await this.deps.rawDb.batch([
       this.deps.rawDb.prepare("DELETE FROM gallery_items WHERE id = ?1").bind(itemId),
     ]);
+    await deleteMediaRefs(this.deps.rawDb, "gallery_item", itemId);
     if (existing.type === "image") await this.deps.media.delete(existing.url);
-    await this.deps.writeAuditLog({ entityType: "gallery_item", action: "delete", actorId, entityId: itemId, diffTitle: existing.caption });
+    await this.deps.writeAuditLog({ entityType: "gallery_item", action: "delete", actorId, entityId: itemId, diffTitle: existing.caption ?? existing.type });
     await this.deps.publishEntityChanged({ entityType: "gallery", entityId: itemId, hint: "item_deleted" });
     return ok({ ok: true });
   }
@@ -141,6 +143,7 @@ export class GalleryService {
     await this.deps.rawDb.batch([
       this.deps.rawDb.prepare(`DELETE FROM gallery_items WHERE id IN (${placeholders})`).bind(...itemIds),
     ]);
+    await deleteMediaRefsBulk(this.deps.rawDb, "gallery_item", itemIds);
     for (const item of items) {
       if (item.type === "image") await this.deps.media.delete(item.url);
     }

@@ -1,5 +1,5 @@
 import type { Event, User } from "@guild/shared";
-import type { ImageGridEditorItem } from "@guild/shared/types/media";
+import type { ImageGridEditorItem } from "@portal/types/media";
 import { modals } from "@mantine/modals";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, type Dispatch, type SetStateAction } from "react";
@@ -85,7 +85,7 @@ export function useEventsMutations({
           centered: true,
         });
       }),
-    [],
+    [t],
   );
 
   const participantMutations = useEventsParticipantMutations({
@@ -119,9 +119,9 @@ export function useEventsMutations({
               : error.reason === "invalid_poll"
                 ? t("poll.message.optionsInvalid")
                 : error.reason === "missing_raffle_end"
-                  ? t("raffle.message.endRequired", { defaultValue: "Raffle end time required" })
+                  ? t("raffle.message.endRequired")
                   : error.reason === "missing_winner_count"
-                    ? t("raffle.message.winnerCountRequired", { defaultValue: "Winner count required" })
+                    ? t("raffle.message.winnerCountRequired")
                     : t("message.missingEventId");
         showError(error, messageText);
         return;
@@ -211,7 +211,7 @@ export function useEventsMutations({
       notifySuccess(t("raffle.message.drawSuccess"));
     },
     onError: (error) => {
-      showError(error, t("raffle.message.drawFailed", { defaultValue: "Failed to draw raffle winners" }));
+      showError(error, t("raffle.message.drawFailed"));
     },
   });
 

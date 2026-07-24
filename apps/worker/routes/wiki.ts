@@ -1,6 +1,5 @@
 import {
   ALLOWED_IMAGE_TYPES,
-  FILE_SIZE_LIMITS,
   createWikiArticleSchema,
   createWikiCategorySchema,
   updateWikiCategorySchema,
@@ -8,22 +7,15 @@ import {
 } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import type { Bindings } from "../index";
 import { requirePermission } from "../middleware/rbac";
-import { writeAuditLog } from "../services/audit";
-import { publishEntityChanged } from "../services/push";
 import { WikiService } from "../services/WikiService";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
+import { hasMediaQuotaCapacity, withMedia } from "./service-factory";
 
 export const wikiRoutes = new Hono();
 
 function getService(c: Context): WikiService {
-  const env = c.env as Bindings;
-  return new WikiService(getDb(c), {
-    media: env.MEDIA,
-    writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
-  });
+  return new WikiService(getDb(c), withMedia(c));
 }
 
 async function requireWikiArticlesCreate(c: Context) { return requirePermission(c, "wiki.articles.create"); }
@@ -47,9 +39,7 @@ wikiRoutes.get("/categories", async (c) => {
 
 wikiRoutes.post("/categories", async (c) => {
   const sessionUser = await requireWikiCategoriesManage(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = createWikiCategorySchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki category payload", parsed.error.flatten());
   const result = await getService(c).createCategory(sessionUser.id, parsed.data);
@@ -59,9 +49,7 @@ wikiRoutes.post("/categories", async (c) => {
 
 wikiRoutes.patch("/categories/:id", async (c) => {
   const sessionUser = await requireWikiCategoriesManage(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = updateWikiCategorySchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki category payload", parsed.error.flatten());
   const result = await getService(c).updateCategory(sessionUser.id, c.req.param("id"), parsed.data);
@@ -69,8 +57,7 @@ wikiRoutes.patch("/categories/:id", async (c) => {
 });
 
 wikiRoutes.delete("/categories/:id", async (c) => {
-  const sessionUser = await requireWikiCategoriesManage(c);
-  if (sessionUser instanceof Response) return sessionUser;
+  const sessionUser = await requirePermission(c, "wiki.categories.manage", { freshPermissions: true });
   const result = await getService(c).deleteCategory(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
@@ -99,9 +86,7 @@ wikiRoutes.get("/articles/:slug", async (c) => {
 
 wikiRoutes.post("/articles", async (c) => {
   const sessionUser = await requireWikiArticlesCreate(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = createWikiArticleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki article payload", parsed.error.flatten());
   const result = await getService(c).createArticle(sessionUser.id, parsed.data);
@@ -111,9 +96,7 @@ wikiRoutes.post("/articles", async (c) => {
 
 wikiRoutes.patch("/articles/:id", async (c) => {
   const sessionUser = await requireWikiArticlesEdit(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = updateWikiArticleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki article payload", parsed.error.flatten());
   const ifMatchHeader = c.req.header("If-Match");
@@ -122,33 +105,64 @@ wikiRoutes.patch("/articles/:id", async (c) => {
   return handleResult(c, result);
 });
 
+// --- Revision routes (editor-only: history is a moderation tool) ---
+
+wikiRoutes.get("/articles/:id/revisions", async (c) => {
+  await requireWikiArticlesEdit(c);
+  const result = await getService(c).listRevisions(c.req.param("id"));
+  return handleResult(c, result);
+});
+
+wikiRoutes.get("/articles/:id/revisions/:revision", async (c) => {
+  await requireWikiArticlesEdit(c);
+  const revision = Number.parseInt(c.req.param("revision"), 10);
+  if (!Number.isInteger(revision) || revision < 1) return buildError(c, "VALIDATION_ERROR", "Invalid revision number");
+  const result = await getService(c).getRevision(c.req.param("id"), revision);
+  return handleResult(c, result);
+});
+
+wikiRoutes.post("/articles/:id/revisions/:revision/restore", async (c) => {
+  const sessionUser = await requireWikiArticlesEdit(c);
+  const revision = Number.parseInt(c.req.param("revision"), 10);
+  if (!Number.isInteger(revision) || revision < 1) return buildError(c, "VALIDATION_ERROR", "Invalid revision number");
+  const result = await getService(c).restoreRevision(sessionUser.id, c.req.param("id"), revision);
+  return handleResult(c, result);
+});
+
 wikiRoutes.delete("/articles/:id", async (c) => {
   const sessionUser = await requirePermission(c, "wiki.articles.archive");
-  if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).archiveArticle(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 wikiRoutes.delete("/articles/:id/permanent", async (c) => {
-  const sessionUser = await requirePermission(c, "wiki.articles.delete");
-  if (sessionUser instanceof Response) return sessionUser;
+  const sessionUser = await requirePermission(c, "wiki.articles.delete", { freshPermissions: true });
   const result = await getService(c).permanentDeleteArticle(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 wikiRoutes.post("/articles/:id/images", async (c) => {
   const sessionUser = await requireWikiArticlesEdit(c);
-  if (sessionUser instanceof Response) return sessionUser;
 
-  const formOrError = await safeFormData(c);
-  if (formOrError instanceof Response) return formOrError;
-  const form = formOrError;
+  const form = await safeFormData(c);
   const files = collectFiles(form);
 
   if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
+  const mediaPolicy = await withMedia(c).getMediaPolicy();
+  if (files.length > mediaPolicy.quotas.wiki) {
+    return buildError(c, "VALIDATION_ERROR", `Maximum ${mediaPolicy.quotas.wiki} wiki images per upload`);
+  }
   for (const file of files) {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) return buildError(c, "VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-    if (file.size > FILE_SIZE_LIMITS.wikiImage) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
+    if (file.size > mediaPolicy.max_file_size_bytes.wiki_image) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
+  }
+  if (!await hasMediaQuotaCapacity(
+    c,
+    `wiki/${c.req.param("id")}/images/`,
+    files.length,
+    mediaPolicy.quotas.wiki,
+  )) {
+    return buildError(c, "VALIDATION_ERROR", `Wiki image quota is ${mediaPolicy.quotas.wiki}`);
   }
 
   const fileData = await Promise.all(files.map(async (f) => ({ data: await f.arrayBuffer(), contentType: f.type || "application/octet-stream" })));

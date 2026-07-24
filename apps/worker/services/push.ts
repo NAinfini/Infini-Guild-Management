@@ -1,5 +1,5 @@
 import type { PushMessage } from "@guild/shared";
-import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
+import { MEMBER_BROADCAST_HINTS, type PushEntityType, type PushHint } from "@guild/shared/constants/push-hints";
 import type { Context } from "hono";
 import type { Bindings } from "../index";
 import { logger } from "../utils/logger";
@@ -10,7 +10,10 @@ async function publishPushMessage(env: Bindings, message: PushMessage): Promise<
     const stub = env.WS.get(objectId);
     await stub.fetch("https://ws.internal/publish", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${env.SIGNING_SECRET}`,
+      },
       body: JSON.stringify(message),
     });
   } catch (err) {
@@ -30,6 +33,10 @@ export function publishEntityChanged(
   source: Context | Bindings,
   payload: { entityType: PushEntityType; entityId: string; hint: PushHint; displayName?: string },
 ): Promise<void> {
+  // Only broadcast hints in the member allowlist; administrative/moderation hints are silenced.
+  if (!MEMBER_BROADCAST_HINTS.has(payload.hint)) {
+    return Promise.resolve();
+  }
   const { env, waitUntil } = resolveEnvAndCtx(source);
   const task = publishPushMessage(env, {
     type: "entity_changed",

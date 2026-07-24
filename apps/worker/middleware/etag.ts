@@ -61,11 +61,13 @@ export async function etagMiddleware(c: Context, next: Next): Promise<void> {
     return;
   }
   if (!shouldApplyEtag(c.req.path, currentResponse.headers.get("Content-Length"))) {
+    currentResponse.headers.set("Cache-Control", "private, no-cache, must-revalidate");
     return;
   }
 
   const payloadBuffer = await currentResponse.clone().arrayBuffer();
   if (payloadBuffer.byteLength > MAX_ETAG_BYTES) {
+    currentResponse.headers.set("Cache-Control", "private, no-cache, must-revalidate");
     return;
   }
 

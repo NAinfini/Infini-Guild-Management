@@ -60,6 +60,12 @@ export function deleteWikiArticle(id: string): Promise<{ ok: true }> {
   });
 }
 
+export function restoreWikiArticleRevision(articleId: string, revision: number): Promise<WikiArticle> {
+  return apiRequest<WikiArticle>(`/api/wiki/articles/${articleId}/revisions/${revision}/restore`, {
+    method: "POST",
+  });
+}
+
 export async function uploadWikiArticleImages(
   articleId: string,
   files: File[],

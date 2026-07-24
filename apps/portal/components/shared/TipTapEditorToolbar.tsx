@@ -149,7 +149,7 @@ export function TipTapEditorToolbar({ editor, labels, onInsertLink, onInsertImag
         <Tooltip label={labels.divider} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.divider} size="sm" variant="default" onClick={() => editor.chain().focus().setHorizontalRule().run()}><SeparatorHorizontalIcon size={16} /></ActionIcon></Tooltip>
         <Tooltip label={labels.image} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.image} size="sm" variant="default" onClick={onInsertImage}><PhotoIcon size={16} /></ActionIcon></Tooltip>
         <Tooltip label={labels.embedVideo} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.embedVideo} size="sm" variant="default" onClick={onInsertVideo}><PlayerPlayIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.details} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.details} size="sm" variant="default" onClick={() => (editor.commands as Record<string, Function>).setDetails()}><LayoutListIcon size={16} /></ActionIcon></Tooltip>
+        <Tooltip label={labels.details} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.details} size="sm" variant="default" onClick={() => (editor.commands as unknown as { setDetails: () => void }).setDetails()}><LayoutListIcon size={16} /></ActionIcon></Tooltip>
         <Menu withinPortal position="bottom-end">
           <Tooltip label={labels.table} {...TOOLTIP_PROPS}>
             <Menu.Target>

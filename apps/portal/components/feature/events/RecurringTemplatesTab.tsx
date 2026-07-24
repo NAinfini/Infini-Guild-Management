@@ -1,6 +1,7 @@
 import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
 import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
+import { tzOffsetToAnchorIso, buildFormState, computeNextLifecyclePreview, formatLifecycleDate, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
 import { PortalCard } from "@portal/components/shared/PortalCard";
 import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, UsersIcon } from "@portal/components/icons";
 import { Badge, Group, HoverCard, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
@@ -18,7 +19,7 @@ const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed"
 function buildRecurrenceSummary(
   t: (key: string, opts?: Record<string, unknown>) => string,
   rule: RecurringTemplate["recurrence_rule"],
-  startAtIso: string,
+  startTime: string,
 ): string {
   if (!rule) return "";
   const freq = rule.frequency;
@@ -27,8 +28,11 @@ function buildRecurrenceSummary(
     return t("recurring.summary.daily", { interval });
   }
   if (freq === "weekly") {
+    // start_time is stored as UTC; anchor on that UTC instant for the
+    // UTC→local weekday conversion.
+    const anchorIso = tzOffsetToAnchorIso(0, startTime);
     const dayNames = (rule.daysOfWeek ?? [])
-      .map((d) => utcWeekdayToLocal(d, startAtIso))
+      .map((d) => utcWeekdayToLocal(d, anchorIso))
       .sort((a, b) => a - b)
       .map((d) => t(WEEKDAY_KEYS[d] ?? "weekday.sun"))
       .join(", ");
@@ -40,12 +44,6 @@ function buildRecurrenceSummary(
   return "";
 }
 
-function extractTime(iso: string | null): string {
-  if (!iso) return "--:--";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "--:--";
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
 
 type RecurringTemplatesTabProps = {
   canManage: boolean;
@@ -152,9 +150,11 @@ export function RecurringTemplatesTab({
           </PortalCard>
         ) : (
           templates.map((template) => {
-            const isPaused = template.archived_at !== null;
+            const isPaused = template.paused;
             const typeDef = EVENT_TYPES.find((et) => et === template.type);
-            const time = extractTime(template.start_at);
+            const time = template.start_time ? utcTimeToLocalTime(template.start_time) : "--:--";
+            const lifecycle = isPaused ? null : computeNextLifecyclePreview(buildFormState(template), template, "edit");
+            const lang = i18n.language;
             return (
               <PortalCard
                 key={template.id}
@@ -174,15 +174,15 @@ export function RecurringTemplatesTab({
                           alignItems: "center",
                           justifyContent: "center",
                           background: isPaused
-                            ? "color-mix(in srgb, var(--color-text, #111827) 6%, transparent)"
-                            : "color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent)",
+                            ? "color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent)"
+                            : "color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent)",
                           flexShrink: 0,
                         }}
                       >
                         <CalendarRepeatIcon
                           size={20}
                           style={{
-                            color: isPaused ? "var(--color-text-muted, #6b7280)" : "var(--color-primary, #3b82f6)",
+                            color: isPaused ? "var(--color-text-muted, #6B665E)" : "var(--color-primary, #D4A843)",
                           }}
                         />
                       </div>
@@ -233,7 +233,7 @@ export function RecurringTemplatesTab({
                             <Text size="xs" c="dimmed">{time}</Text>
                           </Group>
                           <Text size="xs" c="dimmed">
-                            {buildRecurrenceSummary(t, template.recurrence_rule, template.start_at)}
+                            {buildRecurrenceSummary(t, template.recurrence_rule, template.start_time)}
                           </Text>
                           {template.capacity != null && (
                             <Group gap={4} align="center">
@@ -242,6 +242,25 @@ export function RecurringTemplatesTab({
                             </Group>
                           )}
                         </Group>
+
+                        {lifecycle && (
+                          <Group gap={14} wrap="wrap" mt={4}>
+                            <Text size="xs" style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-text-muted, #6B665E)" }}>
+                              <Text span fw={600} size="xs" style={{ opacity: 0.7 }}>{t("recurring.lifecycle.nextCreation")}</Text>
+                              {" "}{formatLifecycleDate(lifecycle.creationTime, lang)}
+                            </Text>
+                            <Text size="xs" fw={500} style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-primary, #D4A843)" }}>
+                              <Text span fw={700} size="xs" style={{ color: "var(--color-primary, #D4A843)" }}>{t("recurring.lifecycle.nextStart")}</Text>
+                              {" "}{formatLifecycleDate(lifecycle.startTime, lang)}
+                            </Text>
+                            {lifecycle.endTime && (
+                              <Text size="xs" style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-text-muted, #6B665E)" }}>
+                                <Text span fw={600} size="xs" style={{ opacity: 0.7 }}>{t("recurring.lifecycle.nextEnd")}</Text>
+                                {" "}{formatLifecycleDate(lifecycle.endTime, lang)}
+                              </Text>
+                            )}
+                          </Group>
+                        )}
                       </Stack>
                     </Group>
 
@@ -255,7 +274,7 @@ export function RecurringTemplatesTab({
                           </HoverCard.Target>
                           <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                             <Group gap={10} wrap="nowrap" align="flex-start">
-                              <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                              <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                                 <ClockIcon size={16} />
                               </ThemeIcon>
                               <div style={{ minWidth: 0 }}>

@@ -1,0 +1,344 @@
+/* ── Recurring Template Form Modal ── */
+
+.rtf-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 680px) {
+  .rtf-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rtf-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.rtf-section {
+  padding: 14px 16px;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--color-surface-elevated, #fff);
+  border: 1px solid color-mix(in srgb, var(--color-border, #E2DDD6) 70%, transparent);
+  transition: border-color var(--transition-normal, 160ms ease);
+}
+
+.rtf-section:hover {
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 25%, transparent);
+}
+
+.dark .rtf-section {
+  background: color-mix(in srgb, var(--color-surface-elevated, #1C1C22) 80%, transparent);
+  border-color: color-mix(in srgb, var(--color-border, #2A2A32) 60%, transparent);
+}
+
+.dark .rtf-section:hover {
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent);
+}
+
+/* ── Section dividers with gold gradient accent ── */
+
+.rtf-divider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.rtf-divider::before {
+  content: "";
+  flex: 0 0 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: linear-gradient(
+    180deg,
+    var(--color-primary, #D4A843),
+    var(--color-secondary, #8B7355)
+  );
+  opacity: 0.7;
+}
+
+.rtf-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent),
+    color-mix(in srgb, var(--color-border, #E2DDD6) 40%, transparent) 40%,
+    transparent
+  );
+}
+
+.rtf-divider__label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--color-text, #1A1815) 78%, transparent);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.dark .rtf-divider__label {
+  color: color-mix(in srgb, var(--color-text, #F0EDE8) 72%, transparent);
+}
+
+/* ── Weekday picker ── */
+
+.rtf-weekday-grid {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rtf-weekday-btn {
+  all: unset;
+  box-sizing: border-box;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid color-mix(in srgb, var(--color-border, #E2DDD6) 80%, transparent);
+  background: transparent;
+  color: var(--color-text, #1A1815);
+  transition:
+    background var(--transition-fast, 120ms ease),
+    border-color var(--transition-fast, 120ms ease),
+    color var(--transition-fast, 120ms ease),
+    transform var(--transition-fast, 120ms ease),
+    box-shadow var(--transition-fast, 120ms ease);
+}
+
+.rtf-weekday-btn:hover {
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 50%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
+  transform: translateY(-1px);
+}
+
+.rtf-weekday-btn:active {
+  transform: scale(0.94);
+}
+
+.rtf-weekday-btn--selected {
+  border-color: var(--color-primary, #D4A843);
+  background: var(--color-primary, #D4A843);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent);
+}
+
+.rtf-weekday-btn--selected:hover {
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 88%, var(--color-accent, #C17F3E));
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 88%, var(--color-accent, #C17F3E));
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--color-primary, #D4A843) 36%, transparent);
+}
+
+.dark .rtf-weekday-btn {
+  border-color: color-mix(in srgb, var(--color-border, #2A2A32) 90%, transparent);
+  color: var(--color-text, #F0EDE8);
+}
+
+.dark .rtf-weekday-btn:hover {
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 45%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
+}
+
+.dark .rtf-weekday-btn--selected {
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary, #D4A843) 24%, transparent);
+}
+
+/* ── Recurrence dashed divider ── */
+
+.rtf-recurrence-divider {
+  height: 1px;
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-border, #E2DDD6) 50%, transparent) 0px,
+    color-mix(in srgb, var(--color-border, #E2DDD6) 50%, transparent) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+}
+
+/* ── Offset hint ── */
+
+.rtf-offset-hint {
+  font-size: 12px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 70%, transparent);
+  display: inline-block;
+}
+
+.rtf-offset-hint--default {
+  background: transparent;
+}
+
+.dark .rtf-offset-hint {
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+  color: color-mix(in srgb, var(--color-text, #F0EDE8) 65%, transparent);
+}
+
+/* ── Actions divider ── */
+
+.rtf-actions-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-border, #E2DDD6) 50%, transparent) 20%,
+    color-mix(in srgb, var(--color-border, #E2DDD6) 50%, transparent) 80%,
+    transparent
+  );
+}
+
+/* ── Interval row alignment ── */
+
+.rtf-interval-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rtf-interval-label {
+  font-size: 14px;
+  font-weight: 500;
+  padding-bottom: 7px;
+  color: var(--color-text, #1A1815);
+  white-space: nowrap;
+}
+
+.dark .rtf-interval-label {
+  color: var(--color-text, #F0EDE8);
+}
+
+/* ── Lifecycle preview ── */
+
+.rtf-lifecycle {
+  padding: 14px 16px;
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 4%, transparent);
+}
+
+.dark .rtf-lifecycle {
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 16%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent);
+}
+
+.rtf-lifecycle__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--color-text, #1A1815) 78%, transparent);
+  margin-bottom: 12px;
+}
+
+.dark .rtf-lifecycle__title {
+  color: color-mix(in srgb, var(--color-text, #F0EDE8) 72%, transparent);
+}
+
+.rtf-lifecycle__title-icon {
+  color: var(--color-primary, #D4A843);
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.rtf-lifecycle__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-left: 4px;
+}
+
+.rtf-lifecycle__step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  padding-left: 20px;
+  min-height: 32px;
+}
+
+.rtf-lifecycle__step::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: var(--color-primary, #D4A843);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent);
+}
+
+.rtf-lifecycle__step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: calc(50% + 7px);
+  width: 2px;
+  height: calc(100% - 2px);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 25%, transparent);
+}
+
+.rtf-lifecycle__step-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--color-text, #1A1815) 60%, transparent);
+  min-width: 36px;
+  flex-shrink: 0;
+}
+
+.dark .rtf-lifecycle__step-label {
+  color: color-mix(in srgb, var(--color-text, #F0EDE8) 55%, transparent);
+}
+
+.rtf-lifecycle__step-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text, #1A1815);
+  font-variant-numeric: tabular-nums;
+}
+
+.dark .rtf-lifecycle__step-value {
+  color: var(--color-text, #F0EDE8);
+}
+
+.rtf-lifecycle--empty {
+  border-color: color-mix(in srgb, var(--color-border, #E2DDD6) 50%, transparent);
+  background: transparent;
+}
+
+.dark .rtf-lifecycle--empty {
+  border-color: color-mix(in srgb, var(--color-border, #2A2A32) 50%, transparent);
+  background: transparent;
+}
+
+.rtf-lifecycle__empty-text {
+  font-size: 12px;
+  font-style: italic;
+  color: color-mix(in srgb, var(--color-text, #1A1815) 45%, transparent);
+}
+
+.dark .rtf-lifecycle__empty-text {
+  color: color-mix(in srgb, var(--color-text, #F0EDE8) 40%, transparent);
+}

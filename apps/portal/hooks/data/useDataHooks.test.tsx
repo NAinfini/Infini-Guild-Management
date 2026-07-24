@@ -14,6 +14,7 @@ const serviceMocks = vi.hoisted(() => ({
   fetchAdminInviteLinks: vi.fn(),
   fetchAdminInviteStats: vi.fn(),
   fetchAdminStatus: vi.fn(),
+  fetchAdminSiteConfig: vi.fn(),
   fetchEventDetail: vi.fn(),
   fetchEventsList: vi.fn(),
   fetchGuildWarActive: vi.fn(),
@@ -49,6 +50,10 @@ vi.mock("../../services/AdminService", () => ({
   fetchAdminInviteStats: serviceMocks.fetchAdminInviteStats,
   fetchAdminStatus: serviceMocks.fetchAdminStatus,
   fetchRoles: serviceMocks.fetchRoles,
+}));
+
+vi.mock("../../services/SiteConfigService", () => ({
+  fetchAdminSiteConfig: serviceMocks.fetchAdminSiteConfig,
 }));
 
 vi.mock("../../stores/auth", () => ({
@@ -183,6 +188,7 @@ describe("portal data hooks", () => {
           "admin.roles.view": true,
           "admin.status.view": true,
           "admin.users.view": true,
+          "admin.siteConfig.manage": true,
         },
       },
     ]);
@@ -192,6 +198,7 @@ describe("portal data hooks", () => {
     serviceMocks.fetchAdminAuditLog.mockResolvedValueOnce({ data: [] });
     serviceMocks.fetchAdminAuditArchiveMonths.mockResolvedValueOnce([]);
     serviceMocks.fetchAdminStatus.mockResolvedValueOnce({});
+    serviceMocks.fetchAdminSiteConfig.mockResolvedValueOnce({ site: {}, onboarding: {} });
 
     const { result } = renderHook(
       () =>
@@ -216,6 +223,7 @@ describe("portal data hooks", () => {
       expect(result.current.auditLogQuery.isSuccess).toBe(true);
       expect(result.current.auditMonthsQuery.isSuccess).toBe(true);
       expect(result.current.statusQuery.isSuccess).toBe(true);
+      expect(result.current.siteConfigQuery.isSuccess).toBe(true);
     });
 
     expect(serviceMocks.fetchRoles).toHaveBeenCalled();
@@ -232,6 +240,7 @@ describe("portal data hooks", () => {
       end_at: "2026-03-08T23:59:59.999Z",
     });
     expect(serviceMocks.fetchAdminStatus).toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminSiteConfig).toHaveBeenCalled();
     expect(result.current.permissions).toEqual({
       canAccessAdmin: true,
       canViewUsers: true,
@@ -243,6 +252,7 @@ describe("portal data hooks", () => {
       canViewStatus: true,
       canManageBadges: true,
       canManageGameData: true,
+      canManageSiteConfig: true,
     });
   });
 
@@ -293,6 +303,7 @@ describe("portal data hooks", () => {
       canViewStatus: true,
       canManageBadges: false,
       canManageGameData: false,
+      canManageSiteConfig: false,
     });
   });
 
@@ -342,6 +353,51 @@ describe("portal data hooks", () => {
       canViewStatus: false,
       canManageBadges: false,
       canManageGameData: false,
+      canManageSiteConfig: false,
     });
+  });
+
+  it("starts admin section queries from effective permissions before role configuration finishes loading", async () => {
+    serviceMocks.fetchRoles.mockImplementationOnce(() => new Promise(() => undefined));
+    serviceMocks.fetchAllUsersListWithOptions.mockResolvedValueOnce({ data: [] });
+    serviceMocks.fetchAdminSiteConfig.mockResolvedValueOnce({ site: {}, onboarding: {} });
+
+    const { result } = renderHook(
+      () =>
+        useAdminData({
+          isModerator: true,
+          userRole: "admin",
+          auditPage: 1,
+          auditSearch: "",
+          auditDateFrom: "",
+          auditDateTo: "",
+          auditEntityType: "",
+          auditActorId: "",
+          effectivePermissions: {
+            canAccessAdmin: true,
+            canViewUsers: true,
+            canViewInvites: false,
+            canViewAudit: false,
+            canExportAudit: false,
+            canViewRoles: false,
+            canManageRoles: false,
+            canViewStatus: false,
+            canManageBadges: false,
+            canManageGameData: false,
+            canManageSiteConfig: true,
+          },
+        }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.usersQuery.isSuccess).toBe(true);
+      expect(result.current.siteConfigQuery.isSuccess).toBe(true);
+    });
+
+    expect(result.current.rolesQuery.isLoading).toBe(true);
+    expect(serviceMocks.fetchAllUsersListWithOptions).toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminSiteConfig).toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminInviteLinks).not.toHaveBeenCalled();
   });
 });

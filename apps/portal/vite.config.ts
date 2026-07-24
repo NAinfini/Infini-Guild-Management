@@ -83,6 +83,9 @@ export default defineConfig(({ mode }) => {
             if (normalizedId.includes("/node_modules/@tabler/icons-react/")) {
               return "tabler-icons";
             }
+            if (normalizedId.includes("/node_modules/motion/")) {
+              return "motion";
+            }
             if (normalizedId.includes("/node_modules/@tiptap/") || normalizedId.includes("/node_modules/prosemirror")) {
               return "tiptap";
             }

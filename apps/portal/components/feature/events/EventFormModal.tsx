@@ -17,7 +17,7 @@ import { DepthButton } from "@portal/components/shared/DepthButton";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
-import type { ImageGridEditorItem } from "@guild/shared/types/media";
+import type { ImageGridEditorItem } from "@portal/types/media";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 

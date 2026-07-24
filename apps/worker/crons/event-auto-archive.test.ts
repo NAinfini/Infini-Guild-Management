@@ -13,7 +13,6 @@ describe("event auto archive cron", () => {
     if (typeof sql !== "string") throw new Error("Expected SQL string");
     expect(sql).toContain("auto_archive = 1");
     expect(sql).toContain("auto_archived = 0");
-    expect(sql).toContain("is_series_parent = 0");
     expect(bind).toHaveBeenCalledWith(expect.stringMatching(/^20\d\d-/));
     expect(run).toHaveBeenCalledTimes(1);
   });

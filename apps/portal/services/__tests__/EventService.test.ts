@@ -26,7 +26,7 @@ describe("EventService", () => {
   it("sends participant additions as one batch request", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ data: [] }));
     await addEventParticipants("evt-1", ["u-1", "u-2"]);
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/events/evt-1/participants");
     expect(url).not.toContain("/batch");
     expect(init.method).toBe("POST");
@@ -36,7 +36,7 @@ describe("EventService", () => {
   it("sends participant removals as one request", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, removed: 2 }));
     await removeEventParticipants("evt-1", ["u-1", "u-2"]);
-    const [url, init] = mockFetch.mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/events/evt-1/participants");
     expect(url).not.toContain("/batch");
     expect(init.method).toBe("DELETE");

@@ -31,6 +31,9 @@ This project follows the structure of [Keep a Changelog](https://keepachangelog.
 - Security headers middleware for CSP, HSTS, `X-Content-Type-Options`, and related headers.
 - Local database seed data for users, roles, events, guild war records, and RBAC scenarios.
 - Equipment calculator work in progress: shared schemas and calculator code, game data API, admin game-data UI, Tools page launcher, local store, worker search, and translations.
+- Beginner-friendly local setup, deployment preflight, production deployment command, and first-administrator bootstrap tooling.
+- English and Chinese self-hosting guides plus public-repository security and support templates.
+- A maintainer checklist for repository visibility, GitHub security settings, and clean-clone acceptance testing.
 
 ### Changed
 
@@ -39,6 +42,8 @@ This project follows the structure of [Keep a Changelog](https://keepachangelog.
 - Admin and tooling surfaces were expanded to support game-data management for the equipment calculator.
 - Frontend stack updated to React 19, Mantine 8, Vite 8, Tailwind CSS 4, and current TanStack packages.
 - TipTap upgraded to v3 for rich text editing.
+- Admin Site Config now exposes the independent equipment calculator feature switch.
+- Admin-configured media file limits are capped below the request-wide upload ceiling to prevent impossible settings.
 
 ### Removed
 
@@ -54,7 +59,7 @@ This project follows the structure of [Keep a Changelog](https://keepachangelog.
 - React, TanStack Router, and TanStack Query power the portal.
 - Mantine and Tailwind CSS provide the UI foundation.
 - Zod schemas are shared between portal and worker code.
-- pnpm 10.6.2 manages the workspace.
+- pnpm 11.17.0 manages the workspace.
 
 ### Database
 

@@ -1,4 +1,8 @@
 export const LIMITS = {
+  requestBody: {
+    ordinary: 1024 * 1024,
+    upload: 32 * 1024 * 1024,
+  },
   media: {
     allowedImageTypes: [
       "image/jpeg",
@@ -13,12 +17,16 @@ export const LIMITS = {
       gallery: 20,
       wiki: 10,
     },
+    configurableQuotaMax: 100,
     maxFileSize: {
+      siteLogo: 2 * 1024 * 1024,
       profileImage: 5 * 1024 * 1024,
       profileAudio: 20 * 1024 * 1024,
       announcementImage: 5 * 1024 * 1024,
       wikiImage: 5 * 1024 * 1024,
+      eventImage: 5 * 1024 * 1024,
       galleryImage: 10 * 1024 * 1024,
+      storageImage: 5 * 1024 * 1024,
     },
   },
   content: {
@@ -39,6 +47,17 @@ export const LIMITS = {
     profileImages: { max: 10 },
     profileVideoUrls: { max: 10 },
     profileImagesDeleteBatch: { min: 1, max: 10 },
+    absenceNote: { max: 200 },
+    absenceSpanDays: { max: 366 },
+    absencesPerUser: { max: 20 },
+    storageName: { max: 50 },
+    storageCategoryName: { max: 50 },
+    storageDescription: { max: 500 },
+    storageItemName: { max: 100 },
+    storageItemDescription: { max: 2000 },
+    storageNote: { max: 200 },
+    storageImagesPerItem: { max: 5 },
+    storageTransactionQuantity: { max: 1_000_000 },
     warName: { min: 1, max: 200 },
     warEnemyName: { max: 200 },
     warNotes: { max: 2000 },
@@ -62,8 +81,13 @@ export const LIMITS = {
     reads: { maxRequests: 120, windowMs: 60_000 },
   },
   cache: {
-    mediaMaxAgeSeconds: 300,
+    mediaMaxAgeSeconds: 3600,
   },
 } as const;
 
 export type Limits = typeof LIMITS;
+
+// Multipart requests need room for field names and boundaries below the
+// request-wide upload ceiling.
+export const MAX_CONFIGURABLE_MEDIA_FILE_BYTES =
+  LIMITS.requestBody.upload - LIMITS.requestBody.ordinary;

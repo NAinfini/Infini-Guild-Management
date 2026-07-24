@@ -41,6 +41,16 @@ const mocks = vi.hoisted(() => ({
   getCookie: vi.fn(),
   deleteCookie: vi.fn(),
   setCookie: vi.fn(),
+  userListUsers: vi.fn(),
+  userGetStats: vi.fn(),
+  userGetUser: vi.fn(),
+  badgeGetBulkUserBadges: vi.fn(),
+  badgeGetUserBadges: vi.fn(),
+  guildWarGetActive: vi.fn(),
+  guildWarListHistory: vi.fn(),
+  guildWarGetHistoryDetail: vi.fn(),
+  guildWarGetAnalytics: vi.fn(),
+  search: vi.fn(),
 }));
 
 vi.mock("drizzle-orm/d1", () => ({ drizzle: mocks.drizzle }));
@@ -48,6 +58,45 @@ vi.mock("hono/cookie", () => ({
   getCookie: mocks.getCookie,
   deleteCookie: mocks.deleteCookie,
   setCookie: mocks.setCookie,
+}));
+vi.mock("../services/UserService", () => ({
+  UserService: vi.fn(function UserServiceMock(this: {
+    listUsers: typeof mocks.userListUsers;
+    getUserStats: typeof mocks.userGetStats;
+    getUser: typeof mocks.userGetUser;
+  }) {
+    this.listUsers = mocks.userListUsers;
+    this.getUserStats = mocks.userGetStats;
+    this.getUser = mocks.userGetUser;
+  }),
+}));
+vi.mock("../services/BadgeService", () => ({
+  BadgeService: vi.fn(function BadgeServiceMock(this: {
+    getBulkUserBadges: typeof mocks.badgeGetBulkUserBadges;
+    getUserBadges: typeof mocks.badgeGetUserBadges;
+  }) {
+    this.getBulkUserBadges = mocks.badgeGetBulkUserBadges;
+    this.getUserBadges = mocks.badgeGetUserBadges;
+  }),
+}));
+vi.mock("../services/GuildWarService", () => ({
+  GuildWarService: vi.fn(function GuildWarServiceMock(this: {
+    getActive: typeof mocks.guildWarGetActive;
+    listHistory: typeof mocks.guildWarListHistory;
+    getHistoryDetail: typeof mocks.guildWarGetHistoryDetail;
+    getAnalytics: typeof mocks.guildWarGetAnalytics;
+  }) {
+    this.getActive = mocks.guildWarGetActive;
+    this.listHistory = mocks.guildWarListHistory;
+    this.getHistoryDetail = mocks.guildWarGetHistoryDetail;
+    this.getAnalytics = mocks.guildWarGetAnalytics;
+  }),
+  toWarHistoryPayload: (row: unknown) => row,
+}));
+vi.mock("../services/SearchService", () => ({
+  SearchService: vi.fn(function SearchServiceMock(this: { search: typeof mocks.search }) {
+    this.search = mocks.search;
+  }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -59,9 +108,16 @@ type Bindings = import("../index").Bindings;
 let app: Hono<{ Bindings: Bindings; Variables: { requestId: string; user: unknown } }>;
 
 /** Minimal mock bindings that satisfy the Bindings type. */
-function createMockEnv(): Bindings {
+function createMockEnv(featureFlags?: Record<string, boolean>): Bindings {
+  const db = {
+    prepare: () => ({
+      bind: () => ({
+        first: async () => featureFlags ? { value: JSON.stringify(featureFlags) } : null,
+      }),
+    }),
+  };
   return {
-    DB: {} as D1Database,
+    DB: db as unknown as D1Database,
     MEDIA: {} as R2Bucket,
     WS: {} as DurableObjectNamespace,
     ASSETS: { fetch: () => new Response("not found", { status: 404 }) } as unknown as Fetcher,
@@ -247,10 +303,10 @@ describe("Admin route auth guard", () => {
       return undefined;
     });
 
-    // Drizzle chain mock: select().from().innerJoin().where().limit() => []
-    const limit = vi.fn().mockResolvedValue([]);
-    const where = vi.fn(() => ({ limit }));
-    const innerJoin = vi.fn(() => ({ where }));
+    // Drizzle chain mock: select().from().innerJoin().leftJoin().where() => []
+    const where = vi.fn().mockResolvedValue([]);
+    const leftJoin = vi.fn(() => ({ where }));
+    const innerJoin = vi.fn(() => ({ leftJoin }));
     const from = vi.fn(() => ({ innerJoin }));
     const select = vi.fn(() => ({ from }));
     mocks.drizzle.mockReturnValue({ select });
@@ -335,6 +391,12 @@ describe("Origin / CSRF protection", () => {
 
 describe("GET /api/site-config", () => {
   it("returns site configuration without authentication", async () => {
+    const limit = vi.fn().mockResolvedValue([]);
+    const where = vi.fn(() => ({ limit }));
+    const from = vi.fn(() => ({ where }));
+    const select = vi.fn(() => ({ from }));
+    mocks.drizzle.mockReturnValue({ select });
+
     const res = await appRequest("/api/site-config");
     expect(res.status).toBe(200);
 
@@ -345,8 +407,160 @@ describe("GET /api/site-config", () => {
   });
 });
 
+describe("API request body limits", () => {
+  it("rejects ordinary API bodies larger than 1 MiB before route parsing", async () => {
+    const res = await appRequest("/api/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://portal.example.com",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify({ username: "test", password: "x".repeat(1024 * 1024) }),
+    });
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ error_code: "VALIDATION_ERROR" });
+  });
+
+  it("classifies upload paths for the 32 MiB request limit", async () => {
+    const { getApiRequestBodyLimit } = await import("../index");
+
+    expect(getApiRequestBodyLimit("/api/gallery/images")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/events")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/game-data")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/users/user-1/media/avatar")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/auth/login")).toBe(1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/not-real/gallery/images")).toBe(1024 * 1024);
+  });
+});
+
 // =========================================================================
-// 9. Validation error (400) for malformed request body
+// 9. Public read APIs used by guest pages
+// =========================================================================
+
+describe("Guest read API access", () => {
+  it("returns the roster without authentication", async () => {
+    mocks.getCookie.mockReturnValue(undefined);
+    mocks.userListUsers.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        data: [{ user: { id: "u-1", username: "guest-visible" }, profile: {} }],
+        total: 1,
+        page: 1,
+        limit: 20,
+        total_pages: 1,
+      },
+    });
+    mocks.badgeGetBulkUserBadges.mockResolvedValueOnce(new Map([["u-1", []]]));
+
+    const res = await appRequest("/api/users?page=1&limit=20&active=false");
+
+    expect(res.status).toBe(200);
+    expect(mocks.userListUsers).toHaveBeenCalledWith(expect.objectContaining({ activeFilter: true, sessionUser: null }));
+    const body = (await res.json()) as { data: unknown[] };
+    expect(body.data).toHaveLength(1);
+  });
+
+  it("returns member stats without authentication", async () => {
+    mocks.getCookie.mockReturnValue(undefined);
+    mocks.userGetStats.mockResolvedValueOnce({ ok: true, data: { active_members: 1, total_members: 1 } });
+
+    const res = await appRequest("/api/users/stats");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ active_members: 1, total_members: 1 });
+  });
+
+  it("returns a public member profile without authentication", async () => {
+    mocks.getCookie.mockReturnValue(undefined);
+    mocks.userGetUser.mockResolvedValueOnce({
+      ok: true,
+      data: { user: { id: "u-1", username: "guest-visible" }, profile: {} },
+    });
+    mocks.badgeGetUserBadges.mockResolvedValueOnce([]);
+
+    const res = await appRequest("/api/users/u-1");
+
+    expect(res.status).toBe(200);
+    expect(mocks.userGetUser).toHaveBeenCalledWith(null, "u-1");
+  });
+
+  it("returns guild war read data without authentication", async () => {
+    mocks.getCookie.mockReturnValue(undefined);
+    mocks.guildWarListHistory.mockResolvedValueOnce({ ok: true, data: { data: [], total: 0, page: 1, limit: 5, total_pages: 1 } });
+    mocks.guildWarGetAnalytics.mockResolvedValueOnce({ ok: true, data: { wars: [], member_stats: [], analytics_settings: {} } });
+    mocks.guildWarGetActive.mockResolvedValueOnce({ ok: true, data: { event: null, teams: [], pool: [] } });
+
+    const history = await appRequest("/api/guild-war/history?page=1&limit=5");
+    const analytics = await appRequest("/api/guild-war/analytics");
+    const active = await appRequest("/api/guild-war/active");
+
+    expect(history.status).toBe(200);
+    expect(analytics.status).toBe(200);
+    expect(active.status).toBe(200);
+  });
+
+  it("returns 404 for a disabled feature API", async () => {
+    const env = createMockEnv({
+      announcements: true,
+      events: false,
+      guildWar: true,
+      gallery: true,
+      wiki: true,
+      tools: true,
+      equipmentCalc: true,
+      storage: true,
+    });
+
+    const res = await app.request("/api/events", undefined, env);
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({
+      error_code: "NOT_FOUND",
+      message: "Feature is disabled",
+    });
+  });
+
+  it("returns global search without authentication", async () => {
+    mocks.getCookie.mockReturnValue(undefined);
+    mocks.search.mockResolvedValueOnce({ ok: true, data: { data: [] } });
+
+    const res = await appRequest("/api/search?q=test&limit=5");
+
+    expect(res.status).toBe(200);
+  });
+
+  it("returns dashboard summary without authentication", async () => {
+    mocks.getCookie.mockReturnValue(undefined);
+
+    let selectCall = 0;
+    const select = vi.fn(() => {
+      selectCall += 1;
+      if (selectCall === 1) {
+        return { from: vi.fn().mockResolvedValue([{ activeMembers: 1, totalMembers: 1 }]) };
+      }
+      if (selectCall === 2) {
+        return { from: vi.fn(() => ({ where: vi.fn(() => ({ orderBy: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })) })) })) };
+      }
+      if (selectCall === 3) {
+        return { from: vi.fn(() => ({ orderBy: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })) })) };
+      }
+      return { from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ total: 0, wins: 0 }]) })) };
+    });
+    mocks.drizzle.mockReturnValueOnce({ select });
+
+    const res = await appRequest("/api/dashboard/summary");
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { active_member_count: number; my_signup_event_ids: string[] };
+    expect(body.active_member_count).toBe(1);
+    expect(body.my_signup_event_ids).toEqual([]);
+  });
+});
+
+// =========================================================================
+// 10. Validation error (400) for malformed request body
 // =========================================================================
 
 describe("Zod validation error", () => {
@@ -369,7 +583,7 @@ describe("Zod validation error", () => {
 });
 
 // =========================================================================
-// 10. Rate limiting (429)
+// 11. Rate limiting (429)
 // =========================================================================
 
 describe("Rate limiting", () => {

@@ -5,6 +5,7 @@ export const PUSH_ENTITY_TYPES = [
   "guild_war",
   "member_badge",
   "member_profile",
+  "storage",
   "wiki",
 ] as const;
 
@@ -25,6 +26,7 @@ export const PUSH_HINTS = [
   "category_created",
   "category_deleted",
   "category_updated",
+  "event_created",
   "history_created",
   "history_deleted",
   "history_updated",
@@ -32,6 +34,52 @@ export const PUSH_HINTS = [
   "item_deleted",
   "items_deleted",
   "member_joined",
+  "members_moved",
+  "participants_added_by_moderator",
+  "participants_removed_by_moderator",
+  "participant_joined",
+  "participant_left",
+  "poll_fallback",
+  "poll_voted",
+  "profile_moderated",
+  "profile_updated",
+  "raffle_drawn",
+  "role_tags_updated",
+  "storage_updated",
+  "teams_saved",
+  "video_created",
+  "war_concluded",
+] as const;
+
+export type PushHint = (typeof PUSH_HINTS)[number];
+
+/**
+ * Hints that are safe to broadcast to all connected members.
+ * Administrative/moderation activity (role changes, badge assign/unassign,
+ * admin-initiated profile edits) is excluded and must NOT reach member sessions.
+ */
+export const MEMBER_BROADCAST_HINTS: ReadonlySet<PushHint> = new Set([
+  "announcement_archived",
+  "announcement_created",
+  "announcement_deleted",
+  "announcement_published",
+  "announcement_updated",
+  "article_archived",
+  "article_created",
+  "article_deleted",
+  "article_updated",
+  "category_created",
+  "category_deleted",
+  "category_updated",
+  "event_created",
+  "history_created",
+  "history_deleted",
+  "history_updated",
+  "images_uploaded",
+  "item_deleted",
+  "items_deleted",
+  "member_joined",
+  "members_moved",
   "participants_added_by_moderator",
   "participants_removed_by_moderator",
   "participant_joined",
@@ -40,10 +88,9 @@ export const PUSH_HINTS = [
   "poll_voted",
   "profile_updated",
   "raffle_drawn",
-  "role_tags_updated",
+  "storage_updated",
   "teams_saved",
   "video_created",
   "war_concluded",
-] as const;
-
-export type PushHint = (typeof PUSH_HINTS)[number];
+  // Excluded: badge_assigned, badge_unassigned, profile_moderated, role_tags_updated
+]);

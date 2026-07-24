@@ -41,13 +41,17 @@ function isWikiPath(pathname: string): boolean {
   return pathname === "/wiki" || pathname.startsWith("/wiki/");
 }
 
-const HAS_VIEW_TRANSITIONS = typeof document !== "undefined" && "startViewTransition" in document;
+const HEADER_TITLE_OVERRIDES: Record<string, string> = {
+  "/profile": "nav.profile",
+  "/settings": "nav.settings",
+};
 
 const ENTITY_QUERY_KEYS = {
   announcement: [queryKeys.announcements.all],
   event: [queryKeys.events.all, queryKeys.dashboard.all, queryKeys.guildWar.events()],
   wiki: [queryKeys.wiki.all],
   gallery: [queryKeys.gallery.all],
+  storage: [queryKeys.storage.all],
   guild_war: [queryKeys.guildWar.all],
   member_profile: [queryKeys.users.all, queryKeys.myProfile.all],
   member_badge: [],
@@ -57,7 +61,7 @@ function AnimatedOutlet({ pathname, enabled }: { pathname: string; enabled: bool
   const [animKey, setAnimKey] = useState(0);
   const prevPathRef = useRef(pathname);
 
-  const useFallbackAnim = enabled && !HAS_VIEW_TRANSITIONS;
+  const useFallbackAnim = enabled;
 
   useEffect(() => {
     if (pathname !== prevPathRef.current) {
@@ -129,8 +133,6 @@ export function AppShell() {
   useEffect(() => {
     void i18n.changeLanguage(locale);
     document.documentElement.dataset.locale = locale;
-    if (locale === "zh") {
-    }
   }, [locale]);
 
   useEffect(() => {
@@ -188,9 +190,8 @@ export function AppShell() {
       });
     };
 
-    const onForbidden = (event: Event) => {
-      const detail = (event as CustomEvent<{ message?: string }>).detail;
-      setPermissionBanner(detail?.message ?? t("nav.permissionDenied"));
+    const onForbidden = () => {
+      setPermissionBanner(t("nav.permissionDenied"));
     };
 
     window.addEventListener("guild-api-unauthorized", onUnauthorized as EventListener);
@@ -324,50 +325,30 @@ export function AppShell() {
     (entryId: string, type: string) => {
       markPushAsRead(entryId);
 
-      if (type === "announcement_published" || type === "announcement_changed") {
+      if (type === "announcement_published" || type === "announcement_created") {
         markFeatureAsRead("announcements");
         void navigate({ to: "/announcements" });
         return;
       }
 
-      if (type === "event_changed") {
+      if (type === "event_created") {
         void navigate({ to: "/events" });
         return;
       }
 
-      if (type === "wiki_changed") {
+      if (type === "wiki_created") {
         void navigate({ to: "/wiki" });
         return;
       }
 
-      if (type === "member_joined" || type === "member_changed") {
+      if (type === "member_joined") {
         markFeatureAsRead("members");
-        void navigate({ to: "/roster" });
-        return;
-      }
-
-      if (type === "gallery_changed") {
-        void navigate({ to: "/gallery" });
-        return;
-      }
-
-      if (type === "guild_war_changed") {
-        void navigate({ to: "/guild-war" });
-        return;
-      }
-
-      if (type === "badge_changed") {
         void navigate({ to: "/roster" });
         return;
       }
     },
     [markFeatureAsRead, markPushAsRead, navigate],
   );
-
-  const HEADER_TITLE_OVERRIDES: Record<string, string> = {
-    "/profile": "nav.profile",
-    "/settings": "nav.settings",
-  };
 
   const { selectedNavKey, activePageTitle } = useMemo(() => {
     const matches = visibleNavItems

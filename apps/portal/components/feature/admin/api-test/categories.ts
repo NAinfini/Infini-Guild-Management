@@ -6,6 +6,7 @@ export const STALE_ARTIFACT_PROBES: StaleArtifactProbe[] = [
   { label: "Announcements", path: "/api/announcements?search=%5Bsystemtest%5D&archived=true&limit=20" },
   { label: "Gallery", path: "/api/gallery?search=%5Bsystemtest%5D&limit=20" },
   { label: "Wiki", path: "/api/wiki/articles?search=%5Bsystemtest%5D&page=1&limit=20" },
+  { label: "Storage", path: "/api/storage" },
   { label: "Roles", path: "/api/admin/roles" },
   { label: "Badges", path: "/api/badges" },
 ];
@@ -33,11 +34,13 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       endpoints: [
         { label: t("status.api.ep.healthCheck"), method: "GET", path: "/api/health" },
         { label: t("status.api.ep.siteConfig"), method: "GET", path: "/api/site-config" },
+        { label: t("status.api.ep.memberOnboarding"), method: "GET", path: "/api/onboarding" },
         { label: t("status.api.ep.adminStatus"), method: "GET", path: "/api/admin/status" },
         { label: t("status.api.ep.analyticsSettings"), method: "GET", path: "/api/admin/analytics-settings" },
         { label: t("status.api.ep.updateAnalyticsSettings"), method: "PATCH", path: "/api/admin/analytics-settings" },
         { label: t("status.api.ep.dashboardSummary"), method: "GET", path: "/api/dashboard/summary" },
         { label: t("status.api.ep.globalSearch"), method: "GET", path: "/api/search?q=systemtest&limit=5" },
+        { label: t("status.api.ep.gameData"), method: "GET", path: "/api/game-data" },
       ],
     },
     {
@@ -59,7 +62,9 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       endpoints: [
         { label: t("status.api.ep.listUsers"), method: "GET", path: "/api/users?page=1&limit=5" },
         { label: t("status.api.ep.userStats"), method: "GET", path: "/api/users/stats" },
+        { label: t("status.api.ep.absenceWindow"), method: "GET", path: "/api/users/absences?from=2026-01-01&to=2026-01-31" },
         { label: t("status.api.ep.getUserById"), method: "GET", path: "/api/users/:id" },
+        { label: t("status.api.ep.userAbsences"), method: "GET", path: "/api/users/:id/absences" },
         { label: t("status.api.ep.updateProfile"), method: "PATCH", path: "/api/users/:id/profile" },
         { label: t("status.api.ep.uploadImage"), method: "POST", path: "/api/users/:id/media/images" },
         { label: t("status.api.ep.getUserImage"), method: "GET", path: "/api/users/image" },
@@ -162,11 +167,38 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.createArticle"), method: "POST", path: "/api/wiki/articles" },
         { label: t("status.api.ep.getArticle"), method: "GET", path: "/api/wiki/articles/:slug" },
         { label: t("status.api.ep.updateArticle"), method: "PATCH", path: "/api/wiki/articles/:id" },
+        { label: t("status.api.ep.articleRevisions"), method: "GET", path: "/api/wiki/articles/:id/revisions" },
+        { label: t("status.api.ep.articleRevision"), method: "GET", path: "/api/wiki/articles/:id/revisions/1" },
         { label: t("status.api.ep.uploadArticleImages"), method: "POST", path: "/api/wiki/articles/:id/images" },
         { label: t("status.api.ep.getWikiImage"), method: "GET", path: "/api/wiki/image" },
         { label: t("status.api.ep.archiveArticle"), method: "DELETE", path: "/api/wiki/articles/:id" },
         { label: t("status.api.ep.deleteArticle"), method: "DELETE", path: "/api/wiki/articles/:id/permanent" },
         { label: t("status.api.ep.deleteCategory"), method: "DELETE", path: "/api/wiki/categories/:id" },
+      ],
+    },
+    {
+      key: "storage",
+      label: t("status.api.cat.storage"),
+      endpoints: [
+        { label: t("status.api.ep.storageTree"), method: "GET", path: "/api/storage" },
+        { label: t("status.api.ep.createStorage"), method: "POST", path: "/api/storage/storages" },
+        { label: t("status.api.ep.updateStorage"), method: "PATCH", path: "/api/storage/storages/:id" },
+        { label: t("status.api.ep.createStorageCategory"), method: "POST", path: "/api/storage/storages/:storageId/categories" },
+        { label: t("status.api.ep.updateStorageCategory"), method: "PATCH", path: "/api/storage/storages/:storageId/categories/:id" },
+        { label: t("status.api.ep.listStorageItems"), method: "GET", path: "/api/storage/items" },
+        { label: t("status.api.ep.createStorageItem"), method: "POST", path: "/api/storage/items" },
+        { label: t("status.api.ep.getStorageItem"), method: "GET", path: "/api/storage/items/:id" },
+        { label: t("status.api.ep.updateStorageItem"), method: "PATCH", path: "/api/storage/items/:id" },
+        { label: t("status.api.ep.uploadStorageItemImages"), method: "POST", path: "/api/storage/items/:id/images" },
+        { label: t("status.api.ep.getStorageImage"), method: "GET", path: "/api/storage/image" },
+        { label: t("status.api.ep.deleteStorageItemImage"), method: "DELETE", path: "/api/storage/items/:id/images/:imageId" },
+        { label: t("status.api.ep.storageTransactionIntake"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=intake" },
+        { label: t("status.api.ep.storageTransactionDistribute"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=distribute" },
+        { label: t("status.api.ep.storageTransactionAdjust"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=adjust" },
+        { label: t("status.api.ep.listStorageTransactions"), method: "GET", path: "/api/storage/transactions?page=1&limit=5" },
+        { label: t("status.api.ep.deleteStorageItem"), method: "DELETE", path: "/api/storage/items/:id" },
+        { label: t("status.api.ep.deleteStorageCategory"), method: "DELETE", path: "/api/storage/storages/:storageId/categories/:id" },
+        { label: t("status.api.ep.deleteStorage"), method: "DELETE", path: "/api/storage/storages/:id" },
       ],
     },
     {
@@ -201,6 +233,15 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.auditLog"), method: "GET", path: "/api/admin/audit-log?page=1&limit=5" },
         { label: t("status.api.ep.auditLogExport"), method: "GET", path: "/api/admin/audit-log/export?format=json" },
         { label: t("status.api.ep.archiveMonths"), method: "GET", path: "/api/admin/audit-archive/months" },
+        { label: t("status.api.ep.archiveDownload"), method: "GET", path: "/api/admin/audit-archive/download" },
+        { label: t("status.api.ep.archiveDownloadFile"), method: "GET", path: "/api/admin/audit-archive/download/file" },
+      ],
+    },
+    {
+      key: "adminGameData",
+      label: t("status.api.cat.adminGameData"),
+      endpoints: [
+        { label: t("status.api.ep.gameDataVersions"), method: "GET", path: "/api/game-data/versions" },
       ],
     },
     {
@@ -226,6 +267,13 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.createRole"), method: "POST", path: "/api/admin/roles" },
         { label: t("status.api.ep.updateRole"), method: "PATCH", path: "/api/admin/roles/:id" },
         { label: t("status.api.ep.deleteRole"), method: "DELETE", path: "/api/admin/roles/:id" },
+      ],
+    },
+    {
+      key: "adminSiteConfig",
+      label: t("status.api.cat.adminSiteConfig"),
+      endpoints: [
+        { label: t("status.api.ep.adminSiteConfig"), method: "GET", path: "/api/admin/site-config" },
       ],
     },
     {
@@ -271,6 +319,10 @@ function requiresAny(...permissions: string[]): EndpointPermissionRequirement {
   return { all: [], any: permissions };
 }
 
+function requiresStoragePermission(permission: string): EndpointPermissionRequirement {
+  return requiresAny(permission, "admin.storage.manage");
+}
+
 function publicEndpoint(): EndpointPermissionRequirement {
   return { all: [], any: [] };
 }
@@ -278,6 +330,8 @@ function publicEndpoint(): EndpointPermissionRequirement {
 function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermissionRequirement {
   const key = `${endpoint.method} ${endpoint.path}`;
   if (key === "GET /api/admin/status") return requiresAll("admin.status.view");
+  if (key === "GET /api/admin/site-config") return requiresAll("admin.siteConfig.manage");
+  if (endpoint.path.startsWith("/api/admin/error-log")) return requiresAll("admin.status.view");
   if (key === "GET /api/admin/analytics-settings") return requiresAll("admin.analytics.view");
   if (key === "PATCH /api/admin/analytics-settings") return requiresAll("admin.analytics.manage");
   if (endpoint.path === "/api/auth/verify-invite/:code" || endpoint.path === "/api/auth/register/:inviteCode" || endpoint.path === "/api/auth/login") return requiresAll("admin.invite.manage", "admin.users.delete");
@@ -287,6 +341,8 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
   if (endpoint.path.startsWith("/api/admin/audit-log") || endpoint.path.startsWith("/api/admin/audit-archive")) {
     return endpoint.path.includes("export") || endpoint.path.includes("download") ? requiresAll("admin.audit.export") : requiresAll("admin.audit.view");
   }
+  if (endpoint.path.startsWith("/api/game-data/versions")) return requiresAll("admin.gameData.manage");
+  if (endpoint.path.startsWith("/api/wiki/articles") && endpoint.path.includes("/revisions")) return requiresAll("wiki.articles.edit");
   if (endpoint.path.startsWith("/api/admin/users")) {
     if (endpoint.path.includes("role")) return requiresAll("admin.users.edit", "admin.users.role", "admin.users.delete");
     if (endpoint.path.includes("deactivate") || endpoint.path.includes("reactivate")) return requiresAll("admin.users.edit", "admin.users.activate", "admin.users.delete");
@@ -350,6 +406,12 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
     if (endpoint.method === "DELETE") return endpoint.path.includes("permanent")
       ? requiresAll("wiki.articles.delete")
       : requiresAll("wiki.articles.archive");
+  }
+  if (endpoint.path.startsWith("/api/storage")) {
+    if (endpoint.method === "GET") return publicEndpoint();
+    if (endpoint.path.includes("/transactions")) return requiresStoragePermission("admin.storage.stock");
+    if (endpoint.path.includes("/items")) return requiresStoragePermission("admin.storage.items");
+    return requiresStoragePermission("admin.storage.structure");
   }
   return publicEndpoint();
 }

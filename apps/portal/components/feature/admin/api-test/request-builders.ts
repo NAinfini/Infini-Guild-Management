@@ -44,6 +44,14 @@ export function buildFormRequest(path: string, fields: Array<[string, string | F
   return { path, body: form };
 }
 
+function stripTestFixture(path: string): string {
+  return path.replace(/\?fixture=[^&]+&?/, "?").replace(/[?&]$/, "");
+}
+
+function isMutableMethod(method: EndpointDef["method"]): boolean {
+  return method === "POST" || method === "PATCH" || method === "DELETE";
+}
+
 export function skipEndpoint(path: string, reason: string, optionalSkip = false): PreparedEndpointRequest {
   return { path, skipReason: reason, optionalSkip };
 }
@@ -51,6 +59,39 @@ export function skipEndpoint(path: string, reason: string, optionalSkip = false)
 export function buildCleanupSteps(ctx: TestRunContext): CleanupStep[] {
   const cleanupSteps: CleanupStep[] = [];
   const disposableUserId = disposableMemberId(ctx);
+
+  if (ctx.createdStorageImageId && ctx.createdStorageItemId) {
+    cleanupSteps.push({
+      label: "Cleanup: Storage Image",
+      method: "DELETE",
+      path: `/api/storage/items/${encodeURIComponent(ctx.createdStorageItemId)}/images/${encodeURIComponent(ctx.createdStorageImageId)}`,
+      clearContext: { createdStorageImageId: null, storageImageKey: null },
+    });
+  }
+  if (ctx.createdStorageItemId) {
+    cleanupSteps.push({
+      label: "Cleanup: Storage Item",
+      method: "DELETE",
+      path: `/api/storage/items/${encodeURIComponent(ctx.createdStorageItemId)}`,
+      clearContext: { createdStorageItemId: null },
+    });
+  }
+  if (ctx.createdStorageCategoryId && ctx.createdStorageId) {
+    cleanupSteps.push({
+      label: "Cleanup: Storage Category",
+      method: "DELETE",
+      path: `/api/storage/storages/${encodeURIComponent(ctx.createdStorageId)}/categories/${encodeURIComponent(ctx.createdStorageCategoryId)}`,
+      clearContext: { createdStorageCategoryId: null },
+    });
+  }
+  if (ctx.createdStorageId) {
+    cleanupSteps.push({
+      label: "Cleanup: Storage",
+      method: "DELETE",
+      path: `/api/storage/storages/${encodeURIComponent(ctx.createdStorageId)}`,
+      clearContext: { createdStorageId: null },
+    });
+  }
 
   if (ctx.createdBadgeId) {
     cleanupSteps.push({
@@ -298,18 +339,18 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
         ? context.createdRaffleEventId
         : endpoint.path.includes("/poll/vote")
           ? context.createdPollEventId
-          : endpoint.path.includes("/destroy") ? context.createdEventId : context.createdEventId ?? context.eventId;
+          : isMutableMethod(endpoint.method) ? context.createdEventId : context.createdEventId ?? context.eventId;
     const next = replacePathParam(path, ":id", eventId);
     if (!next) {
-      return { path, missing: endpoint.path.includes("/destroy") ? "created event id" : "event id" };
+      return { path, missing: isMutableMethod(endpoint.method) ? "created event id" : "event id" };
     }
     path = next.replace("?fixture=poll", "").replace("?fixture=raffle", "");
   }
 
   if (path.includes("/api/events/templates/:id")) {
-    const next = replacePathParam(path, ":id", context.eventTemplateId);
+    const next = replacePathParam(path, ":id", isMutableMethod(endpoint.method) ? context.createdTemplateId : context.eventTemplateId);
     if (!next) {
-      return { path, missing: "template id" };
+      return { path, missing: isMutableMethod(endpoint.method) ? "created template id" : "template id" };
     }
     path = next;
   }
@@ -324,10 +365,10 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   }
 
   if (path.includes("/api/announcements/:id")) {
-    const announcementId = endpoint.path.includes("/permanent") ? context.createdAnnouncementId : context.createdAnnouncementId ?? context.announcementId;
+    const announcementId = isMutableMethod(endpoint.method) ? context.createdAnnouncementId : context.createdAnnouncementId ?? context.announcementId;
     const next = replacePathParam(path, ":id", announcementId);
     if (!next) {
-      return { path, missing: endpoint.path.includes("/permanent") ? "created announcement id" : "announcement id" };
+      return { path, missing: isMutableMethod(endpoint.method) ? "created announcement id" : "announcement id" };
     }
     path = next;
   }
@@ -351,10 +392,12 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   if (path.includes("/api/guild-war/history/:id")) {
     const historyId = endpoint.path.includes("/member-stats")
       ? context.createdConcludedWarHistoryId ?? context.createdWarHistoryId ?? context.warHistoryId
-      : context.createdWarHistoryId ?? context.createdConcludedWarHistoryId ?? context.warHistoryId;
+      : isMutableMethod(endpoint.method)
+        ? context.createdWarHistoryId ?? context.createdConcludedWarHistoryId
+        : context.createdWarHistoryId ?? context.createdConcludedWarHistoryId ?? context.warHistoryId;
     const next = replacePathParam(path, ":id", historyId);
     if (!next) {
-      return { path, missing: "guild war history id" };
+      return { path, missing: isMutableMethod(endpoint.method) ? "created guild war history id" : "guild war history id" };
     }
     path = next;
   }
@@ -379,10 +422,61 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
     path = next;
   }
 
-  if (path.includes("/api/wiki/categories/:id")) {
-    const next = replacePathParam(path, ":id", context.wikiCategoryId);
+  if (path.includes("/api/storage/storages/:storageId")) {
+    const storageId = endpoint.method === "GET" ? context.createdStorageId ?? context.storageId : context.createdStorageId;
+    const next = replacePathParam(path, ":storageId", storageId);
     if (!next) {
-      return { path, missing: "wiki category id" };
+      return { path, missing: endpoint.method === "GET" ? "storage id" : "created storage id" };
+    }
+    path = next;
+  }
+
+  if (path.includes("/api/storage/storages/:id")) {
+    const storageId = endpoint.method === "GET" ? context.createdStorageId ?? context.storageId : context.createdStorageId;
+    const next = replacePathParam(path, ":id", storageId);
+    if (!next) {
+      return { path, missing: endpoint.method === "GET" ? "storage id" : "created storage id" };
+    }
+    path = next;
+  }
+
+  if (path.includes("/api/storage/storages/") && path.includes("/categories/:id")) {
+    const categoryId = endpoint.method === "GET" ? context.createdStorageCategoryId ?? context.storageCategoryId : context.createdStorageCategoryId;
+    const next = replacePathParam(path, ":id", categoryId);
+    if (!next) {
+      return { path, missing: endpoint.method === "GET" ? "storage category id" : "created storage category id" };
+    }
+    path = next;
+  }
+
+  if (path.includes("/api/storage/items/:id")) {
+    const itemId = endpoint.method === "GET" ? context.createdStorageItemId ?? context.storageItemId : context.createdStorageItemId;
+    const next = replacePathParam(path, ":id", itemId);
+    if (!next) {
+      return { path, missing: endpoint.method === "GET" ? "storage item id" : "created storage item id" };
+    }
+    path = next;
+  }
+
+  if (path.includes("/api/storage/items/") && path.includes(":imageId")) {
+    const next = replacePathParam(path, ":imageId", context.createdStorageImageId);
+    if (!next) {
+      return { path, missing: "created storage image id" };
+    }
+    path = next;
+  }
+
+  if (endpoint.path === "/api/storage/image") {
+    if (!context.storageImageKey) {
+      return { path, missing: "storage image key (run storage image upload first)" };
+    }
+    return { path: `/api/storage/image?key=${encodeURIComponent(context.storageImageKey)}`, missing: null };
+  }
+
+  if (path.includes("/api/wiki/categories/:id")) {
+    const next = replacePathParam(path, ":id", isMutableMethod(endpoint.method) ? context.createdWikiCategoryId : context.wikiCategoryId);
+    if (!next) {
+      return { path, missing: isMutableMethod(endpoint.method) ? "created wiki category id" : "wiki category id" };
     }
     path = next;
   }
@@ -395,11 +489,20 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
     path = next;
   }
 
-  if (path.includes("/api/wiki/articles/:id")) {
-    const articleId = endpoint.path.includes("/permanent") ? context.createdWikiArticleId : context.createdWikiArticleId ?? context.wikiArticleId;
+  if (path.includes("/api/wiki/articles/:id/revisions")) {
+    const articleId = context.createdWikiArticleId ?? context.wikiArticleId;
     const next = replacePathParam(path, ":id", articleId);
     if (!next) {
-      return { path, missing: endpoint.path.includes("/permanent") ? "created wiki article id" : "wiki article id" };
+      return { path, missing: "wiki article id" };
+    }
+    path = next;
+  }
+
+  if (path.includes("/api/wiki/articles/:id")) {
+    const articleId = isMutableMethod(endpoint.method) ? context.createdWikiArticleId : context.createdWikiArticleId ?? context.wikiArticleId;
+    const next = replacePathParam(path, ":id", articleId);
+    if (!next) {
+      return { path, missing: isMutableMethod(endpoint.method) ? "created wiki article id" : "wiki article id" };
     }
     path = next;
   }
@@ -448,18 +551,18 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   }
 
   if (path.includes("/api/badges/:id")) {
-    const next = replacePathParam(path, ":id", context.badgeId);
+    const next = replacePathParam(path, ":id", isMutableMethod(endpoint.method) ? context.createdBadgeId : context.badgeId);
     if (!next) {
-      return { path, missing: "badge id" };
+      return { path, missing: isMutableMethod(endpoint.method) ? "created badge id" : "badge id" };
     }
     path = next;
   }
 
   if (path.includes("/api/admin/invite-links/:id")) {
-    const inviteId = endpoint.method === "DELETE" ? context.createdInviteLinkId ?? context.inviteLinkId : context.inviteLinkId;
+    const inviteId = endpoint.method === "DELETE" ? context.createdInviteLinkId : context.inviteLinkId;
     const next = replacePathParam(path, ":id", inviteId);
     if (!next) {
-      return { path, missing: "invite id" };
+      return { path, missing: endpoint.method === "DELETE" ? "created invite id" : "invite id" };
     }
     path = next;
   }
@@ -474,9 +577,9 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   }
 
   if (path.includes("/api/admin/roles/:id")) {
-    const next = replacePathParam(path, ":id", context.adminRoleId);
+    const next = replacePathParam(path, ":id", isMutableMethod(endpoint.method) ? context.createdRoleId : context.adminRoleId);
     if (!next) {
-      return { path, missing: "admin role id" };
+      return { path, missing: isMutableMethod(endpoint.method) ? "created admin role id" : "admin role id" };
     }
     path = next;
   }
@@ -530,10 +633,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
   const nowId = Date.now();
   switch (`${endpoint.method} ${endpoint.path}`) {
     case "PATCH /api/admin/analytics-settings":
-      return buildJsonRequest(path, {
-        reference_duration_minutes: 30,
-        modifier_weights: { kda: 0.3, towers: 0.1, credits: 0.3, distance: 0.15, basehp: 0.15 },
-      });
+      return skipEndpoint(path, "Skipping global analytics settings mutation to avoid touching existing database state", true);
 
     case "POST /api/auth/register/:inviteCode":
       {
@@ -662,14 +762,14 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/guild-war/save-teams":
-      if (!context.createdGuildWarEventId && !context.createdEventId && !context.eventId && !context.warEventId) {
-        return skipEndpoint(path, "Missing event id for guild war teams");
+      if (!context.createdGuildWarEventId && !context.createdEventId) {
+        return skipEndpoint(path, "Missing created event id for guild war teams");
       }
       if (!testMemberId) {
         return skipEndpoint(path, "Missing test member id for guild war teams");
       }
       return buildJsonRequest(path, {
-        event_id: context.createdGuildWarEventId ?? context.createdEventId ?? context.eventId ?? context.warEventId,
+        event_id: context.createdGuildWarEventId ?? context.createdEventId,
         teams: [
           {
             team_name: "[systemtest] API Team A",
@@ -687,14 +787,14 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/guild-war/move":
-      if (!context.createdGuildWarEventId && !context.createdEventId && !context.eventId && !context.warEventId) {
-        return skipEndpoint(path, "Missing event id for guild war move");
+      if (!context.createdGuildWarEventId && !context.createdEventId) {
+        return skipEndpoint(path, "Missing created event id for guild war move");
       }
       if (!context.warMemberUserId && !testMemberId) {
         return skipEndpoint(path, "Missing test member id for guild war move");
       }
       return buildJsonRequest(path, {
-        event_id: context.createdGuildWarEventId ?? context.createdEventId ?? context.eventId ?? context.warEventId,
+        event_id: context.createdGuildWarEventId ?? context.createdEventId,
         moves: [{ user_id: context.warMemberUserId ?? testMemberId, to: "pool" }],
       });
 
@@ -723,14 +823,14 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/guild-war/role-tag":
-      if (!context.createdGuildWarEventId && !context.createdEventId && !context.eventId && !context.warEventId) {
-        return skipEndpoint(path, "Missing event id for role tag");
+      if (!context.createdGuildWarEventId && !context.createdEventId) {
+        return skipEndpoint(path, "Missing created event id for role tag");
       }
       if (!context.warMemberUserId && !testMemberId) {
         return skipEndpoint(path, "Missing test member id for role tag");
       }
       return buildJsonRequest(path, {
-        event_id: context.createdGuildWarEventId ?? context.createdEventId ?? context.eventId ?? context.warEventId,
+        event_id: context.createdGuildWarEventId ?? context.createdEventId,
         updates: [{ user_id: context.warMemberUserId ?? testMemberId, role_tag: "DPS" }],
       });
 
@@ -855,7 +955,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         id: `systemtest_role_${nowId}`,
         name: `[systemtest] API Role ${nowId}`,
         level: 1,
-        color: "#228be6",
+        color: "#B8922F",
       });
 
     case "PATCH /api/admin/roles/:id":
@@ -963,6 +1063,77 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       return buildJsonRequest(path, {
         user_ids: [testMemberId],
       });
+
+    case "POST /api/storage/storages":
+      return buildJsonRequest(path, {
+        name: `[systemtest] API Storage ${nowId}`,
+        description: "[systemtest] Created by admin API tester",
+      });
+
+    case "PATCH /api/storage/storages/:id":
+      return buildJsonRequest(path, {
+        name: `[systemtest] API Storage Updated ${nowId}`,
+        description: "[systemtest] Updated by admin API tester",
+      });
+
+    case "POST /api/storage/storages/:storageId/categories":
+      return buildJsonRequest(path, {
+        name: `[systemtest] API Category ${nowId}`,
+      });
+
+    case "PATCH /api/storage/storages/:storageId/categories/:id":
+      return buildJsonRequest(path, {
+        name: `[systemtest] API Category Updated ${nowId}`,
+      });
+
+    case "POST /api/storage/items":
+      if (!context.createdStorageId) {
+        return skipEndpoint(path, "Missing created storage id for storage item");
+      }
+      return buildJsonRequest(path, {
+        storage_id: context.createdStorageId,
+        category_id: context.createdStorageCategoryId,
+        name: `[systemtest] API Item ${nowId}`,
+        description: "[systemtest] Created by admin API tester",
+        allow_member_deposit: true,
+        allow_member_withdraw: false,
+      });
+
+    case "PATCH /api/storage/items/:id":
+      return buildJsonRequest(path, {
+        name: `[systemtest] API Item Updated ${nowId}`,
+        description: "[systemtest] Updated by admin API tester",
+        allow_member_deposit: true,
+        allow_member_withdraw: true,
+      });
+
+    case "POST /api/storage/items/:id/transactions?fixture=intake":
+      return buildJsonRequest(stripTestFixture(path), {
+        type: "intake",
+        quantity: 3,
+        note: "[systemtest] API storage intake",
+      });
+
+    case "POST /api/storage/items/:id/transactions?fixture=distribute":
+      if (!testMemberId) {
+        return skipEndpoint(stripTestFixture(path), "Missing test member id for storage distribution");
+      }
+      return buildJsonRequest(stripTestFixture(path), {
+        type: "distribute",
+        quantity: 1,
+        recipient_user_id: testMemberId,
+        note: "[systemtest] API storage distribution",
+      });
+
+    case "POST /api/storage/items/:id/transactions?fixture=adjust":
+      return buildJsonRequest(stripTestFixture(path), {
+        type: "adjust",
+        target_quantity: 6,
+        note: "[systemtest] API storage adjustment",
+      });
+
+    case "POST /api/storage/items/:id/images":
+      return buildFormRequest(path, [["file", createTinyPngFile()]]);
 
     default:
       return { path };

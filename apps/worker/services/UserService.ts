@@ -1,7 +1,6 @@
 import {
   ALLOWED_IMAGE_TYPES,
-  FILE_SIZE_LIMITS,
-  IMAGE_QUOTAS,
+  DEFAULT_SITE_MEDIA_POLICY,
   PERMISSIONS,
   adminUpdateProfileSchema,
   changePasswordSchema,
@@ -12,6 +11,7 @@ import {
   userSchema,
   type Permission,
   type Role,
+  type SiteMediaPolicy,
 } from "@guild/shared";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
@@ -19,8 +19,10 @@ import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { memberProfileClasses, memberProfiles, sessions, userAuthPassword, users } from "../db/schema";
+import { captureUploadValidation } from "./media";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, parseStringArray, parseRecord } from "./helpers";
+import { logger } from "../utils/logger";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
 
@@ -67,8 +69,6 @@ type ProfilePatch = {
   audioKey?: string | null;
   videoUrls?: string;
   availability?: string | null;
-  vacationStart?: string | null;
-  vacationEnd?: string | null;
   notes?: string | null;
   updatedAt?: string;
 };
@@ -102,39 +102,40 @@ export type UserServiceDeps = {
   verifyPassword: (password: string, salt: string, hash: string) => Promise<boolean>;
   createPasswordHash: (password: string) => Promise<{ passwordHash: string; salt: string }>;
   destroySession: () => Promise<void>;
+  getMediaPolicy?: () => Promise<SiteMediaPolicy>;
 };
 
 // --- Helpers ---
 
 const TITLE_HTML_ALLOWED_TAGS = new Set(["span", "b", "strong", "i", "em", "u", "br"]);
-const UPLOAD_VALIDATION_ERROR_PREFIXES = [
-  "File bytes do not match declared type:",
-  "Unsupported file type:",
-];
+const STYLE_PROP_ALLOWLIST = new Set(["color", "font-weight", "font-style", "text-decoration", "background-color"]);
+
+function sanitizeStyleAttr(raw: string): string {
+  const declarations = raw.split(";").map((d) => d.trim()).filter(Boolean);
+  const safe = declarations.filter((decl) => {
+    const colonIdx = decl.indexOf(":");
+    if (colonIdx === -1) return false;
+    const prop = decl.slice(0, colonIdx).trim().toLowerCase();
+    return STYLE_PROP_ALLOWLIST.has(prop);
+  });
+  return safe.join("; ");
+}
 
 function sanitizeTitleHtml(html: string): string {
-  return html.replace(/<(\/?)(\w+)(\s[^>]*)?(\/?)>/gi, (_match, slash: string, tagName: string, attrs: string | undefined) => {
+  return html.replace(/<(\/?)(\w+)([^>]*)>/gi, (_match, slash: string, tagName: string, attrs: string) => {
     if (!TITLE_HTML_ALLOWED_TAGS.has(tagName.toLowerCase())) return "";
     const isSelfClosing = tagName.toLowerCase() === "br";
     if (isSelfClosing) return "<br>";
     let styleAttr = "";
     if (!slash && attrs) {
       const styleMatch = attrs.match(/\sstyle\s*=\s*"([^"]*)"/i);
-      if (styleMatch) styleAttr = ` style="${styleMatch[1]}"`;
+      if (styleMatch) {
+        const safe = sanitizeStyleAttr(styleMatch[1]!);
+        if (safe) styleAttr = ` style="${safe}"`;
+      }
     }
     return `<${slash}${tagName.toLowerCase()}${styleAttr}>`;
   });
-}
-
-async function captureUploadValidation<T>(operation: () => Promise<T>): Promise<ServiceResult<T>> {
-  try {
-    return ok(await operation());
-  } catch (error) {
-    if (error instanceof Error && UPLOAD_VALIDATION_ERROR_PREFIXES.some((prefix) => error.message.startsWith(prefix))) {
-      return err("VALIDATION_ERROR", error.message);
-    }
-    throw error;
-  }
 }
 
 function toUserPayload(user: UserRow) {
@@ -149,7 +150,8 @@ function toUserPayload(user: UserRow) {
     updated_at: user.updatedAt,
   });
   if (!result.success) {
-    throw new Error(`Invalid user data for id=${user.id}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
+    logger.error("Invalid user data from database", { userId: user.id, issues: result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ') });
+    throw new Error(`Invalid user data for id=${user.id}`);
   }
   return result.data;
 }
@@ -194,8 +196,6 @@ function buildProfilePatch(
   if (payload.availability !== undefined) {
     patch.availability = payload.availability === null ? null : JSON.stringify(payload.availability);
   }
-  if (payload.vacation_start !== undefined) patch.vacationStart = payload.vacation_start;
-  if (payload.vacation_end !== undefined) patch.vacationEnd = payload.vacation_end;
   if ("notes" in payload && payload.notes !== undefined) patch.notes = payload.notes;
   patch.updatedAt = new Date().toISOString();
   return patch;
@@ -212,8 +212,6 @@ function buildProfileDiff(
     ["titleHtml", "titleHtml"],
     ["bio", "bio"],
     ["notes", "notes"],
-    ["vacationStart", "vacationStart"],
-    ["vacationEnd", "vacationEnd"],
     ["availability", "availability"],
   ];
   for (const [patchKey, oldKey] of fieldMap) {
@@ -267,8 +265,10 @@ const userProfileSelect = {
   audioKey: memberProfiles.audioKey,
   videoUrls: memberProfiles.videoUrls,
   availability: memberProfiles.availability,
-  vacationStart: memberProfiles.vacationStart,
-  vacationEnd: memberProfiles.vacationEnd,
+  // Derived from the absence history (current-or-next absence); the legacy
+  // member_profiles.vacation_start/vacation_end columns are no longer read.
+  vacationStart: sql<string | null>`(SELECT ma.start_date FROM member_absences ma WHERE ma.user_id = ${users.id} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_start"),
+  vacationEnd: sql<string | null>`(SELECT ma.end_date FROM member_absences ma WHERE ma.user_id = ${users.id} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_end"),
   notes: memberProfiles.notes,
   profileCreatedAt: memberProfiles.createdAt,
   profileUpdatedAt: memberProfiles.updatedAt,
@@ -314,7 +314,7 @@ export class UserService {
     private deps: UserServiceDeps,
   ) {}
 
-  private async loadUserWithProfile(userId: string): Promise<UserWithProfileRow | null> {
+  private async loadUserWithProfile(userId: string): Promise<{ data: UserWithProfileRow; profileExists: boolean } | null> {
     const row = (
       await this.db
         .select(userProfileSelect)
@@ -324,7 +324,10 @@ export class UserService {
         .limit(1)
     )[0];
     if (!row) return null;
-    return rowToUserWithProfile(row as unknown as Record<string, unknown>);
+    return {
+      data: rowToUserWithProfile(row as unknown as Record<string, unknown>),
+      profileExists: (row as unknown as Record<string, unknown>).profileId != null,
+    };
   }
 
   private async ensureProfile(userId: string): Promise<ProfileRow> {
@@ -374,18 +377,24 @@ export class UserService {
       activeFilter: params.activeFilter,
     }));
 
-    const rows = await this.db.select(userProfileSelect).from(users)
+    const dataQuery = this.db.select(userProfileSelect).from(users)
       .leftJoin(memberProfiles, eq(memberProfiles.userId, users.id))
       .where(whereClause).orderBy(users.createdAt, users.id)
       .limit(params.limit).offset(offset);
 
     let total: number;
     let totalPages: number;
+    let rows: Awaited<typeof dataQuery>;
     if (params.includeTotal) {
-      const countRow = await this.db.select({ count: sql<number>`count(*)` }).from(users).where(whereClause);
+      const [dataRows, countRow] = await Promise.all([
+        dataQuery,
+        this.db.select({ count: sql<number>`count(*)` }).from(users).where(whereClause),
+      ]);
+      rows = dataRows;
       total = Number(countRow[0]?.count ?? 0);
       totalPages = Math.max(1, Math.ceil(total / params.limit));
     } else {
+      rows = await dataQuery;
       total = offset + rows.length;
       totalPages = rows.length < params.limit ? params.page : params.page + 1;
     }
@@ -419,16 +428,18 @@ export class UserService {
     });
   }
 
-  async getUser(sessionUser: SessionUser, targetUserId: string): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
+  async getUser(sessionUser: SessionUser | null, targetUserId: string): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
     const loaded = await this.loadUserWithProfile(targetUserId);
     if (!loaded) return err("NOT_FOUND", "User not found");
-    if (!loaded.user.isActive && !sessionUser.permissions.has("admin.users.view")) {
+    if (!loaded.data.user.isActive && sessionUser?.permissions.has("admin.users.view") !== true) {
       return err("NOT_FOUND", "User not found");
     }
-    const profile = await this.ensureProfile(targetUserId);
+    const profile = loaded.profileExists ? loaded.data.profile : await this.ensureProfile(targetUserId);
+    const canViewPrivateProfile = Boolean(sessionUser);
+    const canViewNotes = sessionUser?.permissions.has("admin.users.view") === true;
     return ok({
-      user: toUserPayload(loaded.user),
-      profile: toProfilePayload(profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includePrivate: true }),
+      user: toUserPayload(loaded.data.user),
+      profile: toProfilePayload(profile, { includeNotes: canViewNotes, includePrivate: canViewPrivateProfile }),
     });
   }
 
@@ -454,11 +465,12 @@ export class UserService {
     const diff = buildProfileDiff(oldProfile, patch);
     await this.deps.writeAuditLog({
       entityType: "member_profile", action: "update", actorId: sessionUser.id,
-      entityId: targetUserId, diffTitle: updated.user.username,
+      entityId: targetUserId, diffTitle: updated.data.user.username,
       detailText: diff ? JSON.stringify(diff) : null,
     });
-    await this.deps.publishEntityChanged({ entityType: "member_profile", entityId: targetUserId, hint: "profile_updated" });
-    return ok(toProfilePayload(updated.profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includePrivate: true }));
+    const profileHint = sessionUser.id === targetUserId ? "profile_updated" : "profile_moderated";
+    await this.deps.publishEntityChanged({ entityType: "member_profile", entityId: targetUserId, hint: profileHint });
+    return ok(toProfilePayload(updated.data.profile, { includeNotes: sessionUser.permissions.has("admin.users.view"), includePrivate: true }));
   }
 
   async uploadProfileImages(sessionUser: SessionUser, targetUserId: string, files: File[]): Promise<ServiceResult<{ keys: string[] }>> {
@@ -467,17 +479,19 @@ export class UserService {
     if (access.status === "forbidden") return err("FORBIDDEN", "You cannot upload media for this profile");
     if (files.length === 0) return err("VALIDATION_ERROR", "No files provided");
 
+    const mediaPolicy = await (this.deps.getMediaPolicy?.() ?? Promise.resolve(DEFAULT_SITE_MEDIA_POLICY));
+    const maxImageBytes = mediaPolicy.max_file_size_bytes.profile_image;
     for (const file of files) {
       if (!ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number]))
         return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-      if (file.size > FILE_SIZE_LIMITS.profileImage)
-        return err("VALIDATION_ERROR", `Image exceeds ${FILE_SIZE_LIMITS.profileImage} bytes`);
+      if (file.size > maxImageBytes)
+        return err("VALIDATION_ERROR", `Image exceeds ${maxImageBytes} bytes`);
     }
 
     const profile = await this.ensureProfile(targetUserId);
     const existing = parseStringArray(profile.images);
     const avatarCount = profile.avatarKey ? 1 : 0;
-    if (existing.length + avatarCount + files.length > IMAGE_QUOTAS.profile)
+    if (existing.length + avatarCount + files.length > mediaPolicy.quotas.profile)
       return err("CONFLICT", "Profile image quota exceeded");
 
     const stored = await captureUploadValidation(() => Promise.all(files.map((file) => this.deps.storeProfileImage(targetUserId, file))));
@@ -528,13 +542,15 @@ export class UserService {
 
     if (!ALLOWED_IMAGE_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_TYPES)[number]))
       return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-    if (file.size > FILE_SIZE_LIMITS.profileImage)
-      return err("VALIDATION_ERROR", `Image exceeds ${FILE_SIZE_LIMITS.profileImage} bytes`);
+    const mediaPolicy = await (this.deps.getMediaPolicy?.() ?? Promise.resolve(DEFAULT_SITE_MEDIA_POLICY));
+    const maxImageBytes = mediaPolicy.max_file_size_bytes.profile_image;
+    if (file.size > maxImageBytes)
+      return err("VALIDATION_ERROR", `Image exceeds ${maxImageBytes} bytes`);
 
     const profile = await this.ensureProfile(targetUserId);
     const existing = parseStringArray(profile.images);
     const avatarCount = profile.avatarKey ? 1 : 0;
-    if (existing.length + avatarCount + 1 - avatarCount > IMAGE_QUOTAS.profile)
+    if (existing.length + avatarCount + 1 - avatarCount > mediaPolicy.quotas.profile)
       return err("CONFLICT", "Profile image quota exceeded");
 
     const stored = await captureUploadValidation(() => this.deps.storeProfileImage(targetUserId, file));
@@ -579,8 +595,10 @@ export class UserService {
     const allowedAudioTypes = ["audio/ogg", "audio/webm", "audio/mp4", "audio/mpeg", "audio/wav"];
     if (audioFile.type && !allowedAudioTypes.includes(audioFile.type))
       return err("VALIDATION_ERROR", `Invalid audio type: ${audioFile.type}`);
-    if (audioFile.size > FILE_SIZE_LIMITS.profileAudio)
-      return err("VALIDATION_ERROR", `Audio exceeds ${FILE_SIZE_LIMITS.profileAudio} bytes`);
+    const mediaPolicy = await (this.deps.getMediaPolicy?.() ?? Promise.resolve(DEFAULT_SITE_MEDIA_POLICY));
+    const maxAudioBytes = mediaPolicy.max_file_size_bytes.profile_audio;
+    if (audioFile.size > maxAudioBytes)
+      return err("VALIDATION_ERROR", `Audio exceeds ${maxAudioBytes} bytes`);
 
     const profile = await this.ensureProfile(targetUserId);
     const stored = await captureUploadValidation(() => this.deps.storeProfileAudio(targetUserId, audioFile));
@@ -666,7 +684,12 @@ export class UserService {
     if (dup && dup.id !== targetUserId) return err("CONFLICT", "Username already taken");
 
     const oldUser = (await this.db.select({ username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
-    await this.db.update(users).set({ username: parsed.data.newUsername, updatedAt: new Date().toISOString() }).where(eq(users.id, targetUserId));
+    try {
+      await this.db.update(users).set({ username: parsed.data.newUsername, updatedAt: new Date().toISOString() }).where(eq(users.id, targetUserId));
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("UNIQUE constraint failed: users.username")) return err("CONFLICT", "Username already taken");
+      throw error;
+    }
     await this.deps.writeAuditLog({
       entityType: "user", action: "change_username", actorId: sessionUser.id,
       entityId: targetUserId, diffTitle: parsed.data.newUsername,

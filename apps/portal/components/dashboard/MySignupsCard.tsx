@@ -66,7 +66,7 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
                   <span className="signup-box-empty">—</span>
                 ) : (
                   day.events.map((item) => {
-                    const color = `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--color-primary, #3b82f6))`;
+                    const color = `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--color-primary, #D4A843))`;
 
                     return (
                       <HoverCard key={item.event.id} width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">

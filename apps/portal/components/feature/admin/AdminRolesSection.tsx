@@ -24,6 +24,7 @@ import {
   BookTextIcon,
   CalendarDaysIcon,
   CheckIcon,
+  ClipboardIcon,
   EyeIcon,
   GalleryThumbnailsIcon,
   LockIcon,
@@ -36,6 +37,7 @@ import {
   TrashIcon,
   UploadIcon,
   UserCheckIcon,
+  WarehouseIcon,
   XIcon,
 } from "@portal/components/icons";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -104,7 +106,11 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
   },
   {
     labelKey: "roles.category.adminSystem",
-    permissions: ["admin.status.view", "admin.roles.view", "admin.roles.manage"],
+    permissions: ["admin.status.view", "admin.roles.view", "admin.roles.manage", "admin.siteConfig.manage"],
+  },
+  {
+    labelKey: "roles.category.storage",
+    permissions: ["admin.storage.structure", "admin.storage.items", "admin.storage.stock"],
   },
   {
     labelKey: "roles.category.adminAnalytics",
@@ -150,6 +156,7 @@ const PERM_META: Record<string, PermMeta> = {
   "admin.status.view":     { icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "blue" },
   "admin.roles.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
   "admin.roles.manage":    { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "red", danger: true },
+  "admin.siteConfig.manage": { icon: <SettingsIcon size={PERM_ICON_SIZE} />,         color: "teal" },
   "admin.analytics.view":  { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
   "admin.analytics.manage":{ icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "teal" },
   "guildwar.teams.edit":   { icon: <SwordsIcon size={PERM_ICON_SIZE} />,             color: "orange" },
@@ -171,6 +178,9 @@ const PERM_META: Record<string, PermMeta> = {
   "wiki.articles.archive": { icon: <ArchiveIcon size={PERM_ICON_SIZE} />,            color: "grape" },
   "wiki.articles.delete":  { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
   "wiki.categories.manage":{ icon: <BookTextIcon size={PERM_ICON_SIZE} />,           color: "teal" },
+  "admin.storage.structure": { icon: <WarehouseIcon size={PERM_ICON_SIZE} />,         color: "teal" },
+  "admin.storage.items":     { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
+  "admin.storage.stock":     { icon: <ClipboardIcon size={PERM_ICON_SIZE} />,         color: "orange" },
 };
 
 const DEFAULT_META: PermMeta = { icon: <SettingsIcon size={PERM_ICON_SIZE} />, color: "gray" };
@@ -181,7 +191,7 @@ function buildEmptyPermissions(): Record<Permission, boolean> {
 
 const CSS_COLOR_TO_HEX: Record<string, string> = {
   red: "#ef4444",
-  blue: "#3b82f6",
+  blue: "#D4A843",
   gray: "#64748b",
   green: "#22c55e",
   orange: "#f97316",
@@ -460,7 +470,7 @@ export function AdminRolesSection({
                         style={{ flex: 1, minWidth: 120, maxWidth: 160 }}
                         swatches={[
                           "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
-                          "#3b82f6", "#6366f1", "#a855f7", "#ec4899", "#64748b",
+                          "#D4A843", "#6366f1", "#a855f7", "#ec4899", "#64748b",
                         ]}
                       />
                       <Badge variant="light" color="teal" size="sm">

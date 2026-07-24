@@ -4,8 +4,8 @@
   height: calc(90vh - 60px);
   min-height: 480px;
   background:
-    radial-gradient(1000px 500px at 20% 0%, color-mix(in srgb, var(--color-primary, #3b82f6) 8%, transparent), transparent 60%),
-    radial-gradient(900px 480px at 100% 100%, color-mix(in srgb, var(--color-secondary, #8b5cf6) 7%, transparent), transparent 55%);
+    radial-gradient(1000px 500px at 20% 0%, color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent), transparent 60%),
+    radial-gradient(900px 480px at 100% 100%, color-mix(in srgb, var(--color-secondary, #8B7355) 7%, transparent), transparent 55%);
 }
 
 .ecm__topbar {
@@ -13,8 +13,21 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 8px 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
   flex-shrink: 0;
+}
+
+.ecm__data-version {
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.ecm__data-version .mantine-Text-root:last-child {
+  max-width: min(42vw, 320px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .ecm__body {
@@ -29,8 +42,8 @@
   flex-direction: column;
   gap: 1px;
   padding: 8px 4px;
-  border-right: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
-  background: color-mix(in srgb, var(--color-text, #111827) 2%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 2%, transparent);
   flex-shrink: 0;
   width: 38px;
   align-items: center;
@@ -45,20 +58,20 @@
   height: 32px;
   border-radius: 7px;
   cursor: pointer;
-  color: color-mix(in srgb, var(--color-text, #111827) 45%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 45%, transparent);
   transition: background 0.15s, color 0.15s, transform 0.15s;
   position: relative;
 }
 
 .ecm__activity-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
-  color: var(--color-text, #111827);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+  color: var(--color-text, #1A1815);
   transform: translateX(1px);
 }
 
 .ecm__activity-btn--active {
-  color: var(--color-primary, #3b82f6);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+  color: var(--color-primary, #D4A843);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
 }
 
 .ecm__activity-btn--active::before {
@@ -69,16 +82,16 @@
   bottom: 6px;
   width: 2.5px;
   border-radius: 2px;
-  background: var(--color-primary, #3b82f6);
+  background: var(--color-primary, #D4A843);
 }
 
 .ecm__side-panel {
   width: 292px;
-  border-right: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
   overflow-y: auto;
   flex-shrink: 0;
   padding: 12px;
-  background: color-mix(in srgb, var(--color-text, #111827) 1.5%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 1.5%, transparent);
   transition: width 0.2s ease, padding 0.2s ease;
   scrollbar-width: thin;
 }
@@ -125,7 +138,7 @@
   padding: 12px;
   border-radius: 12px;
   background: color-mix(in srgb, var(--color-surface, #ffffff) 90%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
 }
 
 .ecm__paperdoll-row {
@@ -148,7 +161,7 @@
   justify-content: center;
   gap: 4px;
   min-height: 90px;
-  border: 1px dashed color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
   border-radius: 8px;
   cursor: pointer;
   padding: 6px 5px;
@@ -159,22 +172,22 @@
 }
 
 .ecm__equip-slot:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 48%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 5%, color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent));
-  box-shadow: 0 5px 16px color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 48%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 5%, color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent));
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
   transform: translateY(-1px);
 }
 
 .ecm__equip-slot--filled {
   border-style: solid;
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 42%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 42%, transparent);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-primary, #3b82f6) 8%, color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent)), color-mix(in srgb, var(--color-surface, #ffffff) 74%, transparent));
+    linear-gradient(180deg, color-mix(in srgb, var(--color-primary, #D4A843) 8%, color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent)), color-mix(in srgb, var(--color-surface, #ffffff) 74%, transparent));
 }
 
 .ecm__equip-slot--filled:hover {
-  border-color: var(--color-primary, #3b82f6);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--color-primary, #3b82f6) 14%, transparent);
+  border-color: var(--color-primary, #D4A843);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--color-primary, #D4A843) 14%, transparent);
 }
 
 .ecm__equip-slot__icon-wrap {
@@ -184,13 +197,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--color-text, #111827) 5%, transparent);
-  color: color-mix(in srgb, var(--color-text, #111827) 42%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 42%, transparent);
 }
 
 .ecm__equip-slot--filled .ecm__equip-slot__icon-wrap {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent);
-  color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent);
+  color: var(--color-primary, #D4A843);
 }
 
 .ecm__equip-slot__label {
@@ -202,21 +215,21 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
-  color: color-mix(in srgb, var(--color-text, #111827) 65%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .ecm__equip-slot--filled .ecm__equip-slot__label {
-  color: var(--color-text, #111827);
+  color: var(--color-text, #1A1815);
 }
 
 .ecm__grad-banner {
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--color-surface, #ffffff) 82%, transparent), color-mix(in srgb, var(--color-surface, #ffffff) 72%, transparent)),
-    color-mix(in srgb, var(--color-text, #111827) 3%, transparent);
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--color-text, #111827) 6%, transparent);
+    color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
 }
 
 .ecm__grad-banner__content {
@@ -282,8 +295,8 @@
   flex: 1;
   padding: 8px 16px;
   border-radius: 100px;
-  background: color-mix(in srgb, var(--color-text, #111827) 3%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 6%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -295,7 +308,7 @@
   font-size: 14px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--color-text, #111827);
+  color: var(--color-text, #1A1815);
   line-height: 1.1;
 }
 
@@ -304,7 +317,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--color-text, #111827) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 50%, transparent);
 }
 
 .ecm__stats {
@@ -315,8 +328,8 @@
   border-radius: 10px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--color-surface, #ffffff) 84%, transparent), color-mix(in srgb, var(--color-surface, #ffffff) 70%, transparent)),
-    color-mix(in srgb, var(--color-text, #111827) 2%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+    color-mix(in srgb, var(--color-text, #1A1815) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
 }
 
 .ecm__stats__header {
@@ -326,7 +339,7 @@
 }
 
 .ecm__stats__header-icon {
-  color: color-mix(in srgb, var(--color-text, #111827) 40%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 40%, transparent);
 }
 
 .ecm__stats__summary {
@@ -338,9 +351,9 @@
 .ecm__stats__card {
   padding: 7px 8px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-text, #111827) 3%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
   border: none;
-  border-left: 3px solid color-mix(in srgb, var(--color-text, #111827) 12%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--color-text, #1A1815) 12%, transparent);
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -351,7 +364,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--color-text, #111827) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 50%, transparent);
 }
 
 .ecm__stats__card-value {
@@ -363,7 +376,7 @@
 
 .ecm__stats__card-meta {
   font-size: 10px;
-  color: color-mix(in srgb, var(--color-text, #111827) 55%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 55%, transparent);
 }
 
 .ecm__panel-table {
@@ -372,7 +385,7 @@
   overflow: hidden;
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-surface, #ffffff) 68%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 7%, transparent);
 }
 
 .ecm__panel-table-row {
@@ -382,7 +395,7 @@
   gap: 8px;
   min-height: 26px;
   padding: 4px 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #111827) 5%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
 }
 
 .ecm__panel-table-row:last-child {
@@ -398,7 +411,7 @@
   min-width: 0;
   overflow: hidden;
   font-size: 11px;
-  color: color-mix(in srgb, var(--color-text, #111827) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 60%, transparent);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -406,7 +419,7 @@
 .ecm__panel-table-value {
   font-size: 11px;
   font-weight: 800;
-  color: var(--color-text, #111827);
+  color: var(--color-text, #1A1815);
   font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
@@ -418,7 +431,7 @@
   gap: 4px;
   padding: 7px 9px;
   border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 80%, transparent);
   cursor: pointer;
   transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
@@ -427,14 +440,14 @@
 }
 
 .ecm__equip-card:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 40%, transparent);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
   transform: translateY(-1px);
 }
 
 .ecm__equip-card--equipped {
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 35%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 4%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 35%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 4%, transparent);
 }
 
 .ecm__equip-card__header {
@@ -451,8 +464,8 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: color-mix(in srgb, var(--color-text, #111827) 5%, transparent);
-  color: color-mix(in srgb, var(--color-text, #111827) 45%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 45%, transparent);
 }
 
 .ecm__equip-card__name {
@@ -495,7 +508,7 @@
   width: 40px;
   height: 4px;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -522,7 +535,7 @@
 }
 
 .ecm__pool-header__icon {
-  color: var(--color-primary, #3b82f6);
+  color: var(--color-primary, #D4A843);
 }
 
 .ecm__pool-filter-bar {
@@ -542,22 +555,27 @@
   cursor: pointer;
   font-size: 11px;
   font-weight: 500;
-  color: color-mix(in srgb, var(--color-text, #111827) 55%, transparent);
-  background: color-mix(in srgb, var(--color-text, #111827) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 8%, transparent);
-  transition: all 0.15s;
+  color: color-mix(in srgb, var(--color-text, #1A1815) 55%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
 .ecm__pool-filter-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 20%, transparent);
-  color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent);
+  color: var(--color-primary, #D4A843);
 }
 
 .ecm__pool-filter-btn--active {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 14%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 30%, transparent);
-  color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent);
+  color: var(--color-primary, #D4A843);
   font-weight: 600;
 }
 
@@ -588,11 +606,11 @@
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--color-text, #111827) 45%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 45%, transparent);
 }
 
 .ecm__config-section-label__icon {
-  color: color-mix(in srgb, var(--color-text, #111827) 35%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 35%, transparent);
 }
 
 .ecm__config-row {
@@ -602,7 +620,7 @@
 }
 
 .ecm__config-divider {
-  border-top: 1px dotted color-mix(in srgb, var(--color-text, #111827) 6%, transparent);
+  border-top: 1px dotted color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
   margin: 2px 0;
 }
 

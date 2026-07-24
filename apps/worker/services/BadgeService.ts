@@ -1,5 +1,5 @@
 import { memberBadgeSchema } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -9,7 +9,6 @@ import { memberBadgeAssignments, memberBadges } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
-type AuditLogInput = { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
 type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: PushHint };
 
 export type BadgeServiceDeps = {
@@ -63,7 +62,7 @@ function sanitizeBadgeLabelHtml(html: string): string {
     const rawTag = match[0];
     const tagMatch = /^<\/?\s*([a-zA-Z0-9-]+)([^>]*)>$/.exec(rawTag);
     if (tagMatch) {
-      const tag = tagMatch[1].toLowerCase();
+      const tag = tagMatch[1]!.toLowerCase();
       if (ALLOWED_INLINE_TAGS.has(tag)) {
         const isClosing = /^<\//.test(rawTag);
         if (tag === "br") {
@@ -71,8 +70,8 @@ function sanitizeBadgeLabelHtml(html: string): string {
         } else if (isClosing) {
           output += `</${tag}>`;
         } else {
-          const styleMatch = /\bstyle\s*=\s*"([^"]*)"/.exec(tagMatch[2]);
-          output += styleMatch ? `<${tag} style="${styleMatch[1]}">` : `<${tag}>`;
+          const styleMatch = /\bstyle\s*=\s*"([^"]*)"/.exec(tagMatch[2]!);
+          output += styleMatch ? `<${tag} style="${styleMatch[1]!}">` : `<${tag}>`;
         }
       }
     }
@@ -116,6 +115,19 @@ function sanitizeBadgeUpdateInput(data: { name?: string; label_html?: string; co
     patch.color = normalizeBadgeColor(data.color);
   }
   return ok(patch);
+}
+
+function buildBadgeDiff(
+  existing: BadgeRow,
+  data: { name?: string; label_html?: string; color?: string; description?: string; sort_order?: number },
+): Record<string, { from: unknown; to: unknown }> | null {
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
+  if (data.name !== undefined && data.name !== existing.name) diff.name = { from: existing.name, to: data.name };
+  if (data.label_html !== undefined && data.label_html !== existing.labelHtml) diff.label_html = { from: existing.labelHtml, to: data.label_html };
+  if (data.color !== undefined && data.color !== existing.color) diff.color = { from: existing.color, to: data.color };
+  if (data.description !== undefined && (data.description ?? null) !== existing.description) diff.description = { from: existing.description, to: data.description ?? null };
+  if (data.sort_order !== undefined && data.sort_order !== existing.sortOrder) diff.sort_order = { from: existing.sortOrder, to: data.sort_order };
+  return Object.keys(diff).length > 0 ? diff : null;
 }
 
 function toBadgePayload(row: BadgeRow) {
@@ -187,7 +199,8 @@ export class BadgeService {
     await this.db.update(memberBadges).set(patch).where(eq(memberBadges.id, badgeId));
     const updated = (await this.db.select(BADGE_COLS).from(memberBadges).where(eq(memberBadges.id, badgeId)).limit(1))[0];
     if (!updated) return err("SERVER_ERROR", "Failed to load updated badge");
-    await this.deps.writeAuditLog({ entityType: "member_badge", action: "update", actorId, entityId: badgeId, diffTitle: updated.name, detailText: JSON.stringify(safeData) });
+    const diff = buildBadgeDiff(existing, safeData);
+    await this.deps.writeAuditLog({ entityType: "member_badge", action: "update", actorId, entityId: badgeId, diffTitle: updated.name, detailText: diff ? JSON.stringify(diff) : null });
     return ok(toBadgePayload(updated));
   }
 

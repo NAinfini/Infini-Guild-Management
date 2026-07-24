@@ -157,7 +157,6 @@ export async function apiRequest<TResponse>(
 ): Promise<TResponse> {
   const url = input;
   const headers = new Headers(init.headers);
-  headers.set("X-Request-Id", nanoid());
 
   const method = (init.method ?? "GET").toUpperCase();
   const cacheKey = method === "GET" && !init.body && !init.bodyJson ? url : null;
@@ -168,6 +167,7 @@ export async function apiRequest<TResponse>(
 
   if (method === "POST" || method === "PATCH" || method === "DELETE") {
     headers.set("X-Requested-With", "XMLHttpRequest");
+    headers.set("X-Request-Id", nanoid());
   }
 
   if (init.ifMatch) {
@@ -205,7 +205,10 @@ export async function apiRequest<TResponse>(
   }
 
   if (method !== "GET") {
-    jsonResponseCache.clear();
+    const basePath = url.split("?")[0]!.split("/").slice(0, 4).join("/");
+    for (const key of jsonResponseCache.keys()) {
+      if (key.startsWith(basePath)) jsonResponseCache.delete(key);
+    }
   }
 
   if (response.status === 204) {

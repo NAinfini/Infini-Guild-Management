@@ -1,7 +1,7 @@
 import {
   announcementSchema,
 } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -9,11 +9,11 @@ import { nanoid } from "nanoid";
 import { announcements } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, likeEscaped } from "./helpers";
+import { replaceMediaRefs, deleteMediaRefs, extractRichTextMediaKeys } from "./media-references";
 
 // --- Types ---
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
-type AuditLogInput = { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null };
 type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: PushHint };
 type AnnouncementPublishedInput = { announcementId: string; title: string; publishedAt: string };
 
@@ -27,6 +27,7 @@ type AnnouncementRow = {
 
 export type AnnouncementServiceDeps = {
   media: R2Bucket;
+  rawDb: D1Database;
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
   publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
   publishAnnouncementPublished: (input: AnnouncementPublishedInput) => Promise<void>;
@@ -64,6 +65,21 @@ function toListPayload(row: AnnouncementListRow) {
     status: row.status, publish_at: row.publishAt, expires_at: row.expiresAt, archived_at: row.archivedAt,
     created_by: row.createdBy, updated_by: row.updatedBy ?? null, created_at: row.createdAt, updated_at: row.updatedAt,
   };
+}
+
+function buildAnnouncementDiff(
+  existing: AnnouncementRow,
+  data: { title?: string; body_json?: string; pinned?: boolean; status?: AnnouncementStatus; publish_at?: string | null; expires_at?: string | null; archived_at?: string | null },
+): Record<string, { from: unknown; to: unknown }> | null {
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
+  if (data.title !== undefined && data.title !== existing.title) diff.title = { from: existing.title, to: data.title };
+  if (data.body_json !== undefined && data.body_json !== existing.bodyJson) diff.body_json = { from: "changed", to: "changed" };
+  if (data.pinned !== undefined && data.pinned !== existing.pinned) diff.pinned = { from: existing.pinned, to: data.pinned };
+  if (data.status !== undefined && data.status !== existing.status) diff.status = { from: existing.status, to: data.status };
+  if (data.publish_at !== undefined && (data.publish_at ?? null) !== existing.publishAt) diff.publish_at = { from: existing.publishAt, to: data.publish_at ?? null };
+  if (data.expires_at !== undefined && (data.expires_at ?? null) !== existing.expiresAt) diff.expires_at = { from: existing.expiresAt, to: data.expires_at ?? null };
+  if (data.archived_at !== undefined && (data.archived_at ?? null) !== existing.archivedAt) diff.archived_at = { from: existing.archivedAt, to: data.archived_at ?? null };
+  return Object.keys(diff).length > 0 ? diff : null;
 }
 
 // --- Service ---
@@ -131,6 +147,7 @@ export class AnnouncementService {
 
     const created = await this.getById(announcementId);
     if (!created) return err("SERVER_ERROR", "Failed to create announcement");
+    await replaceMediaRefs(this.deps.rawDb, "announcement", announcementId, extractRichTextMediaKeys(created.bodyJson, "announcement", announcementId));
     await this.deps.writeAuditLog({ entityType: "announcement", action: "create", actorId, entityId: announcementId, diffTitle: created.title });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_created" });
     if (created.status === "published") {
@@ -170,7 +187,11 @@ export class AnnouncementService {
     const updated = await this.getById(announcementId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated announcement");
 
-    await this.deps.writeAuditLog({ entityType: "announcement", action: "update", actorId, entityId: announcementId, diffTitle: updated.title, detailText: JSON.stringify(data) });
+    if (data.body_json !== undefined) {
+      await replaceMediaRefs(this.deps.rawDb, "announcement", announcementId, extractRichTextMediaKeys(updated.bodyJson, "announcement", announcementId));
+    }
+    const announcementDiff = buildAnnouncementDiff(existing, data);
+    await this.deps.writeAuditLog({ entityType: "announcement", action: "update", actorId, entityId: announcementId, diffTitle: updated.title, detailText: announcementDiff ? JSON.stringify(announcementDiff) : null });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_updated" });
     if (existing.status !== "published" && updated.status === "published") {
       await this.deps.publishAnnouncementPublished({ announcementId: updated.id, title: updated.title, publishedAt: updated.publishAt ?? updated.updatedAt });
@@ -192,6 +213,7 @@ export class AnnouncementService {
     const existing = await this.getById(announcementId);
     if (!existing) return err("NOT_FOUND", "Announcement not found");
     await this.db.delete(announcements).where(eq(announcements.id, announcementId));
+    await deleteMediaRefs(this.deps.rawDb, "announcement", announcementId);
     await this.deps.writeAuditLog({ entityType: "announcement", action: "delete", actorId, entityId: announcementId, diffTitle: existing.title });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_deleted" });
     return ok({ ok: true });
@@ -202,6 +224,9 @@ export class AnnouncementService {
     if (!existing) return err("NOT_FOUND", "Announcement not found");
     const keys: string[] = [];
     for (const file of files) {
+      // No media_references entry here: keys are added when the body_json referencing
+      // them is saved (replaceMediaRefs). Unsaved uploads are orphans caught by the
+      // media-orphan-cleanup cron's 48 h grace period.
       const key = `announcement/${announcementId}/images/${Date.now()}_${nanoid()}`;
       await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
       keys.push(key);

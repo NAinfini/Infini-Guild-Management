@@ -47,8 +47,6 @@ export const updateProfileSchema = memberProfileSchema
     audio_key: true,
     video_urls: true,
     availability: true,
-    vacation_start: true,
-    vacation_end: true,
   })
   .partial();
 

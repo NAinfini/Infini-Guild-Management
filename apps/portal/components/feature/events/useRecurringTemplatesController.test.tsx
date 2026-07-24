@@ -111,7 +111,7 @@ describe("useRecurringTemplatesController", () => {
       type: "social" as const,
       title: "Weekly Raid",
       description: "Bring food",
-      start_at: "2026-03-20T19:00:00.000Z",
+      start_time: "19:00",
       recurrence_rule: {
         frequency: "weekly" as const,
         interval: 1,

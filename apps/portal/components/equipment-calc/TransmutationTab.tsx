@@ -33,7 +33,8 @@ export function TransmutationTab({ gameData }: Props) {
     const results: { fromStat: string; toStat: string; improvement: number }[] = [];
 
     for (let i = 0; i < selectedEquip.subStats.length; i++) {
-      const fromStat = selectedEquip.subStats[i].type;
+      const currentSub = selectedEquip.subStats[i]!;
+      const fromStat = currentSub.type;
 
       for (const targetStat of gameData.baseSubStats) {
         if (existingStatTypes.has(targetStat) && targetStat !== fromStat) continue;

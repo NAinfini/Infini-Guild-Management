@@ -112,7 +112,7 @@ export class EventPollRaffleService {
     const hasWinners = Array.isArray(existingWinners) ? existingWinners.length > 0 : (existingWinners?.results?.length ?? 0) > 0;
     if (hasWinners) return { ok: false, code: "CONFLICT", message: "Raffle winners already drawn" };
 
-    const participantRows = (await (this.db as any)
+    const participantRows = (await this.db
       .select({ userId: eventParticipants.userId })
       .from(eventParticipants)
       .where(eq(eventParticipants.eventId, eventId))) as Array<{ userId: string }>;
@@ -172,7 +172,7 @@ export class EventPollRaffleService {
   }
 
   async getRaffleWinners(eventId: string): Promise<RaffleWinnerRow[]> {
-    return (await (this.db as any)
+    return (await this.db
       .select({ id: eventRaffleWinners.id, eventId: eventRaffleWinners.eventId, userId: eventRaffleWinners.userId, drawnAt: eventRaffleWinners.drawnAt })
       .from(eventRaffleWinners)
       .where(eq(eventRaffleWinners.eventId, eventId))) as RaffleWinnerRow[];
@@ -207,7 +207,6 @@ export class EventPollRaffleService {
     if (data.type !== "poll") return null;
     if (!data.end_at) return err("VALIDATION_ERROR", "Poll events require end_at");
     if (!data.poll) return err("VALIDATION_ERROR", "Poll events require poll settings");
-    if (data.recurrence_rule) return err("VALIDATION_ERROR", "Poll events cannot recur");
     return null;
   }
 
@@ -215,7 +214,6 @@ export class EventPollRaffleService {
     if (data.type !== "raffle") return null;
     if (!data.end_at) return err("VALIDATION_ERROR", "Raffle events require end_at");
     if (!data.winner_count || data.winner_count < 1) return err("VALIDATION_ERROR", "Raffle events require winner_count");
-    if (data.recurrence_rule) return err("VALIDATION_ERROR", "Raffle events cannot recur");
     return null;
   }
 
@@ -226,7 +224,6 @@ export class EventPollRaffleService {
       return null;
     }
     if (!effectiveEndAt) return err("VALIDATION_ERROR", "Poll events require end_at");
-    if (data.recurrence_rule) return err("VALIDATION_ERROR", "Poll events cannot recur");
     return null;
   }
 

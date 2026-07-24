@@ -16,7 +16,7 @@ import type {
   HistoryMemberStat,
   HistoryMemberStatsUpdate,
   HistorySummaryRow,
-} from "@portal/components/feature/guild-war/WarHistoryTab";
+} from "@portal/types/guild-war";
 
 type EditableMetricKey = string;
 type MemberStatDraft = Record<string, number>;

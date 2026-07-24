@@ -1,5 +1,6 @@
 import { inspect } from "node:util";
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_SITE_MEDIA_POLICY } from "@guild/shared";
 import { UserService } from "../UserService";
 
 function createDeps() {
@@ -12,6 +13,7 @@ function createDeps() {
     verifyPassword: vi.fn(),
     createPasswordHash: vi.fn(),
     destroySession: vi.fn(),
+    getMediaPolicy: vi.fn().mockResolvedValue(DEFAULT_SITE_MEDIA_POLICY),
   };
 }
 
@@ -166,5 +168,45 @@ describe("UserService", () => {
       code: "VALIDATION_ERROR",
       message: "File bytes do not match declared type: image/png",
     });
+  });
+
+  it("rejects profile images over the configured media policy before storage", async () => {
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn().mockResolvedValue([{ role: "member", deletedAt: null, username: "Alpha" }]),
+          })),
+        })),
+      });
+    const deps = createDeps();
+    deps.getMediaPolicy = vi.fn().mockResolvedValue({
+      max_file_size_bytes: {
+        profile_image: 4,
+        profile_audio: 1024,
+        announcement_image: 1024,
+        wiki_image: 1024,
+        event_image: 1024,
+        gallery_image: 1024,
+      },
+      quotas: {
+        profile: 10,
+        announcement: 10,
+        gallery: 20,
+        wiki: 10,
+      },
+    });
+    const service = new UserService({ select } as never, deps);
+    const file = new File([new Uint8Array(5)], "large.png", { type: "image/png" });
+
+    const result = await service.uploadProfileImages(
+      { id: "u-1", role: "member", permissions: new Set() },
+      "u-1",
+      [file],
+    );
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+    expect(deps.storeProfileImage).not.toHaveBeenCalled();
   });
 });

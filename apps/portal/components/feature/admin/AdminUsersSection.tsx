@@ -400,6 +400,8 @@ export function AdminUsersSection({
               <InfiniTable
                 table={table}
                 highlightOnHover
+                virtualize
+                maxHeight="65vh"
                 onRowDoubleClick={(row) => onOpenMemberDetail(row.original.user.id)}
                 onRowClick={(row, event) => handleRowClick(row.original.user.id, event)}
                 onRowContextMenu={(row, event) => handleRowContextMenu(row.original.user.id, event)}

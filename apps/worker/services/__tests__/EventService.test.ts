@@ -1,6 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
 import { EventService, parseAttachments } from "../EventService";
 
+const stubTemplateDeps = {
+  getTemplateById: vi.fn().mockResolvedValue(null),
+  materializeRecurringSeries: vi.fn().mockResolvedValue(undefined),
+  writeAuditLog: vi.fn().mockResolvedValue(undefined),
+};
+
+function makeRawDb() {
+  return {
+    prepare: vi.fn((sql: string) => ({
+      bind: vi.fn((...bindings: unknown[]) => ({
+        sql,
+        bindings,
+        run: vi.fn().mockResolvedValue({ meta: { changes: 1 } }),
+      })),
+    })),
+    batch: vi.fn().mockResolvedValue([]),
+  };
+}
+
 function createEventRow(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: "evt-1",
@@ -17,15 +36,10 @@ function createEventRow(overrides: Partial<Record<string, unknown>> = {}) {
     autoArchived: false,
     createdBy: "mod-1",
     updatedBy: null,
-    recurrenceRule: null,
     attachments: "[]",
     seriesId: null,
-    isSeriesParent: false,
     instanceDate: null,
-    lastGeneratedDate: null,
-    generationCount: 0,
     visibleAt: null,
-    visibilityOffsetMinutes: null,
     winnerCount: null,
     createdAt: "2026-03-08T12:00:00.000Z",
     updatedAt: "2026-03-08T12:00:00.000Z",
@@ -34,7 +48,7 @@ function createEventRow(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe("worker EventService", () => {
-  it("creates events, uploads inline files, and materializes recurring series", async () => {
+  it("creates events, uploads inline files, and writes audit log", async () => {
     const insertValues = vi.fn().mockResolvedValue(undefined);
     const db = {
       insert: vi.fn(() => ({ values: insertValues })),
@@ -47,22 +61,19 @@ describe("worker EventService", () => {
       .mockResolvedValue(
         createEventRow({
           attachments: JSON.stringify(["events/evt-1/images/poster.png"]),
-          recurrenceRule: JSON.stringify({ frequency: "weekly", interval: 1 }),
-          isSeriesParent: true,
         }),
       );
-    const materializeRecurringSeries = vi.fn().mockResolvedValue(undefined);
     const writeAuditLog = vi.fn().mockResolvedValue(undefined);
-    const service = new EventService(db as never, {} as never, media as never, {
+    const rawDb = makeRawDb();
+    const service = new EventService(db as never, rawDb as never, media as never, {
       getEventById,
       getUsername: vi.fn().mockResolvedValue("TestUser"),
-      materializeRecurringSeries,
       writeAuditLog,
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),
       now: () => "2026-03-08T12:00:00.000Z",
       createId: () => "evt-1",
       createImageKey: () => "events/evt-1/images/poster.png",
-    });
+    }, stubTemplateDeps);
 
     const created = await service.createEvent(
       "mod-1",
@@ -75,10 +86,6 @@ describe("worker EventService", () => {
         capacity: 20,
         attachments: [],
         auto_archive: true,
-        recurrence_rule: {
-          frequency: "weekly",
-          interval: 1,
-        },
       },
       [new File(["image"], "poster.png", { type: "image/png" })],
     );
@@ -93,7 +100,6 @@ describe("worker EventService", () => {
       }),
     );
     expect(media.put).toHaveBeenCalledTimes(1);
-    expect(materializeRecurringSeries).toHaveBeenCalledWith("evt-1");
     expect(writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "create",
@@ -104,6 +110,8 @@ describe("worker EventService", () => {
     expect(created).toEqual(expect.objectContaining({ ok: true }));
     const createdData = (created as { ok: true; data: { attachments: string } }).data;
     expect(parseAttachments(createdData.attachments)).toEqual(["events/evt-1/images/poster.png"]);
+    // replaceMediaRefs is called after insert
+    expect(rawDb.batch).toHaveBeenCalled();
   });
 
   it("updates event auto-archive settings", async () => {
@@ -113,14 +121,13 @@ describe("worker EventService", () => {
       update: vi.fn(() => ({ set: updateSet })),
       delete: vi.fn(),
     };
-    const service = new EventService(db as never, {} as never, { put: vi.fn() } as never, {
+    const service = new EventService(db as never, makeRawDb() as never, { put: vi.fn() } as never, {
       getEventById: vi.fn().mockResolvedValue(createEventRow({ autoArchive: true })),
       getUsername: vi.fn().mockResolvedValue(null),
-      materializeRecurringSeries: vi.fn(),
       writeAuditLog: vi.fn().mockResolvedValue(undefined),
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),
       now: () => "2026-03-08T12:00:00.000Z",
-    });
+    }, stubTemplateDeps);
 
     await service.updateEvent("mod-1", "evt-1", createEventRow(), {
       auto_archive: true,
@@ -141,10 +148,10 @@ describe("worker EventService", () => {
       {
         getEventById: vi.fn(),
         getUsername: vi.fn().mockResolvedValue(null),
-        materializeRecurringSeries: vi.fn(),
-        writeAuditLog: vi.fn(),
+          writeAuditLog: vi.fn(),
         publishEntityChanged: vi.fn(),
       },
+      stubTemplateDeps,
     );
 
     const result = await service.updateEvent("mod-1", "evt-1", createEventRow(), {
@@ -163,15 +170,15 @@ describe("worker EventService", () => {
     };
     const media = { put: vi.fn().mockResolvedValue(undefined) };
     const writeAuditLog = vi.fn().mockResolvedValue(undefined);
-    const service = new EventService(db as never, {} as never, media as never, {
+    const rawDb = makeRawDb();
+    const service = new EventService(db as never, rawDb as never, media as never, {
       getEventById: vi.fn(),
       getUsername: vi.fn().mockResolvedValue(null),
-      materializeRecurringSeries: vi.fn(),
       writeAuditLog,
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),
       now: () => "2026-03-08T12:00:00.000Z",
       createImageKey: () => "events/evt-1/images/new.png",
-    });
+    }, stubTemplateDeps);
 
     const result = await service.uploadEventImages(
       "mod-1",
@@ -238,14 +245,13 @@ describe("worker EventService", () => {
     const service = new EventService({ select } as never, { prepare, batch } as never, { put: vi.fn() } as never, {
       getEventById: vi.fn().mockResolvedValue(createEventRow({ capacity: 5 })),
       getUsername: vi.fn().mockResolvedValue(null),
-      materializeRecurringSeries: vi.fn(),
       writeAuditLog: vi.fn().mockResolvedValue(undefined),
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),
       now: () => "2026-03-08T12:00:00.000Z",
       createId: vi.fn()
         .mockReturnValueOnce("p-1")
         .mockReturnValueOnce("p-2"),
-    });
+    }, stubTemplateDeps);
 
     const result = await (service as unknown as {
       addParticipants(
@@ -267,10 +273,9 @@ describe("worker EventService", () => {
     const service = new EventService({ select: vi.fn() } as never, { prepare, batch: vi.fn() } as never, { put: vi.fn() } as never, {
       getEventById: vi.fn().mockResolvedValue(createEventRow()),
       getUsername: vi.fn().mockResolvedValue(null),
-      materializeRecurringSeries: vi.fn(),
       writeAuditLog: vi.fn().mockResolvedValue(undefined),
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),
-    });
+    }, stubTemplateDeps);
 
     const result = await (service as unknown as {
       removeParticipants(actorId: string, eventId: string, targetUserIds: string[]): Promise<{ ok: true; removed: number }>;
@@ -284,16 +289,15 @@ describe("worker EventService", () => {
   it("removes active guild-war team data when destroying an event", async () => {
     const batch = vi.fn().mockResolvedValue([]);
     const prepare = vi.fn((sql: string) => ({
-      bind: vi.fn((...bindings: unknown[]) => ({ sql, bindings })),
+      bind: vi.fn((...bindings: unknown[]) => ({ sql, bindings, run: vi.fn().mockResolvedValue({ meta: { changes: 1 } }) })),
     }));
     const service = new EventService({} as never, { prepare, batch } as never, { put: vi.fn() } as never, {
       getEventById: vi.fn(),
       getUsername: vi.fn().mockResolvedValue(null),
-      materializeRecurringSeries: vi.fn(),
       writeAuditLog: vi.fn().mockResolvedValue(undefined),
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),
       now: () => "2026-03-08T12:00:00.000Z",
-    });
+    }, stubTemplateDeps);
 
     await service.destroyEvent("mod-1", "evt-1", createEventRow());
 
@@ -301,6 +305,7 @@ describe("worker EventService", () => {
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM war_teams WHERE event_id"));
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM war_pool_members WHERE event_id"));
     expect(batch).toHaveBeenCalledTimes(1);
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM media_references"));
   });
 
   it("rejects leaving archived events", async () => {
@@ -313,10 +318,9 @@ describe("worker EventService", () => {
     const service = new EventService(db as never, {} as never, { put: vi.fn() } as never, {
       getEventById: vi.fn().mockResolvedValue(createEventRow({ archivedAt: "2026-03-21T12:00:00.000Z" })),
       getUsername: vi.fn().mockResolvedValue(null),
-      materializeRecurringSeries: vi.fn(),
       writeAuditLog,
       publishEntityChanged,
-    });
+    }, stubTemplateDeps);
 
     const result = await service.leaveEvent("member-1", "evt-1");
 
@@ -340,7 +344,6 @@ describe("worker EventService", () => {
     const service = new EventService(db as never, { prepare, batch } as never, { put: vi.fn() } as never, {
       getEventById: vi.fn().mockResolvedValue(createEventRow({ type: "poll", endAt: "2026-03-20T21:00:00.000Z" })),
       getUsername: vi.fn().mockResolvedValue(null),
-      materializeRecurringSeries: vi.fn(),
       writeAuditLog: vi.fn().mockResolvedValue(undefined),
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),
       now: () => "2026-03-08T12:00:00.000Z",
@@ -349,7 +352,7 @@ describe("worker EventService", () => {
         .mockReturnValueOnce("poll-1")
         .mockReturnValueOnce("opt-1")
         .mockReturnValueOnce("opt-2"),
-    });
+    }, stubTemplateDeps);
 
     await service.createEvent("mod-1", {
       type: "poll",
@@ -366,7 +369,8 @@ describe("worker EventService", () => {
     expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ type: "poll", capacity: null }));
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO event_polls"));
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO event_poll_options"));
-    expect(batch).toHaveBeenCalledTimes(1);
+    // batch is called once for poll creation and once for replaceMediaRefs
+    expect(batch).toHaveBeenCalledTimes(2);
   });
 
   it("rejects normal signups for poll events", async () => {
@@ -377,10 +381,10 @@ describe("worker EventService", () => {
       {
         getEventById: vi.fn().mockResolvedValue(createEventRow({ type: "poll" })),
         getUsername: vi.fn().mockResolvedValue(null),
-        materializeRecurringSeries: vi.fn(),
-        writeAuditLog: vi.fn(),
+          writeAuditLog: vi.fn(),
         publishEntityChanged: vi.fn(),
       },
+      stubTemplateDeps,
     );
 
     const result = await service.joinEvent("member-1", "evt-1");
@@ -400,14 +404,14 @@ describe("worker EventService", () => {
       {
         getEventById: vi.fn().mockResolvedValue(createEventRow({ type: "poll", endAt: "2026-03-20T21:00:00.000Z" })),
         getUsername: vi.fn().mockResolvedValue(null),
-        materializeRecurringSeries: vi.fn(),
-        writeAuditLog: vi.fn().mockResolvedValue(undefined),
+          writeAuditLog: vi.fn().mockResolvedValue(undefined),
         publishEntityChanged: vi.fn().mockResolvedValue(undefined),
         now: () => "2026-03-08T12:00:00.000Z",
         createId: vi.fn()
           .mockReturnValueOnce("vote-1")
           .mockReturnValueOnce("vote-2"),
       },
+      stubTemplateDeps,
     );
 
     const result = await service.votePoll("member-1", "evt-1", ["opt-1", "opt-2"]);
@@ -435,11 +439,10 @@ describe("worker EventService", () => {
     const service = new EventService(db as never, { prepare, batch: vi.fn() } as never, { put: vi.fn() } as never, {
       getEventById: vi.fn().mockResolvedValue(createEventRow({ type: "poll", endAt: "2026-03-20T21:00:00.000Z" })),
       getUsername: vi.fn().mockResolvedValue(null),
-      materializeRecurringSeries: vi.fn(),
       writeAuditLog: vi.fn(),
       publishEntityChanged: vi.fn(),
       now: () => "2026-03-08T12:00:00.000Z",
-    });
+    }, stubTemplateDeps);
 
     const result = await service.updateEvent("mod-1", "evt-1", createEventRow({ type: "poll", endAt: "2026-03-20T21:00:00.000Z" }), {
       type: "poll",

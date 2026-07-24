@@ -29,6 +29,10 @@ When changing the schema:
 
 Do not add new incremental migration files for ordinary v1 changes unless the project explicitly starts versioned production migration tracking.
 
+This baseline workflow is only safe while databases can be rebuilt. Editing
+`0000_core_schema.sql` does not update a database that has already applied that
+migration, and D1 does not provide automatic migration rollback.
+
 ## Schema Source of Truth
 
 The Drizzle schema is split by domain:
@@ -57,9 +61,10 @@ When the project switches from v1 baseline editing to production migration track
 
 1. Stop editing already-applied migration files.
 2. Generate a new migration with `pnpm db:generate`.
-3. Review generated SQL before applying it.
+3. Review generated SQL for destructive operations before applying it.
 4. Apply the migration to local D1 with `pnpm db:mock:init`.
 5. Apply staging before production.
-6. Keep Drizzle schema, SQL migrations, seed data, and shared Zod schemas in sync.
+6. Back up production data and prepare a tested recovery migration before destructive changes.
+7. Keep Drizzle schema, SQL migrations, seed data, and shared Zod schemas in sync.
 
 Until that switch happens, treat `0000_core_schema.sql` as the rebuildable baseline.

@@ -1,11 +1,15 @@
 import type { HeartbeatAckMessage, HeartbeatMessage, PushMessage } from "@guild/shared";
+import type { Bindings } from "../index";
 
 const STALE_TIMEOUT_MS = 90_000;
 const SWEEP_INTERVAL_MS = 60_000;
 export const MAX_WEBSOCKET_CONNECTIONS = 1500;
 
 export class WebSocketDO {
-  constructor(private readonly state: DurableObjectState) {}
+  constructor(
+    private readonly state: DurableObjectState,
+    private readonly env: Bindings,
+  ) {}
 
   private getLastHeartbeat(ws: WebSocket): number {
     const attachment = ws.deserializeAttachment() as { ts?: number } | null;
@@ -40,6 +44,10 @@ export class WebSocketDO {
     const url = new URL(request.url);
 
     if (request.method === "POST" && url.pathname === "/publish") {
+      const authHeader = request.headers.get("Authorization");
+      if (!authHeader || authHeader !== `Bearer ${this.env.SIGNING_SECRET}`) {
+        return new Response("Unauthorized", { status: 401 });
+      }
       let message: PushMessage;
       try { message = (await request.json()) as PushMessage; } catch {
         return new Response("Invalid JSON", { status: 400 });
@@ -59,7 +67,7 @@ export class WebSocketDO {
     }
 
     const pair = new WebSocketPair();
-    const [client, server] = Object.values(pair);
+    const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     this.state.acceptWebSocket(server);
     this.setLastHeartbeat(server, Date.now());
 

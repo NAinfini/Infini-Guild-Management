@@ -1,0 +1,53 @@
+name: Setup help
+description: Get help installing or deploying Infini Guild Management.
+title: "[Setup]: "
+labels: ["setup"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read SETUP.md first. Remove passwords, cookies, invite codes, secrets, Cloudflare tokens, account IDs, and D1 database IDs from everything you post.
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where are you stuck?
+      options:
+        - Local installation
+        - Cloudflare login
+        - D1 or R2 creation
+        - Database migrations
+        - First administrator
+        - Deployment
+        - Admin Site Config
+        - Updating an existing site
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Node.js version, and pnpm version.
+      placeholder: Windows 11, Node 24.18.x, pnpm 11.17.x
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and redacted error
+      description: Paste the command and complete error, with all sensitive values removed.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed all credentials, secrets, tokens, cookies, invite codes, account IDs, and database IDs.
+          required: true

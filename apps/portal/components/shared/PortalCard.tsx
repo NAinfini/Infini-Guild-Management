@@ -11,13 +11,20 @@ export const PortalCard = forwardRef<HTMLDivElement, PortalCardProps>(
   function PortalCard({ children, className, onClick, style, interactive = true, padding, ...rest }, ref) {
     const internalRef = useRef<HTMLDivElement>(null);
     const cardRef = (ref ?? internalRef) as React.RefObject<HTMLDivElement>;
+    const rafRef = useRef(0);
 
     const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-      const el = cardRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      el.style.setProperty("--spotlight-x", `${e.clientX - rect.left}px`);
-      el.style.setProperty("--spotlight-y", `${e.clientY - rect.top}px`);
+      const clientX = e.clientX;
+      const clientY = e.clientY;
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = 0;
+        const el = cardRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        el.style.setProperty("--spotlight-x", `${clientX - rect.left}px`);
+        el.style.setProperty("--spotlight-y", `${clientY - rect.top}px`);
+      });
     }, [cardRef]);
 
     const classes = [

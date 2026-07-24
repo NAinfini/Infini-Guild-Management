@@ -46,6 +46,7 @@
   "toolbar.replaceOne": "Replace",
   "toolbar.replaceAllLabel": "Replace All",
   "toolbar.tableOfContents": "Table of Contents",
+  "toolbar.wordCount": "{{words}} words · {{characters}} characters",
   "toolbar.words": "words",
   "toolbar.characters": "characters",
   "slashCommands": "Slash Commands",

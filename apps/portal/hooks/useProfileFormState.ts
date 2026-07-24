@@ -25,8 +25,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
   const [videoDraft, setVideoDraft] = useState("");
   const [videoList, setVideoList] = useState<string[]>([]);
   const [imageList, setImageList] = useState<string[]>([]);
-  const [vacationStart, setVacationStart] = useState("");
-  const [vacationEnd, setVacationEnd] = useState("");
   const [availabilityData, setAvailabilityData] = useState<Record<string, unknown> | null>(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -45,8 +43,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     setClassList(profile.classes);
     setVideoList(profile.video_urls);
     setImageList(profile.images);
-    setVacationStart(profile.vacation_start ?? "");
-    setVacationEnd(profile.vacation_end ?? "");
     setAvailabilityData((profile.availability ?? null) as Record<string, unknown> | null);
   }, [profile]);
 
@@ -55,7 +51,7 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
   const activeNowEstimate = useMemo(() => {
     const dayKeys = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
     const now = new Date();
-    const dayKey = dayKeys[now.getUTCDay()];
+    const dayKey = dayKeys[now.getUTCDay()]!;
     const days =
       availabilityData && typeof availabilityData === "object" && "days" in availabilityData
         ? (availabilityData as Record<string, unknown>).days
@@ -76,9 +72,18 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
       if (typeof startUtc !== "string" || typeof endUtc !== "string") {
         continue;
       }
-      const [startHour, startMinute] = startUtc.split(":").map((value) => Number.parseInt(value, 10));
-      const [endHour, endMinute] = endUtc.split(":").map((value) => Number.parseInt(value, 10));
-      if (!Number.isFinite(startHour) || !Number.isFinite(startMinute) || !Number.isFinite(endHour) || !Number.isFinite(endMinute)) {
+      const startParts = startUtc.split(":").map((value) => Number.parseInt(value, 10));
+      const endParts = endUtc.split(":").map((value) => Number.parseInt(value, 10));
+      const startHour = startParts[0];
+      const startMinute = startParts[1];
+      const endHour = endParts[0];
+      const endMinute = endParts[1];
+      if (
+        startHour === undefined || startMinute === undefined ||
+        endHour === undefined || endMinute === undefined ||
+        !Number.isFinite(startHour) || !Number.isFinite(startMinute) ||
+        !Number.isFinite(endHour) || !Number.isFinite(endMinute)
+      ) {
         continue;
       }
       const startTotal = startHour * 60 + startMinute;
@@ -165,8 +170,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
       JSON.stringify(classList) !== JSON.stringify(profile.classes) ||
       JSON.stringify(videoList) !== JSON.stringify(profile.video_urls) ||
       JSON.stringify(imageList) !== JSON.stringify(profile.images) ||
-      vacationStart !== (profile.vacation_start ?? "") ||
-      vacationEnd !== (profile.vacation_end ?? "") ||
       JSON.stringify(availabilityData ?? null) !== JSON.stringify(profile.availability ?? null)
     );
   }, [
@@ -177,8 +180,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     power,
     profile,
     titleHtml,
-    vacationEnd,
-    vacationStart,
     videoList,
   ]);
 
@@ -199,10 +200,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     setVideoList,
     imageList,
     setImageList,
-    vacationStart,
-    setVacationStart,
-    vacationEnd,
-    setVacationEnd,
     availabilityData,
     setAvailabilityData,
     currentPassword,

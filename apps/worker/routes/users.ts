@@ -1,20 +1,20 @@
 import { deleteProfileImagesSchema, type Role } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { createPasswordHash, destroySession, resolveSession, verifyPassword } from "../services/auth";
-import { writeAuditLog } from "../services/audit";
-import { publishEntityChanged } from "../services/push";
+import { createPasswordHash, destroySession, verifyPassword } from "../services/auth";
 import { deleteMediaObject, storeProfileAudio, storeProfileImage } from "../services/media";
 import { UserService } from "../services/UserService";
 import { BadgeService } from "../services/BadgeService";
+import { MemberAbsenceService } from "../services/MemberAbsenceService";
+import { getRequestUser } from "../middleware/rbac";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, requireSessionUser, serveR2Object } from "./_shared";
+import { commonDeps } from "./service-factory";
 
 export const usersRoutes = new Hono();
 
 function getUserService(c: Context) {
   return new UserService(getDb(c), {
-    writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
+    ...commonDeps(c),
     storeProfileImage: (userId, file) => storeProfileImage(c, userId, file),
     storeProfileAudio: (userId, file) => storeProfileAudio(c, userId, file),
     deleteMediaObject: (key) => deleteMediaObject(c, key),
@@ -25,11 +25,14 @@ function getUserService(c: Context) {
 }
 
 function getBadgeService(c: Context) {
-  return new BadgeService(getDb(c), {
-    writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
-  });
+  return new BadgeService(getDb(c), commonDeps(c));
 }
+
+function getAbsenceService(c: Context) {
+  return new MemberAbsenceService(getDb(c), commonDeps(c));
+}
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // --- Routes ---
 
@@ -41,13 +44,14 @@ usersRoutes.get("/image", async (c) => {
 });
 
 usersRoutes.get("/", async (c) => {
-  const resolved = await resolveSession(c);
-  const sessionUser = resolved?.user ?? null;
+  // Guest-visible read route: public visitors may browse the roster, while
+  // UserService hides private/user-only profile fields when sessionUser is null.
+  const sessionUser = await getRequestUser(c);
   const query = c.req.query();
 
   const isAdmin = sessionUser?.permissions.has("admin.users.view") === true;
   const explicitActive = parseBoolean(query.active);
-  const activeFilter = explicitActive ?? (isAdmin ? undefined : true);
+  const activeFilter = isAdmin ? explicitActive : true;
 
   const result = await getUserService(c).listUsers({
     page: parsePage(query.page, 1),
@@ -73,12 +77,25 @@ usersRoutes.get("/", async (c) => {
 });
 
 usersRoutes.get("/stats", async (c) => {
+  // Public website summary data; no user/mod/admin-only fields are returned.
   return handleResult(c, await getUserService(c).getUserStats());
 });
 
+// Static path: registered before "/:id" so it never resolves as a user id.
+usersRoutes.get("/absences", async (c) => {
+  await requireSessionUser(c);
+  const from = c.req.query("from");
+  const to = c.req.query("to");
+  if (!from || !to || !ISO_DATE_RE.test(from) || !ISO_DATE_RE.test(to) || from > to) {
+    return buildError(c, "VALIDATION_ERROR", "from/to query parameters must be YYYY-MM-DD with from <= to");
+  }
+  return handleResult(c, await getAbsenceService(c).listWindow(from, to));
+});
+
 usersRoutes.get("/:id", async (c) => {
-  const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
+  // Guest-visible read route: details are public, but private profile fields
+  // remain hidden unless an authenticated viewer is present.
+  const sessionUser = await getRequestUser(c);
   const result = await getUserService(c).getUser(sessionUser, c.req.param("id"));
   if (!result.ok) return handleResult(c, result);
   const userData = result.data as { user: { id: string }; profile: unknown };
@@ -88,15 +105,28 @@ usersRoutes.get("/:id", async (c) => {
 
 usersRoutes.patch("/:id/profile", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   return handleResult(c, await getUserService(c).updateProfile(sessionUser, c.req.param("id"), body));
+});
+
+usersRoutes.get("/:id/absences", async (c) => {
+  await requireSessionUser(c);
+  return handleResult(c, await getAbsenceService(c).listForUser(c.req.param("id")));
+});
+
+usersRoutes.post("/:id/absences", async (c) => {
+  const sessionUser = await requireSessionUser(c);
+  const body = await parseJsonBody(c);
+  return handleResult(c, await getAbsenceService(c).create(sessionUser, c.req.param("id"), body));
+});
+
+usersRoutes.delete("/:id/absences/:absenceId", async (c) => {
+  const sessionUser = await requireSessionUser(c);
+  return handleResult(c, await getAbsenceService(c).remove(sessionUser, c.req.param("id"), c.req.param("absenceId")));
 });
 
 usersRoutes.post("/:id/media/images", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
 
   let form: FormData;
   try { form = await c.req.formData(); } catch {
@@ -109,9 +139,7 @@ usersRoutes.post("/:id/media/images", async (c) => {
 
 usersRoutes.delete("/:id/media/images", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = deleteProfileImagesSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid image delete payload", parsed.error.flatten());
   return handleResult(c, await getUserService(c).deleteProfileImages(sessionUser, c.req.param("id"), parsed.data.keys));
@@ -119,7 +147,6 @@ usersRoutes.delete("/:id/media/images", async (c) => {
 
 usersRoutes.post("/:id/media/avatar", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
 
   let form: FormData;
   try { form = await c.req.formData(); } catch {
@@ -133,13 +160,11 @@ usersRoutes.post("/:id/media/avatar", async (c) => {
 
 usersRoutes.delete("/:id/media/avatar", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   return handleResult(c, await getUserService(c).deleteAvatar(sessionUser, c.req.param("id")));
 });
 
 usersRoutes.post("/:id/media/audio", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
 
   let form: FormData;
   try { form = await c.req.formData(); } catch {
@@ -153,22 +178,17 @@ usersRoutes.post("/:id/media/audio", async (c) => {
 
 usersRoutes.delete("/:id/media/audio", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   return handleResult(c, await getUserService(c).deleteProfileAudio(sessionUser, c.req.param("id")));
 });
 
 usersRoutes.post("/:id/change-password", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   return handleResult(c, await getUserService(c).changePassword(sessionUser, c.req.param("id"), body));
 });
 
 usersRoutes.post("/:id/change-username", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   return handleResult(c, await getUserService(c).changeUsername(sessionUser, c.req.param("id"), body));
 });

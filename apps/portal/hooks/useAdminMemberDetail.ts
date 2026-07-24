@@ -2,12 +2,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { queryKeys } from "../api/query-keys";
-import type { MemberDetailFormState } from "../components/feature/admin/AdminMemberDetailModal";
 import { useAdminMemberMediaController } from "../components/feature/admin/useAdminMemberMediaController";
+import type { AdminUserRow, MemberDetailFormState } from "../types/admin";
 import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
-import type { UsersListResponse } from "../services/UserService";
-
-type AdminUserRow = UsersListResponse["data"][number];
 
 const DEFAULT_FORM: MemberDetailFormState = {
   power: 0,
@@ -15,8 +12,6 @@ const DEFAULT_FORM: MemberDetailFormState = {
   titleHtml: "",
   bio: "",
   notes: "",
-  vacationStart: "",
-  vacationEnd: "",
   role: "member",
   isActive: true,
 };
@@ -58,8 +53,6 @@ export function useAdminMemberDetail({
       titleHtml: target.profile.title_html ?? "",
       bio: target.profile.bio ?? "",
       notes: target.profile.notes ?? "",
-      vacationStart: target.profile.vacation_start ? target.profile.vacation_start.slice(0, 10) : "",
-      vacationEnd: target.profile.vacation_end ? target.profile.vacation_end.slice(0, 10) : "",
       role: target.user.role,
       isActive: target.user.is_active,
     };

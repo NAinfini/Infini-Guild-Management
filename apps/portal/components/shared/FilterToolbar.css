@@ -4,7 +4,7 @@
 }
 
 .filter-toolbar--active {
-  border-left-color: color-mix(in srgb, var(--color-primary, #3b82f6) 72%, transparent);
+  border-left-color: color-mix(in srgb, var(--color-primary, #D4A843) 72%, transparent);
 }
 
 .filter-toolbar__content {

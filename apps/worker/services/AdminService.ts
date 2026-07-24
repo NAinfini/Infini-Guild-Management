@@ -5,17 +5,19 @@ import {
   adminRoleSchema,
   inviteLinkSchema,
   inviteLinkStatsSchema,
+  DEFAULT_SITE_ANALYTICS_SETTINGS,
   type Permission,
   type AdminRole,
 } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
-import { activeGame } from "@guild/shared/games";
+import type { AuditAction } from "@guild/shared/constants/audit";
+import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { inviteLinks, rolePermissions, roles, sessions, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult, type ServiceErr } from "./result";
 import type { MediaLike } from "./AdminAuditService";
 import { clearPermissionCache } from "./auth";
+import { SiteConfigService } from "./SiteConfigService";
 
 export type { MediaLike } from "./AdminAuditService";
 
@@ -26,13 +28,11 @@ export type AnalyticsSettings = {
   modifier_weights: Record<string, number>;
 };
 
-const ANALYTICS_SETTINGS_KEY = "config/analytics-settings.json";
-
-export function emptyPermissionRecord(): Record<Permission, boolean> {
+function emptyPermissionRecord(): Record<Permission, boolean> {
   return Object.fromEntries(PERMISSIONS.map((p) => [p, false])) as Record<Permission, boolean>;
 }
 
-export function parsePermissionRecord(
+function parsePermissionRecord(
   permissionRows: Array<{ permission: string; granted: boolean }>,
 ): Record<Permission, boolean> {
   const record = emptyPermissionRecord();
@@ -44,7 +44,7 @@ export function parsePermissionRecord(
   return record;
 }
 
-export async function replaceRolePermissions(
+async function replaceRolePermissions(
   rawDb: D1Database,
   roleId: string,
   permissionRecord: Record<Permission, boolean>,
@@ -58,48 +58,8 @@ export async function replaceRolePermissions(
 }
 
 export function defaultAnalyticsSettings(): AnalyticsSettings {
-  return {
-    reference_duration_minutes: 30,
-    modifier_weights: { ...activeGame.war.modifierWeights },
-  };
+  return DEFAULT_SITE_ANALYTICS_SETTINGS;
 }
-
-export function normalizeAnalyticsWeights(settings: AnalyticsSettings): AnalyticsSettings {
-  const weights = settings.modifier_weights;
-  const weightSum = Object.values(weights).reduce((s, v) => s + v, 0);
-  if (weightSum <= 0) return settings;
-  const normalized: Record<string, number> = {};
-  for (const [key, val] of Object.entries(weights)) {
-    normalized[key] = Number((val / weightSum).toFixed(4));
-  }
-  return { ...settings, modifier_weights: normalized };
-}
-
-export function parseAnalyticsInput(record: Record<string, unknown>): AnalyticsSettings {
-  const defaults = defaultAnalyticsSettings();
-  const rawWeights = record.modifier_weights;
-  const modifier_weights: Record<string, number> = { ...defaults.modifier_weights };
-  if (typeof rawWeights === "object" && rawWeights !== null) {
-    for (const [key, val] of Object.entries(rawWeights as Record<string, unknown>)) {
-      if (typeof val === "number") modifier_weights[key] = val;
-    }
-  }
-  return {
-    reference_duration_minutes:
-      typeof record.reference_duration_minutes === "number" && record.reference_duration_minutes > 0
-        ? record.reference_duration_minutes : defaults.reference_duration_minutes,
-    modifier_weights,
-  };
-}
-
-type AuditLogInput = {
-  entityType: AuditEntityType;
-  action: AuditAction;
-  actorId: string;
-  entityId: string;
-  diffTitle?: string | null;
-  detailText?: string | null;
-};
 
 type AdminServiceDeps = {
   db: DrizzleDb;
@@ -113,7 +73,21 @@ type AdminServiceDeps = {
   rawDb: D1Database;
   ws?: unknown;
   now?: () => Date;
+  envSiteName: string;
+  envSiteLogoUrl: string;
 };
+
+function buildRoleDiff(
+  existing: { name: string; level: number; color: string | null },
+  input: { name?: string; level?: number; color?: string | null; permissions?: Record<string, boolean> },
+): Record<string, { from: unknown; to: unknown }> | null {
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
+  if (input.name !== undefined && input.name.trim() !== existing.name) diff.name = { from: existing.name, to: input.name.trim() };
+  if (input.level !== undefined && input.level !== existing.level) diff.level = { from: existing.level, to: input.level };
+  if (input.color !== undefined && (input.color ?? null) !== existing.color) diff.color = { from: existing.color, to: input.color ?? null };
+  if (input.permissions !== undefined) diff.permissions = { from: "changed", to: "changed" };
+  return Object.keys(diff).length > 0 ? diff : null;
+}
 
 export class AdminService {
   private readonly deps: AdminServiceDeps;
@@ -147,24 +121,24 @@ export class AdminService {
     await this.deps.db.insert(inviteLinks).values({ id: inviteId, code, createdBy: actorId, maxUses, usedCount: 0, expiresAt, revokedAt: null });
     const created = (await this.deps.db.select({ id: inviteLinks.id, code: inviteLinks.code, createdBy: inviteLinks.createdBy, maxUses: inviteLinks.maxUses, usedCount: inviteLinks.usedCount, expiresAt: inviteLinks.expiresAt, createdAt: inviteLinks.createdAt, revokedAt: inviteLinks.revokedAt }).from(inviteLinks).where(eq(inviteLinks.id, inviteId)).limit(1))[0];
     if (!created) return err("SERVER_ERROR", "Failed to create invite link");
-    await this.deps.writeAuditLog({ entityType: "invite_link", action: "create", actorId, entityId: inviteId, diffTitle: code, detailText: JSON.stringify({ max_uses: maxUses, expires_at: expiresAt }) });
+    await this.deps.writeAuditLog({ entityType: "invite_link", action: "create", actorId, entityId: inviteId, diffTitle: inviteId, detailText: JSON.stringify({ max_uses: maxUses, expires_at: expiresAt }) });
     return ok(inviteLinkSchema.parse({ id: created.id, code: created.code, created_by: created.createdBy, max_uses: created.maxUses, used_count: created.usedCount, expires_at: created.expiresAt, created_at: created.createdAt, revoked_at: created.revokedAt }));
   }
 
   async revokeInviteLink(actorId: string, inviteId: string): Promise<ServiceResult<void>> {
-    const existing = (await this.deps.db.select({ id: inviteLinks.id, code: inviteLinks.code, revokedAt: inviteLinks.revokedAt }).from(inviteLinks).where(eq(inviteLinks.id, inviteId)).limit(1))[0];
+    const existing = (await this.deps.db.select({ id: inviteLinks.id, revokedAt: inviteLinks.revokedAt }).from(inviteLinks).where(eq(inviteLinks.id, inviteId)).limit(1))[0];
     if (!existing) return err("NOT_FOUND", "Invite link not found");
     if (existing.revokedAt !== null) return err("CONFLICT", "Invite link already revoked");
     await this.deps.db.update(inviteLinks).set({ revokedAt: this.now().toISOString() }).where(eq(inviteLinks.id, inviteId));
-    await this.deps.writeAuditLog({ entityType: "invite_link", action: "revoke", actorId, entityId: inviteId, diffTitle: existing.code });
+    await this.deps.writeAuditLog({ entityType: "invite_link", action: "revoke", actorId, entityId: inviteId, diffTitle: inviteId });
     return ok(undefined);
   }
 
   async deleteInviteLink(actorId: string, inviteId: string): Promise<ServiceResult<void>> {
-    const existing = (await this.deps.db.select({ id: inviteLinks.id, code: inviteLinks.code }).from(inviteLinks).where(eq(inviteLinks.id, inviteId)).limit(1))[0];
+    const existing = (await this.deps.db.select({ id: inviteLinks.id }).from(inviteLinks).where(eq(inviteLinks.id, inviteId)).limit(1))[0];
     if (!existing) return err("NOT_FOUND", "Invite link not found");
     await this.deps.db.delete(inviteLinks).where(eq(inviteLinks.id, inviteId));
-    await this.deps.writeAuditLog({ entityType: "invite_link", action: "delete", actorId, entityId: inviteId, diffTitle: existing.code });
+    await this.deps.writeAuditLog({ entityType: "invite_link", action: "delete", actorId, entityId: inviteId, diffTitle: inviteId });
     return ok(undefined);
   }
 
@@ -191,48 +165,63 @@ export class AdminService {
   }
 
   async batchDeactivate(actorId: string, userIds: string[]): Promise<ServiceResult<{ updated: number }>> {
-    const targetIds = userIds.filter((id) => id !== actorId);
-    if (targetIds.length === 0) return ok({ updated: 0 });
-    const guard = await this.assertBatchActionAllowed(actorId, targetIds);
-    if (!guard.ok) return guard.error;
-    const { existingUsers } = guard;
-    if (existingUsers.length > 0) {
-      const existingIds = existingUsers.map((r) => r.id);
-      await this.deps.db.update(users).set({ isActive: false, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
-      await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
-    }
-    const usernames = existingUsers.map((r) => r.username);
-    await this.deps.writeAuditLogDurable({ entityType: "user", action: "batch_deactivate", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
-    return ok({ updated: existingUsers.length });
+    return this.executeBatchAction(actorId, userIds, {
+      action: "batch_deactivate",
+      guarded: true, clearSessions: true, durable: true,
+      update: (ids, now) => this.deps.db.update(users).set({ isActive: false, updatedAt: now }).where(inArray(users.id, ids)),
+    });
   }
 
   async batchReactivate(actorId: string, userIds: string[]): Promise<ServiceResult<{ updated: number }>> {
-    const targetIds = userIds.filter((id) => id !== actorId);
-    if (targetIds.length === 0) return ok({ updated: 0 });
-    const existingUsers = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
-    if (existingUsers.length > 0) {
-      const existingIds = existingUsers.map((r) => r.id);
-      await this.deps.db.update(users).set({ isActive: true, updatedAt: this.now().toISOString() }).where(inArray(users.id, existingIds));
-    }
-    const usernames = existingUsers.map((r) => r.username);
-    await this.deps.writeAuditLog({ entityType: "user", action: "batch_reactivate", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
-    return ok({ updated: existingUsers.length });
+    return this.executeBatchAction(actorId, userIds, {
+      action: "batch_reactivate",
+      guarded: false, clearSessions: false, durable: false,
+      update: (ids, now) => this.deps.db.update(users).set({ isActive: true, updatedAt: now }).where(inArray(users.id, ids)),
+    });
   }
 
   async batchDelete(actorId: string, userIds: string[]): Promise<ServiceResult<{ updated: number }>> {
+    return this.executeBatchAction(actorId, userIds, {
+      action: "batch_delete",
+      guarded: true, clearSessions: true, durable: true,
+      update: (ids, now) => this.deps.db.update(users).set({ isActive: false, deletedAt: now, updatedAt: now }).where(inArray(users.id, ids)),
+    });
+  }
+
+  private async executeBatchAction(
+    actorId: string,
+    userIds: string[],
+    opts: {
+      action: AuditAction;
+      guarded: boolean;
+      clearSessions: boolean;
+      durable: boolean;
+      update: (ids: string[], now: string) => Promise<unknown>;
+    },
+  ): Promise<ServiceResult<{ updated: number }>> {
     const targetIds = userIds.filter((id) => id !== actorId);
     if (targetIds.length === 0) return ok({ updated: 0 });
-    const guard = await this.assertBatchActionAllowed(actorId, targetIds);
-    if (!guard.ok) return guard.error;
-    const { existingUsers } = guard;
+
+    let existingUsers: { id: string; username: string }[];
+    if (opts.guarded) {
+      const guard = await this.assertBatchActionAllowed(actorId, targetIds);
+      if (!guard.ok) return guard.error;
+      existingUsers = guard.existingUsers;
+    } else {
+      existingUsers = await this.deps.db.select({ id: users.id, username: users.username }).from(users).where(and(inArray(users.id, targetIds), isNull(users.deletedAt)));
+    }
+
     if (existingUsers.length > 0) {
       const existingIds = existingUsers.map((r) => r.id);
-      const now = this.now().toISOString();
-      await this.deps.db.update(users).set({ isActive: false, deletedAt: now, updatedAt: now }).where(inArray(users.id, existingIds));
-      await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
+      await opts.update(existingIds, this.now().toISOString());
+      if (opts.clearSessions) {
+        await this.deps.db.delete(sessions).where(inArray(sessions.userId, existingIds));
+      }
     }
+
     const usernames = existingUsers.map((r) => r.username);
-    await this.deps.writeAuditLogDurable({ entityType: "user", action: "batch_delete", actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
+    const writeLog = opts.durable ? this.deps.writeAuditLogDurable : this.deps.writeAuditLog;
+    await writeLog({ entityType: "user", action: opts.action, actorId, entityId: "batch", diffTitle: usernames.join(", "), detailText: JSON.stringify({ user_ids: targetIds, usernames, count: existingUsers.length }) });
     return ok({ updated: existingUsers.length });
   }
 
@@ -321,7 +310,7 @@ export class AdminService {
     return ok({ temporary_password: temporaryPassword });
   }
 
-  async listRoles(): Promise<ServiceResult<unknown[]>> {
+  async listRoles(): Promise<ServiceResult<AdminRole[]>> {
     const roleRows = await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).orderBy(desc(roles.level), roles.name);
     const roleIds = roleRows.map((r) => r.id);
     const permissionRows = roleIds.length > 0 ? await this.deps.db.select({ roleId: rolePermissions.roleId, permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(inArray(rolePermissions.roleId, roleIds)) : [];
@@ -384,7 +373,8 @@ export class AdminService {
     const permissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
     const assignedCountRow = (await this.deps.db.select({ count: sql<number>`count(*)` }).from(users).where(and(eq(users.role, roleId), isNull(users.deletedAt))).limit(1))[0];
     const assignedCount = Number(assignedCountRow?.count ?? 0);
-    await this.deps.writeAuditLogDurable({ entityType: "role", action: "update", actorId, entityId: roleId, diffTitle: updatedRole.name, detailText: JSON.stringify({ fields: input, assigned_user_count: assignedCount }) });
+    const roleDiff = buildRoleDiff(existing, input);
+    await this.deps.writeAuditLogDurable({ entityType: "role", action: "update", actorId, entityId: roleId, diffTitle: updatedRole.name, detailText: roleDiff ? JSON.stringify(roleDiff) : null });
     return ok(adminRoleSchema.parse({ id: updatedRole.id, name: updatedRole.name, level: updatedRole.level, color: updatedRole.color, is_builtin: updatedRole.isBuiltin, created_at: updatedRole.createdAt, updated_at: updatedRole.updatedAt, permissions: parsePermissionRecord(permissionRows), assigned_user_count: assignedCount }));
   }
 
@@ -409,12 +399,12 @@ export class AdminService {
     let dbStatus = "ok";
     let r2Status = "ok";
     const dbChecks: Record<string, string> = {};
-    const requiredTables = ["users", "member_profiles", "roles", "role_permissions"] as const;
+    const requiredTables = ["users", "member_profiles", "roles", "role_permissions", "site_config"] as const;
 
     const dbCheck = (async () => {
       try {
         const rows = await this.deps.rawDb
-          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'member_profiles', 'roles', 'role_permissions')")
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'member_profiles', 'roles', 'role_permissions', 'site_config')")
           .all<{ name: string }>();
         const found = new Set(rows.results.map((r) => r.name));
         for (const table of requiredTables) dbChecks[table] = found.has(table) ? "ok" : "missing";
@@ -427,7 +417,7 @@ export class AdminService {
 
     const r2Check = (async () => {
       try {
-        await this.deps.media.head(ANALYTICS_SETTINGS_KEY);
+        await this.deps.media.head("__healthcheck__");
       } catch {
         r2Status = "error";
       }
@@ -438,31 +428,11 @@ export class AdminService {
   }
 
   async getAnalyticsSettings(): Promise<ServiceResult<AnalyticsSettings>> {
-    const object = await this.deps.media.get(ANALYTICS_SETTINGS_KEY);
-    if (!object) return ok(defaultAnalyticsSettings());
-    try {
-      const parsed = JSON.parse(await object.text()) as AnalyticsSettings;
-      return ok({ ...defaultAnalyticsSettings(), ...parsed });
-    } catch {
-      return ok(defaultAnalyticsSettings());
-    }
+    return this.getSiteConfigService().getAnalyticsSettings();
   }
 
   async updateAnalyticsSettings(actorId: string, input: Record<string, unknown>): Promise<ServiceResult<AnalyticsSettings>> {
-    const previous = await this.getAnalyticsSettings();
-    const settings = normalizeAnalyticsWeights(parseAnalyticsInput(input));
-    await this.deps.media.put(ANALYTICS_SETTINGS_KEY, JSON.stringify(settings), { httpMetadata: { contentType: "application/json" } });
-    const oldSettings = previous.ok ? previous.data : null;
-    const diff: Record<string, { from: unknown; to: unknown }> = {};
-    if (oldSettings) {
-      for (const key of Object.keys(settings) as (keyof AnalyticsSettings)[]) {
-        const oldVal = oldSettings[key];
-        const newVal = settings[key];
-        if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) diff[key] = { from: oldVal, to: newVal };
-      }
-    }
-    await this.deps.writeAuditLog({ entityType: "analytics_settings", action: "update", actorId, entityId: "default", diffTitle: "Analytics", detailText: Object.keys(diff).length > 0 ? JSON.stringify(diff) : null });
-    return ok(settings);
+    return this.getSiteConfigService().updateAnalyticsSettings(actorId, input);
   }
 
   private async assertBatchActionAllowed(
@@ -506,5 +476,14 @@ export class AdminService {
 
   private now() {
     return this.deps.now?.() ?? new Date();
+  }
+
+  private getSiteConfigService() {
+    return new SiteConfigService(this.deps.db, {
+      writeAuditLog: this.deps.writeAuditLog,
+      now: this.deps.now,
+      envSiteName: this.deps.envSiteName,
+      envSiteLogoUrl: this.deps.envSiteLogoUrl,
+    });
   }
 }

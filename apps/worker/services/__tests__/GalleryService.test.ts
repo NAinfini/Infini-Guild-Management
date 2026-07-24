@@ -8,7 +8,7 @@ function createDeps() {
     publishEntityChanged: vi.fn().mockResolvedValue(undefined),
     rawDb: {
       prepare: vi.fn((sql: string) => ({
-        bind: vi.fn((...bindings: unknown[]) => ({ sql, bindings })),
+        bind: vi.fn((...bindings: unknown[]) => ({ sql, bindings, run: vi.fn().mockResolvedValue({ meta: { changes: 1 } }) })),
       })),
       batch: vi.fn().mockResolvedValue([]),
     } as unknown as D1Database,
@@ -31,6 +31,42 @@ function createDeleteDb(item: { id: string; type: "image" | "video"; url: string
 }
 
 describe("GalleryService", () => {
+  it("writes media references after uploading images", async () => {
+    const insertValues = vi.fn().mockResolvedValue(undefined);
+    const db = {
+      insert: vi.fn(() => ({ values: insertValues })),
+    };
+    const deps = createDeps();
+    const media = { put: vi.fn().mockResolvedValue({ key: "gallery/images/actor-1/ts_item-1" }) };
+    const service = new GalleryService(db as never, { ...deps, media: media as unknown as R2Bucket });
+
+    await service.uploadImages(
+      "actor-1",
+      [{ data: new ArrayBuffer(1), contentType: "image/png", name: "img.png" }],
+      [null],
+    );
+
+    // replaceMediaRefs calls rawDb.batch once per uploaded image (delete + insert)
+    expect(deps.rawDb.batch).toHaveBeenCalled();
+    const batchCall = (deps.rawDb.batch as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call: unknown[]) => (call[0] as unknown[]).length >= 2,
+    );
+    expect(batchCall).toBeDefined();
+  });
+
+  it("removes media references after deleting an image item", async () => {
+    const { db } = createDeleteDb({ id: "item-1", type: "image", url: "gallery/images/item-1", caption: null, uploadedBy: "u-1" });
+    const deps = createDeps();
+    const service = new GalleryService(db as never, deps);
+
+    await service.deleteItem("u-1", false, "item-1");
+
+    // deleteMediaRefs calls rawDb.prepare + .bind + .run
+    expect(deps.rawDb.prepare).toHaveBeenCalledWith(
+      expect.stringContaining("DELETE FROM media_references"),
+    );
+  });
+
   it("allows members to delete their own gallery items without gallery.delete", async () => {
     const { db } = createDeleteDb({ id: "item-1", type: "image", url: "gallery/images/item-1", caption: null, uploadedBy: "u-1" });
     const deps = createDeps();

@@ -36,26 +36,3 @@ export function maskIdentifier(value: string, isAdmin: boolean): string {
   }
   return `${value.slice(0, 4)}***${value.slice(-2)}`;
 }
-
-export function formatAuditDiffHeader(diffTitle: string | null, detailText: string | null): string {
-  if (diffTitle && diffTitle.trim().length > 0) {
-    return diffTitle.trim();
-  }
-  if (!detailText || detailText.trim().length === 0) {
-    return "-";
-  }
-  try {
-    const parsed = JSON.parse(detailText) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const entries = Object.entries(parsed).slice(0, 2);
-      if (entries.length > 0) {
-        return entries
-          .map(([key, value]) => `${key}: ${String(value)}`)
-          .join(" | ");
-      }
-    }
-  } catch {
-    // ignore parse errors, fallback to raw
-  }
-  return detailText.length > 100 ? `${detailText.slice(0, 100)}...` : detailText;
-}

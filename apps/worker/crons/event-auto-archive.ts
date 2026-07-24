@@ -13,7 +13,6 @@ export async function runEventAutoArchiveCron(env: Bindings): Promise<void> {
      WHERE archived_at IS NULL
        AND auto_archive = 1
        AND auto_archived = 0
-       AND is_series_parent = 0
        AND (
          (end_at IS NOT NULL AND end_at < ?1)
          OR (end_at IS NULL AND start_at < ?1)

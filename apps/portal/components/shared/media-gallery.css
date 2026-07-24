@@ -10,7 +10,7 @@
   overflow: hidden;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, var(--color-text, #111827) 6%);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, var(--color-text, #1A1815) 6%);
 }
 
 .infini-media-gallery-slide img {
@@ -63,17 +63,17 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 15%, transparent);
   background: var(--color-surface, #ffffff);
-  color: color-mix(in srgb, var(--color-text, #111827) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 60%, transparent);
   cursor: pointer;
   padding: 0;
   transition: background 0.15s, border-color 0.15s;
 }
 
 .infini-media-gallery-toggle-thumb:hover {
-  background: color-mix(in srgb, var(--color-text, #111827) 6%, var(--color-surface, #ffffff));
-  border-color: color-mix(in srgb, var(--color-text, #111827) 28%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 6%, var(--color-surface, #ffffff));
+  border-color: color-mix(in srgb, var(--color-text, #1A1815) 28%, transparent);
 }
 
 .infini-media-gallery-thumbnails {
@@ -87,9 +87,9 @@
   width: 64px;
   height: 64px;
   border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #111827) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 15%, transparent);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
-  color: color-mix(in srgb, var(--color-text, #111827) 58%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 58%, transparent);
   padding: 0;
   cursor: pointer;
   overflow: hidden;
@@ -102,8 +102,8 @@
 }
 
 .infini-media-gallery-thumb-active {
-  border-color: var(--color-primary, #3b82f6);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
+  border-color: var(--color-primary, #D4A843);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 40%, transparent);
 }
 
 .infini-media-gallery-thumb-video {
@@ -132,7 +132,7 @@
 }
 
 .infini-media-gallery-thumb-play-only {
-  color: color-mix(in srgb, var(--color-text, #111827) 45%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 45%, transparent);
 }
 
 @media (max-width: 767px) {

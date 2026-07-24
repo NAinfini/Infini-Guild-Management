@@ -7,21 +7,52 @@ function routerSource(): string {
 }
 
 describe("portal route access policy", () => {
-  it("keeps profile and admin under the authenticated route branch", () => {
+  it("keeps private account and admin routes under the authenticated route branch", () => {
     const source = routerSource();
 
-    expect(source).toContain("authenticatedOnlyRoute.addChildren([\n    profileRoute,\n    adminRoute,");
+    const authenticatedRoutes = [
+      "profileRoute",
+      "adminRoute",
+      "storageRoute",
+    ];
+
+    for (const route of authenticatedRoutes) {
+      expect(source).toContain(`authenticatedOnlyRoute.addChildren([`);
+      const authBlock = source.slice(source.indexOf("authenticatedOnlyRoute.addChildren(["));
+      expect(authBlock).toContain(`${route},`);
+    }
   });
 
-  it("documents public read-only feature routes outside the authenticated branch", () => {
+  it("keeps read-only feature routes outside the authenticated branch", () => {
     const source = routerSource();
 
-    expect(source).toContain("dashboardRoute,");
-    expect(source).toContain("eventsRoute,");
-    expect(source).toContain("rosterRoute,");
-    expect(source).toContain("announcementsRoute,");
-    expect(source).toContain("guildWarRoute,");
-    expect(source).toContain("galleryRoute,");
-    expect(source).toContain("wikiRoute,");
+    const routeTreeBlock = source.slice(source.indexOf("const routeTree = rootRoute.addChildren(["));
+    const authBranchStart = routeTreeBlock.indexOf("authenticatedOnlyRoute.addChildren([");
+    const publicBlock = routeTreeBlock.slice(0, authBranchStart);
+
+    const publicRoutes = [
+      "dashboardRoute",
+      "eventsRoute",
+      "eventDetailRoute",
+      "rosterRoute",
+      "announcementsRoute",
+      "guildWarRoute",
+      "galleryRoute",
+      "wikiRoute",
+      "wikiSlugRoute",
+    ];
+
+    for (const route of publicRoutes) {
+      expect(publicBlock).toContain(`${route},`);
+    }
+  });
+
+  it("keeps utility and auth routes outside the authenticated branch", () => {
+    const source = routerSource();
+
+    expect(source).toContain("publicSettingsRoute,");
+    expect(source).toContain("publicToolsRoute,");
+    expect(source).toContain("loginRoute,");
+    expect(source).toContain("registerRoute,");
   });
 });

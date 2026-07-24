@@ -1,7 +1,15 @@
-import { createEventSchema, eventSchema, recurringTemplateSchema, updateEventSchema } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
+import {
+  DEFAULT_SITE_MEDIA_POLICY,
+  createEventSchema,
+  eventSchema,
+  updateEventSchema,
+  LIMITS,
+  type SiteMediaPolicy,
+} from "@guild/shared";
+import type { WriteAuditLogInput as AuditLogInput } from "../audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
 import {
@@ -17,34 +25,12 @@ import {
   toRaffleWinnerPayload,
   type RaffleWinnerRow,
 } from "./EventPollRaffleService";
+import { replaceMediaRefs, deleteMediaRefs, extractAttachmentKeys } from "../media-references";
 
 export { toParticipantPayload, type EventParticipantRow } from "./EventParticipantService";
 export { toRaffleWinnerPayload, type RaffleWinnerRow } from "./EventPollRaffleService";
 
-type QueryChain = Promise<unknown[]> & {
-  limit: (n: number) => Promise<unknown[]>;
-  orderBy: (...cols: unknown[]) => QueryChain;
-  offset: (n: number) => QueryChain;
-};
-
-type WhereChain = QueryChain & {
-  orderBy: (...cols: unknown[]) => QueryChain;
-};
-
-export type DatabaseLike = {
-  insert: (table: unknown) => { values: (values: unknown) => Promise<unknown> | unknown };
-  update: (table: unknown) => { set: (values: unknown) => { where: (filter: unknown) => Promise<unknown> | unknown } };
-  delete: (table: unknown) => { where: (filter: unknown) => Promise<unknown> | unknown };
-  select: (fields: unknown) => {
-    from: (table: unknown) => {
-      where: (filter: unknown) => WhereChain;
-      leftJoin: (table: unknown, on: unknown) => {
-        where: (filter: unknown) => WhereChain;
-      };
-      orderBy: (...cols: unknown[]) => QueryChain;
-    };
-  };
-};
+export type DatabaseLike = DrizzleD1Database;
 
 type BoundStatement = {
   run: () => Promise<{ meta?: { changes?: number } }>;
@@ -60,15 +46,6 @@ export type RawDbLike = {
 
 export type MediaLike = {
   put: (key: string, value: ArrayBuffer, options: { httpMetadata: { contentType: string } }) => Promise<unknown> | unknown;
-};
-
-type AuditLogInput = {
-  entityType: AuditEntityType;
-  action: AuditAction;
-  actorId: string;
-  entityId: string;
-  diffTitle?: string | null;
-  detailText?: string | null;
 };
 
 export type EventRow = {
@@ -87,31 +64,24 @@ export type EventRow = {
   autoArchived: boolean;
   createdBy: string;
   updatedBy: string | null;
-  recurrenceRule: string | null;
   attachments: string;
   seriesId: string | null;
-  isSeriesParent: boolean;
   instanceDate: string | null;
-  lastGeneratedDate: string | null;
-  generationCount: number;
-  visibilityOffsetMinutes: number | null;
   winnerCount: number | null;
   createdAt: string;
   updatedAt: string;
 };
 
-const MAX_EVENT_ATTACHMENTS = 5;
-const MAX_EVENT_IMAGE_BYTES = 5 * 1024 * 1024;
-
+const MAX_EVENT_ATTACHMENTS = LIMITS.content.eventAttachments.max;
 export type EventServiceDeps = {
   getEventById: (eventId: string) => Promise<EventRow | null>;
   getUsername: (userId: string) => Promise<string | null>;
-  materializeRecurringSeries: (templateId: string) => Promise<void>;
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
-  publishEntityChanged: (payload: { entityType: PushEntityType; entityId: string; hint: PushHint }) => Promise<void>;
+  publishEntityChanged: (payload: { entityType: PushEntityType; entityId: string; hint: PushHint; displayName?: string }) => Promise<void>;
   now?: () => string;
   createId?: () => string;
   createImageKey?: (eventId: string) => string;
+  getMediaPolicy?: () => Promise<SiteMediaPolicy>;
 };
 
 export type CreateEventInput = z.infer<typeof createEventSchema>;
@@ -125,6 +95,32 @@ export function parseRecurrenceRule(value: string | null): unknown {
     return JSON.parse(value) as unknown;
   } catch {
     return null;
+  }
+}
+
+type RecurrenceRuleObj = {
+  frequency?: string;
+  interval?: number;
+  daysOfWeek?: number[];
+  dayOfMonth?: number;
+  endAfter?: number;
+  endDate?: string;
+};
+
+export function diffRecurrenceRule(
+  existingJson: string | null,
+  newRule: unknown,
+  diff: Record<string, { from: unknown; to: unknown }>,
+): void {
+  const old: RecurrenceRuleObj = existingJson ? (JSON.parse(existingJson) as RecurrenceRuleObj) : {};
+  const nw = (newRule ?? {}) as RecurrenceRuleObj;
+  const FIELDS: (keyof RecurrenceRuleObj)[] = ["frequency", "interval", "daysOfWeek", "dayOfMonth", "endAfter", "endDate"];
+  for (const f of FIELDS) {
+    const o = old[f] ?? null;
+    const n = nw[f] ?? null;
+    if (JSON.stringify(o) !== JSON.stringify(n)) {
+      diff[`recurrence_rule.${f}`] = { from: o, to: n };
+    }
   }
 }
 
@@ -162,10 +158,8 @@ export function toEventPayload(row: EventRow) {
     archived_at: row.archivedAt,
     created_by: row.createdBy,
     updated_by: row.updatedBy ?? null,
-    recurrence_rule: parseRecurrenceRule(row.recurrenceRule),
     attachments: parseAttachments(row.attachments),
     series_id: row.seriesId,
-    is_series_parent: row.isSeriesParent,
     instance_date: row.instanceDate,
     winner_count: row.winnerCount ?? null,
     created_at: row.createdAt,
@@ -173,32 +167,6 @@ export function toEventPayload(row: EventRow) {
   });
   if (!result.success) {
     throw new Error(`Invalid event data for id=${row.id}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
-  }
-  return result.data;
-}
-
-export function toTemplatePayload(row: EventRow) {
-  const result = recurringTemplateSchema.safeParse({
-    id: row.id,
-    type: row.type,
-    title: row.title,
-    description: row.description,
-    start_at: row.startAt,
-    end_at: row.endAt,
-    capacity: row.capacity,
-    recurrence_rule: parseRecurrenceRule(row.recurrenceRule),
-    auto_archive: row.autoArchive,
-    visibility_offset_minutes: row.visibilityOffsetMinutes ?? null,
-    visible_at: row.visibleAt ?? null,
-    archived_at: row.archivedAt,
-    created_by: row.createdBy,
-    last_generated_date: row.lastGeneratedDate,
-    generation_count: row.generationCount,
-    created_at: row.createdAt,
-    updated_at: row.updatedAt,
-  });
-  if (!result.success) {
-    throw new Error(`Invalid template data for id=${row.id}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
   }
   return result.data;
 }
@@ -235,11 +203,7 @@ export class EventCrudService {
       return err("VALIDATION_ERROR", `Max ${MAX_EVENT_ATTACHMENTS} attachments per event`);
     }
 
-    const recurrenceRuleJson = data.recurrence_rule
-      ? JSON.stringify(data.recurrence_rule)
-      : null;
     const now = this.now();
-    const isSeriesParent = recurrenceRuleJson !== null;
 
     await this.db.insert(events).values({
       id: eventId,
@@ -256,10 +220,8 @@ export class EventCrudService {
       autoArchived: false,
       archivedAt: null,
       createdBy: actorId,
-      recurrenceRule: recurrenceRuleJson,
       attachments: JSON.stringify(attachments),
       seriesId: null,
-      isSeriesParent,
       instanceDate: null,
       createdAt: now,
       updatedAt: now,
@@ -269,14 +231,12 @@ export class EventCrudService {
       await this.pollRaffle.createPoll(eventId, data.poll);
     }
 
-    if (isSeriesParent) {
-      await this.deps.materializeRecurringSeries(eventId);
-    }
-
     const created = await this.deps.getEventById(eventId);
     if (!created) {
       throw new Error("Failed to load created event");
     }
+
+    await replaceMediaRefs(this.rawDb as unknown as D1Database, "event", eventId, extractAttachmentKeys(created.attachments));
 
     await this.deps.writeAuditLog({
       entityType: "event",
@@ -289,6 +249,13 @@ export class EventCrudService {
         start_at: created.startAt,
         end_at: created.endAt,
       }),
+    });
+
+    await this.deps.publishEntityChanged({
+      entityType: "event",
+      entityId: eventId,
+      hint: "event_created",
+      displayName: created.title,
     });
 
     return ok(created);
@@ -318,10 +285,6 @@ export class EventCrudService {
     if (data.auto_archive !== undefined) patch.autoArchive = data.auto_archive;
     if (data.archived_at !== undefined) patch.archivedAt = data.archived_at;
     if (data.attachments !== undefined) patch.attachments = JSON.stringify(data.attachments);
-    if (data.recurrence_rule !== undefined) {
-      patch.recurrenceRule = JSON.stringify(data.recurrence_rule);
-      patch.isSeriesParent = true;
-    }
 
     const pollDataProvided = (existing.type === "poll" || data.type === "poll") && data.poll;
     const hasVotes = pollDataProvided ? await this.pollRaffle.pollHasVotes(eventId) : false;
@@ -341,6 +304,8 @@ export class EventCrudService {
     if (!updated) {
       throw new Error("Failed to load updated event");
     }
+
+    await replaceMediaRefs(this.rawDb as unknown as D1Database, "event", eventId, extractAttachmentKeys(updated.attachments));
 
     await this.deps.writeAuditLog({
       entityType: "event",
@@ -388,6 +353,8 @@ export class EventCrudService {
       this.rawDb.prepare("DELETE FROM events WHERE id = ?1").bind(eventId),
     ]);
 
+    await deleteMediaRefs(this.rawDb as unknown as D1Database, "event", eventId);
+
     await this.deps.writeAuditLog({
       entityType: "event",
       action: "delete",
@@ -415,6 +382,8 @@ export class EventCrudService {
         updatedAt: this.now(),
       })
       .where(eq(events.id, eventId));
+
+    await replaceMediaRefs(this.rawDb as unknown as D1Database, "event", eventId, attachments);
 
     await this.deps.writeAuditLog({
       entityType: "event",
@@ -455,8 +424,6 @@ export class EventCrudService {
       if (JSON.stringify(data.attachments) !== JSON.stringify(existingKeys))
         diff.attachments = { from: existingKeys.length, to: data.attachments?.length ?? 0 };
     }
-    if (data.recurrence_rule !== undefined)
-      diff.recurrence_rule = { from: "changed", to: "changed" };
     return diff;
   }
 
@@ -476,12 +443,14 @@ export class EventCrudService {
       return err("VALIDATION_ERROR", `Max ${MAX_EVENT_ATTACHMENTS} attachments per event`);
     }
 
+    const mediaPolicy = await (this.deps.getMediaPolicy?.() ?? Promise.resolve(DEFAULT_SITE_MEDIA_POLICY));
+    const maxEventImageBytes = mediaPolicy.max_file_size_bytes.event_image;
     const keys: string[] = [];
     for (const file of files) {
       if (!file.type.startsWith("image/")) {
         return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
       }
-      if (file.size > MAX_EVENT_IMAGE_BYTES) {
+      if (file.size > maxEventImageBytes) {
         return err("VALIDATION_ERROR", `File too large: ${file.name}`);
       }
       const key = this.deps.createImageKey?.(eventId) ?? `events/${eventId}/images/${Date.now()}_${nanoid()}`;
@@ -517,14 +486,9 @@ export class EventCrudService {
     autoArchived: events.autoArchived,
     createdBy: events.createdBy,
     updatedBy: events.updatedBy,
-    recurrenceRule: events.recurrenceRule,
     attachments: events.attachments,
     seriesId: events.seriesId,
-    isSeriesParent: events.isSeriesParent,
     instanceDate: events.instanceDate,
-    lastGeneratedDate: events.lastGeneratedDate,
-    generationCount: events.generationCount,
-    visibilityOffsetMinutes: events.visibilityOffsetMinutes,
     winnerCount: events.winnerCount,
     createdAt: events.createdAt,
     updatedAt: events.updatedAt,
@@ -539,7 +503,7 @@ export class EventCrudService {
     startAfter?: string;
     startBefore?: string;
   }): SQL<unknown>[] {
-    const filters: SQL<unknown>[] = [eq(events.isSeriesParent, false)];
+    const filters: SQL<unknown>[] = [];
     if (params.typeFilter) {
       filters.push(eq(events.type, params.typeFilter as typeof events.type.enumValues[number]));
     }

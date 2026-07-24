@@ -10,6 +10,7 @@ export * from "./constants/errors";
 
 export * from "./schemas/auth";
 export * from "./schemas/user";
+export * from "./schemas/absence";
 export * from "./schemas/event";
 export * from "./schemas/announcement";
 export * from "./schemas/guild-war";
@@ -17,6 +18,8 @@ export * from "./schemas/wiki";
 export * from "./schemas/gallery";
 export * from "./schemas/admin";
 export * from "./schemas/badge";
+export * from "./schemas/storage";
+export * from "./schemas/site-config";
 export * from "./schemas/equipment-calc";
 
 export * from "./calculator/types";

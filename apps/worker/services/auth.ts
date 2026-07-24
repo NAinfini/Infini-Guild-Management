@@ -10,13 +10,12 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { nanoid } from "nanoid";
 import { rolePermissions, sessions, users } from "../db/schema";
 import type { Bindings } from "../index";
+import { logger } from "../utils/logger";
 
 const RESOLVED_SESSION_PROMISE = Symbol("resolved_session_promise");
-const RESOLVED_FRESH_SESSION_PROMISE = Symbol("resolved_fresh_session_promise");
 
 type ContextWithSessionCache = Context & {
   [RESOLVED_SESSION_PROMISE]?: Promise<ResolvedSession | null>;
-  [RESOLVED_FRESH_SESSION_PROMISE]?: Promise<ResolvedSession | null>;
 };
 
 export type SessionUser = {
@@ -41,28 +40,20 @@ const PBKDF2_HASH = "SHA-256";
 const THIRTY_DAYS_IN_SECONDS = 30 * 24 * 60 * 60;
 const SESSION_TTL_MS = THIRTY_DAYS_IN_SECONDS * 1000;
 const MAX_ABSOLUTE_SESSION_MS = 90 * 24 * 60 * 60 * 1000;
-const PERMISSION_CACHE_TTL_MS = 60_000;
 
 export const SESSION_COOKIE_NAME = "ig_session";
 export const SESSION_MODE_COOKIE_NAME = "ig_session_mode";
 
 const textEncoder = new TextEncoder();
-/**
- * Per-isolate cache of role permission rows (TTL = PERMISSION_CACHE_TTL_MS = 60 s).
- * Cloudflare Worker isolates do NOT share memory, so after a role's permissions
- * are changed via admin, other isolates may serve stale permissions for up to 60 s.
- * For any operation that checks permissions before a destructive action (delete,
- * role change, etc.), pass `{ freshPermissions: true }` to `resolveSession()`.
- * `clearPermissionCache()` only clears the current isolate's cache.
- */
-const permissionRowsCache = new Map<RoleId, { expiresAtMs: number; rows: Array<{ permission: string; granted: boolean }> }>();
 
-export function clearPermissionCache(roleId?: RoleId): void {
-  if (roleId) {
-    permissionRowsCache.delete(roleId);
-    return;
-  }
-  permissionRowsCache.clear();
+/**
+ * No-op stubs kept for backward compatibility with AdminService callers.
+ * Permissions are now always-fresh via the joined session query, so the
+ * per-isolate cache no longer exists.
+ */
+ 
+export function clearPermissionCache(_roleId?: RoleId): void {
+  // no-op — permissions are fetched fresh on every session resolution
 }
 
 function getDb(c: Context) {
@@ -92,7 +83,7 @@ function buildPermissionSet(
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index]);
+    binary += String.fromCharCode(bytes[index]!);
   }
   return btoa(binary);
 }
@@ -111,7 +102,7 @@ async function timingSafeEqual(a: Uint8Array, b: Uint8Array): Promise<boolean> {
   const hashB = new Uint8Array(await crypto.subtle.digest("SHA-256", b as unknown as ArrayBuffer));
   let diff = 0;
   for (let index = 0; index < hashA.length; index += 1) {
-    diff |= hashA[index] ^ hashB[index];
+    diff |= hashA[index]! ^ hashB[index]!;
   }
   return diff === 0;
 }
@@ -193,7 +184,8 @@ export async function verifyPassword(password: string, salt: string, passwordHas
     const expectedHashBytes = base64ToBytes(passwordHash);
     const actualHashBytes = await derivePasswordHash(password, saltBytes);
     return await timingSafeEqual(actualHashBytes, expectedHashBytes);
-  } catch {
+  } catch (error) {
+    logger.error("Password verification failed with unexpected error", { error: String(error) });
     return false;
   }
 }
@@ -229,40 +221,15 @@ export async function createSession(
   return { sessionId: hashedToken, expiresAt };
 }
 
-export async function resolveSession(c: Context, options: { freshPermissions?: boolean } = {}): Promise<ResolvedSession | null> {
+export async function resolveSession(c: Context, _options: { freshPermissions?: boolean } = {}): Promise<ResolvedSession | null> {
+  // freshPermissions is now a no-op: the joined query is always fresh.
+  // Both fresh and non-fresh paths share the same per-request dedup cache.
   const carrier = c as ContextWithSessionCache;
-  if (options.freshPermissions) {
-    carrier[RESOLVED_FRESH_SESSION_PROMISE] ??= resolveSessionUncached(c, { freshPermissions: true });
-    return await carrier[RESOLVED_FRESH_SESSION_PROMISE];
-  }
-  carrier[RESOLVED_SESSION_PROMISE] ??= resolveSessionUncached(c, { freshPermissions: false });
+  carrier[RESOLVED_SESSION_PROMISE] ??= resolveSessionUncached(c);
   return await carrier[RESOLVED_SESSION_PROMISE];
 }
 
-async function loadPermissionRows(
-  db: ReturnType<typeof getDb>,
-  roleId: RoleId,
-  options: { freshPermissions: boolean },
-): Promise<Array<{ permission: string; granted: boolean }>> {
-  if (!options.freshPermissions) {
-    const cached = permissionRowsCache.get(roleId);
-    if (cached && cached.expiresAtMs > Date.now()) {
-      return cached.rows;
-    }
-  }
-
-  const rows = await db
-    .select({ permission: rolePermissions.permission, granted: rolePermissions.granted })
-    .from(rolePermissions)
-    .where(eq(rolePermissions.roleId, roleId));
-
-  if (!options.freshPermissions) {
-    permissionRowsCache.set(roleId, { expiresAtMs: Date.now() + PERMISSION_CACHE_TTL_MS, rows });
-  }
-  return rows;
-}
-
-async function resolveSessionUncached(c: Context, options: { freshPermissions: boolean }): Promise<ResolvedSession | null> {
+async function resolveSessionUncached(c: Context): Promise<ResolvedSession | null> {
   const rawToken = getCookie(c, SESSION_COOKIE_NAME);
   if (!rawToken) {
     return null;
@@ -270,47 +237,52 @@ async function resolveSessionUncached(c: Context, options: { freshPermissions: b
 
   const hashedToken = await hashSessionToken(rawToken);
   const db = getDb(c);
-  const row = (
-    await db
-      .select({
-        sessionId: sessions.id,
-        expiresAt: sessions.expiresAt,
-        sessionCreatedAt: sessions.createdAt,
-        userId: users.id,
-        roleId: users.role,
-        isActive: users.isActive,
-        deletedAt: users.deletedAt,
-      })
-      .from(sessions)
-      .innerJoin(users, eq(sessions.userId, users.id))
-      .where(eq(sessions.id, hashedToken))
-      .limit(1)
-  )[0];
 
-  if (!row) {
+  // Single query: JOIN sessions → users → role_permissions.
+  // Returns one row per permission (or one row with null permission if the role
+  // has no entries). All session/user columns are identical across rows.
+  const rows = await db
+    .select({
+      sessionId: sessions.id,
+      expiresAt: sessions.expiresAt,
+      sessionCreatedAt: sessions.createdAt,
+      userId: users.id,
+      roleId: users.role,
+      isActive: users.isActive,
+      deletedAt: users.deletedAt,
+      permission: rolePermissions.permission,
+      granted: rolePermissions.granted,
+    })
+    .from(sessions)
+    .innerJoin(users, eq(sessions.userId, users.id))
+    .leftJoin(rolePermissions, eq(rolePermissions.roleId, users.role))
+    .where(eq(sessions.id, hashedToken));
+
+  if (rows.length === 0) {
     clearSessionCookie(c);
     return null;
   }
 
-  const expiresAtMs = Date.parse(row.expiresAt);
-  const createdAtMs = Date.parse(row.sessionCreatedAt);
+  // All rows share the same session/user data — take it from the first row.
+  const first = rows[0]!;
+
+  const expiresAtMs = Date.parse(first.expiresAt);
+  const createdAtMs = Date.parse(first.sessionCreatedAt);
   const isExpired = Number.isNaN(expiresAtMs) || expiresAtMs <= Date.now();
   const isAbsoluteExpired = !Number.isNaN(createdAtMs) && Date.now() - createdAtMs > MAX_ABSOLUTE_SESSION_MS;
-  const isUserInvalid = !row.isActive || row.deletedAt !== null;
+  const isUserInvalid = !first.isActive || first.deletedAt !== null;
 
   if (isExpired || isAbsoluteExpired || isUserInvalid) {
-    await db.delete(sessions).where(eq(sessions.id, row.sessionId));
+    await db.delete(sessions).where(eq(sessions.id, first.sessionId));
     clearSessionCookie(c);
     return null;
   }
 
-  const permissionRows = await loadPermissionRows(db, row.roleId, options);
-
   const user: SessionUser = {
-    id: row.userId,
-    roleId: row.roleId,
-    role: row.roleId,
-    permissions: buildPermissionSet(permissionRows),
+    id: first.userId,
+    roleId: first.roleId,
+    role: first.roleId,
+    permissions: buildPermissionSet(rows.map((r) => (r.permission !== null ? { permission: r.permission, granted: r.granted ?? false } : null))),
   };
 
   const stayLoggedIn = getCookie(c, SESSION_MODE_COOKIE_NAME) === "1";
@@ -319,22 +291,22 @@ async function resolveSessionUncached(c: Context, options: { freshPermissions: b
 
   if (remainingMs < renewalThresholdMs) {
     const nextExpiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
-    await db.update(sessions).set({ expiresAt: nextExpiresAt }).where(eq(sessions.id, row.sessionId));
+    await db.update(sessions).set({ expiresAt: nextExpiresAt }).where(eq(sessions.id, first.sessionId));
     setSessionCookies(c, rawToken, {
       expiresAt: nextExpiresAt,
       stayLoggedIn,
     });
 
     return {
-      sessionId: row.sessionId,
+      sessionId: first.sessionId,
       expiresAt: nextExpiresAt,
       user,
     };
   }
 
   return {
-    sessionId: row.sessionId,
-    expiresAt: row.expiresAt,
+    sessionId: first.sessionId,
+    expiresAt: first.expiresAt,
     user,
   };
 }
@@ -347,4 +319,9 @@ export async function destroySession(c: Context, sessionId?: string): Promise<vo
     await db.delete(sessions).where(eq(sessions.id, hashed));
   }
   clearSessionCookie(c);
+}
+
+export async function deleteUserSessions(c: Context, userId: string): Promise<void> {
+  const db = getDb(c);
+  await db.delete(sessions).where(eq(sessions.userId, userId));
 }

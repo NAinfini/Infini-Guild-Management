@@ -1,5 +1,5 @@
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
-import type { ImageGridEditorItem } from "@guild/shared/types/media";
+import type { ImageGridEditorItem } from "@portal/types/media";
 import { PortalCard } from "../../shared/PortalCard";
 import { Avatar, Button, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { modals } from "@mantine/modals";

@@ -355,6 +355,7 @@ export function GuildWarPage() {
                 guildWarService={guildWarService}
                 chartThemeName={chartThemeName}
                 chartThemeConfig={chartThemeConfig}
+                canManageWeights={isModerator}
               />
             ),
           },

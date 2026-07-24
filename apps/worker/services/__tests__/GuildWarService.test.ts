@@ -93,6 +93,38 @@ describe("GuildWarService helpers", () => {
     expect(parseRecurrenceRule("not json")).toBeNull();
   });
 
+  it("neutralizes spreadsheet formulas in guild-war CSV exports", async () => {
+    const maliciousRow = {
+      ...historyRow,
+      warName: "=HYPERLINK(\"https://evil.example\",\"open\")",
+    };
+    const select = vi.fn((fields: Record<string, unknown>) => {
+      if ("warName" in fields) {
+        const limit = vi.fn().mockResolvedValue([maliciousRow]);
+        const orderBy = vi.fn(() => ({ limit }));
+        const where = vi.fn(() => ({ orderBy }));
+        const from = vi.fn(() => ({ where }));
+        return { from };
+      }
+      const where = vi.fn().mockResolvedValue([{ id: "mod-1", username: "Moderator" }]);
+      const from = vi.fn(() => ({ where }));
+      return { from };
+    });
+    const service = new GuildWarService({ select } as never, {
+      media: { get: vi.fn() },
+      writeAuditLog: vi.fn(),
+      publishEntityChanged: vi.fn(),
+      rawDb: {} as D1Database,
+    });
+
+    const result = await service.exportHistory("csv", {});
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.content).toContain("\"'=HYPERLINK(\"\"https://evil.example\"\",\"\"open\"\")\"");
+    expect(result.data.content).not.toContain("\",\"=HYPERLINK");
+  });
+
   it("moves multiple members through one batched service operation", async () => {
     const batch = vi.fn().mockResolvedValue([]);
     const prepare = vi.fn((sql: string) => ({
@@ -102,14 +134,19 @@ describe("GuildWarService helpers", () => {
     const writeAuditLog = vi.fn().mockResolvedValue(undefined);
     const select = vi.fn((fields: Record<string, unknown>) => ({
       from: vi.fn(() => ({
-        where: vi.fn().mockResolvedValue(
-          "maxSort" in fields
-            ? [{ maxSort: 1 }]
-            : [
-                { id: "u-1", username: "Alpha" },
-                { id: "u-2", username: "Beta" },
-              ],
-        ),
+        where: vi.fn((_filter: unknown) => {
+          // GROUP BY query for max sort_order has a .groupBy() continuation
+          if ("maxSort" in fields) {
+            return {
+              groupBy: vi.fn().mockResolvedValue([{ warTeamId: "team-1", maxSort: 1 }]),
+            };
+          }
+          // Username fetch query resolves directly
+          return Promise.resolve([
+            { id: "u-1", username: "Alpha" },
+            { id: "u-2", username: "Beta" },
+          ]);
+        }),
       })),
     }));
     const service = new GuildWarService({ select } as never, {

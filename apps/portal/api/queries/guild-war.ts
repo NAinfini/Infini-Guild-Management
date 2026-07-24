@@ -55,7 +55,7 @@ export type GuildWarAnalyticsResponse = {
 
 export type GuildWarHistoryDetailResponse = WarHistory & {
   teams: WarTeam[];
-  pool: Array<{ id: string; warHistoryId: string; userId: string }>;
+  pool: Array<{ id: string; warHistoryId: string; userId: string; username?: string }>;
   member_stats: WarTeamMember[];
 };
 

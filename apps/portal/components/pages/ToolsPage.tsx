@@ -12,6 +12,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useLocalStorage } from "@mantine/hooks";
+import { useQuery } from "@tanstack/react-query";
 import { BoldIcon, CopyIcon, DiceFiveFilledIcon, ItalicIcon, LetterSpacingIcon, PaletteIcon, StrikethroughIcon, SwordsIcon, TextSizeIcon, TrashIcon, UnderlineIcon, WrenchIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { useDisclosure } from "@mantine/hooks";
@@ -21,9 +22,11 @@ import { copyPlainText } from "../../utils/copy";
 import { FormatPainterOutlined } from "../../utils/icons";
 import { PageLayout } from "../layout/PageLayout";
 import "./ToolsPage.css";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import DOMPurify from "dompurify";
 import { useSiteConfigStore } from "@portal/stores/site-config";
+import { queryKeys } from "@portal/api/query-keys";
+import { fetchGameData } from "@portal/services/GameDataService";
 
 const LazyEquipmentCalcModal = lazy(() =>
   import("../equipment-calc/EquipmentCalcModal").then((m) => ({ default: m.EquipmentCalcModal })),
@@ -42,13 +45,23 @@ interface DiceHistoryEntry {
   timestamp: number;
 }
 
+type ToolCard = {
+  key: string;
+  icon: ReactNode;
+  title: string;
+  description: string;
+  metaLabel?: string;
+  metaValue?: string;
+  onOpen: () => void;
+};
+
 export function ToolsPage() {
   const { t } = useTranslation("tools");
   const isExternalView = useExternalView();
   const [sandboxOpened, sandboxHandlers] = useDisclosure(false);
   const [diceOpened, diceHandlers] = useDisclosure(false);
   const [equipCalcOpened, equipCalcHandlers] = useDisclosure(false);
-  const equipCalcEnabled = useSiteConfigStore((s) => s.features.equipmentCalc);
+  const equipCalcEnabled = useSiteConfigStore((s) => s.features.tools && s.features.equipmentCalc);
 
   const [titleText, setTitleText] = useState(() => t("sandbox.defaultTitle"));
   const [color, setColor] = useState("#1f6feb");
@@ -69,6 +82,12 @@ export function ToolsPage() {
   const [isRolling, setIsRolling] = useState(false);
   const rollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { data: rawGameData } = useQuery({
+    queryKey: queryKeys.gameData.latest(),
+    queryFn: fetchGameData,
+    enabled: equipCalcEnabled,
+  });
+  const equipCalcDataVersion = rawGameData?.version;
 
   const rollDice = useCallback(() => {
     if (isRolling || diceCount < 1 || diceSides < 2) return;
@@ -160,7 +179,7 @@ export function ToolsPage() {
     return segments.join(" · ");
   }, [bold, fontSize, color, italic, opacity, strikethrough, t, underline]);
 
-  const toolCards = [
+  const toolCards: ToolCard[] = [
     {
       key: "sandbox",
       icon: <FormatPainterOutlined />,
@@ -182,6 +201,8 @@ export function ToolsPage() {
           icon: <SwordsIcon size={28} />,
           title: t("equipCalc.title"),
           description: t("equipCalc.description"),
+          metaLabel: t("equipCalc.versionLabel"),
+          metaValue: equipCalcDataVersion,
           onOpen: equipCalcHandlers.open,
         }]
       : []),
@@ -214,6 +235,12 @@ export function ToolsPage() {
                 <Text c="dimmed" className="tool-card__description">
                   {tool.description}
                 </Text>
+                {tool.metaValue ? (
+                  <div className="tool-card__meta">
+                    <Text size="xs" c="dimmed" fw={700}>{tool.metaLabel}</Text>
+                    <Text size="xs" c="dimmed" title={tool.metaValue}>{tool.metaValue}</Text>
+                  </div>
+                ) : null}
               </div>
               <div className="tool-card__icon-wrap">
                 <div className="tool-card__icon">{tool.icon}</div>

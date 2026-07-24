@@ -63,7 +63,7 @@ export const yanYunGame: GameDefinition = {
         compute: (stats) => {
           const kills = stats.kills ?? 0;
           const assists = stats.assists ?? 0;
-          const deaths = stats.deaths > 0 ? stats.deaths : 1;
+          const deaths = (stats.deaths ?? 0) > 0 ? stats.deaths! : 1;
           return Number(((kills + assists) / deaths).toFixed(2));
         },
       },

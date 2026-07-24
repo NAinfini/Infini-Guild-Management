@@ -7,7 +7,7 @@ import {
 } from "@guild/shared";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { memberProfiles, rolePermissions, userAuthPassword, users } from "../db/schema";
@@ -28,6 +28,7 @@ export type AuthServiceDeps = {
   verifyPassword: (password: string, salt: string, hash: string) => Promise<boolean>;
   createSession: (userId: string, opts?: { stayLoggedIn?: boolean }) => Promise<void>;
   destroySession: (sessionId?: string) => Promise<void>;
+  deleteUserSessions: (userId: string) => Promise<void>;
   publishEntityChanged?: (input: { entityType: PushEntityType; entityId: string; hint: PushHint; displayName?: string }) => Promise<void>;
   writeAuditLog: (input: { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null }) => Promise<void>;
 };
@@ -67,7 +68,9 @@ function toProfilePayload(profile: ProfileRow) {
 }
 
 const USER_COLS = { id: users.id, username: users.username, role: users.role, isActive: users.isActive, deletedAt: users.deletedAt, createdAt: users.createdAt, updatedAt: users.updatedAt } as const;
-const PROFILE_COLS = { id: memberProfiles.id, userId: memberProfiles.userId, power: memberProfiles.power, classes: memberProfiles.classes, titleHtml: memberProfiles.titleHtml, bio: memberProfiles.bio, avatarKey: memberProfiles.avatarKey, images: memberProfiles.images, audioKey: memberProfiles.audioKey, videoUrls: memberProfiles.videoUrls, availability: memberProfiles.availability, vacationStart: memberProfiles.vacationStart, vacationEnd: memberProfiles.vacationEnd, notes: memberProfiles.notes, createdAt: memberProfiles.createdAt, updatedAt: memberProfiles.updatedAt } as const;
+// vacation_start/vacation_end are derived from the absence history (current-or-next
+// absence); the legacy member_profiles columns are no longer read.
+const PROFILE_COLS = { id: memberProfiles.id, userId: memberProfiles.userId, power: memberProfiles.power, classes: memberProfiles.classes, titleHtml: memberProfiles.titleHtml, bio: memberProfiles.bio, avatarKey: memberProfiles.avatarKey, images: memberProfiles.images, audioKey: memberProfiles.audioKey, videoUrls: memberProfiles.videoUrls, availability: memberProfiles.availability, vacationStart: sql<string | null>`(SELECT ma.start_date FROM member_absences ma WHERE ma.user_id = ${memberProfiles.userId} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_start"), vacationEnd: sql<string | null>`(SELECT ma.end_date FROM member_absences ma WHERE ma.user_id = ${memberProfiles.userId} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_end"), notes: memberProfiles.notes, createdAt: memberProfiles.createdAt, updatedAt: memberProfiles.updatedAt } as const;
 
 // --- Service ---
 
@@ -118,6 +121,7 @@ export class AuthService {
       logger.warn("Login failed: wrong password", { username });
       return err("UNAUTHORIZED", "Invalid credentials");
     }
+    await this.deps.deleteUserSessions(account.id);
     await this.deps.createSession(account.id, { stayLoggedIn });
     const profile = await this.ensureProfile(account.id);
     const extra = await this.resolveUserPermissions(account.role);
@@ -154,10 +158,10 @@ export class AuthService {
     const passwordRecord = await this.deps.createPasswordHash(password);
     const rawDb = this.deps.rawDb;
 
-    const inviteUpdateResult = await rawDb.prepare(
-      `UPDATE invite_links SET used_count = used_count + 1 WHERE code = ? AND revoked_at IS NULL AND used_count < max_uses AND (expires_at IS NULL OR expires_at > ?)`,
-    ).bind(inviteCode, nowIso).run();
-    if ((inviteUpdateResult.meta?.changes ?? 0) === 0) return err("CONFLICT", "Invite link is no longer available");
+    const redeemedInvite = await rawDb.prepare(
+      `UPDATE invite_links SET used_count = used_count + 1 WHERE code = ? AND revoked_at IS NULL AND used_count < max_uses AND (expires_at IS NULL OR expires_at > ?) RETURNING id`,
+    ).bind(inviteCode, nowIso).first<{ id: string }>();
+    if (!redeemedInvite) return err("CONFLICT", "Invite link is no longer available");
 
     try {
       await rawDb.batch([
@@ -174,7 +178,7 @@ export class AuthService {
     const createdUser = (await this.db.select(USER_COLS).from(users).where(eq(users.id, userId)).limit(1))[0];
     if (!createdUser) return err("SERVER_ERROR", "Failed to load created user");
     await this.deps.createSession(userId);
-    await this.deps.writeAuditLog({ entityType: "user", action: "register", actorId: userId, entityId: userId, diffTitle: username, detailText: JSON.stringify({ invite_code: inviteCode }) });
+    await this.deps.writeAuditLog({ entityType: "user", action: "register", actorId: userId, entityId: userId, diffTitle: username, detailText: JSON.stringify({ invite_id: redeemedInvite.id }) });
     await this.deps.publishEntityChanged?.({ entityType: "member_profile", entityId: userId, hint: "member_joined", displayName: createdUser.username });
     const extra = await this.resolveUserPermissions("member");
     return ok({ user: toUserPayload(createdUser, extra) });

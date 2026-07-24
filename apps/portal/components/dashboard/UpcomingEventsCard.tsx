@@ -72,17 +72,17 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                   key={item.item.id}
                   style={{
                     padding: "14px",
-                    background: "color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #111827))",
+                    background: "color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #1A1815))",
                     borderRadius: "12px",
-                    border: "1px solid color-mix(in srgb, var(--color-text, #111827) 6%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent)",
                     transition: "border-color 160ms ease, box-shadow 160ms ease",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--color-primary, #3b82f6) 24%, transparent)";
-                    e.currentTarget.style.boxShadow = "0 2px 8px color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent)";
+                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--color-primary, #D4A843) 24%, transparent)";
+                    e.currentTarget.style.boxShadow = "0 2px 8px color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--color-text, #111827) 6%, transparent)";
+                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent)";
                     e.currentTarget.style.boxShadow = "none";
                   }}
                 >
@@ -125,7 +125,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         size={36}
                         thickness={4}
                         roundCaps
-                        sections={[{ value: percentage, color: "var(--color-primary, #3b82f6)" }]}
+                        sections={[{ value: percentage, color: "var(--color-primary, #D4A843)" }]}
                       />
                       <Text size="10px" ta="center" fw={600} c="dimmed">
                         {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}

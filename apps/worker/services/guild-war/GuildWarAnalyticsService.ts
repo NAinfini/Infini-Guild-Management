@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
-import { warHistory, warTeamMembers, warTeams } from "../../db/schema";
+import { siteConfig, warHistory, warTeamMembers, warTeams } from "../../db/schema";
 import { type AnalyticsSettings, defaultAnalyticsSettings } from "../AdminService";
 import { ok, type ServiceResult } from "../result";
 import {
@@ -8,8 +8,6 @@ import {
   type DrizzleDb,
   type GuildWarServiceDeps,
 } from "./GuildWarCoreService";
-
-const ANALYTICS_SETTINGS_KEY = "config/analytics-settings.json";
 
 type ModifierBreakdown = { factor: string; ratio: number; weight: number; contribution: number };
 
@@ -51,10 +49,14 @@ export class GuildWarAnalyticsService extends GuildWarCoreService {
   }
 
   private async readAnalyticsSettings(): Promise<AnalyticsSettings> {
-    const object = await this.deps.media.get(ANALYTICS_SETTINGS_KEY);
-    if (!object) return defaultAnalyticsSettings();
+    const [row] = await this.db
+      .select({ analyticsSettingsJson: siteConfig.analyticsSettingsJson })
+      .from(siteConfig)
+      .where(eq(siteConfig.id, "default"))
+      .limit(1);
+    if (!row?.analyticsSettingsJson) return defaultAnalyticsSettings();
     try {
-      const parsed = JSON.parse(await object.text()) as unknown;
+      const parsed = JSON.parse(row.analyticsSettingsJson) as unknown;
       const defaults = defaultAnalyticsSettings();
       if (typeof parsed !== "object" || parsed === null) return defaults;
       const record = parsed as Record<string, unknown>;

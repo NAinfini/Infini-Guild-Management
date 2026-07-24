@@ -9,6 +9,11 @@ export const queryKeys = {
     roster: (viewMode: "external" | "default") => [...queryKeys.users.all, "roster", viewMode] as const,
     stats: () => [...queryKeys.users.all, "stats"] as const,
   },
+  absences: {
+    all: ["absences"] as const,
+    window: (from: string, to: string) => [...queryKeys.absences.all, "window", from, to] as const,
+    user: (userId: string | undefined) => [...queryKeys.absences.all, "user", userId] as const,
+  },
   myProfile: {
     all: ["my-profile"] as const,
     detail: (userId: string | undefined) => [...queryKeys.myProfile.all, userId] as const,
@@ -46,6 +51,21 @@ export const queryKeys = {
     all: ["gallery"] as const,
     list: (sortOrder: string, typeFilter: string, dateFrom: string, dateTo: string, search: string) =>
       [...queryKeys.gallery.all, sortOrder, typeFilter, dateFrom, dateTo, search] as const,
+  },
+  storage: {
+    all: ["storage"] as const,
+    tree: () => [...queryKeys.storage.all, "tree"] as const,
+    items: (storageId: string, categoryId: string | null, search: string) => [...queryKeys.storage.all, "items", storageId, categoryId, search] as const,
+    item: (id: string | null) => [...queryKeys.storage.all, "item", id] as const,
+    transactions: (filter: string, page: number) => [...queryKeys.storage.all, "transactions", filter, page] as const,
+  },
+  siteConfig: {
+    all: ["site-config"] as const,
+    admin: () => [...queryKeys.siteConfig.all, "admin"] as const,
+  },
+  onboarding: {
+    all: ["onboarding"] as const,
+    me: () => [...queryKeys.onboarding.all, "me"] as const,
   },
   dashboard: {
     all: ["dashboard"] as const,
@@ -87,6 +107,8 @@ export const queryKeys = {
     articles: (categoryId: string, search: string, archivedMode: string, pinnedOnly: boolean, page?: number) =>
       [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, pinnedOnly, page ?? 1] as const,
     article: (slug: string | null) => [...queryKeys.wiki.all, "article", slug] as const,
+    revisions: (articleId: string | null) => [...queryKeys.wiki.all, "revisions", articleId] as const,
+    revision: (articleId: string | null, revision: number | null) => [...queryKeys.wiki.all, "revision", articleId, revision] as const,
   },
   badges: {
     all: ["badges"] as const,

@@ -1,11 +1,12 @@
 import { type Announcement, type PaginatedResponse } from "@guild/shared";
-import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/TipTapEditor";
+import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/tiptap-meta";
 import { notifications } from "@mantine/notifications";
 import { modals } from "@mantine/modals";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { format, isValid, parseISO } from "date-fns";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
+import { useDisclosure } from "@mantine/hooks";
+import { useDebouncedSearch } from "./useDebouncedSearch";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
@@ -69,8 +70,7 @@ export function useAnnouncementsController() {
 
   const [pinnedFilter, setPinnedFilter] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
-  const [search, setSearch] = useState("");
-  const [debouncedSearchRaw] = useDebouncedValue(search, 300);
+  const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [skipAutoSelectOnce, setSkipAutoSelectOnce] = useState(false);

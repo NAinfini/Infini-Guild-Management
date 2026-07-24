@@ -96,6 +96,7 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
 
   const gameData: GameData | undefined = rawGameData?.data as GameData | undefined;
   const serverSchemaVersion = rawGameData?.schemaVersion;
+  const dataVersion = rawGameData?.version ?? gameData?.version;
 
   useEffect(() => {
     if (serverSchemaVersion != null && serverSchemaVersion > localSchemaVersion) {
@@ -109,7 +110,7 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
     const hasActiveLoadout = activeLoadoutId == null ||
       loadouts.some((loadout) => loadout.id === activeLoadoutId);
     if (loadouts.length > 0 && !hasActiveLoadout) {
-      setActiveLoadout(loadouts[0].id);
+      setActiveLoadout(loadouts[0]!.id);
       return;
     }
     if (loadouts.length > 0) return;
@@ -247,6 +248,12 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
                 {t("actions.import")}
               </Button>
             </Group>
+            {dataVersion ? (
+              <Group gap={6} px="md" py={4} className="ecm__data-version">
+                <Text size="xs" c="dimmed" fw={700}>{t("dataVersion")}</Text>
+                <Text size="xs" c="dimmed" title={dataVersion}>{dataVersion}</Text>
+              </Group>
+            ) : null}
           </div>
 
           {/* Body: activity bar + side panel + main */}

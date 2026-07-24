@@ -93,7 +93,7 @@ export function parseAvailabilityRanges(rawAvailability: unknown): Map<number, A
   if (!daysObject) return rangesByDay;
 
   for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
-    const modernKey = MODERN_AVAILABILITY_DAY_KEYS[dayIndex];
+    const modernKey = MODERN_AVAILABILITY_DAY_KEYS[dayIndex]!;
     const rowsCandidate = daysObject[modernKey];
     if (!Array.isArray(rowsCandidate)) {
       continue;

@@ -66,6 +66,14 @@ export type TestRunContext = {
   createdPollEventId: string | null;
   createdRaffleEventId: string | null;
   createdTemplateId: string | null;
+  storageId: string | null;
+  storageCategoryId: string | null;
+  storageItemId: string | null;
+  storageImageKey: string | null;
+  createdStorageId: string | null;
+  createdStorageCategoryId: string | null;
+  createdStorageItemId: string | null;
+  createdStorageImageId: string | null;
   targetProfileSnapshot: { bio: string | null; classes: string[] } | null;
 };
 
@@ -168,6 +176,14 @@ export function createInitialTestRunContext(): TestRunContext {
     createdPollEventId: null,
     createdRaffleEventId: null,
     createdTemplateId: null,
+    storageId: null,
+    storageCategoryId: null,
+    storageItemId: null,
+    storageImageKey: null,
+    createdStorageId: null,
+    createdStorageCategoryId: null,
+    createdStorageItemId: null,
+    createdStorageImageId: null,
     targetProfileSnapshot: null,
   };
 }

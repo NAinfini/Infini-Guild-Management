@@ -1,28 +1,69 @@
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Build, coverage, and tool output
 dist/
+build/
 .wrangler/
-.agents/
-.trellis/
-.claude/
-.env
-.env.local
-.dev.vars
-wrangler.jsonc
-apps/worker/wrangler.jsonc
-*.local
-calculators/
-docs/
 .vite/
 coverage/
+.nyc_output/
+test-results/
+playwright-report/
+blob-report/
+.cache/
+.eslintcache
+*.tsbuildinfo
+
+# Environment files and local secrets
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+**/.dev.vars
+**/.dev.vars.*
+!**/.dev.vars.example
+!**/.dev.vars.*.example
+**/wrangler.jsonc
+!**/wrangler.example.jsonc
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+*.tfstate
+*.tfstate.*
+*.kdbx
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.dump
+*.bak
+
+# Local data and private working notes
+*.local
+backups/
+calculators/
+docs/plans/
 
 # Temporary files
 *.log
 *.tmp
 *.temp
-.cache/
-
-# Database backups
-backups/
+.tmp/
+tmp/
+temp/
+*.pid
+*.pid.lock
+*.orig
+*.rej
+*.tgz
 
 # OS / editor noise
 .DS_Store
@@ -33,9 +74,8 @@ Thumbs.db
 *.swo
 *~
 
-# Build artifacts
-*.tsbuildinfo
-
-# Test output
-test-results/
-playwright-report/
+# Local AI/developer tooling
+.agents/
+.trellis/
+.claude/
+.codex/

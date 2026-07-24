@@ -7,11 +7,13 @@
 一个 Cloudflare Worker 加一个 React 应用，前后端共用 TypeScript 契约。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb?logo=react)](https://react.dev/)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-f38020?logo=cloudflare)](https://workers.cloudflare.com/)
 
 [English](./README.md) | [中文](./README.zh.md)
+
+[安装指南](./SETUP.zh.md) · [公开发布检查表](./OPEN_SOURCE_CHECKLIST.md) · [安全政策](./SECURITY.md)
 
 </div>
 
@@ -40,7 +42,7 @@ Infini Guild Management 是一个面向游戏公会的全栈管理门户。它�
 | 搜索 | `Cmd+K` / `Ctrl+K` 搜索门户内容 |
 | 实时推送 | 通过 Cloudflare Durable Objects 提供 WebSocket 更新 |
 | 本地化 | 内置英文和中文 |
-| 功能开关 | 通过共享配置或 Worker 变量控制模块开关 |
+| 功能开关 | 在管理后台的站点配置中控制各模块 |
 
 ## 项目结构
 
@@ -58,7 +60,7 @@ apps/
 | 层 | 技术 |
 | --- | --- |
 | 前端 | React 19、Vite 8、TanStack Router、TanStack Query、Mantine 8、Tailwind CSS 4、Zustand 5 |
-| 富文本和图表 | TipTap 3、ECharts 5 |
+| 富文本和图表 | TipTap 3、ECharts 6 |
 | 后端 | Cloudflare Workers 上的 Hono、Drizzle ORM、Cloudflare D1 |
 | 存储 | Cloudflare R2，用于媒体和审计归档 |
 | 实时通信 | Cloudflare Durable Objects + WebSocket |
@@ -70,8 +72,8 @@ apps/
 
 ### 环境要求
 
-- Node.js 20+
-- pnpm 10+
+- Node.js 24 LTS（24.18.0 或更高版本）
+- pnpm 11.17.0
 - Cloudflare 账号，仅部署环境需要
 
 本地开发不需要 Cloudflare 账号。
@@ -80,10 +82,11 @@ apps/
 
 ```bash
 pnpm install
+pnpm setup:local
 pnpm dev
 ```
 
-`pnpm dev` 会重建本地 D1 数据库，启动 Worker 和前端开发服务器，并写入 mock 数据。
+`pnpm setup:local` 会创建已被 Git 忽略的本地配置和随机开发密钥，且不会覆盖已有文件。`pnpm dev` 随后会重建本地 D1 数据库，启动 Worker 和前端开发服务器，并写入 mock 数据。
 
 打开 `http://localhost:5173`，使用下面任意账号登录：
 
@@ -97,12 +100,16 @@ pnpm dev
 
 | 命令 | 用途 |
 | --- | --- |
+| `pnpm setup:local` | 安全创建本地私人配置和随机密钥 |
+| `pnpm setup:admin -- --env=production` | 在空的生产数据库创建首位管理员 |
+| `pnpm config:check -- --env=production` | 部署前检查绑定和占位符 |
 | `pnpm dev` | 重建本地数据库，启动 Worker 和前端，并灌入数据 |
 | `pnpm dev:all` | 只启动 Worker 和前端，不重建或灌数据 |
 | `pnpm dev:worker` | 启动 Worker API，地址为 `http://127.0.0.1:8787` |
 | `pnpm dev:portal` | 启动 Vite 前端开发服务器 |
 | `pnpm build` | 构建前端 SPA |
 | `pnpm build:worker` | 预演 Worker 部署 |
+| `pnpm deploy:production` | 预检、构建并部署生产站点 |
 | `pnpm typecheck` | 运行 TypeScript 检查 |
 | `pnpm lint` | 检查 portal 和 worker 代码 |
 | `pnpm test` | 运行 Vitest |
@@ -216,61 +223,35 @@ Logo 可以放在 `apps/portal/public/` 下，也可以替换现有的 `guild-lo
 
 ### 5. 关闭不需要的模块
 
-默认功能开关在 `apps/shared/config/features.ts`：
+站点管理员无需改代码。登录后进入 **管理后台 → 站点配置 → 功能** 即可修改模块开关。
+
+新数据库记录使用的代码默认值位于 `apps/shared/config/features.ts`：
 
 ```typescript
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   announcements: true,
   events: true,
-  guildWar: false,
+  guildWar: true,
   gallery: true,
   wiki: true,
   tools: true,
   equipmentCalc: true,
+  storage: true,
 };
-```
-
-也可以用 Worker 的 `FEATURES` 变量按环境覆盖：
-
-```jsonc
-"vars": {
-  "FEATURES": "{\"guildWar\":false,\"wiki\":false}"
-}
 ```
 
 ## 部署
 
-### Staging
+请按面向新手的[自托管安装指南](./SETUP.zh.md)操作。指南包含 Cloudflare 登录、D1/R2、密钥、数据库迁移、首位管理员、`workers.dev`、自定义域名、更新和故障排查。
+
+首次设置完成后，生产更新使用：
 
 ```bash
-# 1. 在 Cloudflare 创建 staging 专用的 D1 数据库和 R2 bucket。
-
-# 2. 复制 apps/worker/wrangler.example.jsonc → apps/worker/wrangler.jsonc，
-#    在 [env.staging] 中填写 staging ID 和 PORTAL_ORIGIN。
-
-# 3. 对 staging 数据库应用迁移。
-wrangler d1 migrations apply guild-portal-db-staging --config apps/worker/wrangler.jsonc --env staging
-
-# 4. 部署到 staging。
-pnpm deploy:staging
+pnpm exec wrangler d1 migrations apply DB --remote --env production --config apps/worker/wrangler.jsonc
+pnpm deploy:production
 ```
 
-Staging 使用独立的 D1 和 R2 绑定。`workers_dev = true` 会给 staging Worker 一个 `*.workers.dev` 地址，不需要自定义域名。
-
-### Production
-
-```bash
-# 1. 在 Cloudflare 创建生产 D1 数据库和 R2 bucket。
-
-# 2. 在 wrangler.jsonc [env.production] 中填写生产 ID。
-#    设置密钥：wrangler secret put SIGNING_SECRET --env production
-
-# 3. 应用迁移。
-wrangler d1 migrations apply <your-db> --config apps/worker/wrangler.jsonc --env production
-
-# 4. 部署 Worker 和打包后的前端资源。
-wrangler deploy --config apps/worker/wrangler.jsonc --env production
-```
+项目不会创建任何默认生产密码。迁移完成后，仅运行一次 `pnpm setup:admin -- --env=production` 来安全创建首位管理员。
 
 ## 环境变量
 
@@ -279,11 +260,10 @@ wrangler deploy --config apps/worker/wrangler.jsonc --env production
 | 变量 | 说明 |
 | --- | --- |
 | `ENVIRONMENT` | `development`、`staging` 或 `production` |
-| `PORTAL_ORIGIN` | 允许跨域访问 API 的前端来源 |
+| `PORTAL_ORIGIN` | 单独托管前端时允许的来源；同域部署请留空 |
 | `SIGNING_SECRET` | 审计归档下载 token 的 HMAC 密钥 |
 | `SITE_NAME` | UI 中显示的公会名称 |
 | `SITE_LOGO_URL` | 前端提供的 Logo 图片路径 |
-| `FEATURES` | 覆盖功能开关的 JSON，例如 `{"guildWar":false}` |
 
 ### Portal (`apps/portal/.env.local`)
 
@@ -321,6 +301,8 @@ wrangler deploy --config apps/worker/wrangler.jsonc --env production
 - 富文本 HTML 展示前会经过清洗。
 - 登录失败返回通用错误，避免用户名枚举。
 - 安全响应头包括 HSTS、CSP、`X-Frame-Options: DENY` 和 `nosniff`。
+
+发现安全漏洞时，请按 [SECURITY.md](./SECURITY.md) 私下报告。
 
 ## 定时任务
 

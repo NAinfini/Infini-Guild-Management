@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { createContext, useContext, useEffect, useRef, type Dispatch, type ReactNode, type SetStateAction } from "react";
 
 type PageHeaderContextValue = {
   setActions: Dispatch<SetStateAction<ReactNode>>;
@@ -14,11 +14,13 @@ export const PageHeaderContext = createContext<PageHeaderContextValue>({
 
 export function usePageHeaderActions(actions: ReactNode) {
   const { setActions } = useContext(PageHeaderContext);
+  const actionsRef = useRef<ReactNode>(actions);
+  actionsRef.current = actions;
 
   useEffect(() => {
-    setActions(actions ?? null);
+    setActions(actionsRef.current ?? null);
     return () => {
       setActions(null);
     };
-  }, [actions, setActions]);
+  }, [setActions]);
 }

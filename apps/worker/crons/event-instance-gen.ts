@@ -1,9 +1,11 @@
-import { and, eq, isNull, not } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { events } from "../db/schema";
+import { computeNextOccurrence } from "@guild/shared/utils/recurrence";
+import { events, recurringTemplates } from "../db/schema";
 import type { Bindings } from "../index";
 import { logger } from "../utils/logger";
+import { replaceMediaRefs, extractAttachmentKeys } from "../services/media-references";
 
 type RecurrenceRule = {
   frequency: "daily" | "weekly" | "monthly";
@@ -13,8 +15,6 @@ type RecurrenceRule = {
   endAfter?: number;
   endDate?: string;
 };
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 function parseRecurrenceRule(value: string | null): RecurrenceRule | null {
   if (!value) {
@@ -77,80 +77,25 @@ function toDateKey(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
-function computeEndAt(startAtIso: string, endAtIso: string | null, nextStartAtIso: string): string | null {
-  if (!endAtIso) {
+// start_time is stored as UTC wall-clock "HH:mm" (the portal converts local→UTC
+// before persisting), so this only validates and splits — no timezone math.
+function parseStartTime(startTime: string): { utcHour: number; utcMinute: number } | null {
+  const match = startTime.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) {
     return null;
   }
-
-  const startMs = Date.parse(startAtIso);
-  const endMs = Date.parse(endAtIso);
-  const nextStartMs = Date.parse(nextStartAtIso);
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || !Number.isFinite(nextStartMs) || endMs <= startMs) {
+  const utcHour = Number(match[1]);
+  const utcMinute = Number(match[2]);
+  if (utcHour < 0 || utcHour > 23 || utcMinute < 0 || utcMinute > 59) {
     return null;
   }
-
-  return new Date(nextStartMs + (endMs - startMs)).toISOString();
+  return { utcHour, utcMinute };
 }
 
-/**
- * Compute the next occurrence date after `anchor` according to the recurrence rule.
- * Uses the template's `startAt` for time-of-day reference.
- */
-function computeNextOccurrence(anchor: Date, templateStart: Date, rule: RecurrenceRule): Date | null {
-  if (rule.frequency === "daily") {
-    const next = new Date(anchor);
-    next.setUTCDate(next.getUTCDate() + rule.interval);
-    // Preserve time-of-day from template
-    next.setUTCHours(templateStart.getUTCHours(), templateStart.getUTCMinutes(), templateStart.getUTCSeconds(), 0);
-    return isValidDate(next) ? next : null;
-  }
-
-  if (rule.frequency === "weekly") {
-    const days = rule.daysOfWeek && rule.daysOfWeek.length > 0
-      ? [...rule.daysOfWeek].sort((a, b) => a - b)
-      : [templateStart.getUTCDay()];
-
-    // Start from the day after anchor and scan forward
-    const cursor = new Date(anchor);
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-    cursor.setUTCHours(templateStart.getUTCHours(), templateStart.getUTCMinutes(), templateStart.getUTCSeconds(), 0);
-
-    // Scan up to interval * 7 + 7 days to find the next matching weekday
-    const maxScan = rule.interval * 7 + 7;
-    for (let i = 0; i < maxScan; i++) {
-      const candidateDay = cursor.getUTCDay();
-      if (days.includes(candidateDay)) {
-        // Check we're in a valid week (respecting interval)
-        const templateDay = new Date(Date.UTC(templateStart.getUTCFullYear(), templateStart.getUTCMonth(), templateStart.getUTCDate()));
-        const cursorDay = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), cursor.getUTCDate()));
-        const daysDiff = Math.round((cursorDay.getTime() - templateDay.getTime()) / DAY_MS);
-        const weeksDiff = Math.floor(daysDiff / 7);
-        if (weeksDiff >= 0 && weeksDiff % rule.interval === 0) {
-          return cursor;
-        }
-      }
-      cursor.setUTCDate(cursor.getUTCDate() + 1);
-    }
-    return null;
-  }
-
-  // Monthly
-  const next = new Date(anchor);
-  next.setUTCMonth(next.getUTCMonth() + rule.interval);
-  if (rule.dayOfMonth) {
-    // Set to the target day, clamping to month's last day
-    const year = next.getUTCFullYear();
-    const month = next.getUTCMonth();
-    const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-    next.setUTCDate(Math.min(rule.dayOfMonth, lastDay));
-  }
-  next.setUTCHours(templateStart.getUTCHours(), templateStart.getUTCMinutes(), templateStart.getUTCSeconds(), 0);
-  return isValidDate(next) ? next : null;
-}
-
-export function computeHorizon(now: Date): Date {
+export function computeHorizon(now: Date, offsetMinutes = 0): Date {
   const horizon = new Date(now);
   horizon.setUTCDate(horizon.getUTCDate() + 3);
+  horizon.setTime(horizon.getTime() + offsetMinutes * 60_000);
   return horizon;
 }
 
@@ -159,33 +104,29 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
   const now = new Date();
   const MAX_CATCHUP = 10;
 
-  // Fetch active templates (is_series_parent = true, not archived, has recurrence_rule).
-  // When `templateId` is provided (request-triggered materialization), scope to that
-  // one series instead of scanning every template.
   const templates = await db
     .select({
-      id: events.id,
-      type: events.type,
-      title: events.title,
-      description: events.description,
-      startAt: events.startAt,
-      endAt: events.endAt,
-      capacity: events.capacity,
-      createdBy: events.createdBy,
-      recurrenceRule: events.recurrenceRule,
-      attachments: events.attachments,
-      lastGeneratedDate: events.lastGeneratedDate,
-      generationCount: events.generationCount,
-      visibilityOffsetMinutes: events.visibilityOffsetMinutes,
-      autoArchive: events.autoArchive,
+      id: recurringTemplates.id,
+      type: recurringTemplates.type,
+      title: recurringTemplates.title,
+      description: recurringTemplates.description,
+      startTime: recurringTemplates.startTime,
+      durationMinutes: recurringTemplates.durationMinutes,
+      capacity: recurringTemplates.capacity,
+      createdBy: recurringTemplates.createdBy,
+      recurrenceRule: recurringTemplates.recurrenceRule,
+      attachments: recurringTemplates.attachments,
+      lastGeneratedDate: recurringTemplates.lastGeneratedDate,
+      generationCount: recurringTemplates.generationCount,
+      visibilityOffsetMinutes: recurringTemplates.visibilityOffsetMinutes,
+      autoArchive: recurringTemplates.autoArchive,
+      createdAt: recurringTemplates.createdAt,
     })
-    .from(events)
+    .from(recurringTemplates)
     .where(
       and(
-        eq(events.isSeriesParent, true),
-        isNull(events.archivedAt),
-        not(isNull(events.recurrenceRule)),
-        ...(options.templateId ? [eq(events.id, options.templateId)] : []),
+        eq(recurringTemplates.paused, false),
+        ...(options.templateId ? [eq(recurringTemplates.id, options.templateId)] : []),
       ),
     );
 
@@ -195,12 +136,17 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
       continue;
     }
 
-    const templateStart = new Date(template.startAt);
-    if (!isValidDate(templateStart)) {
+    const utcTime = parseStartTime(template.startTime);
+    if (!utcTime) {
       continue;
     }
 
-    // Check end conditions
+    // Use createdAt as the reference date for recurrence anchoring
+    const referenceDate = new Date(template.createdAt);
+    if (!isValidDate(referenceDate)) {
+      continue;
+    }
+
     if (rule.endAfter && template.generationCount >= rule.endAfter) {
       continue;
     }
@@ -211,43 +157,53 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
       }
     }
 
-    // Determine anchor: last generated date or template start
-    let anchor = templateStart;
+    // When lastGeneratedDate is null (new template or schedule reset), anchor to
+    // now so we only generate future events — never backfill past occurrences.
+    let anchor: Date;
     if (template.lastGeneratedDate) {
       const lastGenDate = new Date(`${template.lastGeneratedDate}T00:00:00Z`);
       if (isValidDate(lastGenDate)) {
-        // Use last generated date with template's time
-        lastGenDate.setUTCHours(templateStart.getUTCHours(), templateStart.getUTCMinutes(), templateStart.getUTCSeconds(), 0);
+        lastGenDate.setUTCHours(utcTime.utcHour, utcTime.utcMinute, 0, 0);
         anchor = lastGenDate;
+      } else {
+        anchor = new Date(now);
+        anchor.setUTCDate(anchor.getUTCDate() - 1);
+        anchor.setUTCHours(utcTime.utcHour, utcTime.utcMinute, 0, 0);
       }
+    } else {
+      anchor = new Date(now);
+      anchor.setUTCDate(anchor.getUTCDate() - 1);
+      anchor.setUTCHours(utcTime.utcHour, utcTime.utcMinute, 0, 0);
     }
 
-    const horizon = computeHorizon(now);
+    // Bug 1 fix: extend horizon by visibilityOffsetMinutes so events needing early creation are included
+    const horizon = computeHorizon(now, template.visibilityOffsetMinutes);
     let currentAnchor = anchor;
     let generationCount = template.generationCount;
     let catchupCount = 0;
-    let lastDateKey: string | null = null;
+
+    // Collect per-template insert statements so they can be batched with the
+    // template UPDATE in a single D1 round-trip instead of N+1 separate awaits.
+    type InsertStmt = ReturnType<ReturnType<ReturnType<typeof db.insert>["values"]>["onConflictDoNothing"]>;
+    const pendingInserts: Array<{ stmt: InsertStmt; dateKey: string; eventId: string; attachments: string }> = [];
 
     while (catchupCount < MAX_CATCHUP) {
-      const nextOccurrence = computeNextOccurrence(currentAnchor, templateStart, rule);
+      const nextOccurrence = computeNextOccurrence(currentAnchor, utcTime.utcHour, utcTime.utcMinute, rule, referenceDate);
       if (!nextOccurrence) {
         break;
       }
 
-      // Stop if beyond the lookahead horizon
       if (nextOccurrence > horizon) {
         break;
       }
 
-      // Respect creation offset: only create the instance when now >= start - offset
-      if (template.visibilityOffsetMinutes != null && template.visibilityOffsetMinutes > 0) {
+      if (template.visibilityOffsetMinutes > 0) {
         const createAt = new Date(nextOccurrence.getTime() - template.visibilityOffsetMinutes * 60_000);
         if (now < createAt) {
           break;
         }
       }
 
-      // Stop if beyond the rule's end date
       if (rule.endDate) {
         const endDate = new Date(rule.endDate);
         if (isValidDate(endDate) && nextOccurrence > endDate) {
@@ -257,55 +213,78 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
 
       const nextStartIso = nextOccurrence.toISOString();
       const nextDateKey = toDateKey(nextOccurrence);
+      const nextEndAt = template.durationMinutes != null
+        ? new Date(nextOccurrence.getTime() + template.durationMinutes * 60_000).toISOString()
+        : null;
 
-      // INSERT OR IGNORE: the UNIQUE constraint on (series_id, instance_date) prevents duplicates
-      const result = await db.insert(events).values({
-        id: nanoid(),
-        type: template.type,
-        title: template.title,
-        description: template.description,
-        startAt: nextStartIso,
-        endAt: computeEndAt(template.startAt, template.endAt, nextStartIso),
-        capacity: template.capacity,
-        pinned: false,
-        signupLocked: false,
-        autoArchive: template.autoArchive,
-        autoArchived: false,
-        archivedAt: null,
-        createdBy: template.createdBy,
-        recurrenceRule: null,
+      const eventId = nanoid();
+      pendingInserts.push({
+        stmt: db.insert(events).values({
+          id: eventId,
+          type: template.type,
+          title: template.title,
+          description: template.description,
+          startAt: nextStartIso,
+          endAt: nextEndAt,
+          capacity: template.capacity,
+          pinned: false,
+          signupLocked: false,
+          autoArchive: template.autoArchive,
+          autoArchived: false,
+          archivedAt: null,
+          createdBy: template.createdBy,
+          attachments: template.attachments,
+          seriesId: template.id,
+          instanceDate: nextDateKey,
+          updatedAt: now.toISOString(),
+        }).onConflictDoNothing({ target: [events.seriesId, events.instanceDate] }),
+        dateKey: nextDateKey,
+        eventId,
         attachments: template.attachments,
-        seriesId: template.id,
-        isSeriesParent: false,
-        instanceDate: nextDateKey,
-        lastGeneratedDate: null,
-        generationCount: 0,
-        updatedAt: now.toISOString(),
-      }).onConflictDoNothing({ target: [events.seriesId, events.instanceDate] });
-
-      if (result.meta.changes > 0) {
-        generationCount += 1;
-        lastDateKey = nextDateKey;
-      }
+      });
 
       currentAnchor = nextOccurrence;
       catchupCount += 1;
 
-      // Stop if endAfter limit reached
       if (rule.endAfter && generationCount >= rule.endAfter) {
         break;
       }
     }
 
+    if (pendingInserts.length === 0) {
+      continue;
+    }
+
+    // Batch all insert statements for this template in one D1 round-trip.
+    // D1 Drizzle .batch() accepts an array at runtime even though the TypeScript
+    // overload requires a tuple. Cast via unknown to bypass the tuple constraint.
+    const insertStmts = pendingInserts.map((p) => p.stmt) as unknown as Parameters<typeof db.batch>[0];
+    const batchResults = await db.batch(insertStmts);
+
+    let lastDateKey: string | null = null;
+    const mediaRefPromises: Promise<void>[] = [];
+    for (let i = 0; i < pendingInserts.length; i++) {
+      const result = batchResults[i] as D1Result;
+      if (result.meta.changes > 0) {
+        generationCount += 1;
+        lastDateKey = pendingInserts[i]!.dateKey;
+        const keys = extractAttachmentKeys(pendingInserts[i]!.attachments);
+        if (keys.length > 0) {
+          mediaRefPromises.push(replaceMediaRefs(env.DB, "event", pendingInserts[i]!.eventId, keys));
+        }
+      }
+    }
+    await Promise.all(mediaRefPromises);
+
     if (lastDateKey) {
       await db
-        .update(events)
+        .update(recurringTemplates)
         .set({
           lastGeneratedDate: lastDateKey,
           generationCount,
           updatedAt: now.toISOString(),
         })
-        .where(eq(events.id, template.id));
+        .where(eq(recurringTemplates.id, template.id));
     }
   }
 }

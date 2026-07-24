@@ -18,10 +18,10 @@ export function resolveEventMediaUrl(key: string): string {
   return buildMediaUrl("/api/events/image", key);
 }
 
-export function resolveAnnouncementMediaUrl(key: string): string {
-  return buildMediaUrl("/api/announcements/image", key);
-}
-
 export function resolveGalleryMediaUrl(key: string): string {
   return buildMediaUrl("/api/gallery/image", key);
+}
+
+export function resolveStorageMediaUrl(key: string): string {
+  return buildMediaUrl("/api/storage/image", key);
 }

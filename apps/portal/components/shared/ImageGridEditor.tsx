@@ -8,13 +8,9 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import type { ImageGridEditorItem } from "@portal/types/media";
 
-export interface ImageGridEditorItem {
-  id: string;
-  src?: string;
-  alt?: string;
-  file?: File;
-}
+export type { ImageGridEditorItem };
 
 export interface ImageGridEditorProps {
   items: ImageGridEditorItem[];
@@ -79,7 +75,7 @@ function DraggableImageCell({
     objectFit: "cover",
     borderRadius,
     display: "block",
-    border: "1px solid var(--color-border, #e5e7eb)",
+    border: "1px solid var(--color-border, #E2DDD6)",
     pointerEvents: "none",
     userSelect: "none",
   };
@@ -88,14 +84,14 @@ function DraggableImageCell({
     width: imageSize,
     height: imageSize,
     borderRadius,
-    border: "1px dashed var(--color-border, #e5e7eb)",
+    border: "1px dashed var(--color-border, #E2DDD6)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     padding: 4,
     textAlign: "center",
     fontSize: Math.max(9, imageSize * 0.12),
-    color: "var(--color-text-muted, #6b7280)",
+    color: "var(--color-text-muted, #6B665E)",
     userSelect: "none",
     wordBreak: "break-all",
     overflow: "hidden",
@@ -260,7 +256,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
         {canUpload ? (
           <label
             htmlFor={inputId}
-            className="flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-blue-500 transition-colors text-gray-400"
+            className="flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-amber-500 transition-colors text-gray-400"
             style={{ width: imageSize, height: imageSize, borderRadius, fontSize: Math.max(10, imageSize * 0.14) }}
           >
             {uploadLabel ?? (

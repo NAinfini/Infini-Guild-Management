@@ -31,8 +31,7 @@ gameDataRoutes.get("/", async (c) => {
 
 // GET /versions — admin only, returns version list
 gameDataRoutes.get("/versions", async (c) => {
-  const sessionUser = await requireGameDataManage(c);
-  if (sessionUser instanceof Response) return sessionUser;
+  await requireGameDataManage(c);
   const result = await getService(c).getVersions();
   return handleResult(c, result);
 });
@@ -40,7 +39,6 @@ gameDataRoutes.get("/versions", async (c) => {
 // POST / — admin only, upload new game data JSON
 gameDataRoutes.post("/", async (c) => {
   const sessionUser = await requireGameDataManage(c);
-  if (sessionUser instanceof Response) return sessionUser;
   let jsonString: string;
   try {
     jsonString = await c.req.text();
@@ -55,9 +53,7 @@ gameDataRoutes.post("/", async (c) => {
 // POST /rollback — admin only, body: { version_id: number }
 gameDataRoutes.post("/rollback", async (c) => {
   const sessionUser = await requireGameDataManage(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const { version_id } = body as { version_id: number };
   if (typeof version_id !== "number" || !Number.isFinite(version_id)) {
     return buildError(c, "VALIDATION_ERROR", "version_id must be a number");
@@ -69,9 +65,7 @@ gameDataRoutes.post("/rollback", async (c) => {
 // POST /icons — admin only, multipart form with key + file
 gameDataRoutes.post("/icons", async (c) => {
   const sessionUser = await requireGameDataManage(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const form = await safeFormData(c);
-  if (form instanceof Response) return form;
   const key = form.get("key");
   if (typeof key !== "string" || !key.trim()) {
     return buildError(c, "VALIDATION_ERROR", "Missing or empty 'key' field");

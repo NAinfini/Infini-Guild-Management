@@ -7,6 +7,7 @@ import { createLogger } from "../utils/logger";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 
 const dbCache = new WeakMap<object, ReturnType<typeof drizzle>>();
+
 function getDb(d1: D1Database): ReturnType<typeof drizzle> {
   let db = dbCache.get(d1);
   if (!db) {

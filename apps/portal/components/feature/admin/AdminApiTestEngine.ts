@@ -43,6 +43,9 @@ export {
   readRetryAfterSeconds,
   runEndpointTest,
   statusColor,
+  SYSTEM_TEST_AUDIT_HEADER,
+  SYSTEM_TEST_HEADER,
+  SYSTEM_TEST_HEADER_VALUE,
   truncateJson,
   waitWithAbort,
 } from "./api-test/runner";

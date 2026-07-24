@@ -55,7 +55,7 @@ export const warTeamMembers = sqliteTable(
   {
     id: text("id").primaryKey(),
     warTeamId: text("war_team_id").notNull().references(() => warTeams.id, { onDelete: "cascade" }),
-    userId: text("user_id").notNull().references(() => users.id),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     roleTag: text("role_tag"),
     sortOrder: integer("sort_order").notNull().default(0),
     stats: text("stats", { mode: "json" }).$type<Record<string, number | null>>(),
@@ -74,7 +74,7 @@ export const warPoolMembers = sqliteTable(
     id: text("id").primaryKey(),
     warHistoryId: text("war_history_id").references(() => warHistory.id, { onDelete: "cascade" }),
     eventId: text("event_id").references(() => events.id, { onDelete: "cascade" }),
-    userId: text("user_id").notNull().references(() => users.id),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   },
   (table) => ({
     uxHistoryUser: uniqueIndex("ux_war_pool_members_history_user").on(table.warHistoryId, table.userId),

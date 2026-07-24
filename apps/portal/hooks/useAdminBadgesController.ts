@@ -27,7 +27,7 @@ export type BadgeForm = {
 export const EMPTY_BADGE_FORM: BadgeForm = {
   name: "",
   label_html: "",
-  color: "#3b82f6",
+  color: "#D4A843",
   description: "",
   sort_order: 0,
 };

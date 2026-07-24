@@ -1,16 +1,15 @@
 import {
   ALLOWED_IMAGE_TYPES,
-  FILE_SIZE_LIMITS,
   createGalleryItemSchema,
 } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { getRequestUser, requirePermission } from "../middleware/rbac";
-import { writeAuditLog } from "../services/audit";
-import { publishEntityChanged } from "../services/push";
 import { GalleryService } from "../services/GalleryService";
+import { validateUploadBytes } from "../services/media";
 import { buildError, collectFiles, getDb, handleResult, parseJsonBody, requireSessionUser, safeFormData, serveR2Object } from "./_shared";
+import { hasMediaQuotaCapacity, withMedia } from "./service-factory";
 
 export const galleryRoutes = new Hono();
 
@@ -19,9 +18,7 @@ const GALLERY_CAPTION_MAX_LENGTH = 200;
 function getService(c: Context): GalleryService {
   const env = c.env as Bindings;
   return new GalleryService(getDb(c), {
-    media: env.MEDIA,
-    writeAuditLog: (input) => writeAuditLog(c, input),
-    publishEntityChanged: (payload) => publishEntityChanged(c, payload),
+    ...withMedia(c),
     rawDb: env.DB,
   });
 }
@@ -70,24 +67,40 @@ galleryRoutes.get("/", async (c) => {
 
 galleryRoutes.post("/images", async (c) => {
   const sessionUser = await requireGalleryUploader(c);
-  if (sessionUser instanceof Response) return sessionUser;
 
-  const formOrError = await safeFormData(c);
-  if (formOrError instanceof Response) return formOrError;
-  const form = formOrError;
+  const form = await safeFormData(c);
   const captionsRaw = form.getAll("captions");
   const files = collectFiles(form);
 
   if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
+  const mediaPolicy = await withMedia(c).getMediaPolicy();
+  if (files.length > mediaPolicy.quotas.gallery) {
+    return buildError(c, "VALIDATION_ERROR", `Maximum ${mediaPolicy.quotas.gallery} gallery images per upload`);
+  }
   for (const file of files) {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) return buildError(c, "VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-    if (file.size > FILE_SIZE_LIMITS.galleryImage) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
+    if (file.size > mediaPolicy.max_file_size_bytes.gallery_image) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
   }
 
   const captions = files.map((_, i) => { const raw = captionsRaw[i]; return typeof raw === "string" && raw.trim() ? raw.trim() : null; });
   if (captions.find((c) => c !== null && c.length > GALLERY_CAPTION_MAX_LENGTH)) return buildError(c, "VALIDATION_ERROR", `caption must be ${GALLERY_CAPTION_MAX_LENGTH} characters or less`);
 
-  const fileData = await Promise.all(files.map(async (f) => ({ data: await f.arrayBuffer(), contentType: f.type || "application/octet-stream", name: f.name })));
+  const allowedTypes = new Set<string>(ALLOWED_IMAGE_TYPES);
+  const fileData: Array<{ data: ArrayBuffer; contentType: string; name: string }> = [];
+  for (const file of files) {
+    const data = await file.arrayBuffer();
+    const validation = validateUploadBytes(data, file.type || "application/octet-stream", allowedTypes);
+    if (!validation.ok) return buildError(c, "VALIDATION_ERROR", validation.message);
+    fileData.push({ data, contentType: validation.contentType, name: file.name });
+  }
+  if (!await hasMediaQuotaCapacity(
+    c,
+    `gallery/images/${sessionUser.id}/`,
+    files.length,
+    mediaPolicy.quotas.gallery,
+  )) {
+    return buildError(c, "VALIDATION_ERROR", `Gallery image quota is ${mediaPolicy.quotas.gallery}`);
+  }
   const result = await getService(c).uploadImages(sessionUser.id, fileData, captions);
   if (!result.ok) return buildError(c, result.code, result.message, result.details);
   return c.json({ data: result.data }, 201);
@@ -95,9 +108,7 @@ galleryRoutes.post("/images", async (c) => {
 
 galleryRoutes.post("/videos", async (c) => {
   const sessionUser = await requireGalleryUploader(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   const parsed = createGalleryItemSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid gallery video payload", parsed.error.flatten());
   if (parsed.data.type !== "video") return buildError(c, "VALIDATION_ERROR", "type must be video for this endpoint");
@@ -108,16 +119,13 @@ galleryRoutes.post("/videos", async (c) => {
 
 galleryRoutes.delete("/:id", async (c) => {
   const sessionUser = await requireSessionUser(c);
-  if (sessionUser instanceof Response) return sessionUser;
   const result = await getService(c).deleteItem(sessionUser.id, sessionUser.permissions.has("gallery.delete"), c.req.param("id"));
   return handleResult(c, result);
 });
 
 galleryRoutes.post("/batch-delete", async (c) => {
-  const sessionUser = await requirePermission(c, "gallery.delete");
-  if (sessionUser instanceof Response) return sessionUser;
+  const sessionUser = await requirePermission(c, "gallery.delete", { freshPermissions: true });
   const body = await parseJsonBody(c);
-  if (body instanceof Response) return body;
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
   const ids = (body as { ids: string[] }).ids.filter((id) => typeof id === "string" && id.length > 0);
   if (ids.length === 0) return c.json({ ok: true, deleted: 0 });

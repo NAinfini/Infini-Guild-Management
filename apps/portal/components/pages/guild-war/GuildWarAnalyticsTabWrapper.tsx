@@ -16,6 +16,7 @@ type GuildWarAnalyticsTabWrapperProps = {
   guildWarService: GuildWarService;
   chartThemeName: string;
   chartThemeConfig: EChartsThemeConfig;
+  canManageWeights: boolean;
 };
 
 export function GuildWarAnalyticsTabWrapper({
@@ -24,6 +25,7 @@ export function GuildWarAnalyticsTabWrapper({
   guildWarService,
   chartThemeName,
   chartThemeConfig,
+  canManageWeights,
 }: GuildWarAnalyticsTabWrapperProps) {
   const { t } = useTranslation("guild-war");
   const analytics = useGuildWarAnalytics({
@@ -49,6 +51,7 @@ export function GuildWarAnalyticsTabWrapper({
         chartThemeName={chartThemeName}
         chartThemeConfig={chartThemeConfig}
         loadErrorMessage={t("common:loadError")}
+        canManageWeights={canManageWeights}
       />
     </Suspense>
   );

@@ -12,20 +12,27 @@ interface ErrorBoundaryProps {
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
+  pathname: string;
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, pathname: window.location.pathname };
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error };
+    return { hasError: true, error, pathname: window.location.pathname };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     console.error("[ErrorBoundary] Caught error:", error, errorInfo);
+  }
+
+  componentDidUpdate(): void {
+    if (this.state.hasError && window.location.pathname !== this.state.pathname) {
+      this.setState({ hasError: false, error: null, pathname: window.location.pathname });
+    }
   }
 
   private handleReload = () => {

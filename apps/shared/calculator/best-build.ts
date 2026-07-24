@@ -37,9 +37,9 @@ export function findBestBuild(config: BestBuildConfig): BuildResult[] {
   }
 
   for (const slot of Object.keys(slotCandidates)) {
-    slotCandidates[slot].sort((a, b) => b.score - a.score);
+    slotCandidates[slot]!.sort((a, b) => b.score - a.score);
     if (typeof maxCandidatesPerSlot === "number" && maxCandidatesPerSlot > 0) {
-      slotCandidates[slot] = slotCandidates[slot].slice(0, maxCandidatesPerSlot);
+      slotCandidates[slot] = slotCandidates[slot]!.slice(0, maxCandidatesPerSlot);
     }
   }
 
@@ -71,7 +71,7 @@ export function findBestBuild(config: BestBuildConfig): BuildResult[] {
       const items: Record<string, Equipment | undefined> = {};
       for (let i = 0; i < equippedSlots.length; i++) {
         const e = current[i];
-        items[equippedSlots[i]] = e ?? undefined;
+        items[equippedSlots[i]!] = e ?? undefined;
       }
 
       const stats = calculateTotal(
@@ -91,7 +91,7 @@ export function findBestBuild(config: BestBuildConfig): BuildResult[] {
       };
       for (let i = 0; i < equippedSlots.length; i++) {
         if (current[i]) {
-          (result.equippedItems as Record<string, string>)[equippedSlots[i]] = current[i]!.id;
+          (result.equippedItems as Record<string, string>)[equippedSlots[i]!] = current[i]!.id;
         }
       }
 
@@ -99,7 +99,7 @@ export function findBestBuild(config: BestBuildConfig): BuildResult[] {
       return;
     }
 
-    for (const option of slotOptions[depth]) {
+    for (const option of slotOptions[depth]!) {
       const equipment = option.equipment;
       if (equipment && current.some((item) => item?.id === equipment.id)) {
         continue;

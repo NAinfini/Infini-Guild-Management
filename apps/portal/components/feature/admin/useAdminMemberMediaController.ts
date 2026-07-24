@@ -1,4 +1,4 @@
-import type { ImageGridEditorItem } from "@guild/shared/types/media";
+import type { ImageGridEditorItem } from "@portal/types/media";
 import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";

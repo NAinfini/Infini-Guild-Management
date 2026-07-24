@@ -1,18 +1,20 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
+import { bodyLimit } from "hono/body-limit";
 import { LIMITS } from "@guild/shared/config/limits";
-import { DEFAULT_FEATURE_FLAGS, type FeatureFlags } from "@guild/shared/config/features";
 import { logger } from "./utils/logger";
 import { runDailyMaintenanceCron, runQuarterHourlyMaintenanceCron } from "./crons/maintenance";
 import { WebSocketDO } from "./durable-objects/WebSocketDO";
 import { etagMiddleware } from "./middleware/etag";
+import { featureGateMiddleware } from "./middleware/feature-gate";
 import { handleAppError } from "./middleware/error-handler";
 import { createRateLimitMiddleware } from "./middleware/rate-limit";
-import { securityHeadersMiddleware } from "./middleware/security-headers";
+import { buildSpaHtmlCsp, HSTS_VALUE, PERMISSIONS_POLICY_VALUE, REFERRER_POLICY_VALUE, securityHeadersMiddleware, X_CONTENT_TYPE_VALUE } from "./middleware/security-headers";
 import { sessionMiddleware } from "./middleware/session";
 import { resolveSession, type SessionUser } from "./services/auth";
 import { adminRoutes } from "./routes/admin";
+import { adminMaintenanceRoutes } from "./routes/admin-maintenance";
 import { announcementsRoutes } from "./routes/announcements";
 import { authRoutes } from "./routes/auth";
 import { dashboardRoutes } from "./routes/dashboard";
@@ -20,6 +22,8 @@ import { eventsRoutes } from "./routes/events";
 import { galleryRoutes } from "./routes/gallery";
 import { guildWarRoutes } from "./routes/guild-war";
 import { searchRoutes } from "./routes/search";
+import { storageRoutes } from "./routes/storage";
+import { onboardingRoutes, siteConfigRoutes } from "./routes/site-config";
 import { usersRoutes } from "./routes/users";
 import { wikiRoutes } from "./routes/wiki";
 import { badgeRoutes } from "./routes/badges";
@@ -35,7 +39,6 @@ export type Bindings = {
   SIGNING_SECRET: string;
   SITE_NAME: string;
   SITE_LOGO_URL: string;
-  FEATURES?: string;
 };
 
 type Variables = {
@@ -85,30 +88,59 @@ function isCredentialChangePath(path: string): boolean {
   return path.endsWith("/change-password") || path.endsWith("/change-username");
 }
 
+function rejectBadOrigin(c: Context<{ Bindings: Bindings; Variables: Variables }>): Response | null {
+  const origin = c.req.header("Origin");
+  if (!origin) {
+    return c.json({ error_code: "FORBIDDEN", message: "Origin header required", request_id: c.get("requestId") }, 403);
+  }
+  const portalOrigin = c.env.PORTAL_ORIGIN;
+  const selfOrigin = new URL(c.req.url).origin;
+  if (origin !== selfOrigin && (!portalOrigin || origin !== portalOrigin)) {
+    return c.json({ error_code: "FORBIDDEN", message: "Origin not allowed", request_id: c.get("requestId") }, 403);
+  }
+  return null;
+}
+
 function isUploadPath(path: string): boolean {
-  if (path.includes("/announcements/") && path.endsWith("/images")) {
-    return true;
-  }
-  if (path.includes("/events/") && path.endsWith("/images")) {
-    return true;
-  }
-  if (path.includes("/wiki/articles/") && path.endsWith("/images")) {
-    return true;
-  }
-  if (path.includes("/game-data/") && path.endsWith("/icons")) {
-    return true;
-  }
   return (
-    path.includes("/media/images") ||
-    path.includes("/media/audio") ||
-    path.includes("/gallery/images")
+    path === "/api/events" ||
+    path === "/api/gallery/images" ||
+    path === "/api/game-data" ||
+    path === "/api/game-data/icons" ||
+    path === "/api/admin/site-config/logo" ||
+    /^\/api\/users\/[^/]+\/media\/(?:images|avatar|audio)$/.test(path) ||
+    /^\/api\/(?:announcements|events)\/[^/]+\/images$/.test(path) ||
+    /^\/api\/wiki\/articles\/[^/]+\/images$/.test(path) ||
+    /^\/api\/storage\/items\/[^/]+\/images$/.test(path)
   );
+}
+
+export function getApiRequestBodyLimit(path: string): number {
+  return isUploadPath(path) ? LIMITS.requestBody.upload : LIMITS.requestBody.ordinary;
+}
+
+export function isImmutableBuildAssetPath(pathname: string): boolean {
+  if (!pathname.startsWith("/assets/")) return false;
+  const filename = pathname.split("/").pop() ?? "";
+  return /(?:^|[-.])[A-Za-z0-9_-]{8,}\.(?:css|js|mjs|woff2?|png|jpe?g|webp|svg)$/i.test(filename);
 }
 
 app.use("*", async (c, next) => {
   c.set("requestId", crypto.randomUUID());
   await next();
   c.header("X-Request-Id", c.get("requestId"));
+});
+
+app.use("*", async (c, next) => {
+  const env = c.env as Bindings;
+  if (env.ENVIRONMENT !== "development") {
+    const missing = ["SIGNING_SECRET", "SITE_NAME", "SITE_LOGO_URL"].filter(k => !env[k as keyof Bindings]);
+    if (missing.length > 0) {
+      logger.error("Missing required environment variables", { missing });
+      return c.json({ error_code: "SERVER_ERROR", message: "Server misconfigured", request_id: c.get("requestId") }, 500);
+    }
+  }
+  await next();
 });
 
 app.use(
@@ -120,9 +152,10 @@ app.use(
       if (origin !== allowedOrigin) return null;
       return origin;
     },
-    allowHeaders: ["Content-Type", "If-None-Match", "If-Match", "X-Signature", "X-Timestamp", "X-Request-Id", "X-Requested-With"],
+    allowHeaders: ["Content-Type", "If-None-Match", "If-Match", "X-Signature", "X-Timestamp", "X-Request-Id", "X-Requested-With", "X-System-Test", "X-System-Test-Audit"],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
+    maxAge: 86400,
   }),
 );
 
@@ -130,16 +163,9 @@ app.use("*", securityHeadersMiddleware);
 
 app.use("/api/*", async (c, next) => {
   if (isMutationMethod(c.req.method)) {
-    const origin = c.req.header("Origin");
-    if (!origin) {
-      return c.json({ error_code: "FORBIDDEN", message: "Origin header required", request_id: c.get("requestId") }, 403);
-    }
-    const portalOrigin = c.env.PORTAL_ORIGIN;
-    const selfOrigin = new URL(c.req.url).origin;
-    if (origin !== selfOrigin && (!portalOrigin || origin !== portalOrigin)) {
-      return c.json({ error_code: "FORBIDDEN", message: "Origin not allowed", request_id: c.get("requestId") }, 403);
-    }
-    if (!c.req.header("X-Requested-With")) {
+    const blocked = rejectBadOrigin(c);
+    if (blocked) return blocked;
+    if (c.req.header("X-Requested-With") !== "XMLHttpRequest") {
       return c.json({ error_code: "FORBIDDEN", message: "Missing required header", request_id: c.get("requestId") }, 403);
     }
   }
@@ -159,24 +185,6 @@ app.get("/api/health", async (c) => {
     return c.json({ ok: false, request_id: c.get("requestId") }, 503);
   }
   return c.json({ ok: true, request_id: c.get("requestId") });
-});
-
-app.get("/api/site-config", (c) => {
-  const env = c.env as Bindings;
-  const features: FeatureFlags = { ...DEFAULT_FEATURE_FLAGS };
-  if (env.FEATURES) {
-    try {
-      const overrides = JSON.parse(env.FEATURES) as Partial<FeatureFlags>;
-      for (const key of Object.keys(features) as (keyof FeatureFlags)[]) {
-        if (typeof overrides[key] === "boolean") features[key] = overrides[key];
-      }
-    } catch (e) { logger.error("Malformed FEATURES var — ignoring overrides, using defaults. Fix the FEATURES environment variable.", { error: String(e), featuresRaw: env.FEATURES }); }
-  }
-  return c.json({
-    site_name: env.SITE_NAME,
-    site_logo_url: env.SITE_LOGO_URL,
-    features,
-  });
 });
 
 app.use("/api/auth/login", authRateLimit);
@@ -205,6 +213,17 @@ app.use("/api/*", async (c, next) => {
   }
 
   await next();
+});
+app.use("/api/*", async (c, next) => {
+  if (!isMutationMethod(c.req.method)) return next();
+  return bodyLimit({
+    maxSize: getApiRequestBodyLimit(c.req.path),
+    onError: () => c.json({
+      error_code: "VALIDATION_ERROR",
+      message: "Request body too large",
+      request_id: c.get("requestId"),
+    }, 413),
+  })(c, next);
 });
 app.use("/api/*", etagMiddleware);
 
@@ -237,15 +256,8 @@ app.get("/ws", async (c) => {
   }
 
   // Validate origin to prevent cross-origin WebSocket hijacking
-  const origin = c.req.header("Origin");
-  if (!origin) {
-    return c.json({ error_code: "FORBIDDEN", message: "Origin header required", request_id: c.get("requestId") }, 403);
-  }
-  const portalOrigin = c.env.PORTAL_ORIGIN;
-  const selfOrigin = new URL(c.req.url).origin;
-  if (origin !== selfOrigin && (!portalOrigin || origin !== portalOrigin)) {
-    return c.json({ error_code: "FORBIDDEN", message: "Origin not allowed", request_id: c.get("requestId") }, 403);
-  }
+  const blocked = rejectBadOrigin(c);
+  if (blocked) return blocked;
 
   const session = await resolveSession(c);
   if (!session) {
@@ -256,6 +268,8 @@ app.get("/ws", async (c) => {
   const stub = c.env.WS.get(objectId);
   return stub.fetch(c.req.raw);
 });
+
+app.use("/api/*", featureGateMiddleware);
 
 app.route("/api/auth", authRoutes);
 app.route("/api/dashboard", dashboardRoutes);
@@ -268,7 +282,11 @@ app.route("/api/wiki", wikiRoutes);
 app.route("/api/gallery", galleryRoutes);
 app.route("/api/badges", badgeRoutes);
 app.route("/api/game-data", gameDataRoutes);
+app.route("/api/storage", storageRoutes);
+app.route("/api/site-config", siteConfigRoutes);
+app.route("/api/onboarding", onboardingRoutes);
 app.route("/api/admin", adminRoutes);
+app.route("/api/admin/maintenance", adminMaintenanceRoutes);
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
@@ -278,15 +296,34 @@ export default {
     }
     const assetResponse = await env.ASSETS.fetch(request);
     const contentType = assetResponse.headers.get("content-type") ?? "";
+    const selfHost = url.host;
     if (contentType.includes("text/html")) {
       let html = await assetResponse.text();
       html = html.replaceAll("{{SITE_NAME}}", env.SITE_NAME);
       html = html.replaceAll("{{SITE_LOGO_URL}}", env.SITE_LOGO_URL);
       const response = new Response(html, assetResponse);
-      response.headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+      response.headers.set("Cache-Control", "no-cache, no-store, must-revalidate, no-transform");
+      response.headers.set("X-Content-Type-Options", X_CONTENT_TYPE_VALUE);
+      response.headers.set("X-Frame-Options", "DENY");
+      response.headers.set("Strict-Transport-Security", HSTS_VALUE);
+      response.headers.set("Referrer-Policy", REFERRER_POLICY_VALUE);
+      response.headers.set("Permissions-Policy", PERMISSIONS_POLICY_VALUE);
+      response.headers.set("Content-Security-Policy", buildSpaHtmlCsp(selfHost));
       return response;
     }
-    return assetResponse;
+    if (isImmutableBuildAssetPath(url.pathname)) {
+      const immutableResponse = new Response(assetResponse.body, assetResponse);
+      immutableResponse.headers.set("Cache-Control", "public, max-age=31536000, immutable");
+      immutableResponse.headers.set("X-Content-Type-Options", X_CONTENT_TYPE_VALUE);
+      immutableResponse.headers.set("Strict-Transport-Security", HSTS_VALUE);
+      immutableResponse.headers.set("Referrer-Policy", REFERRER_POLICY_VALUE);
+      return immutableResponse;
+    }
+    const genericResponse = new Response(assetResponse.body, assetResponse);
+    genericResponse.headers.set("X-Content-Type-Options", X_CONTENT_TYPE_VALUE);
+    genericResponse.headers.set("Strict-Transport-Security", HSTS_VALUE);
+    genericResponse.headers.set("Referrer-Policy", REFERRER_POLICY_VALUE);
+    return genericResponse;
   },
   scheduled: async (event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) => {
     const tasks: Promise<void>[] = [];

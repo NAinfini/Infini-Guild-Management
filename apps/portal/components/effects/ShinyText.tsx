@@ -13,7 +13,7 @@ export function ShinyText({ children, className, duration = 2, style }: ShinyTex
     <span
       className={cn(
         "relative inline-block bg-clip-text text-transparent bg-[length:200%_100%] animate-[shimmer_linear_infinite]",
-        "bg-gradient-to-r from-gray-700 via-gray-300 to-gray-700 dark:from-gray-300 dark:via-white dark:to-gray-300",
+        "bg-gradient-to-r from-stone-700 via-amber-200 to-stone-700 dark:from-amber-200 dark:via-amber-50 dark:to-amber-200",
         className,
       )}
       style={{ animationDuration: `${duration}s`, ...style }}

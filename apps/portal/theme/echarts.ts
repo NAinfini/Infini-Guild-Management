@@ -28,12 +28,12 @@ export interface EChartsThemeConfig {
 }
 
 const PALETTE = {
-  primary: "#3B82F6",
-  secondary: "#8B5CF6",
-  accent: "#06B6D4",
-  success: "#22C55E",
-  warning: "#F59E0B",
-  danger: "#EF4444",
+  primary: "#D4A843",
+  secondary: "#8B7355",
+  accent: "#C17F3E",
+  success: "#4ADE80",
+  warning: "#FBBF24",
+  danger: "#F87171",
 } as const;
 
 const COLOR_PALETTE = [
@@ -59,11 +59,11 @@ function buildAxisTemplate(axisLineColor: string, splitLineColor: string, textCo
 export function buildEChartsTheme(mode: "light" | "dark"): EChartsThemeConfig {
   const isDark = mode === "dark";
 
-  const textColor = isDark ? "#E5E7EB" : "#333333";
-  const axisLineColor = isDark ? "rgba(59,130,246,0.2)" : "#cccccc";
-  const splitLineColor = isDark ? "rgba(59,130,246,0.06)" : "#eeeeee";
-  const tooltipBg = isDark ? "#111827" : "#ffffff";
-  const tooltipBorder = isDark ? "rgba(59,130,246,0.3)" : "#cccccc";
+  const textColor = isDark ? "#E2DDD6" : "#333333";
+  const axisLineColor = isDark ? "rgba(212,168,67,0.2)" : "#cccccc";
+  const splitLineColor = isDark ? "rgba(212,168,67,0.06)" : "#eeeeee";
+  const tooltipBg = isDark ? "#141418" : "#ffffff";
+  const tooltipBorder = isDark ? "rgba(212,168,67,0.3)" : "#cccccc";
 
   const axisTemplate = buildAxisTemplate(axisLineColor, splitLineColor, textColor);
 
