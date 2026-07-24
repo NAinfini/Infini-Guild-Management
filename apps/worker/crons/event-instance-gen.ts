@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
+import { computeNextOccurrence } from "@guild/shared/utils/recurrence";
 import { events, recurringTemplates } from "../db/schema";
 import type { Bindings } from "../index";
 import { logger } from "../utils/logger";
@@ -14,8 +15,6 @@ type RecurrenceRule = {
   endAfter?: number;
   endDate?: string;
 };
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 function parseRecurrenceRule(value: string | null): RecurrenceRule | null {
   if (!value) {
@@ -91,53 +90,6 @@ function parseStartTime(startTime: string): { utcHour: number; utcMinute: number
     return null;
   }
   return { utcHour, utcMinute };
-}
-
-function computeNextOccurrence(anchor: Date, utcHour: number, utcMinute: number, rule: RecurrenceRule, referenceDate: Date): Date | null {
-  if (rule.frequency === "daily") {
-    const next = new Date(anchor);
-    next.setUTCDate(next.getUTCDate() + rule.interval);
-    next.setUTCHours(utcHour, utcMinute, 0, 0);
-    return isValidDate(next) ? next : null;
-  }
-
-  if (rule.frequency === "weekly") {
-    const days = rule.daysOfWeek && rule.daysOfWeek.length > 0
-      ? [...rule.daysOfWeek].sort((a, b) => a - b)
-      : [referenceDate.getUTCDay()];
-
-    const cursor = new Date(anchor);
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-    cursor.setUTCHours(utcHour, utcMinute, 0, 0);
-
-    const maxScan = rule.interval * 7 + 7;
-    for (let i = 0; i < maxScan; i++) {
-      const candidateDay = cursor.getUTCDay();
-      if (days.includes(candidateDay)) {
-        const refDay = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate()));
-        const cursorDay = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), cursor.getUTCDate()));
-        const daysDiff = Math.round((cursorDay.getTime() - refDay.getTime()) / DAY_MS);
-        const weeksDiff = Math.floor(daysDiff / 7);
-        if (weeksDiff >= 0 && weeksDiff % rule.interval === 0) {
-          return cursor;
-        }
-      }
-      cursor.setUTCDate(cursor.getUTCDate() + 1);
-    }
-    return null;
-  }
-
-  // Monthly
-  const next = new Date(anchor);
-  next.setUTCMonth(next.getUTCMonth() + rule.interval);
-  if (rule.dayOfMonth) {
-    const year = next.getUTCFullYear();
-    const month = next.getUTCMonth();
-    const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-    next.setUTCDate(Math.min(rule.dayOfMonth, lastDay));
-  }
-  next.setUTCHours(utcHour, utcMinute, 0, 0);
-  return isValidDate(next) ? next : null;
 }
 
 export function computeHorizon(now: Date, offsetMinutes = 0): Date {

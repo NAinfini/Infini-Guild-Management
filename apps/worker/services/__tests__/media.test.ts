@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { detectContentTypeFromBytes, validateMagicBytes, validateUploadBytes } from "../media";
+import {
+  captureUploadValidation,
+  detectContentTypeFromBytes,
+  validateMagicBytes,
+  validateUploadBytes,
+} from "../media";
 
 describe("media magic-byte validation", () => {
   it("rejects files whose bytes do not match the declared image type", () => {
@@ -67,5 +72,21 @@ describe("media magic-byte validation", () => {
       ok: true,
       contentType: "image/svg+xml",
     });
+  });
+
+  it("maps upload validation failures to service validation errors", async () => {
+    await expect(captureUploadValidation(async () => {
+      throw new Error("Unsupported file type: text/plain");
+    })).resolves.toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      message: "Unsupported file type: text/plain",
+    });
+  });
+
+  it("does not hide unrelated storage failures", async () => {
+    await expect(captureUploadValidation(async () => {
+      throw new Error("R2 unavailable");
+    })).rejects.toThrow("R2 unavailable");
   });
 });

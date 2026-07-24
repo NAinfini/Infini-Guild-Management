@@ -1,13 +1,17 @@
 import { create } from "zustand";
 import { activeGame } from "@guild/shared/games";
+import type {
+  AnalyticsAggregation,
+  AnalyticsDatePreset,
+  AnalyticsMetricKey,
+  AnalyticsMode,
+  HistoryViewMode,
+  TeamAggregation,
+} from "../types/guild-war";
 
-type AnalyticsMode = "player" | "rankings" | "teams" | "radar" | "wars";
-type AnalyticsMetricKey = string;
-type AnalyticsAggregation = "total" | "average" | "best" | "median";
-export type AnalyticsDatePreset = "5" | "10" | "20" | "all";
-export type HistoryViewMode = "table" | "chart";
-type TeamAggregation = "total" | "average";
 type ModifierWeights = Record<string, number>;
+
+export type { AnalyticsDatePreset, HistoryViewMode } from "../types/guild-war";
 
 const DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS: ModifierWeights = { ...activeGame.war.modifierWeights };
 

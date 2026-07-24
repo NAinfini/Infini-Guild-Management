@@ -17,22 +17,10 @@ import {
   Textarea,
 } from "@mantine/core";
 import { SaveIcon } from "@portal/components/icons";
+import type { AdminUserRow, MemberDetailFormState } from "@portal/types/admin";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { UsersListResponse } from "../../../services/UserService";
 import styles from "./AdminMemberDetailModal.module.css";
-
-type AdminUserRow = UsersListResponse["data"][number];
-
-type MemberDetailFormState = {
-  power: number;
-  classes: string[];
-  titleHtml: string;
-  bio: string;
-  notes: string;
-  role: string;
-  isActive: boolean;
-};
 
 type AdminMemberDetailModalProps = {
   open: boolean;
@@ -54,8 +42,6 @@ function FieldSection({ label, children }: { label: string; children: ReactNode 
     </div>
   );
 }
-
-export type { MemberDetailFormState };
 
 export function AdminMemberDetailModal({
   open,

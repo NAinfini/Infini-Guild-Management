@@ -27,7 +27,7 @@ body:
     attributes:
       label: Environment
       description: Operating system, Node.js version, and pnpm version.
-      placeholder: Windows 11, Node 22.x, pnpm 10.6.2
+      placeholder: Windows 11, Node 24.18.x, pnpm 11.17.x
     validations:
       required: true
   - type: textarea

@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { activeGame } from "@guild/shared/games";
-import type { AnalyticsAggregation, AnalyticsMetricKey, AnalyticsTableColumn } from "./useGuildWarAnalytics";
+import type { AnalyticsAggregation, AnalyticsMetricKey, AnalyticsTableColumn } from "../../types/guild-war";
 import { aggregateValues, computeStdDev, hashToPaletteColor } from "@portal/utils/guild-war-analytics";
 
 type WarDetail = {

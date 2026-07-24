@@ -19,6 +19,7 @@ import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { memberProfileClasses, memberProfiles, sessions, userAuthPassword, users } from "../db/schema";
+import { captureUploadValidation } from "./media";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, parseStringArray, parseRecord } from "./helpers";
 import { logger } from "../utils/logger";
@@ -107,11 +108,6 @@ export type UserServiceDeps = {
 // --- Helpers ---
 
 const TITLE_HTML_ALLOWED_TAGS = new Set(["span", "b", "strong", "i", "em", "u", "br"]);
-const UPLOAD_VALIDATION_ERROR_PREFIXES = [
-  "File bytes do not match declared type:",
-  "Unsupported file type:",
-];
-
 const STYLE_PROP_ALLOWLIST = new Set(["color", "font-weight", "font-style", "text-decoration", "background-color"]);
 
 function sanitizeStyleAttr(raw: string): string {
@@ -140,17 +136,6 @@ function sanitizeTitleHtml(html: string): string {
     }
     return `<${slash}${tagName.toLowerCase()}${styleAttr}>`;
   });
-}
-
-async function captureUploadValidation<T>(operation: () => Promise<T>): Promise<ServiceResult<T>> {
-  try {
-    return ok(await operation());
-  } catch (error) {
-    if (error instanceof Error && UPLOAD_VALIDATION_ERROR_PREFIXES.some((prefix) => error.message.startsWith(prefix))) {
-      return err("VALIDATION_ERROR", error.message);
-    }
-    throw error;
-  }
 }
 
 function toUserPayload(user: UserRow) {

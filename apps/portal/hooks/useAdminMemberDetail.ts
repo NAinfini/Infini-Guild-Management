@@ -2,12 +2,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { queryKeys } from "../api/query-keys";
-import type { MemberDetailFormState } from "../components/feature/admin/AdminMemberDetailModal";
 import { useAdminMemberMediaController } from "../components/feature/admin/useAdminMemberMediaController";
+import type { AdminUserRow, MemberDetailFormState } from "../types/admin";
 import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
-import type { UsersListResponse } from "../services/UserService";
-
-type AdminUserRow = UsersListResponse["data"][number];
 
 const DEFAULT_FORM: MemberDetailFormState = {
   power: 0,

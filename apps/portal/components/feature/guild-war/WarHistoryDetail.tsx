@@ -29,7 +29,7 @@ import type {
   HistoryMemberStat,
   HistoryMvpSummary,
   HistoryViewMode,
-} from "./WarHistoryTab";
+} from "@portal/types/guild-war";
 
 echarts.use([
   BarChart,

@@ -3,7 +3,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { WikiCategoryDraft } from "../components/feature/wiki/WikiCategoryEditorCard";
+import type { WikiCategoryDraft } from "../types/wiki";
 import { useAppError } from "./useAppError";
 import { notifySuccess } from "../utils/notifications";
 import {

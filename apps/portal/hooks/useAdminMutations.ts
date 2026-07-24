@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createElement, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifySuccess, notifyWarning, notifyError } from "../utils/notifications";
-import type { MemberDetailFormState } from "../components/feature/admin/AdminMemberDetailModal";
+import type { MemberDetailFormState } from "../types/admin";
 import type { ClassName } from "@guild/shared";
 import {
   adminUpdateProfile,

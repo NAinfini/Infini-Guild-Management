@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { Badge } from "@mantine/core";
 import type { ColumnDef } from "@tanstack/react-table";
 import { resolveResultTagColor } from "@portal/utils/guild-war";
-import type { HistorySummaryRow } from "../../components/feature/guild-war/WarHistoryTab";
+import type { HistorySummaryRow } from "../../types/guild-war";
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);

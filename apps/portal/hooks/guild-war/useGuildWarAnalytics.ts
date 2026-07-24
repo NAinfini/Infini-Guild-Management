@@ -10,7 +10,8 @@ import {
 import { fetchAbsencesWindow } from "../../services/UserService";
 import { queryKeys } from "../../api/query-keys";
 import { useShallow } from "zustand/react/shallow";
-import { useGuildWarStore, type AnalyticsDatePreset } from "../../stores/guildWar";
+import { useGuildWarStore } from "../../stores/guildWar";
+import type { AnalyticsDatePreset } from "../../types/guild-war";
 import { copyPlainText } from "../../utils/copy";
 import { useGuildWarAnalyticsComputed } from "./useGuildWarAnalyticsComputed";
 import { notifySuccess, notifyWarning } from "../../utils/notifications";
@@ -20,19 +21,11 @@ import {
   metricValueFromWarMember,
   metricValueOrNullFromWarMember,
   normalizeMetricValue,
-  type AnalyticsAggregation,
-  type AnalyticsMetricKey,
 } from "../../utils/guild-war-analytics";
 
 const message = {
   success: (content: string) => notifySuccess(content),
   warning: (content: string) => notifyWarning(content),
-};
-
-type AnalyticsTableColumn = {
-  title: string;
-  key: string;
-  dataIndex?: string;
 };
 
 type UseGuildWarAnalyticsParams = {
@@ -364,4 +357,4 @@ export {
   normalizeMetricValue,
 };
 
-export type { AnalyticsMetricKey, AnalyticsAggregation, AnalyticsTableColumn };
+export type { AnalyticsMetricKey, AnalyticsAggregation, AnalyticsTableColumn } from "../../types/guild-war";

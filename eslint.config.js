@@ -84,6 +84,27 @@ export default [
     },
   },
   {
+    files: ["apps/portal/hooks/**/*.ts", "apps/portal/hooks/**/*.tsx"],
+    ignores: [
+      // These two controllers still compose feature UI and are migration boundaries.
+      "apps/portal/hooks/useAdminMemberDetail.ts",
+      "apps/portal/hooks/guild-war/useGuildWarDragController.tsx",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/components/feature/**"],
+              message: "Hooks must depend on domain types/services, not feature component implementations.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["apps/worker/**/*.ts"],
     ignores: [
       "apps/worker/**/*.test.ts",

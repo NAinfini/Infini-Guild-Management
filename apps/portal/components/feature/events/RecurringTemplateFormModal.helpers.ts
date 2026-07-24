@@ -1,5 +1,5 @@
 import { EVENT_TYPES, type RecurringTemplate } from "@guild/shared";
-import { localWeekdayToUtc, utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
+import { computeNextOccurrence, localWeekdayToUtc, utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
 
 export { localWeekdayToUtc, utcWeekdayToLocal };
 
@@ -144,8 +144,6 @@ export type LifecyclePreview = {
   endTime: Date | null;
 };
 
-const DAY_MS = 86_400_000;
-
 function parseStartTimeToUtc(
   startTime: string,
   timezoneOffsetMinutes: number,
@@ -159,59 +157,6 @@ function parseStartTimeToUtc(
   let totalMinutesUtc = totalMinutesLocal - timezoneOffsetMinutes;
   totalMinutesUtc = ((totalMinutesUtc % 1440) + 1440) % 1440;
   return { utcHour: Math.floor(totalMinutesUtc / 60), utcMinute: totalMinutesUtc % 60 };
-}
-
-function computeNextOccurrence(
-  anchor: Date,
-  utcHour: number,
-  utcMinute: number,
-  rule: { frequency: RecurrenceFreq; interval: number; daysOfWeek?: number[]; dayOfMonth?: number },
-  referenceDate: Date,
-): Date | null {
-  if (rule.frequency === "daily") {
-    const next = new Date(anchor);
-    next.setUTCDate(next.getUTCDate() + rule.interval);
-    next.setUTCHours(utcHour, utcMinute, 0, 0);
-    return next;
-  }
-
-  if (rule.frequency === "weekly") {
-    const days =
-      rule.daysOfWeek && rule.daysOfWeek.length > 0
-        ? [...rule.daysOfWeek].sort((a, b) => a - b)
-        : [referenceDate.getUTCDay()];
-
-    const cursor = new Date(anchor);
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-    cursor.setUTCHours(utcHour, utcMinute, 0, 0);
-
-    const maxScan = rule.interval * 7 + 7;
-    for (let i = 0; i < maxScan; i++) {
-      const candidateDay = cursor.getUTCDay();
-      if (days.includes(candidateDay)) {
-        const refDay = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate()));
-        const cursorDay = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), cursor.getUTCDate()));
-        const daysDiff = Math.round((cursorDay.getTime() - refDay.getTime()) / DAY_MS);
-        const weeksDiff = Math.floor(daysDiff / 7);
-        if (weeksDiff >= 0 && weeksDiff % rule.interval === 0) {
-          return cursor;
-        }
-      }
-      cursor.setUTCDate(cursor.getUTCDate() + 1);
-    }
-    return null;
-  }
-
-  const next = new Date(anchor);
-  next.setUTCMonth(next.getUTCMonth() + rule.interval);
-  if (rule.dayOfMonth) {
-    const year = next.getUTCFullYear();
-    const month = next.getUTCMonth();
-    const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-    next.setUTCDate(Math.min(rule.dayOfMonth, lastDay));
-  }
-  next.setUTCHours(utcHour, utcMinute, 0, 0);
-  return next;
 }
 
 export function computeNextLifecyclePreview(

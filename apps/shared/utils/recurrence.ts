@@ -35,3 +35,67 @@ export function utcWeekdayToLocal(utcDay: number, startAtIso: string): number {
   if (shift === null) return utcDay;
   return (utcDay - shift + 7) % 7;
 }
+
+export type NextOccurrenceRule = {
+  frequency: "daily" | "weekly" | "monthly";
+  interval: number;
+  daysOfWeek?: number[];
+  dayOfMonth?: number;
+};
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Return the next UTC occurrence after `anchor`.
+ * Shared by the portal preview and the worker generator so their schedules
+ * cannot drift.
+ */
+export function computeNextOccurrence(
+  anchor: Date,
+  utcHour: number,
+  utcMinute: number,
+  rule: NextOccurrenceRule,
+  referenceDate: Date,
+): Date | null {
+  if (rule.frequency === "daily") {
+    const next = new Date(anchor);
+    next.setUTCDate(next.getUTCDate() + rule.interval);
+    next.setUTCHours(utcHour, utcMinute, 0, 0);
+    return Number.isFinite(next.getTime()) ? next : null;
+  }
+
+  if (rule.frequency === "weekly") {
+    const days =
+      rule.daysOfWeek && rule.daysOfWeek.length > 0
+        ? [...rule.daysOfWeek].sort((a, b) => a - b)
+        : [referenceDate.getUTCDay()];
+    const cursor = new Date(anchor);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    cursor.setUTCHours(utcHour, utcMinute, 0, 0);
+
+    const maxScan = rule.interval * 7 + 7;
+    for (let i = 0; i < maxScan; i++) {
+      if (days.includes(cursor.getUTCDay())) {
+        const refDay = Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate());
+        const cursorDay = Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), cursor.getUTCDate());
+        const weeksDiff = Math.floor(Math.round((cursorDay - refDay) / DAY_MS) / 7);
+        if (weeksDiff >= 0 && weeksDiff % rule.interval === 0) {
+          return cursor;
+        }
+      }
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return null;
+  }
+
+  const next = new Date(anchor);
+  next.setUTCMonth(next.getUTCMonth() + rule.interval);
+  if (rule.dayOfMonth) {
+    const year = next.getUTCFullYear();
+    const month = next.getUTCMonth();
+    const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    next.setUTCDate(Math.min(rule.dayOfMonth, lastDay));
+  }
+  next.setUTCHours(utcHour, utcMinute, 0, 0);
+  return Number.isFinite(next.getTime()) ? next : null;
+}

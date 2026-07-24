@@ -43,6 +43,12 @@ import { CanvasRenderer } from "echarts/renderers";
 import ReactEChartsCore from "echarts-for-react/esm/core";
 import { useEffect, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
+import type {
+  AnalyticsAggregation,
+  AnalyticsDatePreset,
+  AnalyticsMetricKey,
+  AnalyticsMode,
+} from "@portal/types/guild-war";
 import type { EChartsThemeConfig } from "../../../theme/echarts";
 import type { GuildWarAnalyticsController } from "../../../hooks/guild-war/useGuildWarAnalytics";
 import { GuildWarAnalyticsChartPanel } from "./GuildWarAnalyticsChartPanel";
@@ -58,20 +64,6 @@ echarts.use([
   RadarComponent,
   CanvasRenderer,
 ]);
-
-type AnalyticsMode = "player" | "rankings" | "teams" | "radar" | "wars";
-type AnalyticsMetricKey =
-  | "kills"
-  | "deaths"
-  | "assists"
-  | "damage"
-  | "healing"
-  | "building_damage"
-  | "credits"
-  | "damage_taken"
-  | "kda";
-type AnalyticsAggregation = "total" | "average" | "best" | "median";
-type AnalyticsDatePreset = "5" | "10" | "20" | "all";
 
 type GuildWarAnalyticsTabProps = {
   analytics: GuildWarAnalyticsController;

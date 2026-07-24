@@ -1,7 +1,7 @@
 import { activeGame } from "@guild/shared/games";
+import type { AnalyticsAggregation, AnalyticsMetricKey } from "../types/guild-war";
 
-export type AnalyticsMetricKey = string;
-export type AnalyticsAggregation = "total" | "average" | "best" | "median";
+export type { AnalyticsAggregation, AnalyticsMetricKey } from "../types/guild-war";
 
 const METRIC_LABEL_MAP: Record<string, string> = Object.fromEntries(
   activeGame.war.memberStats.map((stat) => [stat.key, stat.label.replace(/^guild-war:/, "")]),

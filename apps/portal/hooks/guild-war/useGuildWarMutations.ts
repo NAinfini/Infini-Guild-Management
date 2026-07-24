@@ -9,7 +9,7 @@ import {
 } from "../../services/GuildWarService";
 import { useAppError } from "../useAppError";
 import { queryKeys } from "../../api/query-keys";
-import type { HistoryMemberStatsUpdate } from "../../components/feature/guild-war/WarHistoryTab";
+import type { HistoryMemberStatsUpdate } from "../../types/guild-war";
 import { notifySuccess, notifyWarning } from "../../utils/notifications";
 
 const message = {

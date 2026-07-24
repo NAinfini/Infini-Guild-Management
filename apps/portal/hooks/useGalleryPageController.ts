@@ -21,7 +21,7 @@ import { useAuthStore } from "../stores/auth";
 import { useEffectivePermissions } from "./useEffectivePermissions";
 import { DEFAULT_IMAGE_WEBP_QUALITY, convertImageToWebP } from "@guild/shared/utils/media";
 import { isAllowedGalleryVideoUrl, toEmbedVideoUrl } from "@guild/shared/utils/video";
-import type { UploadStatus, UploadTask } from "../components/feature/gallery/shared";
+import type { UploadStatus, UploadTask } from "../types/media";
 import { resolveGalleryMediaUrl } from "../utils/media";
 
 const MAX_GALLERY_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;

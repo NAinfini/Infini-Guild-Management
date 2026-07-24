@@ -30,6 +30,7 @@ import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { onboardingConfig, memberOnboardingState, siteConfig } from "../db/schema";
 import type { WriteAuditLogInput } from "./audit";
+import { captureUploadValidation } from "./media";
 import { err, ok, type ServiceResult } from "./result";
 
 type DrizzleDb = DrizzleD1Database<Record<string, unknown>>;
@@ -45,11 +46,6 @@ type SiteConfigDeps = {
 
 const DEFAULT_ID = "default";
 const SITE_LOGO_ROUTE = "/api/site-config/logo";
-const UPLOAD_VALIDATION_ERROR_PREFIXES = [
-  "File bytes do not match declared type:",
-  "Unsupported file type:",
-];
-
 type SiteConfigRow = typeof siteConfig.$inferSelect;
 type OnboardingConfigRow = typeof onboardingConfig.$inferSelect;
 type MemberOnboardingStateRow = typeof memberOnboardingState.$inferSelect;
@@ -154,17 +150,6 @@ function siteLogoKeyFromUrl(url: string | null | undefined): string | null {
     return key?.startsWith("site/logo/") ? key : null;
   } catch {
     return null;
-  }
-}
-
-async function captureUploadValidation<T>(operation: () => Promise<T>): Promise<ServiceResult<T>> {
-  try {
-    return ok(await operation());
-  } catch (error) {
-    if (error instanceof Error && UPLOAD_VALIDATION_ERROR_PREFIXES.some((prefix) => error.message.startsWith(prefix))) {
-      return err("VALIDATION_ERROR", error.message);
-    }
-    throw error;
   }
 }
 

@@ -6,17 +6,10 @@ import { PortalCard } from "../../shared/PortalCard";
 import { ActionIcon, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { PlusIcon, SaveIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { IconGripVertical } from "@tabler/icons-react";
+import type { WikiCategoryDraft } from "@portal/types/wiki";
 import type { CSSProperties, ReactNode } from "react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-
-export type WikiCategoryDraft = {
-  id: string;
-  name: string;
-  slug: string;
-  parent_id: string;
-  sort_order: number;
-};
 
 type CategoryTreeNode = {
   id: string;

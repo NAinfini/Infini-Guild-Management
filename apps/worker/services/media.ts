@@ -1,5 +1,6 @@
 ﻿import type { Context } from "hono";
 import type { Bindings } from "../index";
+import { err, ok, type ServiceResult } from "./result";
 
 const MAGIC_BYTES: Record<string, { offset: number; bytes: number[] }[]> = {
   "image/jpeg": [{ offset: 0, bytes: [0xFF, 0xD8, 0xFF] }],
@@ -17,6 +18,25 @@ const MAGIC_BYTES: Record<string, { offset: number; bytes: number[] }[]> = {
 export type UploadByteValidationResult =
   | { ok: true; contentType: string }
   | { ok: false; message: string };
+
+const UPLOAD_VALIDATION_ERROR_PREFIXES = [
+  "File bytes do not match declared type:",
+  "Unsupported file type:",
+];
+
+export async function captureUploadValidation<T>(operation: () => Promise<T>): Promise<ServiceResult<T>> {
+  try {
+    return ok(await operation());
+  } catch (error) {
+    if (
+      error instanceof Error
+      && UPLOAD_VALIDATION_ERROR_PREFIXES.some((prefix) => error.message.startsWith(prefix))
+    ) {
+      return err("VALIDATION_ERROR", error.message);
+    }
+    throw error;
+  }
+}
 
 export function validateMagicBytes(buffer: ArrayBuffer, declaredType: string): boolean {
   if (declaredType === "image/svg+xml") return isSvg(buffer);
