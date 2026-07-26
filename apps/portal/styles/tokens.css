@@ -1,0 +1,76 @@
+/* ═══════════════════════════════════════════════════════════════
+ * L1 · 原始色板 —— 全前端唯一允许出现 hex 的文件
+ *
+ * 这一层不表达语义，只提供色值。哪个档位当文字、哪个当填充，
+ * 由 semantic.css 决定。改这里等于改色板本身；改语义去改 L2。
+ *
+ * 三个 accent 各 7 档。命名沿用 50/100/300/500/600/700/900 的
+ * 惯例，中间档留空是刻意的 —— 用不到的档位不预先发明。
+ *
+ * 每个 accent 的 500 是深色模式的文字档，700 是浅色模式的文字档。
+ * 同一个 hex 不能兼任两者：#2FB49C 作为文字放在白底上只有 2.6:1。
+ * 900 是「填充上的深色文字」专用墨色。
+ * 300/100/50 只做装饰（tint、border、hover 底），其上不放文字。
+ * ═══════════════════════════════════════════════════════════════ */
+:root {
+  /* ── 青瓷 teal ── */
+  --palette-teal-50: #E8F7F3;
+  --palette-teal-100: #C6EBE2;
+  --palette-teal-300: #6FCFBB;
+  --palette-teal-500: #2FB49C;
+  --palette-teal-600: #23907D;
+  --palette-teal-700: #0F6E56;
+  --palette-teal-900: #04342C;
+
+  /* ── 靛蓝 indigo ── */
+  --palette-indigo-50: #EDF1FE;
+  --palette-indigo-100: #D3DEFC;
+  --palette-indigo-300: #A3BAFA;
+  --palette-indigo-500: #6E93F7;
+  --palette-indigo-600: #4470E8;
+  --palette-indigo-700: #185FA5;
+  --palette-indigo-900: #042C53;
+
+  /* ── 紫罗兰 violet ── */
+  --palette-violet-50: #F2EFFE;
+  --palette-violet-100: #E0DAFC;
+  --palette-violet-300: #C0B5F9;
+  --palette-violet-500: #9C8CF5;
+  --palette-violet-600: #7460E9;
+  --palette-violet-700: #534AB7;
+  --palette-violet-900: #26215C;
+
+  /* ── 中性 · 暖色温 ──
+   * 浅色端是「纸」不是「屏」：暖白纸 #FAF9F5 承载纯白卡片。
+   * 深色端沿用现有的四级近黑，避免顺手改掉一整套已调好的深色表面。
+   * 暖墨 #1A1815 是现有 399 处字面量的语义，本次只把它 token 化，不换色相。 */
+  --palette-neutral-0: #FFFFFF;
+  --palette-neutral-25: #FAF9F5;
+  --palette-neutral-50: #F1EEE7;
+  --palette-neutral-100: #E3E1D9;
+  --palette-neutral-200: #D6D2C8;
+  --palette-neutral-400: #A39D94;
+  --palette-neutral-500: #6B665E;
+  --palette-neutral-700: #3A3833;
+  --palette-neutral-800: #1A1815;
+  --palette-neutral-850: #1C1C22;
+  --palette-neutral-900: #141418;
+  --palette-neutral-950: #0A0A0F;
+
+  /* 深色模式主文字档 —— 现有 #F0EDE8 字面量的 token 化。
+   * 不属于「暖色温」阶梯序列（不参与 25/50/100/200… 分档），
+   * 单独命名以标注其唯一用途：dark 模式 --text-primary。 */
+  --palette-neutral-100-warm: #F0EDE8;
+
+  /* ── 语义色 ──
+   * 亮档给深色模式（近黑底），深档给浅色模式（纸底）。
+   * 这个分档规则是现有 styles.css:104-111 注释里已经确立的，此处沿用。 */
+  --palette-success-bright: #4ADE80;
+  --palette-success-deep: #15803D;
+  --palette-warning-bright: #FBBF24;
+  --palette-warning-deep: #A16207;
+  --palette-danger-bright: #F87171;
+  --palette-danger-deep: #DC2626;
+  --palette-info-bright: #7DD3FC;
+  --palette-info-deep: #0369A1;
+}

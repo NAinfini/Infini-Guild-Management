@@ -1,0 +1,124 @@
+/* ═══════════════════════════════════════════════════════════════
+ * L2 · 语义 token
+ *
+ * 两个彼此正交的维度：
+ *   [data-theme]  = light | dark        → 重映射表面 / 文字 / 边框 / 语义色
+ *   [data-accent] = teal | indigo | violet → 重映射 --accent-*
+ *
+ * 正交意味着 3 主色 × 2 模式 = 6 种组合只需要 2 + 3 = 5 个块，
+ * 而不是 6 套定义。
+ *
+ * --accent-text 与 --accent-on-fill 必须分模式取不同档位，
+ * 因此 accent 块只能定义 fill / tint / border 这些与模式无关的部分，
+ * 文字档在 theme 块里按模式挑。见下方 --accent-text 的两处定义。
+ * ═══════════════════════════════════════════════════════════════ */
+
+/* ── 模式：浅色 ── */
+[data-theme="light"] {
+  --surface-sunken: var(--palette-neutral-50);
+  --surface-base: var(--palette-neutral-25);
+  --surface-raised: var(--palette-neutral-0);
+  --surface-overlay: var(--palette-neutral-0);
+
+  --text-primary: var(--palette-neutral-800);
+  --text-secondary: var(--palette-neutral-700);
+  --text-muted: var(--palette-neutral-500);
+
+  --border-subtle: var(--palette-neutral-100);
+  --border-strong: var(--palette-neutral-200);
+
+  --status-success: var(--palette-success-deep);
+  --status-warning: var(--palette-warning-deep);
+  --status-danger: var(--palette-danger-deep);
+  --status-info: var(--palette-info-deep);
+  --status-on-fill: var(--palette-neutral-0);
+
+  /* accent 的文字档：浅色模式用 700 */
+  --accent-text: var(--accent-700);
+  /* accent 填充上的文字：浅色模式在 500 填充上放 900 墨 */
+  --accent-on-fill: var(--accent-900);
+
+  --shadow-xs: 0 1px 2px rgb(10 10 15 / 0.06);
+  --shadow-sm: 0 1px 3px rgb(10 10 15 / 0.08), 0 1px 2px rgb(10 10 15 / 0.04);
+  --shadow-md: 0 4px 12px rgb(10 10 15 / 0.10), 0 1px 3px rgb(10 10 15 / 0.06);
+  --shadow-lg: 0 8px 24px rgb(10 10 15 / 0.14), 0 2px 6px rgb(10 10 15 / 0.06);
+}
+
+/* ── 模式：深色 ── */
+[data-theme="dark"] {
+  --surface-sunken: var(--palette-neutral-950);
+  --surface-base: var(--palette-neutral-900);
+  --surface-raised: var(--palette-neutral-850);
+  --surface-overlay: var(--palette-neutral-850);
+
+  --text-primary: var(--palette-neutral-100-warm);
+  --text-secondary: var(--palette-neutral-200);
+  --text-muted: var(--palette-neutral-400);
+
+  --border-subtle: var(--palette-neutral-700);
+  --border-strong: var(--palette-neutral-500);
+
+  --status-success: var(--palette-success-bright);
+  --status-warning: var(--palette-warning-bright);
+  --status-danger: var(--palette-danger-bright);
+  --status-info: var(--palette-info-bright);
+  --status-on-fill: var(--palette-neutral-950);
+
+  /* accent 的文字档：深色模式用 500 */
+  --accent-text: var(--accent-500);
+  --accent-on-fill: var(--accent-900);
+
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.20);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.24), 0 1px 2px rgb(0 0 0 / 0.16);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.28), 0 1px 3px rgb(0 0 0 / 0.16);
+  --shadow-lg: 0 8px 24px rgb(0 0 0 / 0.32), 0 2px 6px rgb(0 0 0 / 0.16);
+}
+
+/* ── 主色：青瓷 ── */
+[data-accent="teal"] {
+  --accent-50: var(--palette-teal-50);
+  --accent-100: var(--palette-teal-100);
+  --accent-300: var(--palette-teal-300);
+  --accent-500: var(--palette-teal-500);
+  --accent-600: var(--palette-teal-600);
+  --accent-700: var(--palette-teal-700);
+  --accent-900: var(--palette-teal-900);
+}
+
+/* ── 主色：靛蓝 ── */
+[data-accent="indigo"] {
+  --accent-50: var(--palette-indigo-50);
+  --accent-100: var(--palette-indigo-100);
+  --accent-300: var(--palette-indigo-300);
+  --accent-500: var(--palette-indigo-500);
+  --accent-600: var(--palette-indigo-600);
+  --accent-700: var(--palette-indigo-700);
+  --accent-900: var(--palette-indigo-900);
+}
+
+/* ── 主色：紫罗兰 ── */
+[data-accent="violet"] {
+  --accent-50: var(--palette-violet-50);
+  --accent-100: var(--palette-violet-100);
+  --accent-300: var(--palette-violet-300);
+  --accent-500: var(--palette-violet-500);
+  --accent-600: var(--palette-violet-600);
+  --accent-700: var(--palette-violet-700);
+  --accent-900: var(--palette-violet-900);
+}
+
+/* ── 与模式无关的 accent 派生 ── */
+:root {
+  --accent-fill: var(--accent-500);
+  --accent-fill-hover: var(--accent-600);
+  --accent-border: var(--accent-300);
+}
+
+[data-theme="light"] {
+  --accent-tint: var(--accent-50);
+}
+
+[data-theme="dark"] {
+  /* 深色模式没有「更浅的一档」可用作 tint，用 accent 混进表面。 */
+  --accent-tint: color-mix(in srgb, var(--accent-500) 14%, var(--surface-raised));
+}

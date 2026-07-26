@@ -1,0 +1,66 @@
+/* ═══════════════════════════════════════════════════════════════
+ * L3 · 尺寸标度 —— 不随模式或主色变化
+ *
+ * 数值原样搬自 styles.css 的 :root 块。这里是它们唯一的定义处：
+ * ThemeProvider 的 createTheme 此前把 radius / spacing / headings
+ * 又写了一遍（手工对齐，两份数值），改造后它改为读这些变量。
+ * ═══════════════════════════════════════════════════════════════ */
+:root {
+  /* 布局 */
+  --header-height: 64px;
+  --header-height-mobile: 56px;
+  --sidebar-width: 236px;
+  --sidebar-collapsed-width: 84px;
+  --bottom-nav-height: 64px;
+  --scrollbar-size: 10px;
+
+  /* 层级 */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-dropdown: 100;
+  --z-modal: 200;
+  --z-toast: 300;
+
+  /* 圆角 */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  /* 字号标度 —— 五档，靠字号与字重承担层次，不靠颜色 */
+  --text-page: 20px;
+  --text-section: 18px;
+  --text-card: 16px;
+  --text-body: 14px;
+  --text-meta: 12px;
+  --lh-tight: 1.25;
+  --lh-normal: 1.5;
+  --fw-medium: 600;
+  --fw-strong: 700;
+
+  /* 间距 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+
+  /* 过渡 */
+  --transition-fast: 120ms ease;
+  --transition-normal: 160ms ease;
+  --transition-smooth: 180ms ease;
+
+  /* 字体 ──
+   * 刻意不叫 --font-sans：那个名字属于 Tailwind 的 @theme 命名空间，
+   * 在 @theme 里写 `--font-sans: var(--font-sans)` 是循环引用。
+   * L3 用 --font-body / --font-code，@theme 侧再转发。 */
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-code: "JetBrains Mono", "Fira Code", monospace;
+}
+
+html[data-locale="zh"] {
+  --font-body: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+}
