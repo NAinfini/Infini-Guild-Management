@@ -360,6 +360,16 @@ html[data-locale="zh"] {
   background: var(--border-subtle);
 }
 
+/* mantine-contextmenu 在深色模式下用
+ * `[data-mantine-color-scheme="dark"] .mantine-contextmenu-divider` 再上一次色，
+ * 特异性 (0,2,0)，与本文件的自我重复写法打平；而它的样式表加载在我们之后
+ * （styles.css 是 sheet 1，库是 sheet 7），平手时后来者赢，深色模式下分隔线
+ * 会退回库里未纳入主题的 --mantine-color-dark-5。故这里再叠一层类到 (0,3,0)。
+ * 这是本仓库既定的「提高特异性而非依赖感叹号优先级」做法，只是多重复一次。 */
+.infini-context-menu-divider.infini-context-menu-divider.infini-context-menu-divider {
+  background: var(--border-subtle);
+}
+
 .infini-menu-label.infini-menu-label,
 .infini-menu-item--label.infini-menu-item--label {
   padding: var(--space-sm) var(--space-lg) var(--space-xs);
