@@ -1,9 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════
  * L3 · 尺寸标度 —— 不随模式或主色变化
  *
- * 数值原样搬自 styles.css 的 :root 块。这里是它们唯一的定义处：
- * ThemeProvider 的 createTheme 此前把 radius / spacing / headings
- * 又写了一遍（手工对齐，两份数值），改造后它改为读这些变量。
+ * 数值原样搬来，不改一个：绝大多数出自 styles.css 的 :root 块，
+ * 少数（radius xs/xl）只存在于 ThemeProvider 的 createTheme 里 ——
+ * 它此前把 radius / spacing / headings 又写了一遍（手工对齐，两份数值）。
+ * 这里是两份的合并处，也是它们唯一的定义处；改造后 createTheme 读这些变量。
  * ═══════════════════════════════════════════════════════════════ */
 :root {
   /* 布局 */
@@ -12,6 +13,9 @@
   --sidebar-width: 236px;
   --sidebar-collapsed-width: 84px;
   --bottom-nav-height: 64px;
+  /* 原名 --portal-scrollbar-size（styles.css:25）。去掉 portal- 前缀以与本层
+   * 其余 token 一致，值不变。尚存一个旧名消费者 AppShell.css:535，由布局 CSS
+   * 迁移任务改到新名；在那之前它靠自带的 10px fallback 取到同一个值。 */
   --scrollbar-size: 10px;
 
   /* 层级 */
@@ -21,7 +25,11 @@
   --z-modal: 200;
   --z-toast: 300;
 
-  /* 圆角 */
+  /* 圆角 —— 六档，来源是两处而不是一处：
+   * sm/md/lg/pill 搬自 styles.css:33-36；
+   * xs(4px) 与 xl(24px) 搬自 ThemeProvider.tsx:53,57 的 createTheme radius，
+   * 它们此前只存在于 Mantine 那一份重复定义里。Mantine 的 radius 需要
+   * xs..xl 五个键齐全，所以这两档不能省，否则 radius="xs" 会取不到值。 */
   --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 12px;
