@@ -36,6 +36,9 @@
 | 公会战数据模型 | 作为 `events` 的扩展表，不新建独立聚合根（见 §5） |
 | 仓库 | 定位为状态追踪器；**不做**申领审批功能 |
 | Tab | 全部重做为单一共享组件，URL 同步为强制要求 |
+| 邀请链接 | 保持随机 `code`，不加标记列；管理员删除即可（吊销 / 删除功能已存在） |
+| 战役名 | 不独立于活动标题，单一来源 |
+| `/tools` 与 `/settings` | 对游客可见，无隐私顾虑 |
 
 ## 3. 现状实测数据
 
@@ -224,24 +227,31 @@ hex 只允许出现在最底层。
 
 ### 5.1 导航分组
 
-从 10 项平铺改为 4 组 9 项，首页独立在组之上。
+从 10 项平铺改为首页独立在组之上 + 4 组共 10 项（新增 `/settings`，理由见下）。
 
 ```
-待我处理                    /
+待我处理                    /               游客可见
 参与
-  活动（含投票 · 抽奖）      /events
-  公会战                    /wars
+  活动（含投票 · 抽奖）      /events         游客可见 · flag: events
+  公会战                    /wars           游客可见 · flag: guildWar
 公会
-  公告                      /announcements
-  成员                      /roster
-  画廊                      /gallery
-  仓库                      /storage
+  公告                      /announcements  游客可见 · flag: announcements
+  成员                      /roster         游客可见
+  画廊                      /gallery        游客可见 · flag: gallery
+  仓库                      /storage        需登录 · flag: storage
 知识
-  Wiki                      /wiki
-  工具                      /tools
+  Wiki                      /wiki           游客可见 · flag: wiki
+  工具                      /tools          游客可见 · flag: tools
 系统
-  管理                      /admin
+  设置                      /settings       游客可见
+  管理                      /admin          需 moderator
 ```
+
+可见性沿用现有 `NavItem` 的 `requiresSession` / `requiresModerator` / `featureFlag` 三个字段，不新增机制。`/storage` 保持 `requiresSession: true` —— 它挂在需登录的路由树下，游客点进去只会撞到登录页（`AppSidebar.tsx:54-56` 的注释已说明），隐藏比给死链好。
+
+**`/settings` 是新增的导航项，理由是一处实际缺陷**：它已经是公开路由（`router.tsx:298-302`，无任何守卫），但唯一入口是头像菜单 `UserProfileDropdown.tsx:61`，而游客根本没有头像菜单 —— `AppHeader.tsx:114-120` 对未登录用户只渲染一个登录按钮。结果是游客除了手输 URL 无法到达设置页，而语言与深浅模式恰恰是登录前就该能改的东西。放进侧栏「系统」组即可修复。
+
+`/tools` 的游客可见在路由层已经满足（`router.tsx:304-309` 只有 feature flag 守卫，无会话守卫），本项无需改动，仅记录确认。
 
 ### 5.2 仪表盘重定义为「待我处理」
 
@@ -354,7 +364,7 @@ war_pool_members(event_id NOT NULL)
 
 **2. 状态由事实表达，不做时间推断。** 战役状态 = `events.start_at` / `end_at` / `archived_at` + `event_wars.concluded_at` + `pool_materialized_at` 的组合，均为已发生事实。不会出现「过了开始时间就自动算进行中」这类隐式状态。
 
-**3. 手工补录的历史战役** = 补录一次已归档的活动（`type='guild_war'`、`archived_at` 已设、标题即战役名）+ 它的 `event_wars` 行。战役名从此只有一个来源。实测无此类存量数据，故本决定不产生迁移负担。**此决定可逆**：若需要独立于活动标题的战役名，可在 `event_wars` 上加一个可空 `label` 覆盖列 —— 但那会重新引入两个名字，需明确取舍。
+**3. 手工补录的历史战役** = 补录一次已归档的活动（`type='guild_war'`、`archived_at` 已设、标题即战役名）+ 它的 `event_wars` 行。战役名从此只有一个来源。实测无此类存量数据，故本决定不产生迁移负担。**已定案：不做独立战役名。** 逃生口记录在此备查（在 `event_wars` 上加可空 `label` 覆盖列），但不在计划内 —— 它会重新引入两个名字。
 
 **4. 必须坦白的限制**：SQLite 无法用 CHECK 约束表达「`type='poll'` 必须且仅当存在 `event_polls` 行」。该一致性只能落在应用层 + 一条迁移后的一致性断言查询。不假装数据库替我们守住了它。
 
@@ -413,11 +423,13 @@ S1 与 S3 可并行（一个只动样式层，一个只动数据层）。S5 最�
 | inbox 定义不精准会变噪音 | 首页失去价值 | §5.2 的「有无完成状态」判定规则 + 反向测试 |
 | S5 体量大（4725 行页面代码） | 周期不可控 | 按页面拆轮次，每轮独立可发布 |
 
-## 9. 开放问题
+## 9. 已关闭的问题
 
-1. **`invite_links` 标记列**：此前讨论过给邀请链接加标记列，以便（a）注册端点用可信的库侧信号保留 `systemtest_` 前缀，（b）清理 cron 能回收泄漏的测试邀请链接。现状 `invite_links` 只有随机 `code`，无 name / title / note 列，泄漏的链接只能等 `expires_at` 自然过期。既然本轮已决定重构数据模型，是否顺带处理？**尚未决定。**
-2. **战役名是否需要独立于活动标题**：见 §6.3 第 3 点，当前决定是不需要。
-3. **`/tools` 与 `/settings` 的分组归属**：`/tools` 现在是公开路由且受 `tools` feature flag 控制，`/settings` 也是公开路由。二者在新分组里的位置已定（知识 / 系统），但是否应对游客可见需确认。
+三项开放问题均已定案，保留结论与理由备查。
+
+1. **`invite_links` 标记列 —— 不做。** 此前设想过加标记列，以便（a）注册端点用可信的库侧信号保留 `systemtest_` 前缀，（b）清理 cron 回收泄漏的测试邀请链接。结论是不必要：管理端已有吊销与删除两个动作，均带二次确认，并按 active / expired / revoked 三态筛选（`AdminInviteSection.tsx:255-256`、`:289-293`），管理员直接删掉即可，不需要为此扩表。
+2. **战役名不独立于活动标题。** 见 §6.3 第 3 点。`event_wars` 不设 `label` 覆盖列。
+3. **`/tools` 与 `/settings` 对游客可见。** 无隐私顾虑。`/tools` 在路由层已满足；`/settings` 需要补一个导航入口，见 §5.1。
 
 ## 10. 明确不做
 
