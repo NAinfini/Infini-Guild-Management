@@ -118,53 +118,82 @@ function palette(): Record<string, string> {
   return map;
 }
 
+/**
+ * 取色板里的一个 token，取不到就显式报出 token 名。
+ * repo 的 tsconfig 开了 noUncheckedIndexedAccess，裸用 `map[name]!`
+ * 只会在 token 被改名/删掉时炸出一个指向 relativeLuminance 里
+ * `.replace` 的通用 TypeError，看不出到底是哪个 token 没了。
+ */
+function token(map: Record<string, string>, name: string): string {
+  const value = map[name];
+  if (value === undefined) throw new Error(`missing palette token ${name}`);
+  return value;
+}
+
 const AA_TEXT = 4.5;
 const ACCENTS = ["teal", "indigo", "violet"] as const;
 
 describe("accent contrast across all 6 theme × accent combinations", () => {
   const p = palette();
 
-  /* 浅色模式最不利的文字底 = 纸底 --surface-base；深色模式最不利 = 最亮的表面 --surface-raised。 */
+  /* 浅色模式三个表面 --surface-sunken / --surface-base / --surface-raised
+   * 全部覆盖：sunken = neutral-50（三者中最暗）是最不利的文字底，
+   * base = neutral-25、raised = neutral-0 依次更亮、更宽松。
+   * 深色模式最不利 = 最亮的表面 --surface-raised。 */
   const LIGHT_GROUND = "--palette-neutral-25";
+  const SUNKEN_GROUND = "--palette-neutral-50";
   const DARK_GROUND = "--palette-neutral-850";
 
   for (const accent of ACCENTS) {
     it(`${accent}: light-mode accent text clears AA on paper`, () => {
-      const ratio = contrastRatio(p[`--palette-${accent}-700`]!, p[LIGHT_GROUND]!);
+      const ratio = contrastRatio(token(p, `--palette-${accent}-700`), token(p, LIGHT_GROUND));
       expect(ratio).toBeGreaterThanOrEqual(AA_TEXT);
     });
 
     it(`${accent}: light-mode accent text clears AA on white cards`, () => {
-      const ratio = contrastRatio(p[`--palette-${accent}-700`]!, p["--palette-neutral-0"]!);
+      const ratio = contrastRatio(token(p, `--palette-${accent}-700`), token(p, "--palette-neutral-0"));
+      expect(ratio).toBeGreaterThanOrEqual(AA_TEXT);
+    });
+
+    it(`${accent}: light-mode accent text clears AA on the sunken surface (worst case)`, () => {
+      const ratio = contrastRatio(token(p, `--palette-${accent}-700`), token(p, SUNKEN_GROUND));
       expect(ratio).toBeGreaterThanOrEqual(AA_TEXT);
     });
 
     it(`${accent}: dark-mode accent text clears AA on the lightest dark surface`, () => {
-      const ratio = contrastRatio(p[`--palette-${accent}-500`]!, p[DARK_GROUND]!);
+      const ratio = contrastRatio(token(p, `--palette-${accent}-500`), token(p, DARK_GROUND));
       expect(ratio).toBeGreaterThanOrEqual(AA_TEXT);
     });
 
     it(`${accent}: on-fill ink clears AA on the accent fill`, () => {
-      const ratio = contrastRatio(p[`--palette-${accent}-900`]!, p[`--palette-${accent}-500`]!);
+      const ratio = contrastRatio(token(p, `--palette-${accent}-900`), token(p, `--palette-${accent}-500`));
       expect(ratio).toBeGreaterThanOrEqual(AA_TEXT);
     });
 
     it(`${accent}: mid stop is decorative only — it must NOT be used as text on white`, () => {
       /* 反向断言：500 档作为白底文字是不合格的，这正是它需要 700 档存在的理由。
        * 如果哪天有人把 --accent-500 直接当浅色模式文字用，这条会提醒他为什么不行。 */
-      const ratio = contrastRatio(p[`--palette-${accent}-500`]!, p["--palette-neutral-0"]!);
+      const ratio = contrastRatio(token(p, `--palette-${accent}-500`), token(p, "--palette-neutral-0"));
       expect(ratio).toBeLessThan(AA_TEXT);
     });
   }
 
   it("body text clears AA in both modes", () => {
-    expect(contrastRatio(p["--palette-neutral-800"]!, p["--palette-neutral-25"]!)).toBeGreaterThanOrEqual(AA_TEXT);
-    expect(contrastRatio(p["--palette-neutral-100-warm"]!, p["--palette-neutral-850"]!)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(token(p, "--palette-neutral-800"), token(p, "--palette-neutral-25"))).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(token(p, "--palette-ink-warm"), token(p, "--palette-neutral-850"))).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it("body text clears AA on the sunken surface (worst case light ground)", () => {
+    expect(contrastRatio(token(p, "--palette-neutral-800"), token(p, SUNKEN_GROUND))).toBeGreaterThanOrEqual(AA_TEXT);
   });
 
   it("muted text clears AA in both modes", () => {
-    expect(contrastRatio(p["--palette-neutral-500"]!, p["--palette-neutral-25"]!)).toBeGreaterThanOrEqual(AA_TEXT);
-    expect(contrastRatio(p["--palette-neutral-400"]!, p["--palette-neutral-850"]!)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(token(p, "--palette-neutral-500"), token(p, "--palette-neutral-25"))).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(token(p, "--palette-neutral-400"), token(p, "--palette-neutral-850"))).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it("muted text clears AA on the sunken surface (worst case light ground)", () => {
+    expect(contrastRatio(token(p, "--palette-neutral-500"), token(p, SUNKEN_GROUND))).toBeGreaterThanOrEqual(AA_TEXT);
   });
 });
 

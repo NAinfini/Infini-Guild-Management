@@ -51,7 +51,7 @@
   --surface-raised: var(--palette-neutral-850);
   --surface-overlay: var(--palette-neutral-850);
 
-  --text-primary: var(--palette-neutral-100-warm);
+  --text-primary: var(--palette-ink-warm);
   --text-secondary: var(--palette-neutral-200);
   --text-muted: var(--palette-neutral-400);
 
