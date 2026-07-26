@@ -308,7 +308,12 @@ html[data-locale="zh"] {
 .infini-context-menu-root.infini-context-menu-root {
   padding: var(--space-sm);
   min-width: 200px;
-  background: var(--surface-overlay);
+  /* 半透明 + 背后模糊 = 毛玻璃。两者缺一不可：--surface-overlay 是不透明色，
+   * 不经 color-mix 稀释的话 backdrop-filter 没有任何可见效果。
+   * -webkit- 前缀为 Safari 所需。 */
+  background: color-mix(in srgb, var(--surface-overlay) 92%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
@@ -317,6 +322,7 @@ html[data-locale="zh"] {
 .infini-menu-item.infini-menu-item,
 .infini-context-menu-item.infini-context-menu-item {
   padding: var(--space-md) var(--space-lg);
+  margin-block: var(--space-xs);
   border-radius: var(--radius-sm);
   font-size: var(--text-body);
   font-weight: var(--fw-medium);
@@ -345,7 +351,13 @@ html[data-locale="zh"] {
 .infini-menu-divider.infini-menu-divider,
 .infini-context-menu-divider.infini-context-menu-divider {
   margin: var(--space-sm) var(--space-sm);
+  /* 两个库画分隔线的方式不同，所以两个属性都要写：
+   * Mantine <Menu> 用 border-top（吃 border-color）；
+   * mantine-contextmenu 用一个 1px 高、靠 background 上色的实心块
+   * （.mantine-contextmenu-divider{background:…;height:1px}），不吃 border-color。
+   * background 对 Mantine 那条无副作用：它高度为 0，背景绘制不出来。 */
   border-color: var(--border-subtle);
+  background: var(--border-subtle);
 }
 
 .infini-menu-label.infini-menu-label,
