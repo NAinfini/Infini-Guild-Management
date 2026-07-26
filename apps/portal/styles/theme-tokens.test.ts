@@ -197,6 +197,102 @@ describe("accent contrast across all 6 theme × accent combinations", () => {
   });
 });
 
+/* ── 菜单单一真相的护栏（Task 3） ────────────────────────── */
+
+/**
+ * styles.css 整体还没迁完（文件里另有 10 处 !important 与若干 hex，属 Task 4
+ * 范围），所以不能把它加进 MIGRATED。这里只窄断言「菜单区块」这一段 ——
+ * Task 3 刚把菜单外观收敛到这里，不变量要挡住它重新退化。
+ *
+ * 用起止注释而不是行号做边界：行号一改就失效。
+ */
+const MENU_BLOCK_FILE = "apps/portal/styles.css";
+const MENU_BLOCK_START = "/* ── 菜单 · 唯一定义处 ──";
+const MENU_BLOCK_END = "/* ── 菜单 · 唯一定义处 结束 ──";
+const THEME_PROVIDER_FILE = "apps/portal/providers/ThemeProvider.tsx";
+
+/** 菜单区块的正文，外加它在文件里的起始行号 —— 报错时要给绝对行号。 */
+function menuBlock(): { text: string; firstLine: number } {
+  const source = readFileSync(resolve(repoRoot, MENU_BLOCK_FILE), "utf8");
+  const start = source.indexOf(MENU_BLOCK_START);
+  const end = source.indexOf(MENU_BLOCK_END);
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error(
+      `${MENU_BLOCK_FILE}: 找不到菜单区块边界注释（start=${start}, end=${end}）。` +
+        `起始标记应为 "${MENU_BLOCK_START}"，结束标记应为 "${MENU_BLOCK_END}"。` +
+        `如果改了注释措辞，请同步改这个测试。`,
+    );
+  }
+  return { text: source.slice(start, end), firstLine: source.slice(0, start).split("\n").length };
+}
+
+/** 逐行找出命中 pattern 的行，报绝对行号。 */
+function offendingLines(text: string, firstLine: number, pattern: RegExp): string[] {
+  return text
+    .split("\n")
+    .map((line, index) => ({ line: line.trim(), lineNumber: firstLine + index }))
+    .filter(({ line }) => pattern.test(line))
+    .map(({ line, lineNumber }) => `${MENU_BLOCK_FILE}:${lineNumber}  ${line}`);
+}
+
+/** 抹掉 CSS 注释但保留换行，这样行号仍然对得上文件。 */
+function blankComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, (match) => "\n".repeat((match.match(/\n/g) ?? []).length));
+}
+
+/** 取 `Menu.extend(` 之后到括号配平为止的那段源码。 */
+function menuExtendArgument(source: string): string {
+  const marker = "Menu.extend(";
+  const open = source.indexOf(marker);
+  if (open === -1) {
+    throw new Error(`${THEME_PROVIDER_FILE}: 找不到 Menu.extend( —— 菜单的 Mantine 配置被挪走或改名了，请同步改这个测试。`);
+  }
+  let depth = 0;
+  for (let i = open + marker.length - 1; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) return source.slice(open, i + 1);
+    }
+  }
+  throw new Error(`${THEME_PROVIDER_FILE}: Menu.extend( 的括号没有配平，无法切出配置对象。`);
+}
+
+describe("menu single source of truth (Task 3)", () => {
+  it("菜单区块内没有 !important", () => {
+    const { text, firstLine } = menuBlock();
+    /* 这里故意不抹注释：区块内的注释本来就靠「感叹号优先级」这种措辞
+     * 绕开字面量，写了字面量就说明有人真的加了一条。 */
+    const offenders = offendingLines(text, firstLine, /!important/);
+    expect(
+      offenders,
+      `菜单区块必须靠特异性（类名自我重复）取胜，不得使用 !important：\n${offenders.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("菜单区块内没有裸十六进制色值", () => {
+    const { text, firstLine } = menuBlock();
+    /* 注释里引用库的色值（如 --mantine-color-gray-5 的实际值）是说明性的，
+     * 不是本仓库在用色，故只查声明。 */
+    const offenders = offendingLines(blankComments(text), firstLine, /#[0-9a-fA-F]{3,8}\b/);
+    expect(
+      offenders,
+      `菜单区块只许消费 token，hex 只能出现在 ${PALETTE_FILE}：\n${offenders.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("Menu.extend 里没有 styles —— 菜单外观不得在 JS 侧重新长出第二个真相", () => {
+    const argument = menuExtendArgument(readFileSync(resolve(repoRoot, THEME_PROVIDER_FILE), "utf8"));
+    const hasStyles = /(^|[\s{,])styles\s*:/.test(argument);
+    expect(
+      hasStyles,
+      `${THEME_PROVIDER_FILE} 的 Menu.extend 里出现了 styles —— Mantine 的 styles prop 生成内联样式，` +
+        `会无条件压过 ${MENU_BLOCK_FILE} 的菜单区块。菜单外观请写在那个区块里。实际内容：\n${argument}`,
+    ).toBe(false);
+  });
+});
+
 describe("token file coverage", () => {
   it("every migrated path exists on disk", () => {
     const onDisk = new Set(listCssFiles(portalRoot).map(toRepoPath));

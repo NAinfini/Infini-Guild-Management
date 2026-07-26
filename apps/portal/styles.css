@@ -296,13 +296,29 @@ html[data-locale="zh"] {
  *     （同一动态 chunk）。
  * 不含伪类的声明与它们打平特异性时，源码顺序更晚的对方会赢，因此用
  * 「类名自我重复」（.foo.foo，specificity 0,2,0）取胜，不再依赖感叹号
- * 优先级。带 :hover 的声明本身特异性已更高 —— 两个库把 :hover /
- * data-mantine-color-scheme 分支包在 :where() 里，贡献 0 特异性 —— 故
- * 无需重复。
+ * 优先级。
+ *
+ * 两个库在这一点上**不一样**，不要一概而论：
+ *   - @mantine/core：它的 :hover/:focus 与 data-mantine-color-scheme 分支
+ *     确实全部包在 :where() 里，贡献 0 特异性，所以它的规则最高只有
+ *     (0,1,0)，本块的 (0,2,0) 稳赢，无需叠层。
+ *   - mantine-contextmenu：**一条 :where() 都没有**。它的
+ *     [data-mantine-color-scheme=…] 前缀与 :hover:not([disabled]) 都实打实
+ *     计入特异性，最高到 (0,4,0)：
+ *       [data-…=dark] .mantine-contextmenu                        (0,2,0) border
+ *       [data-…=dark] .mantine-contextmenu-divider                (0,2,0) background
+ *       .mantine-contextmenu-item-button[disabled]                (0,2,0) color
+ *       [data-…=dark] .mantine-contextmenu-item-button[disabled]  (0,3,0) color
+ *       .mantine-contextmenu-item-button:hover:not([disabled])    (0,3,0) background
+ *       [data-…=dark] …-item-button:hover:not([disabled])         (0,4,0) background
+ *     凡是与这些属性竞争的声明，(0,2,0) 打平即输（库加载在后），必须单独
+ *     叠层写成三重甚至四重类 —— 见下面几条注明了压制对象的规则。
  *
  * .infini-context-menu-* 是 mantine-contextmenu（右键菜单，bootstrap.tsx）
- * 的类，跟 Mantine <Menu> 不是同一组件，但外观值逐一对应，合并选择器
- * 复用同一套声明而非维护两份。
+ * 的类，跟 Mantine <Menu> 不是同一组件。合并选择器**只共用基础声明**；
+ * 交互态各归各家：右键菜单的 hover / active 底色至今仍由库给出
+ * （上表末三行，(0,3,0)/(0,4,0)），不随主色变化、不在 token 体系内，
+ * 留待后续任务收编。
  */
 .infini-menu-dropdown.infini-menu-dropdown,
 .infini-context-menu-root.infini-context-menu-root {
@@ -331,7 +347,11 @@ html[data-locale="zh"] {
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.infini-menu-item:hover {
+/* :focus 与 :hover 必须一起给，否则键盘 Tab 到菜单项时落回库的弱底色，
+ * 鼠标用户与键盘用户拿到两种提示。Mantine 原规则就是 :where(:hover, :focus)。
+ * :is() 取参数里最高的特异性，两个伪类都是 (0,0,1)，整体仍是 (0,2,0)，
+ * 不影响下面 --active / --danger:hover 靠源码顺序取胜。 */
+.infini-menu-item:is(:hover, :focus) {
   background: var(--accent-tint);
 }
 
@@ -350,14 +370,24 @@ html[data-locale="zh"] {
 
 .infini-menu-divider.infini-menu-divider,
 .infini-context-menu-divider.infini-context-menu-divider {
-  margin: var(--space-sm) var(--space-sm);
-  /* 两个库画分隔线的方式不同，所以两个属性都要写：
-   * Mantine <Menu> 用 border-top（吃 border-color）；
+  /* 两个库画分隔线的方式不同，颜色只能各给各的：
+   * Mantine <Menu.Divider> 用 border-top，吃 border-color（这里给）；
    * mantine-contextmenu 用一个 1px 高、靠 background 上色的实心块
-   * （.mantine-contextmenu-divider{background:…;height:1px}），不吃 border-color。
-   * background 对 Mantine 那条无副作用：它高度为 0，背景绘制不出来。 */
+   * （.mantine-contextmenu-divider{background:…;height:1px}），不吃
+   * border-color，由下面的三重类规则单独给。
+   * 这里不要写 background —— Mantine 那条（.m_efdf90cb）是
+   * `border-top: 1px solid`，内容高 0 但边框盒高 1px，而 background-clip
+   * 默认 border-box，半透明背景会与同色半透明边框叠加，线条浓度翻倍。 */
+  margin: var(--space-sm);
   border-color: var(--border-subtle);
-  background: var(--border-subtle);
+}
+
+/* 库的 [data-mantine-color-scheme="dark"] .mantine-contextmenu 是 (0,2,0)，
+ * 与自我重复写法打平而加载在后，会把边框抢回 --mantine-color-dark-4，
+ * 深色下右键菜单边框与旁边 Mantine <Menu> 对不上。故叠到 (0,3,0)。
+ * 只覆 border-color，宽度与线型仍由上面合并规则的 border 简写给出。 */
+.infini-context-menu-root.infini-context-menu-root.infini-context-menu-root {
+  border-color: var(--border-subtle);
 }
 
 /* mantine-contextmenu 在深色模式下用
@@ -386,6 +416,25 @@ html[data-locale="zh"] {
 .infini-menu-item--label {
   pointer-events: none;
 }
+
+/* 标签正是一个 disabled 的右键菜单项，要压过库的两条 [disabled] 着色：
+ *   .mantine-contextmenu-item-button[disabled]                    (0,2,0)
+ *   [data-…=dark] .mantine-contextmenu-item-button[disabled]      (0,3,0)
+ * 深色那条与三重类打平且加载在后，三重类不够，必须四重到 (0,4,0)。
+ * 不修的话浅色下标签是库的 #adb5bd，在 #FDFBF7 上只有约 2.0:1，不过 AA。 */
+.infini-menu-item--label.infini-menu-item--label.infini-menu-item--label.infini-menu-item--label {
+  color: var(--text-muted);
+}
+
+/* 右键菜单的可见文字在库的子元素里，它自带 font-size: var(--mantine-font-size-sm)，
+ * 显式声明挡住继承，父级的 font-size 穿不过去，故必须直接命中子元素。
+ * 我们 (0,2,0) > 库的 .mantine-contextmenu-item-button-title (0,1,0)。 */
+.infini-menu-item--label .mantine-contextmenu-item-button-title {
+  font-size: var(--text-meta);
+}
+/* ── 菜单 · 唯一定义处 结束 ──
+ * 上面这个「起 / 止」注释对是 styles/theme-tokens.test.ts 切区块用的边界，
+ * 改措辞前先看那个测试。 */
 
 @keyframes spin {
   to { transform: rotate(360deg); }
