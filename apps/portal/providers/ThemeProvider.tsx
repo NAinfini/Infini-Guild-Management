@@ -110,24 +110,6 @@ const portalTheme = createTheme({
         divider: "infini-menu-divider",
         label: "infini-menu-label",
       },
-      /*
-       * ── 本块保持原样，由 Task 3 删除 ──────────────────────────
-       * 这些数值目前是菜单外观的唯一来源，不能在本任务删。
-       * 注意别被名字骗了：`.infini-context-menu-*` 是 mantine-contextmenu
-       * （右键菜单，见 bootstrap.tsx）的类，跟 Mantine <Menu> 不是一个组件。
-       * <Menu> 用的是上面 classNames 里的 `.infini-menu-*`，而 styles.css
-       * 只给 dropdown 写了 border/backdrop-filter、给 item 写了 margin/transition
-       * —— `.infini-menu-divider` 与 `.infini-menu-label` 在 CSS 里一条规则都没有。
-       * 现在删掉这块，全站菜单会立刻丢失内边距、min-width、圆角、字号、字重、
-       * 间隙，分隔线与分组标签完全失去样式。
-       * Task 3 会在写入等价 CSS 类的同一个提交里删除它。
-       */
-      styles: {
-        dropdown: { padding: "6px", minWidth: "200px" },
-        item: { padding: "10px 14px", borderRadius: "8px", fontSize: "0.875rem", fontWeight: 500, gap: "10px" },
-        divider: { margin: "6px 8px" },
-        label: { padding: "8px 14px 4px", fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" as const },
-      },
     }),
   },
 });

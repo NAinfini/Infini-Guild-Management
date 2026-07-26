@@ -279,82 +279,90 @@ html[data-locale="zh"] {
   100% { transform: translateX(200%) skewX(-15deg); }
 }
 
-/* ── Menu / Dropdown spacing ── */
-.infini-menu-dropdown {
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-.dark .infini-menu-dropdown {
-  background: color-mix(in srgb, var(--color-surface, #141418) 92%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
-}
-
-.infini-menu-item {
-  margin: 2px 0;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-/* ── Context menu spacing ── */
-.infini-context-menu-root {
-  padding: 6px !important;
+/* ── 菜单 · 唯一定义处 ──
+ *
+ * Mantine 侧的 Menu.styles 已在本任务 Step 2 删除。此前 dropdown 与 item
+ * 两边都写、靠感叹号优先级决出胜负，而 divider 与 label 只有 JS 侧写、
+ * CSS 里一条规则都没有。现在这里是四者共同的单一真相。
+ *
+ * 删掉 JS 侧内联样式（Mantine 的 `styles` prop 生成内联 style，本来会
+ * 无条件盖过任何 class）之后，真正要压过的对手换成了两个组件库自带、
+ * 同选择器特异性 (0,1,0) 却在本文件之后才插入 <head> 的默认样式表：
+ *   - Mantine 自身的 Menu / Popover / Paper 内建 CSS
+ *     （@mantine/core/styles.css，在 bootstrap.tsx 里 import；
+ *     bootstrap.tsx 由 main.tsx 动态 import，其自身的顶层 import 必然
+ *     晚于 main.tsx 顶部同步 import 的本文件执行/插入）；
+ *   - mantine-contextmenu 库自带的 .mantine-contextmenu* 基础样式
+ *     （同一动态 chunk）。
+ * 不含伪类的声明与它们打平特异性时，源码顺序更晚的对方会赢，因此用
+ * 「类名自我重复」（.foo.foo，specificity 0,2,0）取胜，不再依赖感叹号
+ * 优先级。带 :hover 的声明本身特异性已更高 —— 两个库把 :hover /
+ * data-mantine-color-scheme 分支包在 :where() 里，贡献 0 特异性 —— 故
+ * 无需重复。
+ *
+ * .infini-context-menu-* 是 mantine-contextmenu（右键菜单，bootstrap.tsx）
+ * 的类，跟 Mantine <Menu> 不是同一组件，但外观值逐一对应，合并选择器
+ * 复用同一套声明而非维护两份。
+ */
+.infini-menu-dropdown.infini-menu-dropdown,
+.infini-context-menu-root.infini-context-menu-root {
+  padding: var(--space-sm);
   min-width: 200px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
 }
 
-.dark .infini-context-menu-root {
-  background: color-mix(in srgb, var(--color-surface, #141418) 92%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
+.infini-menu-item.infini-menu-item,
+.infini-context-menu-item.infini-context-menu-item {
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-body);
+  font-weight: var(--fw-medium);
+  gap: var(--space-md);
+  color: var(--text-primary);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.infini-context-menu-item {
-  padding: 10px 14px !important;
-  border-radius: var(--radius-sm, 8px) !important;
-  font-size: 0.875rem !important;
-  font-weight: 500;
-  gap: 10px;
-  margin: 2px 0;
-  transition: background 120ms ease, color 120ms ease;
+.infini-menu-item:hover {
+  background: var(--accent-tint);
 }
 
-.infini-context-menu-divider {
-  margin: 6px 8px !important;
+.infini-menu-item--active.infini-menu-item--active {
+  background: var(--accent-tint);
+  color: var(--accent-text);
 }
 
-.infini-menu-item--label {
-  font-weight: 600;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--mantine-color-dimmed, #868e96);
-  pointer-events: none;
-  padding: 8px 14px 4px !important;
-}
-
-/* ── Menu item helpers ── */
-.infini-menu-item--danger {
-  color: var(--mantine-color-red-6, #e03131);
+.infini-menu-item--danger.infini-menu-item--danger {
+  color: var(--status-danger);
 }
 
 .infini-menu-item--danger:hover {
-  background: var(--mantine-color-red-0, #fff5f5);
+  background: color-mix(in srgb, var(--status-danger) 12%, var(--surface-overlay));
 }
 
-.dark .infini-menu-item--danger:hover {
-  background: color-mix(in srgb, var(--mantine-color-red-9, #c92a2a) 20%, transparent);
+.infini-menu-divider.infini-menu-divider,
+.infini-context-menu-divider.infini-context-menu-divider {
+  margin: var(--space-sm) var(--space-sm);
+  border-color: var(--border-subtle);
 }
 
-.infini-menu-item--active {
-  background: var(--mantine-color-portal-gold-0, #FBF6EA);
-  color: var(--mantine-color-portal-gold-7, #9A7B26);
+.infini-menu-label.infini-menu-label,
+.infini-menu-item--label.infini-menu-item--label {
+  padding: var(--space-sm) var(--space-lg) var(--space-xs);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
-.dark .infini-menu-item--active {
-  background: color-mix(in srgb, var(--mantine-color-portal-gold-9, #604D17) 25%, transparent);
-  color: var(--mantine-color-portal-gold-4, #DCB94A);
+/* .infini-menu-item--label 单独用于右键菜单里模拟“分组标签”的禁用项
+ * （见 AdminUsersSection.tsx），真正的 Mantine Menu.Label 天然不可交互，
+ * 不需要这条。 */
+.infini-menu-item--label {
+  pointer-events: none;
 }
 
 @keyframes spin {
