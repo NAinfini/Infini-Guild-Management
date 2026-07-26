@@ -296,10 +296,15 @@ export function captureContextFromResponse(
       const firstTeam = payload.teams.find((item): item is Record<string, unknown> => isRecord(item));
       if (firstTeam) {
         next.warTeamId = readString(firstTeam.id) ?? next.warTeamId;
-        if (Array.isArray(firstTeam.members)) {
-          const firstMember = firstTeam.members.find((item): item is Record<string, unknown> => isRecord(item));
-          next.warMemberUserId = readString(firstMember?.user_id) ?? next.warMemberUserId;
-        }
+        /*
+         * The live board's first member is a real guild member, and
+         * warMemberUserId is the target of the move / role-tag / conclude
+         * mutations below. Those may only ever act on the disposable test
+         * member, so this response is never allowed to seed it. Staying null
+         * until a disposable member exists makes those endpoints skip, which
+         * is the safe outcome.
+         */
+        next.warMemberUserId = disposableMemberId(next) ?? next.warMemberUserId;
       }
     }
     return next;

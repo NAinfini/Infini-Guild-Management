@@ -13,6 +13,7 @@ import {
   type Role,
   type SiteMediaPolicy,
 } from "@guild/shared";
+import { SYSTEM_TEST_USERNAME_PREFIX, isReservedSystemTestUsername } from "@guild/shared/config/system-test";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
@@ -701,6 +702,15 @@ export class UserService {
 
     const parsed = changeUsernameSchema.safeParse(body);
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid username change payload", parsed.error.flatten());
+
+    /*
+     * Unconditional, unlike the registration and admin-create guards: nothing
+     * legitimately renames an account into the system-test namespace, and the
+     * cleanup cron would permanently delete it a day later.
+     */
+    if (isReservedSystemTestUsername(parsed.data.newUsername)) {
+      return err("VALIDATION_ERROR", `Usernames beginning with "${SYSTEM_TEST_USERNAME_PREFIX}" are reserved`);
+    }
 
     const auth = (
       await this.db.select({ passwordHash: userAuthPassword.passwordHash, salt: userAuthPassword.salt })

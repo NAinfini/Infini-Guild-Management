@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  STALE_ARTIFACT_PROBES,
   buildJsonRequest,
   buildCleanupSteps,
   buildApiCategories,
   captureContextFromResponse,
+  countStaleSystemTestArtifacts,
   createInitialTestRunContext,
   filterApiCategoriesForPermissions,
   prepareEndpointRequest,
@@ -641,6 +643,59 @@ describe("AdminApiTestEngine request preparation", () => {
     );
 
     expect(next.warMemberUserId).toBe("disposable-member");
+  });
+
+  it("never captures a live guild-war board member as a mutation target", () => {
+    const next = captureContextFromResponse(
+      contextWith({
+        meId: "real-admin",
+        adminCreatedUserId: "disposable-member",
+      }),
+      { label: "Active War", method: "GET", path: "/api/guild-war/active" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-05-18T00:00:00.000Z",
+        parsedJson: {
+          event: { id: "real-war-event" },
+          teams: [{ id: "real-team", members: [{ user_id: "real-guild-member" }] }],
+        },
+      },
+    );
+
+    // move / role-tag / conclude all target warMemberUserId.
+    expect(next.warMemberUserId).toBe("disposable-member");
+    expect(next.warMemberUserId).not.toBe("real-guild-member");
+  });
+
+  it("leaves guild-war mutations unrunnable when no disposable member exists yet", () => {
+    const next = captureContextFromResponse(
+      contextWith({ meId: "real-admin" }),
+      { label: "Active War", method: "GET", path: "/api/guild-war/active" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-05-18T00:00:00.000Z",
+        parsedJson: {
+          event: { id: "real-war-event" },
+          teams: [{ id: "real-team", members: [{ user_id: "real-guild-member" }] }],
+        },
+      },
+    );
+
+    // Null is the safe outcome: the guild-war builders skip instead of
+    // falling back to whoever happens to be on the live board.
+    expect(next.warMemberUserId).toBeNull();
+
+    const prepared = prepareEndpointRequest(
+      { label: "Role Tag", method: "PATCH", path: "/api/guild-war/role-tag" },
+      next,
+    );
+    expect(prepared.skipReason).toBeTruthy();
   });
 
   it("covers every actionable worker route in the smoke registry", () => {
@@ -1371,4 +1426,48 @@ describe("AdminApiTestEngine request preparation", () => {
     );
   });
 
+});
+
+describe("stale [systemtest] artifact probes", () => {
+  function probe(label: string): string {
+    const found = STALE_ARTIFACT_PROBES.find((p) => p.label === label);
+    if (!found) throw new Error(`no probe named ${label}`);
+    return found.path;
+  }
+
+  /*
+   * A leaked fixture is by definition one teardown never touched, so it is still
+   * active and still unarchived. Every one of these probes previously narrowed by
+   * exactly the state a leak cannot be in, which made them report a clean run
+   * over a database that still held test rows.
+   */
+  it("does not narrow the leak probes by a state a leaked fixture cannot be in", () => {
+    expect(probe("Users")).not.toContain("active=");
+    expect(probe("Events")).not.toContain("archived=");
+    expect(probe("Announcements")).not.toContain("archived=");
+  });
+
+  it("searches users by the username the engine actually generates", () => {
+    const context = createInitialTestRunContext();
+    context.registerInviteCode = "invite-code";
+    prepareEndpointRequest(
+      { label: "Register", method: "POST", path: "/api/auth/register/:inviteCode" },
+      context,
+    );
+
+    const searchTerm = decodeURIComponent(new URL(probe("Users"), "http://x").searchParams.get("search") ?? "");
+    expect(searchTerm).not.toBe("");
+    /*
+     * The users query matches `search` against the username column alone, so a
+     * term that is not a substring of the generated username can never match —
+     * which is how `[systemtest]` came to be searched against `systemtest_<ts>`.
+     */
+    expect(context.registeredUsername).toContain(searchTerm);
+  });
+
+  it("counts both fixture naming schemes as stale artifacts", () => {
+    expect(countStaleSystemTestArtifacts({ data: [{ user: { username: "systemtest_1785085457897" } }] })).toBe(1);
+    expect(countStaleSystemTestArtifacts({ data: [{ title: "[systemtest] API Poll Event" }] })).toBe(1);
+    expect(countStaleSystemTestArtifacts({ data: [{ user: { username: "admin" } }, { title: "Guild meeting" }] })).toBe(0);
+  });
 });

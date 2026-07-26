@@ -62,6 +62,13 @@ type StatusHealthLog = {
   latencyMs: number | null;
 };
 
+/*
+ * Upper bound on teardown. Teardown is deliberately not cancellable by the test
+ * run's abort signal, so it needs its own escape hatch to avoid hanging the UI
+ * if the worker stops responding mid-cleanup.
+ */
+const TEARDOWN_TIMEOUT_MS = 120_000;
+
 type AdminStatusTabProps = {
   onCopyConfigSummary: () => void;
   canCopyConfigSummary: boolean;
@@ -98,6 +105,8 @@ export function AdminStatusTab({
   const abortRef = useRef<AbortController | null>(null);
   const contextRef = useRef<TestRunContext>(createInitialTestRunContext());
   const runLogRef = useRef<DebugLogEntry[]>([]);
+  // Resolves when the previous run has finished its teardown, not merely its requests.
+  const inFlightRef = useRef<Promise<void> | null>(null);
 
   const pushLog = useCallback((entry: DebugLogEntry) => {
     runLogRef.current = [...runLogRef.current, entry];
@@ -189,8 +198,14 @@ export function AdminStatusTab({
 
   const runCleanup = useCallback(async (signal: AbortSignal) => {
     const cleanupSteps = buildCleanupSteps(contextRef.current);
+    let failed = 0;
 
     for (const step of cleanupSteps) {
+      /*
+       * Note this signal is the teardown's own, never the test run's — see
+       * runTeardown. Aborting a run must not abort the deletion of what that
+       * run already wrote to the database.
+       */
       if (signal.aborted) break;
       await waitWithAbort(API_TEST_GAP_MUTATION_MS, signal);
       if (signal.aborted) break;
@@ -237,6 +252,9 @@ export function AdminStatusTab({
         if (response.ok && step.clearContext) {
           contextRef.current = { ...contextRef.current, ...step.clearContext };
         }
+        if (!response.ok) {
+          failed += 1;
+        }
       } catch (err) {
         if (signal.aborted) break;
         const latencyMs = Math.round(performance.now() - started);
@@ -252,8 +270,16 @@ export function AdminStatusTab({
           body: "",
           ranAt,
         });
+        failed += 1;
       }
     }
+
+    /*
+     * A failed DELETE used to be one red row among ~200 log lines. Rows left
+     * behind in a production database deserve their own verdict, so report the
+     * count instead of making the operator go find it.
+     */
+    return { attempted: cleanupSteps.length, failed };
   }, [pushLog]);
 
   const runStaleArtifactScan = useCallback(async (signal: AbortSignal) => {
@@ -279,7 +305,7 @@ export function AdminStatusTab({
           parsed = JSON.parse(raw) as unknown;
           body = JSON.stringify(parsed, null, 2);
         }
-        const staleCount = response.ok ? countStaleSystemTestArtifacts(probe.label, parsed) : 0;
+        const staleCount = response.ok ? countStaleSystemTestArtifacts(parsed) : 0;
         pushLog({
           id: nextLogId(),
           category: "Stale Data",
@@ -312,6 +338,65 @@ export function AdminStatusTab({
       }
     }
   }, [pushLog]);
+
+  /*
+   * Teardown runs on its own controller, never the test run's. Whatever stopped
+   * the run — the operator hitting stop, or another run starting — must not stop
+   * us deleting the rows that run already wrote to the production database. Only
+   * the hard timeout below can cancel it.
+   */
+  const runTeardown = useCallback(async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TEARDOWN_TIMEOUT_MS);
+    const ranAt = new Date().toISOString();
+    try {
+      const outcome = await runCleanup(controller.signal);
+      await runStaleArtifactScan(controller.signal);
+      const incomplete = outcome.failed > 0 || controller.signal.aborted;
+      const verdict = incomplete
+        ? "TEARDOWN INCOMPLETE — test rows may remain in the database"
+        : "Teardown complete — every test row was deleted";
+      /*
+       * The verdict has to go in `path`: that is the column DebugRow renders as
+       * the row's text, and `label` is never displayed anywhere. `skipped` on the
+       * success case is what gives the row a neutral "N/A" badge instead of the
+       * red ERR that a null status would otherwise paint on a clean teardown.
+       */
+      pushLog({
+        id: nextLogId(),
+        category: "Cleanup",
+        label: verdict,
+        method: "—",
+        path: verdict,
+        status: null,
+        skipped: !incomplete,
+        latencyMs: 0,
+        error: incomplete
+          ? `${outcome.failed}/${outcome.attempted} cleanup step(s) failed${controller.signal.aborted ? " (timed out)" : ""} — search the log for Cleanup rows in red`
+          : null,
+        body: JSON.stringify({ attempted: outcome.attempted, failed: outcome.failed }, null, 2),
+        ranAt,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  }, [pushLog, runCleanup, runStaleArtifactScan]);
+
+  /*
+   * Aborts the in-flight run and waits for its teardown to finish before the
+   * caller touches contextRef — otherwise the new run resets the ids the old
+   * run still needs in order to delete its own rows.
+   */
+  const beginRun = useCallback(async () => {
+    abortRef.current?.abort();
+    const previous = inFlightRef.current;
+    if (previous) {
+      await previous.catch(() => undefined);
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+    return controller;
+  }, []);
 
   const writeSystemTestAuditSummary = useCallback(async (logs: DebugLogEntry[], signal: AbortSignal) => {
     const endpointLogs = logs.filter((entry) => entry.category !== "Cleanup" && entry.category !== "Stale Data");
@@ -346,46 +431,52 @@ export function AdminStatusTab({
   }, []);
 
   const runCategory = useCallback(async (category: CategoryDef) => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+    const controller = await beginRun();
     clearRunConsole();
     setSuppressed(true);
-    try {
-      await runCategoryInternal(category, controller.signal);
-      if (!controller.signal.aborted) {
-        await runCleanup(controller.signal);
-        await runStaleArtifactScan(controller.signal);
+    // Teardown lives in `finally`: an aborted run still has rows to delete.
+    const run = (async () => {
+      try {
+        await runCategoryInternal(category, controller.signal);
+      } finally {
+        await runTeardown();
+        setSuppressed(false);
       }
-    } finally {
-      setSuppressed(false);
-    }
-  }, [clearRunConsole, runCategoryInternal, runCleanup, runStaleArtifactScan, setSuppressed]);
+    })();
+    inFlightRef.current = run;
+    await run;
+  }, [beginRun, clearRunConsole, runCategoryInternal, runTeardown, setSuppressed]);
 
   const runAllCategories = useCallback(async () => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+    const controller = await beginRun();
     clearRunConsole();
     setResultMap(new Map());
     contextRef.current = createInitialTestRunContext();
     setRunningAll(true);
     setSuppressed(true);
-    try {
-      for (const cat of visibleApiCategories) {
-        if (controller.signal.aborted) break;
-        await runCategoryInternal(cat, controller.signal);
+    const run = (async () => {
+      try {
+        for (const cat of visibleApiCategories) {
+          if (controller.signal.aborted) break;
+          await runCategoryInternal(cat, controller.signal);
+        }
+      } finally {
+        await runTeardown();
+        // Summary is written after teardown so it reflects the cleanup outcome.
+        const summaryController = new AbortController();
+        const summaryTimer = setTimeout(() => summaryController.abort(), TEARDOWN_TIMEOUT_MS);
+        try {
+          await writeSystemTestAuditSummary(runLogRef.current, summaryController.signal);
+        } finally {
+          clearTimeout(summaryTimer);
+        }
+        setRunningAll(false);
+        setSuppressed(false);
       }
-      if (!controller.signal.aborted) {
-        await runCleanup(controller.signal);
-        await runStaleArtifactScan(controller.signal);
-        await writeSystemTestAuditSummary(runLogRef.current, controller.signal);
-      }
-    } finally {
-      setRunningAll(false);
-      setSuppressed(false);
-    }
-  }, [clearRunConsole, runCategoryInternal, runCleanup, runStaleArtifactScan, setSuppressed, visibleApiCategories, writeSystemTestAuditSummary]);
+    })();
+    inFlightRef.current = run;
+    await run;
+  }, [beginRun, clearRunConsole, runCategoryInternal, runTeardown, setSuppressed, visibleApiCategories, writeSystemTestAuditSummary]);
 
   const clearDebug = useCallback(() => {
     runLogRef.current = [];

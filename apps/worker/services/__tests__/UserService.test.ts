@@ -287,3 +287,46 @@ describe("sanitizeTitleHtml", () => {
     expect(sanitizeTitleHtml('<span style="red&quot; onload=&quot;alert(1)">x</span>')).toBe("<span>x</span>");
   });
 });
+
+describe("reserved system-test username namespace", () => {
+  async function attemptRename(newUsername: string) {
+    // Resolves to no auth row, so a username that passes the guard stops at the
+    // password lookup rather than reaching an update.
+    const limit = vi.fn().mockResolvedValue([]);
+    const where = vi.fn(() => ({ limit }));
+    const from = vi.fn(() => ({ where }));
+    const select = vi.fn(() => ({ from }));
+    const service = new UserService({ select } as never, createDeps());
+    const result = await service.changeUsername(
+      { id: "member-1" } as never,
+      "member-1",
+      { currentPassword: "hunter2", newUsername },
+    );
+    return { result, select };
+  }
+
+  /*
+   * system-test-cleanup permanently deletes users in this namespace, so an
+   * account must never be able to move into it — the row would be gone a day
+   * later with no warning.
+   */
+  it("refuses to rename an account into the system-test namespace", async () => {
+    const { result, select } = await attemptRename("systemtest_hijack");
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+    // Rejected before the password check, so it cannot be used as a password oracle.
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it("matches the reserved prefix case-insensitively", async () => {
+    const { result } = await attemptRename("SystemTest_Hijack");
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+  });
+
+  it("leaves usernames that merely resemble the prefix alone", async () => {
+    // `systemtestX` is outside the namespace; the cron escapes the underscore
+    // precisely so this name survives.
+    const { select } = await attemptRename("systemtestX_member");
+    expect(select).toHaveBeenCalled();
+  });
+});

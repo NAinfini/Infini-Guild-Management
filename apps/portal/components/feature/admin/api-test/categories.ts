@@ -1,9 +1,24 @@
 import { type CategoryDef, type EndpointDef, type StaleArtifactProbe, isRecord } from "./types";
 
+/*
+ * These probes exist to catch fixtures a run failed to delete — the operator
+ * closing the tab mid-run, a worker restart. A leaked fixture is therefore
+ * always *live*, never archived and never deactivated, so none of these paths
+ * may narrow by state:
+ *   - Users:  UserService.buildUsersWhereFilters matches `search` against the
+ *             username alone, and the disposable user is named `systemtest_<ts>`
+ *             with no brackets — `[systemtest]` matched nothing. `active=false`
+ *             then excluded the live leftover that is the whole point of this
+ *             probe. (Soft-deleted rows stay invisible here by design: the query
+ *             always ANDs isNull(deletedAt), and a soft-deleted fixture is one
+ *             teardown already handled.)
+ *   - Events / Announcements: `archived=true` compiles to isNotNull(archivedAt),
+ *             so it excluded every unarchived leftover.
+ */
 export const STALE_ARTIFACT_PROBES: StaleArtifactProbe[] = [
-  { label: "Users", path: "/api/users?search=%5Bsystemtest%5D&active=false&limit=20" },
-  { label: "Events", path: "/api/events?search=%5Bsystemtest%5D&archived=true&limit=20" },
-  { label: "Announcements", path: "/api/announcements?search=%5Bsystemtest%5D&archived=true&limit=20" },
+  { label: "Users", path: "/api/users?search=systemtest_&limit=20" },
+  { label: "Events", path: "/api/events?search=%5Bsystemtest%5D&limit=20" },
+  { label: "Announcements", path: "/api/announcements?search=%5Bsystemtest%5D&limit=20" },
   { label: "Gallery", path: "/api/gallery?search=%5Bsystemtest%5D&limit=20" },
   { label: "Wiki", path: "/api/wiki/articles?search=%5Bsystemtest%5D&page=1&limit=20" },
   { label: "Storage", path: "/api/storage" },
@@ -11,17 +26,22 @@ export const STALE_ARTIFACT_PROBES: StaleArtifactProbe[] = [
   { label: "Badges", path: "/api/badges" },
 ];
 
-export function countStaleSystemTestArtifacts(label: string, payload: unknown): number {
-  const marker = "[systemtest]";
-  const containsMarker = (value: unknown): boolean => JSON.stringify(value).toLowerCase().includes(marker);
+export function countStaleSystemTestArtifacts(payload: unknown): number {
+  /*
+   * Two markers, because the fixtures carry two naming schemes: content rows are
+   * titled "[systemtest] …", but the disposable users are `systemtest_<ts>` with
+   * no brackets. Matching only the bracketed form left the Users probe unable to
+   * report a leaked test account.
+   */
+  const containsMarker = (value: unknown): boolean => {
+    const json = JSON.stringify(value).toLowerCase();
+    return json.includes("[systemtest]") || json.includes("systemtest_");
+  };
   if (isRecord(payload) && Array.isArray(payload.data)) {
     return payload.data.filter(containsMarker).length;
   }
   if (Array.isArray(payload)) {
     return payload.filter(containsMarker).length;
-  }
-  if (label === "Users" && isRecord(payload) && Array.isArray(payload.data)) {
-    return payload.data.filter(containsMarker).length;
   }
   return containsMarker(payload) ? 1 : 0;
 }
