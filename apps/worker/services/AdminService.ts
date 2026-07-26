@@ -15,8 +15,9 @@ import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from "drizzle-o
 import { drizzle } from "drizzle-orm/d1";
 import { inviteLinks, rolePermissions, roles, sessions, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult, type ServiceErr } from "./result";
+import { usernameEquals } from "./helpers";
+import { clearLoginFailures } from "./login-lockout";
 import type { MediaLike } from "./AdminAuditService";
-import { clearPermissionCache } from "./auth";
 import { SiteConfigService } from "./SiteConfigService";
 
 export type { MediaLike } from "./AdminAuditService";
@@ -226,7 +227,7 @@ export class AdminService {
   }
 
   async createMember(actorId: string, username: string): Promise<ServiceResult<{ user_id: string; username: string; temporary_password: string }>> {
-    const existing = (await this.deps.db.select({ id: users.id, deletedAt: users.deletedAt }).from(users).where(eq(users.username, username)).limit(1))[0];
+    const existing = (await this.deps.db.select({ id: users.id, deletedAt: users.deletedAt }).from(users).where(usernameEquals(username)).limit(1))[0];
     if (existing && existing.deletedAt === null) return err("CONFLICT", "Username already taken");
     const userId = this.deps.generateId();
     const temporaryPassword = this.deps.generateTemporaryPassword();
@@ -310,6 +311,25 @@ export class AdminService {
     return ok({ temporary_password: temporaryPassword });
   }
 
+  /**
+   * Clears the progressive login lockout for a user. The escape hatch for the
+   * one unavoidable downside of account-level lockout: anyone who knows a
+   * username can deliberately lock it out. Same permission and same level
+   * check as a password reset — clearing a lock is strictly weaker than
+   * changing the password, so it needs no separate permission.
+   */
+  async resetLoginLock(actorId: string, targetUserId: string): Promise<ServiceResult<{ ok: true }>> {
+    const actorRole = await this.getActorRoleLevel(actorId);
+    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
+    const target = (await this.deps.db.select({ id: users.id, deletedAt: users.deletedAt, username: users.username, role: users.role }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
+    if (!target || target.deletedAt !== null) return err("NOT_FOUND", "User not found");
+    const targetRoleLevel = (await this.deps.db.select({ level: roles.level }).from(roles).where(eq(roles.id, target.role)).limit(1))[0];
+    if (targetRoleLevel && targetRoleLevel.level >= actorRole.level) return err("FORBIDDEN", "Cannot clear the login lock for a user at or above your own level");
+    await clearLoginFailures(this.deps.db, target.username);
+    await this.deps.writeAuditLogDurable({ entityType: "user_auth", action: "reset_login_lock", actorId, entityId: targetUserId, diffTitle: target.username });
+    return ok({ ok: true });
+  }
+
   async listRoles(): Promise<ServiceResult<AdminRole[]>> {
     const roleRows = await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).orderBy(desc(roles.level), roles.name);
     const roleIds = roleRows.map((r) => r.id);
@@ -328,12 +348,17 @@ export class AdminService {
 
     const existing = (await this.deps.db.select({ id: roles.id }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (existing) return err("CONFLICT", "Role id already exists");
-    await this.deps.db.insert(roles).values({ id: roleId, name: input.name.trim(), level: input.level, color: input.color ?? null, isBuiltin: false });
+
     const permissionRecord = emptyPermissionRecord();
     for (const perm of PERMISSIONS) permissionRecord[perm] = Boolean(input.permissions?.[perm]);
     if (actorRole.roleId !== "admin") permissionRecord["admin.roles.manage"] = false;
+    // Validated before the INSERT so a rejected request cannot leave a role row
+    // behind with no permissions attached.
+    const escalated = await this.findEscalatedGrants(actorRole.roleId, permissionRecord);
+    if (escalated.length > 0) return err("FORBIDDEN", `Cannot grant permissions you do not hold: ${escalated.join(", ")}`);
+
+    await this.deps.db.insert(roles).values({ id: roleId, name: input.name.trim(), level: input.level, color: input.color ?? null, isBuiltin: false });
     await replaceRolePermissions(this.deps.rawDb, roleId, permissionRecord);
-    clearPermissionCache(roleId);
     await this.deps.writeAuditLogDurable({ entityType: "role", action: "create", actorId, entityId: roleId, diffTitle: input.name.trim(), detailText: JSON.stringify({ name: input.name.trim(), level: input.level, color: input.color ?? null, permissions: permissionRecord }) });
     const created = (await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (!created) return err("SERVER_ERROR", "Failed to create role");
@@ -355,18 +380,30 @@ export class AdminService {
     if (!existing.isBuiltin && input.level !== undefined) {
       if (input.level >= actorRole.level) return err("VALIDATION_ERROR", `Role level must be below your own (${actorRole.level})`);
     }
+    // Permissions are resolved and validated before anything is written, so a
+    // rejected escalation attempt cannot leave the name/level/colour applied.
+    let nextPermissionRecord: Record<Permission, boolean> | null = null;
+    if (input.permissions) {
+      const currentPermissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+      const currentlyGranted = parsePermissionRecord(currentPermissionRows);
+      nextPermissionRecord = parsePermissionRecord(currentPermissionRows);
+      for (const perm of PERMISSIONS) if (Object.prototype.hasOwnProperty.call(input.permissions, perm)) nextPermissionRecord[perm] = Boolean(input.permissions[perm]);
+      if (actorRole.roleId !== "admin") nextPermissionRecord["admin.roles.manage"] = false;
+      // Only newly added grants are checked: permissions the role already had are
+      // left alone so a lower-level editor is not forced to strip them.
+      const addedGrants = emptyPermissionRecord();
+      for (const perm of PERMISSIONS) addedGrants[perm] = nextPermissionRecord[perm] && !currentlyGranted[perm];
+      const escalated = await this.findEscalatedGrants(actorRole.roleId, addedGrants);
+      if (escalated.length > 0) return err("FORBIDDEN", `Cannot grant permissions you do not hold: ${escalated.join(", ")}`);
+    }
+
     const roleUpdatePayload: { name?: string; level?: number; color?: string | null; updatedAt: string } = { updatedAt: this.now().toISOString() };
     if (input.name !== undefined) roleUpdatePayload.name = input.name.trim();
     if (input.level !== undefined) roleUpdatePayload.level = input.level;
     if (input.color !== undefined) roleUpdatePayload.color = input.color ?? null;
     if (Object.keys(roleUpdatePayload).length > 1) await this.deps.db.update(roles).set(roleUpdatePayload).where(eq(roles.id, roleId));
-    if (input.permissions) {
-      const currentPermissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
-      const nextPermissionRecord = parsePermissionRecord(currentPermissionRows);
-      for (const perm of PERMISSIONS) if (Object.prototype.hasOwnProperty.call(input.permissions, perm)) nextPermissionRecord[perm] = Boolean(input.permissions[perm]);
-      if (actorRole.roleId !== "admin") nextPermissionRecord["admin.roles.manage"] = false;
+    if (nextPermissionRecord) {
       await replaceRolePermissions(this.deps.rawDb, roleId, nextPermissionRecord);
-      clearPermissionCache(roleId);
     }
     const [updatedRole] = await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).where(eq(roles.id, roleId)).limit(1);
     if (!updatedRole) return err("SERVER_ERROR", "Failed to load updated role");
@@ -390,7 +427,6 @@ export class AdminService {
     const assignedCount = Number(assignedCountRow?.count ?? 0);
     if (assignedCount > 0) return err("CONFLICT", "Role is assigned to users", { assigned_user_count: assignedCount });
     await this.deps.db.delete(roles).where(eq(roles.id, roleId));
-    clearPermissionCache(roleId);
     await this.deps.writeAuditLogDurable({ entityType: "role", action: "delete", actorId, entityId: roleId, diffTitle: existing.name });
     return ok(undefined);
   }
@@ -472,6 +508,27 @@ export class AdminService {
   private async roleHasHighRiskPermissions(roleId: string): Promise<boolean> {
     const rows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
     return rows.some((r) => r.granted && (HIGH_RISK_PERMISSIONS as readonly string[]).includes(r.permission));
+  }
+
+  private async getGrantedPermissions(roleId: string): Promise<ReadonlySet<string>> {
+    const rows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+    return new Set(rows.filter((r) => r.granted).map((r) => r.permission));
+  }
+
+  /**
+   * A granter may never hand out a permission it does not hold itself.
+   * `admin.roles.manage` on its own would otherwise be enough to mint a
+   * lower-level role carrying capabilities the granter lacks and assign a
+   * second account to it. Returns the offending permissions, empty when fine.
+   * `admin` is exempt — it is the root role by definition.
+   */
+  private async findEscalatedGrants(
+    actorRoleId: string,
+    requested: Record<Permission, boolean>,
+  ): Promise<Permission[]> {
+    if (actorRoleId === "admin") return [];
+    const held = await this.getGrantedPermissions(actorRoleId);
+    return PERMISSIONS.filter((perm) => requested[perm] && !held.has(perm));
   }
 
   private now() {

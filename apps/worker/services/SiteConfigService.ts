@@ -29,6 +29,7 @@ import { featureFlagsSchema } from "@guild/shared/config/features";
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { onboardingConfig, memberOnboardingState, siteConfig } from "../db/schema";
+import { logger } from "../utils/logger";
 import type { WriteAuditLogInput } from "./audit";
 import { captureUploadValidation } from "./media";
 import { err, ok, type ServiceResult } from "./result";
@@ -50,11 +51,24 @@ type SiteConfigRow = typeof siteConfig.$inferSelect;
 type OnboardingConfigRow = typeof onboardingConfig.$inferSelect;
 type MemberOnboardingStateRow = typeof memberOnboardingState.$inferSelect;
 
-function parseJsonOrDefault<T>(value: string | undefined | null, schema: { parse(input: unknown): T }, fallback: T): T {
+function parseJsonOrDefault<T>(
+  value: string | undefined | null,
+  schema: { parse(input: unknown): T },
+  fallback: T,
+  field: string,
+): T {
+  // Missing value is the legitimate pre-seed default, not an error.
   if (!value) return fallback;
   try {
     return schema.parse(JSON.parse(value) as unknown);
-  } catch {
+  } catch (error) {
+    // Logged rather than swallowed: without this, the admin console silently
+    // renders defaults over a corrupt row, and the next save writes those
+    // defaults back — destroying whatever the real values were.
+    logger.error("site_config column is corrupt; serving defaults", {
+      field,
+      reason: error instanceof Error ? error.message : String(error),
+    });
     return fallback;
   }
 }
@@ -68,11 +82,11 @@ function mapSiteConfig(row: SiteConfigRow | null, deps: SiteConfigDeps) {
   return siteConfigSchema.parse({
     site_name: row?.siteName ?? deps.envSiteName,
     site_logo_url: row?.siteLogoUrl ?? deps.envSiteLogoUrl,
-    features: parseJsonOrDefault(row?.featureFlagsJson, featureFlagsSchema, DEFAULT_FEATURE_FLAGS),
-    media_policy: parseJsonOrDefault(row?.mediaPolicyJson, siteMediaPolicySchema, DEFAULT_SITE_MEDIA_POLICY),
-    storage_policy: parseJsonOrDefault(row?.storagePolicyJson, siteStoragePolicySchema, DEFAULT_SITE_STORAGE_POLICY),
-    absence_policy: parseJsonOrDefault(row?.absencePolicyJson, siteAbsencePolicySchema, DEFAULT_SITE_ABSENCE_POLICY),
-    analytics_settings: parseJsonOrDefault(row?.analyticsSettingsJson, siteAnalyticsSettingsSchema, DEFAULT_SITE_ANALYTICS_SETTINGS),
+    features: parseJsonOrDefault(row?.featureFlagsJson, featureFlagsSchema, DEFAULT_FEATURE_FLAGS, "feature_flags_json"),
+    media_policy: parseJsonOrDefault(row?.mediaPolicyJson, siteMediaPolicySchema, DEFAULT_SITE_MEDIA_POLICY, "media_policy_json"),
+    storage_policy: parseJsonOrDefault(row?.storagePolicyJson, siteStoragePolicySchema, DEFAULT_SITE_STORAGE_POLICY, "storage_policy_json"),
+    absence_policy: parseJsonOrDefault(row?.absencePolicyJson, siteAbsencePolicySchema, DEFAULT_SITE_ABSENCE_POLICY, "absence_policy_json"),
+    analytics_settings: parseJsonOrDefault(row?.analyticsSettingsJson, siteAnalyticsSettingsSchema, DEFAULT_SITE_ANALYTICS_SETTINGS, "analytics_settings_json"),
     created_at: row?.createdAt ?? null,
     updated_at: row?.updatedAt ?? null,
   });

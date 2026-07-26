@@ -68,9 +68,9 @@
   padding: 0 18px;
   border: 0;
   border-radius: 999px;
-  color: var(--storage-ink-muted);
-  font-size: 1rem;
-  font-weight: 800;
+  color: var(--color-text-muted, #6b665e);
+  font-size: var(--text-body);
+  font-weight: var(--fw-medium);
   transition:
     background 0.16s ease,
     color 0.16s ease;
@@ -83,13 +83,20 @@
 }
 
 .storage-tabs__list .mantine-Tabs-tab:hover {
-  background: color-mix(in srgb, var(--color-primary, #d4a843) 9%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1a1815) 5%, transparent);
   color: var(--color-text, #1a1815);
 }
 
+/* Matches the neutral active-tab language in styles.css. */
 .storage-tabs__list .mantine-Tabs-tab[data-active] {
-  background: color-mix(in srgb, var(--color-primary, #d4a843) 22%, transparent);
-  color: var(--color-primary, #d4a843);
+  background: var(--color-surface-elevated, #ffffff);
+  box-shadow: 0 0 0 1px var(--border-subtle);
+  color: var(--color-text, #1a1815);
+}
+
+.dark .storage-tabs__list .mantine-Tabs-tab[data-active] {
+  background: color-mix(in srgb, var(--color-text, #f0ede8) 10%, transparent);
+  box-shadow: none;
 }
 
 .storage-tabs__list .mantine-Tabs-tab::before {
@@ -203,85 +210,54 @@
   background: var(--storage-muted);
 }
 
+/*
+ * Row list, not a card grid. Every item used to reserve a 5:3 image box whether
+ * or not it had an image, so three items filled 40% of the viewport height and
+ * most of that was an empty placeholder. A row is ~64px, the thumbnail is only
+ * rendered when the item actually has one, and wide screens get two or three
+ * columns of rows instead of one column of billboards.
+ */
 .storage-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--space-sm);
 }
 
 .storage-item-card {
-  border-color: var(--storage-border);
+  border-color: var(--border-subtle);
   background: var(--storage-surface-raised);
   height: 100%;
   transition:
-    box-shadow 0.25s ease,
-    transform 0.2s ease,
-    border-color 0.25s ease;
-}
-
-.storage-item-card::after {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 3;
-  width: 30%;
-  height: 100%;
-  content: "";
-  pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--color-primary, #d4a843) 5%, transparent),
-    transparent
-  );
-  transform: translateX(-100%) skewX(-15deg);
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .storage-item-card:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #d4a843) 35%, transparent);
-  box-shadow:
-    var(--shadow-md),
-    0 0 24px color-mix(in srgb, var(--color-primary, #d4a843) 10%, transparent);
-  transform: translateY(-3px);
-}
-
-.storage-item-card:hover::after {
-  animation: shineSweep 0.7s ease-out;
-}
-
-.dark .storage-item-card:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #d4a843) 45%, transparent);
-  box-shadow:
-    var(--shadow-md),
-    0 0 32px color-mix(in srgb, var(--color-primary, #d4a843) 14%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--color-primary, #d4a843) 8%, transparent);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
 }
 
 .storage-item-card .portal-card__inner {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  gap: var(--space-md);
   height: 100%;
-  padding: 12px;
+  padding: var(--space-sm) var(--space-md);
 }
 
 .storage-item-card__preview {
   position: relative;
   display: block;
-  width: 100%;
-  min-height: 126px;
-  aspect-ratio: 5 / 3;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   overflow: hidden;
   cursor: pointer;
-  border: 1px solid var(--storage-border);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--storage-radius-sm);
-  background:
-    radial-gradient(circle at 25% 20%, color-mix(in srgb, var(--color-primary, #d4a843) 18%, transparent), transparent 36%),
-    linear-gradient(135deg, color-mix(in srgb, var(--storage-muted) 86%, transparent), var(--storage-surface-strong));
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease;
+  background: var(--storage-muted);
+  transition: border-color 0.2s ease;
 }
 
 .storage-item-card__preview:focus-visible {
@@ -321,6 +297,13 @@
   background: var(--storage-muted);
 }
 
+/* The row thumbnail is 44px; the 118px floor belongs to the detail/editor views. */
+.storage-item-card__placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
 .storage-item-card__placeholder--broken,
 .storage-detail-media__empty--broken,
 .storage-item-editor__broken-image {
@@ -338,16 +321,17 @@
 }
 
 .storage-item-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-md);
+  min-width: 0;
   flex: 1;
 }
 
 .storage-item-card__main {
   display: grid;
-  gap: 7px;
+  gap: 3px;
   min-width: 0;
 }
 
@@ -374,7 +358,9 @@
 
 .storage-item-card__stock--available {
   border-color: color-mix(in srgb, var(--mantine-color-green-filled) 42%, var(--storage-border));
-  color: var(--mantine-color-green-filled);
+  /* -filled is a fill colour; as 12.8px text on the near-white card it measured
+     3.33:1. -light-color is the palette's text-on-tint shade and clears 4.5. */
+  color: var(--mantine-color-green-light-color);
 }
 
 .storage-item-card__badges {
@@ -393,14 +379,26 @@
 }
 
 .storage-item-card__actions {
-  margin-top: auto;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-xs);
+  flex-wrap: nowrap;
 }
 
 .storage-item-card__actions .mantine-Button-root {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
+}
+
+/* Below ~576px the row folds: identity on top, actions right-aligned under it. */
+@media (max-width: 575px) {
+  .storage-item-card__body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-sm);
+  }
+
+  .storage-item-card__actions {
+    justify-content: flex-end;
+  }
 }
 
 .storage-item-card__actions .mantine-ActionIcon-root {
@@ -1037,7 +1035,7 @@
 
 @media (max-width: 1180px) {
   .storage-grid {
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 
   .storage-command__categories {

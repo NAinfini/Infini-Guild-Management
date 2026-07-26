@@ -229,8 +229,13 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
       ...styleProp,
     };
 
+    /*
+     * role="group", not role="list": Reorder.Group already renders a real <ul>
+     * of <li>s, so declaring the wrapper a list gave it a <ul> and the upload
+     * <label> as children, neither of which may sit inside a list.
+     */
     return (
-      <div ref={ref} className={className} style={containerStyle} aria-label={ariaLabel} role="list" aria-live="polite" {...rest}>
+      <div ref={ref} className={className} style={containerStyle} aria-label={ariaLabel} role="group" aria-live="polite" {...rest}>
         <Reorder.Group
           axis="x"
           values={items}
@@ -256,7 +261,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
         {canUpload ? (
           <label
             htmlFor={inputId}
-            className="flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-amber-500 transition-colors text-gray-400"
+            className="flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-amber-500 transition-colors text-gray-600 dark:text-gray-300"
             style={{ width: imageSize, height: imageSize, borderRadius, fontSize: Math.max(10, imageSize * 0.14) }}
           >
             {uploadLabel ?? (

@@ -1,4 +1,4 @@
-﻿import { notifications } from "@mantine/notifications";
+import { notifications } from "@mantine/notifications";
 import type { PushMessage } from "@guild/shared";
 import { useEffect, useRef, type MutableRefObject } from "react";
 import { useTranslation } from "react-i18next";

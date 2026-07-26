@@ -237,6 +237,7 @@ export function SettingsPage() {
             <div>
               <div className="settings-switch-row">
                 <Switch
+                  aria-label={t("field.fancyEffects")}
                   checked={fancyEffects}
                   onChange={(e) => setFancyEffects(e.currentTarget.checked)}
                 />
@@ -247,6 +248,7 @@ export function SettingsPage() {
               </div>
               <div className="settings-switch-row">
                 <Switch
+                  aria-label={t("field.pushNotificationSound")}
                   checked={pushNotificationSound}
                   onChange={(e) => setPushNotificationSound(e.currentTarget.checked)}
                 />

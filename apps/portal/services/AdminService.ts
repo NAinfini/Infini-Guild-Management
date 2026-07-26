@@ -9,6 +9,7 @@ export {
   deactivateAdminUser,
   deleteAdminInviteLink,
   reactivateAdminUser,
+  resetAdminUserLoginLock,
   resetAdminUserPassword,
   revokeAdminInviteLink,
   updateAdminUserRole,

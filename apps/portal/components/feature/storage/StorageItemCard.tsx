@@ -40,19 +40,24 @@ export function StorageItemCard({
 
   return (
     <PortalCard className="storage-item-card" interactive={false}>
-      <button type="button" className="storage-item-card__preview" onClick={() => onOpen(item)} aria-label={item.name}>
-        {imageUrl && !imageFailed ? (
-          <Image src={imageUrl} alt={item.name} fit="cover" className="storage-item-card__image" onError={() => setImageFailed(true)} />
-        ) : imageFailed ? (
-          <span className="storage-item-card__placeholder storage-item-card__placeholder--broken"><PhotoOffIcon size={28} /></span>
-        ) : (
-          <span className="storage-item-card__placeholder"><PhotoOffIcon size={28} /></span>
-        )}
-      </button>
+      {/*
+        * Image on demand: an item without a picture gets no thumbnail slot at all
+        * rather than an empty placeholder box. A broken URL still shows the
+        * fallback, because that is a state worth seeing.
+        */}
+      {imageUrl ? (
+        <button type="button" className="storage-item-card__preview" onClick={() => onOpen(item)} aria-label={item.name}>
+          {imageFailed ? (
+            <span className="storage-item-card__placeholder storage-item-card__placeholder--broken"><PhotoOffIcon size={18} /></span>
+          ) : (
+            <Image src={imageUrl} alt={item.name} fit="cover" className="storage-item-card__image" onError={() => setImageFailed(true)} />
+          )}
+        </button>
+      ) : null}
       <div className="storage-item-card__body">
         <div className="storage-item-card__main">
           <div className="storage-item-card__title-row">
-            <Text fw={800} lineClamp={1}>{item.name}</Text>
+            <Text fw={600} lineClamp={1}>{item.name}</Text>
             <span className={`storage-item-card__stock ${item.quantity > 0 ? "storage-item-card__stock--available" : ""}`}>
               {item.quantity}
             </span>
@@ -60,18 +65,18 @@ export function StorageItemCard({
           <Group gap={6} className="storage-item-card__badges">
             <Badge variant="light" color="gray">{category?.name ?? labels.uncategorized}</Badge>
             {item.allow_member_deposit ? <Badge variant="light" color="green">{labels.depositEnabled}</Badge> : null}
-            {item.allow_member_withdraw ? <Badge variant="light" color="blue">{labels.withdrawEnabled}</Badge> : null}
+            {item.allow_member_withdraw ? <Badge variant="light" color="portal-bronze">{labels.withdrawEnabled}</Badge> : null}
             {!item.allow_member_deposit && !item.allow_member_withdraw ? <Badge variant="light" color="gray">{labels.closed}</Badge> : null}
           </Group>
         </div>
         <Group gap={6} className="storage-item-card__actions">
           {item.allow_member_deposit ? (
-            <Button size="compact-xs" variant="light" leftSection={<ArrowDownIcon size={13} />} onClick={() => onDeposit(item)}>
+            <Button size="compact-xs" variant="default" leftSection={<ArrowDownIcon size={13} />} onClick={() => onDeposit(item)}>
               {labels.deposit}
             </Button>
           ) : null}
           {item.allow_member_withdraw ? (
-            <Button size="compact-xs" variant="light" leftSection={<ArrowUpIcon size={13} />} onClick={() => onWithdraw(item)} disabled={item.quantity <= 0}>
+            <Button size="compact-xs" variant="default" leftSection={<ArrowUpIcon size={13} />} onClick={() => onWithdraw(item)} disabled={item.quantity <= 0}>
               {labels.withdraw}
             </Button>
           ) : null}

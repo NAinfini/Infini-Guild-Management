@@ -143,7 +143,7 @@
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
   white-space: nowrap;
   position: sticky;

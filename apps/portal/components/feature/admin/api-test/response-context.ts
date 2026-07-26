@@ -332,6 +332,15 @@ export function captureContextFromResponse(
     return next;
   }
 
+  if (endpoint.path === "/api/game-data") {
+    const base = isRecord(payload.data) ? payload.data : null;
+    const firstClass = Array.isArray(base?.classes)
+      ? base.classes.find((item): item is string => typeof item === "string")
+      : null;
+    next.gameDataClassId = firstClass ?? next.gameDataClassId;
+    return next;
+  }
+
   if (endpoint.path === "/api/wiki/categories") {
     if (Array.isArray(payload)) {
       const firstCategory = payload.find((item): item is Record<string, unknown> => isRecord(item));

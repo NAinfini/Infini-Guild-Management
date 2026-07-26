@@ -201,7 +201,7 @@ export function WikiPage() {
                   {t("articleEditor.lastUpdatedBy", { user: controller.selectedArticle.updated_by_username ?? controller.selectedArticle.created_by.slice(0, 8), date: formatDateTime(controller.selectedArticle.updated_at) })}
                 </Text>
                 {controller.selectedArticle.archived_at ? (
-                  <Text c="yellow" size="sm">
+                  <Text c="portal-copper" size="sm">
                     {t("articleEditor.archivedAt", { date: formatDateTime(controller.selectedArticle.archived_at) })}
                   </Text>
                 ) : null}

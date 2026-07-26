@@ -303,13 +303,13 @@
 .rtf-lifecycle__step-label {
   font-size: 12px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   min-width: 36px;
   flex-shrink: 0;
 }
 
 .dark .rtf-lifecycle__step-label {
-  color: color-mix(in srgb, var(--color-text, #F0EDE8) 55%, transparent);
+  color: color-mix(in srgb, var(--color-text, #F0EDE8) 65%, transparent);
 }
 
 .rtf-lifecycle__step-value {
@@ -336,9 +336,9 @@
 .rtf-lifecycle__empty-text {
   font-size: 12px;
   font-style: italic;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 45%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .dark .rtf-lifecycle__empty-text {
-  color: color-mix(in srgb, var(--color-text, #F0EDE8) 40%, transparent);
+  color: color-mix(in srgb, var(--color-text, #F0EDE8) 65%, transparent);
 }

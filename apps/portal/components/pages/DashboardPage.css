@@ -8,40 +8,19 @@
   padding: 20px;
 }
 
-/* ── Gradient accent strip at top of dashboard cards ── */
+/*
+ * The animated tri-colour strip across the top of every dashboard card is gone:
+ * it was a third edge treatment on a card that already has a fill and a border,
+ * and it marked nothing — every card had one.
+ */
 .dashboard-card {
   position: relative;
 }
 
-.dashboard-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--color-primary, #D4A843), var(--color-secondary, #8B7355), var(--color-accent, #C17F3E));
-  background-size: 200% 100%;
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
-  opacity: 0.4;
-  transition: opacity 0.3s ease, height 0.3s ease;
-  z-index: 3;
-  animation: dashboardStripShimmer 5s ease-in-out infinite;
-}
-
-@keyframes dashboardStripShimmer {
-  0%, 100% { background-position: 0% center; }
-  50% { background-position: 200% center; }
-}
-
-.dashboard-card:hover::before {
-  opacity: 1;
-}
-
 .dashboard-card-title {
   margin: 0;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: var(--text-card);
+  font-weight: var(--fw-strong);
   letter-spacing: -0.01em;
 }
 
@@ -108,7 +87,7 @@
 }
 
 .signup-box:hover {
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .signup-box--today {
@@ -141,7 +120,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 55%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   line-height: 1;
 }
 
@@ -167,7 +146,7 @@
   display: block;
   text-align: center;
   font-size: 13px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 25%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   line-height: 1;
   padding: 2px 0;
 }
@@ -213,7 +192,7 @@
 .signup-box-event-time {
   flex-shrink: 0;
   font-size: 10px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
@@ -252,7 +231,7 @@
   font-size: 12px;
   color: var(--color-text, #1A1815);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, var(--color-text, #1A1815) 14%);
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 24%, transparent);
+  border-color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   box-shadow: none;
 }
 
@@ -320,7 +299,7 @@
   flex-shrink: 0;
   color: var(--color-text, #1A1815);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, var(--color-text, #1A1815) 14%);
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 24%, transparent);
+  border-color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   box-shadow: none;
   opacity: 0.85;
   transition: opacity var(--transition-normal);
@@ -350,10 +329,13 @@
   letter-spacing: 0.08em;
   white-space: nowrap;
   flex-shrink: 0;
-  color: var(--war-result-color, #888);
+  /* The raw status hue on its own 10% tint measured 4.0–4.3:1 at 11px. Pulling it
+     15% toward the page text darkens it in light mode and lightens it in dark,
+     clearing 4.5:1 in both without changing the hue. */
+  color: color-mix(in srgb, var(--war-result-color, #888) 85%, var(--color-text, #1A1815));
   background: color-mix(in srgb, var(--war-result-color, #888) 10%, var(--color-surface, #fff));
   border: 1px solid color-mix(in srgb, var(--war-result-color, #888) 22%, transparent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--war-result-color, #888) 15%, transparent);
+  box-shadow: none;
 }
 
 /* ── VS bar header ── */
@@ -364,7 +346,7 @@
   justify-content: center;
   gap: 10px;
   padding: 4px 0;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 45%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .war-vs-bar-team {
@@ -377,7 +359,7 @@
 }
 
 .war-vs-bar-team--us {
-  color: color-mix(in srgb, var(--color-primary, #D4A843) 70%, var(--color-text, #e5e5e5));
+  color: var(--color-primary-text, #705A1B);
   text-align: right;
 }
 
@@ -410,7 +392,7 @@
   gap: 5px;
   font-size: 11px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 55%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   width: 100%;
@@ -419,7 +401,7 @@
 .war-compare-label-icon {
   display: inline-flex;
   align-items: center;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .war-compare-bar-wrap {
@@ -537,7 +519,7 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .war-mvp-chip-value {
@@ -559,9 +541,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .signup-box--today {
-    animation: none;
-  }
-  .dashboard-card::before {
     animation: none;
   }
 }

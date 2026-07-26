@@ -61,13 +61,13 @@ export function EquipmentCard({ equipment, gameData, isEquipped, onClick }: Equi
         <span className="ecm__equip-card__name">{equipment.name}</span>
         <div className="ecm__equip-card__badges">
           {equipment.isChengyin && (
-            <Badge size="xs" color="orange" variant="light">{t("pool.chengyin")}</Badge>
+            <Badge size="xs" color="portal-copper" variant="light">{t("pool.chengyin")}</Badge>
           )}
           {equipment.isPurple && (
             <Badge size="xs" color="violet" variant="light">{t("pool.purple")}</Badge>
           )}
           {isEquipped && (
-            <Badge size="xs" color="blue" variant="filled">{t("pool.equipped")}</Badge>
+            <Badge size="xs" color="portal-gold" variant="filled">{t("pool.equipped")}</Badge>
           )}
         </div>
       </div>

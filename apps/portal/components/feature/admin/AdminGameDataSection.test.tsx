@@ -5,7 +5,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminGameDataSection } from "./AdminGameDataSection";
-import { fetchGameData, fetchGameDataVersions, uploadGameData } from "@portal/services/GameDataService";
+import { fetchGameDataFull, fetchGameDataVersions, uploadGameData } from "@portal/services/GameDataService";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -17,7 +17,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@portal/services/GameDataService", () => ({
-  fetchGameData: vi.fn(),
+  fetchGameDataFull: vi.fn(),
   fetchGameDataVersions: vi.fn(),
   uploadGameData: vi.fn(),
   rollbackGameData: vi.fn(),
@@ -64,7 +64,7 @@ async function openJsonEditor(user: ReturnType<typeof userEvent.setup>) {
 describe("AdminGameDataSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(fetchGameData).mockResolvedValue(latestGameData);
+    vi.mocked(fetchGameDataFull).mockResolvedValue(latestGameData);
     vi.mocked(fetchGameDataVersions).mockResolvedValue([]);
     vi.mocked(uploadGameData).mockResolvedValue({ version: "2026-05-22T02:00:00.000Z" });
   });

@@ -159,7 +159,8 @@ export function RecurringTemplatesTab({
               <PortalCard
                 key={template.id}
                 interactive={canManage}
-                style={{ opacity: isPaused ? 0.65 : 1, transition: "opacity 150ms ease" }}
+                /* Dimming the whole row dragged every label to ~2.3:1. The
+                   "paused" badge already says it, so the row stays readable. */
                 onClick={canManage ? () => handleEdit(template) : undefined}
               >
                 <div style={{ padding: "12px 16px" }}>
@@ -173,16 +174,14 @@ export function RecurringTemplatesTab({
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          background: isPaused
-                            ? "color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent)"
-                            : "color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent)",
+                          background: "color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent)",
                           flexShrink: 0,
                         }}
                       >
                         <CalendarRepeatIcon
                           size={20}
                           style={{
-                            color: isPaused ? "var(--color-text-muted, #6B665E)" : "var(--color-primary, #D4A843)",
+                            color: isPaused ? "var(--color-text-muted, #6B665E)" : "var(--color-text, #1A1815)",
                           }}
                         />
                       </div>
@@ -246,16 +245,16 @@ export function RecurringTemplatesTab({
                         {lifecycle && (
                           <Group gap={14} wrap="wrap" mt={4}>
                             <Text size="xs" style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-text-muted, #6B665E)" }}>
-                              <Text span fw={600} size="xs" style={{ opacity: 0.7 }}>{t("recurring.lifecycle.nextCreation")}</Text>
+                              <Text span fw={600} size="xs">{t("recurring.lifecycle.nextCreation")}</Text>
                               {" "}{formatLifecycleDate(lifecycle.creationTime, lang)}
                             </Text>
-                            <Text size="xs" fw={500} style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-primary, #D4A843)" }}>
-                              <Text span fw={700} size="xs" style={{ color: "var(--color-primary, #D4A843)" }}>{t("recurring.lifecycle.nextStart")}</Text>
+                            <Text size="xs" fw={500} style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-primary-text, #705A1B)" }}>
+                              <Text span fw={700} size="xs" style={{ color: "var(--color-primary-text, #705A1B)" }}>{t("recurring.lifecycle.nextStart")}</Text>
                               {" "}{formatLifecycleDate(lifecycle.startTime, lang)}
                             </Text>
                             {lifecycle.endTime && (
                               <Text size="xs" style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-text-muted, #6B665E)" }}>
-                                <Text span fw={600} size="xs" style={{ opacity: 0.7 }}>{t("recurring.lifecycle.nextEnd")}</Text>
+                                <Text span fw={600} size="xs">{t("recurring.lifecycle.nextEnd")}</Text>
                                 {" "}{formatLifecycleDate(lifecycle.endTime, lang)}
                               </Text>
                             )}
@@ -274,7 +273,7 @@ export function RecurringTemplatesTab({
                           </HoverCard.Target>
                           <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                             <Group gap={10} wrap="nowrap" align="flex-start">
-                              <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                              <ThemeIcon variant="light" color="portal-copper" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                                 <ClockIcon size={16} />
                               </ThemeIcon>
                               <div style={{ minWidth: 0 }}>

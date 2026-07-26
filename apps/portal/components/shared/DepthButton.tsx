@@ -17,13 +17,17 @@ export interface DepthButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEl
   iconOnly?: boolean;
 }
 
+// Brand-first mapping: the primary action wears the portal gold, and the two
+// non-alarming accents use the bronze/copper ramps instead of Mantine's stock
+// blue/cyan/yellow, which clash with the warm palette. Danger and success keep
+// red/green because those meanings are conventional, not decorative.
 const variantToMantine: Record<ButtonVariant, { color: string; variant: string }> = {
-  primary: { color: "blue", variant: "filled" },
+  primary: { color: "portal-gold", variant: "filled" },
   secondary: { color: "gray", variant: "default" },
   danger: { color: "red", variant: "filled" },
   success: { color: "green", variant: "filled" },
-  warning: { color: "yellow", variant: "filled" },
-  info: { color: "cyan", variant: "filled" },
+  warning: { color: "portal-copper", variant: "filled" },
+  info: { color: "portal-bronze", variant: "light" },
 };
 
 export const DepthButton = forwardRef<HTMLButtonElement, DepthButtonProps>(

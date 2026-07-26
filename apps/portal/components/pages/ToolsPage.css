@@ -12,7 +12,7 @@
   box-sizing: border-box;
   cursor: pointer;
   width: 100%;
-  min-height: 180px;
+  min-height: 108px;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -45,25 +45,17 @@
   font-size: 28px;
   line-height: 1;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 12%, var(--color-surface, #ffffff));
-  color: var(--color-primary, #D4A843);
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 14%, transparent);
-  transform: rotate(0deg) scale(1);
-  will-change: transform;
-  transition:
-    transform var(--transition-normal),
-    background var(--transition-normal),
-    box-shadow var(--transition-normal);
+  /* Neutral tile: three gold squares on a page of three cards made the icons
+     shout louder than the tool names they belong to. */
+  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
+  color: var(--color-text-muted, #6B665E);
+  border: 1px solid var(--border-subtle);
+  transition: background var(--transition-normal), color var(--transition-normal);
 }
 
 .tool-card:hover .tool-card__icon {
-  transform: rotate(12deg) scale(1.18);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 22%, var(--color-surface, #ffffff));
-  box-shadow: var(--shadow-primary-md);
-}
-
-.tool-card:nth-child(even):hover .tool-card__icon {
-  transform: rotate(12deg) scale(1.18);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 9%, transparent);
+  color: var(--color-text, #1A1815);
 }
 
 .tool-card__title.tool-card__title {
@@ -82,6 +74,16 @@
   gap: 6px;
   min-width: 0;
   margin-top: 2px;
+}
+
+/*
+ * The label must never be the element that gives: in a narrow card the flex
+ * default (shrink to min-content) breaks "数据版本" into one CJK glyph per line.
+ * Only the value truncates.
+ */
+.tool-card__meta .mantine-Text-root:first-child {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .tool-card__meta .mantine-Text-root:last-child {
@@ -267,7 +269,7 @@ a.tool-card__btn {
 }
 
 .sandbox__slider-icon {
-  color: color-mix(in srgb, var(--color-text, #1A1815) 45%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   flex-shrink: 0;
 }
 
@@ -352,7 +354,7 @@ a.tool-card__btn {
   border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 16%, transparent);
   border-radius: var(--radius-sm, 4px);
   background: transparent;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 52%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
@@ -528,7 +530,7 @@ a.tool-card__btn {
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   transition: color 120ms ease;
 }
 

@@ -207,6 +207,12 @@ adminRoutes.post("/users/:id/reset-password", async (c) => {
   return c.json({ ok: true, ...result.data });
 });
 
+adminRoutes.post("/users/:id/reset-login-lock", async (c) => {
+  const sessionUser = await requirePermission(c, "admin.users.password", { freshPermissions: true });
+  const result = await getAdminService(c).resetLoginLock(sessionUser.id, c.req.param("id"));
+  return handleResult(c, result);
+});
+
 // Roles
 adminRoutes.get("/roles", async (c) => {
   await requirePermission(c, "admin.roles.view");

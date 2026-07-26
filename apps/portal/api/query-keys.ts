@@ -119,6 +119,8 @@ export const queryKeys = {
   gameData: {
     all: ["game-data"] as const,
     latest: () => [...queryKeys.gameData.all, "latest"] as const,
+    full: () => [...queryKeys.gameData.all, "full"] as const,
+    rotation: (classId: string) => [...queryKeys.gameData.all, "rotation", classId] as const,
     versions: () => [...queryKeys.gameData.all, "versions"] as const,
   },
   cmdk: {

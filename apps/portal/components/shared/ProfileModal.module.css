@@ -40,7 +40,7 @@
   height: 100%;
   display: grid;
   place-items: center;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 46%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   font-size: 32px;
   font-weight: 700;
 }
@@ -63,7 +63,7 @@
 .fieldLabel {
   display: block;
   margin-bottom: 4px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 52%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;

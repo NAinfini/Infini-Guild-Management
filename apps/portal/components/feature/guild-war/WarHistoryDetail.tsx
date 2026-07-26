@@ -125,7 +125,7 @@ export function WarHistoryDetail({
     >
       <Stack gap={16}>
         {historyDetailLoading ? <Stack gap={8}><Skeleton height={20} width="40%" />{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={16} />)}</Stack> : null}
-        {historyDetailError ? <Alert color="yellow">{loadErrorMessage}</Alert> : null}
+        {historyDetailError ? <Alert color="portal-copper">{loadErrorMessage}</Alert> : null}
         {!historyDetailLoading && !historyDetailError && historyDetail ? (
           <Stack gap={20}>
             {/* Hero header */}

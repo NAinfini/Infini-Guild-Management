@@ -27,7 +27,7 @@ export function MemberOnboardingCard({
   }
 
   if (!onboarding) {
-    return <Alert color="yellow">{t("onboarding.empty")}</Alert>;
+    return <Alert color="portal-copper">{t("onboarding.empty")}</Alert>;
   }
 
   const completed = new Set(onboarding.state.completed_item_ids);

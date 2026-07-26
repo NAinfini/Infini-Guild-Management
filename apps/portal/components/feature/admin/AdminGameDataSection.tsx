@@ -19,7 +19,7 @@ import { DepthButton } from "@portal/components/shared/DepthButton";
 import { EmptyState } from "../../shared/EmptyState";
 import { ArrowDownIcon, UploadIcon, RefreshCwIcon, ChevronDownIcon } from "@portal/components/icons";
 import {
-  fetchGameData,
+  fetchGameDataFull,
   fetchGameDataVersions,
   rollbackGameData,
   uploadGameData,
@@ -50,9 +50,11 @@ export function AdminGameDataSection() {
   const [jsonEditorDirty, setJsonEditorDirty] = useState(false);
   const [jsonEditorOpen, setJsonEditorOpen] = useState(false);
 
+  // The editor and the download must round-trip the whole document, rotations
+  // included — the trimmed `/api/game-data` payload would silently wipe them.
   const gameDataQuery = useQuery({
-    queryKey: queryKeys.gameData.latest(),
-    queryFn: fetchGameData,
+    queryKey: queryKeys.gameData.full(),
+    queryFn: fetchGameDataFull,
   });
 
   const versionsQuery = useQuery({
@@ -296,7 +298,7 @@ export function AdminGameDataSection() {
               {t("gameData.lineCount", { count: jsonEditorValue.split("\n").length })}
             </Text>
           </span>
-          <Badge variant="light" color={jsonEditorDirty ? "yellow" : "gray"}>
+          <Badge variant="light" color={jsonEditorDirty ? "portal-copper" : "gray"}>
             {jsonEditorDirty ? t("gameData.unsaved") : t("gameData.synced")}
           </Badge>
           <span className={`admin-game-data__collapse-icon ${jsonEditorOpen ? "admin-game-data__collapse-icon--open" : ""}`}>

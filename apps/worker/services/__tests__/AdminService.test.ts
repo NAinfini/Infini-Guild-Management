@@ -49,7 +49,11 @@ function siteConfigRow(analyticsSettingsJson: string) {
   };
 }
 
-function createService(db: unknown): AdminService {
+function createRawDb() {
+  return { batch: vi.fn().mockResolvedValue([]), prepare: vi.fn(() => ({ bind: vi.fn(() => ({})) })) };
+}
+
+function createService(db: unknown, rawDb: unknown = { batch: vi.fn(), prepare: vi.fn() }): AdminService {
   const media = {
     get: vi.fn(),
     put: vi.fn(),
@@ -58,7 +62,7 @@ function createService(db: unknown): AdminService {
   return new AdminService({
     db: db as never,
     media: media as never,
-    rawDb: { batch: vi.fn(), prepare: vi.fn() } as never,
+    rawDb: rawDb as never,
     writeAuditLog: vi.fn(),
     writeAuditLogDurable: vi.fn(),
     createPasswordHash: vi.fn(),
@@ -290,5 +294,105 @@ describe("AdminService role assignment guardrails", () => {
       message: "Only admin can assign roles containing high-risk permissions",
     });
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("blocks a role manager from granting permissions it does not hold itself", async () => {
+    const values = vi.fn();
+    const insert = vi.fn(() => ({ values }));
+    const select = vi
+      .fn()
+      // getActorRoleLevel
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          innerJoin: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn().mockResolvedValue([{ roleId: "moderator", level: 50 }]),
+            })),
+          })),
+        })),
+      })
+      // duplicate role id check
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })),
+        })),
+      })
+      // permissions actually held by the actor's own role
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue([
+            { permission: "admin.roles.manage", granted: true },
+            { permission: "events.create", granted: true },
+          ]),
+        })),
+      });
+    const service = createService({ select, insert });
+
+    const result = await service.createRole("actor-1", {
+      id: "custom_helper",
+      name: "Helper",
+      level: 10,
+      permissions: { "events.create": true, "admin.audit.view": true },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "FORBIDDEN",
+      message: "Cannot grant permissions you do not hold: admin.audit.view",
+    });
+    // The role row must not survive a rejected request.
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("lets a role manager re-grant permissions it holds without escalating", async () => {
+    const values = vi.fn().mockResolvedValue(undefined);
+    const insert = vi.fn(() => ({ values }));
+    const createdRow = {
+      id: "custom_helper",
+      name: "Helper",
+      level: 10,
+      color: null,
+      isBuiltin: false,
+      createdAt: "2026-05-18T00:00:00.000Z",
+      updatedAt: "2026-05-18T00:00:00.000Z",
+    };
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          innerJoin: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn().mockResolvedValue([{ roleId: "moderator", level: 50 }]),
+            })),
+          })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue([{ permission: "events.create", granted: true }]),
+        })),
+      })
+      // reload of the created role
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([createdRow]) })),
+        })),
+      });
+    const service = createService({ select, insert }, createRawDb());
+
+    const result = await service.createRole("actor-1", {
+      id: "custom_helper",
+      name: "Helper",
+      level: 10,
+      permissions: { "events.create": true },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(insert).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,7 +1,7 @@
 .event-card {
   overflow: visible;
   position: relative;
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 9%, transparent);
+  border-color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
@@ -10,40 +10,56 @@
   border-radius: inherit;
 }
 
+/*
+ * Type accent rail. It spans the whole card and paints only its left 4px so the
+ * card's own border-radius clips the rail's ends: a plain 4px-wide box would
+ * keep its square corners and stick out past the rounded card edge, which is
+ * visible because `.event-card` turns clipping off (see `overflow: visible`).
+ */
 .event-card::before {
   content: "";
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
+  inset: 0;
+  border-radius: inherit;
   z-index: 3;
   opacity: 0.85;
+  pointer-events: none;
+  background: linear-gradient(to right, var(--event-card-accent, transparent) 0 4px, transparent 4px);
 }
 
-.event-card:has(.event-card__header--weekly_mission)::before,
-.event-card:has(.event-card__header--raid)::before {
-  background: var(--color-primary, #D4A843);
+/*
+ * `.portal-card--interactive::after` parks its gold shine one full card-width to
+ * the left and relies on the card clipping it until the hover sweep runs. With
+ * `overflow: visible` that band simply sits beside every card, so the effect is
+ * dropped here instead of bleeding gold onto the page.
+ */
+.event-card.portal-card--interactive::after {
+  content: none;
 }
 
-.event-card:has(.event-card__header--guild_war)::before {
-  background: var(--color-danger, #ef4444);
+.event-card:has(.event-card__header--weekly_mission),
+.event-card:has(.event-card__header--raid) {
+  --event-card-accent: var(--color-primary, #D4A843);
 }
 
-.event-card:has(.event-card__header--social)::before {
-  background: var(--color-accent, #8B7355);
+.event-card:has(.event-card__header--guild_war) {
+  --event-card-accent: var(--color-danger, #ef4444);
 }
 
-.event-card:has(.event-card__header--poll)::before {
-  background: #14b8a6;
+.event-card:has(.event-card__header--social) {
+  --event-card-accent: var(--color-secondary, #8B7355);
 }
 
-.event-card:has(.event-card__header--raffle)::before {
-  background: #ec4899;
+.event-card:has(.event-card__header--poll) {
+  --event-card-accent: #14b8a6;
 }
 
-.event-card:has(.event-card__header--other)::before {
-  background: color-mix(in srgb, var(--color-text, #1A1815) 36%, transparent);
+.event-card:has(.event-card__header--raffle) {
+  --event-card-accent: #ec4899;
+}
+
+.event-card:has(.event-card__header--other) {
+  --event-card-accent: color-mix(in srgb, var(--color-text, #1A1815) 36%, transparent);
 }
 
 .event-card:hover {
@@ -125,7 +141,7 @@
   height: 28px;
   border-radius: 6px;
   cursor: pointer;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 58%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   flex-shrink: 0;
   transition: color 150ms ease, background 150ms ease;
 }
@@ -145,6 +161,16 @@
   justify-content: space-between;
   gap: 10px;
   min-width: 0;
+}
+
+/* The card is no longer a role="button", so the title carries the keyboard
+   affordance. It has to shrink exactly like the plain <Text> it replaced. */
+.event-card__title-btn {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  color: inherit;
 }
 
 .event-card__title {
@@ -263,7 +289,7 @@
   height: var(--event-card-avatar-size, 36px);
   flex: 0 0 var(--event-card-avatar-size, 36px);
   border-radius: 50%;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 36%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   background: color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
   border: 1px dashed color-mix(in srgb, var(--color-text, #1A1815) 18%, transparent);
 }
@@ -293,7 +319,7 @@
 }
 
 .event-card__icon-muted {
-  color: color-mix(in srgb, var(--color-text, #1A1815) 48%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .event-members-modal__header {

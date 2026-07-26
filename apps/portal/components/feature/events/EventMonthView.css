@@ -43,8 +43,17 @@
   background: color-mix(in srgb, var(--color-primary, #D4A843) 4%, var(--color-surface, #ffffff));
 }
 
+/*
+ * Dimming the whole cell also dimmed the event chips inside it, dragging their
+ * labels to 2.9–3.7:1. The "not this month" signal only needs to be on the date
+ * number and the cell fill.
+ */
 .month-calendar__cell--adjacent {
-  opacity: 0.45;
+  background: color-mix(in srgb, var(--color-text, #1A1815) 4%, transparent);
+}
+
+.month-calendar__cell--adjacent .month-calendar__date {
+  opacity: 0.65;
 }
 
 .month-calendar__cell--today {
@@ -68,7 +77,8 @@
   height: 24px;
   border-radius: 50%;
   background: var(--color-primary, #D4A843);
-  color: #ffffff;
+  /* Gold is a mid tone: white on it is 2.2:1 in either theme, dark text is 7.8:1. */
+  color: #1A1815;
   font-weight: 700;
 }
 
@@ -102,8 +112,10 @@
   padding: 2px;
 }
 
+/* The badge is already switched to the gray ramp for muted events, so the
+ * de-emphasis does not need an opacity that drops the title to 2.9:1. */
 .month-calendar__event-badge--muted {
-  opacity: 0.62;
+  opacity: 0.85;
   filter: grayscale(0.45);
 }
 

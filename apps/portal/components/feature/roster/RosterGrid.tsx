@@ -53,7 +53,7 @@ export function RosterGrid({
   const rowVirtualizer = useVirtualizer({
     count: rowChunks.length,
     getScrollElement: () => virtualScrollRef.current,
-    estimateSize: () => 280,
+    estimateSize: () => 84,
     overscan: 6,
     gap: 8,
     measureElement: (el) => el.getBoundingClientRect().height,
@@ -61,8 +61,13 @@ export function RosterGrid({
   const virtualRows = rowVirtualizer.getVirtualItems();
 
   if (shouldVirtualize) {
+    /*
+     * list/listitem, not grid/gridcell: role="grid" requires role="row"
+     * children, and the columns here are pure visual reflow with no column
+     * semantics to navigate.
+     */
     return (
-      <div ref={virtualScrollRef} className="roster-virtual-scroll" role="grid" aria-label={ariaLabel}>
+      <div ref={virtualScrollRef} className="roster-virtual-scroll" role="list" aria-label={ariaLabel}>
         <div className="roster-virtual-inner" style={{ height: rowVirtualizer.getTotalSize() }}>
           {virtualRows.map((virtualRow) => {
             const members = rowChunks[virtualRow.index] ?? [];
@@ -78,7 +83,7 @@ export function RosterGrid({
                 }}
               >
                 {members.map((entry) => (
-                  <div key={entry.user.id} role="gridcell" className="roster-virtual-cell">
+                  <div key={entry.user.id} role="listitem" className="roster-virtual-cell">
                     <div
                       onMouseEnter={() => onCardMouseEnter(entry)}
                       onMouseLeave={onCardMouseLeave}
@@ -104,10 +109,10 @@ export function RosterGrid({
   }
 
   return (
-    <div role="grid" aria-label={ariaLabel}>
+    <div role="list" aria-label={ariaLabel}>
       <StaggerList className="roster-card-grid" staggerMs={30} key={staggerKey}>
         {rows.map((entry) => (
-          <motion.div key={entry.user.id} role="gridcell" variants={rosterCardVariants} className="roster-card-cell">
+          <motion.div key={entry.user.id} role="listitem" variants={rosterCardVariants} className="roster-card-cell">
             <div
               onMouseEnter={() => onCardMouseEnter(entry)}
               onMouseLeave={onCardMouseLeave}

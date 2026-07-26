@@ -296,7 +296,11 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
       content: parseContent(value, mode),
       editable: !effectiveReadOnly,
       editorProps: {
-        attributes: { class: "infini-tiptap-surface" },
+        // Read-only content is prose, not a field: the input frame and the 180px
+        // min-height made published announcements look like an empty textarea.
+        attributes: {
+          class: effectiveReadOnly ? "infini-tiptap-surface infini-tiptap-surface--readonly" : "infini-tiptap-surface",
+        },
         handleDOMEvents: {
           contextmenu: (_view: unknown, event: Event) => {
             if (effectiveReadOnly) return false;
@@ -350,7 +354,12 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
     });
 
     useEffect(() => {
-      if (!editor) return;
+      // React re-runs passive effects when a Suspense boundary re-shows its
+      // content (reconnectPassiveEffects), but `useEditor`'s cleanup has already
+      // called `editor.destroy()` by then — a destroyed editor nulls its
+      // commandManager, so `editor.commands` throws and takes the whole route
+      // down through the error boundary. Seen on /announcements and /wiki.
+      if (!editor || editor.isDestroyed) return;
       const nextContent = parseContent(value, mode);
       if (mode === "json") {
         const current = JSON.stringify(editor.getJSON());
@@ -470,7 +479,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
         ) : null}
 
         {isUploadingImage ? (
-          <Alert color="blue" title={labels.uploading} variant="light">
+          <Alert color="portal-bronze" title={labels.uploading} variant="light">
             <Progress value={imageUploadProgress} size="sm" mt={8} />
           </Alert>
         ) : null}

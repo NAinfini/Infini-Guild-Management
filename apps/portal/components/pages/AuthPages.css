@@ -168,7 +168,15 @@
 
 /* ── Form card ── */
 
+/*
+ * Tint and blur come from the shared `.glass-effect` rule; setting them here as
+ * variables (instead of props on GlassEffect) is what lets the light theme block
+ * at the bottom of this file re-tint the same card.
+ */
 .login-page__card {
+  --glass-blur: 20px;
+  --glass-opacity: 65%;
+  --glass-border-opacity: 15%;
   width: 100%;
   border-radius: var(--radius-lg);
   padding: clamp(24px, 4vw, 36px);
@@ -177,9 +185,6 @@
     0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent),
     inset 0 1px 0 color-mix(in srgb, #ffffff 6%, transparent);
   position: relative;
-  background: color-mix(in srgb, var(--color-surface, #141418) 65%, transparent);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
 }
 
 .login-page__card::before {
@@ -255,7 +260,7 @@
   pointer-events: none;
   font-size: 14px;
   font-weight: 500;
-  color: color-mix(in srgb, var(--color-text, #e2e8f0) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #e2e8f0) 65%, transparent);
   transition: top var(--transition-smooth), transform var(--transition-smooth), font-size var(--transition-smooth), color var(--transition-smooth);
   line-height: 1;
   padding: 0 4px;
@@ -304,7 +309,7 @@
   border: none;
   padding: 2px;
   cursor: pointer;
-  color: color-mix(in srgb, var(--color-text, #e2e8f0) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #e2e8f0) 65%, transparent);
   transition: color var(--transition-normal);
 }
 
@@ -320,6 +325,45 @@
 @keyframes login-caps-fadein {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Inline notices (session expired / login required / submit error) ── */
+
+/*
+ * A slim banner instead of Mantine's Alert: an Alert with only a `title` renders
+ * a tall block in its own palette, which reads as a foreign element inside the
+ * glass card. This keeps the card's border/tint language and its own spacing.
+ */
+.login-page__notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--login-notice-color) 34%, transparent);
+  border-left-width: 3px;
+  background: color-mix(in srgb, var(--login-notice-color) 10%, transparent);
+  color: color-mix(in srgb, var(--color-text, #e2e8f0) 88%, transparent);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.login-page__notice-icon {
+  flex-shrink: 0;
+  color: var(--login-notice-color);
+}
+
+.login-page__notice--info {
+  --login-notice-color: var(--color-primary, #D4A843);
+}
+
+.login-page__notice--warning {
+  --login-notice-color: var(--color-warning, #FBBF24);
+}
+
+.login-page__notice--error {
+  --login-notice-color: var(--color-danger, #F87171);
 }
 
 /* ── Back to portal link ── */
@@ -341,6 +385,80 @@
 
 .login-page__back-anchor:hover {
   background: color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
+}
+
+/* ── Light theme ──
+ *
+ * The page is designed dark-first: saturated gold gradients and a 65%-opaque
+ * glass card read well on #0A0A0F but collapse onto the parchment background
+ * (axe measured 1.39:1 on the brand text). Light mode keeps the same
+ * composition — lamp, bubbles, glass card — with a calmer backdrop, a nearly
+ * opaque card and darker gold ramps so text clears 4.5:1.
+ */
+
+:root:not(.dark) .login-page__bg {
+  opacity: 0.5;
+}
+
+:root:not(.dark) .login-page__card {
+  --glass-opacity: 94%;
+  --glass-border-opacity: 100%;
+  box-shadow:
+    var(--shadow-lg),
+    0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 24%, transparent);
+}
+
+:root:not(.dark) .login-page__card .mantine-TextInput-input,
+:root:not(.dark) .login-page__card .mantine-PasswordInput-input {
+  background: var(--color-surface, #ffffff);
+  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 45%, var(--color-border, #E2DDD6));
+}
+
+:root:not(.dark) .login-page__card .mantine-TextInput-input:focus,
+:root:not(.dark) .login-page__card .mantine-PasswordInput-input:focus {
+  background: var(--color-surface, #ffffff);
+}
+
+/* portal-gold-8 → portal-copper-7: 5.2:1 and 4.9:1 on white, still reads gold. */
+:root:not(.dark) .login-page__brand-text {
+  background-image: linear-gradient(110deg, #7D641E 0%, #9A7B26 30%, #8A5729 60%, #7D641E 100%);
+  filter: none;
+}
+
+:root:not(.dark) .login-page__brand-logo {
+  filter: drop-shadow(0 2px 6px rgba(90, 70, 20, 0.28));
+}
+
+:root:not(.dark) .login-page__brand:hover .login-page__brand-logo {
+  filter: drop-shadow(0 3px 10px rgba(90, 70, 20, 0.4));
+}
+
+:root:not(.dark) .login-page__brand-icon {
+  color: #7D641E;
+  box-shadow: none;
+}
+
+:root:not(.dark) .login-page__subtitle.login-page__subtitle {
+  opacity: 1;
+  color: var(--color-text-muted, #6B665E);
+}
+
+:root:not(.dark) .login-floating-label {
+  color: color-mix(in srgb, var(--color-text, #1A1815) 66%, transparent);
+}
+
+:root:not(.dark) .login-floating-field:focus-within .login-floating-label,
+:root:not(.dark) .login-floating-field--filled .login-floating-label {
+  color: #7D641E;
+  background: var(--color-surface, #ffffff);
+}
+
+:root:not(.dark) .login-page__eye-btn {
+  color: color-mix(in srgb, var(--color-text, #1A1815) 70%, transparent);
+}
+
+:root:not(.dark) .login-page__caps-icon {
+  color: var(--color-warning, #A16207);
 }
 
 /* ── Responsive ── */

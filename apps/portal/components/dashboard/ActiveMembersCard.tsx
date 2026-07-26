@@ -60,7 +60,7 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
                 <span className="dashboard-stats-circle-subvalue">/{safeTotalMembersCount}</span>
               </span>
             </span>,
-            "blue",
+            "portal-gold",
           )}
           <Text className="dashboard-stats-circle-label">{t("card.activeMembers.activeRatio")}</Text>
         </Stack>
@@ -73,7 +73,7 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
                 <NumberTicker value={safeActiveEventsCount} />
               </span>
             </span>,
-            "green",
+            "portal-bronze",
           )}
           <Text className="dashboard-stats-circle-label">{t("card.activeMembers.upcomingEvents")}</Text>
         </Stack>
@@ -86,7 +86,7 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
                 <NumberTicker value={safeWinRate} decimals={1} suffix="%" />
               </span>
             </span>,
-            "yellow",
+            "portal-copper",
           )}
           <Text className="dashboard-stats-circle-label">{t("card.activeMembers.winRate")}</Text>
         </Stack>

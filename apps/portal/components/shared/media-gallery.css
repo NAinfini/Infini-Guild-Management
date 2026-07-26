@@ -65,7 +65,7 @@
   border-radius: 50%;
   border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 15%, transparent);
   background: var(--color-surface, #ffffff);
-  color: color-mix(in srgb, var(--color-text, #1A1815) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   cursor: pointer;
   padding: 0;
   transition: background 0.15s, border-color 0.15s;
@@ -73,7 +73,7 @@
 
 .infini-media-gallery-toggle-thumb:hover {
   background: color-mix(in srgb, var(--color-text, #1A1815) 6%, var(--color-surface, #ffffff));
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 28%, transparent);
+  border-color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .infini-media-gallery-thumbnails {
@@ -89,7 +89,7 @@
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 15%, transparent);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
-  color: color-mix(in srgb, var(--color-text, #1A1815) 58%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   padding: 0;
   cursor: pointer;
   overflow: hidden;
@@ -132,7 +132,7 @@
 }
 
 .infini-media-gallery-thumb-play-only {
-  color: color-mix(in srgb, var(--color-text, #1A1815) 45%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 @media (max-width: 767px) {

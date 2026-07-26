@@ -1,2 +1,2 @@
-export { fetchGameData, fetchGameDataVersions } from "../api/queries/game-data";
-export { rollbackGameData, uploadGameData, uploadGameDataIcon } from "../api/mutations/game-data";
+export { fetchGameData, fetchGameDataFull, fetchGameDataRotation, fetchGameDataVersions } from "../api/queries/game-data";
+export { rollbackGameData, uploadGameData } from "../api/mutations/game-data";

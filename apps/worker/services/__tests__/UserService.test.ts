@@ -1,7 +1,7 @@
 import { inspect } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_SITE_MEDIA_POLICY } from "@guild/shared";
-import { UserService } from "../UserService";
+import { UserService, sanitizeTitleHtml } from "../UserService";
 
 function createDeps() {
   return {
@@ -208,5 +208,82 @@ describe("UserService", () => {
 
     expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
     expect(deps.storeProfileImage).not.toHaveBeenCalled();
+  });
+
+  it("refuses to attach an R2 key that is not already on the profile", async () => {
+    const update = vi.fn();
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn().mockResolvedValue([{ role: "member", deletedAt: null, username: "Alpha" }]),
+          })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn().mockResolvedValue([
+              { userId: "u-1", images: JSON.stringify(["members/u-1/own.webp"]), avatarKey: null },
+            ]),
+          })),
+        })),
+      });
+    const service = new UserService({ select, update } as never, createDeps());
+
+    const result = await service.updateProfile(
+      { id: "u-1", role: "member", permissions: new Set() } as never,
+      "u-1",
+      { images: ["members/u-1/own.webp", "members/victim/avatar.webp"] },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      message: "images may only reorder or remove existing profile media: members/victim/avatar.webp",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe("sanitizeTitleHtml", () => {
+  it("keeps allowlisted tags and style declarations", () => {
+    expect(sanitizeTitleHtml('<span style="color: #ff0000">Rank</span>')).toBe(
+      '<span style="color: #ff0000">Rank</span>',
+    );
+    expect(sanitizeTitleHtml("<b>A</b><i>B</i><br>")).toBe("<b>A</b><i>B</i><br>");
+  });
+
+  it("removes tags that are not on the allowlist and escapes their text", () => {
+    expect(sanitizeTitleHtml("<script>alert(1)</script>")).toBe("alert(1)");
+    expect(sanitizeTitleHtml('<img src=x onerror="alert(1)">')).toBe("");
+    expect(sanitizeTitleHtml("a < b & c > d")).toBe("a &lt; b &amp; c &gt; d");
+  });
+
+  it("drops every attribute except an allowlisted style", () => {
+    expect(sanitizeTitleHtml('<span onclick="alert(1)">x</span>')).toBe("<span>x</span>");
+    expect(sanitizeTitleHtml('<span style="color: red" onmouseover="alert(1)">x</span>')).toBe(
+      '<span style="color: red">x</span>',
+    );
+  });
+
+  it("drops style declarations that could load or evaluate anything", () => {
+    expect(sanitizeTitleHtml('<span style="background-color: url(javascript:alert(1))">x</span>')).toBe(
+      "<span>x</span>",
+    );
+    expect(sanitizeTitleHtml('<span style="color: expression(alert(1))">x</span>')).toBe("<span>x</span>");
+    expect(sanitizeTitleHtml('<span style="behavior: url(#x)">x</span>')).toBe("<span>x</span>");
+    expect(sanitizeTitleHtml('<span style="color: red; behavior: url(#x)">x</span>')).toBe(
+      '<span style="color: red">x</span>',
+    );
+    expect(sanitizeTitleHtml('<span style="color: \\75 rl(x)">x</span>')).toBe("<span>x</span>");
+  });
+
+  it("cannot be tricked into emitting an unbalanced attribute", () => {
+    // A `>` inside the attribute value must not let the payload escape the
+    // quoted style attribute the sanitizer rebuilds.
+    expect(sanitizeTitleHtml('<span style="color: red" x="><script>alert(1)</script>')).not.toContain("<script");
+    expect(sanitizeTitleHtml('<span style="red&quot; onload=&quot;alert(1)">x</span>')).toBe("<span>x</span>");
   });
 });

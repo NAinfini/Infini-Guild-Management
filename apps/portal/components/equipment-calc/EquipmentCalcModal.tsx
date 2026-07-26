@@ -3,9 +3,10 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@portal/api/query-keys";
-import { fetchGameData } from "@portal/services/GameDataService";
+import { fetchGameData, fetchGameDataRotation } from "@portal/services/GameDataService";
 import { useEquipmentCalcStore, useActiveLoadout } from "@portal/stores/equipmentCalcStore";
 import type { GameData, EquippedSlot } from "@guild/shared/calculator/types";
+import type { GameDataBaseInput } from "@guild/shared/schemas/equipment-calc";
 import {
   SwordIcon,
   CrownIcon,
@@ -61,7 +62,7 @@ function getClassArmoryType(classId: string): string {
   return ARMORY_TYPES.includes(armoryType as (typeof ARMORY_TYPES)[number]) ? armoryType : "通用";
 }
 
-function getDefaultXinfaSlots(classId: string, gameData: GameData): string[] {
+function getDefaultXinfaSlots(classId: string, gameData: GameDataBaseInput): string[] {
   const defaults = gameData.xinfaRules[classId]?.default ?? [];
   return [...defaults, "", "", "", ""].slice(0, 4);
 }
@@ -86,7 +87,6 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
 
   const {
     data: rawGameData,
-    isLoading,
     isError,
   } = useQuery({
     queryKey: queryKeys.gameData.latest(),
@@ -94,9 +94,9 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
     enabled: opened,
   });
 
-  const gameData: GameData | undefined = rawGameData?.data as GameData | undefined;
+  const baseGameData = rawGameData?.data;
   const serverSchemaVersion = rawGameData?.schemaVersion;
-  const dataVersion = rawGameData?.version ?? gameData?.version;
+  const dataVersion = rawGameData?.version ?? baseGameData?.version;
 
   useEffect(() => {
     if (serverSchemaVersion != null && serverSchemaVersion > localSchemaVersion) {
@@ -105,7 +105,7 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
   }, [serverSchemaVersion, localSchemaVersion, migrateSchema]);
 
   useEffect(() => {
-    if (!opened || !gameData) return;
+    if (!opened || !baseGameData) return;
 
     const hasActiveLoadout = activeLoadoutId == null ||
       loadouts.some((loadout) => loadout.id === activeLoadoutId);
@@ -115,21 +115,48 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
     }
     if (loadouts.length > 0) return;
 
-    const defaultClass = gameData.classes[0] ?? "";
+    const defaultClass = baseGameData.classes[0] ?? "";
     if (!defaultClass) return;
 
     addLoadout(t("loadout.defaultName"), defaultClass, {
       armoryType: getClassArmoryType(defaultClass),
-      setId: gameData.defaultSets[defaultClass] ?? "",
-      xinfaSlots: getDefaultXinfaSlots(defaultClass, gameData),
+      setId: baseGameData.defaultSets[defaultClass] ?? "",
+      xinfaSlots: getDefaultXinfaSlots(defaultClass, baseGameData),
     });
-  }, [activeLoadoutId, addLoadout, gameData, loadouts, opened, setActiveLoadout, t]);
+  }, [activeLoadoutId, addLoadout, baseGameData, loadouts, opened, setActiveLoadout, t]);
 
   const togglePanel = useCallback((id: PanelId) => {
     setActivePanel((cur) => (cur === id ? null : id));
   }, []);
 
   const activeLoadout = useActiveLoadout();
+  const activeClassId = activeLoadout?.classId;
+
+  // Rotations are ~58% of the game data and only one class is ever calculated,
+  // so they are fetched per class instead of with the base payload. No
+  // placeholder from the previous class: showing the old rotation's numbers
+  // under a new class would be wrong rather than merely stale.
+  const {
+    data: rotationData,
+    isError: rotationError,
+  } = useQuery({
+    queryKey: queryKeys.gameData.rotation(activeClassId ?? ""),
+    queryFn: () => fetchGameDataRotation(activeClassId!),
+    enabled: opened && !!activeClassId,
+  });
+
+  // The calculator engine takes a whole GameData, so the one fetched rotation is
+  // merged back in. `rotations` stays empty until it arrives; the engine returns
+  // a 0% graduation rate in that case, so `rotationPending` below hides the rate
+  // display rather than presenting that 0 as a result.
+  const gameData: GameData | undefined = useMemo(() => {
+    if (!baseGameData) return undefined;
+    const rotations = activeClassId && rotationData ? { [activeClassId]: rotationData.rotation } : {};
+    return { ...baseGameData, rotations };
+  }, [baseGameData, activeClassId, rotationData]);
+
+  const rotationPending = !!activeClassId && !rotationData && !rotationError;
+
   const poolMap = useMemo(() => new Map(pool.map((e) => [e.id, e])), [pool]);
 
   const equippedMap = useMemo(() => {
@@ -205,6 +232,7 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
   const loadErrorBody = t("errors.loadBody", {
     defaultValue: "The stored calculator data is out of date. The server will use the bundled reference data.",
   });
+  const rotationErrorBody = t("errors.rotationBody", { className: activeClassId ?? "" });
 
   const activityItems: { id: PanelId; icon: React.ReactNode; label: string }[] = [
     { id: "pool", icon: <IconBackpack size={20} />, label: t("panels.pool") },
@@ -224,7 +252,7 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
       }}
       centered
     >
-      {isLoading && (
+      {!gameData && !isError && (
         <Stack align="center" justify="center" h="100%">
           <Loader size="lg" />
         </Stack>
@@ -290,9 +318,15 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
                 </Suspense>
               )}
               {activePanel === "analysis" && (
-                <Suspense fallback={suspenseFallback}>
-                  <LazyAnalysisTabs gameData={gameData} />
-                </Suspense>
+                // Every analysis tab compares graduation rates, so none of them
+                // mean anything until the active class's rotation is in hand.
+                rotationPending ? suspenseFallback : rotationError ? (
+                  <Alert color="red" title={loadErrorTitle} m="md">{rotationErrorBody}</Alert>
+                ) : (
+                  <Suspense fallback={suspenseFallback}>
+                    <LazyAnalysisTabs gameData={gameData} />
+                  </Suspense>
+                )
               )}
             </div>
 
@@ -343,7 +377,17 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
                   <div className="ecm__section-header">
                     <Text size="xs" fw={700} c="dimmed" tt="uppercase">{t("workspace.statsOverview")}</Text>
                   </div>
-                  <GraduationBanner graduationRate={graduationRate} expectedDps={expectedDps} excelRate={excelRate} />
+                  {rotationError ? (
+                    <Alert color="red" title={loadErrorTitle}>{rotationErrorBody}</Alert>
+                  ) : (
+                    // A 0% rate and a not-yet-loaded rotation look identical, so
+                    // the banner waits instead of publishing a meaningless zero.
+                    <GraduationBanner
+                      graduationRate={rotationPending ? null : graduationRate}
+                      expectedDps={rotationPending ? null : expectedDps}
+                      excelRate={rotationPending ? null : excelRate}
+                    />
+                  )}
                   {gameData && <StatsDisplay stats={stats} gameData={gameData} capped={capped} />}
                 </aside>
               </div>

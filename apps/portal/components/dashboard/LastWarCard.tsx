@@ -46,7 +46,7 @@ const RESULT_LABEL_KEY: Record<string, string> = {
 };
 
 function resultColor(result: string | null): string {
-  return (result && RESULT_COLOR[result]) ?? "color-mix(in srgb, var(--color-text, #1A1815) 50%, transparent)";
+  return (result && RESULT_COLOR[result]) ?? "var(--color-text-muted, #6B665E)";
 }
 
 function resultLabel(result: string | null, t: (key: string) => string): string {

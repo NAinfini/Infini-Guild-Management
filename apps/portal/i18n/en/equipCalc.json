@@ -158,6 +158,9 @@
     "importError": "Invalid import data",
     "exportSuccess": "Data copied to clipboard"
   },
+  "errors": {
+    "rotationBody": "Could not load the rotation data for {{className}}. Graduation rate and DPS cannot be calculated without it."
+  },
   "importModal": {
     "title": "Import data",
     "description": "Paste exported calculator JSON here.",

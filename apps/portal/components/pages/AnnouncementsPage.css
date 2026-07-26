@@ -44,7 +44,7 @@
 }
 
 .announcement-item:hover {
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 16%, transparent);
+  border-color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   background: color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent);
 }
 
@@ -65,7 +65,7 @@
 
 .announcement-item-time {
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .announcement-reader-title {

@@ -9,6 +9,7 @@
   "card.upcomingEvents.viewEvent": "View event",
   "card.mySignups.title": "My Signups",
   "card.mySignups.unit": "events",
+  "card.mySignups.empty": "No signups this week",
   "card.activeMembers.title": "Active Members",
   "card.activeMembers.unit": "online",
   "card.activeMembers.activeRatio": "Active / Total",

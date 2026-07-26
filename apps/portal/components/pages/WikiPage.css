@@ -62,7 +62,7 @@
 }
 
 .wiki-article-item:hover {
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 16%, transparent);
+  border-color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   background: color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent);
 }
 
@@ -93,7 +93,7 @@
   pointer-events: none;
   font-size: 14px;
   font-weight: 500;
-  color: color-mix(in srgb, var(--color-text, #e2e8f0) 50%, transparent);
+  color: color-mix(in srgb, var(--color-text, #e2e8f0) 65%, transparent);
   transition: top var(--transition-smooth), transform var(--transition-smooth), font-size var(--transition-smooth), color var(--transition-smooth);
   line-height: 1;
   padding: 0 4px;

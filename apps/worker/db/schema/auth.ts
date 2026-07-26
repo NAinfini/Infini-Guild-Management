@@ -39,6 +39,9 @@ export const users = sqliteTable(
   "users",
   {
     id: text("id").primaryKey(),
+    // The physical column is `COLLATE NOCASE` (see 0000_core_schema.sql); the
+    // Drizzle sqlite builder has no collation option, so the uniqueness here is
+    // only the case-sensitive half. Query with helpers.ts#usernameEquals.
     username: text("username").notNull().unique(),
     role: text("role").notNull().default("member").references(() => roles.id),
     isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
@@ -79,6 +82,30 @@ export const inviteLinks = sqliteTable(
   (table) => ({
     idxCreatedAt: index("idx_invite_links_created").on(table.createdAt),
     idxStatus: index("idx_invite_links_status").on(table.revokedAt, table.expiresAt, table.createdAt),
+  }),
+);
+
+/**
+ * Progressive login lockout state.
+ *
+ * Keyed on the attempted username string, NOT on users.id, and deliberately so:
+ * rows are created for usernames that do not exist too, otherwise the lockout
+ * response would only ever appear for real accounts and would hand an attacker
+ * a username-enumeration oracle. The physical column is `COLLATE NOCASE` (see
+ * 0000_core_schema.sql) to match the users table.
+ *
+ * Growth is bounded by pruning stale rows — see services/login-lockout.ts.
+ */
+export const loginFailures = sqliteTable(
+  "login_failures",
+  {
+    username: text("username").primaryKey(),
+    failCount: integer("fail_count").notNull().default(0),
+    lockedUntil: text("locked_until"),
+    lastFailedAt: text("last_failed_at").notNull().default(nowUtc),
+  },
+  (table) => ({
+    idxLastFailedAt: index("idx_login_failures_last_failed_at").on(table.lastFailedAt),
   }),
 );
 

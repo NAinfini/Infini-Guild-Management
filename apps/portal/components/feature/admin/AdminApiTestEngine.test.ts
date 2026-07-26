@@ -758,6 +758,7 @@ describe("AdminApiTestEngine request preparation", () => {
       "PATCH /api/admin/users/:id/deactivate",
       "PATCH /api/admin/users/:id/reactivate",
       "POST /api/admin/users/:id/reset-password",
+      "POST /api/admin/users/:id/reset-login-lock",
       "GET /api/admin/roles",
       "POST /api/admin/roles",
       "PATCH /api/admin/roles/:id",
@@ -788,6 +789,10 @@ describe("AdminApiTestEngine request preparation", () => {
       "DELETE /api/storage/items/:id",
       "DELETE /api/storage/storages/:storageId/categories/:id",
       "DELETE /api/storage/storages/:id",
+      "GET /api/game-data",
+      "GET /api/game-data/rotations/:classId",
+      "GET /api/game-data/full",
+      "GET /api/game-data/versions",
     ];
 
     expect(expectedRoutes.filter((route) => !endpointKeys.has(route))).toEqual([]);

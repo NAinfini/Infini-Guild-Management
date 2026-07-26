@@ -20,7 +20,11 @@ CREATE TABLE IF NOT EXISTS role_permissions (
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY NOT NULL,
-  username TEXT NOT NULL UNIQUE,
+  -- COLLATE NOCASE: usernames are case-insensitive identifiers. Without it
+  -- SQLite lets "Admin" and "admin" coexist as two accounts. Drizzle's sqlite
+  -- column builder cannot express a collation, so this file is the only place
+  -- it is declared — see services/helpers.ts#usernameEquals for the query side.
+  username TEXT NOT NULL COLLATE NOCASE UNIQUE,
   role TEXT NOT NULL DEFAULT 'member' REFERENCES roles(id),
   is_active INTEGER NOT NULL DEFAULT 1,
   deleted_at TEXT,
@@ -299,6 +303,16 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+-- Progressive login lockout. Keyed on the attempted username (no FK to users)
+-- so that non-existent usernames lock identically and cannot be used to
+-- enumerate accounts. COLLATE NOCASE mirrors users.username.
+CREATE TABLE IF NOT EXISTS login_failures (
+  username TEXT PRIMARY KEY NOT NULL COLLATE NOCASE,
+  fail_count INTEGER NOT NULL DEFAULT 0,
+  locked_until TEXT,
+  last_failed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
 -- ===== INDEXES =====
 
 -- users
@@ -324,6 +338,10 @@ CREATE INDEX IF NOT EXISTS idx_sessions_expires_at
   ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_created_at
   ON sessions(created_at);
+
+-- login_failures
+CREATE INDEX IF NOT EXISTS idx_login_failures_last_failed_at
+  ON login_failures(last_failed_at);
 
 -- events
 CREATE INDEX IF NOT EXISTS idx_events_archived_start
@@ -485,7 +503,7 @@ CREATE INDEX IF NOT EXISTS idx_member_badge_assignments_user
 
 INSERT OR IGNORE INTO roles (id, name, level, color, is_builtin) VALUES
   ('admin', 'Admin', 999, 'red', 1),
-  ('moderator', 'Moderator', 500, 'blue', 1),
+  ('moderator', 'Moderator', 500, '#756047', 1),
   ('member', 'Member', 100, 'gray', 1);
 
 INSERT OR IGNORE INTO site_config (
@@ -501,7 +519,7 @@ INSERT OR IGNORE INTO site_config (
   (
     'default',
     'Infini 公会',
-    '/logo.webp',
+    '/guild-logo.webp',
     '{"announcements":true,"events":true,"guildWar":true,"gallery":true,"wiki":true,"tools":true,"equipmentCalc":true,"storage":true}',
     '{"max_file_size_bytes":{"site_logo":2097152,"profile_image":5242880,"profile_audio":20971520,"announcement_image":5242880,"wiki_image":5242880,"event_image":5242880,"gallery_image":10485760,"storage_image":5242880},"quotas":{"profile":10,"announcement":10,"gallery":20,"wiki":10}}',
     '{"images_per_item":5}',

@@ -21,7 +21,7 @@ import { nanoid } from "nanoid";
 import { memberProfileClasses, memberProfiles, sessions, userAuthPassword, users } from "../db/schema";
 import { captureUploadValidation } from "./media";
 import { ok, err, type ServiceResult } from "./result";
-import { escapeLikePattern, parseStringArray, parseRecord } from "./helpers";
+import { escapeLikePattern, parseStringArray, parseRecord, usernameEquals } from "./helpers";
 import { logger } from "../utils/logger";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
@@ -109,6 +109,11 @@ export type UserServiceDeps = {
 
 const TITLE_HTML_ALLOWED_TAGS = new Set(["span", "b", "strong", "i", "em", "u", "br"]);
 const STYLE_PROP_ALLOWLIST = new Set(["color", "font-weight", "font-style", "text-decoration", "background-color"]);
+const STYLE_VALUE_MAX_LENGTH = 64;
+// Colours, keywords and rgb()/hsl() functions only — no quotes, no semicolons,
+// nothing that could terminate the attribute we build around it.
+const STYLE_VALUE_PATTERN = /^[\w\s#,.%()/-]*$/;
+const STYLE_VALUE_DENYLIST = /url\s*\(|image\s*\(|expression\s*\(|\\/i;
 
 function sanitizeStyleAttr(raw: string): string {
   const declarations = raw.split(";").map((d) => d.trim()).filter(Boolean);
@@ -116,26 +121,44 @@ function sanitizeStyleAttr(raw: string): string {
     const colonIdx = decl.indexOf(":");
     if (colonIdx === -1) return false;
     const prop = decl.slice(0, colonIdx).trim().toLowerCase();
-    return STYLE_PROP_ALLOWLIST.has(prop);
+    if (!STYLE_PROP_ALLOWLIST.has(prop)) return false;
+    const value = decl.slice(colonIdx + 1).trim();
+    if (!value || value.length > STYLE_VALUE_MAX_LENGTH) return false;
+    if (!STYLE_VALUE_PATTERN.test(value)) return false;
+    return !STYLE_VALUE_DENYLIST.test(value);
   });
   return safe.join("; ");
 }
 
-function sanitizeTitleHtml(html: string): string {
-  return html.replace(/<(\/?)(\w+)([^>]*)>/gi, (_match, slash: string, tagName: string, attrs: string) => {
-    if (!TITLE_HTML_ALLOWED_TAGS.has(tagName.toLowerCase())) return "";
-    const isSelfClosing = tagName.toLowerCase() === "br";
-    if (isSelfClosing) return "<br>";
-    let styleAttr = "";
-    if (!slash && attrs) {
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Escape-then-reconstruct sanitizer.
+ *
+ * Every `&`, `<` and `>` in the input is escaped first, so the only markup the
+ * output can contain is markup this function emits itself from the fixed
+ * allowlist below. A subtractive sanitizer (regex that strips disallowed tags)
+ * is structurally unsafe here: anything its pattern fails to match — unclosed
+ * tags, comment tricks, malformed attributes — survives into the output.
+ *
+ * Rendering code still sanitizes with DOMPurify; this keeps the *stored* value
+ * trustworthy so any future consumer (export, digest mail, SSR) is safe too.
+ */
+export function sanitizeTitleHtml(html: string): string {
+  return escapeHtml(html).replace(
+    /&lt;(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^&]|&(?!gt;))*)&gt;/g,
+    (_match, slash: string, tagName: string, attrs: string) => {
+      const tag = tagName.toLowerCase();
+      if (!TITLE_HTML_ALLOWED_TAGS.has(tag)) return "";
+      if (tag === "br") return "<br>";
+      if (slash) return `</${tag}>`;
       const styleMatch = attrs.match(/\sstyle\s*=\s*"([^"]*)"/i);
-      if (styleMatch) {
-        const safe = sanitizeStyleAttr(styleMatch[1]!);
-        if (safe) styleAttr = ` style="${safe}"`;
-      }
-    }
-    return `<${slash}${tagName.toLowerCase()}${styleAttr}>`;
-  });
+      const safeStyle = styleMatch ? sanitizeStyleAttr(styleMatch[1]!) : "";
+      return safeStyle ? `<${tag} style="${safeStyle}">` : `<${tag}>`;
+    },
+  );
 }
 
 function toUserPayload(user: UserRow) {
@@ -190,8 +213,6 @@ function buildProfilePatch(
   if (payload.title_html !== undefined) patch.titleHtml = payload.title_html === null ? null : sanitizeTitleHtml(payload.title_html);
   if (payload.bio !== undefined) patch.bio = payload.bio;
   if (payload.images !== undefined) patch.images = JSON.stringify(payload.images);
-  if (payload.avatar_key !== undefined) patch.avatarKey = payload.avatar_key;
-  if (payload.audio_key !== undefined) patch.audioKey = payload.audio_key;
   if (payload.video_urls !== undefined) patch.videoUrls = JSON.stringify(payload.video_urls);
   if (payload.availability !== undefined) {
     patch.availability = payload.availability === null ? null : JSON.stringify(payload.availability);
@@ -453,6 +474,19 @@ export class UserService {
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid profile payload", parsed.error.flatten());
 
     const oldProfile = await this.ensureProfile(targetUserId);
+
+    // `images` is a reorder/remove operation, never a way to introduce keys.
+    // Without this check a member could point their own profile at another
+    // member's (or the site logo's) R2 key and then delete it through
+    // DELETE /media/images, which deletes whatever is listed on the profile.
+    if (parsed.data.images !== undefined) {
+      const existingImages = new Set(parseStringArray(oldProfile.images));
+      const foreignKey = parsed.data.images.find((key) => !existingImages.has(key));
+      if (foreignKey !== undefined) {
+        return err("VALIDATION_ERROR", `images may only reorder or remove existing profile media: ${foreignKey}`);
+      }
+    }
+
     const patch = buildProfilePatch(parsed.data);
     await this.db.update(memberProfiles).set(patch).where(eq(memberProfiles.userId, targetUserId));
     if (patch.classes !== undefined) {
@@ -679,7 +713,7 @@ export class UserService {
 
     const dup = (
       await this.db.select({ id: users.id }).from(users)
-        .where(and(eq(users.username, parsed.data.newUsername), isNull(users.deletedAt))).limit(1)
+        .where(and(usernameEquals(parsed.data.newUsername), isNull(users.deletedAt))).limit(1)
     )[0];
     if (dup && dup.id !== targetUserId) return err("CONFLICT", "Username already taken");
 

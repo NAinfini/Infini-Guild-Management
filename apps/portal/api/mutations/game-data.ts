@@ -14,13 +14,3 @@ export function rollbackGameData(versionId: number): Promise<{ version: string }
     bodyJson: { version_id: versionId },
   });
 }
-
-export function uploadGameDataIcon(key: string, file: File): Promise<{ key: string }> {
-  const formData = new FormData();
-  formData.append("key", key);
-  formData.append("file", file);
-  return apiRequest("/api/game-data/icons", {
-    method: "POST",
-    body: formData,
-  });
-}

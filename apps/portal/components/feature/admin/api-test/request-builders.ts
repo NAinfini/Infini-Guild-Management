@@ -473,6 +473,14 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
     return { path: `/api/storage/image?key=${encodeURIComponent(context.storageImageKey)}`, missing: null };
   }
 
+  if (path.includes("/api/game-data/rotations/:classId")) {
+    const next = replacePathParam(path, ":classId", context.gameDataClassId);
+    if (!next) {
+      return { path, missing: "game data class id (run game data first)" };
+    }
+    path = next;
+  }
+
   if (path.includes("/api/wiki/categories/:id")) {
     const next = replacePathParam(path, ":id", isMutableMethod(endpoint.method) ? context.createdWikiCategoryId : context.wikiCategoryId);
     if (!next) {

@@ -72,10 +72,10 @@ export function AuditArchiveExplorer({
         <Collapse in={opened}>
           <Stack gap={12} pt="xs">
             {monthsLoading ? <Skeleton height={36} /> : null}
-            {monthsError ? <Alert color="yellow" title={tc("loadError")} /> : null}
+            {monthsError ? <Alert color="portal-copper" title={tc("loadError")} /> : null}
 
             {!monthsLoading && !monthsError && months.length === 0 ? (
-              <Alert color="yellow">{t("auditArchive.empty")}</Alert>
+              <Alert color="portal-copper">{t("auditArchive.empty")}</Alert>
             ) : null}
 
             {!monthsLoading && !monthsError && months.length > 0 ? (

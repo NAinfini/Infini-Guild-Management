@@ -1,23 +1,20 @@
-import { gameDataSchema, type GameDataInput } from "@guild/shared/schemas/equipment-calc";
+import { gameDataSchema, type ClassRotationConfigInput, type GameDataBaseInput, type GameDataInput } from "@guild/shared/schemas/equipment-calc";
 import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import { desc, eq, inArray, not } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { gameData } from "../db/schema/game-data";
 import { users } from "../db/schema/auth";
 import { ok, err, type ServiceResult } from "./result";
-import { validateUploadBytes } from "./media";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 type SemanticValidationResult = { ok: true } | { ok: false; message: string };
 
 export type GameDataServiceDeps = {
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
-  putR2Object: (key: string, body: ArrayBuffer | ReadableStream, options?: { httpMetadata?: { contentType: string } }) => Promise<void>;
 };
 
 const MAX_JSON_SIZE = 1024 * 1024; // 1 MB
 const MAX_VERSIONS = 5;
-const ALLOWED_ICON_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/svg+xml"]);
 const NON_STAT_SLOT_RULE_VALUES = new Set(["无", "生存类词条", "生存向"]);
 
 export class GameDataService {
@@ -29,7 +26,22 @@ export class GameDataService {
     this.deps = deps;
   }
 
-  async getLatest(): Promise<ServiceResult<{ data: GameDataInput; version: string; schemaVersion: number } | null>> {
+  /**
+   * Latest game data *without* `rotations` — roughly 12 KB instead of 484 KB,
+   * which also brings it under the ETag size threshold. Callers that need a
+   * rotation fetch it per class via `getRotation`; the admin editor needs the
+   * whole document and uses `getFull`.
+   */
+  async getLatest(): Promise<ServiceResult<{ data: GameDataBaseInput; version: string; schemaVersion: number } | null>> {
+    const full = await this.getFull();
+    if (!full.ok || full.data === null) return full;
+
+    const { rotations: _rotations, ...base } = full.data.data;
+    return ok({ data: base, version: full.data.version, schemaVersion: full.data.schemaVersion });
+  }
+
+  /** The complete stored document, rotations included. Admin-only at the route. */
+  async getFull(): Promise<ServiceResult<{ data: GameDataInput; version: string; schemaVersion: number } | null>> {
     const [latest] = await this.db
       .select({ id: gameData.id, data: gameData.data, version: gameData.version })
       .from(gameData)
@@ -42,6 +54,22 @@ export class GameDataService {
     if (!parsed.ok) return parsed;
 
     return ok({ data: parsed.data, version: parsed.data.version, schemaVersion: parsed.data.schemaVersion });
+  }
+
+  /**
+   * One class's rotation config. A missing class is a hard NOT_FOUND rather than
+   * an empty result: the calculator produces a graduation rate of 0 without it,
+   * and a silent 0 is indistinguishable from a real answer.
+   */
+  async getRotation(classId: string): Promise<ServiceResult<{ class_id: string; version: string; rotation: ClassRotationConfigInput }>> {
+    const full = await this.getFull();
+    if (!full.ok) return full;
+    if (full.data === null) return err("NOT_FOUND", "No game data has been uploaded");
+
+    const rotation = full.data.data.rotations[classId];
+    if (!rotation) return err("NOT_FOUND", `No rotation data for class "${classId}"`);
+
+    return ok({ class_id: classId, version: full.data.version, rotation });
   }
 
   async getVersions(): Promise<ServiceResult<{ id: number; version: string; uploaded_by: string; uploaded_by_name: string | null; created_at: string }[]>> {
@@ -82,10 +110,14 @@ export class GameDataService {
     const semanticValidation = this.validateGameDataSemantics(data);
     if (!semanticValidation.ok) return err("VALIDATION_ERROR", semanticValidation.message);
 
+    // Stored minified: the uploaded file is pretty-printed, which is ~196 KB of
+    // whitespace out of 484 KB. `raw` is re-serialized rather than `data`
+    // (the Zod output) on purpose — that would materialise every `.default()`
+    // and drop unknown keys, i.e. silently rewrite what the admin uploaded.
     const rows = await this.db
       .insert(gameData)
       .values({
-        data: jsonString,
+        data: JSON.stringify(raw),
         version: data.version,
         uploadedBy,
       })
@@ -145,31 +177,6 @@ export class GameDataService {
     });
 
     return ok({ version: row.version, id: insertedId });
-  }
-
-  async uploadIcon(key: string, file: File, actorId: string): Promise<ServiceResult<{ key: string }>> {
-    if (!ALLOWED_ICON_TYPES.has(file.type)) {
-      return err("VALIDATION_ERROR", `Invalid icon MIME type: ${file.type}. Allowed: png, jpeg, webp, svg+xml`);
-    }
-
-    const r2Key = `game-data/icons/${key}`;
-    const buffer = await file.arrayBuffer();
-    const validation = validateUploadBytes(buffer, file.type, ALLOWED_ICON_TYPES);
-    if (!validation.ok) return err("VALIDATION_ERROR", validation.message);
-
-    await this.deps.putR2Object(r2Key, buffer, {
-      httpMetadata: { contentType: validation.contentType },
-    });
-
-    await this.deps.writeAuditLog({
-      entityType: "game_data",
-      action: "upload_icon",
-      actorId,
-      entityId: key,
-      diffTitle: key,
-    });
-
-    return ok({ key: r2Key });
   }
 
   private async pruneOldVersions(): Promise<void> {

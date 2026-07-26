@@ -43,7 +43,7 @@ function createMockDeps(inviteId: string | null) {
     createSession: vi.fn().mockResolvedValue(undefined),
     destroySession: vi.fn().mockResolvedValue(undefined),
     writeAuditLog: vi.fn().mockResolvedValue(undefined),
-    deleteUserSessions: vi.fn().mockResolvedValue(undefined),
+    enforceSessionLimit: vi.fn().mockResolvedValue(undefined),
   };
 }
 

@@ -96,6 +96,7 @@ export function AdminPage() {
     memberSearch,
     patchMemberDetailForm,
     reactivateMutation,
+    resetLoginLockMutation,
     resetPasswordMutation,
     revokeInviteMutation,
     rolesQuery,
@@ -180,6 +181,7 @@ export function AdminPage() {
               singleRolePending={updateRoleMutation.isPending}
               singleActivationPending={deactivateMutation.isPending || reactivateMutation.isPending}
               singleResetPasswordPending={resetPasswordMutation.isPending}
+              singleResetLoginLockPending={resetLoginLockMutation.isPending}
               isBatchPending={isBatchPending}
               batchProgress={batchProgress}
               userRows={userRows}
@@ -200,6 +202,9 @@ export function AdminPage() {
               }}
               onSingleResetPassword={(userId) => {
                 resetPasswordMutation.mutate(userId);
+              }}
+              onSingleResetLoginLock={(userId) => {
+                resetLoginLockMutation.mutate(userId);
               }}
             />
           </Suspense>

@@ -1,4 +1,4 @@
-﻿import type { ClassName, MemberProfile, User, UserBadge } from "@guild/shared";
+import type { ClassName, MemberProfile, User, UserBadge } from "@guild/shared";
 import { CLASS_COLOR_GROUP, CLASS_NAMES } from "@guild/shared";
 import { IconPhoto, IconVideo } from "@tabler/icons-react";
 import DOMPurify from "dompurify";
@@ -127,7 +127,7 @@ export const MemberCard = memo(function MemberCard({
     <div className="member-card__frame" onClick={onClick} onDoubleClick={onDoubleClick} role="presentation">
       <button
         type="button"
-        className={`member-card member-card--full member-card--animated${selected ? " member-card--selected" : ""}`}
+        className={`member-card member-card--full${selected ? " member-card--selected" : ""}`}
         tabIndex={-1}
         aria-label={t("a11y.openProfile", { name: user.username })}
       >
@@ -152,23 +152,29 @@ export const MemberCard = memo(function MemberCard({
           />
         </div>
 
-        <div className="member-card__meta-row">
-          <span className="member-card__pill member-card__pill--photo" aria-label={`${t("member.photo")} ${profile.images.length}`}>
-            <IconPhoto size={13} />
-            {profile.images.length}
-          </span>
-          <span className="member-card__pill member-card__pill--video" aria-label={`${t("member.video")} ${profile.video_urls.length}`}>
-            <IconVideo size={13} />
-            {profile.video_urls.length}
-          </span>
-          {badges?.map((badge) => (
-            <MemberBadge key={badge.id} badge={badge} />
-          ))}
-        </div>
-
         <div className="member-card__content">
           <span className="member-card__username">{user.username}</span>
           <div className="member-card__title" dangerouslySetInnerHTML={{ __html: titleHtml || "&nbsp;" }} />
+        </div>
+
+        {/* A "0" count says nothing and, on a roster where most profiles carry no
+            media, turned every card into a row of zeroes. Only non-empty counts show. */}
+        <div className="member-card__meta-row">
+          {profile.images.length > 0 ? (
+            <span className="member-card__pill member-card__pill--photo" aria-label={`${t("member.photo")} ${profile.images.length}`}>
+              <IconPhoto size={13} />
+              {profile.images.length}
+            </span>
+          ) : null}
+          {profile.video_urls.length > 0 ? (
+            <span className="member-card__pill member-card__pill--video" aria-label={`${t("member.video")} ${profile.video_urls.length}`}>
+              <IconVideo size={13} />
+              {profile.video_urls.length}
+            </span>
+          ) : null}
+          {badges?.map((badge) => (
+            <MemberBadge key={badge.id} badge={badge} />
+          ))}
         </div>
       </button>
     </div>

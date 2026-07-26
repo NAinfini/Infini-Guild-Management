@@ -143,6 +143,23 @@ describe("SiteConfigService", () => {
     });
   });
 
+  it("logs an error instead of silently serving defaults over a corrupt feature flag blob", async () => {
+    // A corrupt blob re-enables every feature flag, and the flags gate whole API
+    // prefixes — so this must never happen quietly.
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { service } = createService([[{ ...SEEDED_SITE_ROW, featureFlagsJson: "{not json" }]]);
+
+    const result = await service.getPublicConfig();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // equipmentCalc was false in the stored row; the default is true.
+    expect(result.data.features.equipmentCalc).toBe(true);
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    expect(consoleError.mock.calls[0]?.[0]).toContain("feature_flags_json");
+    consoleError.mockRestore();
+  });
+
   it("keeps analytics settings out of general admin site config", async () => {
     const { service } = createService([[SEEDED_SITE_ROW], [SEEDED_ONBOARDING_ROW]]);
 

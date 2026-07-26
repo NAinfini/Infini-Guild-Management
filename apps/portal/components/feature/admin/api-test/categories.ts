@@ -41,6 +41,8 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.dashboardSummary"), method: "GET", path: "/api/dashboard/summary" },
         { label: t("status.api.ep.globalSearch"), method: "GET", path: "/api/search?q=systemtest&limit=5" },
         { label: t("status.api.ep.gameData"), method: "GET", path: "/api/game-data" },
+        // Must follow /api/game-data — it supplies the class id.
+        { label: t("status.api.ep.gameDataRotation"), method: "GET", path: "/api/game-data/rotations/:classId" },
       ],
     },
     {
@@ -242,6 +244,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       label: t("status.api.cat.adminGameData"),
       endpoints: [
         { label: t("status.api.ep.gameDataVersions"), method: "GET", path: "/api/game-data/versions" },
+        { label: t("status.api.ep.gameDataFull"), method: "GET", path: "/api/game-data/full" },
       ],
     },
     {
@@ -253,6 +256,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.deactivateUser"), method: "PATCH", path: "/api/admin/users/:id/deactivate" },
         { label: t("status.api.ep.reactivateUser"), method: "PATCH", path: "/api/admin/users/:id/reactivate" },
         { label: t("status.api.ep.resetPassword"), method: "POST", path: "/api/admin/users/:id/reset-password" },
+        { label: t("status.api.ep.resetLoginLock"), method: "POST", path: "/api/admin/users/:id/reset-login-lock" },
         { label: t("status.api.ep.batchRoleChange"), method: "PATCH", path: "/api/admin/users/batch/role" },
         { label: t("status.api.ep.batchDeactivate"), method: "PATCH", path: "/api/admin/users/batch/deactivate" },
         { label: t("status.api.ep.batchReactivate"), method: "PATCH", path: "/api/admin/users/batch/reactivate" },
@@ -341,13 +345,13 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
   if (endpoint.path.startsWith("/api/admin/audit-log") || endpoint.path.startsWith("/api/admin/audit-archive")) {
     return endpoint.path.includes("export") || endpoint.path.includes("download") ? requiresAll("admin.audit.export") : requiresAll("admin.audit.view");
   }
-  if (endpoint.path.startsWith("/api/game-data/versions")) return requiresAll("admin.gameData.manage");
+  if (endpoint.path.startsWith("/api/game-data/versions") || endpoint.path.startsWith("/api/game-data/full")) return requiresAll("admin.gameData.manage");
   if (endpoint.path.startsWith("/api/wiki/articles") && endpoint.path.includes("/revisions")) return requiresAll("wiki.articles.edit");
   if (endpoint.path.startsWith("/api/admin/users")) {
     if (endpoint.path.includes("role")) return requiresAll("admin.users.edit", "admin.users.role", "admin.users.delete");
     if (endpoint.path.includes("deactivate") || endpoint.path.includes("reactivate")) return requiresAll("admin.users.edit", "admin.users.activate", "admin.users.delete");
     if (endpoint.path.includes("delete")) return requiresAll("admin.users.edit", "admin.users.delete");
-    if (endpoint.path.includes("reset-password")) return requiresAll("admin.users.edit", "admin.users.password", "admin.users.delete");
+    if (endpoint.path.includes("reset-password") || endpoint.path.includes("reset-login-lock")) return requiresAll("admin.users.edit", "admin.users.password", "admin.users.delete");
     return requiresAll("admin.users.edit", "admin.users.delete");
   }
   if (endpoint.path.startsWith("/api/admin/roles")) {

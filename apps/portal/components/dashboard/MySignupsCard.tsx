@@ -5,6 +5,7 @@ import { CalendarEventIcon } from "@portal/components/icons";
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { UserCheckOutlined } from "../../utils/icons";
+import { EmptyState } from "../shared/EmptyState";
 import { cardHeading, eventTypeTagColor, formatDateTime, type DashboardMySignupEvent } from "./shared";
 
 type MySignupsCardProps = {
@@ -50,6 +51,11 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
   return (
     <PortalCard className="dashboard-card" interactive={false}>
       {cardHeading(t("card.mySignups.title"), <UserCheckOutlined size={18} />)}
+      {/* With no signups the strip was eight identical boxes of "—" taking a full
+          card of vertical space and saying nothing. */}
+      {mySignupEvents.length === 0 ? (
+        <EmptyState title={t("card.mySignups.empty")} />
+      ) : (
       <div className="signup-boxes">
         {days.map((day) => {
           const today = isToday(day.date);
@@ -109,6 +115,7 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
           );
         })}
       </div>
+      )}
     </PortalCard>
   );
 });

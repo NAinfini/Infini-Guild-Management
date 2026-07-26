@@ -41,7 +41,7 @@
 }
 
 .dark .audit-log-row + .audit-log-row {
-  border-top-color: color-mix(in srgb, var(--color-text, #e2e8f0) 6%, transparent);
+  border-top-color: color-mix(in srgb, var(--color-text, #e2e8f0) 65%, transparent);
 }
 
 /* ── Clickable header row ── */
@@ -109,14 +109,15 @@
 
 .audit-log-row__time {
   white-space: nowrap;
-  opacity: 0.7;
+  /* The timestamp already renders in the dimmed colour; the extra 0.7 opacity
+   * stacked on top of that put it at 3.0:1. */
   font-variant-numeric: tabular-nums;
 }
 
 /* ── Expand chevron ── */
 
 .audit-log-row__chevron {
-  color: color-mix(in srgb, var(--color-text, #1A1815) 35%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   transition: transform 200ms ease, opacity 150ms ease;
   flex-shrink: 0;
   opacity: 0.5;
@@ -150,7 +151,7 @@
 }
 
 .dark .audit-detail__header {
-  border-bottom-color: color-mix(in srgb, var(--color-text, #e2e8f0) 8%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--color-text, #e2e8f0) 65%, transparent);
 }
 
 .audit-detail__title {
@@ -173,7 +174,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 40%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .audit-detail__col-field {
@@ -224,7 +225,7 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 55%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .audit-diff-entry__from {
@@ -248,7 +249,7 @@
 
 .audit-diff-entry__arrow {
   flex-shrink: 0;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 35%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .audit-diff-entry__to {
@@ -291,7 +292,7 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 55%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .audit-info-entry__value {

@@ -45,8 +45,8 @@ type SiteConfigInfoProps = {
 const FEATURE_KEYS: Array<keyof FeatureFlags> = ["announcements", "events", "guildWar", "gallery", "wiki", "tools", "equipmentCalc", "storage"];
 
 const FEATURE_INFO_META: Record<keyof FeatureFlags, { icon: ReactNode; color: string }> = {
-  announcements: { icon: <BookTextIcon size={16} />, color: "yellow" },
-  events: { icon: <SettingsIcon size={16} />, color: "blue" },
+  announcements: { icon: <BookTextIcon size={16} />, color: "portal-gold" },
+  events: { icon: <SettingsIcon size={16} />, color: "portal-bronze" },
   guildWar: { icon: <SettingsIcon size={16} />, color: "orange" },
   gallery: { icon: <GalleryThumbnailsIcon size={16} />, color: "teal" },
   wiki: { icon: <BookTextIcon size={16} />, color: "violet" },
@@ -72,7 +72,7 @@ function createChecklistItem(): OnboardingChecklistItem {
   };
 }
 
-function SiteConfigInfo({ title, description, icon, color = "blue", badge }: SiteConfigInfoProps) {
+function SiteConfigInfo({ title, description, icon, color = "portal-bronze", badge }: SiteConfigInfoProps) {
   return (
     <HoverCard width={320} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
       <HoverCard.Target>
@@ -223,7 +223,7 @@ export function AdminSiteConfigSection({
                   title={t("siteConfig.branding.title")}
                   description={t("siteConfig.branding.description")}
                   icon={<GalleryThumbnailsIcon size={16} />}
-                  color="yellow"
+                  color="portal-copper"
                 />
               </div>
             </div>
@@ -245,7 +245,7 @@ export function AdminSiteConfigSection({
                       title={t("siteConfig.field.siteLogo")}
                       description={t("siteConfig.field.siteLogoDescription")}
                       icon={<UploadIcon size={16} />}
-                      color="yellow"
+                      color="portal-copper"
                     />
                   </div>
                   <FileButton onChange={(file) => { if (file) onUploadLogo(file); }} accept="image/jpeg,image/png,image/gif,image/webp,image/avif">
@@ -268,7 +268,7 @@ export function AdminSiteConfigSection({
                   title={t("siteConfig.policy.features")}
                   description={t("siteConfig.policy.featuresDescription")}
                   icon={<SettingsIcon size={16} />}
-                  color="blue"
+                  color="portal-bronze"
                 />
               </div>
               <Text size="xs" fw={700} c="dimmed">{t("siteConfig.summary.features", { enabled: enabledFeatureCount, total: FEATURE_KEYS.length })}</Text>
@@ -308,7 +308,7 @@ export function AdminSiteConfigSection({
                 title={t("siteConfig.policy.limits")}
                 description={t("siteConfig.policy.limitsDescription")}
                 icon={<CloudIcon size={16} />}
-                color="blue"
+                color="portal-bronze"
               />
             </div>
           </div>
@@ -449,7 +449,7 @@ export function AdminSiteConfigSection({
                       title={t("siteConfig.field.requireAck")}
                       description={t("siteConfig.field.requireAckDescription")}
                       icon={<BookTextIcon size={16} />}
-                      color="yellow"
+                      color="portal-copper"
                     />
                   </Group>
                 </div>

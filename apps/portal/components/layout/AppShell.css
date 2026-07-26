@@ -212,7 +212,7 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 62%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .app-nav-item {
@@ -222,73 +222,44 @@
   padding: 10px 12px;
   border-radius: var(--radius-md);
   color: color-mix(in srgb, var(--color-text, #1A1815) 78%, transparent);
-  font-size: 14px;
+  font-size: var(--text-body);
   overflow: hidden;
   transition:
-    transform var(--transition-normal),
     background var(--transition-normal),
-    color var(--transition-normal),
-    box-shadow var(--transition-normal);
+    color var(--transition-normal);
 }
 
-.app-nav-item::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 30%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent),
-    transparent
-  );
-  transform: translateX(-100%) skewX(-15deg);
-  pointer-events: none;
-  transition: none;
-}
-
-.app-nav-item:hover::after {
-  animation: shineSweep 0.5s ease-out;
-}
+/* The gold shine sweep that fired on every nav hover is gone with the rest of
+ * the decorative gold. */
 
 .app-nav-item:hover {
-  transform: translateX(3px);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
   color: var(--color-text, #1A1815);
-  box-shadow: inset 0 0 24px color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent);
 }
 
-.dark .app-nav-item:hover {
-  box-shadow: inset 0 0 28px color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
-}
-
+/*
+ * "You are here" is the one job gold keeps in the chrome (tabs gave theirs up).
+ * It only takes one device to say it, so the active item is now a neutral
+ * raised fill with full-strength bold text and a single solid gold bar. The
+ * gold text, the outer glow, the inner glow, the gradient bar with two more
+ * glows and the icon drop-shadow were five signals for one state.
+ */
 .app-nav-item--active {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 14%, transparent);
-  color: var(--color-primary, #D4A843);
-  box-shadow:
-    0 1px 4px color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent),
-    inset 0 0 28px color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
+  background: color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
+  color: var(--color-text, #1A1815);
+  font-weight: var(--fw-medium);
 }
 
 .app-nav-item--active::before {
   content: "";
   position: absolute;
   left: 0;
-  top: 4px;
-  bottom: 4px;
+  top: 6px;
+  bottom: 6px;
   width: 3px;
   border-radius: var(--radius-pill);
-  background: linear-gradient(180deg, var(--color-primary, #D4A843), var(--color-secondary, #8B7355));
-  box-shadow:
-    0 0 12px color-mix(in srgb, var(--color-primary, #D4A843) 60%, transparent),
-    0 0 24px color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent);
+  background: var(--color-primary, #D4A843);
   animation: navIndicatorIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.app-nav-item--active .app-nav-icon {
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-primary, #D4A843) 50%, transparent));
 }
 
 @keyframes navIndicatorIn {
@@ -338,29 +309,11 @@
   padding-inline: 20px;
 }
 
-.app-header::after {
-  content: "";
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, var(--color-primary, #D4A843) 40%, transparent) 25%,
-    color-mix(in srgb, var(--color-secondary, #8B7355) 35%, transparent) 50%,
-    color-mix(in srgb, var(--color-accent, #C17F3E) 30%, transparent) 75%,
-    transparent 100%
-  );
-  background-size: 200% 100%;
-  animation: headerLineShine 8s linear infinite;
-}
-
-@keyframes headerLineShine {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
+/*
+ * The header used to carry a permanently animating tri-colour hairline under
+ * the plain border it already had — two separators for one edge, one of them
+ * moving. The border-bottom above is the separator.
+ */
 
 .app-header__left {
   min-width: 0;
@@ -479,38 +432,24 @@
   white-space: nowrap;
 }
 
+/*
+ * The page title is the top of the hierarchy, so it gets the top of the type
+ * scale — it was 16px, the same as a card heading. The five-stop shimmering
+ * gradient fill is gone: the largest text on the page does not also need to be
+ * the most colourful, and animated gradient text is hard to read.
+ */
 .app-header__page-title {
   display: inline-block;
   margin: 0;
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1.2;
+  font-size: var(--text-page);
+  font-weight: var(--fw-strong);
+  line-height: var(--lh-tight);
+  letter-spacing: -0.01em;
   max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--color-text, #1A1815);
-  background:
-    linear-gradient(
-      105deg,
-      var(--color-text, #1A1815) 0%,
-      color-mix(in srgb, var(--color-primary, #D4A843) 88%, #ffffff 12%) 36%,
-      color-mix(in srgb, var(--color-accent, #C17F3E) 72%, var(--color-primary, #D4A843) 28%) 52%,
-      color-mix(in srgb, var(--color-secondary, #8B7355) 70%, var(--color-text, #1A1815) 30%) 68%,
-      var(--color-text, #1A1815) 100%
-    );
-  background-size: 260% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent));
-  animation: pageHeaderShimmer 5.5s cubic-bezier(0.45, 0, 0.25, 1) infinite;
-}
-
-@keyframes pageHeaderShimmer {
-  0%, 100% { background-position: 0% center; }
-  48% { background-position: 100% center; }
-  70% { background-position: 82% center; }
 }
 
 .app-profile-trigger {
@@ -567,7 +506,7 @@
 
 .app-profile-chevron {
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 62%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .app-content.app-content {
@@ -807,15 +746,6 @@
 @media (prefers-reduced-motion: reduce) {
   .app-brand-mark::after {
     animation: none;
-  }
-  .app-header::after {
-    animation: none;
-  }
-  .app-header__page-title {
-    animation: none;
-  }
-  .app-nav-item::after {
-    display: none;
   }
   .app-nav-item--active::before {
     animation: none;

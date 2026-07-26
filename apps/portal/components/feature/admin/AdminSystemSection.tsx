@@ -64,7 +64,7 @@ export function AdminSystemSection({
   }
 
   if (statusError) {
-    return <Alert color="yellow" title={loadErrorMessage} />;
+    return <Alert color="portal-copper" title={loadErrorMessage} />;
   }
 
   if (!statusData) return null;
@@ -98,7 +98,7 @@ export function AdminSystemSection({
             </HoverCard.Target>
             <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
               <Group gap={10} wrap="nowrap" align="flex-start">
-                <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                <ThemeIcon variant="light" color="portal-bronze" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                   <Icon size={16} />
                 </ThemeIcon>
                 <div style={{ minWidth: 0 }}>

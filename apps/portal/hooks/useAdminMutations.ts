@@ -16,6 +16,7 @@ import {
   deactivateAdminUser,
   deleteAdminInviteLink,
   reactivateAdminUser,
+  resetAdminUserLoginLock,
   resetAdminUserPassword,
   revokeAdminInviteLink,
   updateAdminUserRole,
@@ -101,6 +102,14 @@ export function useAdminMutations({
       notifySuccess(t("message.passwordResetCopied"));
     },
     onError: (error) => showError(error, t("message.passwordResetFailed")),
+  });
+
+  const resetLoginLockMutation = useMutation({
+    mutationFn: (userId: string) => resetAdminUserLoginLock(userId),
+    onSuccess: () => {
+      notifySuccess(t("message.loginLockCleared"));
+    },
+    onError: (error) => showError(error, t("message.loginLockClearFailed")),
   });
 
   const createMemberMutation = useMutation({
@@ -448,6 +457,7 @@ export function useAdminMutations({
     deactivateMutation,
     reactivateMutation,
     resetPasswordMutation,
+    resetLoginLockMutation,
     createMemberMutation,
     batchRoleMutation,
     batchDeleteMutation,

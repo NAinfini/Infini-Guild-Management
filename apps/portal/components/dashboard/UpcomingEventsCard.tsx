@@ -49,12 +49,16 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
 
   return (
     <PortalCard className="dashboard-card" interactive={false}>
-      {cardHeading(t("card.upcomingEvents.title"), <CalendarEventOutlined size={18} />)}
+      {/* The count used to sit under the heading as its own xl line, repeating what
+          the list below already shows. It rides along with the heading now. */}
+      <Group gap={8} align="center" wrap="nowrap" justify="space-between">
+        {cardHeading(t("card.upcomingEvents.title"), <CalendarEventOutlined size={18} />)}
         {safeUpcomingCount > 0 ? (
-          <Text size="xl" fw={700} mt={8}>
+          <Badge size="sm" variant="light" color="gray" style={{ flexShrink: 0 }}>
             <NumberTicker value={safeUpcomingCount} /> {t("card.upcomingEvents.unit")}
-          </Text>
+          </Badge>
         ) : null}
+      </Group>
         {!hasAnyRows ? (
           <EmptyState title={t("empty")} />
         ) : (
@@ -74,15 +78,15 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                     padding: "14px",
                     background: "color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #1A1815))",
                     borderRadius: "12px",
-                    border: "1px solid color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent)",
+                    border: "1px solid var(--border-subtle)",
                     transition: "border-color 160ms ease, box-shadow 160ms ease",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--color-primary, #D4A843) 24%, transparent)";
-                    e.currentTarget.style.boxShadow = "0 2px 8px color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent)";
+                    e.currentTarget.style.borderColor = "var(--border-strong)";
+                    e.currentTarget.style.boxShadow = "var(--shadow-sm)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent)";
+                    e.currentTarget.style.borderColor = "var(--border-subtle)";
                     e.currentTarget.style.boxShadow = "none";
                   }}
                 >
@@ -110,13 +114,15 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         </Group>
                       </Group>
                     </Stack>
-                      <Group gap={4}>
-                        {item.members.slice(0, 10).map((member) => (
-                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={48} />
+                      {/* Ten 48px avatars ate the row and truncated the event title to
+                          "Weekly Missio…". Six smaller ones leave the title readable. */}
+                      <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+                        {item.members.slice(0, 6).map((member) => (
+                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={36} />
                         ))}
-                      {item.members.length > 10 ? (
+                      {item.members.length > 6 ? (
                         <Text size="xs" c="dimmed" fw={600}>
-                          +{item.members.length - 10}
+                          +{item.members.length - 6}
                         </Text>
                       ) : null}
                     </Group>

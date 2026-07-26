@@ -211,6 +211,8 @@ const ACTION_COLOR_MAP = {
   run: "orange",
   upload: "green",
   upload_icon: "grape",
+  login_failed: "red",
+  reset_login_lock: "orange",
 } satisfies Record<AuditAction, ActionColor>;
 
 const ENTITY_COLOR_MAP = {
@@ -316,6 +318,7 @@ export function AuditLogViewer({
   userMap,
 }: AuditLogViewerProps) {
   const { t } = useTranslation("admin");
+  const { t: tCommon } = useTranslation("common");
   const totalPages = Math.max(1, Math.ceil(auditTotal / Math.max(1, auditPageSize)));
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -369,7 +372,7 @@ export function AuditLogViewer({
         </Stack>
       ) : null}
 
-      {auditError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
+      {auditError ? <Alert color="portal-copper" title={loadErrorMessage} /> : null}
 
       {!auditLoading && !auditError ? (
         <>
@@ -415,7 +418,7 @@ export function AuditLogViewer({
                         {row.summary}
                       </Text>
                       {row.entityName ? (
-                        <Text size="xs" fw={600} c="var(--color-primary, #D4A843)" lineClamp={1} className="audit-log-row__entity-name">
+                        <Text size="xs" fw={600} c="var(--color-primary-text, #705A1B)" lineClamp={1} className="audit-log-row__entity-name">
                           {row.entityName}
                         </Text>
                       ) : null}
@@ -493,8 +496,14 @@ export function AuditLogViewer({
               onChange={onAuditPageChange}
               withEdges
               size="sm"
+              getControlProps={(control) => ({
+                "aria-label": tCommon(
+                  control === "previous" ? "pagination.prev" : `pagination.${control}`,
+                ),
+              })}
             />
             <NumberInput
+              aria-label={tCommon("pagination.page")}
               size="xs"
               min={1}
               max={totalPages}

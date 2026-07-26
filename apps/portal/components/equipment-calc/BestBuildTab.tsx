@@ -233,7 +233,7 @@ export function BestBuildTab({ gameData }: { gameData: GameData }) {
               <Card key={`${build.graduationRate}-${build.dps}-${idx}`} withBorder padding="sm">
                 <Group justify="space-between" mb="xs">
                   <Group gap="xs">
-                    <Badge variant="light" color="blue" size="lg">
+                    <Badge variant="light" color="portal-bronze" size="lg">
                       #{idx + 1}
                     </Badge>
                     <Text fw={600} size="sm">

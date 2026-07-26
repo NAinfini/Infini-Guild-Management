@@ -169,7 +169,7 @@ export function GuildWarAnalyticsTab({
         </Stack>
       ) : null}
 
-      {isError ? <Alert color="yellow">{loadErrorMessage}</Alert> : null}
+      {isError ? <Alert color="portal-copper">{loadErrorMessage}</Alert> : null}
 
       {/* Wars mode: win/loss record summary */}
       {!isLoading && !isError && analytics.analyticsMode === "wars" ? (
@@ -181,7 +181,7 @@ export function GuildWarAnalyticsTab({
             </Text>
           ))}
           {analytics.analyticsWarSummary.winRate !== null ? (
-            <Text size="sm" fw={600} c="var(--color-primary, #D4A843)">
+            <Text size="sm" fw={600} c="var(--color-primary-text, #705A1B)">
               {t("analytics.wars.winRate", { rate: analytics.analyticsWarSummary.winRate })}
             </Text>
           ) : null}
@@ -489,23 +489,29 @@ export function GuildWarAnalyticsTab({
 
           {/* Data table — full width below chart */}
           <div className="gwa-table-section">
-            <UnstyledButton
-              onClick={() => setTableExpanded(!tableExpanded)}
-              className="gwa-table-toggle"
-            >
-              <Group gap={6}>
-                {tableExpanded ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
-                <Text size="xs" fw={500}>
-                  {t("analytics.table.title", { count: analytics.analyticsTableRows.length })}
-                </Text>
-              </Group>
+            {/*
+              * The header bar used to be one big UnstyledButton wrapping the heatmap
+              * Switch and the CSV button — a <button> inside a <button>, which is
+              * invalid HTML. Only the expand affordance is a button now; the controls
+              * on the right are siblings, so they no longer need stopPropagation.
+              */}
+            <div className="gwa-table-toggle">
+              <UnstyledButton
+                onClick={() => setTableExpanded(!tableExpanded)}
+                className="gwa-table-toggle__expand"
+                aria-expanded={tableExpanded}
+              >
+                <Group gap={6}>
+                  {tableExpanded ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
+                  <Text size="xs" fw={500}>
+                    {t("analytics.table.title", { count: analytics.analyticsTableRows.length })}
+                  </Text>
+                </Group>
+              </UnstyledButton>
               <Group gap={6}>
                 <Switch
                   checked={analytics.analyticsHeatmapEnabled}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    analytics.setAnalyticsHeatmapEnabled(e.currentTarget.checked);
-                  }}
+                  onChange={(e) => analytics.setAnalyticsHeatmapEnabled(e.currentTarget.checked)}
                   size="xs"
                   label={t("analytics.heatmap")}
                   styles={{ label: { fontSize: 11, cursor: "pointer" } }}
@@ -513,7 +519,7 @@ export function GuildWarAnalyticsTab({
                 <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                   <HoverCard.Target>
                     <UnstyledButton
-                      onClick={(e) => { e.stopPropagation(); analytics.copyAnalyticsCsv(); }}
+                      onClick={() => analytics.copyAnalyticsCsv()}
                       className="gwa-table-action"
                       aria-label={t("analytics.aria.copyCsv")}
                     >
@@ -523,7 +529,7 @@ export function GuildWarAnalyticsTab({
                   </HoverCard.Target>
                   <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                     <Group gap={10} wrap="nowrap" align="flex-start">
-                      <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                      <ThemeIcon variant="light" color="portal-bronze" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                         <CopyIcon size={16} />
                       </ThemeIcon>
                       <div style={{ minWidth: 0 }}>
@@ -534,7 +540,7 @@ export function GuildWarAnalyticsTab({
                   </HoverCard.Dropdown>
                 </HoverCard>
               </Group>
-            </UnstyledButton>
+            </div>
             <Collapse in={tableExpanded}>
               <div className="gwa-table-wrap">
                 <Table striped={!analytics.analyticsHeatmapEnabled} highlightOnHover withTableBorder>

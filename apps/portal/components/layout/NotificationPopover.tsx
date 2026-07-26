@@ -111,11 +111,11 @@ export function NotificationPopover({
                       <Group gap={8} wrap="nowrap">
                         <Text fw={600}>{item.title}</Text>
                         {item.type === "announcement_published" || item.type === "announcement_created" ? (
-                          <Badge variant="light" color="blue">
+                          <Badge variant="light" color="portal-bronze">
                             {t("notification.type.announcement")}
                           </Badge>
                         ) : item.type === "event_created" ? (
-                          <Badge variant="light" color="orange">
+                          <Badge variant="light" color="portal-copper">
                             {t("notification.type.eventReminder")}
                           </Badge>
                         ) : item.type === "wiki_created" ? (

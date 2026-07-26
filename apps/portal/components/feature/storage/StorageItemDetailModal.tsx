@@ -93,7 +93,7 @@ export function StorageItemDetailModal({
               <Group gap={8}>
                 <Badge color={item.quantity > 0 ? "green" : "gray"}>{labels.stock}: {item.quantity}</Badge>
                 {item.allow_member_deposit ? <Badge variant="light" color="green">{labels.intake}</Badge> : null}
-                {item.allow_member_withdraw ? <Badge variant="light" color="blue">{labels.distribute}</Badge> : null}
+                {item.allow_member_withdraw ? <Badge variant="light" color="portal-bronze">{labels.distribute}</Badge> : null}
               </Group>
               <Text size="sm" fw={800} mt={12}>{labels.description}</Text>
               <Text size="sm" c={item.description ? undefined : "dimmed"}>{item.description || labels.noDescription}</Text>

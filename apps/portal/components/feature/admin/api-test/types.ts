@@ -31,6 +31,8 @@ export type TestRunContext = {
   warTeamId: string | null;
   warMemberUserId: string | null;
   createdConcludedWarHistoryId: string | null;
+  /** Captured from GET /api/game-data so the rotations endpoint has a real class. */
+  gameDataClassId: string | null;
   wikiCategoryId: string | null;
   wikiArticleId: string | null;
   wikiArticleSlug: string | null;
@@ -142,6 +144,7 @@ export function createInitialTestRunContext(): TestRunContext {
     warTeamId: null,
     warMemberUserId: null,
     createdConcludedWarHistoryId: null,
+    gameDataClassId: null,
     wikiCategoryId: null,
     wikiArticleId: null,
     wikiArticleSlug: null,

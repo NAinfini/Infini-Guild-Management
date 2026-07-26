@@ -108,7 +108,9 @@ export function AppShell() {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const isSidebarCollapsed = !isSidebarExpanded;
   const sidebarWidth = isSidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH;
-  const hideNavigation = pathname === "/login" || pathname.startsWith("/register/");
+  // `/register` (invite code entry) and `/register/<code>` are both full-screen
+  // auth pages; neither may render inside the portal chrome.
+  const hideNavigation = pathname === "/login" || pathname === "/register" || pathname.startsWith("/register/");
   const queryClient = useQueryClient();
 
   const user = useAuthStore((s) => s.user);
@@ -433,12 +435,12 @@ export function AppShell() {
         <MantineAppShell.Main id="main-content" ref={scrollContainerRef} className={`app-content ${isMobile ? "app-content-mobile" : ""}`}>
           <div className="app-main">
             {isExternalView ? (
-              <Alert color="blue" variant="light" className="app-banner">
+              <Alert color="portal-bronze" variant="light" className="app-banner">
                 {t("nav.externalViewBanner")}
               </Alert>
             ) : null}
             {!isOnline ? (
-              <Alert color="yellow" variant="light" className="app-banner" role="status" aria-live="polite">
+              <Alert color="portal-copper" variant="light" className="app-banner" role="status" aria-live="polite">
                 {t("nav.offlineBanner")}
               </Alert>
             ) : null}

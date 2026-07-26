@@ -144,7 +144,9 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
           <SearchOutlined />
         </ActionIcon>
       ) : (
-        <Button onClick={openHandlers.open} size="xs" aria-label={t("cmdk.aria.openSearch")} rightSection={
+        /* Search is a utility, not the page's primary action — a gold fill here
+           competed with the real primary button on every single page. */
+        <Button variant="default" onClick={openHandlers.open} size="xs" aria-label={t("cmdk.aria.openSearch")} rightSection={
           <Group gap={2} wrap="nowrap">
             <Kbd size="xs">{isMac ? "Cmd" : "Ctrl"}</Kbd>
             <Kbd size="xs">K</Kbd>

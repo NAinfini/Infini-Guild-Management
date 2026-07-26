@@ -40,7 +40,7 @@
 
 .roster-volume-label {
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
 }
 
 .roster-audio-popover {
@@ -75,13 +75,26 @@
 .roster-card-grid {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   padding: 16px;
   margin: -16px;
 }
 
+/*
+ * Three unstyled wrappers sit between the grid and the card: StaggerList's
+ * animation div, the cell, and RosterGrid's hover-handler div. Every one of them
+ * has to pass the stretched row height down, or MemberCard's height:100% resolves
+ * against auto and a member with an extra badge row ends up taller than the rest
+ * of their row.
+ */
+.roster-card-grid > *,
+.roster-card-cell > * {
+  height: 100%;
+}
+
 .roster-card-cell {
   min-width: 0;
+  height: 100%;
 }
 
 .roster-load-more {
@@ -141,7 +154,7 @@
   }
 
   .roster-card-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 8px;
   }
 

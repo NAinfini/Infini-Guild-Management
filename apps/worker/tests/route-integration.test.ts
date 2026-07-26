@@ -109,10 +109,18 @@ let app: Hono<{ Bindings: Bindings; Variables: { requestId: string; user: unknow
 
 /** Minimal mock bindings that satisfy the Bindings type. */
 function createMockEnv(featureFlags?: Record<string, boolean>): Bindings {
+  // Shape matches the single site_config row read by routes/service-factory.ts.
   const db = {
     prepare: () => ({
       bind: () => ({
-        first: async () => featureFlags ? { value: JSON.stringify(featureFlags) } : null,
+        first: async () => featureFlags
+          ? {
+              absence_policy_json: null,
+              feature_flags_json: JSON.stringify(featureFlags),
+              media_policy_json: null,
+              storage_policy_json: null,
+            }
+          : null,
       }),
     }),
   };

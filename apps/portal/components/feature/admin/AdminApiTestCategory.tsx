@@ -181,6 +181,7 @@ export function ApiTestCategory({
         <div className="api-cat__actions" onClick={(e) => e.stopPropagation()}>
           {catRunning ? <span className="api-ep__running" /> : null}
           <ProgressButton
+            ariaLabel={category.label}
             onPress={() => onRunCategory(category)}
             disabled={catRunning}
           >

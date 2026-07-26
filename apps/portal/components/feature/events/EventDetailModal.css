@@ -43,11 +43,11 @@
 }
 
 .event-detail-modal__meta-card--type svg {
-  color: var(--mantine-color-yellow-6);
+  color: var(--mantine-color-portal-copper-6);
 }
 
 .event-detail-modal__meta-card--time svg {
-  color: var(--mantine-color-orange-6);
+  color: var(--mantine-color-portal-copper-6);
 }
 
 .event-detail-modal__section {
@@ -124,7 +124,7 @@
 }
 
 .event-detail-modal__poll-result-row--disabled:hover {
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
 }
 
@@ -172,7 +172,7 @@
 
 .event-detail-modal__poll-result-stats {
   flex-shrink: 0;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 62%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   font-variant-numeric: tabular-nums;
 }
 

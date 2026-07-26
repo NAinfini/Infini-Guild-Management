@@ -70,12 +70,14 @@ export const AUDIT_ACTIONS = [
   "intake",
   "join",
   "leave",
+  "login_failed",
   "move_member",
   "pause",
   "publish",
   "raffle_draw",
   "reactivate",
   "register",
+  "reset_login_lock",
   "reset_password",
   "rollback",
   "run",
@@ -89,6 +91,11 @@ export const AUDIT_ACTIONS = [
   "upload",
   "upload_audio",
   "upload_avatar",
+  // No code writes this any more — the game-data icon upload endpoint was
+  // removed. It stays listed because auditLogSchema validates stored rows with
+  // `z.enum(AUDIT_ACTIONS)`, so dropping it would make any historical row
+  // unparseable and take the whole audit log page down. Safe to delete once you
+  // are certain no `upload_icon` rows exist.
   "upload_icon",
   "upload_images",
   "vote",

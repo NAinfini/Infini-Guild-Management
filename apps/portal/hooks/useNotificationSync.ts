@@ -79,6 +79,15 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
         members: latestMembers,
       });
       setLastSyncedAt(new Date().toISOString());
+    } catch (error) {
+      /*
+       * Every call site is fire-and-forget (`void`), so a rejection here — a 429
+       * from the rate limiter, an offline tab, a worker restart — escaped as an
+       * unhandled rejection and surfaced as a page-level error. Notification
+       * timestamps are advisory, so the sync may fail; the failure must stay
+       * visible in the console rather than take down the page.
+       */
+      console.error("[notification-sync] feature timestamp sync failed", error);
     } finally {
       setSyncing(false);
     }

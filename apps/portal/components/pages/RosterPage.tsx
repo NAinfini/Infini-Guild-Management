@@ -17,11 +17,16 @@ const LazyProfileModal = lazy(() =>
   import("../shared/ProfileModal").then((mod) => ({ default: mod.ProfileModal })),
 );
 
+/*
+ * Cut one column at every step: the card is a horizontal row now (56px thumbnail
+ * plus a name), so eight of them across a 1600px window left ~150px per card and
+ * truncated every username.
+ */
 function resolveColumnCount(width: number): number {
-  if (width >= 1600) return 8;
-  if (width >= 1200) return 6;
-  if (width >= 992) return 4;
-  if (width >= 768) return 3;
+  if (width >= 1900) return 6;
+  if (width >= 1600) return 5;
+  if (width >= 1200) return 4;
+  if (width >= 992) return 3;
   if (width >= 576) return 2;
   return 1;
 }

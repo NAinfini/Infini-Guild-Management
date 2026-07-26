@@ -1,4 +1,4 @@
-﻿import { PortalCard } from "../shared/PortalCard";
+import { PortalCard } from "../shared/PortalCard";
 import {
   Alert,
   ColorPicker,
@@ -211,10 +211,12 @@ export function ToolsPage() {
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<WrenchIcon size={22} />}>
       {isExternalView ? (
-        <Alert color="blue" title={t("sandbox.readOnlyHint")} />
+        <Alert color="portal-bronze" title={t("sandbox.readOnlyHint")} />
       ) : null}
 
-      <PageLayout.Grid cols={{ xs: 2, sm: 3, md: 5 }} gap={16}>
+      {/* 5 columns squeezed each card to ~200px, which wrapped every title; 3 gives
+          the title one line and leaves the meta row readable. */}
+      <PageLayout.Grid cols={{ xs: 1, sm: 2, md: 3 }} gap={16}>
         {toolCards.map((tool) => (
           <PortalCard
             key={tool.key}
@@ -229,7 +231,8 @@ export function ToolsPage() {
               }}
             >
               <div className="tool-card__content">
-                <Title order={3} className="tool-card__title">
+                {/* h2, not h3: the page title is the h1, so h3 skipped a level. */}
+                <Title order={2} className="tool-card__title">
                   {tool.title}
                 </Title>
                 <Text c="dimmed" className="tool-card__description">
@@ -270,7 +273,9 @@ export function ToolsPage() {
             <div className="sandbox__workspace">
               <div className="sandbox__panel sandbox__panel--controls">
                 <div className="sandbox__section">
-                  <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">
+                  {/* span, not the default <p>: PaletteIcon renders a <div>, and a
+                      block element inside <p> is invalid HTML that React flags. */}
+                  <Text component="span" size="xs" fw={600} c="dimmed" className="sandbox__section-label">
                     <PaletteIcon size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
                     {t("sandbox.section.color")}
                   </Text>

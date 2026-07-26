@@ -51,7 +51,9 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/events", labelKey: "nav.events", icon: CalendarOutlined, featureFlag: "events" },
   { to: "/guild-war", labelKey: "nav.guild-war", icon: ThunderboltOutlined, featureFlag: "guildWar" },
   { to: "/gallery", labelKey: "nav.gallery", icon: PictureOutlined, featureFlag: "gallery" },
-  { to: "/storage", labelKey: "nav.storage", icon: WarehouseOutlined, featureFlag: "storage" },
+  // `/storage` lives under the authenticated-only route, so a guest clicking it
+  // only ever lands on the login page — hide it instead of offering a dead end.
+  { to: "/storage", labelKey: "nav.storage", icon: WarehouseOutlined, requiresSession: true, featureFlag: "storage" },
   { to: "/wiki", labelKey: "nav.wiki", icon: BookOutlined, featureFlag: "wiki" },
   { to: "/tools", labelKey: "nav.tools", icon: ToolOutlined, featureFlag: "tools" },
   {
@@ -178,7 +180,12 @@ export function AppSidebar({
           </div>
           <SidebarLabel collapsed={isSidebarCollapsed} className="app-brand-title-wrap">
             <Tooltip label={siteName} position="right" withArrow openDelay={400}>
-              <Title order={2} className="app-brand-title">
+              {/*
+                * Not a heading: the site name is nav chrome, and as an <h2> it sat
+                * before the page's <h1> in document order, which broke heading order
+                * on every page.
+                */}
+              <Title order={2} component="div" className="app-brand-title">
                 {siteName}
               </Title>
             </Tooltip>

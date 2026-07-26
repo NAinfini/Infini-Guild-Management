@@ -54,9 +54,9 @@ export function GalleryGrid({
   const { t } = useTranslation("gallery");
   if (isLoading && rows.length === 0) {
     return (
-      <div className="gallery-masonry" role="grid" aria-label={t("aria.galleryLoading")}>
+      <div className="gallery-masonry" role="list" aria-label={t("aria.galleryLoading")}>
         {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="gallery-masonry__item">
+          <div key={i} role="listitem" className="gallery-masonry__item">
             <PortalCard interactive={false}>
               <div className="gallery-card__inner">
                 <Skeleton height={200} radius={8} />
@@ -100,13 +100,17 @@ export function GalleryGrid({
     );
   }
 
+  /*
+   * list/listitem, not grid/gridcell: role="grid" requires role="row"
+   * children, and a masonry wall has no column semantics to navigate.
+   */
   return (
-    <div className="gallery-masonry" role="grid" aria-label={t("aria.galleryItems")}>
+    <div className="gallery-masonry" role="list" aria-label={t("aria.galleryItems")}>
       {rows.map((item, index) => (
         <RevealOnScroll key={item.id} delayMs={Math.min(index, 18) * 18}>
           <div
             className="gallery-masonry__item gallery-masonry__item--animated"
-            role="gridcell"
+            role="listitem"
             style={{ "--stagger-index": index } as CSSProperties}
           >
             <PortalCard className="gallery-card" interactive={false}>

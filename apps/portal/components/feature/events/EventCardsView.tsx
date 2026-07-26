@@ -1,6 +1,6 @@
-﻿import type { Event, MemberProfile, User } from "@guild/shared";
+import type { Event, MemberProfile, User } from "@guild/shared";
 import { activeGame } from "@guild/shared/games";
-import { Badge, Button, Group, HoverCard, Modal, SimpleGrid, Stack, Text, ThemeIcon } from "@mantine/core";
+import { Badge, Button, Group, HoverCard, Modal, SimpleGrid, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
@@ -59,19 +59,29 @@ function getTypeGradientClass(type: string): string {
   return `event-card__header--${type in EVENT_TYPE_COLORS ? type : "other"}`;
 }
 
+// The card's meta row is one line wide. "2026年7月25日周六" plus "下午5:15 - 下午7:15"
+// overflowed it on every card, so the year is only spelled out when the event is
+// not in the current year, and the clock format is left to the locale (zh-CN
+// resolves to 24h, en-US keeps AM/PM) instead of being forced to 12h.
 function formatLocalDate(startAt: string, locale: string): string {
   const d = new Date(startAt);
-  return d.toLocaleDateString(locale, { weekday: "short", year: "numeric", month: "short", day: "numeric" });
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString(locale, {
+    weekday: "short",
+    ...(sameYear ? null : { year: "numeric" }),
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function formatLocalTime(startAt: string, endAt: string | null, locale: string): string {
   const start = new Date(startAt);
-  const timeOpts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit", hour12: true };
+  const timeOpts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
   const startTime = start.toLocaleTimeString(locale, timeOpts);
   if (!endAt) return startTime;
   const end = new Date(endAt);
   const endTime = end.toLocaleTimeString(locale, timeOpts);
-  return `${startTime} - ${endTime}`;
+  return `${startTime}–${endTime}`;
 }
 
 type MemberEntry = { user: User; profile: MemberProfile };
@@ -255,12 +265,12 @@ export function EventCardsView({
               ) : null}
               {event.pinned ? (
                 <EventStatusIndicator
-                  color="orange"
+                  color="portal-copper"
                   icon={<PinIcon size={16} />}
                   title={t("tooltip.pinned.title")}
                   description={t("tooltip.pinned.desc")}
                 >
-                  <PinIcon size={16} style={{ color: "var(--mantine-color-yellow-6)" }} />
+                  <PinIcon size={16} style={{ color: "var(--mantine-color-portal-copper-6)" }} />
                 </EventStatusIndicator>
               ) : null}
               {event.signup_locked ? (
@@ -295,19 +305,26 @@ export function EventCardsView({
               ) : null}
               {flag === "UPDATED" ? (
                 <EventStatusIndicator
-                  color="blue"
+                  color="portal-bronze"
                   icon={<Sparkles2Icon size={16} />}
                   title={t("tooltip.updated.title")}
                   description={t("tooltip.updated.desc")}
                 >
-                  <Sparkles2Icon size={16} style={{ color: "var(--mantine-color-blue-6)" }} />
+                  <Sparkles2Icon size={16} style={{ color: "var(--mantine-color-portal-bronze-6)" }} />
                 </EventStatusIndicator>
               ) : null}
             </>
           );
 
+          /*
+           * The card used to be role="button" + tabIndex={0}, but it also holds
+           * real buttons (copy mentions, the kebab menu, the signup actions), so
+           * it was a widget with focusable descendants — unusable by keyboard and
+           * screen reader alike. The whole-card click stays as a mouse shortcut;
+           * the title below is the focusable affordance that opens the detail.
+           */
           return (
-              <PortalCard key={event.id} className={`event-card${isFocused ? " event-card--focused" : ""}`} onClick={() => setDetailModalEvent(event)} style={{ cursor: "pointer" }} role="button" tabIndex={0} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetailModalEvent(event); } }} aria-label={event.title}>
+              <PortalCard key={event.id} className={`event-card${isFocused ? " event-card--focused" : ""}`} onClick={() => setDetailModalEvent(event)} style={{ cursor: "pointer" }}>
               {/* ── Header ── */}
               <div className={`event-card__header ${getTypeGradientClass(event.type)}`}>
                 <div className="event-card__header-left">
@@ -395,7 +412,12 @@ export function EventCardsView({
               <div className="event-card__body">
                 <Stack gap={8}>
                   <div className="event-card__title-row">
-                    <Text fw={700} size="md" className="event-card__title">{event.title}</Text>
+                    <UnstyledButton
+                      className="event-card__title-btn"
+                      onClick={() => setDetailModalEvent(event)}
+                    >
+                      <Text fw={700} size="md" className="event-card__title">{event.title}</Text>
+                    </UnstyledButton>
                     <div className="event-card__status-rail">{statusIndicators}</div>
                   </div>
 
@@ -522,7 +544,7 @@ export function EventCardsView({
               {t("archive.cancel")}
             </Button>
             <Button
-              color="yellow"
+              color="portal-copper"
               onClick={() => {
                 if (archiveConfirmEvent) {
                   onArchiveEvent(archiveConfirmEvent.id);

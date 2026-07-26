@@ -1,4 +1,4 @@
-﻿import type { Event, MemberProfile, User } from "@guild/shared";
+import type { Event, MemberProfile, User } from "@guild/shared";
 import type { ImageGridEditorItem } from "@portal/types/media";
 import { CalendarEventIcon } from "@portal/components/icons";
 import { useClipboard, useLocalStorage } from "@mantine/hooks";

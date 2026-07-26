@@ -43,6 +43,22 @@
   --shadow-primary-sm: 0 2px 8px color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent);
   --shadow-primary-md: 0 4px 16px color-mix(in srgb, var(--color-primary, #D4A843) 22%, transparent);
 
+  /* ── Design tokens: type scale ──
+   *
+   * Five steps, each a clear jump from the next. Hierarchy is carried by size
+   * and weight so colour does not have to do that job as well — the old scale
+   * sat entirely inside 12–15px and left the eye with no landing point.
+   */
+  --text-page: 20px;
+  --text-section: 18px;
+  --text-card: 16px;
+  --text-body: 14px;
+  --text-meta: 12px;
+  --lh-tight: 1.25;
+  --lh-normal: 1.5;
+  --fw-strong: 700;
+  --fw-medium: 600;
+
   /* ── Design tokens: spacing ── */
   --space-xs: 4px;
   --space-sm: 8px;
@@ -56,24 +72,64 @@
   --transition-normal: 160ms ease;
   --transition-smooth: 180ms ease;
 
-  /* Semantic colors — light mode */
+  /* Semantic colors — light mode.
+   *
+   * "Paper", not "screen": panels are a warm off-white sitting on a deeper warm
+   * ground. Pure #FFF on #F8F6F3 was a 2% step, so every card needed a border
+   * AND a shadow to be seen at all. With this ground the fill alone separates
+   * them, and overlays get the only pure white in the theme. */
   --color-text: #1A1815;
   --color-text-muted: #6B665E;
-  --color-bg: #F8F6F3;
-  --color-surface: #FFFFFF;
-  --color-border: #E2DDD6;
+  --color-bg: #F1EEE7;
+  --color-surface: #FDFBF7;
+  --color-border: #E4DFD6;
   --color-surface-elevated: #FFFFFF;
   --color-primary-alpha: rgba(212,168,67,0.08);
+
+  /* ── Surface layering ──
+   *
+   * One separator per level, never two for the same edge:
+   *   base    — the page ground, no border, no shadow
+   *   raised  — cards: fill + 1px --border-subtle, shadow only while hovered
+   *   overlay — modals/menus/popovers: fill + shadow, no border
+   */
+  --border-subtle: color-mix(in srgb, var(--color-text) 10%, transparent);
+  --border-strong: color-mix(in srgb, var(--color-text) 18%, transparent);
+  /* Gold text on a pale gold tint (active tabs, gold pills) is ~1.8:1. Anything
+   * that paints the brand colour as *text* on a tinted fill uses this instead.
+   * Sized for the worst case in the app, the 22% gold storage tab (5.3:1). */
+  --color-primary-text: #705A1B;
+
+  /*
+   * Status colours are theme-specific. The @theme block above holds the bright
+   * variants, which are built for the near-black dark surface and only reach
+   * ~1.9:1 on parchment; light mode therefore uses deeper tones that clear 4.5:1
+   * against --color-surface. .dark restores the bright set below.
+   */
+  --color-success: #15803D;
+  --color-warning: #A16207;
+  --color-danger: #DC2626;
 }
 
 .dark {
+  --color-success: #4ADE80;
+  --color-warning: #FBBF24;
+  --color-danger: #F87171;
+
   --color-text: #F0EDE8;
-  --color-text-muted: #8A857D;
+  /* #8A857D sat at 4.6:1 on the base background and dipped under 4.5 on the
+   * lighter elevated surfaces (#31302C); this clears 4.5 on all of them. */
+  --color-text-muted: #A39D94;
   --color-bg: #0A0A0F;
   --color-surface: #141418;
   --color-border: #2A2A32;
   --color-surface-elevated: #1C1C22;
   --color-primary-alpha: rgba(212,168,67,0.12);
+  --color-primary-text: #DCB94A;
+
+  /* Light text on dark needs a heavier hairline to read as an edge. */
+  --border-subtle: color-mix(in srgb, var(--color-text) 12%, transparent);
+  --border-strong: color-mix(in srgb, var(--color-text) 22%, transparent);
 
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.20);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.24), 0 1px 2px rgba(0, 0, 0, 0.16);
@@ -354,16 +410,12 @@ html[data-locale="zh"] {
   width: 56px;
   height: 56px;
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent), color-mix(in srgb, var(--color-secondary, #8B7355) 8%, transparent));
-  animation: emptyIconFloat 3s ease-in-out infinite;
+  /* Neutral by default: an empty list is not an event worth spending gold or
+     motion on. Only the three real status colours below stay saturated. */
+  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
 }
 
-@keyframes emptyIconFloat {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
-
-.empty-state__icon--info { color: var(--color-primary, #D4A843); }
+.empty-state__icon--info { color: var(--color-text-muted, #6B665E); }
 .empty-state__icon--success { color: var(--color-success, #22c55e); }
 .empty-state__icon--error { color: var(--color-danger, #ef4444); }
 .empty-state__icon--warning { color: var(--color-warning, #f59e0b); }
@@ -499,22 +551,19 @@ html[data-locale="zh"] {
   animation: shineSweep 0.6s ease-out;
 }
 
+/*
+ * The hover glow was hard-coded to gold, so a red delete button and a green
+ * confirm button both bloomed gold. Depth is colour-neutral now; the button's
+ * own fill is what carries the meaning.
+ */
 .mantine-Button-root[data-variant="filled"]:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow:
-    0 4px 16px color-mix(in srgb, var(--mantine-color-portal-gold-6, #B8922F) 35%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--mantine-color-portal-gold-6, #B8922F) 20%, transparent);
-}
-
-.dark .mantine-Button-root[data-variant="filled"]:hover:not(:disabled) {
-  box-shadow:
-    0 6px 24px color-mix(in srgb, var(--mantine-color-portal-gold-6, #B8922F) 40%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--mantine-color-portal-gold-6, #B8922F) 25%, transparent);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 .mantine-Button-root[data-variant="filled"]:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
-  box-shadow: 0 1px 4px color-mix(in srgb, var(--mantine-color-portal-gold-6, #B8922F) 20%, transparent);
+  transform: translateY(0);
+  box-shadow: var(--shadow-xs);
 }
 
 /* ── Button hover glow (light/subtle) ── */
@@ -586,6 +635,128 @@ html[data-locale="zh"] {
   box-shadow: 0 0 8px currentColor, 0 0 12px currentColor;
   pointer-events: none;
   animation: statusGlow 2s ease-in-out infinite;
+}
+
+/* ── Mantine "light" variant contrast (light theme) ──
+ *
+ * The light variant paints a 12%-alpha fill behind shade-6 text. On the warm ramps
+ * that is ~2.9:1 (the pale-gold storage buttons), so light mode pins the text to a
+ * deeper shade. One override here covers every light Badge/Button/ThemeIcon.
+ *
+ * The selector must out-specify Mantine's own
+ * `:root[data-mantine-color-scheme="light"]` block, which is injected into <head>
+ * after this file — hence the extra `:not(.dark)` rather than a plain `:root`.
+ */
+:root[data-mantine-color-scheme="light"]:not(.dark) {
+  --mantine-color-portal-gold-light-color: #7D641E;
+  --mantine-color-portal-copper-light-color: #6E441F;
+  --mantine-color-portal-bronze-light-color: #493C2D;
+
+  /* The stock ramps have the same problem. Each value below is the lightest shade
+   * that still clears 4.5:1 on that palette's own light-variant fill; green, lime,
+   * yellow and orange never get there, so those four are darkened past shade 9. */
+  --mantine-color-gray-light-color: #495057;
+  --mantine-color-red-light-color: #B02121;
+  --mantine-color-pink-light-color: #C2255C;
+  --mantine-color-grape-light-color: #9C36B5;
+  --mantine-color-violet-light-color: #7048E8;
+  --mantine-color-indigo-light-color: #3B5BDB;
+  --mantine-color-blue-light-color: #1864AB;
+  --mantine-color-cyan-light-color: #0B7285;
+  --mantine-color-teal-light-color: #0A6B4E;
+  --mantine-color-green-light-color: #1F6B2E;
+  --mantine-color-lime-light-color: #4C7B0B;
+  --mantine-color-yellow-light-color: #AC5900;
+  --mantine-color-orange-light-color: #C1400D;
+
+  --mantine-color-dimmed: var(--color-text-muted);
+
+  /* Mantine paints filled controls with shade 6 in light mode, where the label
+   * lands at 3.3–3.6:1 (white on gray, white on blue). Dark mode already uses
+   * shade 8; matching it here fixes the light theme and makes a filled Badge or
+   * Button look the same in both. The brand ramps are excluded — their filled
+   * shade 6 is already a 7.2:1 pairing and shade 8 would mute the CTA.
+   * autoContrast still derives the label from shade 6, which lands on the
+   * correct side for every ramp below. */
+  --mantine-color-gray-filled: var(--mantine-color-gray-8);
+  --mantine-color-gray-filled-hover: var(--mantine-color-gray-9);
+  --mantine-color-red-filled: var(--mantine-color-red-8);
+  --mantine-color-red-filled-hover: var(--mantine-color-red-9);
+  --mantine-color-pink-filled: var(--mantine-color-pink-8);
+  --mantine-color-pink-filled-hover: var(--mantine-color-pink-9);
+  --mantine-color-grape-filled: var(--mantine-color-grape-8);
+  --mantine-color-grape-filled-hover: var(--mantine-color-grape-9);
+  --mantine-color-violet-filled: var(--mantine-color-violet-8);
+  --mantine-color-violet-filled-hover: var(--mantine-color-violet-9);
+  --mantine-color-indigo-filled: var(--mantine-color-indigo-8);
+  --mantine-color-indigo-filled-hover: var(--mantine-color-indigo-9);
+  --mantine-color-blue-filled: var(--mantine-color-blue-8);
+  --mantine-color-blue-filled-hover: var(--mantine-color-blue-9);
+  --mantine-color-cyan-filled: var(--mantine-color-cyan-8);
+  --mantine-color-cyan-filled-hover: var(--mantine-color-cyan-9);
+  --mantine-color-teal-filled: var(--mantine-color-teal-8);
+  --mantine-color-teal-filled-hover: var(--mantine-color-teal-9);
+  --mantine-color-green-filled: var(--mantine-color-green-8);
+  --mantine-color-green-filled-hover: var(--mantine-color-green-9);
+  --mantine-color-lime-filled: var(--mantine-color-lime-8);
+  --mantine-color-lime-filled-hover: var(--mantine-color-lime-9);
+  --mantine-color-yellow-filled: var(--mantine-color-yellow-8);
+  --mantine-color-yellow-filled-hover: var(--mantine-color-yellow-9);
+  --mantine-color-orange-filled: var(--mantine-color-orange-8);
+  --mantine-color-orange-filled-hover: var(--mantine-color-orange-9);
+}
+
+/* ── Filled gold + dimmed text (dark theme) ──
+ *
+ * Mantine resolves the autoContrast label colour once, from the LIGHT primary
+ * shade (#B8922F → dark label), and reuses it in both schemes. Dark mode paints
+ * shade 8 (#7D641E), where that dark label drops to 3.7:1. Painting the same
+ * shade 6 in both schemes is what makes the shared label colour correct — and it
+ * gives the dark theme a brighter, more deliberate gold button.
+ */
+:root[data-mantine-color-scheme="dark"].dark {
+  --mantine-color-portal-gold-filled: var(--mantine-color-portal-gold-6);
+  --mantine-color-portal-gold-filled-hover: var(--mantine-color-portal-gold-7);
+
+  --mantine-color-dimmed: var(--color-text-muted);
+}
+
+/* ── Native date inputs ──
+ *
+ * Date filters are Mantine TextInputs with type="date", so the frame is themed
+ * but the picker button is drawn by the browser: a black glyph that disappears
+ * on the dark surface and ignores the palette on the light one. This tints it to
+ * the theme and gives the whole control the same affordance as the buttons next
+ * to it. Applies to every date filter (gallery, audit log, war history, absence).
+ */
+input[type="date"] {
+  cursor: pointer;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.65;
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent);
+}
+
+.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
+
+/* ── Glass surface (see components/effects/GlassEffect.tsx) ── */
+
+.glass-effect {
+  backdrop-filter: blur(var(--glass-blur, 12px)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur, 12px)) saturate(150%);
+  background: color-mix(in srgb, var(--color-surface, #ffffff) var(--glass-opacity, 10%), transparent);
+  border: 1px solid color-mix(in srgb, var(--color-surface, #ffffff) var(--glass-border-opacity, 20%), transparent);
 }
 
 /* ── Tooltip entrance (glassmorphism style) ── */
@@ -660,32 +831,48 @@ html[data-locale="zh"] {
   }
 }
 
-/* ── Tabs pill style ── */
+/* Mantine's xs badge is 9px, which is below the legible floor for the CJK glyphs
+ * these badges mostly carry (class names, role tags). The component writes
+ * `--badge-fz: var(--badge-fz-xs)` as an inline style, so the size token is what
+ * has to change — setting --badge-fz here would lose to the inline declaration. */
+.mantine-Badge-root[data-size="xs"] {
+  --badge-fz-xs: 10px;
+}
+
+/* ── Tabs pill style ──
+ *
+ * Tabs and the sidebar were both saying "you are here" in gold, on screen at
+ * the same time. The sidebar keeps gold; tabs express the active state with a
+ * raised pill and full-strength bold text instead.
+ */
 .mantine-Tabs-list {
   gap: 4px;
-  border-bottom: 1px solid var(--color-border, #E2DDD6);
-  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--space-sm);
 }
 
 .mantine-Tabs-tab {
   font-weight: 500;
-  color: var(--color-text-secondary, #6b7280);
+  font-size: var(--text-body);
+  color: var(--color-text-muted, #6B665E);
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .mantine-Tabs-tab:hover:not([data-active]) {
   background: color-mix(in srgb, var(--color-text, #000) 5%, transparent);
+  color: var(--color-text, #1A1815);
 }
 
 .mantine-Tabs-tab[data-active] {
-  font-weight: 600;
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
-  color: var(--color-primary, #D4A843);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent);
+  font-weight: var(--fw-medium);
+  background: var(--color-surface-elevated, #ffffff);
+  color: var(--color-text, #1A1815);
+  box-shadow: 0 0 0 1px var(--border-subtle);
 }
 
 .dark .mantine-Tabs-tab[data-active] {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 16%, transparent);
+  background: color-mix(in srgb, var(--color-text, #F0EDE8) 10%, transparent);
+  box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

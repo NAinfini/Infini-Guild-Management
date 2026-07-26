@@ -65,7 +65,14 @@ function parseValidationFieldErrors(details: unknown): FieldErrorMap {
 export function RegisterPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
-  const { inviteCode } = useParams({ from: "/register/$inviteCode" });
+  // The page serves both `/register/$inviteCode` (invite links) and `/register`
+  // (the login page's register button), so the param may be absent — `strict:
+  // false` is how TanStack Router reads a param that only one route defines.
+  const params = useParams({ strict: false }) as { inviteCode?: string };
+  const [typedInviteCode, setTypedInviteCode] = useState("");
+  const [inviteCodeDraft, setInviteCodeDraft] = useState("");
+  const [inviteCodeError, setInviteCodeError] = useState<string | null>(null);
+  const inviteCode = params.inviteCode ?? typedInviteCode;
   const setSession = useAuthStore((state) => state.setSession);
   const siteName = useSiteConfigStore((s) => s.siteName);
   const siteLogoUrl = useSiteConfigStore((s) => s.siteLogoUrl);
@@ -73,6 +80,7 @@ export function RegisterPage() {
   const inviteQuery = useQuery({
     queryKey: queryKeys.auth.verifyInvite(inviteCode),
     queryFn: () => verifyInvite(inviteCode),
+    enabled: inviteCode.length > 0,
     retry: false,
     staleTime: 60_000,
   });
@@ -145,6 +153,15 @@ export function RegisterPage() {
     registerMutation.mutate(values);
   };
 
+  const submitInviteCode = () => {
+    const trimmed = inviteCodeDraft.trim();
+    if (!trimmed) {
+      setInviteCodeError(t("validation.inviteCodeRequired"));
+      return;
+    }
+    setTypedInviteCode(trimmed);
+  };
+
   const usernameError = errors.username?.message ?? apiFieldErrors.username;
   const passwordError = errors.password?.message ?? apiFieldErrors.password;
   const confirmPasswordError = errors.confirmPassword?.message ?? apiFieldErrors.confirmPassword;
@@ -177,14 +194,32 @@ export function RegisterPage() {
           </Text>
         </div>
 
-        <GlassEffect className="login-page__card" blur={16} opacity={0.1} borderOpacity={0.15}>
-          {inviteQuery.isLoading ? (
-            <Stack align="center" py="xl">
-              <Loader color="var(--color-primary)" />
-            </Stack>
-          ) : !inviteQuery.data?.valid ? (
-            <Stack align="center" gap="md">
-              <Alert color="red" title={t("inviteInvalid")} w="100%" />
+        <GlassEffect className="login-page__card">
+          {inviteCode.length === 0 ? (
+            <Stack gap={20}>
+              <Text c="dimmed" size="sm">
+                {t("register.enterCode.hint")}
+              </Text>
+              <div className={`login-floating-field${inviteCodeDraft.length > 0 ? " login-floating-field--filled" : ""}`}>
+                <TextInput
+                  label={t("field.inviteCode")}
+                  value={inviteCodeDraft}
+                  error={inviteCodeError}
+                  classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
+                  onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                    setInviteCodeDraft(event.currentTarget.value);
+                    setInviteCodeError(null);
+                  }}
+                  onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      submitInviteCode();
+                    }
+                  }}
+                  autoFocus
+                />
+              </div>
+              <DepthButton onClick={submitInviteCode}>{t("button.continue")}</DepthButton>
               <div className="login-page__back-link">
                 <Anchor
                   underline="hover"
@@ -196,10 +231,36 @@ export function RegisterPage() {
                 </Anchor>
               </div>
             </Stack>
+          ) : inviteQuery.isLoading ? (
+            <Stack align="center" py="xl">
+              <Loader color="var(--color-primary)" />
+            </Stack>
+          ) : !inviteQuery.data?.valid ? (
+            <Stack align="center" gap="md">
+              <Alert color="red" title={t("inviteInvalid")} w="100%" />
+              <div className="login-page__back-link">
+                <Anchor
+                  underline="hover"
+                  onClick={() => {
+                    // A code typed here can just be retyped; one that came from
+                    // an invite link is part of the URL, so leave the page.
+                    if (params.inviteCode) {
+                      void navigate({ to: "/login" });
+                      return;
+                    }
+                    setTypedInviteCode("");
+                  }}
+                  className="login-page__back-anchor"
+                >
+                  <ArrowLeftIcon size={14} />
+                  {params.inviteCode ? t("button.backToLogin") : t("button.retryInviteCode")}
+                </Anchor>
+              </div>
+            </Stack>
           ) : (
             <>
               {submitError ? <Alert color="red" title={submitError} /> : null}
-              {isCapsLockOn ? <Alert color="yellow" title={t("capsLockWarning")} /> : null}
+              {isCapsLockOn ? <Alert color="portal-copper" title={t("capsLockWarning")} /> : null}
 
               <form onSubmit={handleSubmit(onSubmit)}>
                 <Stack gap={20}>

@@ -160,9 +160,9 @@ export function StoragePage() {
                         <div className="storage-command__row">
                           <div className="storage-command__primary">
                             <Group gap={6} className="storage-command__categories">
-                              <Button size="compact-sm" variant={categoryId === null ? "filled" : "subtle"} onClick={() => setCategoryId(null)}>{t("filter.all")}</Button>
+                              <Button size="compact-sm" variant={categoryId === null ? "default" : "subtle"} color="gray" onClick={() => setCategoryId(null)}>{t("filter.all")}</Button>
                               {activeStorage.categories.map((category) => (
-                                <Button key={category.id} size="compact-sm" variant={categoryId === category.id ? "filled" : "subtle"} onClick={() => setCategoryId(category.id)}>
+                                <Button key={category.id} size="compact-sm" variant={categoryId === category.id ? "default" : "subtle"} color="gray" onClick={() => setCategoryId(category.id)}>
                                   {category.name}
                                 </Button>
                               ))}
@@ -170,6 +170,7 @@ export function StoragePage() {
                           </div>
                           <div className="storage-command__filters">
                             <Select
+                              aria-label={t("field.stock")}
                               className="storage-command__stock"
                               data={stockFilterOptions}
                               value={stockFilter}
@@ -186,10 +187,10 @@ export function StoragePage() {
                           {canUseStorageAdminActions ? (
                             <Group gap={8} className="storage-command__actions">
                               {canManageStorageStructure ? (
-                                <Button variant="light" leftSection={<SettingsIcon size={16} />} onClick={handleOpenStorageManagement}>{t("action.manageStructure")}</Button>
+                                <Button variant="default" leftSection={<SettingsIcon size={16} />} onClick={handleOpenStorageManagement}>{t("action.manageStructure")}</Button>
                               ) : null}
                               {canManageStorageStock ? (
-                                <Button variant="light" leftSection={<ClipboardIcon size={16} />} onClick={adminTransactionHandlers.open} disabled={items.length === 0}>{t("action.manualEntry")}</Button>
+                                <Button variant="default" leftSection={<ClipboardIcon size={16} />} onClick={adminTransactionHandlers.open} disabled={items.length === 0}>{t("action.manualEntry")}</Button>
                               ) : null}
                               {canManageStorageItems ? (
                                 <Button leftSection={<PlusIcon size={16} />} onClick={() => openItemEditor(null)} disabled={!activeStorage}>{t("action.createItem")}</Button>

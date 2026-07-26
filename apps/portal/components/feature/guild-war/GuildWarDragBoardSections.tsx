@@ -161,7 +161,7 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
         <Group gap={6} wrap="nowrap">
           <Text size="sm" fw={500} truncate>{username}</Text>
           {isAbsent ? (
-            <Badge color="orange" size="xs" variant="light" style={{ flexShrink: 0 }}>
+            <Badge color="portal-copper" size="xs" variant="light" style={{ flexShrink: 0 }}>
               {t("active.absent")}
             </Badge>
           ) : null}

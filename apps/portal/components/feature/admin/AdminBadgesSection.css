@@ -74,7 +74,9 @@
   line-height: 1.4;
   background: color-mix(in srgb, var(--badge-color, var(--color-primary, #D4A843)) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--badge-color, var(--color-primary, #D4A843)) 30%, transparent);
-  color: var(--badge-color, var(--color-primary, #D4A843));
+  /* Same reasoning as .member-card__badge: --badge-color is arbitrary admin input
+   * and is unreadable on its own 14% tint until pulled toward the page text. */
+  color: color-mix(in srgb, var(--badge-color, var(--color-primary, #D4A843)) 50%, var(--color-text, #1A1815));
   flex-shrink: 0;
   max-width: 160px;
   overflow: hidden;

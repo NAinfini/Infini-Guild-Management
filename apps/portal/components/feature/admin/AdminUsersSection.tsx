@@ -13,7 +13,7 @@ import {
   TextInput,
 
 } from "@mantine/core";
-import { CopyIcon, EyeIcon, KeyIcon, PlayIcon, PlayerPauseIcon, SearchIcon, TrashIcon, UserPlusIcon } from "@portal/components/icons";
+import { CopyIcon, EyeIcon, KeyIcon, LockOpenIcon, PlayIcon, PlayerPauseIcon, SearchIcon, TrashIcon, UserPlusIcon } from "@portal/components/icons";
 import { IconDotsVertical } from "@tabler/icons-react";
 import {
   InfiniTable,
@@ -48,6 +48,7 @@ type AdminUsersSectionProps = {
   onSingleActivate: (userId: string) => void;
   onSingleDeactivate: (userId: string) => void;
   onSingleResetPassword: (userId: string) => void;
+  onSingleResetLoginLock: (userId: string) => void;
   batchRolePending: boolean;
   batchActivatePending: boolean;
   batchDeactivatePending: boolean;
@@ -55,6 +56,7 @@ type AdminUsersSectionProps = {
   singleRolePending: boolean;
   singleActivationPending: boolean;
   singleResetPasswordPending: boolean;
+  singleResetLoginLockPending: boolean;
   isBatchPending: boolean;
   batchProgress: number;
   userRows: AdminUserRow[];
@@ -81,6 +83,7 @@ export function AdminUsersSection({
   onSingleActivate,
   onSingleDeactivate,
   onSingleResetPassword,
+  onSingleResetLoginLock,
   batchRolePending,
   batchActivatePending,
   batchDeactivatePending,
@@ -88,6 +91,7 @@ export function AdminUsersSection({
   singleRolePending,
   singleActivationPending,
   singleResetPasswordPending,
+  singleResetLoginLockPending,
   isBatchPending,
   batchProgress,
   userRows,
@@ -340,6 +344,17 @@ export function AdminUsersSection({
             title: t("member.resetPassword"),
           } satisfies ContextMenuItemOptions]
         : []),
+      ...(!isBatchContext && contextSingleUserId
+        ? [{
+            key: "reset-login-lock",
+            disabled: singleResetLoginLockPending,
+            icon: <LockOpenIcon size={14} />,
+            onClick: () => {
+              onSingleResetLoginLock(contextSingleUserId);
+            },
+            title: t("member.resetLoginLock"),
+          } satisfies ContextMenuItemOptions]
+        : []),
       { key: "divider-actions" },
       {
         key: "create-member",
@@ -370,7 +385,7 @@ export function AdminUsersSection({
   return (
     <Stack gap={12}>
       {usersLoading ? <Stack gap={8}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {usersError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
+      {usersError ? <Alert color="portal-copper" title={loadErrorMessage} /> : null}
       {!usersLoading && !usersError ? (
         <>
           {isAdmin ? (
@@ -390,7 +405,7 @@ export function AdminUsersSection({
                 {t("member.selected", { count: selectedUserIds.length })} / {batchSelectionLimit}
               </Text>
               {isBatchPending || batchProgress > 0 ? (
-                <Progress value={batchProgress} animated={isBatchPending} color={isBatchPending ? "blue" : "green"} style={{ width: "100%" }} />
+                <Progress value={batchProgress} animated={isBatchPending} color={isBatchPending ? "portal-gold" : "green"} style={{ width: "100%" }} />
               ) : null}
             </Group>
           ) : null}
@@ -425,7 +440,7 @@ export function AdminUsersSection({
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <Text fw={600} size="sm" truncate>{u.username}</Text>
                         <Group gap={6} mt={2}>
-                          <Badge size="xs" color={roleDef?.color ?? "blue"}>{u.role}</Badge>
+                          <Badge size="xs" color={roleDef?.color ?? "gray"}>{u.role}</Badge>
                           {u.is_active
                             ? <Badge size="xs" color="green">{t("member.status.active")}</Badge>
                             : <Badge size="xs" color="red">{t("member.status.inactive")}</Badge>

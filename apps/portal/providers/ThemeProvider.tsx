@@ -8,6 +8,7 @@ import {
   MantineProvider,
   Menu,
   Modal,
+  Notification,
   NumberInput,
   Select,
   Skeleton,
@@ -17,12 +18,35 @@ import {
 } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
+import i18n from "../i18n";
 
 const portalTheme = createTheme({
   primaryColor: "portal-gold",
+  // The brand colours are light-to-mid warm tones: white label text on filled gold
+  // lands at 2.9:1. autoContrast lets Mantine pick dark text once the fill's
+  // relative luminance passes the threshold — 0.3 puts gold (0.31) on the dark
+  // side and leaves copper/red/green on white.
+  autoContrast: true,
+  luminanceThreshold: 0.3,
   fontFamily: '"Inter", system-ui, sans-serif',
   fontFamilyMonospace: '"JetBrains Mono", "Fira Code", monospace',
-  headings: { fontFamily: '"Inter", system-ui, sans-serif', fontWeight: "700" },
+  /*
+   * Mantine's defaults run 34/26/22/18/16/14px, which is a print scale — far too
+   * loud inside a 64px app chrome. These mirror the --text-* tokens in styles.css
+   * so a Title and a hand-rolled heading land on the same step.
+   */
+  headings: {
+    fontFamily: '"Inter", system-ui, sans-serif',
+    fontWeight: "700",
+    sizes: {
+      h1: { fontSize: "20px", lineHeight: "1.25" },
+      h2: { fontSize: "18px", lineHeight: "1.3" },
+      h3: { fontSize: "16px", lineHeight: "1.35" },
+      h4: { fontSize: "16px", lineHeight: "1.35", fontWeight: "600" },
+      h5: { fontSize: "14px", lineHeight: "1.4", fontWeight: "600" },
+      h6: { fontSize: "12px", lineHeight: "1.4", fontWeight: "600" },
+    },
+  },
 
   defaultRadius: "md",
   radius: {
@@ -185,9 +209,25 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
 
   const contextValue = useMemo(() => ({ theme, setTheme, toggleTheme }), [theme, setTheme, toggleTheme]);
 
+  /*
+   * The notification close button renders an icon only, so screen readers get a
+   * nameless control. The label has to be translated, and i18n finishes loading
+   * after this module is evaluated but before the tree mounts (bootstrap.tsx
+   * awaits i18nReady), so it is resolved here rather than in `portalTheme`.
+   */
+  const mantineTheme = useMemo(() => ({
+    ...portalTheme,
+    components: {
+      ...portalTheme.components,
+      Notification: Notification.extend({
+        defaultProps: { closeButtonProps: { "aria-label": i18n.t("common:action.close") } },
+      }),
+    },
+  }), []);
+
   return (
     <ThemeContext.Provider value={contextValue}>
-      <MantineProvider theme={portalTheme} forceColorScheme={theme}>
+      <MantineProvider theme={mantineTheme} forceColorScheme={theme}>
         <Notifications position="top-right" />
         <ModalsProvider>
           {children}

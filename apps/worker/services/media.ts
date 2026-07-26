@@ -1,4 +1,4 @@
-﻿import type { Context } from "hono";
+import type { Context } from "hono";
 import type { Bindings } from "../index";
 import { err, ok, type ServiceResult } from "./result";
 

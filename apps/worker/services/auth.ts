@@ -3,7 +3,7 @@ import {
   type Permission,
   type RoleId,
 } from "@guild/shared";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -45,16 +45,6 @@ export const SESSION_COOKIE_NAME = "ig_session";
 export const SESSION_MODE_COOKIE_NAME = "ig_session_mode";
 
 const textEncoder = new TextEncoder();
-
-/**
- * No-op stubs kept for backward compatibility with AdminService callers.
- * Permissions are now always-fresh via the joined session query, so the
- * per-isolate cache no longer exists.
- */
- 
-export function clearPermissionCache(_roleId?: RoleId): void {
-  // no-op — permissions are fetched fresh on every session resolution
-}
 
 function getDb(c: Context) {
   const env = c.env as Bindings;
@@ -311,6 +301,39 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
   };
 }
 
+/**
+ * Session validity check with no request context, for the WebSocket Durable
+ * Object: a socket can stay open for hours, so without this a logout, an admin
+ * password reset, or a deactivation would leave the push channel alive.
+ *
+ * Applies exactly the checks `resolveSessionUncached` applies — row present,
+ * sliding TTL, 90-day absolute cap, user still active — and nothing else: it
+ * does not renew the TTL (the socket is not a user action) and it does not
+ * delete the row (the next HTTP request does that, with the cookie to clear).
+ *
+ * Takes the raw D1 binding rather than a Drizzle handle because the DO has no
+ * Hono context to build one from.
+ */
+export async function isSessionStillValid(db: D1Database, sessionId: string, nowMs: number): Promise<boolean> {
+  const row = await db
+    .prepare(
+      "SELECT s.expires_at AS expiresAt, s.created_at AS createdAt, u.is_active AS isActive, u.deleted_at AS deletedAt" +
+        " FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?1",
+    )
+    .bind(sessionId)
+    .first<{ expiresAt: string; createdAt: string; isActive: number | boolean; deletedAt: string | null }>();
+  if (!row) return false;
+
+  const expiresAtMs = Date.parse(row.expiresAt);
+  if (Number.isNaN(expiresAtMs) || expiresAtMs <= nowMs) return false;
+
+  const createdAtMs = Date.parse(row.createdAt);
+  if (!Number.isNaN(createdAtMs) && nowMs - createdAtMs > MAX_ABSOLUTE_SESSION_MS) return false;
+
+  // Raw D1 returns SQLite's 0/1 for the boolean column, not a JS boolean.
+  return Boolean(row.isActive) && row.deletedAt === null;
+}
+
 export async function destroySession(c: Context, sessionId?: string): Promise<void> {
   const rawToken = sessionId ?? getCookie(c, SESSION_COOKIE_NAME);
   if (rawToken) {
@@ -321,7 +344,31 @@ export async function destroySession(c: Context, sessionId?: string): Promise<vo
   clearSessionCookie(c);
 }
 
-export async function deleteUserSessions(c: Context, userId: string): Promise<void> {
+/**
+ * Concurrent sessions allowed per user (phone + desktop + one spare).
+ *
+ * Compile-time constant, not site config: raising it is a security decision,
+ * and `admin.siteConfig.manage` is a different permission from the auth ones.
+ */
+export const MAX_SESSIONS_PER_USER = 3;
+
+/**
+ * Evicts the oldest sessions so a new one can be inserted without exceeding
+ * `MAX_SESSIONS_PER_USER`, and clears sliding-expired rows in the same pass
+ * (nothing else prunes them).
+ *
+ * The 4th login evicts rather than being refused: a refusal would strand a user
+ * who closed three browsers without logging out until the 30-day TTL ran down.
+ */
+export async function enforceSessionLimit(c: Context, userId: string): Promise<void> {
   const db = getDb(c);
-  await db.delete(sessions).where(eq(sessions.userId, userId));
+  await db.delete(sessions).where(and(eq(sessions.userId, userId), lt(sessions.expiresAt, new Date().toISOString())));
+
+  // Newest first, so `slice` keeps the most recently created sessions.
+  const live = await db.select({ id: sessions.id }).from(sessions)
+    .where(eq(sessions.userId, userId))
+    .orderBy(desc(sessions.createdAt));
+  const excess = live.slice(MAX_SESSIONS_PER_USER - 1).map((row) => row.id);
+  if (excess.length === 0) return;
+  await db.delete(sessions).where(inArray(sessions.id, excess));
 }

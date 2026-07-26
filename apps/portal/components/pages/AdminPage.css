@@ -104,7 +104,7 @@
 
 .admin-roles-sidebar-item--active {
   background: color-mix(in srgb, var(--color-primary, #D4A843) 16%, transparent);
-  color: var(--color-primary, #D4A843);
+  color: var(--color-primary-text, #705A1B);
 }
 
 .admin-roles-sidebar-item--active::before {
@@ -333,7 +333,7 @@
   flex: 0 0 auto;
   border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
   border-radius: 999px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 58%, transparent);
+  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
   background: color-mix(in srgb, var(--color-text, #1A1815) 4%, transparent);
   transition:
     background var(--transition-normal),

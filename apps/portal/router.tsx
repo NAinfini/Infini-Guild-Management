@@ -243,9 +243,9 @@ function NotFoundPage(): ReactNode {
 
   return (
     <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
-      <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.15 }}>404</span>
+      <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.5 }}>404</span>
       <span style={{ fontSize: 16, fontWeight: 600 }}>{t("notFound.title")}</span>
-      <a href="/" style={{ fontSize: 14, color: "var(--color-primary, #D4A843)" }}>{t("notFound.backHome")}</a>
+      <a href="/" style={{ fontSize: 14, color: "var(--color-primary-text, #705A1B)" }}>{t("notFound.backHome")}</a>
     </div>
   );
 }
@@ -254,7 +254,9 @@ function RouteErrorFallback(): ReactNode {
   const { t } = useTranslation("common");
   return (
     <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
-      <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.15, color: "#dc2626" }}>{t("errors.somethingWentWrong")}</span>
+      {/* This is the headline of the error screen, not decoration — the old 0.15
+          opacity rendered it at 1.3:1. */}
+      <span style={{ fontSize: 48, fontWeight: 700, color: "#dc2626" }}>{t("errors.somethingWentWrong")}</span>
       <span style={{ fontSize: 16, fontWeight: 600 }}>{t("errors.generic")}</span>
       <button
         type="button"
@@ -265,7 +267,7 @@ function RouteErrorFallback(): ReactNode {
           borderRadius: 8,
           border: "none",
           background: "var(--color-primary, #D4A843)",
-          color: "#fff",
+          color: "#1A1815",
           fontSize: 14,
           fontWeight: 600,
           cursor: "pointer",
@@ -316,6 +318,15 @@ const loginRoute = createRoute({
 const registerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/register/$inviteCode",
+  component: RegisterRoutePage,
+});
+
+// Same page without a code in the URL: it asks for the invite code first. This
+// is where the login page's register link points, so the code is typed on a
+// full registration page instead of inside the login card.
+const registerEntryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/register",
   component: RegisterRoutePage,
 });
 
@@ -483,6 +494,7 @@ const routeTree = rootRoute.addChildren([
   publicToolsRoute,
   loginRoute,
   registerRoute,
+  registerEntryRoute,
   // User, moderator, and admin-only features stay locked behind session checks.
   authenticatedOnlyRoute.addChildren([
     storageRoute,
