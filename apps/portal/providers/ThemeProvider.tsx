@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from "react";
 import {
   ActionIcon,
   Badge,
@@ -19,157 +19,115 @@ import {
 import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
 import i18n from "../i18n";
+import { usePreferencesStore } from "../stores/preferences";
 
 const portalTheme = createTheme({
-  primaryColor: "portal-gold",
-  // The brand colours are light-to-mid warm tones: white label text on filled gold
-  // lands at 2.9:1. autoContrast lets Mantine pick dark text once the fill's
-  // relative luminance passes the threshold — 0.3 puts gold (0.31) on the dark
-  // side and leaves copper/red/green on white.
-  autoContrast: true,
-  luminanceThreshold: 0.3,
-  fontFamily: '"Inter", system-ui, sans-serif',
-  fontFamilyMonospace: '"JetBrains Mono", "Fira Code", monospace',
+  primaryColor: "portal-accent",
   /*
-   * Mantine's defaults run 34/26/22/18/16/14px, which is a print scale — far too
-   * loud inside a 64px app chrome. These mirror the --text-* tokens in styles.css
-   * so a Title and a hand-rolled heading land on the same step.
+   * autoContrast 已移除。它按填充色的相对亮度猜文字色，阈值 0.3 是
+   * 为金色（0.31）手调的魔数 —— 换主色就得重调。现在填充上的文字色
+   * 由 --accent-on-fill 显式给出，每个主色每个模式各算一次。
    */
+  fontFamily: "var(--font-body)",
+  fontFamilyMonospace: "var(--font-code)",
+
   headings: {
-    fontFamily: '"Inter", system-ui, sans-serif',
-    fontWeight: "700",
+    fontFamily: "var(--font-body)",
+    fontWeight: "var(--fw-strong)",
     sizes: {
-      h1: { fontSize: "20px", lineHeight: "1.25" },
-      h2: { fontSize: "18px", lineHeight: "1.3" },
-      h3: { fontSize: "16px", lineHeight: "1.35" },
-      h4: { fontSize: "16px", lineHeight: "1.35", fontWeight: "600" },
-      h5: { fontSize: "14px", lineHeight: "1.4", fontWeight: "600" },
-      h6: { fontSize: "12px", lineHeight: "1.4", fontWeight: "600" },
+      h1: { fontSize: "var(--text-page)", lineHeight: "var(--lh-tight)" },
+      h2: { fontSize: "var(--text-section)", lineHeight: "1.3" },
+      h3: { fontSize: "var(--text-card)", lineHeight: "1.35" },
+      h4: { fontSize: "var(--text-card)", lineHeight: "1.35", fontWeight: "var(--fw-medium)" },
+      h5: { fontSize: "var(--text-body)", lineHeight: "1.4", fontWeight: "var(--fw-medium)" },
+      h6: { fontSize: "var(--text-meta)", lineHeight: "1.4", fontWeight: "var(--fw-medium)" },
     },
   },
 
   defaultRadius: "md",
   radius: {
-    xs: "4px",
-    sm: "8px",
-    md: "12px",
-    lg: "16px",
-    xl: "24px",
+    xs: "var(--radius-xs)",
+    sm: "var(--radius-sm)",
+    md: "var(--radius-md)",
+    lg: "var(--radius-lg)",
+    xl: "var(--radius-xl)",
   },
 
   shadows: {
-    xs: "0 1px 2px rgba(0,0,0,0.04)",
-    sm: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
-    md: "0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.04)",
-    lg: "0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.04)",
-    xl: "0 12px 32px rgba(0,0,0,0.12), 0 4px 8px rgba(0,0,0,0.06)",
-  },
-
-  colors: {
-    "portal-gold": [
-      "#FBF6EA",
-      "#F5EACC",
-      "#EDDA9E",
-      "#E5C96F",
-      "#DCB94A",
-      "#D4A843",
-      "#B8922F",
-      "#9A7B26",
-      "#7D641E",
-      "#604D17",
-    ],
-    "portal-bronze": [
-      "#F5F0EB",
-      "#EAE0D6",
-      "#D5C1AC",
-      "#C0A283",
-      "#AB8362",
-      "#8B7355",
-      "#756047",
-      "#5F4E3A",
-      "#493C2D",
-      "#332B20",
-    ],
-    "portal-copper": [
-      "#FDF2EA",
-      "#FAE3D0",
-      "#F4C7A1",
-      "#EEAB72",
-      "#D99450",
-      "#C17F3E",
-      "#A66B33",
-      "#8A5729",
-      "#6E441F",
-      "#533216",
-    ],
+    xs: "var(--shadow-xs)",
+    sm: "var(--shadow-sm)",
+    md: "var(--shadow-md)",
+    lg: "var(--shadow-lg)",
+    xl: "var(--shadow-lg)",
   },
 
   spacing: {
-    xs: "4px",
-    sm: "8px",
-    md: "12px",
-    lg: "16px",
-    xl: "24px",
+    xs: "var(--space-xs)",
+    sm: "var(--space-sm)",
+    md: "var(--space-md)",
+    lg: "var(--space-lg)",
+    xl: "var(--space-xl)",
+  },
+
+  colors: {
+    /*
+     * Mantine 的色阶要求正好 10 档。这里每一档都指向 --accent-*，
+     * 于是切换 [data-accent] 会同时换掉 Mantine 组件与手写 CSS 的颜色，
+     * 不存在「Mantine 那半边还是旧色」的状态。
+     * 7 档色板铺到 10 格：装饰档复用，文字档与墨档各占一格。
+     */
+    "portal-accent": [
+      "var(--accent-50)",
+      "var(--accent-100)",
+      "var(--accent-300)",
+      "var(--accent-300)",
+      "var(--accent-500)",
+      "var(--accent-500)",
+      "var(--accent-600)",
+      "var(--accent-700)",
+      "var(--accent-700)",
+      "var(--accent-900)",
+    ],
   },
 
   components: {
-    Button: Button.extend({
-      defaultProps: { radius: "md" },
-    }),
-    ActionIcon: ActionIcon.extend({
-      defaultProps: { radius: "md" },
-    }),
-    TextInput: TextInput.extend({
-      defaultProps: { radius: "md" },
-    }),
-    Textarea: Textarea.extend({
-      defaultProps: { radius: "md" },
-    }),
-    NumberInput: NumberInput.extend({
-      defaultProps: { radius: "md" },
-    }),
-    Select: Select.extend({
-      defaultProps: { radius: "md" },
-    }),
-    Card: Card.extend({
-      defaultProps: { radius: "md", shadow: "sm" },
-    }),
-    Badge: Badge.extend({
-      defaultProps: { radius: "sm" },
-    }),
-    Modal: Modal.extend({
-      defaultProps: { radius: "lg", centered: true, transitionProps: { duration: 0 } },
-    }),
-    Skeleton: Skeleton.extend({
-      defaultProps: { radius: "md" },
-    }),
-    Tabs: Tabs.extend({
-      defaultProps: { radius: "md", variant: "pills" },
-    }),
+    Button: Button.extend({ defaultProps: { radius: "md" } }),
+    ActionIcon: ActionIcon.extend({ defaultProps: { radius: "md" } }),
+    TextInput: TextInput.extend({ defaultProps: { radius: "md" } }),
+    Textarea: Textarea.extend({ defaultProps: { radius: "md" } }),
+    NumberInput: NumberInput.extend({ defaultProps: { radius: "md" } }),
+    Select: Select.extend({ defaultProps: { radius: "md" } }),
+    Card: Card.extend({ defaultProps: { radius: "md", shadow: "sm" } }),
+    Badge: Badge.extend({ defaultProps: { radius: "sm" } }),
+    Modal: Modal.extend({ defaultProps: { radius: "lg", centered: true, transitionProps: { duration: 0 } } }),
+    Skeleton: Skeleton.extend({ defaultProps: { radius: "md" } }),
+    Tabs: Tabs.extend({ defaultProps: { radius: "md", variant: "pills" } }),
     Menu: Menu.extend({
       defaultProps: { radius: "md", shadow: "lg" },
+      /*
+       * `styles` 块已移除。它此前把 padding / borderRadius / fontSize 写在这里，
+       * 而 styles.css 的 .infini-context-menu-* 又把同样的数值写了一遍并加
+       * !important 来取胜。菜单外观现在只由 CSS 类负责，单一真相。
+       */
       classNames: {
         dropdown: "infini-menu-dropdown",
         item: "infini-menu-item",
         divider: "infini-menu-divider",
         label: "infini-menu-label",
       },
-      styles: {
-        dropdown: { padding: "6px", minWidth: "200px" },
-        item: { padding: "10px 14px", borderRadius: "8px", fontSize: "0.875rem", fontWeight: 500, gap: "10px" },
-        divider: { margin: "6px 8px" },
-        label: { padding: "8px 14px 4px", fontSize: "0.7rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" as const },
-      },
     }),
   },
 });
 
 type Theme = "light" | "dark";
+type Accent = "teal" | "indigo" | "violet";
 
 interface ThemeContextValue {
   theme: Theme;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
+  accent: Accent;
+  setAccent: (accent: Accent) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -181,33 +139,47 @@ export function useTheme(): ThemeContextValue {
 }
 
 export function PortalThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window === "undefined") return "light";
-    const stored = localStorage.getItem("theme-mode");
-    if (stored === "dark" || stored === "light") return stored;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  });
-
-  const setTheme = useCallback((t: Theme) => {
-    setThemeState(t);
-    localStorage.setItem("theme-mode", t);
-  }, []);
+  /*
+   * 模式与主色都是用户偏好，和 locale 走同一条链路。此前模式由本组件
+   * 直接读写 localStorage("theme-mode")，绕开了 preferences store —— 两个
+   * 偏好系统各存一半，reset 也只清得掉一半。
+   */
+  const theme = usePreferencesStore((s) => s.themeMode);
+  const setTheme = usePreferencesStore((s) => s.setThemeMode);
+  const accent = usePreferencesStore((s) => s.accent);
+  const setAccent = usePreferencesStore((s) => s.setAccent);
 
   const toggleTheme = useCallback(() => {
-    setThemeState((prev) => {
-      const next = prev === "dark" ? "light" : "dark";
-      localStorage.setItem("theme-mode", next);
-      return next;
-    });
-  }, []);
+    setTheme(theme === "dark" ? "light" : "dark");
+  }, [theme, setTheme]);
 
   useEffect(() => {
-    const root = document.documentElement;
-    root.classList.toggle("dark", theme === "dark");
-    root.dataset.theme = theme;
-  }, [theme]);
+    /*
+     * data-theme 是模式的唯一真相来源。Mantine 需要的
+     * data-mantine-color-scheme 由下面的 forceColorScheme 派生写入，
+     * 不作为独立真相。
+     */
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.accent = accent;
+    /*
+     * ── 临时兼容层 · 计划在 Task 7 删除 ──────────────────────────
+     * `.dark` 不再是真相来源，只是旧选择器的适配垫片：目前仍有 88 处
+     * `.dark` 选择器分布在 13 个 CSS 文件（styles.css、AuthPages.css、
+     * RecurringTemplateFormModal.css、AdminApiTest.css…），迁移到
+     * [data-theme="dark"] 的收尾在 Task 7。在那之前删掉这一行会让深色模式
+     * 整体失效。
+     * 删除方式：删掉下面这一行 + 上面测试里那条 lockstep 断言即可，
+     * 没有其他代码依赖它。
+     * 必须与 data-theme 同一个 effect 内写入：分成两处就可能不同步，
+     * 症状是半深半浅。
+     */
+    document.documentElement.classList.toggle("dark", theme === "dark");
+  }, [theme, accent]);
 
-  const contextValue = useMemo(() => ({ theme, setTheme, toggleTheme }), [theme, setTheme, toggleTheme]);
+  const contextValue = useMemo(
+    () => ({ theme, setTheme, toggleTheme, accent, setAccent }),
+    [theme, setTheme, toggleTheme, accent, setAccent],
+  );
 
   /*
    * The notification close button renders an icon only, so screen readers get a

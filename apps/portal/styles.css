@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* ── token 层：L1 色板 → L2 语义 → L3 标度 ──
+ * 本任务只负责接入。styles.css 自带的 :root / .dark 颜色块在 Task 4 才删除，
+ * 在那之前两套定义共存。 */
+@import "./styles/tokens.css";
+@import "./styles/semantic.css";
+@import "./styles/scale.css";
+
 /* ── Dark mode: class-based strategy ── */
 @custom-variant dark (&:where(.dark, .dark *));
 
