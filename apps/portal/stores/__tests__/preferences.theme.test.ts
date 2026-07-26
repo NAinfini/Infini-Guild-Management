@@ -1,6 +1,22 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usePreferencesStore } from "../preferences";
+
+type PreferencesModule = typeof import("../preferences");
+
+/*
+ * The accent validation guard (`isAccent`) only runs once, at module
+ * evaluation time, inside the zustand `create()` initializer. Setting
+ * localStorage from within a test body — after that module has already
+ * been evaluated — never exercises it; the store's `accent` field, once
+ * initialized, is only otherwise touched by `setAccent`/`resetPreferences`,
+ * neither of which re-reads storage. To actually exercise the guard we
+ * have to force a fresh module evaluation with storage already primed.
+ */
+async function importFreshPreferencesModule(): Promise<PreferencesModule> {
+  vi.resetModules();
+  return import("../preferences");
+}
 
 describe("preferences store: theme mode and accent", () => {
   beforeEach(() => {
@@ -37,12 +53,19 @@ describe("preferences store: theme mode and accent", () => {
     expect(usePreferencesStore.getState().accent).toBe("teal");
   });
 
-  it("ignores a corrupted stored accent instead of applying it", () => {
+  it("ignores a corrupted stored accent instead of applying it", async () => {
     localStorage.setItem("accent", "chartreuse");
 
-    /* 读取发生在模块求值时，所以这里直接验证守卫函数的行为契约：
-     * 非法值不得进入 state。重新求值模块的成本高于价值，因此
-     * 用 setAccent 的类型约束 + 下面的守卫单测覆盖。 */
-    expect(["teal", "indigo", "violet"]).toContain(usePreferencesStore.getState().accent);
+    const fresh = await importFreshPreferencesModule();
+
+    expect(fresh.usePreferencesStore.getState().accent).toBe("teal");
+  });
+
+  it("honours a valid stored accent on module init", async () => {
+    localStorage.setItem("accent", "violet");
+
+    const fresh = await importFreshPreferencesModule();
+
+    expect(fresh.usePreferencesStore.getState().accent).toBe("violet");
   });
 });
