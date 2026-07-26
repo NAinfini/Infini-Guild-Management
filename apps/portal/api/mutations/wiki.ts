@@ -8,7 +8,7 @@ import {
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
-import { convertImageToWebP } from "../../utils/media-convert";
+import { convertFilesForUpload } from "@guild/shared/utils/media";
 
 export type CreateWikiCategoryPayload = z.input<typeof createWikiCategorySchema>;
 export type UpdateWikiCategoryPayload = z.input<typeof updateWikiCategorySchema>;
@@ -70,7 +70,7 @@ export async function uploadWikiArticleImages(
   articleId: string,
   files: File[],
 ): Promise<{ keys: string[] }> {
-  const converted = await Promise.all(files.map(convertImageToWebP));
+  const converted = await convertFilesForUpload(files);
   const formData = new FormData();
   for (const file of converted) {
     formData.append("files", file);

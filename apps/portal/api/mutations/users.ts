@@ -10,7 +10,7 @@ import {
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
-import { convertAudioToOpus, convertImageToWebP } from "../../utils/media-convert";
+import { convertFileForUpload, convertFilesForUpload } from "@guild/shared/utils/media";
 
 export type UpdateMyProfilePayload = z.input<typeof updateProfileSchema>;
 export type ChangeMyPasswordPayload = z.input<typeof changePasswordSchema>;
@@ -25,7 +25,7 @@ export function updateMyProfile(userId: string, payload: UpdateMyProfilePayload)
 }
 
 export async function uploadProfileImages(userId: string, files: File[]): Promise<{ keys: string[] }> {
-  const converted = await Promise.all(files.map(convertImageToWebP));
+  const converted = await convertFilesForUpload(files);
   const formData = new FormData();
   for (const file of converted) {
     formData.append("files", file);
@@ -38,7 +38,7 @@ export async function uploadProfileImages(userId: string, files: File[]): Promis
 }
 
 export async function uploadProfileAudio(userId: string, file: File): Promise<{ key: string }> {
-  const converted = await convertAudioToOpus(file);
+  const converted = await convertFileForUpload(file);
   const formData = new FormData();
   formData.append("file", converted);
 
@@ -49,7 +49,7 @@ export async function uploadProfileAudio(userId: string, file: File): Promise<{ 
 }
 
 export async function uploadAvatar(userId: string, file: File): Promise<{ key: string }> {
-  const converted = await convertImageToWebP(file);
+  const converted = await convertFileForUpload(file);
   const formData = new FormData();
   formData.append("file", converted);
 

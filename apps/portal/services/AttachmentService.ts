@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { type ImageGridEditorItem } from "@portal/types/media";
-import { convertImageToWebP } from "@guild/shared/utils/media";
+import { convertFileForUpload } from "@guild/shared/utils/media";
 
 export type AttachmentItem = ImageGridEditorItem;
 
@@ -14,9 +14,7 @@ export class AttachmentService {
   async prepareFiles(files: File[]): Promise<AttachmentItem[]> {
     const preparedItems = await Promise.all(
       files.map(async (file) => {
-        const preparedFile = file.type.startsWith("image/")
-          ? await convertImageToWebP(file, undefined, { quality: 0.8 })
-          : file;
+        const preparedFile = await convertFileForUpload(file);
         const blobUrl = URL.createObjectURL(preparedFile);
         this.blobUrls.add(blobUrl);
         return {

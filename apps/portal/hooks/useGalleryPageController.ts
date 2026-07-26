@@ -19,7 +19,7 @@ import { queryKeys } from "../api/query-keys";
 import { notifySuccess, notifyError } from "../utils/notifications";
 import { useAuthStore } from "../stores/auth";
 import { useEffectivePermissions } from "./useEffectivePermissions";
-import { DEFAULT_IMAGE_WEBP_QUALITY, convertImageToWebP } from "@guild/shared/utils/media";
+import { convertFileForUpload } from "@guild/shared/utils/media";
 import { isAllowedGalleryVideoUrl, toEmbedVideoUrl } from "@guild/shared/utils/video";
 import type { UploadStatus, UploadTask } from "../types/media";
 import { resolveGalleryMediaUrl } from "../utils/media";
@@ -189,7 +189,7 @@ export function useGalleryPageController() {
         ),
       );
       try {
-        const uploadFile = await convertImageToWebP(task.file, undefined, { quality: DEFAULT_IMAGE_WEBP_QUALITY });
+        const uploadFile = await convertFileForUpload(task.file);
         await uploadGalleryImages([uploadFile], [task.caption.trim() || undefined]);
         setUploadQueue((current) =>
           current.map((item) =>

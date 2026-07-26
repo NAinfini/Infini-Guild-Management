@@ -1,7 +1,39 @@
 export const DEFAULT_IMAGE_WEBP_QUALITY = 0.8;
-const OPUS_MIME_TYPE = "audio/ogg;codecs=opus";
+/*
+ * Opus is the codec; the container is whatever the browser will encode into.
+ * Chromium only offers Opus inside WebM (verified on Chrome 148:
+ * isTypeSupported("audio/ogg;codecs=opus") === false, "audio/webm;codecs=opus"
+ * === true), while Firefox offers Ogg. Demanding Ogg alone made this converter
+ * unusable on the majority of browsers, which is why both call sites had the
+ * conversion switched off. The worker accepts audio/ogg and audio/webm alike, so
+ * negotiating the container costs nothing and the bytes are Opus either way.
+ */
+type OpusContainer = {
+  /** Passed to MediaRecorder, which needs the codec spelled out. */
+  recorderMimeType: string;
+  /*
+   * Stored on the File, and therefore the Content-Type the worker validates and
+   * R2 serves. It must stay a bare container type: the upload validator compares
+   * the declared type against an exact allow-list, so "audio/webm;codecs=opus"
+   * is rejected as an unsupported file type.
+   */
+  fileMimeType: string;
+  extension: string;
+};
+
+const OPUS_CONTAINERS: readonly OpusContainer[] = [
+  { recorderMimeType: "audio/ogg;codecs=opus", fileMimeType: "audio/ogg", extension: "ogg" },
+  { recorderMimeType: "audio/webm;codecs=opus", fileMimeType: "audio/webm", extension: "webm" },
+];
 const OPUS_TARGET_SAMPLE_RATE = 16_000;
 const OPUS_TARGET_BITRATE = 48_000;
+
+function resolveOpusContainer(): OpusContainer | null {
+  if (typeof MediaRecorder === "undefined") {
+    return null;
+  }
+  return OPUS_CONTAINERS.find((candidate) => MediaRecorder.isTypeSupported(candidate.recorderMimeType)) ?? null;
+}
 
 function createCanvas(width: number, height: number): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
@@ -80,10 +112,10 @@ export function getAudioConversionSupport(): AudioConversionSupport {
     return { supported: false, reason: "This browser does not support MediaRecorder." };
   }
 
-  if (!MediaRecorder.isTypeSupported(OPUS_MIME_TYPE)) {
+  if (!resolveOpusContainer()) {
     return {
       supported: false,
-      reason: "This browser cannot encode Opus (audio/ogg). Please use Chrome, Edge, or Firefox.",
+      reason: "This browser cannot encode Opus audio. Please use Chrome, Edge, or Firefox.",
     };
   }
 
@@ -128,6 +160,16 @@ export async function convertImageToWebP(
     return file;
   }
 
+  /*
+   * GIFs pass through untouched: createImageBitmap decodes only the first frame,
+   * so re-encoding an animated GIF silently throws the animation away. Leaving
+   * it alone costs some R2 space but never destroys the image.
+   */
+  if (file.type === "image/gif") {
+    onProgress?.(100);
+    return file;
+  }
+
   onProgress?.(10);
   const bitmap = await createImageBitmap(file);
   onProgress?.(35);
@@ -154,12 +196,80 @@ export async function convertImageToWebP(
       clampQuality(options.quality ?? DEFAULT_IMAGE_WEBP_QUALITY),
     );
   });
+  /*
+   * Re-encoding can make a file bigger — an already-optimised JPEG, or a flat
+   * PNG with few colours. The whole point is to save R2 space, so keep whichever
+   * is actually smaller rather than assuming WebP always wins.
+   */
+  if (blob.size >= file.size) {
+    onProgress?.(100);
+    return file;
+  }
+
   onProgress?.(100);
 
   return new File([blob], fileNameWithExtension(file.name, "webp"), {
     type: "image/webp",
     lastModified: Date.now(),
   });
+}
+
+export type UploadConversionOptions = {
+  /** WebP quality for images. Defaults to DEFAULT_IMAGE_WEBP_QUALITY. */
+  imageQuality?: number;
+  /** Overall progress across the whole batch, 0-100. */
+  onProgress?: (percent: number) => void;
+};
+
+/**
+ * The single conversion entry point for uploads: an image becomes WebP, audio
+ * becomes Opus, anything else passes through untouched.
+ *
+ * Every upload path goes through here rather than reaching for a per-format
+ * converter. Two implementations of this logic used to sit side by side, which is
+ * how the audio path ended up producing files named `.opus` that were really
+ * WebM, and how different flows drifted onto different WebP quality settings.
+ */
+export async function convertFileForUpload(
+  file: File,
+  options: UploadConversionOptions = {},
+): Promise<File> {
+  if (file.type.startsWith("image/")) {
+    return convertImageToWebP(file, options.onProgress, { quality: options.imageQuality });
+  }
+  if (file.type.startsWith("audio/")) {
+    return convertAudioToOpus(file, options.onProgress);
+  }
+  options.onProgress?.(100);
+  return file;
+}
+
+/**
+ * Batch form of {@link convertFileForUpload}, reporting progress across the whole
+ * batch.
+ *
+ * Sequential on purpose: each image costs a full canvas decode and each audio
+ * file a real-time render, so converting a batch in parallel only multiplies peak
+ * memory for no wall-clock gain.
+ */
+export async function convertFilesForUpload(
+  files: readonly File[],
+  options: UploadConversionOptions = {},
+): Promise<File[]> {
+  const converted: File[] = [];
+  const total = files.length;
+
+  for (const [index, file] of files.entries()) {
+    converted.push(await convertFileForUpload(file, {
+      imageQuality: options.imageQuality,
+      onProgress: (percent) => {
+        options.onProgress?.(Math.min(100, Math.round(((index + percent / 100) / total) * 100)));
+      },
+    }));
+  }
+
+  options.onProgress?.(100);
+  return converted;
 }
 
 export async function convertAudioToOpus(
@@ -170,9 +280,27 @@ export async function convertAudioToOpus(
     throw new Error("Audio conversion requires an audio file");
   }
 
+  /*
+   * Prefix tests, because this function's own output is
+   * "audio/ogg;codecs=opus" or "audio/webm;codecs=opus" — an equality check
+   * against "audio/ogg" did not recognise it and re-encoded an already-converted
+   * file, costing a second lossy pass and another real-time render. Both
+   * containers essentially only ever carry Opus or Vorbis here, so passing them
+   * through is a fair trade for never double-encoding.
+   */
+  if (file.type.startsWith("audio/ogg") || file.type.startsWith("audio/webm")) {
+    onProgress?.(100);
+    return file;
+  }
+
   const support = getAudioConversionSupport();
   if (!support.supported) {
     throw new Error(support.reason);
+  }
+
+  const container = resolveOpusContainer();
+  if (!container) {
+    throw new Error("This browser cannot encode Opus audio.");
   }
 
   let decodeContext: AudioContext | null = null;
@@ -195,7 +323,7 @@ export async function convertAudioToOpus(
     source.connect(destination);
 
     const recorder = new MediaRecorder(destination.stream, {
-      mimeType: OPUS_MIME_TYPE,
+      mimeType: container.recorderMimeType,
       audioBitsPerSecond: OPUS_TARGET_BITRATE,
     });
 
@@ -226,11 +354,12 @@ export async function convertAudioToOpus(
       throw new Error("Audio conversion produced empty output.");
     }
 
-    const blob = new Blob(chunks, { type: OPUS_MIME_TYPE });
+    const blob = new Blob(chunks, { type: container.fileMimeType });
     onProgress?.(100);
 
-    return new File([blob], fileNameWithExtension(file.name, "ogg"), {
-      type: OPUS_MIME_TYPE,
+    // Extension has to follow the container actually produced, not a fixed guess.
+    return new File([blob], fileNameWithExtension(file.name, container.extension), {
+      type: container.fileMimeType,
       lastModified: Date.now(),
     });
   } finally {

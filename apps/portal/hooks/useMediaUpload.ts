@@ -1,8 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   DEFAULT_IMAGE_WEBP_QUALITY,
-  convertAudioToOpus,
-  convertImageToWebP,
+  convertFileForUpload,
   getAudioConversionSupport,
 } from "@guild/shared/utils/media";
 
@@ -113,12 +112,13 @@ export function useMediaUpload<TResult>(
         setConversionProgress(Math.min(100, Math.round(offset + percent * scale)));
       };
 
-      if (mediaType === "image" && convertImagesToWebp) {
-        converted.push(await convertImageToWebP(file, updateProgress, { quality: imageWebpQuality }));
-        continue;
-      }
-      if (mediaType === "audio" && convertAudioToOpusEnabled) {
-        converted.push(await convertAudioToOpus(file, updateProgress));
+      const enabled = mediaType === "image" ? convertImagesToWebp : convertAudioToOpusEnabled;
+      if (enabled) {
+        // Single shared dispatcher, so this hook cannot drift from the mutation layer.
+        converted.push(await convertFileForUpload(file, {
+          imageQuality: imageWebpQuality,
+          onProgress: updateProgress,
+        }));
         continue;
       }
       converted.push(file);

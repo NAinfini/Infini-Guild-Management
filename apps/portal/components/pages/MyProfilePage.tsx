@@ -131,7 +131,6 @@ export function MyProfilePage() {
       maxFiles: 1,
       maxFileSizeBytes: 20 * 1024 * 1024,
       mediaType: "audio",
-      convertAudioToOpus: false,
     },
   );
 

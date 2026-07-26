@@ -15,7 +15,7 @@ import {
   type UpdateStorageItemPayload,
 } from "@guild/shared";
 import { apiRequest } from "../client";
-import { convertImageToWebP } from "../../utils/media-convert";
+import { convertFilesForUpload } from "@guild/shared/utils/media";
 
 export function createStorage(payload: CreateStoragePayload): Promise<Storage> {
   return apiRequest<Storage>("/api/storage/storages", { method: "POST", bodyJson: createStorageSchema.parse(payload) });
@@ -54,7 +54,7 @@ export function deleteStorageItem(id: string): Promise<{ ok: true }> {
 }
 
 export async function uploadStorageItemImages(itemId: string, files: File[]): Promise<Array<{ id: string; r2_key: string }>> {
-  const converted = await Promise.all(files.map(convertImageToWebP));
+  const converted = await convertFilesForUpload(files);
   const formData = new FormData();
   for (const file of converted) {
     formData.append("files", file);

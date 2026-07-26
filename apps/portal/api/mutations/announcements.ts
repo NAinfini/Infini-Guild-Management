@@ -5,7 +5,7 @@ import {
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
-import { convertImageToWebP } from "../../utils/media-convert";
+import { convertFilesForUpload } from "@guild/shared/utils/media";
 
 export type CreateAnnouncementPayload = z.input<typeof createAnnouncementSchema>;
 export type UpdateAnnouncementPayload = z.input<typeof updateAnnouncementSchema>;
@@ -43,7 +43,7 @@ export async function uploadAnnouncementImages(
   announcementId: string,
   files: File[],
 ): Promise<{ keys: string[] }> {
-  const converted = await Promise.all(files.map(convertImageToWebP));
+  const converted = await convertFilesForUpload(files);
   const formData = new FormData();
   for (const file of converted) {
     formData.append("files", file);
