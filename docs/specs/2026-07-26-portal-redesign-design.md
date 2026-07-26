@@ -368,21 +368,46 @@ war_pool_members(event_id NOT NULL)
 
 **4. 必须坦白的限制**：SQLite 无法用 CHECK 约束表达「`type='poll'` 必须且仅当存在 `event_polls` 行」。该一致性只能落在应用层 + 一条迁移后的一致性断言查询。不假装数据库替我们守住了它。
 
-### 6.4 迁移步骤（每步可独立回滚）
+### 6.4 迁移路径
 
-1. 建 `event_wars`、`event_raffles`
-2. `war_history` → `event_wars`（`event_id` 为键，`concluded_at` = 原 `updated_at`）
-3. `war_teams` / `war_pool_members`：由 `war_history_id` 回填 `event_id`，然后**重建表**去掉双 FK 并将 `event_id` 置为 NOT NULL（SQLite 删除带 FK 的列必须重建表）
-4. `events.winner_count` → `event_raffles.winner_count`，重建 `events` 去掉该列
-5. 删除 `war_history`
+**本仓库当前是 v1 基线模式，不是增量迁移模式。** `apps/worker/db/migrations/README.md:19-30` 明确规定：常规 schema 变更应当改基线，不要新增增量迁移文件。目录里也确实只有 `0000_core_schema.sql` 一个文件。流程是：
+
+1. 改 `apps/worker/db/schema/` 下的 Drizzle schema
+2. 改 `apps/worker/db/migrations/0000_core_schema.sql`
+3. `pnpm db:mock:rebuild` 验证本地库能从基线重建
+4. `pnpm typecheck`
+
+**这个事实实质简化了本节。** 初稿写的 5 步增量迁移（含为了去掉 FK 列而重建表）在基线模式下不需要 —— 直接重写 `CREATE TABLE` 语句即可，「SQLite 删不掉带 FK 的列」这个约束根本不会触发。
+
+**但基线模式有一个前提**，README:32-34 自己写明了：编辑 `0000_core_schema.sql` **不会**更新任何已经应用过该迁移的数据库，且 D1 没有自动回滚。
+
+因此路径取决于一个事实：
+
+| 前提 | 路径 |
+|---|---|
+| 不存在带真实数据的已部署库（仅本地开发库） | **基线重写**：改 schema + 改 `0000_core_schema.sql` + `pnpm db:mock:rebuild` + 重跑 seed。无数据搬迁，无回滚风险。 |
+| 存在带真实数据的 staging / production 库 | **切换到版本化迁移**（README:58-68 描述的流程）：`pnpm db:generate` 生成增量迁移、人工复核破坏性语句、先 staging 后 production、改前备份并备好回滚迁移。此时初稿那套重建表步骤才有必要。 |
+
+**这个前提待确认，是 S3 开工前必须先答的问题。** 见 §9。
 
 ### 6.5 迁移验证
 
-- 行数守恒：`war_history` 5 → `event_wars` 5；`war_teams` 10；`war_pool_members` 15；`war_team_members` 33
-- 每场战役的 teams / pool / member_stats 计数守恒
+按 §6.4 的两条路径分别定义。
+
+**基线重写路径**（无存量数据需要保全）：
+
+- `pnpm db:mock:rebuild` 能从零重建，无 SQL 错误
+- seed 脚本 `apps/worker/scripts/seed-local-d1.mjs` 能在新 schema 上跑通；若它写的是 `war_history`，一并改为写 `event_wars`
+- 重建后各表行数与 seed 预期一致
 - 外键完整性检查无孤儿行
 - 类型与扩展表一致性断言（§6.3 第 4 点）
-- 在本地真实 D1（`guild-portal-db --local`）实跑，方式与此前验证清理 cron 相同
+- 参照 `apps/worker/db/migrations/core-schema-indexes.test.ts` 的既有范式，新增对 `0000_core_schema.sql` 的断言测试：`event_wars` / `event_raffles` 存在、`war_teams.event_id` 为 `NOT NULL`、`war_history` 与 `war_history_id` 已不再出现
+
+**版本化迁移路径**（有存量数据）：
+
+- 上述全部，外加行数守恒断言。基准是本地实测值：`war_history` 5 → `event_wars` 5；`war_teams` 10；`war_pool_members` 15；`war_team_members` 33。生产基准需在迁移前重新实测，不得沿用本地数字。
+- 每场战役的 teams / pool / member_stats 计数守恒
+- 迁移前备份，并备好经过测试的回滚迁移
 
 ### 6.6 服务端影响
 
@@ -418,14 +443,25 @@ S1 与 S3 可并行（一个只动样式层，一个只动数据层）。S5 最�
 |---|---|---|
 | 关闭 `autoContrast` 影响所有现存 Badge / Button 自动取色 | 本设计中最易产生视觉回归的一步 | 逐组件复核 + 6 组合对比度断言 |
 | 一次性清除 2138 处兜底值面积极大 | 漏改处直接失色 | 断言驱动；先建 token 层再清理，可分文件推进 |
-| 重建表（SQLite 删列）期间的数据安全 | 迁移失败可能丢数据 | 每步独立回滚 + 行数守恒断言 + 本地真实 D1 预演 |
+| 若存在已部署且有真实数据的库，基线重写会**静默漏掉它** | README:32-34 明确警告过这一点：改基线不更新已应用过的库 | §6.4 的前提问题必须先答。答案是「有」则强制走版本化迁移路径 |
 | 战役标识符变更导致旧链接失效 | 书签 / 历史消息中的链接 404 | 发布说明写明；如需可加旧 id → 新 URL 的一次性重定向 |
 | inbox 定义不精准会变噪音 | 首页失去价值 | §5.2 的「有无完成状态」判定规则 + 反向测试 |
 | S5 体量大（4725 行页面代码） | 周期不可控 | 按页面拆轮次，每轮独立可发布 |
 
-## 9. 已关闭的问题
+## 9. 开放问题
 
-三项开放问题均已定案，保留结论与理由备查。
+### 9.0 待答：是否存在带真实数据的已部署数据库？
+
+**S3 开工前必答**，它决定 §6.4 走哪条路径。
+
+- **无（仅本地开发库）** → 基线重写。改 Drizzle schema + `0000_core_schema.sql` + `pnpm db:mock:rebuild`，无数据搬迁，风险极低。
+- **有（staging 或 production 有真实数据）** → 按 `README.md:58-68` 切换到版本化迁移：`pnpm db:generate`、人工复核破坏性语句、先 staging 后 production、备份 + 回滚迁移。工作量显著更大。
+
+仓库里有 `pnpm deploy:staging` 与 `pnpm deploy:production` 两个脚本，说明部署路径是存在的；但脚本存在不等于库里有数据，这一点无法从代码判断。
+
+### 9.1 已关闭的问题
+
+以下三项已定案，保留结论与理由备查。
 
 1. **`invite_links` 标记列 —— 不做。** 此前设想过加标记列，以便（a）注册端点用可信的库侧信号保留 `systemtest_` 前缀，（b）清理 cron 回收泄漏的测试邀请链接。结论是不必要：管理端已有吊销与删除两个动作，均带二次确认，并按 active / expired / revoked 三态筛选（`AdminInviteSection.tsx:255-256`、`:289-293`），管理员直接删掉即可，不需要为此扩表。
 2. **战役名不独立于活动标题。** 见 §6.3 第 3 点。`event_wars` 不设 `label` 覆盖列。
