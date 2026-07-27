@@ -1,5 +1,5 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { activeGame } from "@guild/shared/games";
+import { EVENT_TYPE_COLORS, UNKNOWN_EVENT_TYPE_COLOR } from "@portal/utils/event-colors";
 import { Badge, Button, Group, HoverCard, Modal, SimpleGrid, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
@@ -37,11 +37,6 @@ import { EmptyState } from "../../shared/EmptyState";
 import { EventCardAvatarStrip } from "./EventCardAvatarStrip";
 import { EventDetailModal } from "./EventDetailModal";
 import "./EventCardsView.css";
-
-// Derived from game config — single source of truth.
-const EVENT_TYPE_COLORS: Record<string, string> = Object.fromEntries(
-  activeGame.eventTypes.map((et) => [et.id, et.color]),
-);
 
 // Icons are not carried in the game config (config stores string identifiers like
 // "TargetOutlined", not React nodes). The local map is keyed on event type ids;
@@ -243,7 +238,7 @@ export function EventCardsView({
           const members = isPoll ? pollVoterMembers : participantMembers;
           const joinedCount = members.length;
           const flag = eventFlags.get(event.id);
-          const typeColor = EVENT_TYPE_COLORS[event.type] ?? "gray";
+          const typeColor = EVENT_TYPE_COLORS[event.type] ?? UNKNOWN_EVENT_TYPE_COLOR;
           const isFull = event.capacity !== null && joinedCount >= event.capacity;
           const isJoined = currentUserId ? members.some((m) => m.user.id === currentUserId) : false;
           const isFocused = focusedEventId === event.id;

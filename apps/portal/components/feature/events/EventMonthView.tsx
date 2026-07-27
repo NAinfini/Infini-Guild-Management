@@ -1,5 +1,5 @@
 import type { Event as GuildEvent } from "@guild/shared";
-import { activeGame } from "@guild/shared/games";
+import { EVENT_TYPE_COLORS, UNKNOWN_EVENT_TYPE_COLOR } from "@portal/utils/event-colors";
 import { PortalCard } from "../../shared/PortalCard";
 import { Badge, Button, Group, HoverCard, Popover, Stack, Text, ThemeIcon } from "@mantine/core";
 import { addDays, format, getDate, getDay, getMonth, isSameDay, startOfMonth, startOfWeek } from "date-fns";
@@ -9,12 +9,6 @@ import { CalendarEventIcon } from "@portal/components/icons";
 import "./EventMonthView.css";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
-
-// Derived from game config — single source of truth, includes all configured types
-// (weekly_mission, guild_war, social, poll, raffle, other, and any future additions).
-const EVENT_TYPE_COLORS: Record<string, string> = Object.fromEntries(
-  activeGame.eventTypes.map((et) => [et.id, et.color]),
-);
 
 function buildAvailabilityOverlayStyle(intensity: number, maxCount: number): CSSProperties | undefined {
   if (!maxCount || intensity <= 0) {
@@ -160,7 +154,7 @@ export function EventMonthView({
               <Stack gap={2} style={{ width: "100%" }}>
                 {dayEvents.slice(0, 3).map((event) => {
                   const isMuted = isMutedMonthEvent(event);
-                  const eventColor = isMuted ? "gray" : EVENT_TYPE_COLORS[event.type] ?? "gray";
+                  const eventColor = isMuted ? "gray" : EVENT_TYPE_COLORS[event.type] ?? UNKNOWN_EVENT_TYPE_COLOR;
                   return (
                     <HoverCard key={event.id} width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                       <HoverCard.Target>

@@ -1,5 +1,5 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { activeGame } from "@guild/shared/games";
+import { EVENT_TYPE_COLORS, UNKNOWN_EVENT_TYPE_COLOR } from "@portal/utils/event-colors";
 import { Group, Text } from "@mantine/core";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -13,12 +13,8 @@ export function formatDateTime(iso: string | null): string {
   return format(date, "yyyy-MM-dd HH:mm");
 }
 
-const EVENT_TYPE_COLOR_MAP: Record<string, string> = Object.fromEntries(
-  activeGame.eventTypes.map((et) => [et.id, et.color]),
-);
-
 export function eventTypeTagColor(value: string): string {
-  return EVENT_TYPE_COLOR_MAP[value] ?? "lime";
+  return EVENT_TYPE_COLORS[value] ?? UNKNOWN_EVENT_TYPE_COLOR;
 }
 
 export function cardHeading(text: string, icon?: ReactNode) {
