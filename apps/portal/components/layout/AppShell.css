@@ -473,7 +473,11 @@
 }
 
 .app-profile-avatar .mantine-Avatar-placeholder {
-  color: var(--accent-on-fill);
+  /* 头像底是 --accent-fill(500) → --accent-fill-hover(600) 的斜向渐变（见 :470），
+   * 首字母压在渐变深端时 --accent-on-fill（900 墨）只有 3.16–3.50，不过 AA
+   * （task-7 修复轮次 2 修复 D2）。换成 --accent-on-fill-hover（跨 accent 共用的
+   * 纯黑墨），它在渐变浅端（500）也远超 AA，两端都安全。 */
+  color: var(--accent-on-fill-hover);
   background: transparent;
 }
 
