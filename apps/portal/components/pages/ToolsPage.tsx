@@ -211,7 +211,7 @@ export function ToolsPage() {
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<WrenchIcon size={22} />}>
       {isExternalView ? (
-        <Alert color="portal-bronze" title={t("sandbox.readOnlyHint")} />
+        <Alert color="gray" title={t("sandbox.readOnlyHint")} />
       ) : null}
 
       {/* 5 columns squeezed each card to ~200px, which wrapped every title; 3 gives

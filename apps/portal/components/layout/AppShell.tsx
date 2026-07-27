@@ -435,12 +435,12 @@ export function AppShell() {
         <MantineAppShell.Main id="main-content" ref={scrollContainerRef} className={`app-content ${isMobile ? "app-content-mobile" : ""}`}>
           <div className="app-main">
             {isExternalView ? (
-              <Alert color="portal-bronze" variant="light" className="app-banner">
+              <Alert color="gray" variant="light" className="app-banner">
                 {t("nav.externalViewBanner")}
               </Alert>
             ) : null}
             {!isOnline ? (
-              <Alert color="portal-copper" variant="light" className="app-banner" role="status" aria-live="polite">
+              <Alert color="orange" variant="light" className="app-banner" role="status" aria-live="polite">
                 {t("nav.offlineBanner")}
               </Alert>
             ) : null}

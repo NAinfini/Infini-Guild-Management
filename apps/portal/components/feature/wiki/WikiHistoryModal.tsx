@@ -104,7 +104,7 @@ export function WikiHistoryModal({ opened, onClose, article }: WikiHistoryModalP
               </Badge>
             ) : null}
             {revision.restored_from !== null ? (
-              <Badge size="xs" variant="light" color="portal-copper">
+              <Badge size="xs" variant="light" color="orange">
                 {t("history.restoredFrom", { revision: revision.restored_from })}
               </Badge>
             ) : null}

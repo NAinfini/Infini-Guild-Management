@@ -18,7 +18,7 @@ const EVENT_TYPE_COLOR_MAP: Record<string, string> = Object.fromEntries(
 );
 
 export function eventTypeTagColor(value: string): string {
-  return EVENT_TYPE_COLOR_MAP[value] ?? "portal-bronze";
+  return EVENT_TYPE_COLOR_MAP[value] ?? "lime";
 }
 
 export function cardHeading(text: string, icon?: ReactNode) {

@@ -81,9 +81,9 @@ export const yanYunGame: GameDefinition = {
   },
 
   eventTypes: [
-    { id: "weekly_mission", label: "events:type.weeklyMission", icon: "TargetOutlined", color: "portal-gold" },
+    { id: "weekly_mission", label: "events:type.weeklyMission", icon: "TargetOutlined", color: "cyan" },
     { id: "guild_war", label: "events:type.guildWar", icon: "SwordsOutlined", color: "red" },
-    { id: "social", label: "events:type.social", icon: "TeamOutlined", color: "portal-bronze" },
+    { id: "social", label: "events:type.social", icon: "TeamOutlined", color: "grape" },
     { id: "poll", label: "events:type.poll", icon: "ChartBarOutlined", color: "teal" },
     { id: "raffle", label: "events:type.raffle", icon: "GiftOutlined", color: "pink" },
     { id: "other", label: "events:type.other", icon: "CalendarEventOutlined", color: "gray" },

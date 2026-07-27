@@ -260,7 +260,7 @@ export function RegisterPage() {
           ) : (
             <>
               {submitError ? <Alert color="red" title={submitError} /> : null}
-              {isCapsLockOn ? <Alert color="portal-copper" title={t("capsLockWarning")} /> : null}
+              {isCapsLockOn ? <Alert color="orange" title={t("capsLockWarning")} /> : null}
 
               <form onSubmit={handleSubmit(onSubmit)}>
                 <Stack gap={20}>

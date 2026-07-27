@@ -479,7 +479,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
         ) : null}
 
         {isUploadingImage ? (
-          <Alert color="portal-bronze" title={labels.uploading} variant="light">
+          <Alert color="blue" title={labels.uploading} variant="light">
             <Progress value={imageUploadProgress} size="sm" mt={8} />
           </Alert>
         ) : null}
