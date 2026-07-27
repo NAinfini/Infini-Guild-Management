@@ -7,7 +7,7 @@
 
 .my-profile-sortable-row--dragging {
   opacity: 0.7;
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
 }
 
 @media (max-width: 991px) {

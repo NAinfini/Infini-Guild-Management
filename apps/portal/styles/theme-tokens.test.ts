@@ -20,6 +20,15 @@ export const MIGRATED: string[] = [
   "apps/portal/components/pages/StoragePage.css",
   "apps/portal/components/pages/AuthPages.css",
   "apps/portal/components/pages/AdminPage.css",
+  "apps/portal/components/pages/DashboardPage.css",
+  "apps/portal/components/pages/ToolsPage.css",
+  "apps/portal/components/pages/AnnouncementsPage.css",
+  "apps/portal/components/pages/EventsPage.css",
+  "apps/portal/components/pages/GalleryPage.css",
+  "apps/portal/components/pages/MyProfilePage.css",
+  "apps/portal/components/pages/RosterPage.css",
+  "apps/portal/components/pages/SettingsPage.css",
+  "apps/portal/components/pages/WikiPage.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */

@@ -1,9 +1,9 @@
 .gallery-dropzone {
   min-width: 260px;
   min-height: 92px;
-  border: 1px dashed color-mix(in srgb, var(--color-text, #1A1815) 22%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--text-primary) 22%, transparent);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
   display: grid;
   place-items: center;
   gap: 8px;
@@ -64,7 +64,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--mantine-color-dark-6, #1a1a2e);
+  background: var(--mantine-color-dark-6);
   color: rgba(255, 255, 255, 0.55);
   transition: color 200ms ease;
 }
@@ -76,7 +76,7 @@
 .gallery-preview-uploader {
   position: absolute; top: 8px; left: 8px; z-index: 1;
   max-width: calc(100% - 16px); border-radius: var(--radius-pill); padding: 2px 8px;
-  font-size: 12px; line-height: 1.4; color: #ffffff;
+  font-size: 12px; line-height: 1.4; color: rgb(255 255 255);
   background: color-mix(in srgb, black 58%, transparent);
   backdrop-filter: blur(4px);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -148,7 +148,7 @@
 
 .gallery-lb__close:hover {
   background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  color: rgb(255 255 255);
 }
 
 .gallery-lb__nav {
@@ -172,7 +172,7 @@
 
 .gallery-lb__nav:hover {
   background: rgba(255, 255, 255, 0.18);
-  color: #fff;
+  color: rgb(255 255 255);
 }
 
 .gallery-lb__nav--prev { left: 16px; }
@@ -229,8 +229,8 @@
 
 .gallery-object-placeholder {
   width: 100%; min-height: 140px; border-radius: var(--radius-sm);
-  border: 1px dashed color-mix(in srgb, var(--color-text, #1A1815) 22%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--text-primary) 22%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
   display: grid; gap: 8px; place-items: center; padding: 12px; text-align: center;
 }
 

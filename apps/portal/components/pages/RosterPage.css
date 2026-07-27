@@ -8,9 +8,13 @@
   -webkit-backdrop-filter: blur(16px);
 }
 
-.dark .roster-filter-card.roster-filter-card {
-  background: color-mix(in srgb, var(--color-surface, #141418) 85%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+/* Real dark-mode variant, not a pure recolor: the light rule above defines no
+   background/border-color at all, so this block adds a translucent backdrop
+   tint that only exists in dark mode. Selector keeps the self-repeated class
+   (task-6 addendum E) to preserve its specificity. */
+[data-theme="dark"] .roster-filter-card.roster-filter-card {
+  background: color-mix(in srgb, var(--surface-base) 85%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 10%, transparent);
 }
 
 .roster-filter-controls {
@@ -40,7 +44,7 @@
 
 .roster-volume-label {
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .roster-audio-popover {
@@ -128,13 +132,20 @@
     padding: 0.5rem;
   }
 
+  /* Overrides Mantine Group's own gap rule (equal specificity: its class
+     sets `gap` from the --group-gap custom property) without the elevated-
+     priority marker this block used to carry: this page's CSS chunk loads
+     after mantine-core's stylesheet, so it wins the cascade tie on source
+     order alone (task-6 addendum F). 6px isn't on the L3 scale, snapped up
+     to --space-sm (8px); the paired calc() below is adjusted to match so
+     the two controls still sum to exactly 100% width. */
   .roster-filter-controls {
-    gap: 6px !important;
+    gap: var(--space-sm);
   }
 
   .roster-search-input,
   .roster-class-select {
-    flex: 1 1 calc(50% - 3px);
+    flex: 1 1 calc(50% - 4px);
     width: auto;
   }
 

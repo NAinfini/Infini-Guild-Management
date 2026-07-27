@@ -1,6 +1,6 @@
 .dashboard-page [data-variant="filled"],
 .dashboard-page .mantine-Text-root[data-variant="dimmed"] {
-  color: color-mix(in srgb, var(--color-text, #1A1815) 72%, black 28%);
+  color: color-mix(in srgb, var(--text-primary) 72%, black 28%);
 }
 
 /* ── Dashboard card padding (PortalCard has no built-in padding) ── */
@@ -28,7 +28,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-primary, #D4A843);
+  color: var(--accent-text);
   opacity: 0.85;
 }
 
@@ -79,27 +79,27 @@
   flex-direction: column;
   gap: 4px;
   padding: 8px 6px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 96%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 96%, transparent);
   min-width: 0;
   transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
 }
 
 .signup-box:hover {
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  border-color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .signup-box--today {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 40%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 5%, var(--color-surface, #ffffff));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 40%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 5%, var(--surface-base));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-fill) 12%, transparent);
   animation: todayBoxPulse 3s ease-in-out infinite;
 }
 
 @keyframes todayBoxPulse {
-  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent); }
-  50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent), 0 0 12px color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent); }
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-fill) 12%, transparent); }
+  50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-fill) 20%, transparent), 0 0 12px color-mix(in srgb, var(--accent-fill) 8%, transparent); }
 }
 
 .signup-box--yesterday {
@@ -112,7 +112,7 @@
   align-items: center;
   gap: 1px;
   padding-bottom: 5px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
 }
 
 .signup-box-label {
@@ -120,18 +120,18 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   line-height: 1;
 }
 
 .signup-box--today .signup-box-label {
-  color: var(--color-primary, #D4A843);
+  color: var(--accent-text);
 }
 
 .signup-box-date {
   font-size: 11px;
   font-weight: 700;
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
   line-height: 1;
 }
 
@@ -146,7 +146,7 @@
   display: block;
   text-align: center;
   font-size: 13px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   line-height: 1;
   padding: 2px 0;
 }
@@ -167,7 +167,7 @@
 }
 
 .signup-box-event:hover {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
 }
 
 .signup-box-event-dot {
@@ -182,7 +182,7 @@
   min-width: 0;
   font-size: 11px;
   line-height: 1.2;
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -192,7 +192,7 @@
 .signup-box-event-time {
   flex-shrink: 0;
   font-size: 10px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
@@ -229,9 +229,9 @@
   align-items: center;
   justify-content: center;
   font-size: 12px;
-  color: var(--color-text, #1A1815);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, var(--color-text, #1A1815) 14%);
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--surface-base) 86%, var(--text-primary) 14%);
+  border-color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   box-shadow: none;
 }
 
@@ -242,7 +242,7 @@
 }
 
 .war-nav-btn.war-nav-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 78%, var(--color-text, #1A1815) 22%);
+  background: color-mix(in srgb, var(--surface-base) 78%, var(--text-primary) 22%);
 }
 
 .war-nav-btn.war-nav-btn:disabled {
@@ -297,9 +297,9 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--color-text, #1A1815);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, var(--color-text, #1A1815) 14%);
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--surface-base) 86%, var(--text-primary) 14%);
+  border-color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   box-shadow: none;
   opacity: 0.85;
   transition: opacity var(--transition-normal);
@@ -312,7 +312,7 @@
 }
 
 .war-share-btn.war-share-btn:hover {
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 78%, var(--color-text, #1A1815) 22%);
+  background: color-mix(in srgb, var(--surface-base) 78%, var(--text-primary) 22%);
   opacity: 1;
 }
 
@@ -332,9 +332,9 @@
   /* The raw status hue on its own 10% tint measured 4.0–4.3:1 at 11px. Pulling it
      15% toward the page text darkens it in light mode and lightens it in dark,
      clearing 4.5:1 in both without changing the hue. */
-  color: color-mix(in srgb, var(--war-result-color, #888) 85%, var(--color-text, #1A1815));
-  background: color-mix(in srgb, var(--war-result-color, #888) 10%, var(--color-surface, #fff));
-  border: 1px solid color-mix(in srgb, var(--war-result-color, #888) 22%, transparent);
+  color: color-mix(in srgb, var(--war-result-color) 85%, var(--text-primary));
+  background: color-mix(in srgb, var(--war-result-color) 10%, var(--surface-base));
+  border: 1px solid color-mix(in srgb, var(--war-result-color) 22%, transparent);
   box-shadow: none;
 }
 
@@ -346,7 +346,7 @@
   justify-content: center;
   gap: 10px;
   padding: 4px 0;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .war-vs-bar-team {
@@ -359,12 +359,12 @@
 }
 
 .war-vs-bar-team--us {
-  color: var(--color-primary-text, #705A1B);
+  color: var(--accent-text);
   text-align: right;
 }
 
 .war-vs-bar-team--enemy {
-  color: color-mix(in srgb, var(--color-text, #e5e5e5) 60%, var(--color-danger, #ef4444));
+  color: color-mix(in srgb, var(--text-primary) 60%, var(--status-danger));
   text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -392,7 +392,7 @@
   gap: 5px;
   font-size: 11px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   width: 100%;
@@ -401,7 +401,7 @@
 .war-compare-label-icon {
   display: inline-flex;
   align-items: center;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .war-compare-bar-wrap {
@@ -419,12 +419,12 @@
 
 .war-compare-val--left {
   text-align: right;
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
 }
 
 .war-compare-val--right {
   text-align: left;
-  color: color-mix(in srgb, var(--color-text, #e5e5e5) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .war-compare-bar {
@@ -433,7 +433,7 @@
   height: 8px;
   border-radius: var(--radius-sm);
   overflow: hidden;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .war-compare-bar-fill {
@@ -442,21 +442,21 @@
 }
 
 .war-compare-bar-fill--own {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 60%, var(--color-surface, #fff));
+  background: color-mix(in srgb, var(--accent-fill) 60%, var(--surface-base));
   border-radius: 4px 0 0 4px;
 }
 
 .war-compare-bar-fill--own.war-compare-bar-fill--winning {
-  background: var(--color-primary, #D4A843);
+  background: var(--accent-fill);
 }
 
 .war-compare-bar-fill--enemy {
-  background: color-mix(in srgb, var(--color-danger, #ef4444) 45%, var(--color-surface, #fff));
+  background: color-mix(in srgb, var(--status-danger) 45%, var(--surface-base));
   border-radius: 0 4px 4px 0;
 }
 
 .war-compare-bar-fill--enemy.war-compare-bar-fill--winning {
-  background: color-mix(in srgb, var(--color-danger, #ef4444) 70%, var(--color-surface, #fff));
+  background: color-mix(in srgb, var(--status-danger) 70%, var(--surface-base));
 }
 
 /* ── MVP section ── */
@@ -466,7 +466,7 @@
   flex-direction: column;
   gap: 6px;
   padding-top: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .war-mvp-section-header {
@@ -491,9 +491,9 @@
   flex-shrink: 0;
   font-size: 11px;
   font-weight: 700;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 10%, var(--color-surface, #fff));
-  color: var(--color-text, #1A1815);
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 15%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 10%, var(--surface-base));
+  color: var(--text-primary);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 15%, transparent);
 }
 
 .war-mvp-chip-info {
@@ -519,19 +519,19 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .war-mvp-chip-value {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
 }
 
 /* ── War History Row Highlight Animation ── */
 
 @keyframes war-history-highlight {
-  0% { background-color: color-mix(in srgb, var(--color-primary, #D4A843) 25%, transparent); }
+  0% { background-color: color-mix(in srgb, var(--accent-fill) 25%, transparent); }
   100% { background-color: transparent; }
 }
 
