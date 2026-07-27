@@ -18,7 +18,7 @@
   margin-bottom: 12px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .fieldSection {
@@ -36,7 +36,7 @@
   bottom: 0;
   padding: 12px 0;
   margin-top: 16px;
-  background: var(--color-surface, var(--mantine-color-body));
+  background: var(--surface-base);
   z-index: 10;
 }
 

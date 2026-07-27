@@ -5,7 +5,7 @@
 
 .event-detail-modal__header {
   padding: 18px 20px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .event-detail-modal__title {
@@ -24,9 +24,9 @@
 
 .event-detail-modal__meta-card,
 .event-detail-modal__section {
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
 }
 
 .event-detail-modal__meta-card {
@@ -56,7 +56,7 @@
 
 .event-detail-modal__section--poll {
   border-color: color-mix(in srgb, var(--mantine-color-teal-6) 22%, transparent);
-  background: color-mix(in srgb, var(--mantine-color-teal-0) 58%, var(--color-surface, #ffffff));
+  background: color-mix(in srgb, var(--mantine-color-teal-0) 58%, var(--surface-base));
 }
 
 .event-detail-modal__section--poll > .mantine-Group-root:first-child svg {
@@ -73,13 +73,13 @@
   border: 1px solid color-mix(in srgb, var(--mantine-color-teal-7) 18%, transparent);
   border-radius: 999px;
   color: var(--mantine-color-teal-8);
-  background: color-mix(in srgb, var(--mantine-color-teal-0) 72%, var(--color-surface, #ffffff));
+  background: color-mix(in srgb, var(--mantine-color-teal-0) 72%, var(--surface-base));
   font-variant-numeric: tabular-nums;
 }
 
 .event-detail-modal__section--members {
   border-color: color-mix(in srgb, var(--mantine-color-green-6) 24%, transparent);
-  background: color-mix(in srgb, var(--mantine-color-green-0) 56%, var(--color-surface, #ffffff));
+  background: color-mix(in srgb, var(--mantine-color-green-0) 56%, var(--surface-base));
 }
 
 .event-detail-modal__section--members > .mantine-Group-root:first-child svg {
@@ -96,9 +96,9 @@
   align-items: stretch;
   min-width: 0;
   padding: 10px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
   cursor: pointer;
   outline: none;
   transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
@@ -106,7 +106,7 @@
 
 .event-detail-modal__poll-result-row:hover {
   border-color: color-mix(in srgb, var(--mantine-color-teal-6) 32%, transparent);
-  background: color-mix(in srgb, var(--mantine-color-teal-0) 28%, var(--color-surface, #ffffff));
+  background: color-mix(in srgb, var(--mantine-color-teal-0) 28%, var(--surface-base));
 }
 
 .event-detail-modal__poll-result-row:focus-visible {
@@ -115,7 +115,7 @@
 
 .event-detail-modal__poll-result-row--selected {
   border-color: color-mix(in srgb, var(--mantine-color-teal-6) 52%, transparent);
-  background: color-mix(in srgb, var(--mantine-color-teal-0) 44%, var(--color-surface, #ffffff));
+  background: color-mix(in srgb, var(--mantine-color-teal-0) 44%, var(--surface-base));
   box-shadow: inset 3px 0 0 var(--mantine-color-teal-6);
 }
 
@@ -124,8 +124,8 @@
 }
 
 .event-detail-modal__poll-result-row--disabled:hover {
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
+  border-color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
 }
 
 .event-detail-modal__poll-result-main {
@@ -159,10 +159,13 @@
   width: 22px;
   height: 22px;
   flex-shrink: 0;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
   border-radius: 999px;
-  color: #ffffff;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 74%, transparent);
+  /* 选中态背景固定吃 var(--mantine-color-teal-6)（不随 [data-theme] 变化），压在
+   * 它上面的勾选图标也该保持不变，用 Mantine 自带的白而不是会分模式变化的
+   * --accent-on-fill（同 EventCardsView.css 的 raffle 徽章文字先例）。 */
+  color: var(--mantine-color-white);
+  background: color-mix(in srgb, var(--surface-base) 74%, transparent);
 }
 
 .event-detail-modal__poll-result-row--selected .event-detail-modal__poll-choice-indicator {
@@ -172,7 +175,7 @@
 
 .event-detail-modal__poll-result-stats {
   flex-shrink: 0;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   font-variant-numeric: tabular-nums;
 }
 
@@ -186,7 +189,7 @@
 }
 
 .event-detail-modal__poll-progress.mantine-Progress-root {
-  background: color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
   overflow: hidden;
 }
 
@@ -213,9 +216,9 @@
   max-width: 176px;
   min-height: 32px;
   padding: 2px 9px 2px 4px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 7%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
 }
 
 .event-detail-modal__poll-voter-chip .mantine-Text-root {
@@ -230,7 +233,7 @@
   min-height: 32px;
   padding: 0 11px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 7%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
 }
 
 .event-detail-modal__poll-empty-voters {
@@ -261,9 +264,9 @@
 
 .event-detail-modal__member-row {
   padding: 9px 10px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 7%, transparent);
   border-radius: 9px;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 78%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 78%, transparent);
 }
 
 .event-detail-modal__member-info {
@@ -271,25 +274,16 @@
   flex: 1;
 }
 
-.dark .event-detail-modal__meta-card,
-.dark .event-detail-modal__section,
-.dark .event-detail-modal__poll-result-row,
-.dark .event-detail-modal__member-row,
-.dark .event-detail-modal__poll-voter-chip,
-.dark .event-detail-modal__poll-total {
-  background: color-mix(in srgb, var(--color-surface, #141418) 88%, transparent);
-}
-
-.dark .event-detail-modal__poll-result-row--selected {
-  background: color-mix(in srgb, var(--mantine-color-teal-9) 22%, var(--color-surface, #141418));
-}
-
-.dark .event-detail-modal__poll-choice-indicator {
-  background: color-mix(in srgb, var(--color-surface, #141418) 84%, transparent);
-}
-
-.dark .event-detail-modal__poll-result-row--selected .event-detail-modal__poll-choice-indicator {
-  background: var(--mantine-color-teal-6);
+/*
+ * 下面这条 .event-detail-modal__poll-result-row--selected 的深色覆盖必须保留：
+ * 它换的是 var(--mantine-color-teal-9)/var(--mantine-color-teal-0) 这两个固定
+ * Mantine 色阶（不随 [data-theme] 重新解析），浅色模式选中态用 teal-0（近白）
+ * 44% 混合表面色，深色模式如果照抄同一档会在深色底上显得刺眼发白，所以深色
+ * 模式换用 teal-9（近黑）22% 混合 —— 这不是「只差颜色兜底」，是两种色阶必须
+ * 分模式选择，按附录 E 节改选择器而非删除。
+ */
+[data-theme="dark"] .event-detail-modal__poll-result-row--selected {
+  background: color-mix(in srgb, var(--mantine-color-teal-9) 22%, var(--surface-base));
 }
 
 @media (max-width: 520px) {

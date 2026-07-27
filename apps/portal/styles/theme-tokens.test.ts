@@ -37,6 +37,17 @@ export const MIGRATED: string[] = [
   "apps/portal/components/feature/events/RecurringTemplateFormModal.css",
   "apps/portal/components/feature/events/EventCardsView.css",
   "apps/portal/components/feature/admin/AuditLogViewer.css",
+  /* Task 7 批 C（task-7-addendum.md D 节）。 */
+  "apps/portal/components/feature/events/EventDetailModal.css",
+  "apps/portal/components/feature/admin/AdminGameDataSection.css",
+  "apps/portal/components/feature/admin/AdminSystemSection.css",
+  "apps/portal/components/shared/MemberCard.css",
+  "apps/portal/components/feature/admin/AdminBadgesSection.css",
+  "apps/portal/components/shared/media-gallery.css",
+  "apps/portal/components/feature/events/EventMonthView.css",
+  "apps/portal/components/shared/ProfileModal.module.css",
+  "apps/portal/components/shared/FilterToolbar.css",
+  "apps/portal/components/feature/admin/AdminMemberDetailModal.module.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */
@@ -82,6 +93,13 @@ const RUNTIME_INJECTED_VARS: string[] = [
    * undefined）。Task 7 批 B 在 EventCardsView.css 里去掉了这个变量的 var()
    * 兜底（rule 1 不允许兜底），暴露出它是运行期注入而非 CSS 定义。 */
   "--event-card-avatar-size",
+  /* --badge-color：管理员自选的任意色号，运行期由内联 style 无条件写入
+   * （MemberCard.tsx:24 的 MemberBadge；AdminBadgesSection.tsx:102/194/231
+   * 的表单预览、侧栏列表徽章、详情大徽章）。三处消费值都经
+   * apps/shared/schemas/admin.ts 的 colorSchema 校验（min(1)，保证非空），
+   * Task 7 批 C 在 MemberCard.css / AdminBadgesSection.css 里去掉了这个变量的
+   * var() 兜底（rule 1 不允许兜底），暴露出它是运行期注入而非 CSS 定义。 */
+  "--badge-color",
 ];
 /** --mantine-color-* 系列由 Mantine 的 CSS 变量解析器批量写入运行期
  * （@mantine/core 的 MantineCssVariables），逐个列名不现实，按前缀豁免。 */

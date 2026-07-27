@@ -2,7 +2,7 @@
   width: 100%;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  background: var(--color-surface, #ffffff);
+  background: var(--surface-base);
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -10,8 +10,14 @@
   transition: box-shadow var(--transition-smooth), border-color var(--transition-smooth);
 }
 
-.dark .member-card {
-  background: color-mix(in srgb, var(--color-surface, #141418) 88%, transparent);
+/*
+ * 非颜色属性差异（backdrop-filter 玻璃模糊只在深色模式加），按附录 E 节把选择器
+ * 从 .dark 改成 [data-theme="dark"]，而不是整块删除。background 从基础规则的
+ * 纯色 var(--surface-base) 换成 88% 混色，是深色模式专属的玻璃质感处理，也一并
+ * 保留；border-color 与基础规则同值，留着只是显式声明，不动它。
+ */
+[data-theme="dark"] .member-card {
+  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   border-color: var(--border-subtle);
@@ -23,13 +29,13 @@
 }
 
 .member-card:focus-visible {
-  outline: 2px solid var(--color-primary, #D4A843);
+  outline: 2px solid var(--accent-fill);
   outline-offset: 2px;
 }
 
 .member-card--selected {
-  border-color: var(--color-primary, #D4A843);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 40%, transparent);
+  border-color: var(--accent-fill);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-fill) 40%, transparent);
 }
 
 /*
@@ -63,7 +69,7 @@
   align-self: center;
   border-radius: var(--radius-md); overflow: hidden;
   border: 1px solid var(--border-subtle);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, var(--color-text, #1A1815) 12%);
+  background: color-mix(in srgb, var(--surface-base) 88%, var(--text-primary) 12%);
   pointer-events: none;
 }
 
@@ -74,8 +80,8 @@
 
 .member-card__avatar-fallback {
   display: grid; place-items: center;
-  font-size: 22px; font-weight: var(--fw-strong, 700);
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  font-size: 22px; font-weight: var(--fw-strong);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .member-card__status-dot {
@@ -83,23 +89,23 @@
   bottom: 3px; right: 3px;
   width: 11px; height: 11px;
   border-radius: 50%;
-  border: 2px solid var(--color-surface, #ffffff);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 35%, transparent);
+  border: 2px solid var(--surface-base);
+  background: color-mix(in srgb, var(--text-primary) 35%, transparent);
   pointer-events: none;
 }
 
 .member-card__status-dot--active {
-  background: var(--color-success, #10b981);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--color-success, #10b981) 50%, transparent);
+  background: var(--status-success);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--status-success) 50%, transparent);
 }
 
 .member-card__status-dot--inactive {
-  background: color-mix(in srgb, var(--color-text, #1A1815) 35%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 35%, transparent);
 }
 
 .member-card__status-dot--vacation {
-  background: var(--color-danger, #ef4444);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--color-danger, #ef4444) 40%, transparent);
+  background: var(--status-danger);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--status-danger) 40%, transparent);
 }
 
 .member-card__meta-row { grid-area: meta; align-self: start; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
@@ -112,24 +118,30 @@
 }
 
 .member-card__pill--photo {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent);
-  color: var(--color-primary-text, #705A1B);
+  background: color-mix(in srgb, var(--accent-fill) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-fill) 30%, transparent);
+  color: var(--accent-text);
 }
 
+/*
+ * --color-accent（旧铜色）本次改版要消灭，装饰性用途收敛到 --accent-fill 系。
+ * 上面的 --photo 徽章已经用了 --accent-fill，这里选 --accent-fill-hover 而不是
+ * 同一个值，保留 photo/video 两种媒体徽章的色相区分（同 EventCardsView.css 的
+ * social 分类色先例）。
+ */
 .member-card__pill--video {
-  background: color-mix(in srgb, var(--color-accent, #8B7355) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-accent, #8B7355) 30%, transparent);
-  color: color-mix(in srgb, var(--color-accent, #8B7355) 50%, var(--color-text, #1A1815));
+  background: color-mix(in srgb, var(--accent-fill-hover) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-fill-hover) 30%, transparent);
+  color: color-mix(in srgb, var(--accent-fill-hover) 50%, var(--text-primary));
 }
 
 .member-card__content { grid-area: name; align-self: end; min-width: 0; }
-.member-card__username { display: block; font-size: var(--text-body, 14px); font-weight: var(--fw-medium, 600); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-card__username { display: block; font-size: var(--text-body); font-weight: var(--fw-medium); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .member-card__title {
-  font-size: var(--text-meta, 12px);
+  font-size: var(--text-meta);
   line-height: 1.35;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden;
 }
 
@@ -137,17 +149,20 @@
   display: inline-flex;
   align-items: center;
   padding: 1px 6px;
-  border-radius: var(--radius-pill, 9999px);
+  border-radius: var(--radius-pill);
   font-size: 11px;
   line-height: 1.4;
-  background: color-mix(in srgb, var(--badge-color, var(--color-primary, #D4A843)) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--badge-color, var(--color-primary, #D4A843)) 30%, transparent);
+  /* --badge-color 是管理员自选的任意色号，运行期由 MemberCard.tsx:24 的内联
+   * style 无条件写入（UserBadge.color 经 apps/shared/schemas/admin.ts 的
+   * colorSchema 校验，min(1) 保证非空），rule 1 不允许兜底，直接去掉。 */
+  background: color-mix(in srgb, var(--badge-color) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--badge-color) 30%, transparent);
   /*
    * --badge-color is arbitrary admin-chosen hex, so it cannot be assumed readable
    * on its own 14% tint (the amber "Veteran" badge measured 1.9:1). Pulling it
    * halfway toward the page text keeps the hue recognisable and clears 4.5:1.
    */
-  color: color-mix(in srgb, var(--badge-color, var(--color-primary, #D4A843)) 50%, var(--color-text, #1A1815));
+  color: color-mix(in srgb, var(--badge-color) 50%, var(--text-primary));
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -163,31 +178,30 @@
 
 .member-card__compact-meta {
   font-size: 12px; font-weight: 600; line-height: 1.2;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .member-card--blue {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 8%, var(--color-surface, #ffffff));
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 24%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 8%, var(--surface-base));
+  border-color: color-mix(in srgb, var(--accent-fill) 24%, transparent);
 }
 
 .member-card--green {
-  background: color-mix(in srgb, var(--color-success, #10b981) 8%, var(--color-surface, #ffffff));
-  border-color: color-mix(in srgb, var(--color-success, #10b981) 24%, transparent);
+  background: color-mix(in srgb, var(--status-success) 8%, var(--surface-base));
+  border-color: color-mix(in srgb, var(--status-success) 24%, transparent);
 }
 
 .member-card--purple {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, var(--color-surface, #ffffff));
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 10%, var(--surface-base));
+  border-color: color-mix(in srgb, var(--accent-fill) 30%, transparent);
 }
 
 .member-card--dark-red {
-  background: color-mix(in srgb, var(--color-danger, #ef4444) 8%, var(--color-surface, #ffffff));
-  border-color: color-mix(in srgb, var(--color-danger, #ef4444) 24%, transparent);
+  background: color-mix(in srgb, var(--status-danger) 8%, var(--surface-base));
+  border-color: color-mix(in srgb, var(--status-danger) 24%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .member-card { transition: none; }
 }
-
 
