@@ -33,11 +33,9 @@ describe("inline styles carry no colour", () => {
     expect(COLOUR_PROPS.test('style={{ gap: 8, width: "100%" }}')).toBe(false);
   });
 
-  /* Task 8 批 B/C 迁完后由批 C 取消 skip。批 A 只落地守卫本身——批 A 落地时
-   * 内联样式里的颜色属性一处都还没搬，这条断言必然是红的，但仓库里不允许存在
-   * 红的测试，所以先跳过。跳过前跑出的完整清单（27 文件 / 63 处）已经抄进
-   * task-8-report.md 的「A 批」一节，是批 B 的迁移依据。 */
-  it.skip("keeps colour out of every inline style in the portal", () => {
+  /* Task 8 批 C 已把批 B/C 的迁移工单全部处理完，取消 skip。跳过前跑出的
+   * 完整清单（27 文件 / 63 处）见 task-8-report.md 的「A 批」一节。 */
+  it("keeps colour out of every inline style in the portal", () => {
     const offenders: string[] = [];
     for (const file of listTsx(portalRoot)) {
       for (const block of inlineStyleBlocks(readFileSync(file, "utf8"))) {
@@ -194,11 +192,10 @@ describe(".tsx carries no bare hex outside the class-1 exemption table", () => {
     ).toEqual([]);
   });
 
-  /* Task 8 批 B/C 迁完后由批 C 取消 skip。批 A 落地时类 2/3/4 那 38 处裸 hex
-   * 一处都还没动，这条断言必然是红的，同样先跳过。跳过前跑出的完整清单
-   * （18 文件 / 103 处，按类 1–4 归类）已经抄进 task-8-report.md 的「A 批」
-   * 一节，是批 B/C 的迁移依据。 */
-  it.skip("no bare hex outside the class-1 exemption table", () => {
+  /* Task 8 批 C 已把类 2/3/4 的裸 hex 全部迁完，取消 skip。跳过前跑出的
+   * 完整清单（18 文件 / 103 处，按类 1–4 归类）见 task-8-report.md 的
+   * 「A 批」一节。 */
+  it("no bare hex outside the class-1 exemption table", () => {
     const offenders: string[] = [];
     for (const file of listTsx(portalRoot)) {
       const repoPath = relative(repoRoot, file).replace(/\\/g, "/");
