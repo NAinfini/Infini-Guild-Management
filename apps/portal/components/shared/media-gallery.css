@@ -118,7 +118,7 @@
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-fill) 40%, transparent);
 }
 
-/* 同上：视频缩略图占位背景，与模式无关的字面黑，同样写成 rgb()。 */
+/* 同上：视频缩略图占位背景，与模式无关的字面黑，已一并登记在同一张豁免表里。 */
 .infini-media-gallery-thumb-video {
   position: relative;
   width: 100%;

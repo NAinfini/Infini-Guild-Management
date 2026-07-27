@@ -435,11 +435,11 @@
   flex-shrink: 0;
 }
 
-/* 查找高亮：与 --color-primary/--color-accent 那条暖金色阶无关，是独立的
-   「查找命中」标记色（黄/橙），不随主题反色，语义上类似浏览器原生查找高亮。
-   复审 I-7 收口：不再是字面量豁免——L1 落在 tokens.css 的
+/* 查找高亮：独立的「查找命中」标记色（黄/橙），不随主题反色，语义上类似
+   浏览器原生查找高亮。复审 I-7 收口：不再是字面量豁免——L1 落在 tokens.css 的
    --palette-highlight-search(-active)，L2 在 semantic.css 开
-   --highlight-search(-active) 转发，数值逐字未变。 */
+   --highlight-search(-active)，用 color-mix 还原 alpha 通道（复审 N-4），
+   计算值逐字未变。 */
 .infini-tiptap-search-match {
   background: var(--highlight-search);
   border-radius: 2px;

@@ -38,6 +38,13 @@
   /* accent 填充上的文字：浅色模式在 500 填充上放 900 墨 */
   --accent-on-fill: var(--accent-900);
 
+  /* 阴影墨色：与模式无关的字面黑/近黑，不是可主题化的语义色（设计如此）。
+   * --shadow-ink 与下面四档标度阴影同一个墨色，供组件层的一次性（非标度）投影
+   * 通过 color-mix 复用（复审 N-1，见 AppShell.css .app-sider、
+   * styles.css .floating-save-bar）。全部已登记进 theme-tokens.test.ts 的
+   * LITERAL_COLOUR_EXEMPTIONS["apps/portal/styles/semantic.css"]（复审 I-3 /
+   * N-3 收口）。 */
+  --shadow-ink: rgb(10 10 15);
   --shadow-xs: 0 1px 2px rgb(10 10 15 / 0.06);
   --shadow-sm: 0 1px 3px rgb(10 10 15 / 0.08), 0 1px 2px rgb(10 10 15 / 0.04);
   --shadow-md: 0 4px 12px rgb(10 10 15 / 0.10), 0 1px 3px rgb(10 10 15 / 0.06);
@@ -68,6 +75,8 @@
   --accent-text: var(--accent-500);
   --accent-on-fill: var(--accent-900);
 
+  /* 阴影墨色：同上，深色模式的另一套数值（复审 N-1 / N-3 收口）。 */
+  --shadow-ink: rgb(0 0 0);
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.20);
   --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.24), 0 1px 2px rgb(0 0 0 / 0.16);
   --shadow-md: 0 4px 12px rgb(0 0 0 / 0.28), 0 1px 3px rgb(0 0 0 / 0.16);
@@ -143,16 +152,19 @@
    * 合并成一块。 */
   --brand-secondary: var(--palette-bronze-warm);
 
-  /* ── 查找高亮（与模式、与 accent 都无关，复审 I-7 收口）──
+  /* ── 查找高亮（与模式、与 accent 都无关，复审 I-7 / N-4 收口）──
    *
    * tiptap-editor.css 的「查找命中」标记色（黄/橙），独立于主题色阶、不随
    * [data-theme] 反色。批 2 曾把它登记为字面量豁免，复审 I-7 指出它是全表
    * 唯一一处「真正有色相」的豁免，且批 1 刚为完全同类的 --palette-bronze-warm
    * 建立了「L1 落值 + L2 开名」的先例——这里补齐同样的处理，不是重新设计。
-   * L1 值见 tokens.css 的 --palette-highlight-search(-active)，这里只做
-   * L2 转发，供组件层消费（守卫 rule 6 不许组件层直接引用 --palette-*）。 */
-  --highlight-search: var(--palette-highlight-search);
-  --highlight-search-active: var(--palette-highlight-search-active);
+   * L1 值见 tokens.css 的 --palette-highlight-search(-active)（复审 N-4 后
+   * 已改成不透明 hex）。这里不再是直接转发，而是用 color-mix 把 alpha
+   * 通道还原回来（35% / 55%，与原 rgba(255, 217, 0, 0.35) /
+   * rgba(255, 140, 0, 0.55) 逐字等价），供组件层消费（守卫 rule 6 不许组件层
+   * 直接引用 --palette-*）。 */
+  --highlight-search: color-mix(in srgb, var(--palette-highlight-search) 35%, transparent);
+  --highlight-search-active: color-mix(in srgb, var(--palette-highlight-search-active) 55%, transparent);
 }
 
 [data-theme="light"] {

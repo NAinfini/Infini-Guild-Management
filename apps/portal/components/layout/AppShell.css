@@ -32,16 +32,15 @@
 .app-sider {
   border-right: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   background: var(--surface-base);
-  /* 复审 I-1：这是侧栏右边缘的横向投影（把内容跟侧栏分开），几何形状（1px 0 8px
-     横向偏移）跟 semantic.css 里 --shadow-xs/sm/md/lg 那种纵向标度阴影不是同一
-     种形状，没有现成的横向档可复用，几何原样保留。但几何跟颜色是两回事——
-     颜色不该是字面量豁免的理由，改用跟上面 border-right 同一套写法：
-     color-mix(in srgb, var(--text-primary) N%, transparent)，3% 对应原来的
-     rgba(0, 0, 0, 0.03)。注意这是一次真实的深色模式视觉变更：--text-primary
-     深色模式下是浅色（--palette-ink-warm），所以深色模式下这层投影从「暗投影」
-     变成「浅色微光」，跟同一条规则里的 border-right 行为一致（border-right 早
-     就是这个写法），但仍需控制者目视确认。 */
-  box-shadow: 1px 0 8px color-mix(in srgb, var(--text-primary) 3%, transparent);
+  /* 复审 N-1（原 I-1 的收口）：这是侧栏右边缘的横向投影（1px 0 8px），几何形状
+     跟 semantic.css 里 --shadow-xs/sm/md/lg 那种纵向标度阴影不是同一种形状，
+     没有现成的横向档可复用，几何原样保留。颜色用 semantic.css 新增的 L2 阴影
+     墨 --shadow-ink（与四档标度阴影同一个墨色），不用 --text-primary：
+     --text-primary 深色模式下是浅色（--palette-ink-warm），拿它当阴影底色会
+     让这层投影在深色模式下从「暗投影」反转成「浅色微光」；--shadow-ink 深色
+     模式固定为 rgb(0 0 0)，3% 混合后与本规则批 2 之前的原值
+     rgba(0, 0, 0, 0.03) 逐比特相同，反转消失，无需目视确认。 */
+  box-shadow: 1px 0 8px color-mix(in srgb, var(--shadow-ink) 3%, transparent);
   overflow: hidden;
   transition: width var(--transition-normal);
   display: flex;

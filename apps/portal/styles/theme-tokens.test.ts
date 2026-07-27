@@ -395,6 +395,16 @@ const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
         "rgb(0 0 0 / 0.16)",
       ],
     },
+    {
+      source: "[data-theme=\"light\"] 块的 --shadow-ink（复审 N-1）",
+      reason: "阴影墨色本身的字面定义值，与上面四档标度阴影同一个墨色、同样是与模式无关的设计例外，供组件层的一次性投影（AppShell.css .app-sider、styles.css .floating-save-bar）通过 color-mix 复用，不再各自散落字面 rgba()。",
+      values: ["rgb(10 10 15)"],
+    },
+    {
+      source: "[data-theme=\"dark\"] 块的 --shadow-ink（复审 N-1）",
+      reason: "同上，深色模式的另一套数值。",
+      values: ["rgb(0 0 0)"],
+    },
   ],
 };
 
@@ -482,7 +492,7 @@ describe("theme token hard rules", () => {
    * 检测（万一有人在这里写死一个关键字色，例如 [data-theme="dark"] 里的
    * --status-danger: red，逐条登记不会有这个盲区），也不符合本文件其它地方
    * 反复强调的「按文件索引，不是整文件豁免」。 */
-  it("rule 2: no bare hex, literal rgb()/rgba()/hsl()/hsla(), or literal named colour outside the palette/semantic files", () => {
+  it("rule 2: no bare hex, literal colour function, or literal named colour outside the palette file", () => {
     const offenders: string[] = [];
     for (const { path, source } of readMigrated()) {
       if (path === PALETTE_FILE) continue;

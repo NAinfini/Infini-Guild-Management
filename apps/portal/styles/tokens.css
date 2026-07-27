@@ -111,13 +111,18 @@
   --palette-bronze-warm: #8B7355;
   --palette-copper-warm: #C17F3E;
 
-  /* ── 查找高亮（与模式、与 accent 都无关，复审 I-7 收口）──
+  /* ── 查找高亮（与模式、与 accent 都无关，复审 I-7 / N-4 收口）──
    * tiptap-editor.css 的「查找命中」标记色（黄/橙），独立于主题色阶，语义上
    * 类似浏览器原生查找高亮，不随 [data-theme] 反色。批 2 曾把它登记为豁免的
    * 字面量留在组件层，但它是「新引入的、只此一处定义的品牌外颜色」，跟
    * --palette-bronze-warm 是同一类情况——批 1 对 bronze-warm 已经落了 L1/L2，
-   * 这里补上同样的处理，不是重新设计：数值逐字保留自 tiptap-editor.css 原来的
-   * 豁免字面量。 */
-  --palette-highlight-search: rgba(255, 217, 0, 0.35);
-  --palette-highlight-search-active: rgba(255, 140, 0, 0.55);
+   * 这里补上同样的处理，不是重新设计。
+   * 复审 N-4：这里只落不透明色，alpha 挪到 semantic.css 用 color-mix 表达
+   * （与本文件其余每一个值一致——L1 不烘 alpha），且 palette() 解析器只认
+   * `#hex`，落成 hex 才能被对比度审计看见。#FFD900 / #FF8C00 是原
+   * rgba(255, 217, 0, 0.35) / rgba(255, 140, 0, 0.55) 的不透明分量，alpha
+   * 通道在 semantic.css 的 --highlight-search(-active) 里用 color-mix 还原，
+   * 计算值逐字不变。 */
+  --palette-highlight-search: #FFD900;
+  --palette-highlight-search-active: #FF8C00;
 }
