@@ -99,11 +99,15 @@
   --palette-mantine-yellow-text: #AC5900;
   --palette-mantine-orange-text: #C1400D;
 
-  /* ── 旧品牌辅色（Task 4 迁入） ──
-   * 装饰性渐变（登录页光晕、侧栏描边、活动卡强调）至今仍在消费的两个暖色。
-   * 没有语义对应物，也不随模式变化，因此只在 L1 落值、不进 L2。
-   * 唯一消费处是 styles.css 旧名转发块里的 --color-secondary / --color-accent，
-   * 消费端随 Task 5-7 迁完后连同转发一并删除。 */
+  /* ── 旧品牌辅色（Task 4 迁入，Task 9 批 1 收口 D 节）──
+   * 装饰性渐变（登录页光晕、侧栏描边、活动卡强调）在消费的两个暖色。
+   * --palette-copper-warm：styles.css 旧名转发块的 --color-accent 曾是唯一
+   * 消费处，且当时已是 0 消费者；该转发块随本任务整体删除，此名现无消费者。
+   * --palette-bronze-warm：没有语义对应物、不随模式变化，但仍有 2 处组件层
+   * 消费（EquipmentCalcModal.css .ecm__stats__card--intent、MyProfilePage.css
+   * .profile-preview-stat-icon--video）。组件层不许直接引用 L1（守卫 rule 6），
+   * 故本任务在 semantic.css 开了 L2 名字 --brand-secondary，两处消费者已改指
+   * 过去；本值的唯一消费处从旧名转发块换成了 --brand-secondary。 */
   --palette-bronze-warm: #8B7355;
   --palette-copper-warm: #C17F3E;
 }

@@ -118,6 +118,30 @@
    * 调浅，所以换一个 hover 专用、跨 accent 共用的纯黑墨，只在「文字压在
    * --accent-fill-hover 上」这一种场景使用。 */
   --accent-on-fill-hover: var(--palette-ink-black);
+
+  /* 迁自 styles.css 旧名转发块的 --shadow-primary-sm/-md（task-9-addendum.md D 节）。
+   * 这是「accent 强调光晕」，跟上面 [data-theme] 分支里的 --shadow-xs/sm/md/lg
+   * 不是同一档：那四档是中性色（rgb(10 10 15 / …) / rgb(0 0 0 / …)）标度阴影，
+   * 不随 accent 变化；这两个必须混 --accent-fill，用在悬浮态 / 品牌标记上，
+   * 让阴影本身带出「这跟主色相关」的信号，两者不可互相替代。
+   * 数值原样保留自转发块，只改了挂靠的名字。
+   * 消费者：AppShell.css（app-brand-mark、app-header-icon-btn:hover）、
+   * ToolsPage.css（dice__roll-btn:hover）。 */
+  --shadow-accent-sm: 0 2px 8px color-mix(in srgb, var(--accent-fill) 15%, transparent);
+  --shadow-accent-md: 0 4px 16px color-mix(in srgb, var(--accent-fill) 22%, transparent);
+}
+
+/* ── 旧品牌辅色（与模式、与 accent 选择都无关）──
+ *
+ * 迁自 styles.css 旧名转发块的 --color-secondary（task-9-addendum.md D 节）。
+ * tokens.css 的 --palette-bronze-warm 本身没有语义、不随 [data-theme] 或
+ * [data-accent] 变化，只是历史遗留的第二品牌色，用来把某一类目跟当前选中的
+ * accent 区分开（不是「危险 / 警告」这类状态色，纯粹是另一条视觉分类线）。
+ * 组件层不许直接引用 L1 的 --palette-*（守卫 rule 6），这里给它一个 L2 名字。
+ * 消费者：EquipmentCalcModal.css（.ecm__stats__card--intent）、
+ * MyProfilePage.css（.profile-preview-stat-icon--video）。 */
+:root {
+  --brand-secondary: var(--palette-bronze-warm);
 }
 
 [data-theme="light"] {

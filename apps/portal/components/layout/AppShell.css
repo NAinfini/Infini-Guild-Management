@@ -85,7 +85,7 @@
   font-size: 18px;
   flex: 0 0 auto;
   overflow: hidden;
-  box-shadow: var(--shadow-primary-sm);
+  box-shadow: var(--shadow-accent-sm);
   transition: box-shadow 0.3s ease, border-color 0.3s ease;
 }
 
@@ -354,7 +354,7 @@
   color: var(--accent-text);
   border-color: color-mix(in srgb, var(--accent-fill) 30%, transparent);
   background: color-mix(in srgb, var(--accent-fill) 8%, var(--surface-base));
-  box-shadow: var(--shadow-primary-sm);
+  box-shadow: var(--shadow-accent-sm);
   transform: translateY(-1px);
 }
 

@@ -420,11 +420,10 @@
   border-left-color: var(--status-warning);
 }
 
-/* --color-secondary（古铜色）尚无 L2 语义对应物，同 MyProfilePage.css 的
-   .profile-preview-stat-icon--video 一处：继续引用旧名，去掉裸 hex 兜底，
-   由 Task 9 迁进 semantic.css 时再改名。 */
+/* 旧品牌辅色（古铜色），随 task-9-addendum.md D 节迁到 L2 --brand-secondary。
+   同 MyProfilePage.css 的 .profile-preview-stat-icon--video 一处。 */
 .ecm__stats__card--intent {
-  border-left-color: var(--color-secondary);
+  border-left-color: var(--brand-secondary);
 }
 
 .ecm__stats__card-label {

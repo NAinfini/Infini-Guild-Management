@@ -421,7 +421,7 @@ a.tool-card__btn {
 .dice__roll-btn:hover:not(:disabled) {
   /* State signal comes from shadow, not a darkened fill: dimming the fill drags
      --accent-on-fill (calibrated for accent-500 only) below AA. See theme-tokens.test.ts. */
-  box-shadow: var(--shadow-primary-md);
+  box-shadow: var(--shadow-accent-md);
 }
 
 .dice__roll-btn:active:not(:disabled) {

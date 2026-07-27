@@ -39,12 +39,10 @@
   color: var(--accent-fill);
 }
 
-/* --color-secondary（古铜色）尚无 L2 语义对应物——它和 --color-accent 是
-   styles.css 临时转发块里仅剩的两个「非旧名别名」变量，由 Task 9 迁进
-   semantic.css，不在本任务（Task 8）范围内重新命名。这里只去掉裸 hex 兜底，
-   继续引用旧名（该名字还没被删除，styles.css 仍在转发它）。 */
+/* 旧品牌辅色（古铜色），随 task-9-addendum.md D 节迁到 L2 --brand-secondary。
+   同 EquipmentCalcModal.css 的 .ecm__stats__card--intent 一处。 */
 .profile-preview-stat-icon--video {
-  color: var(--color-secondary);
+  color: var(--brand-secondary);
 }
 
 /* ── Availability Grid Editor ── (moved out of style={{}}, task-8 批 B).
