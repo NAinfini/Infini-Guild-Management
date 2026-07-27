@@ -169,26 +169,41 @@ const CSS_NAMED_COLOURS: string[] = [
 ];
 
 /**
- * 逐个字面关键字色的检测，两端都设了边界：左边界连引号也排除，是因为
- * semantic.css 的 `[data-accent="teal"]` 这类属性选择器里，"teal" 是双引号
- * 包起来的字符串字面量（选择器要匹配的 data-accent 值），不是颜色 ——
- * task-9-addendum.md E 节实测过，不加这一层排除会把它也当成命中（已用
- * scan-full.cjs 变异验证过，见报告）。右边界同理防止命中
- * `--palette-teal-500` 这类自定义属性名的一部分。 */
+ * 逐个字面关键字色的检测，两端都设了边界。左边界排除字母/数字/下划线/双引号/
+ * 单引号/句点/连字符：双引号、单引号是因为 `[data-accent="teal"]` /
+ * `[data-accent='teal']` / `content: 'red'` 这类字符串字面量里的颜色词不是
+ * 颜色（task-9-addendum.md E 节 + 复审 M-1 都实测过，本项目三个 accent 名恰好
+ * 是 teal/indigo/violet，单引号写法是最可能真实撞上的一种）；句点是因为
+ * `.gold { }` / `&.plum` 这类类选择器名不是颜色。右边界同理排除
+ * `--palette-teal-500` 这类自定义属性名的一部分，并额外排除 `(`：
+ * `tan(30deg)` 这类 CSS 函数名（如 rotate(calc(1deg * tan(30deg)))）在没有
+ * 这层排除时会被误判成命中 "tan"。 */
 function keywordColourHits(withoutComments: string): string[] {
-  const re = new RegExp(`(?<![a-zA-Z0-9_"-])(${CSS_NAMED_COLOURS.join("|")})(?![a-zA-Z0-9_"-])`, "gi");
+  const re = new RegExp(`(?<![a-zA-Z0-9_"'.\\-])(${CSS_NAMED_COLOURS.join("|")})(?![a-zA-Z0-9_"'.\\-(])`, "gi");
   return [...withoutComments.matchAll(re)].map((match) => match[1]!.toLowerCase());
 }
 
 /**
- * 逐个字面 rgb()/rgba()/hsl()/hsla() 调用。允许一层嵌套括号，只是为了不让
- * 内部的 var(...) 破坏配对——真正筛掉它的是紧接着的 `.filter`：任何一个通道
- * 来自 var() 的调用（例如 AuthPages.css 的
- * `hsla(var(--bubble-hue), 60%, 60%, 0.1)`）根源上是数据/token 驱动的颜色，
- * 不是硬编码字面量，rule 2 本来就不该管它——同样的判断已经在
- * RUNTIME_INJECTED_VARS 里对 --bubble-hue 做过一次。 */
+ * 逐个字面 rgb()/rgba()/hsl()/hsla()/oklch()/oklab()/lab()/lch()/hwb()/color()
+ * 调用。加 `i` 标志：CSS 函数名大小写不敏感（`RGBA(0,0,0,.5)` 是合法 CSS，
+ * 复审 I-4 用这个输入验证过旧版没有 `i` 标志时会漏检，见 task-9-report.md 的
+ * 变异证明）。`color` 用 `(?!-mix)` 负向断言排除 `color-mix(`——后者是本仓库
+ * 大量在用的「颜色 + 透明度」合成写法，不该被这条规则当成新引入的字面颜色。
+ *
+ * 允许一层嵌套括号，只是为了不让内部的 `var(...)`/`color-mix(...)` 破坏配对；
+ * 两层嵌套（例如 `rgb(calc(2 * (10 + 5)) 0 0)`）会匹配失败——这是已知限制，
+ * 现实 CSS 里几乎不会写出这种嵌套（T-2），暂不处理。
+ *
+ * 紧接着的 `.filter` 是一条**有意放宽的近似，不是逐通道的精确判断**：只要调用
+ * 里任意一个通道来自 var()，整个调用（含其余写死的通道）都会被放行。例如
+ * AuthPages.css 的 `hsla(var(--bubble-hue), 60%, 60%, 0.1)` 只有色相来自
+ * var()，饱和度/亮度/透明度三个通道都是字面量，也会被整体放行——这在当前仓库
+ * 是可以接受的，因为这是唯一一处用例，放宽换来的假阴性面很小；但这不是通则：
+ * 如果以后出现「色相来自 var()、但饱和度/亮度是刻意写死的另一个品牌值」这类
+ * 真正该被拦下的写法，这条近似会连带放它一马，届时需要收紧为逐通道判断
+ * （复审 I-4）。 */
 function functionalColourHits(withoutComments: string): string[] {
-  const re = /\b(?:rgba?|hsla?)\(((?:[^()]|\([^()]*\))*)\)/g;
+  const re = /\b(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb|color(?!-mix))\(((?:[^()]|\([^()]*\))*)\)/gi;
   return [...withoutComments.matchAll(re)].filter((match) => !match[1]!.includes("var(")).map((match) => match[0]);
 }
 
@@ -218,7 +233,7 @@ type LiteralColourExemption = {
 const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
   "apps/portal/components/feature/admin/AdminGameDataSection.css": [
     {
-      source: ".admin-game-data__editor-preview textarea 的内凹阴影（周围有注释）",
+      source: ".admin-game-data__textarea 的内凹阴影（周围有注释）",
       reason: "文本域内凹阴影的黑色晕影，与模式无关的字面黑。",
       values: ["rgba(0, 0, 0, 0.06)"],
     },
@@ -228,13 +243,6 @@ const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
       source: ".event-card__raffle-winners-badge",
       reason: "徽章底色/文字已固定吃 --mantine-color-pink-5 / --mantine-color-white，不随 [data-theme] 变化，投影延续同一条设计决定保持固定，避免固定配色配一圈会变化的阴影。",
       values: ["rgba(0, 0, 0, 0.2)"],
-    },
-  ],
-  "apps/portal/components/layout/AppShell.css": [
-    {
-      source: ".app-sider",
-      reason: "侧栏右边缘的横向投影（1px 0 8px），跟 semantic.css 的纵向 --shadow-xs/sm/md/lg 不是同一种形状，没有现成横向档可复用；透明度仅 0.03，两模式下都接近不可见。",
-      values: ["rgba(0, 0, 0, 0.03)"],
     },
   ],
   "apps/portal/components/pages/AuthPages.css": [
@@ -255,11 +263,6 @@ const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
     },
   ],
   "apps/portal/components/pages/DashboardPage.css": [
-    {
-      source: '.dashboard-page [data-variant="filled"] / [data-variant="dimmed"]',
-      reason: "往 --text-primary 里固定混 28% 真黑做「调暗」，操作对象仍是当前主题的 --text-primary，只是统一压暗比例；换成表面 token 会把颜色带向表面色而不是单纯调暗，不是同一个效果。",
-      values: ["black"],
-    },
     {
       source: ".war-nav-btn svg / .war-share-btn svg 的图标描边投影",
       reason: "图标本身吃 currentColor 随主题反色，这层投影只是加一圈固定暗晕保证图标在任意背景上可辨识，理由同 media-gallery.css 的缩略图播放图标投影。两处选择器各贡献一次。",
@@ -334,31 +337,21 @@ const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
   "apps/portal/components/shared/tiptap-editor.css": [
     {
       source: ".infini-tiptap-link-dialog-backdrop（已有注释）",
-      reason: "浮层对话框背后的全屏遮罩，深浅两模式都需要压暗身后内容而不是随模式反色。",
+      reason: "浮层对话框背后的全屏遮罩。复审 I-7：这不是纯黑，是特意选的一个冷色调（slate-900，rgb(15, 23, 42)）遮罩，深浅两模式都用同一个值、不随 [data-theme] 反色。",
       values: ["rgba(15, 23, 42, 0.48)"],
     },
     {
       source: ".infini-tiptap-link-dialog 的投影（已有注释）",
-      reason: "投影与上面的遮罩同理，深浅两模式都需要压暗身后内容。",
+      reason: "投影与上面的遮罩同一个冷色调（slate-900），不是纯黑，深浅两模式都固定不随 [data-theme] 变化。",
       values: ["rgba(15, 23, 42, 0.24)"],
     },
     {
       source: ".infini-tiptap-context-menu / __context-submenu / __find-replace 的投影（已有注释，理由同上）",
-      reason: "浮层菜单/查找替换面板的投影，理由同 link-dialog。三处选择器各贡献一次。",
+      reason: "浮层菜单/查找替换面板的投影，同一个冷色调（slate-900），不是纯黑，理由同 link-dialog。三处选择器各贡献一次。",
       values: ["rgba(15, 23, 42, 0.18)", "rgba(15, 23, 42, 0.18)", "rgba(15, 23, 42, 0.18)"],
-    },
-    {
-      source: ".infini-tiptap-search-match / __search-active（已有注释）",
-      reason: "查找高亮是独立于主题色阶的「查找命中」标记色（黄/橙），不随主题反色，类似浏览器原生查找高亮。",
-      values: ["rgba(255, 217, 0, 0.35)", "rgba(255, 140, 0, 0.55)"],
     },
   ],
   "apps/portal/styles.css": [
-    {
-      source: ".floating-save-bar",
-      reason: "贴底浮条向上投的分隔阴影（negative Y 偏移），跟 --shadow-xs/sm/md/lg 的正 Y（向下）不是同一种形状；透明度仅 0.04，两模式下都接近不可见。",
-      values: ["rgb(0 0 0 / 0.04)"],
-    },
     {
       source: '.mantine-Button-root[data-variant="filled"]::after 的斜向高光扫光',
       reason: "按钮自身填色上方的固定白色高光扫光，跟主色/主题无关——就像光源本身不会因为照到什么表面而变色。",
@@ -375,6 +368,34 @@ const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
       values: ["rgb(0 0 0 / 0.2)"],
     },
   ],
+  "apps/portal/styles/semantic.css": [
+    {
+      source: "[data-theme=\"light\"] 块的 --shadow-xs/sm/md/lg（复审 I-3，:41-44）",
+      reason: "阴影不是可主题化的颜色——这四档中性色标度阴影本身就是设计如此的例外（task-9-addendum.md E 节），与 tokens.css 同类。此前用整文件跳过处理，复审 I-3 指出这会连带关掉这个文件里的关键字色检测且不按值计次，改成逐值登记：7 个值来自 4 条声明，rgb(10 10 15 / 0.06) 被 --shadow-xs 与 --shadow-md/--shadow-lg 的第二层各用一次，共 3 次。",
+      values: [
+        "rgb(10 10 15 / 0.06)",
+        "rgb(10 10 15 / 0.08)",
+        "rgb(10 10 15 / 0.04)",
+        "rgb(10 10 15 / 0.10)",
+        "rgb(10 10 15 / 0.06)",
+        "rgb(10 10 15 / 0.14)",
+        "rgb(10 10 15 / 0.06)",
+      ],
+    },
+    {
+      source: "[data-theme=\"dark\"] 块的 --shadow-xs/sm/md/lg（复审 I-3，:71-74）",
+      reason: "同上，深色模式的另一套数值。rgb(0 0 0 / 0.16) 被 --shadow-sm/--shadow-md/--shadow-lg 的第二层各用一次，共 3 次。",
+      values: [
+        "rgb(0 0 0 / 0.20)",
+        "rgb(0 0 0 / 0.24)",
+        "rgb(0 0 0 / 0.16)",
+        "rgb(0 0 0 / 0.28)",
+        "rgb(0 0 0 / 0.16)",
+        "rgb(0 0 0 / 0.32)",
+        "rgb(0 0 0 / 0.16)",
+      ],
+    },
+  ],
 };
 
 function exemptedLiteralValues(path: string): string[] {
@@ -388,6 +409,13 @@ function exemptedLiteralValues(path: string): string[] {
  * 豁免按「值出现的次数」逐个消耗（同 inline-colour.test.ts 的
  * bareHexOffenders），不是简单 filter：同一个值在文件里意外多冒出一次，
  * 那多出来的一次不该被放过。
+ *
+ * 复审 M-2：光是「命中 ≤ 额度」还不够——那只防得住多出来的字面量，防不住
+ * 豁免表本身失真的另一半：源码里那处站点被删掉/改值之后，表里对应的额度会
+ * 静默留下一张没人用的免费票，日后随便一个新字面量凑巧撞上这个值就能白嫖
+ * 通过。所以额度消耗完之后，剩下没被任何命中消耗掉的非零额度也要报错——
+ * 用不同的文案前缀区分两类问题：「未登记的字面量」是命中没有豁免可用，
+ * 「已失效的豁免」是豁免表登记的次数比源码实际出现的次数多。
  */
 function literalColourOffenders(path: string, withoutComments: string): string[] {
   const hits = [...functionalColourHits(withoutComments), ...keywordColourHits(withoutComments)];
@@ -401,8 +429,11 @@ function literalColourOffenders(path: string, withoutComments: string): string[]
     if (allowance > 0) {
       remainingAllowance.set(hit, allowance - 1);
     } else {
-      offenders.push(hit);
+      offenders.push(`未登记的字面量 ${hit}`);
     }
+  }
+  for (const [value, count] of remainingAllowance) {
+    if (count > 0) offenders.push(`已失效的豁免 ${value}（豁免表多登记了 ${count} 次，源码里已经没有这么多处）`);
   }
   return offenders;
 }
@@ -445,7 +476,12 @@ describe("theme token hard rules", () => {
    * rgb()/rgba()/hsl()/hsla() 与 black/white 这类关键字色一概漏检）现在补上——
    * 见下面的 hex + literalColourOffenders 两段判断。semantic.css 的阴影档
    * （rgb(10 10 15 / …) / rgb(0 0 0 / …)）与 tokens.css 一样是设计如此的例外，
-   * 单独跳过，不进 LITERAL_COLOUR_EXEMPTIONS 那张按站点计数的表。 */
+   * 但（复审 I-3 之后）不再整文件跳过——那 14 个值已按站点逐条登记进
+   * LITERAL_COLOUR_EXEMPTIONS["apps/portal/styles/semantic.css"]，走跟其它
+   * 文件完全一样的按值计次消耗路径。整文件跳过会连带关掉这个文件里的关键字色
+   * 检测（万一有人在这里写死一个关键字色，例如 [data-theme="dark"] 里的
+   * --status-danger: red，逐条登记不会有这个盲区），也不符合本文件其它地方
+   * 反复强调的「按文件索引，不是整文件豁免」。 */
   it("rule 2: no bare hex, literal rgb()/rgba()/hsl()/hsla(), or literal named colour outside the palette/semantic files", () => {
     const offenders: string[] = [];
     for (const { path, source } of readMigrated()) {
@@ -455,7 +491,6 @@ describe("theme token hard rules", () => {
       const hexHits = withoutComments.match(/#[0-9a-fA-F]{3,8}\b/g);
       if (hexHits) offenders.push(`${path}: ${[...new Set(hexHits)].join(", ")}`);
 
-      if (path === SEMANTIC_FILE) continue;
       const literalHits = literalColourOffenders(path, withoutComments);
       if (literalHits.length > 0) offenders.push(`${path}: ${literalHits.join(", ")}`);
     }
