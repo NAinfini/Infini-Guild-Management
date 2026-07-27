@@ -508,8 +508,13 @@
   overflow-y: auto;
   min-height: 0;
   box-sizing: border-box;
-  height: 100vh;
-  height: 100dvh;
+  /* --app-shell-header-offset is injected at runtime by Mantine's AppShell
+   * (node_modules/@mantine/core/esm/components/AppShell/AppShellMediaStyles/assign-header-variables/assign-header-variables.mjs)
+   * whenever a primitive header height is used, which this shell does. No
+   * fallback: if Mantine ever stops injecting it, this height must break
+   * loudly instead of silently collapsing to the unoffset viewport height. */
+  height: calc(100vh - var(--app-shell-header-offset));
+  height: calc(100dvh - var(--app-shell-header-offset));
   padding-top: 8px;
   background: var(--surface-sunken);
   scrollbar-width: thin;
