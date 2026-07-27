@@ -15,11 +15,18 @@ function rateLevel(rate: number | null): "high" | "mid" | "low" | "pending" {
   return "low";
 }
 
+/*
+ * RingProgress 的 color prop 只吃字面字符串，不认 className（见
+ * AdminApiTestCategory.tsx 里对 Mantine 源码的核实）。四档本身仍是穷举的
+ * level 判定，只是把颜色字面量从 hex 换成 token 字符串（task-8-addendum.md
+ * B 节类 2）。pending 复用 .ecm__grad-banner__rate--pending 已经在用的
+ * --mantine-color-dimmed，两处保持同一色相，不再各写一份。
+ */
 function rateColor(level: "high" | "mid" | "low" | "pending"): string {
-  if (level === "high") return "#22c55e";
-  if (level === "mid") return "#f59e0b";
-  if (level === "pending") return "#94a3b8";
-  return "#ef4444";
+  if (level === "high") return "var(--status-success)";
+  if (level === "mid") return "var(--status-warning)";
+  if (level === "pending") return "var(--mantine-color-dimmed)";
+  return "var(--status-danger)";
 }
 
 export function GraduationBanner({ graduationRate, expectedDps, excelRate }: Props) {

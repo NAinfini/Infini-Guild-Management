@@ -1,6 +1,7 @@
 import { Alert, Badge, Group, HoverCard, RingProgress, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
 import { CircleCheckIcon, AlertTriangleIcon, DatabaseIcon, CloudIcon, WifiIcon, ClockIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
+import { latencyBand, type LatencyBand } from "../../../utils/latency-thresholds";
 import "./AdminSystemSection.css";
 
 type StatusData = {
@@ -22,22 +23,31 @@ type ServiceInfo = {
   key: keyof StatusData;
   icon: typeof DatabaseIcon;
   label: string;
-  okColor: string;
-  errorColor: string;
 };
 
 const SERVICES: ServiceInfo[] = [
-  { key: "db", icon: DatabaseIcon, label: "D1", okColor: "#10b981", errorColor: "#ef4444" },
-  { key: "r2", icon: CloudIcon, label: "R2", okColor: "#10b981", errorColor: "#ef4444" },
-  { key: "ws", icon: WifiIcon, label: "WS", okColor: "#10b981", errorColor: "#eab308" },
-  { key: "crons", icon: ClockIcon, label: "Crons", okColor: "#10b981", errorColor: "#ef4444" },
+  { key: "db", icon: DatabaseIcon, label: "D1" },
+  { key: "r2", icon: CloudIcon, label: "R2" },
+  { key: "ws", icon: WifiIcon, label: "WS" },
+  { key: "crons", icon: ClockIcon, label: "Crons" },
 ];
 
-function latencyColor(ms: number): string {
-  if (ms < 200) return "#10b981";
-  if (ms < 400) return "#eab308";
-  return "#ef4444";
+/*
+ * 服务瓦片图标的色调：正常一律是 success；异常按服务区分——WS 走 warning
+ * （与下面 Badge 的 "yellow" 保持同一档，WS 掉线通常是可自愈的重连，不像
+ * D1/R2/Crons 掉线那样严重），其余走 danger。三态穷举，class 承担颜色，
+ * 不再用 style={{ color }} 拼字符串（task-8-addendum.md B 节类 2）。
+ */
+function iconTone(isOk: boolean, key: keyof StatusData): "ok" | "warning" | "danger" {
+  if (isOk) return "ok";
+  return key === "ws" ? "warning" : "danger";
 }
+
+const LATENCY_BAND_COLOR_VAR: Record<LatencyBand, string> = {
+  good: "var(--status-success)",
+  warn: "var(--status-warning)",
+  bad: "var(--status-danger)",
+};
 
 function latencyPercent(ms: number): number {
   return Math.min(100, (ms / 500) * 100);
@@ -76,13 +86,13 @@ export function AdminSystemSection({
       {SERVICES.map((svc) => {
         const isOk = statusData[svc.key] === "ok";
         const Icon = svc.icon;
-        const color = isOk ? svc.okColor : svc.errorColor;
+        const tone = iconTone(isOk, svc.key);
 
         return (
           <HoverCard key={svc.key} width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
             <HoverCard.Target>
               <div data-animate-icon-trigger className={`system-health-tile ${isOk ? "system-health-tile--ok" : "system-health-tile--error"}`}>
-                <div className="system-health-tile__icon" style={{ color }}>
+                <div className={`system-health-tile__icon system-health-tile__icon--${tone}`}>
                   <Icon size={22} />
                 </div>
                 <Text size="xs" fw={700} className="system-health-tile__label">{svc.label}</Text>
@@ -118,7 +128,7 @@ export function AdminSystemSection({
           roundCaps
           sections={[{
             value: statusLatencyMs != null ? latencyPercent(statusLatencyMs) : 0,
-            color: statusLatencyMs != null ? latencyColor(statusLatencyMs) : "gray",
+            color: statusLatencyMs != null ? LATENCY_BAND_COLOR_VAR[latencyBand(statusLatencyMs)] : "gray",
           }]}
           label={
             <Text ta="center" size="11px" fw={700}>

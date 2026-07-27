@@ -17,6 +17,7 @@ import { useAuthStore } from "../../../stores/auth";
 import { useNotificationStore } from "../../../stores/notifications";
 import { userCanViewStatus } from "../../../utils/permissions";
 import { formatDateTime } from "../../../utils/admin";
+import { latencyBand } from "../../../utils/latency-thresholds";
 import { AdminSystemSection } from "./AdminSystemSection";
 import {
   API_TEST_GAP_GET_MS,
@@ -556,11 +557,12 @@ export function AdminStatusTab({
                     {statusHealthLogs.map((row, index) => {
                       const latency = row.latencyMs ?? 0;
                       const barWidth = Math.min(100, (latency / 500) * 100);
-                      // 三段离散状态（好/警/差），不是连续值，按 task-8-brief.md Step 3.4
-                      // 的要求切换预定义类，不拼接颜色字符串。200/400ms 两个阈值仍与
-                      // AdminSystemSection.tsx 重复——那张表的合并是批 C 的范围，这里只搬
-                      // 颜色，不动判断逻辑。
-                      const latencyBand = latency < 200 ? "good" : latency < 400 ? "warn" : "bad";
+                      // 三段离散状态（好/警/差），按 task-8-brief.md Step 3.4 的要求
+                      // 切换预定义类，不拼接颜色字符串。200/400ms 阈值来自
+                      // utils/latency-thresholds.ts——与 AdminSystemSection.tsx 共用
+                      // 同一份定义，不再各自维护一份数值（task-8-addendum.md B 节，
+                      // Task 8 批 C 收敛）。
+                      const band = latencyBand(latency);
                       return (
                         <tr key={`${row.at}-${index}`}>
                           <td className="health-log-time">
@@ -572,8 +574,8 @@ export function AdminStatusTab({
                           <td><span className={`health-log-dot health-log-dot--${row.crons === "ok" ? "ok" : "error"}`} />{row.crons}</td>
                           <td>
                             <span className="health-log-latency">
-                              <span className={`health-log-latency-bar health-log-latency-bar--${latencyBand}`} style={{ width: `${barWidth}%`, minWidth: 4, maxWidth: 40 }} />
-                              <span className={`health-log-latency-value health-log-latency-value--${latencyBand}`}>{row.latencyMs ?? "—"}ms</span>
+                              <span className={`health-log-latency-bar health-log-latency-bar--${band}`} style={{ width: `${barWidth}%`, minWidth: 4, maxWidth: 40 }} />
+                              <span className={`health-log-latency-value health-log-latency-value--${band}`}>{row.latencyMs ?? "—"}ms</span>
                             </span>
                           </td>
                           </tr>

@@ -277,11 +277,16 @@
 .api-cat__progress-fill {
   height: 100%;
   transition: width 400ms cubic-bezier(0.4, 0, 0.2, 1), background 400ms ease;
-  /* --progress-fill-color 来自 AdminApiTestCategory.tsx 的 progressColor()
-     （批 C 归口的类 2 三态阈值函数，本批不改其内部 hex 返回值，只搬运消费端的
-     style={{}}），运行期由该组件无条件内联写入。 */
-  background: var(--progress-fill-color);
 }
+
+/* 三态穷举（pass/fail/pending），来自 AdminApiTestCategory.tsx 的
+   progressState()（task-8-addendum.md B 节类 2，Task 8 批 C 收敛）。
+   RingProgress 的 color prop 另行用字面 var() 字符串消费同一状态，两处共用
+   同一组 token，不再各自维护一份颜色，也不再需要运行期注入的 channel 变量。
+   这三条是本文件里唯一给 .api-cat__progress-fill 设 background 的规则。 */
+.api-cat__progress-fill--pass { background: var(--status-success); }
+.api-cat__progress-fill--fail { background: var(--status-danger); }
+.api-cat__progress-fill--pending { background: var(--accent-fill); }
 
 /* ── Endpoint List (expanded) ── */
 

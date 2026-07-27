@@ -68,6 +68,13 @@
   transform: scale(1.1);
 }
 
+/* 服务图标色调，替代 AdminSystemSection.tsx 里 style={{ color }} 拼字符串
+   （task-8-addendum.md B 节类 2，Task 8 批 C 收敛）。这三条是本文件里唯一
+   给 .system-health-tile__icon 设 color 的规则，无同名/同选择器冲突。 */
+.system-health-tile__icon--ok { color: var(--status-success); }
+.system-health-tile__icon--warning { color: var(--status-warning); }
+.system-health-tile__icon--danger { color: var(--status-danger); }
+
 .system-health-tile__label {
   letter-spacing: 0.03em;
   color: var(--text-primary);

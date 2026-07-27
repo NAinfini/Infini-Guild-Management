@@ -54,11 +54,29 @@ function isOptionalSkip(result: EndpointResult | null): boolean {
   return result?.skipped === true && result.error === null;
 }
 
-function progressColor(allPassed: boolean, hasFail: boolean): string {
-  if (hasFail) return "#ef4444";
-  if (allPassed) return "#10b981";
-  return "#D4A843";
+type ProgressState = "pass" | "fail" | "pending";
+
+function progressState(allPassed: boolean, hasFail: boolean): ProgressState {
+  if (hasFail) return "fail";
+  if (allPassed) return "pass";
+  return "pending";
 }
+
+/*
+ * RingProgress 的 color prop 只吃字面字符串，不认 className——但字面字符串
+ * 不一定要是 hex。Mantine 对无法识别成内置色名的字符串会原样透传（见
+ * node_modules/@mantine/core esm/components/RingProgress/Curve/Curve.mjs:41
+ * 的 `getThemeColor(color, theme)` 和 parse-theme-color.mjs:68-75：
+ * `_color in theme.colors` 为 false 时 `variable` 是 undefined，
+ * `getThemeColor` 直接把原串塞进 `--curve-color`；再由 RingProgress 自带的
+ * CSS `stroke: var(--curve-color, var(--rp-curve-root-color))` 消费），
+ * 所以这里直接写 var() 字符串，三态本身仍然穷举、不是拼接颜色。
+ */
+const PROGRESS_STATE_COLOR_VAR: Record<ProgressState, string> = {
+  fail: "var(--status-danger)",
+  pass: "var(--status-success)",
+  pending: "var(--accent-fill)",
+};
 
 function EndpointRow({
   endpoint,
@@ -141,7 +159,8 @@ export function ApiTestCategory({
         ? "api-cat__status-dot--fail"
         : "api-cat__status-dot--partial";
 
-  const ringColor = progressColor(allPassed, hasFail);
+  const progressStateValue = progressState(allPassed, hasFail);
+  const ringColor = PROGRESS_STATE_COLOR_VAR[progressStateValue];
 
   const shouldAutoOpen = catRunning || (catDone > 0 && catDone < catTotal);
   const isOpen = open || shouldAutoOpen;
@@ -193,8 +212,8 @@ export function ApiTestCategory({
       {catDone > 0 || catRunning ? (
         <div className="api-cat__progress-track">
           <div
-            className="api-cat__progress-fill"
-            style={{ width: `${pct}%`, "--progress-fill-color": ringColor } as React.CSSProperties}
+            className={`api-cat__progress-fill api-cat__progress-fill--${progressStateValue}`}
+            style={{ width: `${pct}%` }}
           />
         </div>
       ) : null}

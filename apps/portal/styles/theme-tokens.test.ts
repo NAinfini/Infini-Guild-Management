@@ -127,11 +127,6 @@ const RUNTIME_INJECTED_VARS: string[] = [
    * 无条件内联写入。Task 8 批 B 在 AuthPages.css 里去掉了这个变量的
    * var() 兜底。 */
   "--bubble-hue",
-  /* --progress-fill-color：AdminApiTestCategory.tsx 的 progressColor()
-   * 返回值（批 C 归口的类 2 三态阈值函数，本批未改），运行期由该组件
-   * 无条件内联写入。Task 8 批 B 在 AdminApiTest.css 里去掉了这个变量的
-   * var() 兜底。 */
-  "--progress-fill-color",
 ];
 /** --mantine-color-* 系列由 Mantine 的 CSS 变量解析器批量写入运行期
  * （@mantine/core 的 MantineCssVariables），逐个列名不现实，按前缀豁免。 */
