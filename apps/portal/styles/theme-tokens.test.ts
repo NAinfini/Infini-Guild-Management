@@ -32,10 +32,11 @@ export const MIGRATED: string[] = [
   /* Task 7 批 A（task-7-addendum.md D 节）。 */
   "apps/portal/components/equipment-calc/EquipmentCalcModal.css",
   "apps/portal/components/feature/admin/AdminApiTest.css",
-  /* Task 7 批 B（task-7-addendum.md D 节）。该批的另两个文件
-   * EventCardsView.css 与 AuditLogViewer.css 尚未迁移，见 progress.md。 */
+  /* Task 7 批 B（task-7-addendum.md D 节）。 */
   "apps/portal/components/shared/tiptap-editor.css",
   "apps/portal/components/feature/events/RecurringTemplateFormModal.css",
+  "apps/portal/components/feature/events/EventCardsView.css",
+  "apps/portal/components/feature/admin/AuditLogViewer.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */
@@ -76,6 +77,11 @@ const RUNTIME_INJECTED_VARS: string[] = [
    * 这个变量的 var() 兜底（rule 1 不允许兜底），暴露出它并不落在
    * --mantine-color- 前缀下，需要单独列出处。 */
   "--mantine-font-family-monospace",
+  /* EventCardAvatarStrip.tsx:71，在 .event-card__avatar-grid 根元素的 style
+   * 上无条件内联写入（avatarSize 用 ?? AVATAR_MAX_SIZE 兜底，不会是
+   * undefined）。Task 7 批 B 在 EventCardsView.css 里去掉了这个变量的 var()
+   * 兜底（rule 1 不允许兜底），暴露出它是运行期注入而非 CSS 定义。 */
+  "--event-card-avatar-size",
 ];
 /** --mantine-color-* 系列由 Mantine 的 CSS 变量解析器批量写入运行期
  * （@mantine/core 的 MantineCssVariables），逐个列名不现实，按前缀豁免。 */
