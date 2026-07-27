@@ -35,10 +35,8 @@
 }
 
 /* 与模式无关的字面黑：原生 <video> 容器的信箱底色，视频播放器背景传统上恒为
- * 黑色（不管站点是浅色还是深色主题），不属于替换表任何一行。写成 rgb()
- * 而不是十六进制，是为了不撞上 rule 2（rule 2 只认字面 #hex，见
- * theme-tokens.test.ts rule 2 上方注释；styles.css 的 mask/glass-highlight
- * 先例同样这样处理）。 */
+ * 黑色（不管站点是浅色还是深色主题）。本字面量已登记在 theme-tokens.test.ts 的
+ * LITERAL_COLOUR_EXEMPTIONS["apps/portal/components/shared/media-gallery.css"]。 */
 .infini-media-gallery-native-video {
   width: 100%;
   height: calc(100% - 72px);

@@ -141,8 +141,8 @@
    * 不需要抬特异性。 */
   background: color-mix(in srgb, var(--mantine-color-dark-7) 4%, var(--mantine-color-body));
   /* 与模式无关的字面黑：文本域内凹阴影的黑色晕影，不对应替换表任何一行
-   * （原写法不经过 var(--color-*) 包裹），也不是本任务机械替换范围内的 hex
-   * （rule 2 的已知盲区，见 theme-tokens.test.ts rule 2 上方注释），维持原样。 */
+   * （原写法不经过 var(--color-*) 包裹）。本字面量已登记在 theme-tokens.test.ts
+   * 的 LITERAL_COLOUR_EXEMPTIONS["apps/portal/components/feature/admin/AdminGameDataSection.css"]。 */
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
 }
 

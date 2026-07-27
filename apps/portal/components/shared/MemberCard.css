@@ -223,7 +223,8 @@
 
 /* Icon sits on top of the arbitrary --role-color fill, so it needs the
    same on-saturated-fill treatment as status badges rather than a bare
-   white literal (rule 2 forbids bare hex here anyway). */
+   white literal (rule 2 forbids bare colour literals here anyway, not just
+   bare hex — see theme-tokens.test.ts rule 2). */
 .member-role-avatar__role-icon {
   color: var(--status-on-fill);
 }

@@ -205,9 +205,9 @@
     /* mode-independent literal: this is a fixed glass top-edge highlight, not a
        themed color — it stays the same sliver of white in both light and dark
        mode, and there is no L2/L3 token for "always-white, never-themed
-       highlight" (precedent: styles.css glass-effect rule). Rule 2 of the
-       theme-tokens guard only matches #hex, so rgb()/rgba() literals like this
-       one don't trip it; see the note next to rule 2 in theme-tokens.test.ts. */
+       highlight" (precedent: styles.css glass-effect rule). This literal is
+       registered in theme-tokens.test.ts's
+       LITERAL_COLOUR_EXEMPTIONS["apps/portal/components/pages/AuthPages.css"]. */
     inset 0 1px 0 rgb(255 255 255 / 0.06);
   position: relative;
 }
@@ -229,8 +229,9 @@
      so "white" here isn't a color choice at all and swapping it for any
      surface/text token would be a no-op at best and misleading at worst. Any
      opaque color works identically; white is just the conventional spelling
-     for "fully opaque" in a mask gradient. See the rule-2 note in
-     theme-tokens.test.ts for why this literal doesn't trip the guard. */
+     for "fully opaque" in a mask gradient. This literal is registered in
+     theme-tokens.test.ts's
+     LITERAL_COLOUR_EXEMPTIONS["apps/portal/components/pages/AuthPages.css"]. */
   -webkit-mask: linear-gradient(rgb(255 255 255) 0 0) content-box, linear-gradient(rgb(255 255 255) 0 0);
   mask: linear-gradient(rgb(255 255 255) 0 0) content-box, linear-gradient(rgb(255 255 255) 0 0);
   -webkit-mask-composite: xor;
