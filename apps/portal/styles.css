@@ -349,8 +349,11 @@ html[data-locale="zh"] {
 
 /* :focus 与 :hover 必须一起给，否则键盘 Tab 到菜单项时落回库的弱底色，
  * 鼠标用户与键盘用户拿到两种提示。Mantine 原规则就是 :where(:hover, :focus)。
- * :is() 取参数里最高的特异性，两个伪类都是 (0,0,1)，整体仍是 (0,2,0)，
- * 不影响下面 --active / --danger:hover 靠源码顺序取胜。 */
+ * 特异性按上面那张表的同一套算法（三元组 a=ID / b=类·属性·伪类 / c=元素·伪元素，
+ * 伪类计 b 位）：:hover 与 :focus 各自都是 (0,1,0)，:is() 取参数里最高的那个
+ * 仍是 (0,1,0)，再加 .infini-menu-item 这个类 → 整体 (0,2,0)，与改成 :is() 之前
+ * 的 .infini-menu-item:hover 完全相同。
+ * 不影响下面 --active / --danger:is(:hover, :focus) 靠源码顺序取胜。 */
 .infini-menu-item:is(:hover, :focus) {
   background: var(--accent-tint);
 }
@@ -364,7 +367,10 @@ html[data-locale="zh"] {
   color: var(--status-danger);
 }
 
-.infini-menu-item--danger:hover {
+/* 与上面 .infini-menu-item 同因：只写 :hover 的话，键盘 Tab 到「删除 / 登出」
+ * 这类危险项拿到的是上面那条的主色 tint，鼠标悬停才是危险色 —— 同一元素两种
+ * 交互给出两种语义。特异性不变，仍是类 1 + 伪类 1 = (0,2,0)。 */
+.infini-menu-item--danger:is(:hover, :focus) {
   background: color-mix(in srgb, var(--status-danger) 12%, var(--surface-overlay));
 }
 
