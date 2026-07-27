@@ -44,11 +44,24 @@
  * 本块只做 var() 转发，不产生任何新数值；旧名从此随 [data-theme] 切换，
  * 等于把 Task 5-7 的收益提前兑现。Task 5-7 把 .css 消费端逐文件改成 L2 token
  * 之后（Task 7 已在批 C 收尾，全部 35 个 CSS 文件归零），本块在 .css 侧已是
- * 死代码；.tsx 内联 style 里那 28 处消费者（曾分布在 12 个文件）已由 Task 8
- * 批 B 全部迁完，实测现在全仓库 0 处引用。**本块此刻在 .css 与 .tsx 两侧都是
- * 死代码，等 Task 9 删除。** 删除前仍应重新 grep 核实一遍，别只信这行注释。
- * 沿革：这里先写过「Task 7 随 .dark 垫片一并删除」（错，Task 7 只清 .dark 垫片
- * 和 .css 消费端），又写过「还有 28 处 .tsx 消费者待迁」（Task 8 批 B 后已过时）。*/
+ * 死代码；.tsx 内联 style 里那 28 处消费者（曾分布在 12 个文件）也已由 Task 8
+ * 批 B 全部迁完。
+ *
+ * **Task 9 注意：本块不是整块死代码，删除要分名字判断。** 实测：
+ *   死（0 消费者，可直接删）：上面 8 条 --color-* 与下面的 --color-accent
+ *   活（仍有消费者，删掉会当场失色）：
+ *     --color-secondary     EquipmentCalcModal.css:401、MyProfilePage.css:47
+ *     --shadow-primary-sm   AppShell.css:88、:357（无兜底）
+ *     --shadow-primary-md   ToolsPage.css:424
+ *   这 5 处必须先迁到 L2 语义色/阴影，才谈得上删本块。
+ * 删除前仍应重新 grep 核实一遍，别只信这行注释。
+ *
+ * 沿革（这行注释错过三次，记下来免得再错第四次）：
+ *   1. 「Task 7 随 .dark 垫片一并删除」—— 错，Task 7 只清 .dark 垫片和 .css 消费端。
+ *   2. 「还有 28 处 .tsx 消费者待迁」—— Task 8 批 B 之后已过时。
+ *   3. 「两侧都是死代码」—— 错得最危险：那次 grep 只查了 12 个转发名里的 6 个，
+ *      漏掉了本块自己的 --color-secondary 与两个 --shadow-primary-*。
+ *      照它执行会删掉 5 个活定义。 */
 :root {
   --color-text: var(--text-primary);
   --color-text-muted: var(--text-muted);
@@ -415,9 +428,26 @@ body::-webkit-scrollbar-thumb:hover {
 /* main.tsx's total-bootstrap-failure fallback (the dynamic import("./bootstrap")
    itself rejected, so ThemeProvider never mounted and never set [data-theme]
    on <html>). semantic.css defines --surface-*/--status-* only under
-   [data-theme="light"/"dark"], so these var()s may not resolve here — that's
-   an accepted, documented degradation (plain default text/background, still
-   legible) rather than a silent bare-hex carve-out in a MIGRATED file. */
+   [data-theme="light"/"dark"], so on THIS path these var()s never resolve —
+   not "may not". Keeping them as var() rather than carving bare hex into a
+   MIGRATED file is still the right call, but the old claim that the result is
+   "still legible" was wrong; see the OPEN DEFECT below for what actually
+   happens. */
+
+/* ── OPEN DEFECT（既存，非本次迁移引入；不属 S1 范围，已另立任务）──
+   这块兜底屏从来没有被任何人看见过，两层原因叠加：
+
+   1. 遮罩永不消失。index.html:22-27 的 #splash 是 position:fixed / inset:0 /
+      z-index:99999 / background:#0A0A0F 的不透明全屏层，**唯一的移除点是
+      bootstrap.tsx:81 的 dismissSplash()** —— 而它就住在加载失败的那个模块里。
+      public/splash.js:63 只暴露 __splashCleanup（取消 rAF 与 resize 监听），
+      不移除元素。main.tsx 的 catch 把内容渲染进 #root，整个被压在遮罩底下。
+   2. 就算掀掉遮罩，配色也不成立。index.html:18 的 html,body 硬编码
+      background:#0A0A0F，而本规则的 background 与 body 的 --surface-sunken
+      同样解不出 → 深底透出；color 同时失效退回默认黑字 → 约 1.05:1。
+
+   修法（两行，属功能修复不属主题收敛）：把 dismissSplash 的移除逻辑提到
+   main.tsx，或在 catch 里直接 document.getElementById("splash")?.remove()。 */
 .main-bootstrap-error {
   min-height: 100vh;
   display: grid;
@@ -430,11 +460,14 @@ body::-webkit-scrollbar-thumb:hover {
 }
 
 /* 正文不能继承容器的危险色。浅色下 --status-danger 压在自身 6% 淡底上实测
-   4.18:1（深色 6.16:1），标题是 24px 粗体、按大字文本 3:1 过线，但这段 16px
-   正文要 4.5:1，不过。改用 --text-primary 后 15.33:1。
-   数字由仓库 theme-tokens.test.ts 同一套 WCAG 算法代入 tokens.css 真实值算出。
-   注意：迁移前这里是 #7f1d1d 压 #fff7f7 的 9.49:1，所以这是一次真回归，不是
-   本来就临界。变量解不出来时两者一同退化为默认黑字，与上方注释的降级路径一致。 */
+   4.18:1（深色 6.15:1），标题是 24px 粗体、按大字文本 3:1 过线，但这段 16px
+   正文要 4.5:1，不过。改用 --text-primary 后 15.32:1。
+   四个数字由仓库 theme-tokens.test.ts 同一套 WCAG 算法、色值取自 tokens.css，
+   color-mix 按逐通道线性插值后四舍五入到整数通道再算。
+   迁移前这里是 #7f1d1d 压 #fff7f7 的 9.49:1，所以这是一次真回归，不是本来就临界。
+
+   ⚠️ 但这块 UI 在它自己的触发场景下**根本看不见**，见下方 OPEN DEFECT。
+   本规则修的是「万一它能显示出来」时的可读性，不是一个能观察到的现象。 */
 .main-bootstrap-error p {
   color: var(--text-primary);
 }
