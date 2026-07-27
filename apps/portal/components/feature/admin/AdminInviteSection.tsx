@@ -175,10 +175,10 @@ export function AdminInviteSection({
           );
           if (fullyUsed) return (
             <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-              <HoverCard.Target><Badge data-animate-icon-trigger color="portal-copper" variant="light">{t("invite.status.fullyUsed")}</Badge></HoverCard.Target>
+              <HoverCard.Target><Badge data-animate-icon-trigger color="orange" variant="light">{t("invite.status.fullyUsed")}</Badge></HoverCard.Target>
               <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                 <Group gap={10} wrap="nowrap" align="flex-start">
-                  <ThemeIcon variant="light" color="portal-copper" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <ThemeIcon variant="light" color="orange" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                     <CircleXIcon size={16} />
                   </ThemeIcon>
                   <div style={{ minWidth: 0 }}>
@@ -191,10 +191,10 @@ export function AdminInviteSection({
           );
           if (expired) return (
             <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-              <HoverCard.Target><Badge data-animate-icon-trigger color="portal-copper" variant="light">{t("invite.status.expired")}</Badge></HoverCard.Target>
+              <HoverCard.Target><Badge data-animate-icon-trigger color="orange" variant="light">{t("invite.status.expired")}</Badge></HoverCard.Target>
               <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                 <Group gap={10} wrap="nowrap" align="flex-start">
-                  <ThemeIcon variant="light" color="portal-copper" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <ThemeIcon variant="light" color="orange" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                     <InfoCircleIcon size={16} />
                   </ThemeIcon>
                   <div style={{ minWidth: 0 }}>
@@ -296,7 +296,7 @@ export function AdminInviteSection({
               {inviteStatsLoading ? <Loader size="xs" /> : null}
               {inviteStats ? (
                 <Group wrap="wrap" gap={6}>
-                  <Badge color="portal-bronze" variant="light">
+                  <Badge color="gray" variant="light">
                     {t("invite.stats.total")}: {inviteStats.total}
                   </Badge>
                   <Badge color="green" variant="light">
@@ -305,7 +305,7 @@ export function AdminInviteSection({
                   <Badge color="red" variant="light">
                     {t("invite.stats.revoked")}: {inviteStats.revoked}
                   </Badge>
-                  <Badge color="portal-copper" variant="light">
+                  <Badge color="orange" variant="light">
                     {t("invite.stats.expired")}: {inviteStats.expired}
                   </Badge>
                 </Group>
@@ -330,7 +330,7 @@ export function AdminInviteSection({
 
       {/* Table */}
       {inviteLinksLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {inviteLinksError ? <Alert color="portal-copper" title={loadErrorMessage} /> : null}
+      {inviteLinksError ? <Alert color="red" title={loadErrorMessage} /> : null}
       {!inviteLinksLoading && !inviteLinksError ? (
         <PortalCard interactive={false}>
           <div style={{ padding: "1.2rem", overflowX: "auto" }}>

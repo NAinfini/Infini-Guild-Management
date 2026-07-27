@@ -372,7 +372,7 @@ export function AuditLogViewer({
         </Stack>
       ) : null}
 
-      {auditError ? <Alert color="portal-copper" title={loadErrorMessage} /> : null}
+      {auditError ? <Alert color="red" title={loadErrorMessage} /> : null}
 
       {!auditLoading && !auditError ? (
         <>

@@ -385,7 +385,7 @@ export function AdminUsersSection({
   return (
     <Stack gap={12}>
       {usersLoading ? <Stack gap={8}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {usersError ? <Alert color="portal-copper" title={loadErrorMessage} /> : null}
+      {usersError ? <Alert color="red" title={loadErrorMessage} /> : null}
       {!usersLoading && !usersError ? (
         <>
           {isAdmin ? (
@@ -405,7 +405,7 @@ export function AdminUsersSection({
                 {t("member.selected", { count: selectedUserIds.length })} / {batchSelectionLimit}
               </Text>
               {isBatchPending || batchProgress > 0 ? (
-                <Progress value={batchProgress} animated={isBatchPending} color={isBatchPending ? "portal-gold" : "green"} style={{ width: "100%" }} />
+                <Progress value={batchProgress} animated={isBatchPending} color={isBatchPending ? "blue" : "green"} style={{ width: "100%" }} />
               ) : null}
             </Group>
           ) : null}

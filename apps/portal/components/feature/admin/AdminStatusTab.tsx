@@ -488,7 +488,7 @@ export function AdminStatusTab({
   if (!isAdmin) {
     return (
       <Stack gap={12}>
-        <Alert color="portal-copper" title={t("adminOnly")} />
+        <Alert color="red" title={t("adminOnly")} />
       </Stack>
     );
   }

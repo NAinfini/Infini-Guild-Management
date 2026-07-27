@@ -143,21 +143,21 @@ type PermMeta = { icon: ReactNode; color: string; danger?: boolean };
 const PERM_ICON_SIZE = 16;
 
 const PERM_META: Record<string, PermMeta> = {
-  "admin.users.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "portal-bronze" },
+  "admin.users.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.users.edit":      { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
   "admin.users.role":      { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "violet" },
   "admin.users.activate":  { icon: <UserCheckIcon size={PERM_ICON_SIZE} />,          color: "orange" },
   "admin.users.delete":    { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
   "admin.users.password":  { icon: <LockIcon size={PERM_ICON_SIZE} />,               color: "orange", danger: true },
-  "admin.invite.view":     { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "portal-bronze" },
+  "admin.invite.view":     { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.invite.manage":   { icon: <PlusIcon size={PERM_ICON_SIZE} />,               color: "teal" },
-  "admin.audit.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "portal-bronze" },
+  "admin.audit.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.audit.export":    { icon: <ArchiveIcon size={PERM_ICON_SIZE} />,            color: "grape" },
-  "admin.status.view":     { icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "portal-bronze" },
-  "admin.roles.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "portal-bronze" },
+  "admin.status.view":     { icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "gray" },
+  "admin.roles.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.roles.manage":    { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "red", danger: true },
   "admin.siteConfig.manage": { icon: <SettingsIcon size={PERM_ICON_SIZE} />,         color: "teal" },
-  "admin.analytics.view":  { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "portal-bronze" },
+  "admin.analytics.view":  { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.analytics.manage":{ icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "teal" },
   "guildwar.teams.edit":   { icon: <SwordsIcon size={PERM_ICON_SIZE} />,             color: "orange" },
   "guildwar.history.edit": { icon: <SwordsIcon size={PERM_ICON_SIZE} />,             color: "orange" },
@@ -278,7 +278,7 @@ export function AdminRolesSection({
   if (!isAdmin) {
     return (
       <Stack gap={12}>
-        <Alert color="portal-copper" title={t("adminOnly")} />
+        <Alert color="red" title={t("adminOnly")} />
       </Stack>
     );
   }
@@ -358,7 +358,7 @@ export function AdminRolesSection({
   return (
     <Stack gap={12}>
       {rolesLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {rolesError ? <Alert color="portal-copper" title={loadErrorMessage} /> : null}
+      {rolesError ? <Alert color="red" title={loadErrorMessage} /> : null}
 
       {!rolesLoading && !rolesError ? (
         <div className="admin-roles-layout">
@@ -370,7 +370,7 @@ export function AdminRolesSection({
                 <ActionIcon
                   size="sm"
                   variant="filled"
-                  color="portal-gold"
+                  color="portal-accent"
                   onClick={() => { void handleCreateRole(); }}
                   loading={createRolePending}
                   aria-label={t("roles.create")}
@@ -406,10 +406,10 @@ export function AdminRolesSection({
                         </Group>
                         <Group gap={4} wrap="nowrap">
                           {dirty ? (
-                            <Badge size="xs" variant="light" color="portal-copper">*</Badge>
+                            <Badge size="xs" variant="light" color="orange">*</Badge>
                           ) : null}
                           {role.is_builtin ? (
-                            <Badge size="xs" variant="light" color="portal-bronze">{t("roles.builtin")}</Badge>
+                            <Badge size="xs" variant="light" color="gray">{t("roles.builtin")}</Badge>
                           ) : (
                             <ActionIcon
                               size="xs"
@@ -492,7 +492,7 @@ export function AdminRolesSection({
                         </ActionIcon>
                       ) : null}
                       <ActionIcon
-                        color="portal-gold"
+                        color="portal-accent"
                         variant="filled"
                         size="lg"
                         onClick={() => {

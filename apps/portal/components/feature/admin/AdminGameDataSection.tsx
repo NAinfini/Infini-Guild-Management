@@ -298,7 +298,7 @@ export function AdminGameDataSection() {
               {t("gameData.lineCount", { count: jsonEditorValue.split("\n").length })}
             </Text>
           </span>
-          <Badge variant="light" color={jsonEditorDirty ? "portal-copper" : "gray"}>
+          <Badge variant="light" color={jsonEditorDirty ? "orange" : "gray"}>
             {jsonEditorDirty ? t("gameData.unsaved") : t("gameData.synced")}
           </Badge>
           <span className={`admin-game-data__collapse-icon ${jsonEditorOpen ? "admin-game-data__collapse-icon--open" : ""}`}>
