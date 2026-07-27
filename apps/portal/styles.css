@@ -697,6 +697,17 @@ body::-webkit-scrollbar-thumb:hover {
  * 且注入在本文件之后，打平会赢，所以这里保持原先的 (0,3,0)，只是把第三个部件
  * 从旧的 :not() 换成属性自我重复 —— 形状与原来一致，一眼能看出是同一处覆盖。 */
 :root[data-theme="light"][data-theme="light"] {
+  /* portal-accent 是 primaryColor，仓库里约 100 处 variant="light" 默认吃它，
+   * 却是这份覆盖里唯一漏掉的色阶 —— Task 2 把三条金/铜/古铜色阶换成它时只改了
+   * 库色阶那 13 行。Mantine 浅色下两档都取色阶第 6 格（= --accent-600）：
+   *   -light-color  淡色填充上的文字 → 三个主色 × 三层表面共 9 种组合 3.04~4.03，全不过
+   *   -text         subtle / transparent / <Text c> 的文字 → 3.38~4.57，仅 1 种勉强过
+   * 换成 --accent-text（浅色模式 = 700 档）后分别是 4.81~6.11 与 5.35~6.93，全过。
+   * 深色模式不在本块内，Mantine 那边取的是第 3 / 第 4 格，7.65 以上，不需要覆盖。
+   * 守卫见 theme-tokens.test.ts 的「Mantine light variant 的文字色」一组。 */
+  --mantine-color-portal-accent-light-color: var(--accent-text);
+  --mantine-color-portal-accent-text: var(--accent-text);
+
   --mantine-color-gray-light-color: var(--mantine-color-gray-7);
   --mantine-color-red-light-color: var(--palette-mantine-red-text);
   --mantine-color-pink-light-color: var(--mantine-color-pink-8);
@@ -777,14 +788,19 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 
 /* ── Glass surface (see components/effects/GlassEffect.tsx) ──
  *
- * 三个可调参数原先写成 var() 的第二参数当默认值。兜底值一律禁止，改为在本规则里
- * 显式声明默认值 —— GlassEffect 只在传了 prop 时才写同名内联变量，内联声明压过
- * 类规则，覆盖行为与原来的兜底完全一致。 */
-.glass-effect {
+ * 三个可调参数原先写成 var() 的第二参数当默认值。兜底值一律禁止，改为显式声明，
+ * 但**必须包在 :where() 里**：兜底机制是无条件让位于任何真实声明的，而一条普通的
+ * .glass-effect 规则只有 (0,1,0) —— 消费方 AuthPages.css 的 .login-page__card
+ * 同样是 (0,1,0)，两者打平就只能靠 chunk 注入顺序决胜，那不是「默认值」而是赌博。
+ * :where() 把特异性归 0，任何消费方的类覆盖都自然赢，语义才真正等同于原来的兜底。
+ * 元素内联变量（GlassEffect 传 prop 时写的那种）本来就压过一切，不受影响。 */
+:where(.glass-effect) {
   --glass-blur: 12px;
   --glass-opacity: 10%;
   --glass-border-opacity: 20%;
+}
 
+.glass-effect {
   backdrop-filter: blur(var(--glass-blur)) saturate(150%);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
   background: color-mix(in srgb, var(--surface-base) var(--glass-opacity), transparent);
@@ -921,6 +937,9 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     animation: none;
   }
   .status-dot--online {
+    animation: none;
+  }
+  .star-border__track::before {
     animation: none;
   }
   .mantine-Tooltip-tooltip,

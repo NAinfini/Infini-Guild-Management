@@ -18,6 +18,11 @@ export const MIGRATED: string[] = [
 
 /** 唯一允许出现 hex 的文件。 */
 const PALETTE_FILE = "apps/portal/styles/tokens.css";
+/** L2 语义层：所有 --accent-* / --text-* 的分模式、分主色定义处。 */
+const SEMANTIC_FILE = "apps/portal/styles/semantic.css";
+/** 入口文件，也是 Tailwind / Mantine 两处桥接块的所在。 */
+const ENTRY_FILE = "apps/portal/styles.css";
+const THEME_PROVIDER_FILE = "apps/portal/providers/ThemeProvider.tsx";
 
 export function listCssFiles(root: string): string[] {
   const out: string[] = [];
@@ -140,16 +145,18 @@ function token(map: Record<string, string>, name: string): string {
 const AA_TEXT = 4.5;
 const ACCENTS = ["teal", "indigo", "violet"] as const;
 
+/* 浅色模式三个表面 --surface-sunken / --surface-base / --surface-raised
+ * 全部覆盖：sunken = neutral-50（三者中最暗）是最不利的文字底，
+ * base = neutral-25、raised = neutral-0 依次更亮、更宽松。
+ * 深色模式最不利 = 最亮的表面 --surface-raised。
+ * 在模块作用域，因为下面的 Mantine 桥接那组断言用的是同一批表面 —— 抄第二份
+ * 就会出现「改了一处、另一处还在测旧表面」。 */
+const LIGHT_GROUND = "--palette-neutral-25";
+const SUNKEN_GROUND = "--palette-neutral-50";
+const DARK_GROUND = "--palette-neutral-850";
+
 describe("accent contrast across all 6 theme × accent combinations", () => {
   const p = palette();
-
-  /* 浅色模式三个表面 --surface-sunken / --surface-base / --surface-raised
-   * 全部覆盖：sunken = neutral-50（三者中最暗）是最不利的文字底，
-   * base = neutral-25、raised = neutral-0 依次更亮、更宽松。
-   * 深色模式最不利 = 最亮的表面 --surface-raised。 */
-  const LIGHT_GROUND = "--palette-neutral-25";
-  const SUNKEN_GROUND = "--palette-neutral-50";
-  const DARK_GROUND = "--palette-neutral-850";
 
   for (const accent of ACCENTS) {
     it(`${accent}: light-mode accent text clears AA on paper`, () => {
@@ -204,6 +211,127 @@ describe("accent contrast across all 6 theme × accent combinations", () => {
   });
 });
 
+/* ── Mantine light variant 的文字对比度（Task 4 修复轮次 1） ─────────── */
+
+/**
+ * Task 2 把三条金/铜/古铜色阶换成唯一一条 portal-accent 时，styles.css 里那份
+ * Mantine 文字档覆盖只跟着改了 13 个库色阶，漏了 portal-accent 自己 —— 而它是
+ * primaryColor，仓库里约 100 处 variant="light" 默认吃的就是它。缺口静默存在了
+ * 两个任务，正说明它需要自动化盯防，故补这组断言。
+ *
+ * 被测值全部从「真正生效的那条声明」解出来，不在测试里抄 token 名或 hex ——
+ * 理由同上面 palette() 的注释：抄一份就等于又造了一个真相来源。
+ */
+
+/**
+ * Mantine 浅色模式的 primaryShade。light variant 的填充与文字都取这一档：
+ * @mantine/core 的 get-css-color-variables.mjs 里
+ *   --mantine-color-X-light:       alpha(colors[X][primaryShade], 0.1)
+ *   --mantine-color-X-light-color: var(--mantine-color-X-{primaryShade})
+ *   --mantine-color-X-text:        var(--mantine-color-X-filled) → 同一档
+ */
+const MANTINE_LIGHT_PRIMARY_SHADE = 6;
+/** 同上，light variant 填充的不透明度。 */
+const MANTINE_LIGHT_FILL_ALPHA = 0.1;
+
+/** 在选择器含 needle 的块里找 `property: var(--x)` 的目标，找不到返回 undefined。 */
+function scopedForward(source: string, needle: string, property: string): string | undefined {
+  for (const [, selector, body] of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!selector?.includes(needle)) continue;
+    const hit = body?.match(new RegExp(`${property}:\\s*var\\((--[a-z0-9-]+)\\)`));
+    if (hit?.[1]) return hit[1];
+  }
+  return undefined;
+}
+
+/** 整个文件里找 `property: var(--x)` 的目标。桥接块里每个名字只出现一次。 */
+function forwardTarget(source: string, property: string, where: string): string {
+  const hit = source.match(new RegExp(`${property}:\\s*var\\((--[a-z0-9-]+)\\)`));
+  if (!hit?.[1]) {
+    throw new Error(`${where}: 找不到 ${property} 的 var() 转发目标 —— 这条桥接缺失，或者没走 var() 转发。`);
+  }
+  return hit[1];
+}
+
+/** 把一个语义名一路解析到 L1 色板名：先查浅色模式块，再查该主色块。 */
+function resolveToPalette(semantic: string, accent: string, start: string): string {
+  let name = start;
+  for (let hop = 0; hop < 4; hop += 1) {
+    if (name.startsWith("--palette-")) return name;
+    const next = scopedForward(semantic, '[data-theme="light"]', name)
+      ?? scopedForward(semantic, `[data-accent="${accent}"]`, name)
+      /* 与模式无关的 accent 派生（--accent-fill 等）住在 semantic.css 的 :root 里。 */
+      ?? scopedForward(semantic, ":root", name);
+    if (next === undefined) throw new Error(`${SEMANTIC_FILE}: ${name} 在主色 ${accent} 下解不到 L1 色板。`);
+    name = next;
+  }
+  throw new Error(`${SEMANTIC_FILE}: ${start} 的转发链超过 4 跳，疑似成环。`);
+}
+
+/** ThemeProvider 里 portal-accent 色阶的第 index 档。不在测试里抄一份，有人重排要跟着变。 */
+function accentRampStep(index: number): string {
+  const source = readFileSync(resolve(repoRoot, THEME_PROVIDER_FILE), "utf8");
+  const marker = '"portal-accent": [';
+  const open = source.indexOf(marker);
+  if (open === -1) throw new Error(`${THEME_PROVIDER_FILE}: 找不到 portal-accent 色阶 —— 被改名或挪走了，请同步改这个测试。`);
+  const steps = [...source.slice(open + marker.length, source.indexOf("]", open)).matchAll(/var\((--accent-[a-z0-9-]+)\)/g)]
+    .map((match) => match[1]!);
+  if (steps.length !== 10) throw new Error(`${THEME_PROVIDER_FILE}: Mantine 色阶必须正好 10 档，实际 ${steps.length} 档。`);
+  const step = steps[index];
+  if (step === undefined) throw new Error(`${THEME_PROVIDER_FILE}: portal-accent 取不到第 ${index} 档。`);
+  return step;
+}
+
+/** 把 fg 以 ratio 的不透明度压在 bg 上，得到实际渲染出来的底色。 */
+function over(fg: string, bg: string, ratio: number): string {
+  const a = fg.replace("#", "");
+  const b = bg.replace("#", "");
+  let out = "#";
+  for (let i = 0; i < 6; i += 2) {
+    const blended = Number.parseInt(a.slice(i, i + 2), 16) * ratio + Number.parseInt(b.slice(i, i + 2), 16) * (1 - ratio);
+    out += Math.round(blended).toString(16).padStart(2, "0");
+  }
+  return out;
+}
+
+describe("Mantine light variant 的文字色在浅色模式下过 AA", () => {
+  const p = palette();
+  const entry = readFileSync(resolve(repoRoot, ENTRY_FILE), "utf8");
+  const semantic = readFileSync(resolve(repoRoot, SEMANTIC_FILE), "utf8");
+
+  /* 浅色三层表面全覆盖，sunken 最暗、是最不利的底。 */
+  const LIGHT_SURFACES = ["--palette-neutral-0", LIGHT_GROUND, SUNKEN_GROUND];
+
+  for (const accent of ACCENTS) {
+    it(`${accent}: light variant 的文字在三种浅色表面的淡色填充上都过 AA`, () => {
+      const text = token(p, resolveToPalette(semantic, accent, forwardTarget(entry, "--mantine-color-portal-accent-light-color", ENTRY_FILE)));
+      const fill = token(p, resolveToPalette(semantic, accent, accentRampStep(MANTINE_LIGHT_PRIMARY_SHADE)));
+      const failures = LIGHT_SURFACES
+        .map((surface) => ({ surface, ratio: contrastRatio(text, over(fill, token(p, surface), MANTINE_LIGHT_FILL_ALPHA)) }))
+        .filter(({ ratio }) => ratio < AA_TEXT)
+        .map(({ surface, ratio }) => `${surface}: ${ratio.toFixed(2)}`);
+      expect(
+        failures,
+        `--mantine-color-portal-accent-light-color 指向的档位在这些表面上不过 ${AA_TEXT}:1：\n${failures.join("\n")}`,
+      ).toEqual([]);
+    });
+
+    it(`${accent}: subtle / transparent 与 <Text c> 的文字在三种浅色表面上都过 AA`, () => {
+      /* --mantine-color-X-text 是 variant="subtle" / "transparent" 与 <Text c="…">
+       * 取的那一档，直接画在表面上、没有淡色填充垫底。 */
+      const text = token(p, resolveToPalette(semantic, accent, forwardTarget(entry, "--mantine-color-portal-accent-text", ENTRY_FILE)));
+      const failures = LIGHT_SURFACES
+        .map((surface) => ({ surface, ratio: contrastRatio(text, token(p, surface)) }))
+        .filter(({ ratio }) => ratio < AA_TEXT)
+        .map(({ surface, ratio }) => `${surface}: ${ratio.toFixed(2)}`);
+      expect(
+        failures,
+        `--mantine-color-portal-accent-text 指向的档位在这些表面上不过 ${AA_TEXT}:1：\n${failures.join("\n")}`,
+      ).toEqual([]);
+    });
+  }
+});
+
 /* ── 菜单单一真相的护栏（Task 3） ────────────────────────── */
 
 /**
@@ -213,9 +341,6 @@ describe("accent contrast across all 6 theme × accent combinations", () => {
  *
  * 剩下这一条管的是 .tsx，MIGRATED 的四条 CSS 规则一条都覆盖不到，必须留着。
  */
-const MENU_BLOCK_FILE = "apps/portal/styles.css";
-const THEME_PROVIDER_FILE = "apps/portal/providers/ThemeProvider.tsx";
-
 /** 取 `Menu.extend(` 之后到括号配平为止的那段源码。 */
 function menuExtendArgument(source: string): string {
   const marker = "Menu.extend(";
@@ -242,7 +367,7 @@ describe("menu single source of truth (Task 3)", () => {
     expect(
       hasStyles,
       `${THEME_PROVIDER_FILE} 的 Menu.extend 里出现了 styles —— Mantine 的 styles prop 生成内联样式，` +
-        `会无条件压过 ${MENU_BLOCK_FILE} 的菜单区块。菜单外观请写在那个区块里。实际内容：\n${argument}`,
+        `会无条件压过 ${ENTRY_FILE} 的菜单区块。菜单外观请写在那个区块里。实际内容：\n${argument}`,
     ).toBe(false);
   });
 });
