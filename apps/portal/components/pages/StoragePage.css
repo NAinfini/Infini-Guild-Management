@@ -1,15 +1,15 @@
 .storage-page,
 .storage-modal-content {
-  --storage-border: color-mix(in srgb, var(--color-border, #e2ddd6) 80%, transparent);
-  --storage-border-strong: color-mix(in srgb, var(--color-primary, #d4a843) 36%, var(--storage-border));
-  --storage-surface: color-mix(in srgb, var(--color-surface, #ffffff) 97%, transparent);
-  --storage-surface-raised: var(--color-surface, #ffffff);
-  --storage-surface-strong: color-mix(in srgb, var(--color-surface-elevated, #ffffff) 96%, var(--color-primary, #d4a843) 4%);
-  --storage-muted: color-mix(in srgb, var(--color-surface, #ffffff) 94%, var(--color-text, #1a1815) 6%);
-  --storage-muted-strong: color-mix(in srgb, var(--color-surface, #ffffff) 88%, var(--color-text, #1a1815) 8%);
-  --storage-ink-muted: color-mix(in srgb, var(--color-text, #1a1815) 68%, transparent);
-  --storage-radius: var(--radius-md, 12px);
-  --storage-radius-sm: var(--radius-sm, 8px);
+  --storage-border: color-mix(in srgb, var(--border-subtle) 80%, transparent);
+  --storage-border-strong: color-mix(in srgb, var(--accent-fill) 36%, var(--storage-border));
+  --storage-surface: color-mix(in srgb, var(--surface-base) 97%, transparent);
+  --storage-surface-raised: var(--surface-base);
+  --storage-surface-strong: color-mix(in srgb, var(--surface-raised) 96%, var(--accent-fill) 4%);
+  --storage-muted: color-mix(in srgb, var(--surface-base) 94%, var(--text-primary) 6%);
+  --storage-muted-strong: color-mix(in srgb, var(--surface-base) 88%, var(--text-primary) 8%);
+  --storage-ink-muted: color-mix(in srgb, var(--text-primary) 68%, transparent);
+  --storage-radius: var(--radius-md);
+  --storage-radius-sm: var(--radius-sm);
 }
 
 .storage-page {
@@ -34,7 +34,7 @@
 .storage-page .mantine-NumberInput-input:focus,
 .storage-page .mantine-Textarea-input:focus {
   border-color: var(--storage-border-strong);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #d4a843) 14%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-fill) 14%, transparent);
 }
 
 .storage-toolbar-section,
@@ -68,7 +68,7 @@
   padding: 0 18px;
   border: 0;
   border-radius: 999px;
-  color: var(--color-text-muted, #6b665e);
+  color: var(--text-muted);
   font-size: var(--text-body);
   font-weight: var(--fw-medium);
   transition:
@@ -83,19 +83,22 @@
 }
 
 .storage-tabs__list .mantine-Tabs-tab:hover {
-  background: color-mix(in srgb, var(--color-text, #1a1815) 5%, transparent);
-  color: var(--color-text, #1a1815);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  color: var(--text-primary);
 }
 
 /* Matches the neutral active-tab language in styles.css. */
 .storage-tabs__list .mantine-Tabs-tab[data-active] {
-  background: var(--color-surface-elevated, #ffffff);
+  background: var(--surface-raised);
   box-shadow: 0 0 0 1px var(--border-subtle);
-  color: var(--color-text, #1a1815);
+  color: var(--text-primary);
 }
 
-.dark .storage-tabs__list .mantine-Tabs-tab[data-active] {
-  background: color-mix(in srgb, var(--color-text, #f0ede8) 10%, transparent);
+/* Real dark-mode variant, not a pure recolor: the light rule's box-shadow ring
+   is dropped here rather than left to inherit, so the selector stays instead
+   of folding into the base rule (task-6 addendum E). */
+[data-theme="dark"] .storage-tabs__list .mantine-Tabs-tab[data-active] {
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
   box-shadow: none;
 }
 
@@ -115,7 +118,7 @@
   border: 1px solid var(--storage-border);
   border-radius: var(--storage-radius);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--storage-surface-raised) 98%, var(--color-primary, #d4a843) 2%), var(--storage-surface));
+    linear-gradient(180deg, color-mix(in srgb, var(--storage-surface-raised) 98%, var(--accent-fill) 2%), var(--storage-surface));
   box-shadow: var(--shadow-sm);
 }
 
@@ -261,12 +264,12 @@
 }
 
 .storage-item-card__preview:focus-visible {
-  outline: 2px solid var(--color-primary, #d4a843);
+  outline: 2px solid var(--accent-fill);
   outline-offset: 3px;
-  border-color: color-mix(in srgb, var(--color-primary, #d4a843) 55%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 55%, transparent);
   box-shadow:
-    0 0 0 4px color-mix(in srgb, var(--color-primary, #d4a843) 16%, transparent),
-    0 0 18px color-mix(in srgb, var(--color-primary, #d4a843) 12%, transparent);
+    0 0 0 4px color-mix(in srgb, var(--accent-fill) 16%, transparent),
+    0 0 18px color-mix(in srgb, var(--accent-fill) 12%, transparent);
 }
 
 .storage-item-card__image,
@@ -347,7 +350,7 @@
   padding: 5px 9px;
   border: 1px solid var(--storage-border);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
   color: var(--storage-ink-muted);
   font-size: 0.8rem;
   font-weight: 900;
@@ -408,12 +411,12 @@
 .storage-modal-content {
   max-height: calc(100dvh - 32px);
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--color-primary, #d4a843) 18%, var(--storage-border));
-  border-radius: var(--radius-lg, 16px);
+  border: 1px solid color-mix(in srgb, var(--accent-fill) 18%, var(--storage-border));
+  border-radius: var(--radius-lg);
   background: var(--storage-surface-raised);
   box-shadow:
     var(--shadow-lg),
-    0 18px 60px color-mix(in srgb, var(--color-primary, #d4a843) 8%, transparent);
+    0 18px 60px color-mix(in srgb, var(--accent-fill) 8%, transparent);
 }
 
 .storage-modal-header {
@@ -421,7 +424,7 @@
   padding: 14px 18px;
   border-bottom: 1px solid var(--storage-border);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--storage-muted) 82%, var(--color-primary, #d4a843) 4%), var(--storage-surface));
+    linear-gradient(180deg, color-mix(in srgb, var(--storage-muted) 82%, var(--accent-fill) 4%), var(--storage-surface));
 }
 
 .storage-modal-header .mantine-Modal-title {
@@ -432,7 +435,7 @@
   max-height: calc(100dvh - 96px);
   overflow: auto;
   padding: 16px;
-  background: color-mix(in srgb, var(--storage-surface-raised) 94%, var(--color-text, #1a1815) 2%);
+  background: color-mix(in srgb, var(--storage-surface-raised) 94%, var(--text-primary) 2%);
 }
 
 .storage-modal-panel,
@@ -477,7 +480,7 @@
   width: 100%;
   max-height: min(34vh, 280px);
   border-radius: var(--storage-radius-sm);
-  background: var(--color-surface, #ffffff);
+  background: var(--surface-base);
 }
 
 .storage-detail-media__empty {
@@ -489,8 +492,8 @@
       135deg,
       transparent,
       transparent 10px,
-      color-mix(in srgb, var(--color-text, #1a1815) 4%, transparent) 10px,
-      color-mix(in srgb, var(--color-text, #1a1815) 4%, transparent) 11px
+      color-mix(in srgb, var(--text-primary) 4%, transparent) 10px,
+      color-mix(in srgb, var(--text-primary) 4%, transparent) 11px
     ),
     var(--storage-surface);
 }
@@ -549,7 +552,7 @@
 }
 
 .storage-ledger-row--adjust .storage-ledger-row__delta {
-  color: var(--color-primary, #d4a843);
+  color: var(--accent-text);
 }
 
 .storage-management-modal,
@@ -605,8 +608,8 @@
 
 .storage-management-modal__tree-row--active {
   border-color: var(--storage-border-strong);
-  background: color-mix(in srgb, var(--color-primary, #d4a843) 10%, var(--color-surface, #ffffff));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, #d4a843) 12%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 10%, var(--surface-base));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-fill) 12%, transparent);
 }
 
 .storage-management-modal__tree-node {
@@ -621,7 +624,7 @@
 }
 
 .storage-management-modal__tree-node:focus-visible {
-  outline: 2px solid var(--color-primary, #d4a843);
+  outline: 2px solid var(--accent-fill);
   outline-offset: -2px;
 }
 
@@ -757,7 +760,7 @@
 .storage-item-editor__dropzone:hover,
 .storage-item-editor__dropzone:focus-within {
   border-color: var(--storage-border-strong);
-  background: color-mix(in srgb, var(--storage-muted) 86%, var(--color-primary, #d4a843) 5%);
+  background: color-mix(in srgb, var(--storage-muted) 86%, var(--accent-fill) 5%);
 }
 
 .storage-item-editor__media-header {
@@ -792,8 +795,8 @@
       135deg,
       transparent,
       transparent 10px,
-      color-mix(in srgb, var(--color-text, #1a1815) 4%, transparent) 10px,
-      color-mix(in srgb, var(--color-text, #1a1815) 4%, transparent) 11px
+      color-mix(in srgb, var(--text-primary) 4%, transparent) 10px,
+      color-mix(in srgb, var(--text-primary) 4%, transparent) 11px
     ),
     var(--storage-surface);
 }
@@ -887,8 +890,8 @@
 .storage-transaction-modal__summary--adjust {
   gap: 10px;
   padding: 12px;
-  border-color: color-mix(in srgb, var(--color-primary, #d4a843) 28%, var(--storage-border));
-  background: color-mix(in srgb, var(--color-primary, #d4a843) 5%, var(--storage-surface-raised));
+  border-color: color-mix(in srgb, var(--accent-fill) 28%, var(--storage-border));
+  background: color-mix(in srgb, var(--accent-fill) 5%, var(--storage-surface-raised));
 }
 
 .storage-transaction-modal__summary--adjust .storage-transaction-flow {
@@ -902,7 +905,7 @@
 .storage-transaction-modal__summary--adjust .storage-transaction-flow__arrow {
   width: 30px;
   height: 30px;
-  color: var(--color-primary, #d4a843);
+  color: var(--accent-text);
 }
 
 .storage-transaction-modal__item-line {
@@ -1004,7 +1007,7 @@
   padding: 10px 11px;
   border: 1px solid var(--storage-border-strong);
   border-radius: var(--storage-radius);
-  background: color-mix(in srgb, var(--storage-muted) 82%, var(--color-primary, #d4a843) 4%);
+  background: color-mix(in srgb, var(--storage-muted) 82%, var(--accent-fill) 4%);
   color: var(--storage-ink-muted);
   font-weight: 700;
 }
