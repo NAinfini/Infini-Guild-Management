@@ -29,6 +29,9 @@ export const MIGRATED: string[] = [
   "apps/portal/components/pages/RosterPage.css",
   "apps/portal/components/pages/SettingsPage.css",
   "apps/portal/components/pages/WikiPage.css",
+  /* Task 7 批 A（task-7-addendum.md D 节）。 */
+  "apps/portal/components/equipment-calc/EquipmentCalcModal.css",
+  "apps/portal/components/feature/admin/AdminApiTest.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */
@@ -63,6 +66,12 @@ const RUNTIME_INJECTED_VARS: string[] = [
   "--stagger-index",
   /* LastWarCard.tsx:138，结果徽章的 style 上内联注入。 */
   "--war-result-color",
+  /* Mantine MantineProvider 在运行期写入（@mantine/core 的
+   * esm/core/MantineProvider/MantineCssVariables/default-css-variables-resolver.mjs:35，
+   * defaultCssVariablesResolver()）。Task 7 批 A 在 AdminApiTest.css 里去掉了
+   * 这个变量的 var() 兜底（rule 1 不允许兜底），暴露出它并不落在
+   * --mantine-color- 前缀下，需要单独列出处。 */
+  "--mantine-font-family-monospace",
 ];
 /** --mantine-color-* 系列由 Mantine 的 CSS 变量解析器批量写入运行期
  * （@mantine/core 的 MantineCssVariables），逐个列名不现实，按前缀豁免。 */

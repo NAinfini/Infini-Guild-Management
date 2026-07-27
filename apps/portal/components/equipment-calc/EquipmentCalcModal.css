@@ -4,8 +4,10 @@
   height: calc(90vh - 60px);
   min-height: 480px;
   background:
-    radial-gradient(1000px 500px at 20% 0%, color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent), transparent 60%),
-    radial-gradient(900px 480px at 100% 100%, color-mix(in srgb, var(--color-secondary, #8B7355) 7%, transparent), transparent 55%);
+    radial-gradient(1000px 500px at 20% 0%, color-mix(in srgb, var(--accent-fill) 8%, transparent), transparent 60%),
+    /* 旧铜色第二层辉光收敛为「深一档主色」，与上方 --accent-fill 那层拉开层次
+       （不许引用 L1 --accent-600，见 task-7-addendum.md G 节）。 */
+    radial-gradient(900px 480px at 100% 100%, color-mix(in srgb, var(--accent-fill-hover) 7%, transparent), transparent 55%);
 }
 
 .ecm__topbar {
@@ -13,7 +15,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 8px 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
   flex-shrink: 0;
 }
 
@@ -42,8 +44,8 @@
   flex-direction: column;
   gap: 1px;
   padding: 8px 4px;
-  border-right: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 2%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
   flex-shrink: 0;
   width: 38px;
   align-items: center;
@@ -58,20 +60,20 @@
   height: 32px;
   border-radius: 7px;
   cursor: pointer;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   transition: background 0.15s, color 0.15s, transform 0.15s;
   position: relative;
 }
 
 .ecm__activity-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
-  color: var(--color-text, #1A1815);
+  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
+  color: var(--text-primary);
   transform: translateX(1px);
 }
 
 .ecm__activity-btn--active {
-  color: var(--color-primary, #D4A843);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent-fill) 12%, transparent);
 }
 
 .ecm__activity-btn--active::before {
@@ -82,16 +84,16 @@
   bottom: 6px;
   width: 2.5px;
   border-radius: 2px;
-  background: var(--color-primary, #D4A843);
+  background: var(--accent-fill);
 }
 
 .ecm__side-panel {
   width: 292px;
-  border-right: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   overflow-y: auto;
   flex-shrink: 0;
   padding: 12px;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 1.5%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 1.5%, transparent);
   transition: width 0.2s ease, padding 0.2s ease;
   scrollbar-width: thin;
 }
@@ -137,8 +139,8 @@
   gap: 8px;
   padding: 12px;
   border-radius: 12px;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 90%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .ecm__paperdoll-row {
@@ -161,33 +163,33 @@
   justify-content: center;
   gap: 4px;
   min-height: 90px;
-  border: 1px dashed color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--text-primary) 10%, transparent);
   border-radius: 8px;
   cursor: pointer;
   padding: 6px 5px;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-surface, #ffffff) 86%, transparent), color-mix(in srgb, var(--color-surface, #ffffff) 72%, transparent));
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-base) 86%, transparent), color-mix(in srgb, var(--surface-base) 72%, transparent));
   position: relative;
   transition: border-color 0.2s, background 0.2s, box-shadow 0.2s, transform 0.15s;
 }
 
 .ecm__equip-slot:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 48%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 5%, color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent));
-  box-shadow: 0 5px 16px color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 48%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 5%, color-mix(in srgb, var(--surface-base) 88%, transparent));
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--accent-fill) 10%, transparent);
   transform: translateY(-1px);
 }
 
 .ecm__equip-slot--filled {
   border-style: solid;
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 42%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 42%, transparent);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-primary, #D4A843) 8%, color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent)), color-mix(in srgb, var(--color-surface, #ffffff) 74%, transparent));
+    linear-gradient(180deg, color-mix(in srgb, var(--accent-fill) 8%, color-mix(in srgb, var(--surface-base) 88%, transparent)), color-mix(in srgb, var(--surface-base) 74%, transparent));
 }
 
 .ecm__equip-slot--filled:hover {
-  border-color: var(--color-primary, #D4A843);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--color-primary, #D4A843) 14%, transparent);
+  border-color: var(--accent-fill);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent-fill) 14%, transparent);
 }
 
 .ecm__equip-slot__icon-wrap {
@@ -197,13 +199,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .ecm__equip-slot--filled .ecm__equip-slot__icon-wrap {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent);
-  color: var(--color-primary, #D4A843);
+  background: color-mix(in srgb, var(--accent-fill) 15%, transparent);
+  color: var(--accent-text);
 }
 
 .ecm__equip-slot__label {
@@ -215,21 +217,21 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .ecm__equip-slot--filled .ecm__equip-slot__label {
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
 }
 
 .ecm__grad-banner {
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-surface, #ffffff) 82%, transparent), color-mix(in srgb, var(--color-surface, #ffffff) 72%, transparent)),
-    color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-base) 82%, transparent), color-mix(in srgb, var(--surface-base) 72%, transparent)),
+    color-mix(in srgb, var(--text-primary) 3%, transparent);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
 .ecm__grad-banner__content {
@@ -255,15 +257,29 @@
 .ecm__grad-banner__ring {
   width: 64px;
   height: 64px;
-  filter: drop-shadow(0 0 8px var(--ring-glow, rgba(34, 197, 94, 0.3)));
+  /* --ring-glow 由下方四个修饰类之一无条件设置（GraduationBanner.tsx 总是
+     附带 high/mid/low/pending 之一），组件基类不需要兜底。 */
+  filter: drop-shadow(0 0 8px var(--ring-glow));
 }
 
-.ecm__grad-banner--high { --ring-glow: rgba(34, 197, 94, 0.3); }
-.ecm__grad-banner--mid { --ring-glow: rgba(245, 158, 11, 0.3); }
-.ecm__grad-banner--low { --ring-glow: rgba(239, 68, 68, 0.3); }
+/* 守卫 rule 5 的「有定义」只认行首（前面只能有空白）的 `--name:` 声明，
+   单行写法 `.foo { --x: …; }` 匹配不到，所以这四条改成多行。 */
+.ecm__grad-banner--high {
+  --ring-glow: color-mix(in srgb, var(--status-success) 30%, transparent);
+}
+.ecm__grad-banner--mid {
+  --ring-glow: color-mix(in srgb, var(--status-warning) 30%, transparent);
+}
+.ecm__grad-banner--low {
+  --ring-glow: color-mix(in srgb, var(--status-danger) 30%, transparent);
+}
 /* Rotation data still loading — deliberately colourless, so an unknown rate is
-   never mistaken for a measured one. */
-.ecm__grad-banner--pending { --ring-glow: rgba(148, 163, 184, 0.25); }
+   never mistaken for a measured one. 复用 --mantine-color-dimmed 而不是
+   --text-muted：下面 .rate--pending 的文字色就取的这个变量，两处要保持
+   同一色相，而不是暖灰/冷灰各写一份。 */
+.ecm__grad-banner--pending {
+  --ring-glow: color-mix(in srgb, var(--mantine-color-dimmed) 25%, transparent);
+}
 
 .ecm__grad-banner__ring-label {
   display: block;
@@ -282,10 +298,13 @@
   letter-spacing: 0;
 }
 
-.ecm__grad-banner__rate--high { color: #22c55e; }
-.ecm__grad-banner__rate--mid { color: #f59e0b; }
-.ecm__grad-banner__rate--low { color: #ef4444; }
-.ecm__grad-banner__rate--pending { color: var(--mantine-color-dimmed, #94a3b8); }
+/* 这三档字面量色值（#22c55e/#f59e0b/#ef4444）与色板的 success/warning/danger
+   并非同一 hex，但语义等价——毕业率高/中/低正是三态好/警示/差的评级，
+   按语义收敛到状态 token，而不是抄字面量进 tokens.css。 */
+.ecm__grad-banner__rate--high { color: var(--status-success); }
+.ecm__grad-banner__rate--mid { color: var(--status-warning); }
+.ecm__grad-banner__rate--low { color: var(--status-danger); }
+.ecm__grad-banner__rate--pending { color: var(--mantine-color-dimmed); }
 
 .ecm__grad-banner__metrics {
   display: flex;
@@ -299,8 +318,8 @@
   flex: 1;
   padding: 8px 16px;
   border-radius: 100px;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -312,7 +331,7 @@
   font-size: 14px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
   line-height: 1.1;
 }
 
@@ -321,7 +340,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .ecm__stats {
@@ -331,9 +350,9 @@
   padding: 10px 11px;
   border-radius: 10px;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-surface, #ffffff) 84%, transparent), color-mix(in srgb, var(--color-surface, #ffffff) 70%, transparent)),
-    color-mix(in srgb, var(--color-text, #1A1815) 2%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-base) 84%, transparent), color-mix(in srgb, var(--surface-base) 70%, transparent)),
+    color-mix(in srgb, var(--text-primary) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .ecm__stats__header {
@@ -343,7 +362,7 @@
 }
 
 .ecm__stats__header-icon {
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .ecm__stats__summary {
@@ -355,9 +374,9 @@
 .ecm__stats__card {
   padding: 7px 8px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
   border: none;
-  border-left: 3px solid color-mix(in srgb, var(--color-text, #1A1815) 12%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -368,7 +387,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .ecm__stats__card-value {
@@ -380,7 +399,7 @@
 
 .ecm__stats__card-meta {
   font-size: 10px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .ecm__panel-table {
@@ -388,8 +407,8 @@
   flex-direction: column;
   overflow: hidden;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 68%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 7%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 7%, transparent);
 }
 
 .ecm__panel-table-row {
@@ -399,7 +418,7 @@
   gap: 8px;
   min-height: 26px;
   padding: 4px 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
 .ecm__panel-table-row:last-child {
@@ -415,7 +434,7 @@
   min-width: 0;
   overflow: hidden;
   font-size: 11px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -423,7 +442,7 @@
 .ecm__panel-table-value {
   font-size: 11px;
   font-weight: 800;
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
@@ -435,8 +454,8 @@
   gap: 4px;
   padding: 7px 9px;
   border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 80%, transparent);
   cursor: pointer;
   transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
   position: relative;
@@ -444,14 +463,14 @@
 }
 
 .ecm__equip-card:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 40%, transparent);
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 40%, transparent);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent-fill) 12%, transparent);
   transform: translateY(-1px);
 }
 
 .ecm__equip-card--equipped {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 35%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 4%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 4%, transparent);
 }
 
 .ecm__equip-card__header {
@@ -468,8 +487,8 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .ecm__equip-card__name {
@@ -512,7 +531,7 @@
   width: 40px;
   height: 4px;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -521,9 +540,11 @@
   border-radius: 2px;
   transition: width 0.3s ease;
 }
-.ecm__equip-card__quality-fill--high { background: #22c55e; }
-.ecm__equip-card__quality-fill--mid { background: #f59e0b; }
-.ecm__equip-card__quality-fill--low { background: #ef4444; }
+/* 同上：品质条的高/中/低三态复用同一组状态 token，与毕业率评级共享同一套
+   好/警示/差语义。 */
+.ecm__equip-card__quality-fill--high { background: var(--status-success); }
+.ecm__equip-card__quality-fill--mid { background: var(--status-warning); }
+.ecm__equip-card__quality-fill--low { background: var(--status-danger); }
 
 .ecm__pool-header {
   display: flex;
@@ -539,7 +560,7 @@
 }
 
 .ecm__pool-header__icon {
-  color: var(--color-primary, #D4A843);
+  color: var(--accent-text);
 }
 
 .ecm__pool-filter-bar {
@@ -559,9 +580,9 @@
   cursor: pointer;
   font-size: 11px;
   font-weight: 500;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   transition:
     background 0.15s ease,
     border-color 0.15s ease,
@@ -571,15 +592,15 @@
 }
 
 .ecm__pool-filter-btn:hover {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent);
-  color: var(--color-primary, #D4A843);
+  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 20%, transparent);
+  color: var(--accent-text);
 }
 
 .ecm__pool-filter-btn--active {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 14%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent);
-  color: var(--color-primary, #D4A843);
+  background: color-mix(in srgb, var(--accent-fill) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 30%, transparent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 
@@ -610,11 +631,11 @@
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .ecm__config-section-label__icon {
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .ecm__config-row {
@@ -624,7 +645,7 @@
 }
 
 .ecm__config-divider {
-  border-top: 1px dotted color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
+  border-top: 1px dotted color-mix(in srgb, var(--text-primary) 6%, transparent);
   margin: 2px 0;
 }
 

@@ -4,14 +4,11 @@
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #1A1815));
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+  /* --surface-base 混入一点 --text-primary，深浅两模式各自往「更深/更浅一点」
+     偏，不需要额外的 .dark 分支（task-7-addendum.md E 节）。 */
+  background: color-mix(in srgb, var(--surface-base) 97%, var(--text-primary));
   overflow: hidden;
-}
-
-.dark .api-console {
-  background: color-mix(in srgb, var(--color-surface, #141418) 85%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
 }
 
 /* ── Console Header ── */
@@ -22,19 +19,20 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 18px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 2%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
 }
 
-.dark .api-console__header {
-  background: color-mix(in srgb, var(--color-surface, #141418) 60%, transparent);
-  border-bottom-color: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
-}
-
+/* 去掉感叹号优先级，先去掉跑一遍确认：选择器 .api-console__header button 是
+   「类 + 元素」(0,1,1)。@mantine/core/styles.css 里的组件基础规则一律落在
+   单个哈希类上（如 .m_8fb7ebe7 { ... }），没有嵌套选择器，特异性顶多
+   (0,1,0)，(0,1,1) 稳赢，不必靠源码顺序或感叹号优先级。12px 恰好落在
+   --space-md / --text-meta 上，直接替换；5px、6px 不在标度上，保留字面量，
+   不强行吸附（task-7-addendum.md L 节）。 */
 .api-console__header button {
-  padding: 5px 12px !important;
-  font-size: 12px !important;
-  border-radius: 6px !important;
+  padding: 5px var(--space-md);
+  font-size: var(--text-meta);
+  border-radius: 6px;
 }
 
 .api-console__header-left {
@@ -57,14 +55,14 @@
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .api-console__stat-value {
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   font-size: 12.5px;
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
 }
 
 .api-console__stat-dot {
@@ -74,14 +72,15 @@
   flex-shrink: 0;
 }
 
-.api-console__stat-dot--pass { background: #10b981; box-shadow: 0 0 4px #10b98144; }
-.api-console__stat-dot--fail { background: #ef4444; box-shadow: 0 0 4px #ef444444; }
+/* 0x44 = 68/255 ≈ 26.67%，四舍五入取整；0x55 同理见下方 status-dot。 */
+.api-console__stat-dot--pass { background: var(--status-success); box-shadow: 0 0 4px color-mix(in srgb, var(--status-success) 27%, transparent); }
+.api-console__stat-dot--fail { background: var(--status-danger); box-shadow: 0 0 4px color-mix(in srgb, var(--status-danger) 27%, transparent); }
 
 /* ── Global Progress Track ── */
 
 .api-console__progress-track {
   height: 3px;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -89,11 +88,12 @@
 .api-console__progress-fill {
   height: 100%;
   transition: width 400ms cubic-bezier(0.4, 0, 0.2, 1);
-  background: linear-gradient(90deg, #D4A843, #10b981);
+  background: linear-gradient(90deg, var(--accent-fill), var(--status-success));
 }
 
+/* 「进行中」态用蓝色，语义上是 info（进度尚未有结论），不是 success/warning/danger 三态之一。 */
 .api-console__progress-fill--running {
-  background: linear-gradient(90deg, #D4A843, #60a5fa);
+  background: linear-gradient(90deg, var(--accent-fill), var(--status-info));
   animation: apiProgressShimmer 1.5s ease-in-out infinite;
 }
 
@@ -115,12 +115,8 @@
 .api-cat {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
   position: relative;
-}
-
-.dark .api-cat {
-  border-bottom-color: color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent);
 }
 
 .api-cat:last-child {
@@ -138,13 +134,13 @@
 }
 
 .api-cat__accent--running {
-  background: #D4A843;
+  background: var(--accent-fill);
   animation: accentPulse 1.2s ease-in-out infinite;
 }
 
-.api-cat__accent--pass { background: #10b981; }
-.api-cat__accent--partial { background: #eab308; }
-.api-cat__accent--fail { background: #ef4444; }
+.api-cat__accent--pass { background: var(--status-success); }
+.api-cat__accent--partial { background: var(--status-warning); }
+.api-cat__accent--fail { background: var(--status-danger); }
 
 @keyframes accentPulse {
   0%, 100% { opacity: 1; }
@@ -162,7 +158,7 @@
 }
 
 .api-cat__row:hover {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 3%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 3%, transparent);
 }
 
 .api-cat__chevron {
@@ -172,13 +168,13 @@
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   transition: transform 200ms ease, color 200ms ease;
 }
 
 .api-cat__chevron--open {
   transform: rotate(90deg);
-  color: var(--color-primary, #D4A843);
+  color: var(--accent-text);
 }
 
 .api-cat__icon {
@@ -189,19 +185,19 @@
   height: 28px;
   border-radius: 6px;
   flex-shrink: 0;
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
-  color: var(--color-primary, #D4A843);
+  background: color-mix(in srgb, var(--accent-fill) 8%, transparent);
+  color: var(--accent-text);
   transition: background 200ms ease;
 }
 
 .api-cat__row:hover .api-cat__icon {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 14%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 14%, transparent);
 }
 
 .api-cat__name {
   font-size: 13px;
   font-weight: 700;
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
   white-space: nowrap;
   min-width: 90px;
 }
@@ -214,7 +210,7 @@
   font-size: 11.5px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   min-width: 32px;
 }
 
@@ -222,7 +218,7 @@
   font-size: 10.5px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   min-width: 32px;
 }
 
@@ -230,7 +226,7 @@
   font-size: 10.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   min-width: 50px;
 }
 
@@ -241,9 +237,10 @@
   flex-shrink: 0;
 }
 
-.api-cat__status-dot--pass { background: #10b981; box-shadow: 0 0 5px #10b98155; }
-.api-cat__status-dot--fail { background: #ef4444; box-shadow: 0 0 5px #ef444455; }
-.api-cat__status-dot--partial { background: #eab308; box-shadow: 0 0 5px #eab30855; }
+/* 0x55 = 85/255 ≈ 33.33%，四舍五入取整。 */
+.api-cat__status-dot--pass { background: var(--status-success); box-shadow: 0 0 5px color-mix(in srgb, var(--status-success) 33%, transparent); }
+.api-cat__status-dot--fail { background: var(--status-danger); box-shadow: 0 0 5px color-mix(in srgb, var(--status-danger) 33%, transparent); }
+.api-cat__status-dot--partial { background: var(--status-warning); box-shadow: 0 0 5px color-mix(in srgb, var(--status-warning) 33%, transparent); }
 
 .api-cat__spacer {
   flex: 1;
@@ -256,19 +253,23 @@
   flex-shrink: 0;
 }
 
+/* 去掉感叹号优先级，先去掉跑一遍确认：同上一处 .api-console__header button，
+   .api-cat__actions button 也是 (0,1,1)，赢过 Mantine 单类的 (0,1,0)。
+   4px 落在 --radius-xs 上直接替换；3px、6px、11px 不在标度上，min-width /
+   line-height 也不属于简报枚举的六个可吸附属性，一律保留字面量。 */
 .api-cat__actions button {
-  padding: 3px 6px !important;
-  font-size: 11px !important;
-  border-radius: 4px !important;
-  min-width: auto !important;
-  line-height: 1 !important;
+  padding: 3px 6px;
+  font-size: 11px;
+  border-radius: var(--radius-xs);
+  min-width: auto;
+  line-height: 1;
 }
 
 /* ── Category Progress Bar (inline in row) ── */
 
 .api-cat__progress-track {
   height: 3px;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 4%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -306,7 +307,7 @@
 }
 
 .api-ep:hover {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 3%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 3%, transparent);
 }
 
 .api-ep__method {
@@ -322,17 +323,17 @@
   min-width: 38px;
 }
 
-.api-ep__method--GET { background: color-mix(in srgb, #D4A843 10%, transparent); color: #D4A843; }
-.api-ep__method--POST { background: color-mix(in srgb, #10b981 10%, transparent); color: #10b981; }
-.api-ep__method--PATCH { background: color-mix(in srgb, #eab308 12%, transparent); color: #b45309; }
-.api-ep__method--DELETE { background: color-mix(in srgb, #ef4444 10%, transparent); color: #ef4444; }
-
-.dark .api-ep__method--PATCH { color: #eab308; }
+/* --status-warning 本身分模式取深/亮两档（浅色 deep、深色 bright），
+   PATCH 的文字色不再需要 .dark 分支单独抬亮。 */
+.api-ep__method--GET { background: color-mix(in srgb, var(--accent-fill) 10%, transparent); color: var(--accent-text); }
+.api-ep__method--POST { background: color-mix(in srgb, var(--status-success) 10%, transparent); color: var(--status-success); }
+.api-ep__method--PATCH { background: color-mix(in srgb, var(--status-warning) 12%, transparent); color: var(--status-warning); }
+.api-ep__method--DELETE { background: color-mix(in srgb, var(--status-danger) 10%, transparent); color: var(--status-danger); }
 
 .api-ep__label {
   font-size: 11.5px;
   font-weight: 500;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -355,18 +356,18 @@
   font-variant-numeric: tabular-nums;
 }
 
-.api-ep__status--ok { background: color-mix(in srgb, #10b981 10%, transparent); color: #10b981; }
-.api-ep__status--warn { background: color-mix(in srgb, #eab308 12%, transparent); color: #b45309; }
-.api-ep__status--err { background: color-mix(in srgb, #ef4444 10%, transparent); color: #ef4444; }
-.api-ep__status--skip { background: color-mix(in srgb, #94a3b8 10%, transparent); color: #94a3b8; }
-
-.dark .api-ep__status--warn { color: #eab308; }
+.api-ep__status--ok { background: color-mix(in srgb, var(--status-success) 10%, transparent); color: var(--status-success); }
+.api-ep__status--warn { background: color-mix(in srgb, var(--status-warning) 12%, transparent); color: var(--status-warning); }
+.api-ep__status--err { background: color-mix(in srgb, var(--status-danger) 10%, transparent); color: var(--status-danger); }
+/* skip = 未测试/无结论，属于中性态，不是 success/warning/danger 三态之一，
+   收敛到 --text-muted。 */
+.api-ep__status--skip { background: color-mix(in srgb, var(--text-muted) 10%, transparent); color: var(--text-muted); }
 
 .api-ep__latency {
   font-size: 10px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   min-width: 42px;
   text-align: right;
 }
@@ -375,8 +376,8 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 1.5px solid color-mix(in srgb, #D4A843 25%, transparent);
-  border-top-color: #D4A843;
+  border: 1.5px solid color-mix(in srgb, var(--accent-fill) 25%, transparent);
+  border-top-color: var(--accent-fill);
   animation: epSpin 0.6s linear infinite;
   flex-shrink: 0;
 }
@@ -389,14 +390,9 @@
 
 .api-debug {
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #1A1815));
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 97%, var(--text-primary));
   overflow: hidden;
-}
-
-.dark .api-debug {
-  background: color-mix(in srgb, var(--color-surface, #141418) 85%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
 }
 
 .api-debug__header {
@@ -405,13 +401,8 @@
   justify-content: space-between;
   gap: 12px;
   padding: 10px 16px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 2%, transparent);
-}
-
-.dark .api-debug__header {
-  background: color-mix(in srgb, var(--color-surface, #141418) 60%, transparent);
-  border-bottom-color: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
 }
 
 .api-debug__header-left {
@@ -432,11 +423,7 @@
   gap: 2px;
   padding: 2px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 4%, transparent);
-}
-
-.dark .api-debug__filters {
-  background: color-mix(in srgb, var(--color-text, #e2e8f0) 8%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
 }
 
 .api-debug__filter-btn {
@@ -446,25 +433,20 @@
   border-radius: 4px;
   border: none;
   background: transparent;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   cursor: pointer;
   transition: background 150ms ease, color 150ms ease;
   white-space: nowrap;
 }
 
 .api-debug__filter-btn:hover {
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
 }
 
 .api-debug__filter-btn--active {
-  background: var(--color-surface, #fff);
-  color: var(--color-text, #1A1815);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
-}
-
-.dark .api-debug__filter-btn--active {
-  background: color-mix(in srgb, var(--color-surface, #141418) 90%, var(--color-primary, #D4A843));
-  color: var(--color-text, #e2e8f0);
+  background: var(--surface-base);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 /* ── Debug Log Rows ── */
@@ -479,13 +461,13 @@
   padding: 32px 16px;
   text-align: center;
   font-size: 12px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .api-debug__row {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 4%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 4%, transparent);
 }
 
 .api-debug__row:last-child {
@@ -493,11 +475,7 @@
 }
 
 .api-debug__row--error {
-  background: color-mix(in srgb, #ef4444 3%, transparent);
-}
-
-.dark .api-debug__row--error {
-  background: color-mix(in srgb, #ef4444 6%, transparent);
+  background: color-mix(in srgb, var(--status-danger) 3%, transparent);
 }
 
 .api-debug__row-main {
@@ -511,7 +489,7 @@
 }
 
 .api-debug__row-main:hover {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 3%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 3%, transparent);
 }
 
 .api-debug__row-dot {
@@ -521,9 +499,9 @@
   flex-shrink: 0;
 }
 
-.api-debug__row-dot--ok { background: #10b981; }
-.api-debug__row-dot--warn { background: #eab308; }
-.api-debug__row-dot--err { background: #ef4444; }
+.api-debug__row-dot--ok { background: var(--status-success); }
+.api-debug__row-dot--warn { background: var(--status-warning); }
+.api-debug__row-dot--err { background: var(--status-danger); }
 
 .api-debug__row-method {
   font-size: 9px;
@@ -537,18 +515,16 @@
   font-variant-numeric: tabular-nums;
 }
 
-.api-debug__row-method--GET { background: color-mix(in srgb, #D4A843 10%, transparent); color: #D4A843; }
-.api-debug__row-method--POST { background: color-mix(in srgb, #10b981 10%, transparent); color: #10b981; }
-.api-debug__row-method--PATCH { background: color-mix(in srgb, #eab308 12%, transparent); color: #b45309; }
-.api-debug__row-method--DELETE { background: color-mix(in srgb, #ef4444 10%, transparent); color: #ef4444; }
-
-.dark .api-debug__row-method--PATCH { color: #eab308; }
+.api-debug__row-method--GET { background: color-mix(in srgb, var(--accent-fill) 10%, transparent); color: var(--accent-text); }
+.api-debug__row-method--POST { background: color-mix(in srgb, var(--status-success) 10%, transparent); color: var(--status-success); }
+.api-debug__row-method--PATCH { background: color-mix(in srgb, var(--status-warning) 12%, transparent); color: var(--status-warning); }
+.api-debug__row-method--DELETE { background: color-mix(in srgb, var(--status-danger) 10%, transparent); color: var(--status-danger); }
 
 .api-debug__row-path {
   font-size: 11px;
   font-weight: 500;
-  font-family: var(--mantine-font-family-monospace, ui-monospace, monospace);
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  font-family: var(--mantine-font-family-monospace);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -565,17 +541,15 @@
   flex-shrink: 0;
 }
 
-.api-debug__row-status--ok { background: color-mix(in srgb, #10b981 10%, transparent); color: #10b981; }
-.api-debug__row-status--warn { background: color-mix(in srgb, #eab308 12%, transparent); color: #b45309; }
-.api-debug__row-status--err { background: color-mix(in srgb, #ef4444 10%, transparent); color: #ef4444; }
-
-.dark .api-debug__row-status--warn { color: #eab308; }
+.api-debug__row-status--ok { background: color-mix(in srgb, var(--status-success) 10%, transparent); color: var(--status-success); }
+.api-debug__row-status--warn { background: color-mix(in srgb, var(--status-warning) 12%, transparent); color: var(--status-warning); }
+.api-debug__row-status--err { background: color-mix(in srgb, var(--status-danger) 10%, transparent); color: var(--status-danger); }
 
 .api-debug__row-latency {
   font-size: 10px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   min-width: 44px;
   text-align: right;
   flex-shrink: 0;
@@ -585,7 +559,7 @@
   font-size: 9.5px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   flex-shrink: 0;
 }
 
@@ -596,7 +570,7 @@
   width: 14px;
   height: 14px;
   flex-shrink: 0;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   transition: transform 150ms ease;
 }
 
@@ -618,28 +592,27 @@
 
 .api-debug__row-body pre {
   font-size: 10.5px;
-  font-family: var(--mantine-font-family-monospace, ui-monospace, monospace);
+  font-family: var(--mantine-font-family-monospace);
   line-height: 1.5;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
   padding: 8px 10px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
+  /* AdminPage.css 等已迁文件里同款「表面 + 一点墨色」的写法本身就是跨模式的
+     （深色模式下 --text-primary 是暖白，3% 会把面板往亮里带一点点），
+     不需要像旧写法那样在 .dark 里另起一份不同底色的高不透明度覆盖。 */
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
   max-height: 200px;
   overflow-y: auto;
   scrollbar-width: thin;
 }
 
-.dark .api-debug__row-body pre {
-  background: color-mix(in srgb, var(--color-surface, #0A0A0F) 70%, transparent);
-}
-
 .api-debug__row-error {
   font-size: 10.5px;
   font-weight: 600;
-  color: #ef4444;
+  color: var(--status-danger);
   padding: 0 16px 6px 50px;
 }
 
@@ -652,7 +625,7 @@
   }
   .api-ep__running {
     animation: none;
-    border-color: #D4A843;
+    border-color: var(--accent-fill);
   }
   .api-cat__accent,
   .api-cat__progress-fill,
