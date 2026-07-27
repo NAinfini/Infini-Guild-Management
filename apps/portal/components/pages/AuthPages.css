@@ -137,11 +137,15 @@
   background:
     linear-gradient(
       110deg,
-      color-mix(in srgb, var(--accent-text) 78%, rgb(255 255 255) 22%) 0%,
+      /* Same technique as the light-mode override below (:430): mix toward
+         --text-primary, not a literal white — in dark mode --text-primary
+         (#F0EDE8) is visually indistinguishable from #FFFFFF at these mix
+         ratios, but stays mode-correct, token-pure, and guard-visible. */
+      color-mix(in srgb, var(--accent-text) 78%, var(--text-primary) 22%) 0%,
       var(--accent-text) 24%,
-      color-mix(in srgb, var(--accent-fill-hover) 82%, rgb(255 255 255) 18%) 46%,
+      color-mix(in srgb, var(--accent-fill-hover) 82%, var(--text-primary) 18%) 46%,
       color-mix(in srgb, var(--accent-fill-hover) 72%, var(--accent-text) 28%) 66%,
-      color-mix(in srgb, var(--accent-text) 82%, rgb(255 255 255) 18%) 100%
+      color-mix(in srgb, var(--accent-text) 82%, var(--text-primary) 18%) 100%
     );
   background-size: 280% auto;
   -webkit-background-clip: text;
@@ -183,6 +187,12 @@
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.2),
     0 0 0 1px color-mix(in srgb, var(--accent-fill) 8%, transparent),
+    /* mode-independent literal: this is a fixed glass top-edge highlight, not a
+       themed color — it stays the same sliver of white in both light and dark
+       mode, and there is no L2/L3 token for "always-white, never-themed
+       highlight" (precedent: styles.css glass-effect rule). Rule 2 of the
+       theme-tokens guard only matches #hex, so rgb()/rgba() literals like this
+       one don't trip it; see the note next to rule 2 in theme-tokens.test.ts. */
     inset 0 1px 0 rgb(255 255 255 / 0.06);
   position: relative;
 }
@@ -199,6 +209,13 @@
     color-mix(in srgb, var(--accent-fill-hover) 25%, transparent) 50%,
     color-mix(in srgb, var(--accent-fill-hover) 30%, transparent) 100%
   );
+  /* mode-independent literal: mask/-webkit-mask read only the alpha channel of
+     this gradient to decide what's cut out — the color channels never render,
+     so "white" here isn't a color choice at all and swapping it for any
+     surface/text token would be a no-op at best and misleading at worst. Any
+     opaque color works identically; white is just the conventional spelling
+     for "fully opaque" in a mask gradient. See the rule-2 note in
+     theme-tokens.test.ts for why this literal doesn't trip the guard. */
   -webkit-mask: linear-gradient(rgb(255 255 255) 0 0) content-box, linear-gradient(rgb(255 255 255) 0 0);
   mask: linear-gradient(rgb(255 255 255) 0 0) content-box, linear-gradient(rgb(255 255 255) 0 0);
   -webkit-mask-composite: xor;

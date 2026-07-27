@@ -73,6 +73,17 @@ describe("theme token hard rules", () => {
     expect(offenders).toEqual([]);
   });
 
+  /* Known blind spot (task-6 review I-3): this rule only matches literal
+   * #hex. Functional color notations — rgb()/rgba()/hsl() etc. — are not
+   * matched at all, even when they spell out the same mode-independent
+   * literal (e.g. `rgb(255 255 255)`) that rule 2 exists to catch in hex
+   * form. Sites using those are expected to carry an inline comment
+   * explaining why the literal is mode-independent (see AuthPages.css around
+   * the mask and glass-highlight rules for examples). Task 9 needs to decide
+   * whether to widen this rule to cover functional notation or formalize an
+   * explicit allowlist keyed off that comment — widening it naively would
+   * also flag semantic.css's own rgb()-based shadows, which are a separate,
+   * already-reviewed case. */
   it("rule 2: no bare hex outside the palette file", () => {
     const offenders: string[] = [];
     for (const { path, source } of readMigrated()) {

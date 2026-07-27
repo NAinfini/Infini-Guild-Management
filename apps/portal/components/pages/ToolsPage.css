@@ -415,7 +415,8 @@ a.tool-card__btn {
 }
 
 .dice__roll-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent-fill) 85%, black);
+  /* State signal comes from shadow, not a darkened fill: dimming the fill drags
+     --accent-on-fill (calibrated for accent-500 only) below AA. See theme-tokens.test.ts. */
   box-shadow: var(--shadow-primary-md);
 }
 
@@ -428,7 +429,8 @@ a.tool-card__btn {
 }
 
 .dice__roll-btn--rolling {
-  background: color-mix(in srgb, var(--accent-fill) 70%, black);
+  /* Same reasoning as :hover above: keep --accent-fill, let the pulse animation
+     (opacity) carry the "rolling" signal instead of darkening the fill. */
   animation: dice-pulse 600ms ease-in-out infinite;
 }
 
