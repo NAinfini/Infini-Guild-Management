@@ -32,12 +32,16 @@
 .app-sider {
   border-right: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   background: var(--surface-base);
-  /* 与模式无关的字面黑：这是侧栏右边缘的横向投影（把内容跟侧栏分开），不是
-     semantic.css 里 --shadow-xs/sm/md/lg 那种纵向（0 Ypx）标度阴影的同类——
-     那四档没有对应的横向形状可复用，强行换会让阴影方向从「向右」变成
-     「向下」，视觉上不是同一个效果。透明度只有 0.03，两模式下都接近不可见，
-     暂不新造横向阴影档（超出本批范围），留作后续设计系统扩展。 */
-  box-shadow: 1px 0 8px rgba(0, 0, 0, 0.03);
+  /* 复审 I-1：这是侧栏右边缘的横向投影（把内容跟侧栏分开），几何形状（1px 0 8px
+     横向偏移）跟 semantic.css 里 --shadow-xs/sm/md/lg 那种纵向标度阴影不是同一
+     种形状，没有现成的横向档可复用，几何原样保留。但几何跟颜色是两回事——
+     颜色不该是字面量豁免的理由，改用跟上面 border-right 同一套写法：
+     color-mix(in srgb, var(--text-primary) N%, transparent)，3% 对应原来的
+     rgba(0, 0, 0, 0.03)。注意这是一次真实的深色模式视觉变更：--text-primary
+     深色模式下是浅色（--palette-ink-warm），所以深色模式下这层投影从「暗投影」
+     变成「浅色微光」，跟同一条规则里的 border-right 行为一致（border-right 早
+     就是这个写法），但仍需控制者目视确认。 */
+  box-shadow: 1px 0 8px color-mix(in srgb, var(--text-primary) 3%, transparent);
   overflow: hidden;
   transition: width var(--transition-normal);
   display: flex;

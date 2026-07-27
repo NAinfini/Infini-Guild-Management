@@ -566,7 +566,7 @@ export function GuildWarAnalyticsTab({
                             if (heatmapRange && typeof val === "number") {
                               const ratio = (val - heatmapRange.min) / (heatmapRange.max - heatmapRange.min);
                               cellStyle = {
-                                background: `color-mix(in srgb, var(--color-primary) ${Math.round(ratio * 35)}%, transparent)`,
+                                background: `color-mix(in srgb, var(--accent-fill) ${Math.round(ratio * 35)}%, transparent)`,
                               };
                             }
                             return (

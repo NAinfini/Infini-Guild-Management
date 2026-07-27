@@ -230,11 +230,12 @@
   border-style: dashed;
 }
 
-/* mode-independent literal: 这是浮层对话框背后的全屏遮罩，作用是压暗身后内容，
-   深浅两模式都需要它压暗而不是反过来发亮，语义上与 --text-primary 之类会随
-   模式反色的 token 相反。rgb()/rgba() 是 rule 2 的已知盲区（不匹配裸 hex），
-   这里延续既有先例（GalleryPage.css 的全屏灯箱遮罩）保留字面量，
-   task-7-addendum.md I 节要求写明理由。 */
+/* mode-independent literal: 这是浮层对话框背后的全屏遮罩。这不是纯黑，是
+   特意选的一个冷色调（slate-900，rgb(15, 23, 42)），深浅两模式都用同一个值、
+   不随 [data-theme] 反色，语义上与 --text-primary 之类会随模式反色的 token
+   相反。本字面量已登记在 theme-tokens.test.ts 的
+   LITERAL_COLOUR_EXEMPTIONS["apps/portal/components/shared/tiptap-editor.css"]，
+   理由：浮层需要在任意底色上都压出同等强度的固定遮罩，不能随主题变化。 */
 .infini-tiptap-link-dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -436,14 +437,16 @@
 
 /* 查找高亮：与 --color-primary/--color-accent 那条暖金色阶无关，是独立的
    「查找命中」标记色（黄/橙），不随主题反色，语义上类似浏览器原生查找高亮。
-   不在替换表任何一行内，保留字面量。 */
+   复审 I-7 收口：不再是字面量豁免——L1 落在 tokens.css 的
+   --palette-highlight-search(-active)，L2 在 semantic.css 开
+   --highlight-search(-active) 转发，数值逐字未变。 */
 .infini-tiptap-search-match {
-  background: rgba(255, 217, 0, 0.35);
+  background: var(--highlight-search);
   border-radius: 2px;
 }
 
 .infini-tiptap-search-active {
-  background: rgba(255, 140, 0, 0.55);
+  background: var(--highlight-search-active);
 }
 
 /* ── Details / Collapsible ── */

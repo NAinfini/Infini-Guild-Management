@@ -129,19 +129,30 @@
    * ToolsPage.css（dice__roll-btn:hover）。 */
   --shadow-accent-sm: 0 2px 8px color-mix(in srgb, var(--accent-fill) 15%, transparent);
   --shadow-accent-md: 0 4px 16px color-mix(in srgb, var(--accent-fill) 22%, transparent);
-}
 
-/* ── 旧品牌辅色（与模式、与 accent 选择都无关）──
- *
- * 迁自 styles.css 旧名转发块的 --color-secondary（task-9-addendum.md D 节）。
- * tokens.css 的 --palette-bronze-warm 本身没有语义、不随 [data-theme] 或
- * [data-accent] 变化，只是历史遗留的第二品牌色，用来把某一类目跟当前选中的
- * accent 区分开（不是「危险 / 警告」这类状态色，纯粹是另一条视觉分类线）。
- * 组件层不许直接引用 L1 的 --palette-*（守卫 rule 6），这里给它一个 L2 名字。
- * 消费者：EquipmentCalcModal.css（.ecm__stats__card--intent）、
- * MyProfilePage.css（.profile-preview-stat-icon--video）。 */
-:root {
+  /* ── 旧品牌辅色（与模式、与 accent 选择都无关）──
+   *
+   * 迁自 styles.css 旧名转发块的 --color-secondary（task-9-addendum.md D 节）。
+   * tokens.css 的 --palette-bronze-warm 本身没有语义、不随 [data-theme] 或
+   * [data-accent] 变化，只是历史遗留的第二品牌色，用来把某一类目跟当前选中的
+   * accent 区分开（不是「危险 / 警告」这类状态色，纯粹是另一条视觉分类线）。
+   * 组件层不许直接引用 L1 的 --palette-*（守卫 rule 6），这里给它一个 L2 名字。
+   * 消费者：EquipmentCalcModal.css（.ecm__stats__card--intent）、
+   * MyProfilePage.css（.profile-preview-stat-icon--video）。
+   * 复审 T-1：此前这是紧挨着上面那块的第二个 :root，两块之间只隔一段注释，
+   * 合并成一块。 */
   --brand-secondary: var(--palette-bronze-warm);
+
+  /* ── 查找高亮（与模式、与 accent 都无关，复审 I-7 收口）──
+   *
+   * tiptap-editor.css 的「查找命中」标记色（黄/橙），独立于主题色阶、不随
+   * [data-theme] 反色。批 2 曾把它登记为字面量豁免，复审 I-7 指出它是全表
+   * 唯一一处「真正有色相」的豁免，且批 1 刚为完全同类的 --palette-bronze-warm
+   * 建立了「L1 落值 + L2 开名」的先例——这里补齐同样的处理，不是重新设计。
+   * L1 值见 tokens.css 的 --palette-highlight-search(-active)，这里只做
+   * L2 转发，供组件层消费（守卫 rule 6 不许组件层直接引用 --palette-*）。 */
+  --highlight-search: var(--palette-highlight-search);
+  --highlight-search-active: var(--palette-highlight-search-active);
 }
 
 [data-theme="light"] {

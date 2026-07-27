@@ -233,7 +233,7 @@ export function RegisterPage() {
             </Stack>
           ) : inviteQuery.isLoading ? (
             <Stack align="center" py="xl">
-              <Loader color="var(--color-primary)" />
+              <Loader color="var(--accent-fill)" />
             </Stack>
           ) : !inviteQuery.data?.valid ? (
             <Stack align="center" gap="md">

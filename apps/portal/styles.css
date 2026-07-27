@@ -501,11 +501,15 @@ body::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--surface-base) 92%, transparent);
   backdrop-filter: saturate(180%) blur(16px);
   -webkit-backdrop-filter: saturate(180%) blur(16px);
-  /* 与模式无关的字面黑：这是贴底浮条向上投的分隔阴影（negative Y 偏移），跟
+  /* 复审 I-1：这是贴底浮条向上投的分隔阴影（negative Y 偏移），几何形状跟
      semantic.css 的 --shadow-xs/sm/md/lg 都是正 Y（向下）不是同一种形状，没有
-     现成档位能直接复用而不改变投影方向。透明度只有 0.04，两模式下都接近
-     不可见，暂不新造反向阴影档（超出本批范围）。 */
-  box-shadow: 0 -2px 8px rgb(0 0 0 / 0.04);
+     现成档位能直接复用而不改变投影方向，几何原样保留。颜色改用跟下面
+     .floating-save-bar[data-dirty] 同一套写法：
+     color-mix(in srgb, var(--text-primary) N%, transparent)，4% 对应原来的
+     rgb(0 0 0 / 0.04)。这是一次真实的深色模式视觉变更：--text-primary 深色
+     模式下是浅色（--palette-ink-warm），这层投影因此从「暗投影」变成
+     「浅色微光」，需要控制者目视确认。 */
+  box-shadow: 0 -2px 8px color-mix(in srgb, var(--text-primary) 4%, transparent);
   transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
 }
 

@@ -110,4 +110,14 @@
    * 过去；本值的唯一消费处从旧名转发块换成了 --brand-secondary。 */
   --palette-bronze-warm: #8B7355;
   --palette-copper-warm: #C17F3E;
+
+  /* ── 查找高亮（与模式、与 accent 都无关，复审 I-7 收口）──
+   * tiptap-editor.css 的「查找命中」标记色（黄/橙），独立于主题色阶，语义上
+   * 类似浏览器原生查找高亮，不随 [data-theme] 反色。批 2 曾把它登记为豁免的
+   * 字面量留在组件层，但它是「新引入的、只此一处定义的品牌外颜色」，跟
+   * --palette-bronze-warm 是同一类情况——批 1 对 bronze-warm 已经落了 L1/L2，
+   * 这里补上同样的处理，不是重新设计：数值逐字保留自 tiptap-editor.css 原来的
+   * 豁免字面量。 */
+  --palette-highlight-search: rgba(255, 217, 0, 0.35);
+  --palette-highlight-search-active: rgba(255, 140, 0, 0.55);
 }

@@ -1,11 +1,10 @@
-/* 与模式无关的字面黑：这是「往真黑里混一档」的固定调暗操作，不是给
-   --text-primary 本身换一个颜色——它仍然以当前主题的 --text-primary 为底，
-   只是统一压暗 28% 做出 dimmed 档，两模式都要同一个压暗比例，换成
-   --surface-base 之类的表面 token 会把颜色带向表面色而不是单纯调暗，
-   不是同一个效果。 */
-.dashboard-page [data-variant="filled"],
+/* 复审 I-2：dimmed 变体此前往真黑里混 28%，在浅色模式下算出来比正文
+   --text-primary 更深（#131110 vs 正文 #1A1815），dimmed 反而比正常文字更
+   抢眼，语义是反的；深色模式下的结果又几乎等于既有的 --text-muted
+   （#ACAAA7 vs #A39D94）。L2 已经有现成的文字档 --text-muted，直接改指过去，
+   不再需要字面量混色。这是真实视觉变更，需要控制者目视确认。 */
 .dashboard-page .mantine-Text-root[data-variant="dimmed"] {
-  color: color-mix(in srgb, var(--text-primary) 72%, black 28%);
+  color: var(--text-muted);
 }
 
 /* ── Dashboard card padding (PortalCard has no built-in padding) ── */
