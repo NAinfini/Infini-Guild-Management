@@ -371,7 +371,7 @@ body::-webkit-scrollbar-thumb:hover {
 
 /* main.tsx's total-bootstrap-failure fallback (the dynamic import("./bootstrap")
    itself rejected, so ThemeProvider never mounted and never set [data-theme]
-   on <html>). semantic.css defines --surface-*/--status-* only under
+   on <html>). semantic.css defines --surface-* / --status-* only under
    [data-theme="light"/"dark"], so on THIS path these var()s never resolve —
    not "may not". Keeping them as var() rather than carving bare hex into a
    MIGRATED file is still the right call, but the old claim that the result is

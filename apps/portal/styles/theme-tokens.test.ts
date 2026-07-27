@@ -956,4 +956,13 @@ describe("token file coverage", () => {
     const missing = MIGRATED.filter((path) => !onDisk.has(path));
     expect(missing).toEqual([]);
   });
+
+  it("MIGRATED covers every CSS file on disk — no silent white-list", () => {
+    const onDisk = listCssFiles(portalRoot).map(toRepoPath).sort();
+    const migrated = [...MIGRATED].sort();
+
+    /* 这条断言是本计划的收口。它一红，说明有人加了 CSS 文件却没迁移它，
+     * 或者把某个文件从名单里摘掉了。两种都是回归。 */
+    expect(migrated).toEqual(onDisk);
+  });
 });
