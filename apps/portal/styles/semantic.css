@@ -112,6 +112,12 @@
   --accent-fill: var(--accent-500);
   --accent-fill-hover: var(--accent-600);
   --accent-border: var(--accent-300);
+  /* --accent-on-fill 只按 --accent-fill（500）校准，压在 --accent-fill-hover
+   * （600）上不过 AA（task-7 修复轮次 1 修复 I2，实测 3.16–3.50）。
+   * --accent-fill-hover 必须保持比 --accent-fill 深一档，不能为了凑文字对比度
+   * 调浅，所以换一个 hover 专用、跨 accent 共用的纯黑墨，只在「文字压在
+   * --accent-fill-hover 上」这一种场景使用。 */
+  --accent-on-fill-hover: var(--palette-ink-black);
 }
 
 [data-theme="light"] {

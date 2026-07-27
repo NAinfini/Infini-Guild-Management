@@ -138,10 +138,15 @@
 
 /* --color-accent（古铜色）同样是要消灭的暖金配色，这里的悬停态想要的是「主色
    再深一档」，直接收敛到 --accent-fill-hover 这一个 token，不再用 color-mix
-   去混两个旧变量（task-7-addendum.md 前序约定段）。 */
+   去混两个旧变量（task-7-addendum.md 前序约定段）。
+   悬停态把填充切到 --accent-fill-hover 后，继承自基础规则的 --accent-on-fill
+   文字（只按 --accent-fill 校准）会被拖到 3.16–3.50，不过 AA（task-7 修复
+   轮次 1 修复 I2）。这里换成 --accent-on-fill-hover（跨 accent 共用的纯黑墨，
+   见 semantic.css），三个 accent 都能稳过 AA。 */
 .rtf-weekday-btn--selected:hover {
   background: var(--accent-fill-hover);
   border-color: var(--accent-fill-hover);
+  color: var(--accent-on-fill-hover);
   box-shadow: 0 3px 12px color-mix(in srgb, var(--accent-fill) 36%, transparent);
 }
 

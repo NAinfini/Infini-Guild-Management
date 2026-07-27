@@ -62,6 +62,17 @@
    * 单独命名以标注其唯一用途：dark 模式 --text-primary。 */
   --palette-ink-warm: #F0EDE8;
 
+  /* 唯一消费处：semantic.css 的 --accent-on-fill-hover（task-7 修复轮次 1
+   * 修复 I2）。--accent-on-fill（各 accent 自己的 900 档）落在
+   * --accent-fill-hover（600）上只有 3.16–3.50，不过 AA；而 --accent-fill-hover
+   * 必须仍然比 --accent-fill 深一档（hover 加深反馈），不能为了凑文字对比度
+   * 调浅。三个 accent 的 900 墨也不够深，撑不到 600 底所需的最深文字亮度
+   * （teal/indigo/violet 分别需要 Ltext ≤ 0.0095/0.0026/0.0011，900 档在
+   * 0.023–0.027，差一个数量级）。用一个与 accent 无关、跟模式无关的纯黑墨
+   * 只给 hover 这一态用，三个 accent 都能稳过 3:1 以上的安全边际
+   * （5.36/4.73/4.60，见 theme-tokens.test.ts）。 */
+  --palette-ink-black: #000000;
+
   /* ── 语义色 ──
    * 亮档给深色模式（近黑底），深档给浅色模式（纸底）。
    * 这个分档规则是现有 styles.css:104-111 注释里已经确立的，此处沿用。 */

@@ -54,6 +54,9 @@ export const MIGRATED: string[] = [
 const PALETTE_FILE = "apps/portal/styles/tokens.css";
 /** L2 语义层：所有 --accent-* / --text-* 的分模式、分主色定义处。 */
 const SEMANTIC_FILE = "apps/portal/styles/semantic.css";
+/** L3 标度层：尺寸标度，不表达颜色语义，但同样是「token 文件」本身，
+ * 不是组件层，豁免 rule 6。 */
+const SCALE_FILE = "apps/portal/styles/scale.css";
 /** 入口文件，也是 Tailwind / Mantine 两处桥接块的所在。 */
 const ENTRY_FILE = "apps/portal/styles.css";
 const THEME_PROVIDER_FILE = "apps/portal/providers/ThemeProvider.tsx";
@@ -189,12 +192,19 @@ describe("theme token hard rules", () => {
   it("rule 5: every var() in migrated CSS resolves to a definition", () => {
     const files = readMigrated();
 
-    /* 「有定义」= MIGRATED 集合里任意一处 `^\s*--name\s*:`，跨文件算数
-     * （例如 .star-border 在 styles.css 内自定义的三个变量，定义与消费同文件）。 */
+    /* 「有定义」= MIGRATED 集合里任意一处自定义属性声明，跨文件算数
+     * （例如 .star-border 在 styles.css 内自定义的三个变量，定义与消费同文件）。
+     *
+     * 锚点是「行首」或「{ / ; 之后」，不能只认行首（task-7 修复轮次 1 修复
+     * I4）：单行写法 `.foo { --x: 1px; }` 曾被行首版正则误判成未定义，逼得
+     * Task 7 批 A 的实现者为了让这条测试变绿把 `--ring-glow` 的定义从单行拆成
+     * 多行——测试在指挥代码风格，是测试的缺陷，不是代码的。`[{;]` 分支只放行
+     * 紧跟在 `{` 或 `;` 后面（中间只许空白）的 `--name:`，`var(--x)` 里的名字
+     * 后面接的是 `)` 不是 `:`，伪类 `:hover` 前面没有 `--`，两者都不会命中。 */
     const defined = new Set<string>();
     for (const { source } of files) {
       const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
-      for (const match of withoutComments.matchAll(/^\s*(--[a-zA-Z0-9-]+)\s*:/gm)) {
+      for (const match of withoutComments.matchAll(/(?:^|[{;])\s*(--[a-zA-Z0-9-]+)\s*:/gm)) {
         defined.add(match[1]!);
       }
     }
@@ -207,6 +217,30 @@ describe("theme token hard rules", () => {
         (name) => !defined.has(name) && !RUNTIME_INJECTED_VARS.includes(name) && !name.startsWith(MANTINE_COLOR_PREFIX),
       );
       if (missing.length > 0) offenders.push(`${path}: ${missing.join(", ")}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("rule 6: component layer only consumes L2/L3 — no direct var(--palette-*) or var(--accent-<digit>)", () => {
+    /* 三层纪律（附录 G）此前零自动化约束：rule 5 的「已定义集合」是 MIGRATED
+     * 里所有文件定义的并集，tokens.css / semantic.css 自己也在 MIGRATED 里，
+     * 所以 L1 名字在 rule 5 眼里永远「已定义」——它管得了「有没有定义」，管不了
+     * 「该不该在这一层用」。组件层 CSS 直接引用 var(--palette-teal-500) 或
+     * var(--accent-600) 会被 rule 5 放行（task-7 修复轮次 1 修复 I3，变异
+     * 测试见 task-7-report.md）。
+     *
+     * 只拦纯数字档位的 --accent-<digit>（--accent-50/600/900 这类），不拦
+     * --accent-fill / --accent-text / --accent-tint / --accent-on-fill /
+     * --accent-on-fill-hover / --accent-border / --accent-fill-hover 这些
+     * L2 语义名——它们名字里同样带 "accent"，但不是纯数字后缀。 */
+    const offenders: string[] = [];
+    for (const { path, source } of readMigrated()) {
+      if (path === PALETTE_FILE || path === SEMANTIC_FILE || path === SCALE_FILE || path === ENTRY_FILE) continue;
+      const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
+      const hits = [...withoutComments.matchAll(/var\((--[a-zA-Z0-9-]+)\)/g)]
+        .map((match) => match[1]!)
+        .filter((name) => name.startsWith("--palette-") || /^--accent-\d+$/.test(name));
+      if (hits.length > 0) offenders.push(`${path}: ${[...new Set(hits)].join(", ")}`);
     }
     expect(offenders).toEqual([]);
   });
@@ -298,6 +332,29 @@ describe("accent contrast across all 6 theme × accent combinations", () => {
 
     it(`${accent}: on-fill ink clears AA on the accent fill`, () => {
       const ratio = contrastRatio(token(p, `--palette-${accent}-900`), token(p, `--palette-${accent}-500`));
+      expect(ratio).toBeGreaterThanOrEqual(AA_TEXT);
+    });
+
+    it(`${accent}: on-fill ink does NOT clear AA on the darker hover fill`, () => {
+      /* task-7 修复轮次 1 修复 I2：--accent-on-fill（900 墨）落在
+       * --accent-fill-hover（600）上只有 3.16–3.50，不过 AA。反向断言把这个
+       * 事实钉住——如果哪天有人把 --accent-on-fill 直接压回 hover 态的填充上
+       * （不经过 --accent-on-fill-hover），这条会先炸，而不是等人眼发现按钮
+       * hover 时文字看不清。 */
+      const ratio = contrastRatio(token(p, `--palette-${accent}-900`), token(p, `--palette-${accent}-600`));
+      expect(ratio).toBeLessThan(AA_TEXT);
+    });
+
+    it(`${accent}: hover-only on-fill ink (--accent-on-fill-hover) clears AA on the darker hover fill`, () => {
+      /* 上面那条反向断言证明了问题；这条证明修复有效。--accent-fill-hover
+       * 必须仍然比 --accent-fill 深一档（hover 加深反馈，不能为了凑文字
+       * 对比度调浅），三个 accent 各自的 900 墨也不够深、不能无差别加深（会
+       * 破坏它在 --accent-fill 上已经过 AA 的非 hover 场景，见上一条断言）。
+       * 所以 hover 态换一个与 accent 无关的纯黑墨（tokens.css 的
+       * --palette-ink-black，经 semantic.css 的 --accent-on-fill-hover 转发），
+       * 三个 accent 都要在这个新墨色上过 AA。复用 :299 那条断言的 token() /
+       * contrastRatio() 辅助函数，不另写一份。 */
+      const ratio = contrastRatio(token(p, "--palette-ink-black"), token(p, `--palette-${accent}-600`));
       expect(ratio).toBeGreaterThanOrEqual(AA_TEXT);
     });
 
