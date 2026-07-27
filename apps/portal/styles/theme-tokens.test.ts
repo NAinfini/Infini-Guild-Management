@@ -13,6 +13,7 @@ export const MIGRATED: string[] = [
   "apps/portal/styles/tokens.css",
   "apps/portal/styles/semantic.css",
   "apps/portal/styles/scale.css",
+  "apps/portal/styles.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */
@@ -63,10 +64,16 @@ describe("theme token hard rules", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("rule 3: no !important", () => {
+  it("rule 3: no !important outside prefers-reduced-motion overrides", () => {
     const offenders: string[] = [];
     for (const { path, source } of readMigrated()) {
-      const hits = source.match(/!important/g);
+      /* 无障碍覆盖必须压过一切，是 !important 的正当用法。
+       * 只挖掉 reduced-motion 块本身，块外的 !important 仍然报错。 */
+      const outside = source.replace(
+        /@media[^{]*prefers-reduced-motion[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g,
+        "",
+      );
+      const hits = outside.match(/!important/g);
       if (hits) offenders.push(`${path}: ${hits.length}`);
     }
     expect(offenders).toEqual([]);
@@ -200,45 +207,14 @@ describe("accent contrast across all 6 theme × accent combinations", () => {
 /* ── 菜单单一真相的护栏（Task 3） ────────────────────────── */
 
 /**
- * styles.css 整体还没迁完（文件里另有 10 处 !important 与若干 hex，属 Task 4
- * 范围），所以不能把它加进 MIGRATED。这里只窄断言「菜单区块」这一段 ——
- * Task 3 刚把菜单外观收敛到这里，不变量要挡住它重新退化。
+ * Task 3 曾在这里窄断言「菜单区块内 0 处 !important、0 处裸 hex」，因为当时
+ * styles.css 还没迁完、进不了 MIGRATED。Task 4 把整个 styles.css 加进 MIGRATED
+ * 之后，那两条已是 rule 2 / rule 3 的真子集（两条规则覆盖整个文件），故删除。
  *
- * 用起止注释而不是行号做边界：行号一改就失效。
+ * 剩下这一条管的是 .tsx，MIGRATED 的四条 CSS 规则一条都覆盖不到，必须留着。
  */
 const MENU_BLOCK_FILE = "apps/portal/styles.css";
-const MENU_BLOCK_START = "/* ── 菜单 · 唯一定义处 ──";
-const MENU_BLOCK_END = "/* ── 菜单 · 唯一定义处 结束 ──";
 const THEME_PROVIDER_FILE = "apps/portal/providers/ThemeProvider.tsx";
-
-/** 菜单区块的正文，外加它在文件里的起始行号 —— 报错时要给绝对行号。 */
-function menuBlock(): { text: string; firstLine: number } {
-  const source = readFileSync(resolve(repoRoot, MENU_BLOCK_FILE), "utf8");
-  const start = source.indexOf(MENU_BLOCK_START);
-  const end = source.indexOf(MENU_BLOCK_END);
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error(
-      `${MENU_BLOCK_FILE}: 找不到菜单区块边界注释（start=${start}, end=${end}）。` +
-        `起始标记应为 "${MENU_BLOCK_START}"，结束标记应为 "${MENU_BLOCK_END}"。` +
-        `如果改了注释措辞，请同步改这个测试。`,
-    );
-  }
-  return { text: source.slice(start, end), firstLine: source.slice(0, start).split("\n").length };
-}
-
-/** 逐行找出命中 pattern 的行，报绝对行号。 */
-function offendingLines(text: string, firstLine: number, pattern: RegExp): string[] {
-  return text
-    .split("\n")
-    .map((line, index) => ({ line: line.trim(), lineNumber: firstLine + index }))
-    .filter(({ line }) => pattern.test(line))
-    .map(({ line, lineNumber }) => `${MENU_BLOCK_FILE}:${lineNumber}  ${line}`);
-}
-
-/** 抹掉 CSS 注释但保留换行，这样行号仍然对得上文件。 */
-function blankComments(text: string): string {
-  return text.replace(/\/\*[\s\S]*?\*\//g, (match) => "\n".repeat((match.match(/\n/g) ?? []).length));
-}
 
 /** 取 `Menu.extend(` 之后到括号配平为止的那段源码。 */
 function menuExtendArgument(source: string): string {
@@ -260,28 +236,6 @@ function menuExtendArgument(source: string): string {
 }
 
 describe("menu single source of truth (Task 3)", () => {
-  it("菜单区块内没有 !important", () => {
-    const { text, firstLine } = menuBlock();
-    /* 这里故意不抹注释：区块内的注释本来就靠「感叹号优先级」这种措辞
-     * 绕开字面量，写了字面量就说明有人真的加了一条。 */
-    const offenders = offendingLines(text, firstLine, /!important/);
-    expect(
-      offenders,
-      `菜单区块必须靠特异性（类名自我重复）取胜，不得使用 !important：\n${offenders.join("\n")}`,
-    ).toEqual([]);
-  });
-
-  it("菜单区块内没有裸十六进制色值", () => {
-    const { text, firstLine } = menuBlock();
-    /* 注释里引用库的色值（如 --mantine-color-gray-5 的实际值）是说明性的，
-     * 不是本仓库在用色，故只查声明。 */
-    const offenders = offendingLines(blankComments(text), firstLine, /#[0-9a-fA-F]{3,8}\b/);
-    expect(
-      offenders,
-      `菜单区块只许消费 token，hex 只能出现在 ${PALETTE_FILE}：\n${offenders.join("\n")}`,
-    ).toEqual([]);
-  });
-
   it("Menu.extend 里没有 styles —— 菜单外观不得在 JS 侧重新长出第二个真相", () => {
     const argument = menuExtendArgument(readFileSync(resolve(repoRoot, THEME_PROVIDER_FILE), "utf8"));
     const hasStyles = /(^|[\s{,])styles\s*:/.test(argument);
