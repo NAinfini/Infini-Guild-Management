@@ -14,6 +14,8 @@ export const MIGRATED: string[] = [
   "apps/portal/styles/semantic.css",
   "apps/portal/styles/scale.css",
   "apps/portal/styles.css",
+  "apps/portal/components/layout/AppShell.css",
+  "apps/portal/components/layout/PageLayout.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */
@@ -234,24 +236,43 @@ const MANTINE_LIGHT_PRIMARY_SHADE = 6;
 /** 同上，light variant 填充的不透明度。 */
 const MANTINE_LIGHT_FILL_ALPHA = 0.1;
 
-/** 在选择器含 needle 的块里找 `property: var(--x)` 的目标，找不到返回 undefined。 */
+/** 在选择器含 needle 的块里找 `property: var(--x)` 的目标，找不到返回 undefined。
+ * 属性名前加 `(?:^|[\s;{])` 左边界锚定：不加的话 `--accent-700:` 这样的 needle
+ * 会误命中 `--foo-accent-700:`（H-2c）。 */
 function scopedForward(source: string, needle: string, property: string): string | undefined {
   for (const [, selector, body] of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (!selector?.includes(needle)) continue;
-    const hit = body?.match(new RegExp(`${property}:\\s*var\\((--[a-z0-9-]+)\\)`));
+    const hit = body?.match(new RegExp(`(?:^|[\\s;{])${property}:\\s*var\\((--[a-z0-9-]+)\\)`));
     if (hit?.[1]) return hit[1];
   }
   return undefined;
 }
 
-/** 整个文件里找 `property: var(--x)` 的目标。桥接块里每个名字只出现一次。 */
-function forwardTarget(source: string, property: string, where: string): string {
-  const hit = source.match(new RegExp(`${property}:\\s*var\\((--[a-z0-9-]+)\\)`));
-  if (!hit?.[1]) {
+/**
+ * 在指定选择器块里找 `property: var(--x)` 的目标，找不到就抛出错误。
+ *
+ * H-2a：此前这里直接对整个 styles.css 做全文匹配，从不检查命中落在哪个选择器
+ * 里 —— 于是把 `:root[data-theme="light"][data-theme="light"]`（0,3,0）削回
+ * `[data-theme="light"]`（0,1,0）这种会让浅色下 13+2 条 Mantine 覆盖全部输给库
+ * 后注入的 (0,2,0)、对比度整体回退的改动，守卫照样全绿。现在委托给已经具备
+ * 选择器定位能力的 scopedForward，把「转发到哪个 token」与「住在哪个选择器
+ * 下」一起钉住。报错语义与此前保持一致。 */
+function forwardTarget(source: string, selector: string, property: string, where: string): string {
+  const hit = scopedForward(source, selector, property);
+  if (hit === undefined) {
     throw new Error(`${where}: 找不到 ${property} 的 var() 转发目标 —— 这条桥接缺失，或者没走 var() 转发。`);
   }
-  return hit[1];
+  return hit;
 }
+
+/**
+ * H-2a 补充断言：Mantine 后注入的 `:root[data-mantine-color-scheme="light"]`
+ * 覆盖是 (0,2,0)。要稳赢就必须比它多一段选择器组件，凑到 (0,3,0) ——
+ * `:root[data-theme="light"][data-theme="light"]` 靠属性选择器重复自身达到
+ * 三段。这条断言钉住「选择器字面量必须是三段」这件事本身，不经过
+ * forwardTarget/scopedForward 的解析，避免和上面两个断言共用同一个可能失灵的
+ * 检测路径。 */
+const PORTAL_ACCENT_LIGHT_SELECTOR = ':root[data-theme="light"][data-theme="light"]';
 
 /** 把一个语义名一路解析到 L1 色板名：先查浅色模式块，再查该主色块。 */
 function resolveToPalette(semantic: string, accent: string, start: string): string {
@@ -304,7 +325,7 @@ describe("Mantine light variant 的文字色在浅色模式下过 AA", () => {
 
   for (const accent of ACCENTS) {
     it(`${accent}: light variant 的文字在三种浅色表面的淡色填充上都过 AA`, () => {
-      const text = token(p, resolveToPalette(semantic, accent, forwardTarget(entry, "--mantine-color-portal-accent-light-color", ENTRY_FILE)));
+      const text = token(p, resolveToPalette(semantic, accent, forwardTarget(entry, PORTAL_ACCENT_LIGHT_SELECTOR, "--mantine-color-portal-accent-light-color", ENTRY_FILE)));
       const fill = token(p, resolveToPalette(semantic, accent, accentRampStep(MANTINE_LIGHT_PRIMARY_SHADE)));
       const failures = LIGHT_SURFACES
         .map((surface) => ({ surface, ratio: contrastRatio(text, over(fill, token(p, surface), MANTINE_LIGHT_FILL_ALPHA)) }))
@@ -319,7 +340,7 @@ describe("Mantine light variant 的文字色在浅色模式下过 AA", () => {
     it(`${accent}: subtle / transparent 与 <Text c> 的文字在三种浅色表面上都过 AA`, () => {
       /* --mantine-color-X-text 是 variant="subtle" / "transparent" 与 <Text c="…">
        * 取的那一档，直接画在表面上、没有淡色填充垫底。 */
-      const text = token(p, resolveToPalette(semantic, accent, forwardTarget(entry, "--mantine-color-portal-accent-text", ENTRY_FILE)));
+      const text = token(p, resolveToPalette(semantic, accent, forwardTarget(entry, PORTAL_ACCENT_LIGHT_SELECTOR, "--mantine-color-portal-accent-text", ENTRY_FILE)));
       const failures = LIGHT_SURFACES
         .map((surface) => ({ surface, ratio: contrastRatio(text, token(p, surface)) }))
         .filter(({ ratio }) => ratio < AA_TEXT)
@@ -330,6 +351,58 @@ describe("Mantine light variant 的文字色在浅色模式下过 AA", () => {
       ).toEqual([]);
     });
   }
+
+  it("styles.css 必须包含三段选择器 :root[data-theme=\"light\"][data-theme=\"light\"]（H-2a）", () => {
+    /* 必须是三段：Mantine 自己那条 `:root[data-mantine-color-scheme="light"]`
+     * 覆盖是 (0,2,0) 且注入在本文件之后，打平会赢。属性选择器自我重复
+     * （[data-theme="light"][data-theme="light"]）把这条覆盖抬到 (0,3,0)，
+     * 稳赢而不必依赖感叹号优先级。削回单段 [data-theme="light"]（0,1,0）会让
+     * 这场特异性之争静默输掉——上面两个断言靠 forwardTarget 的选择器定位能
+     * 拦住这个坑，这一条独立钉住选择器字面量本身，防止两者共用的解析路径
+     * 同时失灵。 */
+    expect(entry.includes(PORTAL_ACCENT_LIGHT_SELECTOR)).toBe(true);
+  });
+});
+
+/* ── primaryShade 护栏（H-2b） ────────────────────────────── */
+
+/**
+ * MANTINE_LIGHT_PRIMARY_SHADE = 6 是 @mantine/core 库常量（浅色模式默认
+ * primaryShade）的第二份拷贝，本文件没有办法从库里读出这个值来核对。
+ * 只要有人在 createTheme 里加一行 `primaryShade: { light: 5, dark: 8 }`，
+ * Mantine 就会改取第 5 档，而上面两条 AA 断言仍按第 6 档算——静默测错档位。
+ * 这条断言不核对数值是否同步（做不到），只保证「没有人动过这个开关」：
+ * createTheme 的实参里不出现 primaryShade。 */
+/** 取 `createTheme(` 之后到括号配平为止的那段源码。 */
+function createThemeArgument(source: string): string {
+  const marker = "createTheme(";
+  const open = source.indexOf(marker);
+  if (open === -1) {
+    throw new Error(`${THEME_PROVIDER_FILE}: 找不到 createTheme( —— Mantine 主题配置被挪走或改名了，请同步改这个测试。`);
+  }
+  let depth = 0;
+  for (let i = open + marker.length - 1; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) return source.slice(open, i + 1);
+    }
+  }
+  throw new Error(`${THEME_PROVIDER_FILE}: createTheme( 的括号没有配平，无法切出配置对象。`);
+}
+
+describe("primaryShade 未被覆盖（H-2b）", () => {
+  it("createTheme 的实参里不出现 primaryShade", () => {
+    const argument = createThemeArgument(readFileSync(resolve(repoRoot, THEME_PROVIDER_FILE), "utf8"));
+    const hasPrimaryShade = /(^|[\s{,])primaryShade\s*:/.test(argument);
+    expect(
+      hasPrimaryShade,
+      `${THEME_PROVIDER_FILE} 的 createTheme 里出现了 primaryShade —— 这会让 Mantine 改取另一档，` +
+        `而 theme-tokens.test.ts 里的 MANTINE_LIGHT_PRIMARY_SHADE 常量不会跟着变，AA 断言将静默测错档位。` +
+        `请同步更新该常量后再移除这条守卫，或撤回 primaryShade 覆盖。`,
+    ).toBe(false);
+  });
 });
 
 /* ── 菜单单一真相的护栏（Task 3） ────────────────────────── */
