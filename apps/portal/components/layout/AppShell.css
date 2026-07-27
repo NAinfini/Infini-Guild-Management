@@ -32,6 +32,11 @@
 .app-sider {
   border-right: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   background: var(--surface-base);
+  /* 与模式无关的字面黑：这是侧栏右边缘的横向投影（把内容跟侧栏分开），不是
+     semantic.css 里 --shadow-xs/sm/md/lg 那种纵向（0 Ypx）标度阴影的同类——
+     那四档没有对应的横向形状可复用，强行换会让阴影方向从「向右」变成
+     「向下」，视觉上不是同一个效果。透明度只有 0.03，两模式下都接近不可见，
+     暂不新造横向阴影档（超出本批范围），留作后续设计系统扩展。 */
   box-shadow: 1px 0 8px rgba(0, 0, 0, 0.03);
   overflow: hidden;
   transition: width var(--transition-normal);

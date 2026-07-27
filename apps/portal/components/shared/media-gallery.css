@@ -143,7 +143,9 @@
   right: 3px;
   /* 播放图标叠在缩略图（照片/视频帧）之上，底色不可控，固定用 Mantine 自带的
    * 白而不是会分模式变化的语义 token（同 EventCardsView.css 的 raffle 徽章、
-   * 本批 EventDetailModal.css 的 poll-choice-indicator 先例）。 */
+   * 本批 EventDetailModal.css 的 poll-choice-indicator 先例）。下面这条投影
+   * 同理固定：给白色图标描一圈暗晕，保证它压在任意亮度的缩略图上都看得清，
+   * 不随 [data-theme] 变化。 */
   color: var(--mantine-color-white);
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
   pointer-events: none;

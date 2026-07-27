@@ -370,6 +370,12 @@
   transition: width var(--transition-normal);
 }
 
+/* 与模式无关的字面白：这两条（本档 .--own 与下面的 .--enemy）都是往
+   --accent-fill / --status-danger 这两个已经随主题变化的 token 里固定
+   混 26% 真白，做出一档比原色浅的「淡色版」，跟 semantic.css 的 --accent-tint
+   在深色模式改混 --surface-raised 不是一回事——那是把颜色带向表面色，这里
+   要的是「不管什么底色，往真白里提亮同一个比例」，换成表面 token 会改变
+   提亮的方向而不只是换个名字。 */
 .war-history-compare-bar-fill--own {
   background: color-mix(in srgb, var(--accent-fill) 74%, white 26%);
 }

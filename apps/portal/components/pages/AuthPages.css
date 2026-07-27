@@ -193,6 +193,12 @@
   width: 100%;
   border-radius: var(--radius-lg);
   padding: clamp(24px, 4vw, 36px);
+  /* mode-independent literal: the outer drop shadow below is what grounds this
+     glass card against BubbleBackground's animated gradient, which is not a
+     [data-theme] surface — it needs the same amount of darkening underneath
+     regardless of the page's own light/dark mode, same rationale as the
+     tiptap floating-dialog shadows (tiptap-editor.css) and the login card's
+     own inset highlight two lines below. */
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.2),
     0 0 0 1px color-mix(in srgb, var(--accent-fill) 8%, transparent),

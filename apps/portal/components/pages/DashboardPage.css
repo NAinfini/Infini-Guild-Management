@@ -1,3 +1,8 @@
+/* 与模式无关的字面黑：这是「往真黑里混一档」的固定调暗操作，不是给
+   --text-primary 本身换一个颜色——它仍然以当前主题的 --text-primary 为底，
+   只是统一压暗 28% 做出 dimmed 档，两模式都要同一个压暗比例，换成
+   --surface-base 之类的表面 token 会把颜色带向表面色而不是单纯调暗，
+   不是同一个效果。 */
 .dashboard-page [data-variant="filled"],
 .dashboard-page .mantine-Text-root[data-variant="dimmed"] {
   color: color-mix(in srgb, var(--text-primary) 72%, black 28%);
@@ -241,6 +246,9 @@
   box-shadow: none;
 }
 
+/* 与模式无关的字面黑：图标本身吃 currentColor（随 --text-primary 反色），这层
+   投影只是给它加一圈固定的暗晕做描边，让图标在任意背景上都读得清楚——跟
+   media-gallery.css 的缩略图播放图标投影同一个理由，不随主题变化。 */
 .war-nav-btn svg {
   stroke: currentColor;
   color: currentColor;
@@ -311,6 +319,7 @@
   transition: opacity var(--transition-normal);
 }
 
+/* 与模式无关的字面黑，理由同上方 .war-nav-btn svg 的图标描边投影。 */
 .war-share-btn svg {
   stroke: currentColor;
   color: currentColor;

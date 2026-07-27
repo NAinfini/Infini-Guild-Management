@@ -219,6 +219,9 @@ a.tool-card__btn {
   height: 12px;
   border-radius: 50%;
   flex-shrink: 0;
+  /* 与模式无关的字面黑：这条描边只是给下面任意色号的 --swatch-color 描一圈轮廓，
+     好让浅色色块在浅色表面上也能看出边界，不属于替换表任何一行，理由同下面
+     --swatch-color 本身（数据色，不随主题变化）。 */
   border: 1px solid rgba(0, 0, 0, 0.1);
   /* --swatch-color：复用 tiptap-editor.css / AdminBadgesSection.css 同名
      channel，这里的值来自用户自己在沙盒里挑过的 recentColors（localStorage
@@ -494,7 +497,7 @@ a.tool-card__btn {
   color: var(--accent-text);
   background: var(--surface-base);
   border: 2px solid color-mix(in srgb, var(--accent-fill) 30%, transparent);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-sm);
   transition: transform 200ms ease, border-color 200ms ease;
 }
 

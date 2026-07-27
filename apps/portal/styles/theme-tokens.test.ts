@@ -132,6 +132,281 @@ const RUNTIME_INJECTED_VARS: string[] = [
  * （@mantine/core 的 MantineCssVariables），逐个列名不现实，按前缀豁免。 */
 const MANTINE_COLOR_PREFIX = "--mantine-color-";
 
+/**
+ * CSS Color Module 的基础 + 扩展关键字色，逐个都是真实固定 RGB 值 ——
+ * 唯二排除的两个关键字 `transparent` / `currentColor`（连同 `inherit`）不在
+ * 此列：前者是恒定的 0 透明度，渲染结果与所在模式无关；后两个根本不是颜色，
+ * 只是「沿用级联已经算出来的那个值」的引用，正是 token 系统想要的效果，
+ * 本来就不构成绕过。 */
+const CSS_NAMED_COLOURS: string[] = [
+  "aliceblue", "antiquewhite", "aqua", "aquamarine", "azure", "beige", "bisque",
+  "black", "blanchedalmond", "blue", "blueviolet", "brown", "burlywood",
+  "cadetblue", "chartreuse", "chocolate", "coral", "cornflowerblue", "cornsilk",
+  "crimson", "cyan", "darkblue", "darkcyan", "darkgoldenrod", "darkgray",
+  "darkgreen", "darkgrey", "darkkhaki", "darkmagenta", "darkolivegreen",
+  "darkorange", "darkorchid", "darkred", "darksalmon", "darkseagreen",
+  "darkslateblue", "darkslategray", "darkslategrey", "darkturquoise",
+  "darkviolet", "deeppink", "deepskyblue", "dimgray", "dimgrey", "dodgerblue",
+  "firebrick", "floralwhite", "forestgreen", "fuchsia", "gainsboro",
+  "ghostwhite", "gold", "goldenrod", "gray", "grey", "green", "greenyellow",
+  "honeydew", "hotpink", "indianred", "indigo", "ivory", "khaki", "lavender",
+  "lavenderblush", "lawngreen", "lemonchiffon", "lightblue", "lightcoral",
+  "lightcyan", "lightgoldenrodyellow", "lightgray", "lightgreen", "lightgrey",
+  "lightpink", "lightsalmon", "lightseagreen", "lightskyblue",
+  "lightslategray", "lightslategrey", "lightsteelblue", "lightyellow", "lime",
+  "limegreen", "linen", "magenta", "maroon", "mediumaquamarine", "mediumblue",
+  "mediumorchid", "mediumpurple", "mediumseagreen", "mediumslateblue",
+  "mediumspringgreen", "mediumturquoise", "mediumvioletred", "midnightblue",
+  "mintcream", "mistyrose", "moccasin", "navajowhite", "navy", "oldlace",
+  "olive", "olivedrab", "orange", "orangered", "orchid", "palegoldenrod",
+  "palegreen", "paleturquoise", "palevioletred", "papayawhip", "peachpuff",
+  "peru", "pink", "plum", "powderblue", "purple", "rebeccapurple", "red",
+  "rosybrown", "royalblue", "saddlebrown", "salmon", "sandybrown", "seagreen",
+  "seashell", "sienna", "silver", "skyblue", "slateblue", "slategray",
+  "slategrey", "snow", "springgreen", "steelblue", "tan", "teal", "thistle",
+  "tomato", "turquoise", "violet", "wheat", "white", "whitesmoke", "yellow",
+  "yellowgreen",
+];
+
+/**
+ * 逐个字面关键字色的检测，两端都设了边界：左边界连引号也排除，是因为
+ * semantic.css 的 `[data-accent="teal"]` 这类属性选择器里，"teal" 是双引号
+ * 包起来的字符串字面量（选择器要匹配的 data-accent 值），不是颜色 ——
+ * task-9-addendum.md E 节实测过，不加这一层排除会把它也当成命中（已用
+ * scan-full.cjs 变异验证过，见报告）。右边界同理防止命中
+ * `--palette-teal-500` 这类自定义属性名的一部分。 */
+function keywordColourHits(withoutComments: string): string[] {
+  const re = new RegExp(`(?<![a-zA-Z0-9_"-])(${CSS_NAMED_COLOURS.join("|")})(?![a-zA-Z0-9_"-])`, "gi");
+  return [...withoutComments.matchAll(re)].map((match) => match[1]!.toLowerCase());
+}
+
+/**
+ * 逐个字面 rgb()/rgba()/hsl()/hsla() 调用。允许一层嵌套括号，只是为了不让
+ * 内部的 var(...) 破坏配对——真正筛掉它的是紧接着的 `.filter`：任何一个通道
+ * 来自 var() 的调用（例如 AuthPages.css 的
+ * `hsla(var(--bubble-hue), 60%, 60%, 0.1)`）根源上是数据/token 驱动的颜色，
+ * 不是硬编码字面量，rule 2 本来就不该管它——同样的判断已经在
+ * RUNTIME_INJECTED_VARS 里对 --bubble-hue 做过一次。 */
+function functionalColourHits(withoutComments: string): string[] {
+  const re = /\b(?:rgba?|hsla?)\(((?:[^()]|\([^()]*\))*)\)/g;
+  return [...withoutComments.matchAll(re)].filter((match) => !match[1]!.includes("var(")).map((match) => match[0]);
+}
+
+type LiteralColourExemption = {
+  /** 定位这条豁免对应的选择器/规则块，方便回查源码。 */
+  source: string;
+  /** 为什么这个字面量是与模式无关的固定值，而不是被漏迁的主题色。 */
+  reason: string;
+  /** 这个出处贡献的具体字面量，逐次出现都要列出（同一值出现几次就写几次）。 */
+  values: string[];
+};
+
+/**
+ * rule 2 扩宽后的豁免表（task-9-addendum.md E 节）。结构照抄
+ * inline-colour.test.ts 的 BARE_HEX_EXEMPTIONS：按文件索引，每条都写清楚
+ * 选择器出处与理由，按值计次消耗，不是整文件豁免。
+ *
+ * 为什么豁免表在这里、而不是「找源码里挨着的说明注释」：rule 2 沿用现有的
+ * 「先剥注释再扫」（这是为了不让 EventDetailModal.css 那种在注释里纯讲解历史
+ * rgb() 数值的说明文字被误当成命中——剥注释前会先加进命中列表）。但先剥注释
+ * 就意味着扫描函数看不到注释里写的豁免理由，没法用「附近有没有说明注释」当
+ * 判据；所以豁免机制改成这张按文件+值索引的表，来源审计仍然要求：每一条
+ * 豁免在这张表里有理由字段的同时，源码里对应站点也必须有一段说明性注释
+ * （本批已逐处核实/补全，见 task-9-report.md），只是自动化检查依赖这张表，
+ * 不依赖去解析注释文本。
+ */
+const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
+  "apps/portal/components/feature/admin/AdminGameDataSection.css": [
+    {
+      source: ".admin-game-data__editor-preview textarea 的内凹阴影（周围有注释）",
+      reason: "文本域内凹阴影的黑色晕影，与模式无关的字面黑。",
+      values: ["rgba(0, 0, 0, 0.06)"],
+    },
+  ],
+  "apps/portal/components/feature/events/EventCardsView.css": [
+    {
+      source: ".event-card__raffle-winners-badge",
+      reason: "徽章底色/文字已固定吃 --mantine-color-pink-5 / --mantine-color-white，不随 [data-theme] 变化，投影延续同一条设计决定保持固定，避免固定配色配一圈会变化的阴影。",
+      values: ["rgba(0, 0, 0, 0.2)"],
+    },
+  ],
+  "apps/portal/components/layout/AppShell.css": [
+    {
+      source: ".app-sider",
+      reason: "侧栏右边缘的横向投影（1px 0 8px），跟 semantic.css 的纵向 --shadow-xs/sm/md/lg 不是同一种形状，没有现成横向档可复用；透明度仅 0.03，两模式下都接近不可见。",
+      values: ["rgba(0, 0, 0, 0.03)"],
+    },
+  ],
+  "apps/portal/components/pages/AuthPages.css": [
+    {
+      source: ".login-page__card 的 box-shadow 外层投影",
+      reason: "把玻璃卡片压在 BubbleBackground 的动态渐变之上，需要跟页面自身 [data-theme] 无关的固定压暗，理由同 tiptap-editor.css 的浮层投影先例。",
+      values: ["rgba(0, 0, 0, 0.2)"],
+    },
+    {
+      source: ".login-page__card 的 box-shadow 内嵌高光（已有注释）",
+      reason: "玻璃卡片顶边固定的一缕白色高光，深浅两模式都是同一条白，没有对应的 L2/L3 token。",
+      values: ["rgb(255 255 255 / 0.06)"],
+    },
+    {
+      source: ".login-page__card::before 的 mask/-webkit-mask（已有注释）",
+      reason: "mask 只读渐变的 alpha 通道来决定裁切范围，颜色通道从不参与渲染，任何不透明色效果等价，rgb(255 255 255) 只是「不透明」的约定写法。-webkit-mask 与 mask 各写了一遍，每个属性各出现两次（两段 linear-gradient）。",
+      values: ["rgb(255 255 255)", "rgb(255 255 255)", "rgb(255 255 255)", "rgb(255 255 255)"],
+    },
+  ],
+  "apps/portal/components/pages/DashboardPage.css": [
+    {
+      source: '.dashboard-page [data-variant="filled"] / [data-variant="dimmed"]',
+      reason: "往 --text-primary 里固定混 28% 真黑做「调暗」，操作对象仍是当前主题的 --text-primary，只是统一压暗比例；换成表面 token 会把颜色带向表面色而不是单纯调暗，不是同一个效果。",
+      values: ["black"],
+    },
+    {
+      source: ".war-nav-btn svg / .war-share-btn svg 的图标描边投影",
+      reason: "图标本身吃 currentColor 随主题反色，这层投影只是加一圈固定暗晕保证图标在任意背景上可辨识，理由同 media-gallery.css 的缩略图播放图标投影。两处选择器各贡献一次。",
+      values: ["rgba(0, 0, 0, 0.35)", "rgba(0, 0, 0, 0.35)"],
+    },
+  ],
+  "apps/portal/components/pages/GalleryPage.css": [
+    {
+      source: ".gallery-video-thumb 与其 :hover 变体（已有注释）",
+      reason: "占位背景固定吃 Mantine 的 --mantine-color-dark-6，不随 [data-theme] 变化，图标色跟着保持固定白色透明度。",
+      values: ["rgba(255, 255, 255, 0.55)", "rgba(255, 255, 255, 0.85)"],
+    },
+    {
+      source: ".gallery-preview-uploader（已有注释）",
+      reason: "上传者姓名条压在任意照片/视频帧之上，不是主题表面，文字固定白、底色固定黑（半透明，让照片透出来），才能在任意图片上保持可读。",
+      values: ["rgb(255 255 255)", "black"],
+    },
+    {
+      source: ".gallery-lb-overlay（已有注释）",
+      reason: "全屏灯箱遮罩恒为近黑，与 [data-theme] 无关，是下面所有白色控件的固定背景基准。",
+      values: ["rgba(0, 0, 0, 0.92)"],
+    },
+    {
+      source: ".gallery-lb__close 与其 :hover（已有注释）",
+      reason: "关闭按钮坐在上面固定近黑的遮罩上，不是主题表面，玻璃底色与图标色都保持固定白色透明度。",
+      values: ["rgba(255, 255, 255, 0.1)", "rgba(255, 255, 255, 0.8)", "rgba(255, 255, 255, 0.2)", "rgb(255 255 255)"],
+    },
+    {
+      source: ".gallery-lb__nav 与其 :hover（已有注释）",
+      reason: "理由同 .gallery-lb__close：固定近黑遮罩上的固定白色玻璃控件。",
+      values: ["rgba(255, 255, 255, 0.08)", "rgba(255, 255, 255, 0.7)", "rgba(255, 255, 255, 0.18)", "rgb(255 255 255)"],
+    },
+    {
+      source: ".gallery-lb__caption / __uploader / __date / __count（已有注释，task-8 批 B）",
+      reason: "灯箱信息条文字，与 .gallery-lb__close/.gallery-lb__nav 同一先例：遮罩恒为近黑，文字保持固定白色透明度而非表面/文字 token。",
+      values: ["rgba(255, 255, 255, 0.95)", "rgba(255, 255, 255, 0.6)", "rgba(255, 255, 255, 0.4)", "rgba(255, 255, 255, 0.5)"],
+    },
+  ],
+  "apps/portal/components/pages/GuildWarPage.css": [
+    {
+      source: ".war-history-compare-bar-fill--own / --enemy",
+      reason: "往已经随主题变化的 --accent-fill / --status-danger 里固定混 26% 真白，做出一档更浅的「淡色版」——要的是「往真白提亮同一个比例」，不是把颜色带向某个表面 token（那是 --accent-tint 在深色模式的做法，效果不同）。两个选择器各贡献一次。",
+      values: ["white", "white"],
+    },
+  ],
+  "apps/portal/components/pages/ToolsPage.css": [
+    {
+      source: ".sandbox__recent-dot",
+      reason: "给下面任意色号的 --swatch-color 描一圈固定轮廓，理由同 --swatch-color 本身（用户数据色，不随主题变化）。",
+      values: ["rgba(0, 0, 0, 0.1)"],
+    },
+  ],
+  "apps/portal/components/shared/MemberCard.css": [
+    {
+      source: ".member-role-avatar__role-circle",
+      reason: "给下面任意色号的 --role-color 描一圈固定投影，理由同 --role-color 本身（当前游戏配置的数据色，不随主题变化）。",
+      values: ["rgba(0, 0, 0, 0.25)"],
+    },
+  ],
+  "apps/portal/components/shared/media-gallery.css": [
+    {
+      source: ".infini-media-gallery-native-video / .infini-media-gallery-thumb-video（已有注释）",
+      reason: "视频播放器/缩略图的信箱底色传统上恒为黑色，与 [data-theme] 无关。",
+      values: ["rgb(0 0 0)", "rgb(0 0 0)"],
+    },
+    {
+      source: ".infini-media-gallery-thumb-play 的图标描边投影（已有注释）",
+      reason: "播放图标固定用 Mantine 白，投影同理固定：给白色图标描一圈暗晕，保证压在任意亮度的缩略图上都看得清。",
+      values: ["rgba(0,0,0,0.5)"],
+    },
+  ],
+  "apps/portal/components/shared/tiptap-editor.css": [
+    {
+      source: ".infini-tiptap-link-dialog-backdrop（已有注释）",
+      reason: "浮层对话框背后的全屏遮罩，深浅两模式都需要压暗身后内容而不是随模式反色。",
+      values: ["rgba(15, 23, 42, 0.48)"],
+    },
+    {
+      source: ".infini-tiptap-link-dialog 的投影（已有注释）",
+      reason: "投影与上面的遮罩同理，深浅两模式都需要压暗身后内容。",
+      values: ["rgba(15, 23, 42, 0.24)"],
+    },
+    {
+      source: ".infini-tiptap-context-menu / __context-submenu / __find-replace 的投影（已有注释，理由同上）",
+      reason: "浮层菜单/查找替换面板的投影，理由同 link-dialog。三处选择器各贡献一次。",
+      values: ["rgba(15, 23, 42, 0.18)", "rgba(15, 23, 42, 0.18)", "rgba(15, 23, 42, 0.18)"],
+    },
+    {
+      source: ".infini-tiptap-search-match / __search-active（已有注释）",
+      reason: "查找高亮是独立于主题色阶的「查找命中」标记色（黄/橙），不随主题反色，类似浏览器原生查找高亮。",
+      values: ["rgba(255, 217, 0, 0.35)", "rgba(255, 140, 0, 0.55)"],
+    },
+  ],
+  "apps/portal/styles.css": [
+    {
+      source: ".floating-save-bar",
+      reason: "贴底浮条向上投的分隔阴影（negative Y 偏移），跟 --shadow-xs/sm/md/lg 的正 Y（向下）不是同一种形状；透明度仅 0.04，两模式下都接近不可见。",
+      values: ["rgb(0 0 0 / 0.04)"],
+    },
+    {
+      source: '.mantine-Button-root[data-variant="filled"]::after 的斜向高光扫光',
+      reason: "按钮自身填色上方的固定白色高光扫光，跟主色/主题无关——就像光源本身不会因为照到什么表面而变色。",
+      values: ["rgb(255 255 255 / 0.15)"],
+    },
+    {
+      source: ".mantine-Tooltip-tooltip 的 box-shadow",
+      reason: "玻璃拟态投影 + 顶边高光，跟 AuthPages.css 的 .login-page__card 同一先例，两个值都固定、不随模式变化。",
+      values: ["rgb(0 0 0 / 0.12)", "rgb(255 255 255 / 0.06)"],
+    },
+    {
+      source: ".mantine-Modal-content.mantine-Modal-content 的外层投影",
+      reason: "弹窗要在任意背景上都压出同等强度的浮起效果，理由同 .mantine-Tooltip-tooltip 与 .login-page__card。",
+      values: ["rgb(0 0 0 / 0.2)"],
+    },
+  ],
+};
+
+function exemptedLiteralValues(path: string): string[] {
+  const entries = LITERAL_COLOUR_EXEMPTIONS[path];
+  if (!entries) return [];
+  return entries.flatMap((entry) => entry.values);
+}
+
+/**
+ * 找出一个文件里剥掉注释之后、豁免表也没盖住的字面功能色/关键字色。
+ * 豁免按「值出现的次数」逐个消耗（同 inline-colour.test.ts 的
+ * bareHexOffenders），不是简单 filter：同一个值在文件里意外多冒出一次，
+ * 那多出来的一次不该被放过。
+ */
+function literalColourOffenders(path: string, withoutComments: string): string[] {
+  const hits = [...functionalColourHits(withoutComments), ...keywordColourHits(withoutComments)];
+  const remainingAllowance = new Map<string, number>();
+  for (const value of exemptedLiteralValues(path)) {
+    remainingAllowance.set(value, (remainingAllowance.get(value) ?? 0) + 1);
+  }
+  const offenders: string[] = [];
+  for (const hit of hits) {
+    const allowance = remainingAllowance.get(hit) ?? 0;
+    if (allowance > 0) {
+      remainingAllowance.set(hit, allowance - 1);
+    } else {
+      offenders.push(hit);
+    }
+  }
+  return offenders;
+}
+
 export function listCssFiles(root: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(root)) {
@@ -166,24 +441,23 @@ describe("theme token hard rules", () => {
     expect(offenders).toEqual([]);
   });
 
-  /* Known blind spot (task-6 review I-3): this rule only matches literal
-   * #hex. Functional color notations — rgb()/rgba()/hsl() etc. — are not
-   * matched at all, even when they spell out the same mode-independent
-   * literal (e.g. `rgb(255 255 255)`) that rule 2 exists to catch in hex
-   * form. Sites using those are expected to carry an inline comment
-   * explaining why the literal is mode-independent (see AuthPages.css around
-   * the mask and glass-highlight rules for examples). Task 9 needs to decide
-   * whether to widen this rule to cover functional notation or formalize an
-   * explicit allowlist keyed off that comment — widening it naively would
-   * also flag semantic.css's own rgb()-based shadows, which are a separate,
-   * already-reviewed case. */
-  it("rule 2: no bare hex outside the palette file", () => {
+  /* task-9-addendum.md E 节收口：曾经的已知盲区（rule 2 只认字面 #hex，
+   * rgb()/rgba()/hsl()/hsla() 与 black/white 这类关键字色一概漏检）现在补上——
+   * 见下面的 hex + literalColourOffenders 两段判断。semantic.css 的阴影档
+   * （rgb(10 10 15 / …) / rgb(0 0 0 / …)）与 tokens.css 一样是设计如此的例外，
+   * 单独跳过，不进 LITERAL_COLOUR_EXEMPTIONS 那张按站点计数的表。 */
+  it("rule 2: no bare hex, literal rgb()/rgba()/hsl()/hsla(), or literal named colour outside the palette/semantic files", () => {
     const offenders: string[] = [];
     for (const { path, source } of readMigrated()) {
       if (path === PALETTE_FILE) continue;
       const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
-      const hits = withoutComments.match(/#[0-9a-fA-F]{3,8}\b/g);
-      if (hits) offenders.push(`${path}: ${[...new Set(hits)].join(", ")}`);
+
+      const hexHits = withoutComments.match(/#[0-9a-fA-F]{3,8}\b/g);
+      if (hexHits) offenders.push(`${path}: ${[...new Set(hexHits)].join(", ")}`);
+
+      if (path === SEMANTIC_FILE) continue;
+      const literalHits = literalColourOffenders(path, withoutComments);
+      if (literalHits.length > 0) offenders.push(`${path}: ${literalHits.join(", ")}`);
     }
     expect(offenders).toEqual([]);
   });

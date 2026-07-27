@@ -501,6 +501,10 @@ body::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--surface-base) 92%, transparent);
   backdrop-filter: saturate(180%) blur(16px);
   -webkit-backdrop-filter: saturate(180%) blur(16px);
+  /* 与模式无关的字面黑：这是贴底浮条向上投的分隔阴影（negative Y 偏移），跟
+     semantic.css 的 --shadow-xs/sm/md/lg 都是正 Y（向下）不是同一种形状，没有
+     现成档位能直接复用而不改变投影方向。透明度只有 0.04，两模式下都接近
+     不可见，暂不新造反向阴影档（超出本批范围）。 */
   box-shadow: 0 -2px 8px rgb(0 0 0 / 0.04);
   transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
 }
@@ -600,6 +604,11 @@ body::-webkit-scrollbar-thumb:hover {
   left: 0;
   width: 40%;
   height: 100%;
+  /* mode/accent-neutral literal: this is the diagonal shine sweep over a filled
+     button's own fill colour (see the "colour-neutral now" note a few rules
+     below) — a fixed white glint reads correctly over any accent or theme, the
+     same way a light source doesn't change colour with the surface it's
+     glinting off. */
   background: linear-gradient(
     90deg,
     transparent,
@@ -836,6 +845,10 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 
 /* ── Tooltip entrance (glassmorphism style) ── */
+/* mode-independent literal: same glass shadow + top-edge sheen pair as
+   .login-page__card in AuthPages.css (outer dark shadow to ground the glass
+   panel, inset white sliver to catch a top highlight) — both values are fixed
+   on purpose, not themed colours, same rationale as that precedent. */
 .mantine-Tooltip-tooltip {
   animation: tooltipIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
   backdrop-filter: blur(12px);
@@ -869,7 +882,9 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
  * —— 这是 box-shadow 当初挂感叹号优先级的原因，改用类名自我重复抬到 (0,2,0)。
  * animation 本来就不需要抬：CSS 动画在层叠里压过普通声明，连内联样式都压得过。
  * 深色模式原本另有一条更重的阴影与一圈外辉光，与本条只差数值，已随 .dark 变体
- * 一并删除。 */
+ * 一并删除。下面的外层投影 `0 24px 48px rgb(0 0 0 / 0.2)` 与模式无关：弹窗要在
+ * 任意背景上都压出同等强度的浮起效果，理由同 .mantine-Tooltip-tooltip 与
+ * AuthPages.css 的 .login-page__card。 */
 .mantine-Modal-content.mantine-Modal-content {
   animation: modalSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
   box-shadow:

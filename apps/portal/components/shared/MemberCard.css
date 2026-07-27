@@ -214,6 +214,9 @@
   align-items: center;
   justify-content: center;
   border: 2px solid var(--surface-base);
+  /* 与模式无关的字面黑：这圈投影是给下面任意色号的 --role-color 描一圈固定
+     轮廓，理由同上面 --role-color 本身注释——数据色，不随 [data-theme] 变化，
+     换成 --shadow-sm 会让投影强度随主题波动，反而跟框住的固定数据色不一致。 */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   background: var(--role-color);
 }

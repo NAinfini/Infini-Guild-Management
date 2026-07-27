@@ -301,6 +301,10 @@
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
+  /* 与模式无关的字面黑：这枚徽章整体（底色/文字）已按上面的注释固定为不随
+     [data-theme] 变化的外观，投影延续同一条设计决定，保持固定，不改用会
+     分模式变化的 --shadow-sm——否则一个固定配色的徽章会带一圈会变化的阴影，
+     视觉上反而不一致。 */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   z-index: 1;
 }
