@@ -132,18 +132,6 @@ body::-webkit-scrollbar-thumb:hover {
   100% { background-position: -200% 0; }
 }
 
-/* ── ClickSpark animation ── */
-@keyframes clickSparkFly {
-  0% {
-    opacity: 1;
-    transform: translate(0, 0) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(var(--spark-x), var(--spark-y)) scale(0);
-  }
-}
-
 /* ── StarBorder — animated rotating gradient border ──
  *
  * 三个可调参数此前写成 var() 的第二参数当默认值。兜底值一律禁止，改为在根类上

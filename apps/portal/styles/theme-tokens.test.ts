@@ -39,6 +39,35 @@ const SEMANTIC_FILE = "apps/portal/styles/semantic.css";
 const ENTRY_FILE = "apps/portal/styles.css";
 const THEME_PROVIDER_FILE = "apps/portal/providers/ThemeProvider.tsx";
 
+/**
+ * rule 5 豁免表。这里的每一条在源码里都没有 `^\s*--name\s*:` 形式的定义 ——
+ * 它们的值是运行期由某处 JS/库写进 style 的。没有出处的名字不许进这张表
+ * （task-7-addendum.md A 节）。
+ */
+const RUNTIME_INJECTED_VARS: string[] = [
+  /* Mantine AppShell 组件在运行期写入（@mantine/core 的
+   * esm/components/AppShell/AppShellMediaStyles/assign-header-variables/
+   * assign-header-variables.mjs:33-37，assignHeaderVariables()）。 */
+  "--app-shell-header-offset",
+  /* Mantine Alert 组件在运行期写入（@mantine/core 的
+   * esm/components/Alert/Alert.mjs:35）。 */
+  "--alert-color",
+  /* PageLayout.tsx:82-87，PageLayout 组件在根元素 style 上内联注入。 */
+  "--page-layout-cols-xs",
+  "--page-layout-cols-sm",
+  "--page-layout-cols-md",
+  "--page-layout-cols-lg",
+  "--page-layout-cols-xl",
+  "--page-layout-grid-gap",
+  /* GalleryGrid.tsx:114，每张卡片的 style 上内联注入，用来错开入场动画延迟。 */
+  "--stagger-index",
+  /* LastWarCard.tsx:138，结果徽章的 style 上内联注入。 */
+  "--war-result-color",
+];
+/** --mantine-color-* 系列由 Mantine 的 CSS 变量解析器批量写入运行期
+ * （@mantine/core 的 MantineCssVariables），逐个列名不现实，按前缀豁免。 */
+const MANTINE_COLOR_PREFIX = "--mantine-color-";
+
 export function listCssFiles(root: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(root)) {
@@ -61,7 +90,7 @@ function readMigrated(): Array<{ path: string; source: string }> {
   return MIGRATED.map((path) => ({ path, source: readFileSync(resolve(repoRoot, path), "utf8") }));
 }
 
-/* ── 硬规则 1–4 ───────────────────────────────────────────── */
+/* ── 硬规则 1–5 ───────────────────────────────────────────── */
 
 describe("theme token hard rules", () => {
   it("rule 1: no var() fallback values", () => {
@@ -116,6 +145,31 @@ describe("theme token hard rules", () => {
       const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
       if (/(^|[\s,>+~(])\.dark\b/.test(withoutComments)) offenders.push(`${path}: .dark selector`);
       if (withoutComments.includes("data-mantine-color-scheme")) offenders.push(`${path}: data-mantine-color-scheme selector`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("rule 5: every var() in migrated CSS resolves to a definition", () => {
+    const files = readMigrated();
+
+    /* 「有定义」= MIGRATED 集合里任意一处 `^\s*--name\s*:`，跨文件算数
+     * （例如 .star-border 在 styles.css 内自定义的三个变量，定义与消费同文件）。 */
+    const defined = new Set<string>();
+    for (const { source } of files) {
+      const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const match of withoutComments.matchAll(/^\s*(--[a-zA-Z0-9-]+)\s*:/gm)) {
+        defined.add(match[1]!);
+      }
+    }
+
+    const offenders: string[] = [];
+    for (const { path, source } of files) {
+      const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
+      const used = new Set([...withoutComments.matchAll(/var\((--[a-zA-Z0-9-]+)/g)].map((match) => match[1]!));
+      const missing = [...used].filter(
+        (name) => !defined.has(name) && !RUNTIME_INJECTED_VARS.includes(name) && !name.startsWith(MANTINE_COLOR_PREFIX),
+      );
+      if (missing.length > 0) offenders.push(`${path}: ${missing.join(", ")}`);
     }
     expect(offenders).toEqual([]);
   });
