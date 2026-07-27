@@ -92,7 +92,7 @@ export function AnnouncementListCard({
               ))}
             </Stack>
           ) : null}
-          {isError ? <Alert color="portal-copper" title={warningMessage} /> : null}
+          {isError ? <Alert color="red" title={warningMessage} /> : null}
           {!isLoading && !isError ? (
             rows.length > 0 ? (
               <Stack gap={8}>
@@ -143,7 +143,7 @@ export function AnnouncementListCard({
                         </div>
                         <Group gap={8}>
                           {canEdit && item.status === "scheduled" && item.publish_at ? (
-                            <Badge color="portal-bronze">{t("meta.scheduled", { datetime: formatDateTime(item.publish_at) })}</Badge>
+                            <Badge color="blue">{t("meta.scheduled", { datetime: formatDateTime(item.publish_at) })}</Badge>
                           ) : null}
                         </Group>
                         <Text c="dimmed" size="sm" className="announcement-item-time">

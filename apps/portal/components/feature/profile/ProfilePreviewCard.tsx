@@ -42,7 +42,7 @@ export function ProfilePreviewCard({
           <Avatar
             size={56}
             radius="xl"
-            color="portal-gold"
+            color="portal-accent"
             src={avatarKey ? resolveProfileMediaUrl(avatarKey) : undefined}
             style={{ flexShrink: 0, border: "2px solid var(--color-border, #E2DDD6)" }}
           >

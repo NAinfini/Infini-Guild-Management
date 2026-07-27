@@ -515,7 +515,7 @@ export function RecurringTemplateFormModal({
               ) : (
                 <Button
                   variant="light"
-                  color="portal-copper"
+                  color="orange"
                   leftSection={<PlayerPauseIcon size={16} />}
                   onClick={() => { void onPause?.(template.id); onCancel(); }}
                 >

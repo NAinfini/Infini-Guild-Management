@@ -96,7 +96,7 @@ export function WikiArticleListCard({
               ))}
             </Stack>
           ) : null}
-          {isError ? <Alert color="portal-copper" title={warningMessage} /> : null}
+          {isError ? <Alert color="red" title={warningMessage} /> : null}
           {!isLoading && !isError ? (
             <Stack gap={6}>
               {articles.length === 0 ? <EmptyState title={emptyTitle} /> : null}
@@ -115,13 +115,13 @@ export function WikiArticleListCard({
                       {item.pinned ? (
                         <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                           <HoverCard.Target>
-                            <ThemeIcon variant="transparent" color="portal-copper" size="sm" style={{ cursor: "default" }} data-animate-icon-trigger>
+                            <ThemeIcon variant="transparent" color="portal-accent" size="sm" style={{ cursor: "default" }} data-animate-icon-trigger>
                               <PinIcon size={14} aria-hidden />
                             </ThemeIcon>
                           </HoverCard.Target>
                           <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                             <Group gap={10} wrap="nowrap" align="flex-start">
-                              <ThemeIcon variant="light" color="portal-copper" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                              <ThemeIcon variant="light" color="portal-accent" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                                 <PinIcon size={16} />
                               </ThemeIcon>
                               <div style={{ minWidth: 0 }}>

@@ -160,7 +160,7 @@ export function EventMonthView({
               <Stack gap={2} style={{ width: "100%" }}>
                 {dayEvents.slice(0, 3).map((event) => {
                   const isMuted = isMutedMonthEvent(event);
-                  const eventColor = isMuted ? "gray" : EVENT_TYPE_COLORS[event.type] ?? "portal-bronze";
+                  const eventColor = isMuted ? "gray" : EVENT_TYPE_COLORS[event.type] ?? "gray";
                   return (
                     <HoverCard key={event.id} width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                       <HoverCard.Target>
@@ -202,7 +202,7 @@ export function EventMonthView({
                 {dayEvents.length > 3 ? (
                   <Popover withinPortal>
                     <Popover.Target>
-                      <Badge color="portal-copper" variant="light" size="xs" style={{ cursor: "pointer" }}>
+                      <Badge color="gray" variant="light" size="xs" style={{ cursor: "pointer" }}>
                         +{dayEvents.length - 3} {t("month.more")}
                       </Badge>
                     </Popover.Target>

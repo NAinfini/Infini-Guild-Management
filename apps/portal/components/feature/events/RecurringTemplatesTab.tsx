@@ -273,7 +273,7 @@ export function RecurringTemplatesTab({
                           </HoverCard.Target>
                           <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                             <Group gap={10} wrap="nowrap" align="flex-start">
-                              <ThemeIcon variant="light" color="portal-copper" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                              <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                                 <ClockIcon size={16} />
                               </ThemeIcon>
                               <div style={{ minWidth: 0 }}>

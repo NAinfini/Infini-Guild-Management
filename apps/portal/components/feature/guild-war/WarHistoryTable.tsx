@@ -103,7 +103,7 @@ export function WarHistoryTable({
             </HoverCard.Target>
             <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
               <Group gap={10} wrap="nowrap" align="flex-start">
-                <ThemeIcon variant="light" color="portal-copper" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                   <CalendarOffIcon size={16} />
                 </ThemeIcon>
                 <div style={{ minWidth: 0 }}>
@@ -117,7 +117,7 @@ export function WarHistoryTable({
       </div>
 
       {historyLoading ? <Stack gap={8}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {historyError ? <Alert color="portal-copper">{loadErrorMessage}</Alert> : null}
+      {historyError ? <Alert color="red">{loadErrorMessage}</Alert> : null}
 
       {!historyLoading && !historyError ? (
         <PortalCard interactive={false} className="war-history-list-card">
@@ -139,7 +139,7 @@ export function WarHistoryTable({
                   ) : null}
                 </Group>
                 <Group gap={8}>
-                  <Badge color="portal-bronze">{filteredHistoryRows.length} / {historyRows.length}</Badge>
+                  <Badge color="gray">{filteredHistoryRows.length} / {historyRows.length}</Badge>
                 </Group>
               </Group>
               <div className="war-history-list-table-wrap">

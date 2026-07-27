@@ -161,11 +161,11 @@ export function AnnouncementDetailCard({
             {canEdit && (selectedId && selected || isCreateMode) ? (
               editing ? (
                 <Group gap={8}>
-                  {isDirty ? <Badge color="portal-copper">{t("status.unsaved")}</Badge> : <Badge color="green">{t("status.saved")}</Badge>}
+                  {isDirty ? <Badge color="orange">{t("status.unsaved")}</Badge> : <Badge color="green">{t("status.saved")}</Badge>}
                   <Button.Group>
                     <Button
                       size="sm"
-                      color="portal-gold"
+                      color="portal-accent"
                       onClick={() => validateAndFinish("none")}
                       disabled={savePending}
                       leftSection={<SendIcon size={14} />}
@@ -176,7 +176,7 @@ export function AnnouncementDetailCard({
                       <Menu.Target>
                         <Button
                           size="sm"
-                          color="portal-gold"
+                          color="portal-accent"
                           disabled={savePending}
                           px={8}
                         >
@@ -230,7 +230,7 @@ export function AnnouncementDetailCard({
               <Skeleton height={14} width="70%" />
             </Stack>
           ) : null}
-          {isError ? <Alert color="portal-copper" title={warningMessage} /> : null}
+          {isError ? <Alert color="red" title={warningMessage} /> : null}
 
           {/* ── Reader View (default for everyone) ── */}
           {!isLoading && !isError && selected && !editing ? (
@@ -243,7 +243,7 @@ export function AnnouncementDetailCard({
               {/* Meta badges */}
               <Group gap={8} wrap="wrap">
                 {canEdit && selected.status === "scheduled" && selected.publish_at ? (
-                  <Badge color="portal-bronze">{t("meta.scheduled", { datetime: formatDateTime(selected.publish_at) })}</Badge>
+                  <Badge color="blue">{t("meta.scheduled", { datetime: formatDateTime(selected.publish_at) })}</Badge>
                 ) : null}
               </Group>
 

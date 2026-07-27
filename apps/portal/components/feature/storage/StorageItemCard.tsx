@@ -65,7 +65,7 @@ export function StorageItemCard({
           <Group gap={6} className="storage-item-card__badges">
             <Badge variant="light" color="gray">{category?.name ?? labels.uncategorized}</Badge>
             {item.allow_member_deposit ? <Badge variant="light" color="green">{labels.depositEnabled}</Badge> : null}
-            {item.allow_member_withdraw ? <Badge variant="light" color="portal-bronze">{labels.withdrawEnabled}</Badge> : null}
+            {item.allow_member_withdraw ? <Badge variant="light" color="teal">{labels.withdrawEnabled}</Badge> : null}
             {!item.allow_member_deposit && !item.allow_member_withdraw ? <Badge variant="light" color="gray">{labels.closed}</Badge> : null}
           </Group>
         </div>

@@ -265,12 +265,12 @@ export function EventCardsView({
               ) : null}
               {event.pinned ? (
                 <EventStatusIndicator
-                  color="portal-copper"
+                  color="portal-accent"
                   icon={<PinIcon size={16} />}
                   title={t("tooltip.pinned.title")}
                   description={t("tooltip.pinned.desc")}
                 >
-                  <PinIcon size={16} style={{ color: "var(--mantine-color-portal-copper-6)" }} />
+                  <PinIcon size={16} style={{ color: "var(--mantine-color-portal-accent-6)" }} />
                 </EventStatusIndicator>
               ) : null}
               {event.signup_locked ? (
@@ -305,12 +305,12 @@ export function EventCardsView({
               ) : null}
               {flag === "UPDATED" ? (
                 <EventStatusIndicator
-                  color="portal-bronze"
+                  color="orange"
                   icon={<Sparkles2Icon size={16} />}
                   title={t("tooltip.updated.title")}
                   description={t("tooltip.updated.desc")}
                 >
-                  <Sparkles2Icon size={16} style={{ color: "var(--mantine-color-portal-bronze-6)" }} />
+                  <Sparkles2Icon size={16} style={{ color: "var(--mantine-color-orange-6)" }} />
                 </EventStatusIndicator>
               ) : null}
             </>
@@ -544,7 +544,7 @@ export function EventCardsView({
               {t("archive.cancel")}
             </Button>
             <Button
-              color="portal-copper"
+              color="portal-accent"
               onClick={() => {
                 if (archiveConfirmEvent) {
                   onArchiveEvent(archiveConfirmEvent.id);

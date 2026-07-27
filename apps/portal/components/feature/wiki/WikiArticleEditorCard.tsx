@@ -199,7 +199,7 @@ export function WikiArticleEditorCard({
               ))}
             </Stack>
           ) : null}
-          {isError ? <Alert color="portal-copper" title={warningMessage} /> : null}
+          {isError ? <Alert color="red" title={warningMessage} /> : null}
 
           {!isLoading && !isError ? (
             <Stack gap={12}>
@@ -249,7 +249,7 @@ export function WikiArticleEditorCard({
                     {t("articleEditor.lastUpdatedBy", { user: selectedArticle.created_by.slice(0, 8), date: formatDateTime(selectedArticle.updated_at) })}
                   </Text>
                   {selectedArticle.archived_at ? (
-                    <Text c="portal-copper" size="sm">
+                    <Text c="gray" size="sm">
                       {t("articleEditor.archivedAt", { date: formatDateTime(selectedArticle.archived_at) })}
                     </Text>
                   ) : null}

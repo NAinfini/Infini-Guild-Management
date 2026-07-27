@@ -169,7 +169,7 @@ export function GuildWarAnalyticsTab({
         </Stack>
       ) : null}
 
-      {isError ? <Alert color="portal-copper">{loadErrorMessage}</Alert> : null}
+      {isError ? <Alert color="red">{loadErrorMessage}</Alert> : null}
 
       {/* Wars mode: win/loss record summary */}
       {!isLoading && !isError && analytics.analyticsMode === "wars" ? (
@@ -529,7 +529,7 @@ export function GuildWarAnalyticsTab({
                   </HoverCard.Target>
                   <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                     <Group gap={10} wrap="nowrap" align="flex-start">
-                      <ThemeIcon variant="light" color="portal-bronze" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                      <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                         <CopyIcon size={16} />
                       </ThemeIcon>
                       <div style={{ minWidth: 0 }}>

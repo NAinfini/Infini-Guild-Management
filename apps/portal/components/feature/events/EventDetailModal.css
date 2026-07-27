@@ -43,11 +43,11 @@
 }
 
 .event-detail-modal__meta-card--type svg {
-  color: var(--mantine-color-portal-copper-6);
+  color: var(--accent-text);
 }
 
 .event-detail-modal__meta-card--time svg {
-  color: var(--mantine-color-portal-copper-6);
+  color: var(--accent-text);
 }
 
 .event-detail-modal__section {
