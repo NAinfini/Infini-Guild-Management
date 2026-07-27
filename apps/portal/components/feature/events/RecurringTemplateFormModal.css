@@ -22,24 +22,19 @@
 
 .rtf-section {
   padding: 14px 16px;
-  border-radius: var(--radius-sm, 8px);
-  background: var(--color-surface-elevated, #fff);
-  border: 1px solid color-mix(in srgb, var(--color-border, #E2DDD6) 70%, transparent);
-  transition: border-color var(--transition-normal, 160ms ease);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
+  transition: border-color var(--transition-normal);
 }
 
 .rtf-section:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 25%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 25%, transparent);
 }
 
-.dark .rtf-section {
-  background: color-mix(in srgb, var(--color-surface-elevated, #1C1C22) 80%, transparent);
-  border-color: color-mix(in srgb, var(--color-border, #2A2A32) 60%, transparent);
-}
-
-.dark .rtf-section:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent);
-}
+/* 深浅两模式此前只是背景/边框的不透明度不同（80%/60% vs 无覆盖时的
+   100%/70%），迁移后交给 --surface-raised / --border-subtle 自动承担，
+   整块删除（task-7-addendum.md E 节：只差颜色）。 */
 
 /* ── Section dividers with gold gradient accent ── */
 
@@ -56,10 +51,13 @@
   flex: 0 0 3px;
   height: 16px;
   border-radius: 2px;
+  /* --color-secondary（古铜色）是本次改版要消灭的暖金配色，装饰性用途收敛到
+     「更深一档主色」= --accent-fill-hover（task-7-addendum.md 前序约定段，
+     不用 --accent-600）。 */
   background: linear-gradient(
     180deg,
-    var(--color-primary, #D4A843),
-    var(--color-secondary, #8B7355)
+    var(--accent-fill),
+    var(--accent-fill-hover)
   );
   opacity: 0.7;
 }
@@ -70,8 +68,8 @@
   height: 1px;
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent),
-    color-mix(in srgb, var(--color-border, #E2DDD6) 40%, transparent) 40%,
+    color-mix(in srgb, var(--accent-fill) 20%, transparent),
+    color-mix(in srgb, var(--border-subtle) 40%, transparent) 40%,
     transparent
   );
 }
@@ -80,14 +78,12 @@
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 78%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 78%, transparent);
   white-space: nowrap;
   user-select: none;
 }
 
-.dark .rtf-divider__label {
-  color: color-mix(in srgb, var(--color-text, #F0EDE8) 72%, transparent);
-}
+/* .dark 覆盖只把透明度从 78% 微调到 72%，整块删除，理由同上。 */
 
 /* ── Weekday picker ── */
 
@@ -109,20 +105,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1.5px solid color-mix(in srgb, var(--color-border, #E2DDD6) 80%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
   background: transparent;
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
   transition:
-    background var(--transition-fast, 120ms ease),
-    border-color var(--transition-fast, 120ms ease),
-    color var(--transition-fast, 120ms ease),
-    transform var(--transition-fast, 120ms ease),
-    box-shadow var(--transition-fast, 120ms ease);
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .rtf-weekday-btn:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 50%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 50%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 8%, transparent);
   transform: translateY(-1px);
 }
 
@@ -130,32 +126,32 @@
   transform: scale(0.94);
 }
 
+/* 选中态的填充是主色，文字压在填充之上，落在替换表「若在主色填充之上」分支，
+   取 --accent-on-fill（此前是字面 #fff，task-7-addendum.md 前序约定段）。 */
 .rtf-weekday-btn--selected {
-  border-color: var(--color-primary, #D4A843);
-  background: var(--color-primary, #D4A843);
-  color: #fff;
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+  color: var(--accent-on-fill);
   font-weight: 600;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent-fill) 30%, transparent);
 }
 
+/* --color-accent（古铜色）同样是要消灭的暖金配色，这里的悬停态想要的是「主色
+   再深一档」，直接收敛到 --accent-fill-hover 这一个 token，不再用 color-mix
+   去混两个旧变量（task-7-addendum.md 前序约定段）。 */
 .rtf-weekday-btn--selected:hover {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 88%, var(--color-accent, #C17F3E));
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 88%, var(--color-accent, #C17F3E));
-  box-shadow: 0 3px 12px color-mix(in srgb, var(--color-primary, #D4A843) 36%, transparent);
+  background: var(--accent-fill-hover);
+  border-color: var(--accent-fill-hover);
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--accent-fill) 36%, transparent);
 }
 
-.dark .rtf-weekday-btn {
-  border-color: color-mix(in srgb, var(--color-border, #2A2A32) 90%, transparent);
-  color: var(--color-text, #F0EDE8);
-}
+/* .dark .rtf-weekday-btn / :hover 只差不透明度，整块删除，理由同上。 */
 
-.dark .rtf-weekday-btn:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 45%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
-}
-
-.dark .rtf-weekday-btn--selected {
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary, #D4A843) 24%, transparent);
+/* .dark .rtf-weekday-btn--selected 的 box-shadow 模糊半径从 8px 改成了 10px ——
+   这不是「只差颜色」，改了非颜色的几何参数，按 task-7-addendum.md E 节第二条
+   保留整块，只把选择器从 .dark 改成 [data-theme="dark"]，模糊半径原样保留。 */
+[data-theme="dark"] .rtf-weekday-btn--selected {
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent-fill) 24%, transparent);
 }
 
 /* ── Recurrence dashed divider ── */
@@ -164,8 +160,8 @@
   height: 1px;
   background: repeating-linear-gradient(
     90deg,
-    color-mix(in srgb, var(--color-border, #E2DDD6) 50%, transparent) 0px,
-    color-mix(in srgb, var(--color-border, #E2DDD6) 50%, transparent) 6px,
+    color-mix(in srgb, var(--border-subtle) 50%, transparent) 0px,
+    color-mix(in srgb, var(--border-subtle) 50%, transparent) 6px,
     transparent 6px,
     transparent 12px
   );
@@ -178,8 +174,8 @@
   margin-top: 4px;
   padding: 4px 8px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent);
-  color: color-mix(in srgb, var(--color-text, #1A1815) 70%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 6%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 70%, transparent);
   display: inline-block;
 }
 
@@ -187,10 +183,7 @@
   background: transparent;
 }
 
-.dark .rtf-offset-hint {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
-  color: color-mix(in srgb, var(--color-text, #F0EDE8) 65%, transparent);
-}
+/* .dark 覆盖只差不透明度（10%/65% vs 6%/70%），整块删除，理由同上。 */
 
 /* ── Actions divider ── */
 
@@ -199,8 +192,8 @@
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in srgb, var(--color-border, #E2DDD6) 50%, transparent) 20%,
-    color-mix(in srgb, var(--color-border, #E2DDD6) 50%, transparent) 80%,
+    color-mix(in srgb, var(--border-subtle) 50%, transparent) 20%,
+    color-mix(in srgb, var(--border-subtle) 50%, transparent) 80%,
     transparent
   );
 }
@@ -218,27 +211,23 @@
   font-size: 14px;
   font-weight: 500;
   padding-bottom: 7px;
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
   white-space: nowrap;
 }
 
-.dark .rtf-interval-label {
-  color: var(--color-text, #F0EDE8);
-}
+/* .dark 覆盖是纯粹的兜底 hex 替换（#1A1815 → #F0EDE8），token 化后深浅两模式
+   共用同一个 --text-primary，整块删除。 */
 
 /* ── Lifecycle preview ── */
 
 .rtf-lifecycle {
   padding: 14px 16px;
-  border-radius: var(--radius-sm, 8px);
-  border: 1px solid color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 4%, transparent);
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--accent-fill) 20%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 4%, transparent);
 }
 
-.dark .rtf-lifecycle {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 16%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent);
-}
+/* .dark 覆盖只差不透明度（16%/6% vs 20%/4%），整块删除，理由同上。 */
 
 .rtf-lifecycle__title {
   display: flex;
@@ -247,16 +236,14 @@
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 78%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 78%, transparent);
   margin-bottom: 12px;
 }
 
-.dark .rtf-lifecycle__title {
-  color: color-mix(in srgb, var(--color-text, #F0EDE8) 72%, transparent);
-}
+/* .dark 覆盖只差不透明度（72% vs 78%），整块删除，理由同上。 */
 
 .rtf-lifecycle__title-icon {
-  color: var(--color-primary, #D4A843);
+  color: var(--accent-text);
   opacity: 0.8;
   flex-shrink: 0;
 }
@@ -286,8 +273,8 @@
   height: 8px;
   border-radius: 50%;
   transform: translateY(-50%);
-  background: var(--color-primary, #D4A843);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent);
+  background: var(--accent-fill);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-fill) 15%, transparent);
 }
 
 .rtf-lifecycle__step:not(:last-child)::after {
@@ -297,48 +284,39 @@
   top: calc(50% + 7px);
   width: 2px;
   height: calc(100% - 2px);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 25%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 25%, transparent);
 }
 
 .rtf-lifecycle__step-label {
   font-size: 12px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   min-width: 36px;
   flex-shrink: 0;
 }
 
-.dark .rtf-lifecycle__step-label {
-  color: color-mix(in srgb, var(--color-text, #F0EDE8) 65%, transparent);
-}
+/* .dark 覆盖是纯粹的兜底 hex 替换，不透明度同为 65%，整块删除，理由同上。 */
 
 .rtf-lifecycle__step-value {
   font-size: 13px;
   font-weight: 500;
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
 
-.dark .rtf-lifecycle__step-value {
-  color: var(--color-text, #F0EDE8);
-}
+/* .dark 覆盖是纯粹的兜底 hex 替换，整块删除，理由同上。 */
 
 .rtf-lifecycle--empty {
-  border-color: color-mix(in srgb, var(--color-border, #E2DDD6) 50%, transparent);
+  border-color: color-mix(in srgb, var(--border-subtle) 50%, transparent);
   background: transparent;
 }
 
-.dark .rtf-lifecycle--empty {
-  border-color: color-mix(in srgb, var(--color-border, #2A2A32) 50%, transparent);
-  background: transparent;
-}
+/* .dark 覆盖是纯粹的兜底 hex 替换，不透明度同为 50%，整块删除，理由同上。 */
 
 .rtf-lifecycle__empty-text {
   font-size: 12px;
   font-style: italic;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
-.dark .rtf-lifecycle__empty-text {
-  color: color-mix(in srgb, var(--color-text, #F0EDE8) 65%, transparent);
-}
+/* .dark 覆盖是纯粹的兜底 hex 替换，不透明度同为 65%，整块删除，理由同上。 */

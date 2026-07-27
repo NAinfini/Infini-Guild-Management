@@ -32,6 +32,10 @@ export const MIGRATED: string[] = [
   /* Task 7 批 A（task-7-addendum.md D 节）。 */
   "apps/portal/components/equipment-calc/EquipmentCalcModal.css",
   "apps/portal/components/feature/admin/AdminApiTest.css",
+  /* Task 7 批 B（task-7-addendum.md D 节）。该批的另两个文件
+   * EventCardsView.css 与 AuditLogViewer.css 尚未迁移，见 progress.md。 */
+  "apps/portal/components/shared/tiptap-editor.css",
+  "apps/portal/components/feature/events/RecurringTemplateFormModal.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */
