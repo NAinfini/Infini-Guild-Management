@@ -275,13 +275,55 @@
 }
 
 /*
- * 下面这条 .event-detail-modal__poll-result-row--selected 的深色覆盖必须保留：
- * 它换的是 var(--mantine-color-teal-9)/var(--mantine-color-teal-0) 这两个固定
- * Mantine 色阶（不随 [data-theme] 重新解析），浅色模式选中态用 teal-0（近白）
- * 44% 混合表面色，深色模式如果照抄同一档会在深色底上显得刺眼发白，所以深色
- * 模式换用 teal-9（近黑）22% 混合 —— 这不是「只差颜色兜底」，是两种色阶必须
- * 分模式选择，按附录 E 节改选择器而非删除。
+ * 下面四条 [data-theme="dark"] 覆盖处理的是同一个机制：这个文件里凡是压着
+ * var(--mantine-color-teal-*) / var(--mantine-color-green-*) 的规则，色值定义
+ * 在 Mantine 的 :root 里，只按色相分档，不随 [data-theme] 重新解析 —— teal-0 /
+ * green-0 永远是近白，深色模式不会自动把它们换成近黑。这跟 --surface-base /
+ * --text-primary 这类会跟着 [data-theme] 走的 token 不一样：同一条规则里混用
+ * 了「会变」和「不会变」两种色阶，就必须分模式各写一份，不能整块删掉了事——
+ * 这正是 Task 7 在 .event-detail-modal__section--poll/--members 与
+ * .poll-total 三处犯下的错（深色模式底色回落到浅色近白阶，正文对比度只剩
+ * 1.21–1.86:1，见 task-7-report.md C1）。--poll-result-row--selected 这一条
+ * 当初是三处里唯一被正确保留的，现在把同一个判断补齐到另外三处，而不是只
+ * 保留这一处。
+ *
+ * 四处深色覆盖都用「同名 Mantine 深阶（-9/-6/-3）替换浅色阶（-0/-7/-8），
+ * 混合权重照抄浅色模式原有的百分比」的写法：权重不变只换方向对应的色阶，
+ * 视觉「浓淡」与浅色模式对称，且逐处验算过 WCAG 对比度（数值见
+ * task-7-report.md 修复轮次 1）：
+ *   - 两处分区背景（teal-9/green-9 58%/56% 混 --surface-base）：正文
+ *     7.39–7.85:1，远过 4.5:1。
+ *   - poll-total 背景（teal-9 72% 混 --surface-base）+ 文字：teal-8 在这个
+ *     新底色上只有 1.89:1（两者都偏暗，几乎融在一起），换成更亮的 teal-3
+ *     后是 4.82:1，过 4.5:1。
+ *   - 两处分区图标：teal-7 / green-7 在新底色上分别是 2.94:1 / 3.14:1，
+ *     不过非文字 UI 的 3:1 门槛；各自换深一档更亮的 teal-6 / green-6 后是
+ *     3.59:1 / 3.65:1，过。
+ *   - 三处边框色（:58/:73/:81）混的是 transparent 而不是某个会变的表面
+ *     token，翻译成任何模式下都是同一个固定 Mantine 色阶的低透明度描边，
+ *     深浅两模式本来就一致，不受这次修复影响，未改动。
  */
+[data-theme="dark"] .event-detail-modal__section--poll {
+  background: color-mix(in srgb, var(--mantine-color-teal-9) 58%, var(--surface-base));
+}
+
+[data-theme="dark"] .event-detail-modal__section--poll > .mantine-Group-root:first-child svg {
+  color: var(--mantine-color-teal-6);
+}
+
+[data-theme="dark"] .event-detail-modal__poll-total {
+  background: color-mix(in srgb, var(--mantine-color-teal-9) 72%, var(--surface-base));
+  color: var(--mantine-color-teal-3);
+}
+
+[data-theme="dark"] .event-detail-modal__section--members {
+  background: color-mix(in srgb, var(--mantine-color-green-9) 56%, var(--surface-base));
+}
+
+[data-theme="dark"] .event-detail-modal__section--members > .mantine-Group-root:first-child svg {
+  color: var(--mantine-color-green-6);
+}
+
 [data-theme="dark"] .event-detail-modal__poll-result-row--selected {
   background: color-mix(in srgb, var(--mantine-color-teal-9) 22%, var(--surface-base));
 }
