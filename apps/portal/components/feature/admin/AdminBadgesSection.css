@@ -147,6 +147,10 @@
   cursor: pointer;
   padding: 0;
   transition: border-color 120ms ease, transform 120ms ease;
+  /* --swatch-color：复用 tiptap-editor.css 同名 channel（同一种「遍历 class-1
+     色板常量给按钮上色」场景），值来自这里的 COLOR_PRESETS（class-1 数据），
+     由 AdminBadgesSection.tsx 无条件内联写入。 */
+  background: var(--swatch-color);
 }
 
 .admin-badge-swatch:hover {

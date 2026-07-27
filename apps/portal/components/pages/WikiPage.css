@@ -175,6 +175,18 @@
   align-items: center;
 }
 
+/* ── WikiHistoryModal ── (moved out of style={{}}, task-8 批 B). */
+
+.wiki-history-revision-row {
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  width: 100%;
+}
+
+.wiki-history-revision-row--selected {
+  background-color: var(--mantine-color-blue-light);
+}
+
 @media (max-width: 1199px) {
   .wiki-page-grid {
     grid-template-columns: minmax(0, 1fr);

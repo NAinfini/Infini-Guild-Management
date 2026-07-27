@@ -194,7 +194,7 @@ export function ApiTestCategory({
         <div className="api-cat__progress-track">
           <div
             className="api-cat__progress-fill"
-            style={{ width: `${pct}%`, background: ringColor }}
+            style={{ width: `${pct}%`, "--progress-fill-color": ringColor } as React.CSSProperties}
           />
         </div>
       ) : null}

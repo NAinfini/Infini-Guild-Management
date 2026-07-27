@@ -18,10 +18,10 @@ function formatDateTime(iso: string | null): string {
 }
 
 const STATUS_ICON = {
-  draft: <FileTextIcon size={14} style={{ color: "var(--mantine-color-dimmed)" }} />,
-  scheduled: <CalendarTimeIcon size={14} style={{ color: "var(--mantine-color-blue-filled)" }} />,
-  published: <CircleCheckIcon size={14} style={{ color: "var(--mantine-color-green-filled)" }} />,
-  archived: <ArchiveIcon size={14} style={{ color: "var(--mantine-color-red-filled)" }} />,
+  draft: <FileTextIcon size={14} className="announcement-item-status-icon--draft" />,
+  scheduled: <CalendarTimeIcon size={14} className="announcement-item-status-icon--scheduled" />,
+  published: <CircleCheckIcon size={14} className="announcement-item-status-icon--published" />,
+  archived: <ArchiveIcon size={14} className="announcement-item-status-icon--archived" />,
 } satisfies Record<AnnouncementStatus, ReactNode>;
 
 const STATUS_THEME = {

@@ -34,10 +34,10 @@ type WarHistoryTableProps = {
   onBulkDelete: () => void;
 };
 
-const ROW_BG_BY_COLOR: Record<string, { backgroundColor: string } | undefined> = {
-  green: { backgroundColor: "color-mix(in srgb, var(--mantine-color-green-light, #dcfce7) 35%, transparent)" },
-  red: { backgroundColor: "color-mix(in srgb, var(--mantine-color-red-light, #fee2e2) 35%, transparent)" },
-  blue: { backgroundColor: "color-mix(in srgb, var(--mantine-color-blue-light, #dbeafe) 35%, transparent)" },
+const ROW_CLASS_BY_COLOR: Record<string, string | undefined> = {
+  green: "war-history-row-win",
+  red: "war-history-row-loss",
+  blue: "war-history-row-draw",
 };
 
 export function WarHistoryTable({
@@ -151,11 +151,12 @@ export function WarHistoryTable({
                     onRowClick={(row) => onRowClick(row.original.id)}
                     rowClassName={(row) => {
                       const classes: string[] = [];
+                      const colorClass = ROW_CLASS_BY_COLOR[resolveResultTagColor(row.original.result)];
+                      if (colorClass) classes.push(colorClass);
                       if (highlightRowId === row.original.id) classes.push("war-history-row-highlight");
                       if (selectedHistoryIds.has(row.original.id)) classes.push("war-history-row-selected");
                       return classes.length > 0 ? classes.join(" ") : undefined;
                     }}
-                    rowStyle={(row) => ROW_BG_BY_COLOR[resolveResultTagColor(row.original.result)]}
                   />
                 ) : (
                   <div className="war-history-list-empty">

@@ -245,7 +245,7 @@ function NotFoundPage(): ReactNode {
     <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
       <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.5 }}>404</span>
       <span style={{ fontSize: 16, fontWeight: 600 }}>{t("notFound.title")}</span>
-      <a href="/" style={{ fontSize: 14, color: "var(--color-primary-text, #705A1B)" }}>{t("notFound.backHome")}</a>
+      <a href="/" className="not-found-page__link" style={{ fontSize: 14 }}>{t("notFound.backHome")}</a>
     </div>
   );
 }
@@ -256,22 +256,12 @@ function RouteErrorFallback(): ReactNode {
     <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
       {/* This is the headline of the error screen, not decoration — the old 0.15
           opacity rendered it at 1.3:1. */}
-      <span style={{ fontSize: 48, fontWeight: 700, color: "#dc2626" }}>{t("errors.somethingWentWrong")}</span>
+      <span className="route-error__headline">{t("errors.somethingWentWrong")}</span>
       <span style={{ fontSize: 16, fontWeight: 600 }}>{t("errors.generic")}</span>
       <button
         type="button"
         onClick={() => window.location.reload()}
-        style={{
-          marginTop: 8,
-          padding: "8px 20px",
-          borderRadius: 8,
-          border: "none",
-          background: "var(--color-primary, #D4A843)",
-          color: "#1A1815",
-          fontSize: 14,
-          fontWeight: 600,
-          cursor: "pointer",
-        }}
+        className="route-error__reload-button"
       >
         {t("action.reloadPage")}
       </button>

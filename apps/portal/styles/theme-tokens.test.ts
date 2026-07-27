@@ -103,6 +103,35 @@ const RUNTIME_INJECTED_VARS: string[] = [
    * Task 7 批 C 在 MemberCard.css / AdminBadgesSection.css 里去掉了这个变量的
    * var() 兜底（rule 1 不允许兜底），暴露出它是运行期注入而非 CSS 定义。 */
   "--badge-color",
+  /* --role-color：当前游戏配置的每个 role 的十六进制色号（activeGame.roles[].color，
+   * 例如 apps/shared/games/definitions/yan-yun.ts），换一个游戏配置文件这个值就会变，
+   * 不是本 token 系统固定枚举，运行期由 MemberRoleAvatar.tsx 无条件内联写入
+   * （cfg.color 来自游戏配置，不会是 undefined），推理同 --badge-color。
+   * Task 8 批 B 在 MemberCard.css 里去掉了这个变量的 var() 兜底。 */
+  "--role-color",
+  /* --swatch-color：色板/取色按钮各自的色号，来自 TipTapEditorToolbar.tsx /
+   * TipTapEditorContextMenu.tsx 的 TEXT_COLORS / HIGHLIGHT_COLORS、
+   * AdminBadgesSection.tsx 的 COLOR_PRESETS，以及 ToolsPage.tsx 的
+   * recentColors（localStorage 持久化的用户历史取色，等同 class-1 数据），
+   * 不在本任务范围内改名/改值，运行期由这四个文件的色板/色点按钮无条件
+   * 内联写入。Task 8 批 B 在 tiptap-editor.css / AdminBadgesSection.css /
+   * ToolsPage.css 里去掉了这个变量的 var() 兜底。 */
+  "--swatch-color",
+  /* --signup-dot-color：MySignupsCard.tsx 按事件类型拼出的 Mantine 色号字符串
+   * （`var(--mantine-color-X-5, var(--accent-fill))`，X 来自 eventTypeTagColor()），
+   * 随事件类型变化，运行期由该文件的色点 span 无条件内联写入。
+   * Task 8 批 B 在 DashboardPage.css 里去掉了这个变量的 var() 兜底。 */
+  "--signup-dot-color",
+  /* --bubble-hue：BubbleBackground.tsx 每个气泡用确定性伪随机数生成的色相
+   * （30-60 连续区间，seededRandom(42)），没有固定枚举，运行期由该组件
+   * 无条件内联写入。Task 8 批 B 在 AuthPages.css 里去掉了这个变量的
+   * var() 兜底。 */
+  "--bubble-hue",
+  /* --progress-fill-color：AdminApiTestCategory.tsx 的 progressColor()
+   * 返回值（批 C 归口的类 2 三态阈值函数，本批未改），运行期由该组件
+   * 无条件内联写入。Task 8 批 B 在 AdminApiTest.css 里去掉了这个变量的
+   * var() 兜底。 */
+  "--progress-fill-color",
 ];
 /** --mantine-color-* 系列由 Mantine 的 CSS 变量解析器批量写入运行期
  * （@mantine/core 的 MantineCssVariables），逐个列名不现实，按前缀豁免。 */

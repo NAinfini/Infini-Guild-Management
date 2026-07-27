@@ -308,7 +308,7 @@ export function ToolsPage() {
                             aria-label={t("sandbox.aria.useRecentColor", { color: c })}
                             disabled={isExternalView}
                           >
-                            <span className="sandbox__recent-dot" style={{ background: c }} />
+                            <span className="sandbox__recent-dot" style={{ "--swatch-color": c } as React.CSSProperties} />
                             <span>{c}</span>
                           </button>
                         ))}

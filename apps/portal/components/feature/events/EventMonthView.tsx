@@ -17,7 +17,7 @@ function buildAvailabilityOverlayStyle(intensity: number, maxCount: number): CSS
   const ratio = Math.min(1, intensity / maxCount);
   const strength = Math.round(10 + ratio * 72);
   return {
-    background: `color-mix(in srgb, var(--color-success, #22c55e) ${strength}%, transparent)`,
+    background: `color-mix(in srgb, var(--status-success) ${strength}%, transparent)`,
   };
 }
 

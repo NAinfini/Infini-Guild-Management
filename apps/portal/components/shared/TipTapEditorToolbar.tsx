@@ -80,7 +80,7 @@ export function TipTapEditorToolbar({ editor, labels, onInsertLink, onInsertImag
           <Menu.Dropdown>
             <div className="infini-tiptap-color-grid">
               {TEXT_COLORS.map((nextColor) => (
-                <button key={nextColor} type="button" className="infini-tiptap-color-swatch" style={{ background: nextColor }} aria-label={`${labels.textColor} ${nextColor}`} onClick={() => editor.chain().focus().setColor(nextColor).run()} />
+                <button key={nextColor} type="button" className="infini-tiptap-color-swatch" style={{ "--swatch-color": nextColor } as React.CSSProperties} aria-label={`${labels.textColor} ${nextColor}`} onClick={() => editor.chain().focus().setColor(nextColor).run()} />
               ))}
             </div>
             <Menu.Divider />
@@ -107,7 +107,7 @@ export function TipTapEditorToolbar({ editor, labels, onInsertLink, onInsertImag
           <Menu.Dropdown>
             <div className="infini-tiptap-color-grid">
               {HIGHLIGHT_COLORS.map((nextColor) => (
-                <button key={nextColor} type="button" className="infini-tiptap-color-swatch" style={{ background: nextColor }} aria-label={`${labels.highlight} ${nextColor}`} onClick={() => editor.chain().focus().setHighlight({ color: nextColor }).run()} />
+                <button key={nextColor} type="button" className="infini-tiptap-color-swatch" style={{ "--swatch-color": nextColor } as React.CSSProperties} aria-label={`${labels.highlight} ${nextColor}`} onClick={() => editor.chain().focus().setHighlight({ color: nextColor }).run()} />
               ))}
             </div>
             <Menu.Divider />

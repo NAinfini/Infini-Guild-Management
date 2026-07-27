@@ -169,14 +169,7 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
             onValueChange={setQuery}
             placeholder={t("cmdk.searchPlaceholder")}
             aria-label={t("cmdk.aria.searchInput")}
-            style={{
-              width: "100%",
-              border: "1px solid color-mix(in srgb, var(--color-text, #1A1815) 20%, transparent)",
-              borderRadius: 8,
-              padding: "10px 12px",
-              marginTop: 4,
-              marginBottom: 12,
-            }}
+            className="cmdk-search-input"
           />
 
           <Command.List style={{ maxHeight: 360, overflow: "auto" }}>

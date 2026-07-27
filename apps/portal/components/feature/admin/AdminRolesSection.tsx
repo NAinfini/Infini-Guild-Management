@@ -542,9 +542,9 @@ export function AdminRolesSection({
                                 disabled={isReadOnly}
                                 before={
                                   isGranted ? (
-                                    <CheckIcon size={14} style={{ color: "#22c55e" }} />
+                                    <CheckIcon size={14} className="admin-roles-perm-icon--granted" />
                                   ) : (
-                                    <XIcon size={14} style={{ color: "#ef4444" }} />
+                                    <XIcon size={14} className="admin-roles-perm-icon--denied" />
                                   )
                                 }
                               >

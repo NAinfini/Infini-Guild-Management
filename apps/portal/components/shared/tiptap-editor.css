@@ -35,6 +35,11 @@
   border: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
   border-radius: 6px;
   cursor: pointer;
+  /* --swatch-color: 用户可选的富文本颜色（TEXT_COLORS/HIGHLIGHT_COLORS 常量本身
+     是 class-1 数据，不在本任务范围内改名/改值），运行期由 TipTapEditorToolbar.tsx
+     / TipTapEditorContextMenu.tsx 无条件内联写入，注册于
+     theme-tokens.test.ts 的 RUNTIME_INJECTED_VARS。 */
+  background: var(--swatch-color);
 }
 
 .infini-tiptap-color-custom {

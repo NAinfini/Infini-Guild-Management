@@ -212,7 +212,7 @@ export function ConcludeWarModal({
               <Table striped highlightOnHover withTableBorder withColumnBorders style={{ fontSize: "0.8rem" }}>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th style={{ position: "sticky", left: 0, background: "var(--mantine-color-body)", zIndex: 1 }}>
+                    <Table.Th className="conclude-war-modal__sticky-col">
                       {t("conclude.col.member")}
                     </Table.Th>
                     {MEMBER_STAT_FIELDS.map((f) => (
@@ -227,7 +227,7 @@ export function ConcludeWarModal({
                     const stats = memberStatsMap.get(member.userId) ?? {};
                     return (
                       <Table.Tr key={member.userId}>
-                        <Table.Td style={{ position: "sticky", left: 0, background: "var(--mantine-color-body)", zIndex: 1, whiteSpace: "nowrap" }}>
+                        <Table.Td className="conclude-war-modal__sticky-col conclude-war-modal__sticky-col--cell">
                           <Text size="xs" fw={500} lineClamp={1}>{member.username}</Text>
                           <Text size="xs" c="dimmed">{member.teamName}</Text>
                         </Table.Td>

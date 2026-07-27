@@ -556,10 +556,14 @@ export function AdminStatusTab({
                     {statusHealthLogs.map((row, index) => {
                       const latency = row.latencyMs ?? 0;
                       const barWidth = Math.min(100, (latency / 500) * 100);
-                      const barColor = latency < 200 ? "#10b981" : latency < 400 ? "#eab308" : "#ef4444";
+                      // 三段离散状态（好/警/差），不是连续值，按 task-8-brief.md Step 3.4
+                      // 的要求切换预定义类，不拼接颜色字符串。200/400ms 两个阈值仍与
+                      // AdminSystemSection.tsx 重复——那张表的合并是批 C 的范围，这里只搬
+                      // 颜色，不动判断逻辑。
+                      const latencyBand = latency < 200 ? "good" : latency < 400 ? "warn" : "bad";
                       return (
                         <tr key={`${row.at}-${index}`}>
-                          <td style={{ color: "color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent)" }}>
+                          <td className="health-log-time">
                             {formatDateTime(row.at)}
                           </td>
                           <td><span className={`health-log-dot health-log-dot--${row.db === "ok" ? "ok" : "error"}`} />{row.db}</td>
@@ -568,8 +572,8 @@ export function AdminStatusTab({
                           <td><span className={`health-log-dot health-log-dot--${row.crons === "ok" ? "ok" : "error"}`} />{row.crons}</td>
                           <td>
                             <span className="health-log-latency">
-                              <span className="health-log-latency-bar" style={{ width: `${barWidth}%`, minWidth: 4, maxWidth: 40, background: barColor }} />
-                              <span style={{ color: barColor, fontWeight: 600 }}>{row.latencyMs ?? "—"}ms</span>
+                              <span className={`health-log-latency-bar health-log-latency-bar--${latencyBand}`} style={{ width: `${barWidth}%`, minWidth: 4, maxWidth: 40 }} />
+                              <span className={`health-log-latency-value health-log-latency-value--${latencyBand}`}>{row.latencyMs ?? "—"}ms</span>
                             </span>
                           </td>
                           </tr>

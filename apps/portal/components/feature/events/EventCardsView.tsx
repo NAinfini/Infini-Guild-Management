@@ -265,7 +265,7 @@ export function EventCardsView({
                   title={t("tooltip.pinned.title")}
                   description={t("tooltip.pinned.desc")}
                 >
-                  <PinIcon size={16} style={{ color: "var(--mantine-color-portal-accent-6)" }} />
+                  <PinIcon size={16} className="event-card__status-icon--pinned" />
                 </EventStatusIndicator>
               ) : null}
               {event.signup_locked ? (
@@ -275,7 +275,7 @@ export function EventCardsView({
                   title={t("tooltip.locked.title")}
                   description={t("tooltip.locked.desc")}
                 >
-                  <LockIcon size={16} style={{ color: "var(--mantine-color-red-6)" }} />
+                  <LockIcon size={16} className="event-card__status-icon--locked" />
                 </EventStatusIndicator>
               ) : null}
               {event.archived_at ? (
@@ -295,7 +295,7 @@ export function EventCardsView({
                   title={t("tooltip.new.title")}
                   description={t("tooltip.new.desc")}
                 >
-                  <SparklesIcon size={16} style={{ color: "var(--mantine-color-green-6)" }} />
+                  <SparklesIcon size={16} className="event-card__status-icon--new" />
                 </EventStatusIndicator>
               ) : null}
               {flag === "UPDATED" ? (
@@ -305,7 +305,7 @@ export function EventCardsView({
                   title={t("tooltip.updated.title")}
                   description={t("tooltip.updated.desc")}
                 >
-                  <Sparkles2Icon size={16} style={{ color: "var(--mantine-color-orange-6)" }} />
+                  <Sparkles2Icon size={16} className="event-card__status-icon--updated" />
                 </EventStatusIndicator>
               ) : null}
             </>

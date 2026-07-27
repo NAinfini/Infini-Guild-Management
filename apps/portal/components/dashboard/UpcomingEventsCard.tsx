@@ -72,24 +72,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
               const day = startDate.getDate();
 
               return (
-                <div
-                  key={item.item.id}
-                  style={{
-                    padding: "14px",
-                    background: "color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #1A1815))",
-                    borderRadius: "12px",
-                    border: "1px solid var(--border-subtle)",
-                    transition: "border-color 160ms ease, box-shadow 160ms ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "var(--border-strong)";
-                    e.currentTarget.style.boxShadow = "var(--shadow-sm)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "var(--border-subtle)";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                >
+                <div key={item.item.id} className="upcoming-event-row">
                   <Group gap={12} wrap="nowrap" align="center">
                     <Stack gap={0} align="center" style={{ minWidth: 50 }}>
                       <Text size="xs" c="dimmed" fw={600}>{month}</Text>
@@ -131,7 +114,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         size={36}
                         thickness={4}
                         roundCaps
-                        sections={[{ value: percentage, color: "var(--color-primary, #D4A843)" }]}
+                        sections={[{ value: percentage, color: "var(--accent-fill)" }]}
                       />
                       <Text size="10px" ta="center" fw={600} c="dimmed">
                         {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}

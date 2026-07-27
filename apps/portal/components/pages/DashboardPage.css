@@ -175,6 +175,12 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
+  /* --signup-dot-color: MySignupsCard.tsx builds a Mantine-shade-with-fallback
+     string per event type — a var() reference nested inside another var()'s
+     fallback slot, itself already legitimate and not a bare literal — the
+     value genuinely varies per event type at runtime, so this is a channel,
+     registered in theme-tokens.test.ts RUNTIME_INJECTED_VARS. */
+  background: var(--signup-dot-color);
 }
 
 .signup-box-event-title {
@@ -537,6 +543,22 @@
 
 .war-history-row-highlight {
   animation: war-history-highlight 1.2s ease-out;
+}
+
+/* ── Upcoming Events Card row ── (moved out of style={{}} + onMouseEnter/
+   onMouseLeave direct style mutation, task-8 批 B). The hover handlers only
+   ever toggled between two fixed states, so :hover replaces them outright. */
+.upcoming-event-row {
+  padding: 14px;
+  background: color-mix(in srgb, var(--surface-base) 97%, var(--text-primary));
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.upcoming-event-row:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
 }
 
 @media (prefers-reduced-motion: reduce) {

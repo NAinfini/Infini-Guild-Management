@@ -166,23 +166,10 @@ export function RecurringTemplatesTab({
                 <div style={{ padding: "12px 16px" }}>
                   <Group justify="space-between" align="center" wrap="nowrap">
                     <Group gap={12} align="center" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 8,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          background: "color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent)",
-                          flexShrink: 0,
-                        }}
-                      >
+                      <div className="recurring-template-icon-wrap">
                         <CalendarRepeatIcon
                           size={20}
-                          style={{
-                            color: isPaused ? "var(--color-text-muted, #6B665E)" : "var(--color-text, #1A1815)",
-                          }}
+                          className={`recurring-template-icon${isPaused ? " recurring-template-icon--paused" : ""}`}
                         />
                       </div>
 
@@ -244,16 +231,16 @@ export function RecurringTemplatesTab({
 
                         {lifecycle && (
                           <Group gap={14} wrap="wrap" mt={4}>
-                            <Text size="xs" style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-text-muted, #6B665E)" }}>
+                            <Text size="xs" className="recurring-template-lifecycle-muted">
                               <Text span fw={600} size="xs">{t("recurring.lifecycle.nextCreation")}</Text>
                               {" "}{formatLifecycleDate(lifecycle.creationTime, lang)}
                             </Text>
-                            <Text size="xs" fw={500} style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-primary-text, #705A1B)" }}>
-                              <Text span fw={700} size="xs" style={{ color: "var(--color-primary-text, #705A1B)" }}>{t("recurring.lifecycle.nextStart")}</Text>
+                            <Text size="xs" fw={500} className="recurring-template-lifecycle-accent">
+                              <Text span fw={700} size="xs" className="recurring-template-lifecycle-accent">{t("recurring.lifecycle.nextStart")}</Text>
                               {" "}{formatLifecycleDate(lifecycle.startTime, lang)}
                             </Text>
                             {lifecycle.endTime && (
-                              <Text size="xs" style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-text-muted, #6B665E)" }}>
+                              <Text size="xs" className="recurring-template-lifecycle-muted">
                                 <Text span fw={600} size="xs">{t("recurring.lifecycle.nextEnd")}</Text>
                                 {" "}{formatLifecycleDate(lifecycle.endTime, lang)}
                               </Text>

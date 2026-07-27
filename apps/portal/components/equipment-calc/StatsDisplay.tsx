@@ -121,7 +121,7 @@ export function StatsDisplay({ stats, gameData, capped }: Props) {
       </div>
 
       <div className="ecm__stats__summary">
-        <div className="ecm__stats__card" style={{ borderLeft: '3px solid #D4A843' }}>
+        <div className="ecm__stats__card ecm__stats__card--precision">
           <span className="ecm__stats__card-label">{t("stats.actualPrecision")}</span>
           <span className="ecm__stats__card-value">
             {capped.actualPrecision.toFixed(1)}%
@@ -132,7 +132,7 @@ export function StatsDisplay({ stats, gameData, capped }: Props) {
             </span>
           )}
         </div>
-        <div className="ecm__stats__card" style={{ borderLeft: '3px solid #f59e0b' }}>
+        <div className="ecm__stats__card ecm__stats__card--crit">
           <span className="ecm__stats__card-label">{t("stats.actualCrit")}</span>
           <span className="ecm__stats__card-value">
             {capped.actualCrit.toFixed(1)}%
@@ -143,7 +143,7 @@ export function StatsDisplay({ stats, gameData, capped }: Props) {
             </span>
           )}
         </div>
-        <div className="ecm__stats__card" style={{ borderLeft: '3px solid #8B7355' }}>
+        <div className="ecm__stats__card ecm__stats__card--intent">
           <span className="ecm__stats__card-label">{t("stats.actualIntent")}</span>
           <span className="ecm__stats__card-value">
             {capped.actualIntent.toFixed(1)}%

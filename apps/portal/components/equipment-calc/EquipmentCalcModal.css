@@ -382,6 +382,25 @@
   gap: 3px;
 }
 
+/* Per-stat left-rail accent, moved out of style={{}} (task-8 批 B). Same
+   specificity as .ecm__stats__card above (single class each) — these three
+   win because they come later in source order, overriding the neutral
+   border-left set above on the same element. */
+.ecm__stats__card--precision {
+  border-left-color: var(--accent-fill);
+}
+
+.ecm__stats__card--crit {
+  border-left-color: var(--status-warning);
+}
+
+/* --color-secondary（古铜色）尚无 L2 语义对应物，同 MyProfilePage.css 的
+   .profile-preview-stat-icon--video 一处：继续引用旧名，去掉裸 hex 兜底，
+   由 Task 9 迁进 semantic.css 时再改名。 */
+.ecm__stats__card--intent {
+  border-left-color: var(--color-secondary);
+}
+
 .ecm__stats__card-label {
   font-size: 9px;
   font-weight: 700;

@@ -708,6 +708,17 @@
   line-height: 1;
 }
 
+/* ── CmdKSearch ── (moved out of style={{}}, task-8 批 B) */
+
+.cmdk-search-input {
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 20%, transparent);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 4px;
+  margin-bottom: 12px;
+}
+
 @media (max-width: 767px) {
   .app-header {
     height: var(--header-height-mobile);

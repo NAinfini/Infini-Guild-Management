@@ -85,12 +85,7 @@ export function WikiHistoryModal({ opened, onClose, article }: WikiHistoryModalP
     <UnstyledButton
       key={revision.id}
       onClick={() => history.setSelectedRevision(revision.revision)}
-      style={{
-        padding: "0.5rem 0.65rem",
-        borderRadius: 8,
-        backgroundColor: revision.revision === history.selectedRevision ? "var(--mantine-color-blue-light)" : undefined,
-        width: "100%",
-      }}
+      className={`wiki-history-revision-row${revision.revision === history.selectedRevision ? " wiki-history-revision-row--selected" : ""}`}
     >
       <Group gap={8} wrap="nowrap" justify="space-between">
         <Stack gap={2} style={{ minWidth: 0 }}>

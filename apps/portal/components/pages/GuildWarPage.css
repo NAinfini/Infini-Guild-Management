@@ -1026,3 +1026,43 @@
   border-color: var(--status-danger);
   background: color-mix(in srgb, var(--status-danger) 14%, transparent);
 }
+
+/* ── War History row result tint ── (moved out of rowStyle, task-8 批 B).
+   WarHistoryTable.tsx used to build these via a Mantine-light-colour +
+   bare-hex-fallback map (ROW_BG_BY_COLOR) fed into InfiniTable's rowStyle
+   (always wins over any class — see InfiniTable.tsx:140-214). Switched to
+   rowClassName instead, using the same --status-* tokens as the rest of the
+   app rather than Mantine's green/red/blue-light. NOTE: .war-history-row-
+   highlight / --selected are NOT defined in this file — they only exist in
+   DashboardPage.css, which this page's route never loads (pre-existing
+   cross-file mislocation bug, unrelated to colour, out of this batch's
+   scope — flagged separately, not fixed here). Since that sibling class
+   doesn't live in this file, there's no source-order fight to resolve here;
+   if it's ever moved into this file, it must sort after these three so the
+   highlight animation still wins on equal specificity. */
+.war-history-row-win {
+  background-color: color-mix(in srgb, var(--status-success) 12%, transparent);
+}
+
+.war-history-row-loss {
+  background-color: color-mix(in srgb, var(--status-danger) 12%, transparent);
+}
+
+.war-history-row-draw {
+  background-color: color-mix(in srgb, var(--status-info) 12%, transparent);
+}
+
+/* ── ConcludeWarModal ── (moved out of style={{}}, task-8 批 B).
+   --mantine-color-body is Mantine's own dynamic var, exempt from the
+   token-resolution guard by the MANTINE_COLOR_PREFIX rule in
+   theme-tokens.test.ts (same treatment as MyProfilePage.css's uses). */
+.conclude-war-modal__sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--mantine-color-body);
+}
+
+.conclude-war-modal__sticky-col--cell {
+  white-space: nowrap;
+}

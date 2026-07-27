@@ -79,7 +79,7 @@ function BadgeFormFields({
                 key={c}
                 type="button"
                 className={`admin-badge-swatch${form.color === c ? " admin-badge-swatch--active" : ""}`}
-                style={{ background: c }}
+                style={{ "--swatch-color": c } as React.CSSProperties}
                 aria-label={t("badges.aria.selectColor", { color: c, defaultValue: "Select badge color {{color}}" })}
                 title={c}
                 onClick={() => setForm((f) => ({ ...f, color: c }))}

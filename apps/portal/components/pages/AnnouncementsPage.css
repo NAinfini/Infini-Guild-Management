@@ -63,6 +63,25 @@
   color: var(--status-warning);
 }
 
+/* Per-status list-row icon colours, moved out of style={{}} (task-8 批 B).
+   Each targets the icon element directly (not an ancestor), so there is no
+   selector already contending for `color` on this element. */
+.announcement-item-status-icon--draft {
+  color: var(--mantine-color-dimmed);
+}
+
+.announcement-item-status-icon--scheduled {
+  color: var(--mantine-color-blue-filled);
+}
+
+.announcement-item-status-icon--published {
+  color: var(--mantine-color-green-filled);
+}
+
+.announcement-item-status-icon--archived {
+  color: var(--mantine-color-red-filled);
+}
+
 .announcement-item-time {
   font-size: 12px;
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);

@@ -139,7 +139,7 @@ export function TipTapEditorContextMenu({
           <div className="infini-tiptap-context-submenu">
             <div className="infini-tiptap-color-grid">
               {TEXT_COLORS.map((c) => (
-                <button key={c} type="button" className="infini-tiptap-color-swatch" style={{ background: c }} aria-label={`${labels.textColor} ${c}`} onClick={() => run(() => editor.chain().focus().setColor(c).run())} />
+                <button key={c} type="button" className="infini-tiptap-color-swatch" style={{ "--swatch-color": c } as React.CSSProperties} aria-label={`${labels.textColor} ${c}`} onClick={() => run(() => editor.chain().focus().setColor(c).run())} />
               ))}
             </div>
             <div className="infini-tiptap-context-divider" />
@@ -160,7 +160,7 @@ export function TipTapEditorContextMenu({
           <div className="infini-tiptap-context-submenu">
             <div className="infini-tiptap-color-grid">
               {HIGHLIGHT_COLORS.map((c) => (
-                <button key={c} type="button" className="infini-tiptap-color-swatch" style={{ background: c }} aria-label={`${labels.highlight} ${c}`} onClick={() => run(() => editor.chain().focus().setHighlight({ color: c }).run())} />
+                <button key={c} type="button" className="infini-tiptap-color-swatch" style={{ "--swatch-color": c } as React.CSSProperties} aria-label={`${labels.highlight} ${c}`} onClick={() => run(() => editor.chain().focus().setHighlight({ color: c }).run())} />
               ))}
             </div>
             <div className="infini-tiptap-context-divider" />

@@ -201,6 +201,34 @@
   border-color: color-mix(in srgb, var(--status-danger) 24%, transparent);
 }
 
+/* ── Member Role Avatar ── (moved out of style={{}}, task-8 批 B)
+   --role-color is the active game's per-role hex (activeGame.roles[].color,
+   e.g. apps/shared/games/definitions/yan-yun.ts), a data blob that changes
+   with the active game config rather than a fixed enum this token system
+   owns — same reasoning as --badge-color, registered in
+   theme-tokens.test.ts RUNTIME_INJECTED_VARS. */
+
+.member-role-avatar__role-circle {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--surface-base);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background: var(--role-color);
+}
+
+/* Icon sits on top of the arbitrary --role-color fill, so it needs the
+   same on-saturated-fill treatment as status badges rather than a bare
+   white literal (rule 2 forbids bare hex here anyway). */
+.member-role-avatar__role-icon {
+  color: var(--status-on-fill);
+}
+
+.member-role-avatar__class-icon {
+  color: var(--role-color);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .member-card { transition: none; }
 }

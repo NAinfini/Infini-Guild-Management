@@ -192,6 +192,25 @@
   transition: width 300ms ease;
 }
 
+/* AdminStatusTab.tsx's latency column, moved out of style={{}} (task-8 批 B).
+   Time column: no existing rule in this file sets `color` on
+   `.health-log-table td`, so this plain class needs no specificity fight. */
+.health-log-time {
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+}
+
+.health-log-latency-bar--good { background: var(--status-success); }
+.health-log-latency-bar--warn { background: var(--status-warning); }
+.health-log-latency-bar--bad { background: var(--status-danger); }
+
+.health-log-latency-value {
+  font-weight: 600;
+}
+
+.health-log-latency-value--good { color: var(--status-success); }
+.health-log-latency-value--warn { color: var(--status-warning); }
+.health-log-latency-value--bad { color: var(--status-danger); }
+
 @media (prefers-reduced-motion: reduce) {
   .system-health-overall__dot--ok,
   .system-health-overall__dot--warn {

@@ -413,6 +413,49 @@ body::-webkit-scrollbar-thumb:hover {
   color: color-mix(in srgb, var(--text-primary) 72%, transparent);
 }
 
+/* ── router.tsx fallback screens ── (moved out of style={{}}, task-8 批 B) */
+
+/* main.tsx's total-bootstrap-failure fallback (the dynamic import("./bootstrap")
+   itself rejected, so ThemeProvider never mounted and never set [data-theme]
+   on <html>). semantic.css defines --surface-*/--status-* only under
+   [data-theme="light"/"dark"], so these var()s may not resolve here — that's
+   an accepted, documented degradation (plain default text/background, still
+   legible) rather than a silent bare-hex carve-out in a MIGRATED file. */
+.main-bootstrap-error {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--status-danger) 6%, var(--surface-base));
+  color: var(--status-danger);
+  padding: 24px;
+  font-family: Inter, system-ui, sans-serif;
+  text-align: center;
+}
+
+.not-found-page__link {
+  color: var(--accent-text);
+}
+
+.route-error__headline {
+  font-size: 48px;
+  font-weight: 700;
+  color: var(--status-danger);
+}
+
+.route-error__reload-button {
+  margin-top: 8px;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent-fill);
+  /* Text sits on the accent fill itself, not the page background — needs the
+     on-fill ink token (dark in both modes), not --text-primary. */
+  color: var(--accent-on-fill);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 /* ── EmptyState ── */
 .empty-state {
   display: flex;

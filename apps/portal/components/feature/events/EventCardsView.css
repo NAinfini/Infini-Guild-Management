@@ -221,6 +221,29 @@
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
+/* Status-indicator icon colours, moved out of style={{}} (task-8 批 B).
+   Each targets the icon itself, not the .event-card__status-icon wrapper span,
+   so there is no specificity contention with the rule above: the wrapper's
+   `color` would only apply here via inheritance, and an explicit `color` on
+   the icon's own class always wins over an inherited value. Mantine's dynamic
+   --mantine-color-* vars are exempt from the "every var must resolve"
+   guard (theme-tokens.test.ts RUNTIME_INJECTED_VARS). */
+.event-card__status-icon--pinned {
+  color: var(--mantine-color-portal-accent-6);
+}
+
+.event-card__status-icon--locked {
+  color: var(--mantine-color-red-6);
+}
+
+.event-card__status-icon--new {
+  color: var(--mantine-color-green-6);
+}
+
+.event-card__status-icon--updated {
+  color: var(--mantine-color-orange-6);
+}
+
 .event-card__description {
   min-height: 0;
   line-height: 1.5;
@@ -299,6 +322,18 @@
   width: 100%;
   min-width: 0;
   overflow: visible;
+}
+
+/* EventCardAvatarStrip.tsx's hidden measuring element, moved out of
+   style={{}} (task-8 批 B). border: none carries no colour, but the
+   COLOUR_PROPS guard matches the property name regardless of value. */
+.event-card__avatar-strip-sizer {
+  width: 100%;
+  height: 0;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  border: none;
 }
 
 /* --event-card-avatar-size 的兜底也是死代码：EventCardAvatarStrip.tsx:71

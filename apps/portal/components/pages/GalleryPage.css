@@ -227,6 +227,28 @@
   flex-shrink: 0;
 }
 
+/* Lightbox info-bar text, moved out of style={{}} (task-8 批 B). Same
+   mode-independent-literal precedent as .gallery-lb__close/.gallery-lb__nav
+   above: the lightbox overlay is always near-black regardless of
+   [data-theme], so these stay literal white-alpha rather than a surface/text
+   token. Each class targets a distinct <Text>, no other rule in this file
+   sets `color` on these elements. */
+.gallery-lb__caption {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.gallery-lb__uploader {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.gallery-lb__date {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.gallery-lb__count {
+  color: rgba(255, 255, 255, 0.5);
+}
+
 .gallery-object-placeholder {
   width: 100%; min-height: 140px; border-radius: var(--radius-sm);
   border: 1px dashed color-mix(in srgb, var(--text-primary) 22%, transparent);

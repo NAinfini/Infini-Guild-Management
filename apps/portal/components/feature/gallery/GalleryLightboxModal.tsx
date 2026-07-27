@@ -93,21 +93,21 @@ export function GalleryLightboxModal({
         <div className="gallery-lb__info">
           <Group gap={12} wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
             {item.caption ? (
-              <Text size="sm" fw={600} truncate style={{ color: "rgba(255,255,255,0.95)" }}>
+              <Text size="sm" fw={600} truncate className="gallery-lb__caption">
                 {item.caption}
               </Text>
             ) : null}
           </Group>
           <Group gap={16} wrap="nowrap">
             {!isExternalView ? (
-              <Text size="xs" style={{ color: "rgba(255,255,255,0.6)" }}>
+              <Text size="xs" className="gallery-lb__uploader">
                 {item.uploaded_by_name ?? item.uploaded_by}
               </Text>
             ) : null}
-            <Text size="xs" style={{ color: "rgba(255,255,255,0.4)" }}>
+            <Text size="xs" className="gallery-lb__date">
               {formatDateTime(item.created_at)}
             </Text>
-            <Text size="xs" fw={500} style={{ color: "rgba(255,255,255,0.5)" }}>
+            <Text size="xs" fw={500} className="gallery-lb__count">
               {Math.max(1, index + 1)} / {total}
             </Text>
           </Group>

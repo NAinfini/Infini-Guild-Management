@@ -159,6 +159,18 @@
   gap: 8px;
 }
 
+/* Permission grant/deny icons, moved out of style={{}} (task-8 批 B). Despite
+   sitting next to the CSS_COLOR_TO_HEX map / ColorInput swatches (class-1
+   user-selectable role colour data, out of scope here), these two are a
+   fixed granted/denied status indicator — class 2, in scope for this batch. */
+.admin-roles-perm-icon--granted {
+  color: var(--status-success);
+}
+
+.admin-roles-perm-icon--denied {
+  color: var(--status-danger);
+}
+
 @media (max-width: 767px) {
   .admin-roles-layout {
     grid-template-columns: 1fr;

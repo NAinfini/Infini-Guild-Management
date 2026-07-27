@@ -93,19 +93,10 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
           return (
             <div
               key={roleId}
-              style={{
-                width: circleSize,
-                height: circleSize,
-                borderRadius: "50%",
-                background: cfg.color,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: "2px solid var(--color-surface, #ffffff)",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
-              }}
+              className="member-role-avatar__role-circle"
+              style={{ width: circleSize, height: circleSize, "--role-color": cfg.color } as React.CSSProperties}
             >
-              <Icon size={iconSize} style={{ color: "#fff", display: "inline-flex", lineHeight: 0 }} />
+              <Icon size={iconSize} className="member-role-avatar__role-icon" style={{ display: "inline-flex", lineHeight: 0 }} />
             </div>
           );
         })}
@@ -138,7 +129,11 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
             const Icon = cfg.icon;
             return (
               <Group key={cls} gap={4}>
-                <Icon size={14} style={{ color: cfg.color, display: "inline-flex", lineHeight: 0 }} />
+                <Icon
+                  size={14}
+                  className="member-role-avatar__class-icon"
+                  style={{ "--role-color": cfg.color, display: "inline-flex", lineHeight: 0 } as React.CSSProperties}
+                />
                 <Text size="xs" fw={600}>{cls}</Text>
               </Group>
             );

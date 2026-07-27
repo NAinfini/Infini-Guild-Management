@@ -45,15 +45,15 @@ export function BubbleBackground({
         {bubbles.map((b) => (
           <div
             key={b.id}
-            className="absolute rounded-full blur-2xl"
+            className="absolute rounded-full blur-2xl bubble-background__bubble"
             style={{
               width: b.size,
               height: b.size,
               left: `${b.left}%`,
               top: `${b.top}%`,
-              background: `hsla(${b.hue}, 60%, 60%, 0.1)`,
+              "--bubble-hue": b.hue,
               animation: `float ${b.duration}s ease-in-out ${b.delay}s infinite`,
-            }}
+            } as React.CSSProperties}
           />
         ))}
       </div>

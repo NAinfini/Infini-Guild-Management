@@ -37,6 +37,15 @@
   z-index: 0;
 }
 
+/* ── BubbleBackground ── (moved out of style={{}}, task-8 批 B).
+   --bubble-hue is a per-bubble hue seeded from a deterministic PRNG
+   (BubbleBackground.tsx's seededRandom(42)), a continuous 30-60 value with
+   no fixed enum — a genuine channel, registered in theme-tokens.test.ts
+   RUNTIME_INJECTED_VARS. */
+.bubble-background__bubble {
+  background: hsla(var(--bubble-hue), 60%, 60%, 0.1);
+}
+
 .login-page__content {
   position: relative;
   z-index: 1;

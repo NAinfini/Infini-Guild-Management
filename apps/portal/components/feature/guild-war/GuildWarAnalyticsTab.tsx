@@ -181,7 +181,7 @@ export function GuildWarAnalyticsTab({
             </Text>
           ))}
           {analytics.analyticsWarSummary.winRate !== null ? (
-            <Text size="sm" fw={600} c="var(--color-primary-text, #705A1B)">
+            <Text size="sm" fw={600} c="var(--accent-text)">
               {t("analytics.wars.winRate", { rate: analytics.analyticsWarSummary.winRate })}
             </Text>
           ) : null}

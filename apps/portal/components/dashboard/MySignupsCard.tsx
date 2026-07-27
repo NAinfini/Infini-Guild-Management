@@ -72,7 +72,7 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
                   <span className="signup-box-empty">—</span>
                 ) : (
                   day.events.map((item) => {
-                    const color = `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--color-primary, #D4A843))`;
+                    const color = `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--accent-fill))`;
 
                     return (
                       <HoverCard key={item.event.id} width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
@@ -82,7 +82,10 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
                             className="signup-box-event"
                             onClick={() => onOpenEvent(item.event)}
                           >
-                            <span className="signup-box-event-dot" style={{ background: color }} />
+                            <span
+                              className="signup-box-event-dot"
+                              style={{ "--signup-dot-color": color } as React.CSSProperties}
+                            />
                             <span className="signup-box-event-title">{item.event.title}</span>
                             <span className="signup-box-event-time">{formatTime(item.event.start_at)}</span>
                           </button>

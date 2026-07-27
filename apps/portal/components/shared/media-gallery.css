@@ -46,6 +46,15 @@
   background: rgb(0 0 0);
 }
 
+/* MediaGallery.tsx's embedded-video iframe, moved out of style={{}}
+   (task-8 批 B). */
+.infini-media-gallery-video-embed {
+  width: 100%;
+  height: calc(100% - 40px);
+  border: none;
+  border-radius: 8px;
+}
+
 .infini-media-gallery-video-controls {
   width: 100%;
 }
