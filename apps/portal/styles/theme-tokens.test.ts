@@ -18,6 +18,8 @@ export const MIGRATED: string[] = [
   "apps/portal/components/layout/PageLayout.css",
   "apps/portal/components/pages/GuildWarPage.css",
   "apps/portal/components/pages/StoragePage.css",
+  "apps/portal/components/pages/AuthPages.css",
+  "apps/portal/components/pages/AdminPage.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */

@@ -16,7 +16,7 @@
 }
 
 .admin-page .admin-member-row-selected > td {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 14%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 14%, transparent);
 }
 
 .admin-page .admin-member-table-wrap .mantine-Table-tbody,
@@ -49,7 +49,7 @@
   }
 
   .admin-member-card--selected {
-    outline: 2px solid var(--color-primary, #D4A843);
+    outline: 2px solid var(--accent-fill);
     outline-offset: -2px;
   }
 }
@@ -60,7 +60,7 @@
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
   gap: 0;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
   border-radius: var(--radius-md);
   overflow: hidden;
   min-height: 520px;
@@ -72,14 +72,14 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  border-right: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 14%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 94%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 94%, transparent);
 }
 
 .admin-roles-sidebar-header {
   padding: 12px 14px;
   flex-shrink: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
 .admin-roles-sidebar-scroll {
@@ -99,12 +99,12 @@
 }
 
 .admin-roles-sidebar-item:hover {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
 }
 
 .admin-roles-sidebar-item--active {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 16%, transparent);
-  color: var(--color-primary-text, #705A1B);
+  background: color-mix(in srgb, var(--accent-fill) 16%, transparent);
+  color: var(--accent-text);
 }
 
 .admin-roles-sidebar-item--active::before {
@@ -115,7 +115,7 @@
   bottom: 6px;
   width: 3px;
   border-radius: var(--radius-pill);
-  background: var(--color-primary, #D4A843);
+  background: var(--accent-fill);
 }
 
 .admin-roles-color-dot {
@@ -126,7 +126,7 @@
 }
 
 .admin-roles-color-dot--empty {
-  border: 2px solid color-mix(in srgb, var(--color-text, #1A1815) 24%, transparent);
+  border: 2px solid color-mix(in srgb, var(--text-primary) 24%, transparent);
 }
 
 .admin-roles-detail {
@@ -138,7 +138,7 @@
 
 .admin-roles-detail-header {
   padding-bottom: 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
   margin-bottom: 4px;
 }
 
@@ -169,7 +169,7 @@
 
   .admin-roles-sidebar {
     border-right: none;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 14%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
     max-height: 280px;
   }
 
@@ -200,19 +200,19 @@
   gap: 14px;
   min-width: 0;
   padding: 16px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
   border-radius: var(--radius-md);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-surface, #ffffff) 98%, transparent), color-mix(in srgb, var(--color-text, #1A1815) 3%, var(--color-surface, #ffffff))),
-    var(--color-surface, #ffffff);
-  box-shadow: 0 14px 32px color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-base) 98%, transparent), color-mix(in srgb, var(--text-primary) 3%, var(--surface-base))),
+    var(--surface-base);
+  box-shadow: 0 14px 32px color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
 .site-config-rail__header {
   display: grid;
   gap: 3px;
   padding-bottom: 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 9%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
 }
 
 .site-config-rail__header .mantine-Text-root:first-child {
@@ -242,13 +242,13 @@
 }
 
 .site-config-rail__item:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 24%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 9%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 24%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 9%, transparent);
   transform: translateX(2px);
 }
 
 .site-config-rail__item:focus-visible {
-  outline: 2px solid var(--color-primary, #D4A843);
+  outline: 2px solid var(--accent-fill);
   outline-offset: 2px;
 }
 
@@ -259,8 +259,8 @@
   place-items: center;
   flex: 0 0 auto;
   border-radius: var(--radius-sm);
-  color: var(--color-primary, #D4A843);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 11%, transparent);
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent-fill) 11%, transparent);
 }
 
 .site-config-save-button {
@@ -292,9 +292,9 @@
   min-width: 0;
   padding: 18px;
   scroll-margin-top: 18px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 97%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 97%, transparent);
 }
 
 .site-config-card--branding {
@@ -331,10 +331,10 @@
   height: 22px;
   place-items: center;
   flex: 0 0 auto;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
   border-radius: 999px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 4%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
   transition:
     background var(--transition-normal),
     border-color var(--transition-normal),
@@ -343,9 +343,9 @@
 
 .site-config-info-trigger:hover,
 .site-config-info-trigger:focus-visible {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 35%, transparent);
-  color: var(--color-primary, #D4A843);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 35%, transparent);
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
 }
 
 .site-config-card__header .mantine-Text-root:first-child {
@@ -365,12 +365,12 @@
   aspect-ratio: 1;
   place-items: center;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-fill) 20%, transparent);
   border-radius: var(--radius-md);
-  color: var(--color-primary, #D4A843);
+  color: var(--accent-text);
   background:
-    radial-gradient(circle at 25% 18%, color-mix(in srgb, var(--color-primary, #D4A843) 16%, transparent), transparent 42%),
-    color-mix(in srgb, var(--color-surface-elevated, #ffffff) 94%, var(--color-text, #1A1815) 3%);
+    radial-gradient(circle at 25% 18%, color-mix(in srgb, var(--accent-fill) 16%, transparent), transparent 42%),
+    color-mix(in srgb, var(--surface-raised) 94%, var(--text-primary) 3%);
 }
 
 .site-config-logo-preview img {
@@ -393,9 +393,9 @@
   justify-content: space-between;
   min-width: 0;
   padding: 16px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 
 .site-config-logo-upload .mantine-Button-root {
@@ -416,17 +416,17 @@
   min-width: 0;
   min-height: 74px;
   padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-surface-elevated, #ffffff) 94%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
   transition:
     background var(--transition-normal),
     border-color var(--transition-normal);
 }
 
 .site-config-feature-card:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 5%, var(--color-surface, #ffffff));
+  border-color: color-mix(in srgb, var(--accent-fill) 20%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 5%, var(--surface-base));
 }
 
 .site-config-feature-card > span {
@@ -443,9 +443,9 @@
 .site-config-subpanel {
   min-width: 0;
   padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 
 .site-config-onboarding-topline {
@@ -473,9 +473,9 @@
   justify-content: center;
   gap: 4px;
   padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 
 .site-config-checklist-list {
@@ -488,9 +488,9 @@
   gap: 12px;
   align-items: end;
   padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-surface-elevated, #ffffff) 94%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
 }
 
 .site-config-checklist-row__fields {
@@ -511,9 +511,9 @@
   display: grid;
   min-height: 56px;
   place-items: center;
-  border: 1px dashed color-mix(in srgb, var(--color-text, #1A1815) 16%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--text-primary) 16%, transparent);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 2%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
 }
 
 @media (max-width: 1500px) {
