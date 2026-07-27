@@ -508,8 +508,11 @@ body::-webkit-scrollbar-thumb:hover {
      墨色），不用 --text-primary：--text-primary 深色模式下是浅色
      （--palette-ink-warm），拿它当阴影底色会让这层投影在深色模式下从「暗投影」
      反转成「浅色微光」；--shadow-ink 深色模式固定为 rgb(0 0 0)，4% 混合后与
-     本规则批 2 之前的原值 rgb(0 0 0 / 0.04) 逐比特相同，反转消失，无需目视
-     确认。下面 .floating-save-bar[data-dirty] 混的是 --status-warning（警告色
+     本规则批 2 之前的原值 rgb(0 0 0 / 0.04) 逐比特相同，反转消失。
+     浅色模式下 --shadow-ink 是 rgb(10 10 15) 而非纯黑，所以浅色下由
+     rgb(0 0 0 / 0.04) 变成 rgb(10 10 15 / 0.04) —— 这是为了跟四档标度阴影
+     共用同一个墨色，4% 不透明度下两者肉眼不可分辨，故不列入目视清单。
+     下面 .floating-save-bar[data-dirty] 混的是 --status-warning（警告色
      两模式都是暖色，不会反转），跟这里不是同一类情况，不再类比。 */
   box-shadow: 0 -2px 8px color-mix(in srgb, var(--shadow-ink) 4%, transparent);
   transition: box-shadow var(--transition-normal), border-color var(--transition-normal);

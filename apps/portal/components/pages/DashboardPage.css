@@ -1,11 +1,19 @@
-/* 复审 I-2：dimmed 变体此前往真黑里混 28%，在浅色模式下算出来比正文
-   --text-primary 更深（#131110 vs 正文 #1A1815），dimmed 反而比正常文字更
-   抢眼，语义是反的；深色模式下的结果又几乎等于既有的 --text-muted
-   （#ACAAA7 vs #A39D94）。L2 已经有现成的文字档 --text-muted，直接改指过去，
-   不再需要字面量混色。这是真实视觉变更，需要控制者目视确认。 */
-.dashboard-page .mantine-Text-root[data-variant="dimmed"] {
-  color: var(--text-muted);
-}
+/* 这里曾有一条 .dashboard-page .mantine-Text-root[data-variant="dimmed"]
+ * （以及并列的 [data-variant="filled"] 分支），Task 9 复审 R-1/R-2 证明**两个分支
+ * 都匹配不到任何元素**，整条已删除，视觉影响为零：
+ *   - Mantine 的 data-variant 属性由 Box.mjs:65 从 variant prop 原样透传。
+ *     Text 的 defaultProps 只有 { inherit: false }（Text.mjs:32），
+ *     ThemeProvider.tsx 的 components 里也没有 Text 条目，全仓库
+ *     variant="dimmed" 零命中 —— 所以 Text 根本不会带上这个属性。
+ *     实际写法是 c="dimmed"，走的是 --mantine-color-dimmed，
+ *     styles.css 早已把它桥接到 var(--text-muted)。
+ *   - filled 分支同理：LastWarCard.tsx 三处 ActionIcon 都没传 variant，
+ *     ActionIcon 的 defaultProps 也不含 variant（主题里的 extend 只给了 radius）。
+ *     ActionIcon.mjs 里那句 variant || "filled" 在 varsResolver 内部，
+ *     只决定算颜色时用哪套 variant，不影响 DOM 属性。
+ * 原声明是 color: color-mix(in srgb, var(--text-primary) 72%, black 28%)，
+ * 它在浅色模式下算出 #131110，比正文 --text-primary（#1A1815）还深 ——
+ * 名为 dimmed 却更抢眼，语义是反的。即便它当年匹配得上也是错的。 */
 
 /* ── Dashboard card padding (PortalCard has no built-in padding) ── */
 .dashboard-card > div:last-child {

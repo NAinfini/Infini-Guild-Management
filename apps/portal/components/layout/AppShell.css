@@ -39,7 +39,10 @@
      --text-primary 深色模式下是浅色（--palette-ink-warm），拿它当阴影底色会
      让这层投影在深色模式下从「暗投影」反转成「浅色微光」；--shadow-ink 深色
      模式固定为 rgb(0 0 0)，3% 混合后与本规则批 2 之前的原值
-     rgba(0, 0, 0, 0.03) 逐比特相同，反转消失，无需目视确认。 */
+     rgba(0, 0, 0, 0.03) 逐比特相同，反转消失。
+     浅色模式下 --shadow-ink 是 rgb(10 10 15) 而非纯黑，所以浅色下由
+     rgba(0, 0, 0, 0.03) 变成 rgba(10, 10, 15, 0.03) —— 这是为了跟同块的四档
+     标度阴影共用同一个墨色，3% 不透明度下两者肉眼不可分辨，故不列入目视清单。 */
   box-shadow: 1px 0 8px color-mix(in srgb, var(--shadow-ink) 3%, transparent);
   overflow: hidden;
   transition: width var(--transition-normal);
