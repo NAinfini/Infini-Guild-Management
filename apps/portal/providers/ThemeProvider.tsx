@@ -156,19 +156,6 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
      */
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.accent = accent;
-    /*
-     * ── 临时兼容层 · 计划在 Task 7 删除 ──────────────────────────
-     * `.dark` 不再是真相来源，只是旧选择器的适配垫片：目前仍有 88 处
-     * `.dark` 选择器分布在 13 个 CSS 文件（styles.css、AuthPages.css、
-     * RecurringTemplateFormModal.css、AdminApiTest.css…），迁移到
-     * [data-theme="dark"] 的收尾在 Task 7。在那之前删掉这一行会让深色模式
-     * 整体失效。
-     * 删除方式：删掉下面这一行 + 上面测试里那条 lockstep 断言即可，
-     * 没有其他代码依赖它。
-     * 必须与 data-theme 同一个 effect 内写入：分成两处就可能不同步，
-     * 症状是半深半浅。
-     */
-    document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme, accent]);
 
   const contextValue = useMemo(

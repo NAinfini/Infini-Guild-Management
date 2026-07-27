@@ -33,7 +33,7 @@
   --font-sans: var(--font-body);
 }
 
-/* ── 旧名转发 · 临时兼容层 · 计划在 Task 7 随 .dark 垫片一并删除 ──
+/* ── 旧名转发 · 临时兼容层 · 由 Task 9 删除 ──
  *
  * 为什么存在：旧的 --color-* 名字此前只在本文件定义，而全站尚有约 1332 处
  * 引用散落在约 50 个 CSS 文件里，要到 Task 5-7 才逐批迁移。绝大多数引用自带的
@@ -42,8 +42,16 @@
  * 退回浅色硬编码，深色模式当场失色。那不是可接受的中间状态。
  *
  * 本块只做 var() 转发，不产生任何新数值；旧名从此随 [data-theme] 切换，
- * 等于把 Task 5-7 的收益提前兑现。Task 5-7 把消费端逐文件改成 L2 token 之后，
- * 本块自然变成死代码，与 ThemeProvider 里的 .dark 垫片在 Task 7 一并删除。 */
+ * 等于把 Task 5-7 的收益提前兑现。Task 5-7 把 .css 消费端逐文件改成 L2 token
+ * 之后（Task 7 已在批 C 收尾，全部 35 个 CSS 文件归零），本块在 .css 侧已是
+ * 死代码，但 .tsx 内联 style 里实测仍有 28 处消费者，分布在 12 个文件：
+ * RecurringTemplatesTab.tsx 7、ProfilePreviewCard.tsx 5、ImageGridEditor.tsx 3、
+ * ProfileProfileTab.tsx 3、LastWarCard.tsx 2、UpcomingEventsCard.tsx 2，
+ * 以及 router.tsx、MemberRoleAvatar.tsx、CmdKSearch.tsx、
+ * GuildWarAnalyticsTab.tsx、AuditLogViewer.tsx、AdminStatusTab.tsx 各 1 处。
+ * 现在删掉定义，这 28 处会当场失色。这批 .tsx 消费端迁移是 Task 8 的范围，
+ * 迁完之后本块才真正是死代码，由 Task 9 删除。这一行以前写着「Task 7 随 .dark
+ * 垫片一并删除」，那是错的——Task 7 只清 .dark 垫片和 .css 消费端，删不掉这块。 */
 :root {
   --color-text: var(--text-primary);
   --color-text-muted: var(--text-muted);
@@ -61,8 +69,8 @@
   --color-secondary: var(--palette-bronze-warm);
   --color-accent: var(--palette-copper-warm);
 
-  /* AppShell.css:93,362 无兜底引用 --shadow-primary-sm，删掉阴影会直接消失。
-   * -md 只有 ToolsPage.css:419 一处且自带兜底，但一并转发，免得再踩一次
+  /* AppShell.css:88,357 无兜底引用 --shadow-primary-sm，删掉阴影会直接消失。
+   * -md 只有 ToolsPage.css:420 一处且自带兜底，但一并转发，免得再踩一次
    * 「兜底值与定义值不一致」。原值挂在旧金色上，改挂 --accent-fill —— 金色
    * 转主色正是本计划要做的事。 */
   --shadow-primary-sm: 0 2px 8px color-mix(in srgb, var(--accent-fill) 15%, transparent);

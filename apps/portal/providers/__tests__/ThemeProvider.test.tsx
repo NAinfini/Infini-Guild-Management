@@ -35,26 +35,14 @@ describe("PortalThemeProvider", () => {
     expect(document.documentElement.dataset.accent).toBe("indigo");
   });
 
-  it("still writes the legacy .dark class, in lockstep with data-theme", () => {
-    /* 兼容层，不是真相来源。88 处 `.dark` 选择器散在 13 个 CSS 文件里，
-     * 要到 Task 7 才全部改成 [data-theme="dark"]；在那之前停写 `.dark`
-     * 会让深色模式整体失效，违反「零行为变更」。
-     * 这条断言的作用是钉住「两个信号必须同步」——半深半浅正是它们不同步的症状。
-     * Task 7 删掉兼容写入后，这条改为断言 classList 里没有 "dark"。 */
+  it("no longer writes the legacy .dark class", () => {
+    /* Task 7 迁完最后一批 .dark 选择器后兼容层已删除，
+     * data-theme 成为唯一的模式信号。 */
     usePreferencesStore.getState().setThemeMode("dark");
 
     render(<PortalThemeProvider><Probe /></PortalThemeProvider>);
 
     expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(document.documentElement.classList.contains("dark")).toBe(true);
-  });
-
-  it("keeps .dark in lockstep when the mode flips back to light", () => {
-    usePreferencesStore.getState().setThemeMode("light");
-
-    render(<PortalThemeProvider><Probe /></PortalThemeProvider>);
-
-    expect(document.documentElement.dataset.theme).toBe("light");
     expect(document.documentElement.classList.contains("dark")).toBe(false);
   });
 
