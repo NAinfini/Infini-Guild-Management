@@ -274,11 +274,14 @@
   --ring-glow: color-mix(in srgb, var(--status-danger) 30%, transparent);
 }
 /* Rotation data still loading — deliberately colourless, so an unknown rate is
-   never mistaken for a measured one. 复用 --mantine-color-dimmed 而不是
-   --text-muted：下面 .rate--pending 的文字色就取的这个变量，两处要保持
-   同一色相，而不是暖灰/冷灰各写一份。 */
+   never mistaken for a measured one. --ring-glow 本身只是装饰性 drop-shadow，
+   不受 AA 对比度门槛约束；这里跟着下面 .rate--pending 一起从
+   --mantine-color-dimmed 换成 --text-muted，是为了继续维持「环的光晕色 ==
+   环下文字色」这条设计不变量、并去掉一层没必要的间接（见 .rate--pending
+   旁的完整说明——styles.css:759-760 早已把 --mantine-color-dimmed 桥接到
+   --text-muted，这里换的只是引用方式，不是渲染结果）。 */
 .ecm__grad-banner--pending {
-  --ring-glow: color-mix(in srgb, var(--mantine-color-dimmed) 25%, transparent);
+  --ring-glow: color-mix(in srgb, var(--text-muted) 25%, transparent);
 }
 
 .ecm__grad-banner__ring-label {
@@ -300,11 +303,34 @@
 
 /* 这三档字面量色值（#22c55e/#f59e0b/#ef4444）与色板的 success/warning/danger
    并非同一 hex，但语义等价——毕业率高/中/低正是三态好/警示/差的评级，
-   按语义收敛到状态 token，而不是抄字面量进 tokens.css。 */
+   按语义收敛到状态 token，而不是抄字面量进 tokens.css。
+   同一组 high/mid/low/pending 四档，GraduationBanner.tsx 的 rateColor()
+   还以字面 var() 字符串的形式喂给这个文件对应组件里 RingProgress 的 color
+   prop（环的描边），因为该 prop 只吃字面字符串、不认 className——这是
+   AdminApiTest.css:282-286 记录过的同一条通道，这里的 .ecm__grad-banner__rate--*
+   与上面 .ecm__grad-banner--*（--ring-glow）都在与 rateColor() 共用同一组
+   token，不各自维护一份颜色。
+   pending 档：改前是 --mantine-color-dimmed。若按 Mantine 自己的定义
+   （浅 gray-6 #868e96、深 dark-2 #828282，theme.autoContrast 未开、
+   ThemeProvider 没覆盖 gray/dark 色阶）实算，浅色对 --surface-base
+   只有 3.15:1（theme-tokens.test.ts 同一套 channel/relativeLuminance/
+   contrastRatio 实算），这里 13px 的 ring-label 和 18px/字重 800 的
+   rate 文字按 4.5:1 算不过 AA（作为环本身是图形，3:1 门槛勉强过）；
+   深色 4.78:1，过。
+   但 --mantine-color-dimmed 在本仓库不是 Mantine 的原始值——
+   styles.css:759-760 用 `:root[data-theme][data-theme]`（特异性
+   (0,3,0)，压过 Mantine 自己 (0,2,0) 的定义）把它全局桥接成
+   `var(--text-muted)`，早于本次改动就存在。也就是说上面 3.15/3.32
+   这两个数字描述的是「如果没有这条桥接规则」的假设值，实际渲染早已是
+   --text-muted 的颜色（浅 5.41:1、深 6.83:1，同样实算），AA 从未真的
+   在这条路径上失败过。这里把两处引用直接改成 --text-muted，
+   不是修复渲染回归，而是去掉对这条全局桥接规则的隐性依赖——直接
+   引用语义 token，也不再让一个 Mantine 库变量的名字冒充组件层颜色，
+   同时继续保持与 rateColor() 的 RingProgress 描边色同一 token。 */
 .ecm__grad-banner__rate--high { color: var(--status-success); }
 .ecm__grad-banner__rate--mid { color: var(--status-warning); }
 .ecm__grad-banner__rate--low { color: var(--status-danger); }
-.ecm__grad-banner__rate--pending { color: var(--mantine-color-dimmed); }
+.ecm__grad-banner__rate--pending { color: var(--text-muted); }
 
 .ecm__grad-banner__metrics {
   display: flex;

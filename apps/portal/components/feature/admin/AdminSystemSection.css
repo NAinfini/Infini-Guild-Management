@@ -206,6 +206,13 @@
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
+/* 三态穷举（good/warn/bad），来自 AdminSystemSection.tsx 的
+   LATENCY_BAND_COLOR_VAR（latencyBand() 分档，task-8-addendum.md B 节类 2）。
+   同一个常量对象还以字面 var() 字符串的形式喂给这个组件里 RingProgress 的
+   color prop（延迟环），因为该 prop 只吃字面字符串、不认 className，这条例外
+   走的是 AdminApiTest.css:282-286 记录过的同一条通道。这三条与下面
+   .health-log-latency-value--* 是本文件里给这一组状态色分别设 background/color
+   的规则，三处共用同一组 token，不各自维护一份颜色。 */
 .health-log-latency-bar--good { background: var(--status-success); }
 .health-log-latency-bar--warn { background: var(--status-warning); }
 .health-log-latency-bar--bad { background: var(--status-danger); }
