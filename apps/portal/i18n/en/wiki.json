@@ -81,6 +81,8 @@
   "validation.titleRequired": "Article title is required.",
   "confirm.discardArticle.title": "Discard unsaved changes?",
   "confirm.discardArticle.description": "Your current article edits will be lost.",
+  "confirm.discardCategory.title": "Discard unsaved category changes?",
+  "confirm.discardCategory.description": "Your category names, hierarchy, and order changes will be lost.",
   "welcome.title": "Welcome to the Wiki",
   "welcome.description": "Select an article from the sidebar to start reading.",
   "action.loadMore": "Load More",

@@ -2,9 +2,16 @@ import { type Announcement, type PaginatedResponse } from "@guild/shared";
 import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/tiptap-meta";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { format, isValid, parseISO } from "date-fns";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import { useTranslation } from "react-i18next";
@@ -37,6 +44,53 @@ const message = {
   success: (text: string) => notifications.show({ color: "green", message: text, autoClose: 3000 }),
 };
 
+type AnnouncementSelection =
+  | { kind: "auto" }
+  | { kind: "none" }
+  | { kind: "selected"; id: string };
+
+type AnnouncementRouteSearch = {
+  announcementId?: string;
+  selection?: "none";
+};
+
+type AnnouncementListCache = InfiniteData<PaginatedResponse<Announcement>>;
+
+function selectionFromRoute(search: AnnouncementRouteSearch): AnnouncementSelection {
+  if (search.announcementId) return { kind: "selected", id: search.announcementId };
+  if (search.selection === "none") return { kind: "none" };
+  return { kind: "auto" };
+}
+
+function sameSelection(left: AnnouncementSelection, right: AnnouncementSelection): boolean {
+  return left.kind === right.kind
+    && (left.kind !== "selected" || (right.kind === "selected" && left.id === right.id));
+}
+
+function updateAnnouncementPages(
+  current: AnnouncementListCache | undefined,
+  update: (items: Announcement[]) => Announcement[],
+): AnnouncementListCache | undefined {
+  if (!current) return current;
+  return {
+    ...current,
+    pages: current.pages.map((page) => ({
+      ...page,
+      data: update(page.data),
+    })),
+  };
+}
+
+function flattenUniqueAnnouncements(data: AnnouncementListCache | undefined): Announcement[] {
+  const byId = new Map<string, Announcement>();
+  for (const page of data?.pages ?? []) {
+    for (const announcement of page.data) {
+      if (!byId.has(announcement.id)) byId.set(announcement.id, announcement);
+    }
+  }
+  return [...byId.values()];
+}
+
 function toDateTimePickerValue(iso: string | null): string {
   if (!iso) return "";
   const date = parseISO(iso);
@@ -62,6 +116,8 @@ export function useAnnouncementsController() {
   const { t } = useTranslation("announcements");
   const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const routeSearch = useSearch({ strict: false }) as AnnouncementRouteSearch;
   const isExternalView = useExternalView();
   const { showError } = useAppError();
 
@@ -74,8 +130,8 @@ export function useAnnouncementsController() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [skipAutoSelectOnce, setSkipAutoSelectOnce] = useState(false);
+  const [selection, setSelection] = useState<AnnouncementSelection>(() => selectionFromRoute(routeSearch));
+  const selectedId = selection.kind === "selected" ? selection.id : null;
   const [isCreating, isCreatingHandlers] = useDisclosure(false);
   const [imageStagingToken, setImageStagingToken] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -87,24 +143,38 @@ export function useAnnouncementsController() {
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [announcementsLastSeenAt, setAnnouncementsLastSeenAt] = useState<string | null>(null);
 
-  const [listPage, setListPage] = useState(1);
-  const accumulatedAnnouncementsRef = useRef<Announcement[]>([]);
-  const [accumulatedAnnouncements, setAccumulatedAnnouncements] = useState<Announcement[]>([]);
-  const [listTotal, setListTotal] = useState(0);
+  const setAnnouncementSelection = useCallback((
+    next: AnnouncementSelection,
+    options?: { replace?: boolean },
+  ) => {
+    setSelection(next);
+    void navigate({
+      to: "/announcements",
+      search: (previous) => ({
+        ...previous,
+        announcementId: next.kind === "selected" ? next.id : undefined,
+        selection: next.kind === "none" ? "none" as const : undefined,
+      }),
+      replace: options?.replace,
+      viewTransition: false,
+    });
+  }, [navigate]);
 
-  const listQuery = useQuery({
-    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch, listPage),
-    queryFn: () =>
+  const listQuery = useInfiniteQuery({
+    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch),
+    queryFn: ({ pageParam }) =>
       fetchAnnouncements({
-        page: listPage,
+        page: pageParam,
         limit: 50,
         status: statusFilter,
         pinned: pinnedFilter ? true : undefined,
         search: debouncedSearch || undefined,
         archived: statusFilter === "archived",
       }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page < lastPage.total_pages ? lastPage.page + 1 : undefined,
     staleTime: 10 * 60_000,
-    placeholderData: keepPreviousData,
   });
 
   const detailQuery = useQuery({
@@ -112,8 +182,12 @@ export function useAnnouncementsController() {
     enabled: Boolean(selectedId),
     queryFn: () => fetchAnnouncement(selectedId as string),
     staleTime: 10 * 60_000,
-    placeholderData: keepPreviousData,
   });
+
+  useEffect(() => {
+    const next = selectionFromRoute(routeSearch);
+    setSelection((current) => sameSelection(current, next) ? current : next);
+  }, [routeSearch.announcementId, routeSearch.selection]);
 
   const createMutation = useMutation({
     mutationFn: createAnnouncement,
@@ -122,8 +196,7 @@ export function useAnnouncementsController() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
       isCreatingHandlers.close();
       setImageStagingToken(null);
-      setSkipAutoSelectOnce(false);
-      setSelectedId(data.id);
+      setAnnouncementSelection({ kind: "selected", id: data.id });
     },
     onError: (error) => {
       showError(error, t("message.createFailed"));
@@ -136,22 +209,19 @@ export function useAnnouncementsController() {
       await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
 
       const previousLists = queryClient
-        .getQueriesData<PaginatedResponse<Announcement>>({ queryKey: queryKeys.announcements.all })
-        .filter(([key]) => !(Array.isArray(key) && key[1] === "detail"));
+        .getQueriesData<AnnouncementListCache>({ queryKey: queryKeys.announcements.all })
+        .filter(([key]) => Array.isArray(key) && key[1] === "list");
       const previousDetail = queryClient.getQueryData<Announcement>(queryKeys.announcements.detail(id));
       const nowIso = new Date().toISOString();
 
       for (const [key] of previousLists) {
-        queryClient.setQueryData<PaginatedResponse<Announcement>>(key, (current) => {
-          if (!current) {
-            return current;
-          }
-          const shouldRemove = payload.pinned === false && pinnedFilter;
-          return {
-            ...current,
-            data: shouldRemove
-              ? current.data.filter((item) => item.id !== id)
-              : current.data.map((item) =>
+        queryClient.setQueryData<AnnouncementListCache>(key, (current) => {
+          const shouldRemove = payload.pinned === false && Array.isArray(key) && key[2] === "pinned";
+          return updateAnnouncementPages(
+            current,
+            (items) => shouldRemove
+              ? items.filter((item) => item.id !== id)
+              : items.map((item) =>
                   item.id === id
                     ? {
                         ...item,
@@ -160,7 +230,7 @@ export function useAnnouncementsController() {
                       }
                     : item,
                 ),
-          };
+          );
         });
       }
 
@@ -200,17 +270,12 @@ export function useAnnouncementsController() {
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
       const previousLists = queryClient
-        .getQueriesData<PaginatedResponse<Announcement>>({ queryKey: queryKeys.announcements.all })
-        .filter(([key]) => !(Array.isArray(key) && key[1] === "detail"));
+        .getQueriesData<AnnouncementListCache>({ queryKey: queryKeys.announcements.all })
+        .filter(([key]) => Array.isArray(key) && key[1] === "list");
 
       for (const [key] of previousLists) {
-        queryClient.setQueryData<PaginatedResponse<Announcement>>(key, (current) => {
-          if (!current) return current;
-          return {
-            ...current,
-            data: current.data.filter((item) => item.id !== id),
-          };
-        });
+        queryClient.setQueryData<AnnouncementListCache>(key, (current) =>
+          updateAnnouncementPages(current, (items) => items.filter((item) => item.id !== id)));
       }
 
       return { previousLists };
@@ -218,8 +283,7 @@ export function useAnnouncementsController() {
     onSuccess: async () => {
       message.success(t("message.archived"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
-      setSkipAutoSelectOnce(true);
-      setSelectedId(null);
+      setAnnouncementSelection({ kind: "none" }, { replace: true });
     },
     onError: (error, _variables, context) => {
       if (context) {
@@ -236,17 +300,12 @@ export function useAnnouncementsController() {
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
       const previousLists = queryClient
-        .getQueriesData<PaginatedResponse<Announcement>>({ queryKey: queryKeys.announcements.all })
-        .filter(([key]) => !(Array.isArray(key) && key[1] === "detail"));
+        .getQueriesData<AnnouncementListCache>({ queryKey: queryKeys.announcements.all })
+        .filter(([key]) => Array.isArray(key) && key[1] === "list");
 
       for (const [key] of previousLists) {
-        queryClient.setQueryData<PaginatedResponse<Announcement>>(key, (current) => {
-          if (!current) return current;
-          return {
-            ...current,
-            data: current.data.filter((item) => item.id !== id),
-          };
-        });
+        queryClient.setQueryData<AnnouncementListCache>(key, (current) =>
+          updateAnnouncementPages(current, (items) => items.filter((item) => item.id !== id)));
       }
 
       return { previousLists };
@@ -254,8 +313,7 @@ export function useAnnouncementsController() {
     onSuccess: async () => {
       message.success(t("message.deleted"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
-      setSkipAutoSelectOnce(true);
-      setSelectedId(null);
+      setAnnouncementSelection({ kind: "none" }, { replace: true });
     },
     onError: (error, _variables, context) => {
       if (context) {
@@ -266,6 +324,11 @@ export function useAnnouncementsController() {
       showError(error, t("message.deleteFailed"));
     },
   });
+
+  const accumulatedAnnouncements = useMemo(
+    () => flattenUniqueAnnouncements(listQuery.data),
+    [listQuery.data],
+  );
 
   const rows = useMemo(() => {
     let raw = accumulatedAnnouncements;
@@ -288,7 +351,7 @@ export function useAnnouncementsController() {
     });
   }, [canEdit, accumulatedAnnouncements, pinnedFilter, statusFilter]);
 
-  const listHasMore = accumulatedAnnouncements.length < listTotal;
+  const listHasMore = listQuery.hasNextPage ?? false;
 
   const selected = detailQuery.data ?? null;
 
@@ -296,49 +359,13 @@ export function useAnnouncementsController() {
     setAnnouncementsLastSeenAt(readAnnouncementsLastSeenAt());
   }, []);
 
-  // Reset accumulated announcements when filter params change
   useEffect(() => {
-    accumulatedAnnouncementsRef.current = [];
-    setAccumulatedAnnouncements([]);
-    setListTotal(0);
-    setListPage(1);
-   
-  }, [pinnedFilter, statusFilter, debouncedSearch]);
-
-  // Accumulate announcements across pages
-  useEffect(() => {
-    if (!listQuery.data || listQuery.isFetching) return;
-    const newItems = listQuery.data.data;
-    if (listPage === 1) {
-      accumulatedAnnouncementsRef.current = newItems;
-    } else {
-      const existingIds = new Set(accumulatedAnnouncementsRef.current.map((item) => item.id));
-      const deduplicated = newItems.filter((item) => !existingIds.has(item.id));
-      accumulatedAnnouncementsRef.current = [...accumulatedAnnouncementsRef.current, ...deduplicated];
+    if (isCreating || selection.kind !== "auto") return;
+    const firstId = rows[0]?.id;
+    if (firstId) {
+      setAnnouncementSelection({ kind: "selected", id: firstId }, { replace: true });
     }
-    setAccumulatedAnnouncements([...accumulatedAnnouncementsRef.current]);
-    setListTotal(listQuery.data.total);
-  }, [listQuery.data, listQuery.isFetching, listPage]);
-
-  useEffect(() => {
-    if (isCreating) return;
-    if (selectedId && rows.length > 0 && !rows.some((r) => r.id === selectedId)) {
-      setSelectedId(rows[0]?.id ?? null);
-      setSkipAutoSelectOnce(false);
-      return;
-    }
-    if (selectedId && rows.length === 0) {
-      setSelectedId(null);
-      setSkipAutoSelectOnce(false);
-      return;
-    }
-    if (selectedId || skipAutoSelectOnce) {
-      return;
-    }
-    if (rows.length > 0) {
-      setSelectedId(rows[0]?.id ?? null);
-    }
-  }, [isCreating, rows, selectedId, skipAutoSelectOnce]);
+  }, [isCreating, rows, selection.kind, setAnnouncementSelection]);
 
   useEffect(() => {
     if (isCreating) {
@@ -384,9 +411,8 @@ export function useAnnouncementsController() {
   const handleCreateByStatus = useCallback(() => {
     isCreatingHandlers.open();
     setImageStagingToken(null);
-    setSkipAutoSelectOnce(false);
-    setSelectedId(null);
-  }, []);
+    setAnnouncementSelection({ kind: "none" });
+  }, [isCreatingHandlers, setAnnouncementSelection]);
 
   const handleSelectId = useCallback(async (id: string | null) => {
     if (isDirty) {
@@ -404,9 +430,10 @@ export function useAnnouncementsController() {
     if (id !== null) {
       isCreatingHandlers.close();
     }
-    setSkipAutoSelectOnce(false);
-    setSelectedId(id);
-  }, [confirm, isDirty, isCreatingHandlers, t]);
+    setAnnouncementSelection(
+      id === null ? { kind: "none" } : { kind: "selected", id },
+    );
+  }, [confirm, isDirty, isCreatingHandlers, setAnnouncementSelection, t]);
 
   const resetFilters = useCallback(() => {
     setSearch("");
@@ -467,9 +494,10 @@ export function useAnnouncementsController() {
     if (isCreating) {
       isCreatingHandlers.close();
       setImageStagingToken(null);
-      if (rows.length > 0) {
-        setSelectedId(rows[0]?.id ?? null);
-      }
+      const firstId = rows[0]?.id;
+      setAnnouncementSelection(
+        firstId ? { kind: "selected", id: firstId } : { kind: "none" },
+      );
       return;
     }
     if (!selected) return;
@@ -537,8 +565,8 @@ export function useAnnouncementsController() {
     rows,
     selected,
     listHasMore,
-    listLoadingMore: listQuery.isFetching && listPage > 1,
-    onLoadMoreList: () => setListPage((p) => p + 1),
+    listLoadingMore: listQuery.isFetchingNextPage,
+    onLoadMoreList: () => void listQuery.fetchNextPage(),
     isBusy: createMutation.isPending || updateMutation.isPending || archiveMutation.isPending || deleteMutation.isPending,
     savePending: updateMutation.isPending,
     deletePending: deleteMutation.isPending,

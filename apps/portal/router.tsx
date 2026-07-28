@@ -44,6 +44,15 @@ const PROFILE_SEARCH_SCHEMA = z.object({
   tab: z.enum(["profile", "availability", "account"]).optional(),
 });
 
+const ANNOUNCEMENTS_SEARCH_SCHEMA = z.object({
+  announcementId: z.string().trim().min(1).optional(),
+  selection: z.literal("none").optional(),
+}).passthrough();
+
+const WIKI_SEARCH_SCHEMA = z.object({
+  selection: z.literal("none").optional(),
+}).passthrough();
+
 const STORAGE_SEARCH_SCHEMA = z.object({
   storageId: z.string().trim().min(1).optional(),
 });
@@ -427,6 +436,7 @@ const announcementsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/announcements",
   beforeLoad: () => requireRouteFeature("announcements"),
+  validateSearch: (search) => ANNOUNCEMENTS_SEARCH_SCHEMA.parse(search),
   component: AnnouncementsRoutePage,
 });
 
@@ -474,6 +484,7 @@ const wikiRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/wiki",
   beforeLoad: () => requireRouteFeature("wiki"),
+  validateSearch: (search) => WIKI_SEARCH_SCHEMA.parse(search),
   component: WikiRoutePage,
 });
 
@@ -481,6 +492,7 @@ const wikiSlugRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/wiki/$slug",
   beforeLoad: () => requireRouteFeature("wiki"),
+  validateSearch: (search) => WIKI_SEARCH_SCHEMA.parse(search),
   component: WikiRoutePage,
 });
 

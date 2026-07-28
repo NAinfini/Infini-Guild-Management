@@ -15,6 +15,16 @@ const serviceMocks = vi.hoisted(() => ({
   updateAnnouncement: vi.fn(),
   uploadAnnouncementImages: vi.fn(),
 }));
+const navigateMock = vi.hoisted(() => vi.fn());
+const routeSearchMock = vi.hoisted(() => ({
+  announcementId: undefined as string | undefined,
+  selection: undefined as "none" | undefined,
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => navigateMock,
+  useSearch: () => routeSearchMock,
+}));
 
 vi.mock("../services/AnnouncementService", () => ({
   archiveAnnouncement: serviceMocks.archiveAnnouncement,
@@ -75,10 +85,19 @@ describe("useAnnouncementsController", () => {
   };
 
   beforeEach(() => {
+    navigateMock.mockReset();
+    routeSearchMock.announcementId = undefined;
+    routeSearchMock.selection = undefined;
     for (const mock of Object.values(serviceMocks)) {
       mock.mockReset();
     }
-    serviceMocks.fetchAnnouncements.mockResolvedValue({ data: [], total: 0 });
+    serviceMocks.fetchAnnouncements.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 50,
+      total_pages: 0,
+    });
     serviceMocks.fetchAnnouncement.mockResolvedValue(null);
     serviceMocks.createAnnouncement.mockResolvedValue({ id: "announcement-1" });
     serviceMocks.stageAnnouncementImages.mockResolvedValue(stagingResponse);
@@ -205,7 +224,13 @@ describe("useAnnouncementsController", () => {
         updated_at: "2026-01-02T00:00:00.000Z",
       },
     ];
-    serviceMocks.fetchAnnouncements.mockResolvedValue({ data: announcements, total: announcements.length });
+    serviceMocks.fetchAnnouncements.mockResolvedValue({
+      data: announcements,
+      total: announcements.length,
+      page: 1,
+      limit: 50,
+      total_pages: 1,
+    });
     serviceMocks.fetchAnnouncement.mockResolvedValue(announcements[0]);
     serviceMocks.deleteAnnouncement.mockResolvedValue({ ok: true });
 
@@ -225,5 +250,117 @@ describe("useAnnouncementsController", () => {
     await waitFor(() => expect(serviceMocks.deleteAnnouncement).toHaveBeenCalled());
     expect(serviceMocks.deleteAnnouncement.mock.calls[0]?.[0]).toBe("announcement-1");
     await waitFor(() => expect(result.current.selectedId).toBeNull());
+    expect(navigateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "/announcements",
+        replace: true,
+      }),
+    );
+    const deleteNavigation = navigateMock.mock.calls.at(-1)?.[0];
+    expect(deleteNavigation.search({
+      announcementId: "announcement-1",
+      view: "external",
+    })).toEqual({
+      announcementId: undefined,
+      selection: "none",
+      view: "external",
+    });
+  });
+
+  it("restores a deep-linked announcement selection", async () => {
+    routeSearchMock.announcementId = "announcement-deep-link";
+    serviceMocks.fetchAnnouncements.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 50,
+      total_pages: 0,
+    });
+    serviceMocks.fetchAnnouncement.mockResolvedValue({
+      id: "announcement-deep-link",
+      title: "Deep link",
+      body_json: "{}",
+      pinned: false,
+      status: "published",
+      publish_at: null,
+      expires_at: null,
+      archived_at: null,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    });
+
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    expect(result.current.selectedId).toBe("announcement-deep-link");
+    await waitFor(() =>
+      expect(serviceMocks.fetchAnnouncement).toHaveBeenCalledWith("announcement-deep-link"),
+    );
+  });
+
+  it("loads additional pages without mixing results after a filter change", async () => {
+    const announcement = (id: string, pinned: boolean) => ({
+      id,
+      title: id,
+      body_json: "{}",
+      pinned,
+      status: "published" as const,
+      publish_at: null,
+      expires_at: null,
+      archived_at: null,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: `2026-01-0${id.endsWith("2") ? "2" : "1"}T00:00:00.000Z`,
+    });
+    const first = announcement("announcement-1", false);
+    const second = announcement("announcement-2", false);
+    const pinned = announcement("announcement-pinned", true);
+
+    serviceMocks.fetchAnnouncements.mockImplementation(
+      async ({ page, pinned: pinnedFilter }: { page: number; pinned?: boolean }) => {
+        if (pinnedFilter) {
+          return {
+            data: [pinned],
+            total: 1,
+            page: 1,
+            limit: 50,
+            total_pages: 1,
+          };
+        }
+        return {
+          data: page === 1 ? [first] : [second],
+          total: 2,
+          page,
+          limit: 1,
+          total_pages: 2,
+        };
+      },
+    );
+
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.rows.map((item) => item.id)).toEqual(["announcement-1"]));
+    expect(result.current.listHasMore).toBe(true);
+
+    await act(async () => {
+      await result.current.onLoadMoreList();
+    });
+    await waitFor(() =>
+      expect(result.current.rows.map((item) => item.id).sort()).toEqual([
+        "announcement-1",
+        "announcement-2",
+      ]),
+    );
+
+    act(() => {
+      result.current.setPinnedFilter(true);
+    });
+
+    await waitFor(() =>
+      expect(result.current.rows.map((item) => item.id)).toEqual(["announcement-pinned"]),
+    );
+    expect(result.current.listHasMore).toBe(false);
   });
 });

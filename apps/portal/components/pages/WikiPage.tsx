@@ -53,7 +53,6 @@ export function WikiPage() {
       intent: "danger",
     });
     if (!accepted || !controller.selectedArticle) return;
-    controller.setSkipAutoSelectOnceTrue();
     controller.articleEditor.deleteArticle(controller.selectedArticle.id);
   };
 
@@ -267,7 +266,7 @@ export function WikiPage() {
               categoryOptions={controller.categoryOptions}
               selectedCategoryIds={controller.selectedCategoryIds}
               onCategoryFilterChange={controller.handleCategoryFilterChange}
-              isLoading={controller.articlesQuery.isLoading && controller.articlesPage === 1}
+              isLoading={controller.articlesQuery.isLoading}
               isError={controller.articlesQuery.isError}
               warningMessage={t("common:loadError")}
               articles={controller.articles}
@@ -275,8 +274,8 @@ export function WikiPage() {
               emptyTitle={t("empty")}
               onSelectArticle={controller.handleSelectArticle}
               hasMore={controller.articlesHasMore}
-              isLoadingMore={controller.articlesQuery.isFetching && controller.articlesPage > 1}
-              onLoadMore={() => controller.setArticlesPage((p) => p + 1)}
+              isLoadingMore={controller.articlesLoadingMore}
+              onLoadMore={controller.loadMoreArticles}
             />
           </Stack>
         ) : null}

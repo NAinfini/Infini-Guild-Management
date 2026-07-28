@@ -44,7 +44,8 @@ export const queryKeys = {
   },
   announcements: {
     all: ["announcements"] as const,
-    list: (scope: string, status: string, search: string, page?: number) => [...queryKeys.announcements.all, scope, status, search, page ?? 1] as const,
+    list: (scope: string, status: string, search: string) =>
+      [...queryKeys.announcements.all, "list", scope, status, search] as const,
     detail: (id: string | null) => [...queryKeys.announcements.all, "detail", id] as const,
   },
   gallery: {
@@ -102,8 +103,8 @@ export const queryKeys = {
   wiki: {
     all: ["wiki"] as const,
     categories: () => [...queryKeys.wiki.all, "categories"] as const,
-    articles: (categoryId: string, search: string, archivedMode: string, pinnedOnly: boolean, page?: number) =>
-      [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, pinnedOnly, page ?? 1] as const,
+    articles: (categoryId: string, search: string, archivedMode: string, pinnedOnly: boolean) =>
+      [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, pinnedOnly] as const,
     article: (slug: string | null) => [...queryKeys.wiki.all, "article", slug] as const,
     revisions: (articleId: string | null) => [...queryKeys.wiki.all, "revisions", articleId] as const,
     revision: (articleId: string | null, revision: number | null) => [...queryKeys.wiki.all, "revision", articleId, revision] as const,
