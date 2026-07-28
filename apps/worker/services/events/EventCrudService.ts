@@ -25,6 +25,7 @@ import {
   toRaffleWinnerPayload,
   type RaffleWinnerRow,
 } from "./EventPollRaffleService";
+import { eventPublicVisibilityFilter, isEventPubliclyVisible } from "./event-visibility";
 import { replaceMediaRefs, deleteMediaRefs, extractAttachmentKeys } from "../media-references";
 
 export { toParticipantPayload, type EventParticipantRow } from "./EventParticipantService";
@@ -502,8 +503,13 @@ export class EventCrudService {
     search?: string;
     startAfter?: string;
     startBefore?: string;
+    canManage?: boolean;
+    now?: string;
   }): SQL<unknown>[] {
     const filters: SQL<unknown>[] = [];
+    if (!params.canManage) {
+      filters.push(eventPublicVisibilityFilter(params.now ?? new Date().toISOString()));
+    }
     if (params.typeFilter) {
       filters.push(eq(events.type, params.typeFilter as typeof events.type.enumValues[number]));
     }
@@ -536,7 +542,10 @@ export class EventCrudService {
     page: number; limit: number; typeFilter?: string; archivedFilter?: boolean; pinnedFilter?: boolean; lockedFilter?: boolean; search?: string; startAfter?: string; startBefore?: string; viewerId?: string | null; canManage?: boolean;
   }) {
     const offset = (params.page - 1) * params.limit;
-    const whereClause = and(...EventCrudService.buildEventsWhereFilters(params));
+    const whereClause = and(...EventCrudService.buildEventsWhereFilters({
+      ...params,
+      now: this.now(),
+    }));
 
     const [rows, countRow] = await Promise.all([
       this.db
@@ -566,6 +575,7 @@ export class EventCrudService {
   async getEventDetail(eventId: string, viewerId?: string | null, canManage = false) {
     const eventRow = await this.getEventById(eventId);
     if (!eventRow) return null;
+    if (!canManage && !isEventPubliclyVisible(eventRow.visibleAt, this.now())) return null;
 
     const participants = (await this.db
       .select({ id: eventParticipants.id, eventId: eventParticipants.eventId, userId: eventParticipants.userId, joinedAt: eventParticipants.joinedAt })
@@ -593,14 +603,19 @@ export class EventCrudService {
       .select(EventCrudService.eventSelectFields)
       .from(events)
       .where(inArray(events.id, ids))) as EventRow[];
+    const visibleEventRows = canManage
+      ? eventRows
+      : eventRows.filter((row) => isEventPubliclyVisible(row.visibleAt, this.now()));
+    if (visibleEventRows.length === 0) return [];
+    const visibleEventIds = visibleEventRows.map((row) => row.id);
 
     const allParticipants = (await this.db
       .select({ id: eventParticipants.id, eventId: eventParticipants.eventId, userId: eventParticipants.userId, joinedAt: eventParticipants.joinedAt })
       .from(eventParticipants)
-      .where(inArray(eventParticipants.eventId, ids))) as EventParticipantRow[];
+      .where(inArray(eventParticipants.eventId, visibleEventIds))) as EventParticipantRow[];
 
     const eventsWithPolls = await this.pollRaffle.attachRaffleWinners(
-      await this.pollRaffle.attachPolls(eventRows.map(toEventPayload), viewerId ?? null, canManage),
+      await this.pollRaffle.attachPolls(visibleEventRows.map(toEventPayload), viewerId ?? null, canManage),
     );
 
     return eventsWithPolls.map((row) => ({

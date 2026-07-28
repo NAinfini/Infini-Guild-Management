@@ -246,10 +246,20 @@ export function captureContextFromResponse(
     return next;
   }
 
+  if (endpoint.path === "/api/announcements/images/stage" && endpoint.method === "POST") {
+    next.announcementStagingToken = readString(payload.staging_token) ?? next.announcementStagingToken;
+    const firstKey = Array.isArray(payload.keys)
+      ? payload.keys.find((item): item is string => typeof item === "string")
+      : null;
+    next.announcementImageKey = firstKey ?? next.announcementImageKey;
+    return next;
+  }
+
   if (endpoint.path === "/api/announcements" && endpoint.method === "POST") {
     const id = readString(payload.id);
     next.announcementId = id ?? next.announcementId;
     next.createdAnnouncementId = id ?? next.createdAnnouncementId;
+    next.announcementStagingToken = null;
     return next;
   }
 

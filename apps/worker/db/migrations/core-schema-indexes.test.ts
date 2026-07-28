@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { BUILTIN_ROLES, PERMISSIONS } from "@guild/shared";
+import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
+import { storageItems } from "../schema";
 
 const schemaSql = readFileSync("apps/worker/db/migrations/0000_core_schema.sql", "utf8");
 
@@ -20,6 +22,15 @@ describe("core schema performance indexes", () => {
     for (const indexName of expectedIndexes) {
       expect(schemaSql).toContain(`CREATE INDEX IF NOT EXISTS ${indexName}`);
     }
+  });
+});
+
+describe("core schema storage invariants", () => {
+  it("keeps storage quantity nonnegative in Drizzle and the baseline SQL", () => {
+    const drizzleChecks = getTableConfig(storageItems).checks.map((constraint) => constraint.name);
+
+    expect(drizzleChecks).toContain("storage_items_quantity_nonnegative");
+    expect(schemaSql).toContain("CONSTRAINT storage_items_quantity_nonnegative CHECK (quantity >= 0)");
   });
 });
 

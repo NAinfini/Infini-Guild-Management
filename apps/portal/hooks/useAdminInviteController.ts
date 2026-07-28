@@ -1,4 +1,5 @@
 import { useMemo, useReducer } from "react";
+import { resolveInviteStatus } from "../utils/invite-status";
 
 export type InviteState = {
   visibility: "active" | "expired" | "revoked";
@@ -51,26 +52,18 @@ type UseAdminInviteControllerParams = {
 export function useAdminInviteController({ inviteLinks }: UseAdminInviteControllerParams) {
   const [invite, dispatchInvite] = useReducer(inviteReducer, INVITE_INITIAL);
 
-  const isInviteInactive = (row: InviteLinkRow) => {
-    const expiredByDate = Boolean(row.expires_at && Date.parse(row.expires_at) <= Date.now());
-    const fullyUsed = row.used_count >= row.max_uses;
-    return Boolean(row.revoked_at) || expiredByDate || fullyUsed;
-  };
+  const isInviteInactive = (row: InviteLinkRow) => resolveInviteStatus(row) !== "active";
 
   const inviteRows = useMemo(
     () =>
       inviteLinks.filter((row) => {
         if (invite.visibility === "revoked") {
-          if (!row.revoked_at) {
+          if (resolveInviteStatus(row) !== "revoked") {
             return false;
           }
         } else if (invite.visibility === "expired") {
-          if (row.revoked_at) {
-            return false;
-          }
-          const expiredByDate = Boolean(row.expires_at && Date.parse(row.expires_at) <= Date.now());
-          const fullyUsed = row.used_count >= row.max_uses;
-          if (!expiredByDate && !fullyUsed) {
+          const status = resolveInviteStatus(row);
+          if (status !== "expired" && status !== "fullyUsed") {
             return false;
           }
         } else if (isInviteInactive(row)) {

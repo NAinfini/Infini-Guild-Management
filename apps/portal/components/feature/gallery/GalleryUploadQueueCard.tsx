@@ -1,6 +1,7 @@
 import { PortalCard } from "../../shared/PortalCard";
-import { Group, Progress, Stack, Text, TextInput } from "@mantine/core";
+import { Button, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { RefreshCwIcon, XIcon } from "@portal/components/icons";
 import type { UploadStatus, UploadTask } from "@portal/types/media";
 
 const PROGRESS_BY_STATUS = {
@@ -21,7 +22,12 @@ type GalleryUploadQueueCardProps = {
   uploadingCount: number;
   uploadQueueTitle: string;
   captionPlaceholder: string;
+  retryLabel: string;
+  removeLabel: string;
+  canRetryUpload: (task: UploadTask) => boolean;
   onCaptionChange: (taskId: string, caption: string) => void;
+  onRetry: (taskId: string) => void;
+  onRemove: (taskId: string) => void;
 };
 
 export function GalleryUploadQueueCard({
@@ -29,7 +35,12 @@ export function GalleryUploadQueueCard({
   uploadingCount,
   uploadQueueTitle,
   captionPlaceholder,
+  retryLabel,
+  removeLabel,
+  canRetryUpload,
   onCaptionChange,
+  onRetry,
+  onRemove,
 }: GalleryUploadQueueCardProps) {
   const { t } = useTranslation("gallery");
 
@@ -73,6 +84,31 @@ export function GalleryUploadQueueCard({
                 <Text c="red" size="sm" mt={4}>
                   {task.error}
                 </Text>
+              ) : null}
+              {task.status === "queued" || task.status === "error" ? (
+                <Group justify="flex-end" gap={6} mt={6}>
+                  {canRetryUpload(task) ? (
+                    <Button
+                      size="xs"
+                      variant="light"
+                      leftSection={<RefreshCwIcon size={14} />}
+                      disabled={uploadingCount > 0}
+                      onClick={() => onRetry(task.id)}
+                    >
+                      {retryLabel}
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    color="red"
+                    leftSection={<XIcon size={14} />}
+                    disabled={uploadingCount > 0}
+                    onClick={() => onRemove(task.id)}
+                  >
+                    {removeLabel}
+                  </Button>
+                </Group>
               ) : null}
             </div>
           ))}

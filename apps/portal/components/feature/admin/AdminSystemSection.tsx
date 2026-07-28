@@ -46,11 +46,20 @@ function iconTone(isOk: boolean, key: keyof StatusData): "ok" | "warning" | "dan
   return key === "ws" ? "warning" : "danger";
 }
 
-const LATENCY_BAND_COLOR_VAR: Record<LatencyBand, string> = {
+// 导出（而不只是模块内 const）是因为 AdminSystemSection.test.ts 里的守卫
+// 断言要拿它跟 AdminSystemSection.css 的 .health-log-latency-bar--* 逐值
+// 比对，防止两份同义 token 表悄悄漂移（final-review.md M3）。
+export const LATENCY_BAND_COLOR_VAR: Record<LatencyBand, string> = {
   good: "var(--status-success)",
   warn: "var(--status-warning)",
   bad: "var(--status-danger)",
 };
+
+// 无延迟数据时环形进度那一段的颜色。此前写的是裸关键字 "gray"，
+// 于是同一个 color prop 上有两套颜色来源：有数据走上面的语义 token、
+// 无数据落到 Mantine 自己的灰色阶，深浅色模式下不受语义层控制。
+// 该段的 value 恒为 0、几乎不可见，但仍按 token 体系统一。
+const LATENCY_NO_DATA_COLOR_VAR = "var(--text-muted)";
 
 function latencyPercent(ms: number): number {
   return Math.min(100, (ms / 500) * 100);
@@ -131,7 +140,7 @@ export function AdminSystemSection({
           roundCaps
           sections={[{
             value: statusLatencyMs != null ? latencyPercent(statusLatencyMs) : 0,
-            color: statusLatencyMs != null ? LATENCY_BAND_COLOR_VAR[latencyBand(statusLatencyMs)] : "gray",
+            color: statusLatencyMs != null ? LATENCY_BAND_COLOR_VAR[latencyBand(statusLatencyMs)] : LATENCY_NO_DATA_COLOR_VAR,
           }]}
           label={
             <Text ta="center" size="11px" fw={700}>

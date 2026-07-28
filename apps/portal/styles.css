@@ -19,8 +19,14 @@
 
 /* ── Tailwind 桥接 ──
  *
- * Tailwind 的工具类（bg-primary、text-danger…）需要 @theme 里的名字。
- * 这里只做转发，不新增数值 —— 否则 Tailwind 就成了第二套色板。
+ * 复审 M2：下面四个 --color-* 目前在仓库里零消费者（bg-primary /
+ * text-danger / border-primary 这类工具类实测一个都没有用到），Tailwind v4
+ * 的构建会把没被引用的 @theme 名字直接裁掉。留着不是为了现在用，是为了将来
+ * 一旦需要用这类工具类时，名字已经指向正确的语义 token，不必重新发明一遍
+ * 映射；真要新增数值也只做转发，不让 Tailwind 长成第二套色板。
+ * --font-sans 不在此列——它有真实消费者（preflight 的
+ * --default-font-family，已在构建产物 dist/assets/index-*.css 里核实过这条
+ * 链），不能删。
  * 深浅模式由 [data-theme] 在 semantic.css 里切换，所以这些名字
  * 在两个模式下自动指向不同的值，@theme 侧无需分模式。 */
 @theme {
@@ -156,8 +162,8 @@ body::-webkit-scrollbar-thumb:hover {
 
 /* ── Shine sweep for interactive elements ── */
 @keyframes shineSweep {
-  0% { transform: translateX(-100%) skewX(-15deg); }
-  100% { transform: translateX(200%) skewX(-15deg); }
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 /* ── 菜单 · 唯一定义处 ──
@@ -599,7 +605,6 @@ body::-webkit-scrollbar-thumb:hover {
 /* ── Button hover glow (filled variant) ── */
 .mantine-Button-root[data-variant="filled"] {
   position: relative;
-  overflow: hidden;
   transition:
     box-shadow 0.2s ease,
     transform 0.15s ease,
@@ -609,10 +614,8 @@ body::-webkit-scrollbar-thumb:hover {
 .mantine-Button-root[data-variant="filled"]::after {
   content: "";
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 40%;
-  height: 100%;
+  inset: 0;
+  border-radius: inherit;
   /* mode/accent-neutral literal: this is the diagonal shine sweep over a filled
      button's own fill colour (see the "colour-neutral now" note a few rules
      below) — a fixed white glint reads correctly over any accent or theme, the
@@ -624,7 +627,8 @@ body::-webkit-scrollbar-thumb:hover {
     rgb(255 255 255 / 0.15),
     transparent
   );
-  transform: translateX(-100%) skewX(-15deg);
+  background-position: 200% 0;
+  background-size: 250% 100%;
   pointer-events: none;
 }
 
@@ -717,6 +721,157 @@ body::-webkit-scrollbar-thumb:hover {
   animation: statusGlow 2s ease-in-out infinite;
 }
 
+/* ── Mantine bridge · control sizing and hit areas ──
+ *
+ * Mantine declares these variables on hashed root classes loaded after this file.
+ * Repeating the stable semantic class raises specificity without a priority flag.
+ * Text controls use the three L3 heights; ActionIcon keeps a denser three-step
+ * visual scale and receives the same 44px transparent hit area as raw controls. */
+.mantine-Button-root.mantine-Button-root {
+  --button-height-xs: var(--control-height-compact);
+  --button-height-sm: var(--control-height-regular);
+  --button-height-md: var(--control-height-regular);
+  --button-height-lg: var(--control-height-large);
+  --button-height-xl: var(--control-height-large);
+  --button-height-compact-xs: var(--control-height-compact);
+  --button-height-compact-sm: var(--control-height-compact);
+  --button-height-compact-md: var(--control-height-compact);
+  --button-height-compact-lg: var(--control-height-regular);
+  --button-height-compact-xl: var(--control-height-large);
+  overflow: visible;
+}
+
+.mantine-Input-wrapper.mantine-Input-wrapper {
+  --input-height-xs: var(--control-height-regular);
+  --input-height-sm: var(--control-height-regular);
+  --input-height-md: var(--control-height-regular);
+  --input-height-lg: var(--control-height-large);
+  --input-height-xl: var(--control-height-large);
+}
+
+.mantine-ActionIcon-root.mantine-ActionIcon-root {
+  --ai-size-xs: var(--control-icon-size-compact);
+  --ai-size-sm: var(--control-icon-size-compact);
+  --ai-size-md: var(--control-icon-size-regular);
+  --ai-size-lg: var(--control-icon-size-regular);
+  --ai-size-xl: var(--control-icon-size-large);
+  --ai-size-input-xs: var(--control-height-compact);
+  --ai-size-input-sm: var(--control-height-regular);
+  --ai-size-input-md: var(--control-height-regular);
+  --ai-size-input-lg: var(--control-height-large);
+  --ai-size-input-xl: var(--control-height-large);
+  overflow: visible;
+}
+
+.mantine-Tabs-tab {
+  min-height: var(--control-height-regular);
+}
+
+.mantine-Checkbox-root,
+input[type="file"] {
+  min-height: var(--control-height-regular);
+}
+
+.mantine-Checkbox-label {
+  position: relative;
+}
+
+.mantine-Checkbox-label::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(0px - var(--checkbox-size) - var(--mantine-spacing-sm) - var(--space-xs));
+  width: calc(100% + var(--checkbox-size) + var(--mantine-spacing-sm) + var(--space-xs));
+  height: var(--control-hit-area);
+  background: transparent;
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+
+.mantine-Checkbox-label[data-disabled]::before {
+  pointer-events: none;
+}
+
+.mantine-Button-inner {
+  position: relative;
+}
+
+.mantine-Button-inner::before,
+:is(
+  button:not(
+    .mantine-Button-root,
+    .mantine-Tabs-tab,
+    .ecm__activity-btn,
+    .admin-roles-sidebar-item
+  ),
+  a:not(.app-nav-item),
+  [role="button"]:not(
+    .mantine-Button-root,
+    .mantine-Tabs-tab,
+    .ecm__activity-btn,
+    .admin-roles-sidebar-item,
+    .app-nav-item
+  ),
+  [role="tab"]:not(.mantine-Tabs-tab)
+)::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(var(--control-hit-area), 100%);
+  height: max(var(--control-hit-area), 100%);
+  background: transparent;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+:is(
+  button:not(
+    .mantine-Button-root,
+    .mantine-Tabs-tab,
+    .ecm__activity-btn,
+    .admin-roles-sidebar-item
+  ),
+  a:not(.app-nav-item),
+  [role="button"]:not(
+    .mantine-Button-root,
+    .mantine-Tabs-tab,
+    .ecm__activity-btn,
+    .admin-roles-sidebar-item,
+    .app-nav-item
+  ),
+  [role="tab"]:not(.mantine-Tabs-tab)
+) {
+  position: relative;
+  overflow: visible;
+}
+
+.mantine-Button-root:is(:disabled, [data-disabled], [data-loading]) .mantine-Button-inner::before,
+:is(button:disabled, [aria-disabled="true"], [data-disabled])::before {
+  pointer-events: none;
+}
+
+/* These two controls already use ::before for their active marker. Give them a
+ * real 44px box instead of replacing that semantic indicator. */
+.ecm__activity-btn,
+.admin-roles-sidebar-item {
+  min-width: var(--control-hit-area);
+  min-height: var(--control-hit-area);
+}
+
+/* Compact icons expand to a 44px hit area. Preserve a Group's larger authored
+ * gap, but raise smaller gaps so adjacent transparent hit areas only meet. */
+.mantine-Group-root:has(
+  > .mantine-ActionIcon-root + .mantine-ActionIcon-root
+) {
+  gap: max(var(--group-gap), var(--control-icon-size-compact));
+}
+
+/* This mixed ActionIcon/Slider group is not covered by the sibling rule. */
+.roster-audio-popover.roster-audio-popover {
+  gap: var(--control-icon-size-compact);
+}
+
 /* ── Mantine 桥接 · dimmed 文字 ──
  *
  * Mantine 在两个模式下各定义一次 --mantine-color-dimmed，选择器是
@@ -769,10 +924,28 @@ body::-webkit-scrollbar-thumb:hover {
   --mantine-color-orange-light-color: var(--palette-mantine-orange-text);
 
   /* Mantine paints filled controls with shade 6 in light mode, where the label
-   * lands at 3.3–3.6:1 (white on gray, white on blue). Dark mode already uses
-   * shade 8; matching it here fixes the light theme and makes a filled Badge or
-   * Button look the same in both. The accent ramp is not listed — it is driven by
-   * --accent-* and its on-fill ink is chosen explicitly in semantic.css. */
+   * lands at 3.3–3.6:1 (white on gray, white on blue). Dark mode's default
+   * primaryShade is already 8, so it never needed this override.
+   *
+   * portal-accent used to be missing from this list (C2): with the native
+   * shade-6 read, its light-mode filled button landed on --accent-600 and
+   * white-on-fill measured teal 3.92 / indigo 4.44 / violet 4.57 — the first
+   * two fail AA. Matched to the same shade-8/9 technique the 13 library ramps
+   * below already use, filled -> --accent-700 and filled-hover -> --accent-900,
+   * measuring 6.20 / 6.52 / 6.93 — same as dark mode's untouched native
+   * behaviour (filled = ramp[8], hover = ramp[9]). Guard:
+   * theme-tokens.test.ts "Mantine filled 对比度".
+   *
+   * Pinning the 13 library ramps below to shade 8/9 does not clear AA for all
+   * of them: gray 11.51 / red 4.51 / pink 5.66 / grape 5.82 / violet 6.30 /
+   * indigo 5.67 / blue 5.02 pass; cyan 4.35 / teal 3.95 / green 3.45 /
+   * lime 2.93 / yellow 2.48 / orange 3.58 do not — shade 9 is as deep as the
+   * library goes for those six, so this is a known, pre-existing gap (not
+   * introduced here) pending a design decision on whether to add darker
+   * steps. Pinned values live in theme-tokens.test.ts's "Mantine filled 对比度"
+   * group; any drift in either direction fails the test. */
+  --mantine-color-portal-accent-filled: var(--accent-700);
+  --mantine-color-portal-accent-filled-hover: var(--accent-900);
   --mantine-color-gray-filled: var(--mantine-color-gray-8);
   --mantine-color-gray-filled-hover: var(--mantine-color-gray-9);
   --mantine-color-red-filled: var(--mantine-color-red-8);

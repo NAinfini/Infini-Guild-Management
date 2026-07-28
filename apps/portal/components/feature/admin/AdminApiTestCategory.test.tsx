@@ -1,0 +1,70 @@
+// @vitest-environment jsdom
+import { MantineProvider } from "@mantine/core";
+import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import type { CategoryDef } from "./AdminApiTestEngine";
+import { ApiTestCategory } from "./AdminApiTestCategory";
+
+const category: CategoryDef = {
+  key: "system",
+  label: "System",
+  endpoints: [
+    {
+      label: "Health Check",
+      method: "GET",
+      path: "/api/health",
+    },
+  ],
+};
+
+function renderCategory(onRunCategory = vi.fn().mockResolvedValue(undefined)) {
+  render(
+    <MantineProvider>
+      <ApiTestCategory
+        category={category}
+        onRunCategory={onRunCategory}
+        runningSet={new Set()}
+        resultMap={new Map()}
+      />
+    </MantineProvider>,
+  );
+  return onRunCategory;
+}
+
+describe("ApiTestCategory", () => {
+  it("exposes a keyboard-operable disclosure separate from the run action", async () => {
+    const user = userEvent.setup();
+    renderCategory();
+
+    const disclosure = screen.getByRole("button", { name: "System: 0/1" });
+    const runButton = screen.getByRole("button", { name: "System" });
+
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(runButton).toHaveClass("api-cat__run-button");
+    expect(screen.queryByText("Health Check")).not.toBeInTheDocument();
+
+    disclosure.focus();
+    await user.keyboard("{Enter}");
+
+    expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Health Check")).toBeInTheDocument();
+
+    await user.keyboard(" ");
+
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Health Check")).not.toBeInTheDocument();
+  });
+
+  it("runs the category without toggling the disclosure", async () => {
+    const onRunCategory = renderCategory();
+
+    fireEvent.click(screen.getByRole("button", { name: "System" }));
+
+    expect(onRunCategory).toHaveBeenCalledWith(category);
+    expect(screen.getByRole("button", { name: "System: 0/1" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+});

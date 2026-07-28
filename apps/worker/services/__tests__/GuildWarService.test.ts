@@ -1,3 +1,5 @@
+import type { SQL } from "drizzle-orm";
+import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import { describe, expect, it, vi } from "vitest";
 import {
   GuildWarService,
@@ -85,12 +87,108 @@ describe("GuildWarService helpers", () => {
     expect(etag).not.toBe(buildWarEtag("war-2", "2026-03-08T12:00:00.000Z"));
   });
 
+  it("filters history rows and totals with one escaped server-side search", async () => {
+    const where = vi.fn()
+      .mockReturnValueOnce({
+        orderBy: vi.fn(() => ({
+          limit: vi.fn(() => ({
+            offset: vi.fn().mockResolvedValue([]),
+          })),
+        })),
+      })
+      .mockResolvedValueOnce([{ count: 0 }]);
+    const service = new GuildWarService({
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({ where })),
+      })),
+    } as never, {
+      media: { get: vi.fn() },
+      writeAuditLog: vi.fn(),
+      publishEntityChanged: vi.fn(),
+      rawDb: {} as D1Database,
+    });
+
+    await service.listHistory(1, 20, { search: "100%_win" });
+
+    expect(where).toHaveBeenCalledTimes(2);
+    const rowWhere = where.mock.calls[0]?.[0] as SQL;
+    const countWhere = where.mock.calls[1]?.[0] as SQL;
+    const dialect = new SQLiteSyncDialect();
+    const rowQuery = dialect.sqlToQuery(rowWhere);
+    const countQuery = dialect.sqlToQuery(countWhere);
+    expect(rowQuery.sql).toContain("ESCAPE '\\'");
+    expect(rowQuery.params).toContain("%100\\%\\_win%");
+    expect(countQuery.sql).toBe(rowQuery.sql);
+    expect(countQuery.params).toEqual(rowQuery.params);
+  });
+
   it("parseRecurrenceRule handles null and json", () => {
     expect(parseRecurrenceRule(null)).toBeNull();
     expect(parseRecurrenceRule(undefined as unknown as string | null)).toBeNull();
     const rule = { freq: "weekly", interval: 1 };
     expect(parseRecurrenceRule(JSON.stringify(rule))).toEqual(rule);
     expect(parseRecurrenceRule("not json")).toBeNull();
+  });
+
+  it("hides the active board when its event is not publicly visible yet", async () => {
+    const futureEvent = {
+      id: "event-1",
+      type: "guild_war",
+      title: "Hidden war",
+      description: null,
+      startAt: "2026-03-20T19:00:00.000Z",
+      endAt: null,
+      capacity: 20,
+      pinned: false,
+      signupLocked: false,
+      autoArchive: false,
+      autoArchived: false,
+      visibleAt: "9999-12-31T23:59:59.999Z",
+      archivedAt: null,
+      createdBy: "mod-1",
+      updatedBy: null,
+      seriesId: null,
+      instanceDate: null,
+      createdAt: "2026-03-08T12:00:00.000Z",
+      updatedAt: "2026-03-08T12:00:00.000Z",
+    };
+    const select = vi.fn((fields: Record<string, unknown>) => {
+      const rows = "visibleAt" in fields ? [futureEvent] : [];
+      const builder = {
+        from: vi.fn(() => builder),
+        where: vi.fn(() => builder),
+        limit: vi.fn().mockResolvedValue(rows),
+        then: (
+          resolve: (value: unknown[]) => unknown,
+          reject?: (reason: unknown) => unknown,
+        ) => Promise.resolve(rows).then(resolve, reject),
+      };
+      return builder;
+    });
+    const service = new GuildWarService({ select } as never, {
+      media: { get: vi.fn() },
+      writeAuditLog: vi.fn(),
+      publishEntityChanged: vi.fn(),
+      rawDb: {} as D1Database,
+    });
+    vi.spyOn(service, "getTeamsForEvent").mockResolvedValue([]);
+    vi.spyOn(service, "getMembersForTeams").mockResolvedValue([]);
+
+    const result = await service.getActive("event-1", false);
+
+    expect(result).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Guild war event not found",
+    });
+
+    const managerResult = await service.getActive("event-1", true);
+    expect(managerResult).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        event: expect.objectContaining({ id: "event-1" }),
+      }),
+    }));
   });
 
   it("neutralizes spreadsheet formulas in guild-war CSV exports", async () => {

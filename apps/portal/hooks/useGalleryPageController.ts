@@ -2,7 +2,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-q
 import { format } from "date-fns";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
-import { modals } from "@mantine/modals";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import { useTranslation } from "react-i18next";
 import {
@@ -19,12 +19,68 @@ import { queryKeys } from "../api/query-keys";
 import { notifySuccess, notifyError } from "../utils/notifications";
 import { useAuthStore } from "../stores/auth";
 import { useEffectivePermissions } from "./useEffectivePermissions";
-import { convertFileForUpload } from "@guild/shared/utils/media";
 import { isAllowedGalleryVideoUrl, toEmbedVideoUrl } from "@guild/shared/utils/video";
-import type { UploadStatus, UploadTask } from "../types/media";
+import type { UploadTask } from "../types/media";
 import { resolveGalleryMediaUrl } from "../utils/media";
 
 const MAX_GALLERY_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+
+export type GalleryUploadFileClassification = "queued" | "unsupported" | "too-large";
+
+export function classifyGalleryUploadFile(
+  file: Pick<File, "type" | "size">,
+): GalleryUploadFileClassification {
+  if (!file.type.startsWith("image/")) {
+    return "unsupported";
+  }
+  if (file.size > MAX_GALLERY_IMAGE_SIZE_BYTES) {
+    return "too-large";
+  }
+  return "queued";
+}
+
+export function getVisibleGallerySelection(
+  selectedIds: readonly string[],
+  visibleIds: readonly string[],
+): string[] {
+  const visible = new Set(visibleIds);
+  return selectedIds.filter((id) => visible.has(id));
+}
+
+export function canRetryGalleryUpload(task: UploadTask): boolean {
+  return task.status === "error" && classifyGalleryUploadFile(task.file) === "queued";
+}
+
+export function retryGalleryUpload(queue: readonly UploadTask[], taskId: string): UploadTask[] {
+  return queue.map((task) =>
+    task.id === taskId && canRetryGalleryUpload(task)
+      ? { ...task, status: "queued", error: undefined }
+      : task,
+  );
+}
+
+export function removeGalleryUpload(queue: readonly UploadTask[], taskId: string): UploadTask[] {
+  return queue.filter((task) => task.id !== taskId || task.status === "uploading");
+}
+
+export function restoreCancelledGalleryUpload(
+  queue: readonly UploadTask[],
+  taskId: string,
+): UploadTask[] {
+  return queue.map((task) =>
+    task.id === taskId && task.status === "uploading"
+      ? { ...task, status: "queued", error: undefined }
+      : task,
+  );
+}
+
+export function summarizeGalleryUploadBatch(total: number, failed: number) {
+  return {
+    total,
+    succeeded: total - failed,
+    failed,
+  };
+}
 
 export function formatDateTime(iso: string): string {
   const date = new Date(iso);
@@ -34,6 +90,7 @@ export function formatDateTime(iso: string): string {
 
 export function useGalleryPageController() {
   const { t } = useTranslation("gallery");
+  const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
@@ -53,17 +110,26 @@ export function useGalleryPageController() {
   const [videoCaption, setVideoCaption] = useState("");
   const [uploadQueue, setUploadQueue] = useState<UploadTask[]>([]);
   const uploadQueueRef = useRef<UploadTask[]>(uploadQueue);
+  const uploadAbortRef = useRef<AbortController | null>(null);
   const [addMediaModalOpen, addMediaModalHandlers] = useDisclosure(false);
   const [addMediaTab, setAddMediaTab] = useState<"image" | "video">("image");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [lightboxId, setLightboxId] = useState<string | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState(1);
 
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [typeFilter, sortOrder, dateFrom, dateTo, search]);
+
   // Keep ref in sync with state so runUploadQueue can read the latest queue
   // without taking it as a dependency (avoids the re-creation on every queue change).
   useEffect(() => {
     uploadQueueRef.current = uploadQueue;
   }, [uploadQueue]);
+
+  useEffect(() => {
+    return () => uploadAbortRef.current?.abort();
+  }, []);
 
   const galleryQuery = useInfiniteQuery({
     queryKey: queryKeys.gallery.list(
@@ -130,6 +196,11 @@ export function useGalleryPageController() {
   const rows = useMemo(() => {
     return (galleryQuery.data?.pages ?? []).flatMap((page) => page.data);
   }, [galleryQuery.data?.pages]);
+  const visibleSelectedIds = useMemo(
+    () => getVisibleGallerySelection(selectedIds, rows.map((item) => item.id)),
+    [rows, selectedIds],
+  );
+  const hasActiveFilters = Boolean(typeFilter || dateFrom || dateTo || search.trim());
 
   const lightboxItem = useMemo(() => rows.find((item) => item.id === lightboxId) ?? null, [lightboxId, rows]);
   const lightboxIndex = useMemo(() => rows.findIndex((item) => item.id === lightboxId), [lightboxId, rows]);
@@ -144,18 +215,21 @@ export function useGalleryPageController() {
   const selectFiles = (files: FileList | File[] | null) => {
     const list = files ? Array.from(files) : [];
     if (list.length === 0) return;
-    const mapped: UploadTask[] = list
-      .filter((file) => file.type.startsWith("image/"))
-      .map((file) => ({
+    const mapped = list.map<UploadTask>((file) => {
+      const classification = classifyGalleryUploadFile(file);
+      return {
         id: crypto.randomUUID(),
         file,
         caption: "",
-        status: file.size > MAX_GALLERY_IMAGE_SIZE_BYTES ? ("error" as UploadStatus) : ("queued" as UploadStatus),
+        status: classification === "queued" ? "queued" : "error",
         error:
-          file.size > MAX_GALLERY_IMAGE_SIZE_BYTES
+          classification === "too-large"
             ? t("message.fileTooLarge", { fileName: file.name })
+            : classification === "unsupported"
+              ? t("message.unsupportedFileType", { fileName: file.name })
             : undefined,
-      }));
+      };
+    });
     setUploadQueue((current) => [...current, ...mapped]);
   };
 
@@ -169,64 +243,111 @@ export function useGalleryPageController() {
   // Behaviour is identical to the original: it snapshots the queued tasks at
   // call time and processes them sequentially.
   const runUploadQueue = useCallback(async () => {
+    if (uploadAbortRef.current) {
+      return;
+    }
+
     const currentQueue = uploadQueueRef.current;
     const pending = currentQueue.filter((item) => item.status === "queued");
     if (pending.length === 0) {
       return;
     }
 
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
     let failedCount = 0;
-    for (const task of pending) {
-      setUploadQueue((current) =>
-        current.map((item) =>
-          item.id === task.id
-            ? {
-                ...item,
-                status: "uploading",
-                error: undefined,
-              }
-            : item,
-        ),
-      );
-      try {
-        const uploadFile = await convertFileForUpload(task.file);
-        await uploadGalleryImages([uploadFile], [task.caption.trim() || undefined]);
-        setUploadQueue((current) =>
-          current.map((item) =>
-            item.id === task.id
-              ? {
-                  ...item,
-                  status: "done",
-                }
-              : item,
-          ),
-        );
-      } catch (error) {
-        failedCount++;
-        const fallback = t("message.uploadFailed");
-        const errorText = error instanceof Error ? error.message : fallback;
-        setUploadQueue((current) =>
-          current.map((item) =>
-            item.id === task.id
-              ? {
-                  ...item,
-                  status: "error",
-                  error: t("message.uploadTaskFailed", { error: errorText || fallback }),
-                }
-              : item,
-          ),
-        );
-      }
-    }
+    let succeededCount = 0;
+    let cancelled = false;
 
-    await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
-    if (failedCount === 0) {
-      notifySuccess(t("message.uploaded"));
+    try {
+      for (const task of pending) {
+        if (controller.signal.aborted) {
+          cancelled = true;
+          break;
+        }
+
+        setUploadQueue((current) =>
+          current.map((item) =>
+            item.id === task.id
+              ? {
+                  ...item,
+                  status: "uploading",
+                  error: undefined,
+                }
+              : item,
+          ),
+        );
+        try {
+          await uploadGalleryImages([task.file], [task.caption.trim() || undefined], {
+            signal: controller.signal,
+          });
+          succeededCount++;
+          setUploadQueue((current) =>
+            current.map((item) =>
+              item.id === task.id
+                ? {
+                    ...item,
+                    status: "done",
+                  }
+                : item,
+            ),
+          );
+        } catch (error) {
+          if (controller.signal.aborted) {
+            cancelled = true;
+            setUploadQueue((current) => restoreCancelledGalleryUpload(current, task.id));
+            break;
+          }
+
+          failedCount++;
+          const fallback = t("message.uploadFailed");
+          const errorText = error instanceof Error ? error.message : fallback;
+          setUploadQueue((current) =>
+            current.map((item) =>
+              item.id === task.id
+                ? {
+                    ...item,
+                    status: "error",
+                    error: t("message.uploadTaskFailed", { error: errorText || fallback }),
+                  }
+                : item,
+            ),
+          );
+        }
+      }
+
+      if (!cancelled || succeededCount > 0) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
+      }
+      if (!cancelled) {
+        const summary = summarizeGalleryUploadBatch(pending.length, failedCount);
+        if (summary.failed === 0) {
+          notifySuccess(t("message.uploaded"));
+        } else {
+          notifyError(t("message.uploadBatchFailed", summary));
+        }
+      }
+    } finally {
+      if (uploadAbortRef.current === controller) {
+        uploadAbortRef.current = null;
+      }
     }
   }, [queryClient, t]);
 
+  const cancelUploadQueue = useCallback(() => {
+    uploadAbortRef.current?.abort();
+  }, []);
+
   const clearFinishedUploads = useCallback(() => {
     setUploadQueue((current) => current.filter((item) => item.status !== "done"));
+  }, []);
+
+  const retryUpload = useCallback((taskId: string) => {
+    setUploadQueue((current) => retryGalleryUpload(current, taskId));
+  }, []);
+
+  const removeUpload = useCallback((taskId: string) => {
+    setUploadQueue((current) => removeGalleryUpload(current, taskId));
   }, []);
 
   const openLightboxAt = (index: number) => {
@@ -276,23 +397,26 @@ export function useGalleryPageController() {
     return () => window.removeEventListener("keydown", handler);
   }, [lightboxItem, lightboxIndex, rows.length, openLightboxPrev, openLightboxNext]);
 
-  useLoadWarningToast(galleryQuery.isError, t("common:loadErrorRetry"));
+  useLoadWarningToast(galleryQuery.isError && rows.length > 0, t("common:loadErrorRetry"));
 
-  const emptyTitle = typeFilter || dateFrom || dateTo ? t("empty.filtered") : t("empty.default");
+  const emptyTitle = hasActiveFilters ? t("empty.filtered") : t("empty.default");
   const emptyDescription = canUpload
     ? t("empty.hintUpload")
     : !user
       ? t("empty.guest")
       : undefined;
 
-  const handleDeleteItem = (id: string) => {
-    modals.openConfirmModal({
+  const handleDeleteItem = async (id: string) => {
+    const confirmed = await confirm({
       title: t("confirm.delete.title"),
-      children: t("confirm.delete.description"),
-      labels: { confirm: t("action.delete"), cancel: t("common:action.cancel") },
-      confirmProps: { color: "red" },
-      onConfirm: () => deleteMutation.mutate(id),
+      description: t("confirm.delete.description"),
+      confirmLabel: t("action.delete"),
+      cancelLabel: t("common:action.cancel"),
+      intent: "danger",
     });
+    if (confirmed) {
+      deleteMutation.mutate(id);
+    }
   };
 
   const handleAddVideo = () => {
@@ -341,8 +465,12 @@ export function useGalleryPageController() {
     uploadingCount,
     selectFiles,
     runUploadQueue,
+    cancelUploadQueue,
     clearFinishedUploads,
     handleCaptionChange,
+    retryUpload,
+    removeUpload,
+    canRetryUpload: canRetryGalleryUpload,
     // modal
     addMediaModalOpen,
     addMediaModalHandlers,
@@ -350,7 +478,7 @@ export function useGalleryPageController() {
     setAddMediaTab,
     openAddMediaModal,
     // selection
-    selectedIds,
+    selectedIds: visibleSelectedIds,
     toggleSelect,
     bulkDeleteMutation,
     // gallery query
@@ -358,6 +486,7 @@ export function useGalleryPageController() {
     rows,
     emptyTitle,
     emptyDescription,
+    hasActiveFilters,
     // lightbox
     lightboxId,
     setLightboxId,

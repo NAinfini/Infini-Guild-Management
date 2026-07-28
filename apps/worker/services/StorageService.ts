@@ -3,6 +3,7 @@ import {
   createStorageItemSchema,
   createStorageSchema,
   createStorageTransactionSchema,
+  type StorageBatchTransactionResult,
   updateStorageItemSchema,
 } from "@guild/shared";
 import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
@@ -22,6 +23,7 @@ import {
 } from "./StorageServicePayloads";
 import { getStorageTransactionPayload, listStorageTransactionPayloads } from "./StorageTransactionQueries";
 import { deleteStorageImage, uploadStorageImages } from "./StorageImageService";
+import { applyStorageBatchTransactions } from "./StorageBatchService";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: PushHint };
@@ -34,6 +36,26 @@ export type StorageServiceDeps = {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+const STORAGE_QUANTITY_CONSTRAINT = "storage_items_quantity_nonnegative";
+
+function isStorageQuantityConstraintViolation(error: unknown): boolean {
+  return error instanceof Error && error.message.includes(STORAGE_QUANTITY_CONSTRAINT);
+}
+
+function isForeignKeyConstraintViolation(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("FOREIGN KEY constraint failed");
+}
+
+function getBatchChanges(result: { meta?: { changes?: number } } | undefined): number {
+  return Number(result?.meta?.changes ?? 0);
+}
+
+function getCommittedDelta(payload: unknown): number | null {
+  if (!payload || typeof payload !== "object" || !("quantity_delta" in payload)) return null;
+  const value = (payload as { quantity_delta?: unknown }).quantity_delta;
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
 }
 
 export class StorageService {
@@ -216,18 +238,82 @@ export class StorageService {
         (parsed.data.type === "distribute" && item.allowMemberWithdraw);
       if (!memberAllowed) return err("FORBIDDEN", "This item does not allow member self-service for this operation");
     }
-    const delta =
-      parsed.data.type === "adjust"
-        ? (parsed.data.target_quantity ?? item.quantity) - item.quantity
-        : (parsed.data.type === "intake" ? 1 : -1) * (parsed.data.quantity ?? 0);
-    if (parsed.data.type === "adjust" && delta === 0) return err("VALIDATION_ERROR", "Target quantity is already current stock");
-    if (item.quantity + delta < 0) return err("VALIDATION_ERROR", `Insufficient stock (have ${item.quantity})`);
+
+    const requestedQuantity = parsed.data.quantity ?? 0;
+    const targetQuantity = parsed.data.target_quantity;
+    const delta = parsed.data.type === "intake" ? requestedQuantity : -requestedQuantity;
+    if (parsed.data.type === "adjust" && targetQuantity === item.quantity) {
+      return err("VALIDATION_ERROR", "Target quantity is already current stock");
+    }
+    if (parsed.data.type === "distribute" && item.quantity + delta < 0) {
+      return err("VALIDATION_ERROR", `Insufficient stock (have ${item.quantity})`);
+    }
+
     const txId = nanoid();
-    await this.deps.rawDb.batch([
-      this.deps.rawDb.prepare("UPDATE storage_items SET quantity = quantity + ?1, updated_at = ?2 WHERE id = ?3").bind(delta, nowIso(), itemId),
-      this.deps.rawDb.prepare("INSERT INTO storage_transactions (id, item_id, type, quantity_delta, recipient_user_id, note, actor_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
-        .bind(txId, itemId, parsed.data.type, delta, recipientUserId, parsed.data.note ?? null, sessionUser.id),
-    ]);
+    if (parsed.data.type === "adjust") {
+      const committedTarget = targetQuantity as number;
+      const results = await this.deps.rawDb.batch([
+        this.deps.rawDb.prepare(`
+          INSERT INTO storage_transactions
+            (id, item_id, type, quantity_delta, recipient_user_id, note, actor_id)
+          SELECT ?1, id, 'adjust', ?2 - quantity, ?3, ?4, ?5
+          FROM storage_items
+          WHERE id = ?6 AND quantity <> ?2
+        `).bind(
+          txId,
+          committedTarget,
+          recipientUserId,
+          parsed.data.note ?? null,
+          sessionUser.id,
+          itemId,
+        ),
+        this.deps.rawDb.prepare(`
+          UPDATE storage_items
+          SET quantity = ?1, updated_at = ?2
+          WHERE id = ?3 AND quantity <> ?1
+        `).bind(committedTarget, nowIso(), itemId),
+      ]);
+      const insertedRows = getBatchChanges(results[0]);
+      const updatedRows = getBatchChanges(results[1]);
+      if (insertedRows === 0 && updatedRows === 0) {
+        const currentItem = await this.getItemRow(itemId);
+        if (!currentItem) return err("NOT_FOUND", "Item not found");
+        if (currentItem.quantity === committedTarget) {
+          return err("VALIDATION_ERROR", "Target quantity is already current stock");
+        }
+        throw new Error("Storage adjustment changed during transaction");
+      }
+      if (insertedRows !== 1 || updatedRows !== 1) {
+        throw new Error("Storage adjustment transaction invariant failed");
+      }
+    } else {
+      try {
+        await this.deps.rawDb.batch([
+          this.deps.rawDb.prepare("UPDATE storage_items SET quantity = quantity + ?1, updated_at = ?2 WHERE id = ?3").bind(delta, nowIso(), itemId),
+          this.deps.rawDb.prepare("INSERT INTO storage_transactions (id, item_id, type, quantity_delta, recipient_user_id, note, actor_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
+            .bind(txId, itemId, parsed.data.type, delta, recipientUserId, parsed.data.note ?? null, sessionUser.id),
+        ]);
+      } catch (error) {
+        const isQuantityConflict = isStorageQuantityConstraintViolation(error);
+        if (!isQuantityConflict && !isForeignKeyConstraintViolation(error)) throw error;
+        const currentItem = await this.getItemRow(itemId);
+        if (!currentItem) return err("NOT_FOUND", "Item not found");
+        if (isQuantityConflict && parsed.data.type === "distribute" && currentItem.quantity < requestedQuantity) {
+          return err("CONFLICT", "Stock changed; refresh and retry", {
+            current_quantity: currentItem.quantity,
+            requested_quantity: requestedQuantity,
+          });
+        }
+        throw error;
+      }
+    }
+
+    const tx = await getStorageTransactionPayload(this.deps.rawDb, txId);
+    const committedDelta = getCommittedDelta(tx);
+    if (parsed.data.type === "adjust" && committedDelta === null) {
+      throw new Error("Storage adjustment ledger entry missing after commit");
+    }
+    const auditDelta = committedDelta ?? delta;
     await this.deps.writeAuditLog({
       entityType: "storage_transaction",
       action: parsed.data.type,
@@ -236,16 +322,18 @@ export class StorageService {
       diffTitle: item.name,
       detailText: JSON.stringify({
         item_id: itemId,
-        quantity_delta: delta,
+        quantity_delta: auditDelta,
         recipient_user_id: recipientUserId,
         note: parsed.data.note ?? null,
-        stock_before: item.quantity,
-        stock_after: item.quantity + delta,
+        ...(parsed.data.type === "adjust" ? { target_quantity: targetQuantity } : {}),
       }),
     });
     await this.deps.publishEntityChanged({ entityType: "storage", entityId: itemId, hint: "storage_updated" });
-    const tx = await getStorageTransactionPayload(this.deps.rawDb, txId);
-    return ok(tx ?? { id: txId, item_id: itemId, type: parsed.data.type, quantity_delta: delta });
+    return ok(tx ?? { id: txId, item_id: itemId, type: parsed.data.type, quantity_delta: auditDelta });
+  }
+
+  async applyBatchTransactions(sessionUser: SessionUser, body: unknown): Promise<ServiceResult<StorageBatchTransactionResult>> {
+    return applyStorageBatchTransactions(this.deps, sessionUser, body);
   }
 
   async listTransactions(options: { itemId?: string; recipientUserId?: string; page: number; limit: number }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {

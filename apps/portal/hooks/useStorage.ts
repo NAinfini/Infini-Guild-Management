@@ -35,11 +35,14 @@ export function useStorageTransactions(params: {
   recipientUserId?: string;
   page: number;
   limit?: number;
+  enabled?: boolean;
 }) {
   const filter = params.itemId ? `item:${params.itemId}` : params.recipientUserId ? `recipient:${params.recipientUserId}` : "all";
+  const limit = params.limit ?? 50;
   return useQuery({
-    queryKey: queryKeys.storage.transactions(filter, params.page),
+    queryKey: queryKeys.storage.transactions(filter, params.page, limit),
     queryFn: () => fetchStorageTransactions(params),
     placeholderData: keepPreviousData,
+    enabled: params.enabled ?? true,
   });
 }

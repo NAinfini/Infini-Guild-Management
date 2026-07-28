@@ -9,6 +9,7 @@ import {
   type Permission,
   type AdminRole,
 } from "@guild/shared";
+import { SYSTEM_TEST_USERNAME_PREFIX, isReservedSystemTestUsername } from "@guild/shared/config/system-test";
 import type { AuditAction } from "@guild/shared/constants/audit";
 import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
@@ -227,6 +228,10 @@ export class AdminService {
   }
 
   async createMember(actorId: string, username: string): Promise<ServiceResult<{ user_id: string; username: string; temporary_password: string }>> {
+    if (isReservedSystemTestUsername(username)) {
+      return err("VALIDATION_ERROR", `Usernames beginning with "${SYSTEM_TEST_USERNAME_PREFIX}" are reserved`);
+    }
+
     const existing = (await this.deps.db.select({ id: users.id, deletedAt: users.deletedAt }).from(users).where(usernameEquals(username)).limit(1))[0];
     if (existing && existing.deletedAt === null) return err("CONFLICT", "Username already taken");
     const userId = this.deps.generateId();

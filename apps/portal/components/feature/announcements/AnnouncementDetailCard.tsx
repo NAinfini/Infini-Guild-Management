@@ -1,4 +1,5 @@
 import type { Announcement } from "@guild/shared";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { PortalCard } from "../../shared/PortalCard";
@@ -12,7 +13,6 @@ import {
   Group,
   Menu,
   Skeleton,
-  Modal,
   Stack,
   Text,
   TextInput,
@@ -111,10 +111,10 @@ export function AnnouncementDetailCard({
 }: AnnouncementDetailCardProps) {
   const { t } = useTranslation("announcements");
   const { t: te } = useTranslation("editor");
+  const confirm = useConfirmDialog();
   const editorLabels = useMemo(() => buildTipTapEditorLabels(te), [te]);
   const isCreateMode = selectedId === "new" && !selected;
   const [editing, editingHandlers] = useDisclosure(isCreateMode);
-  const [deleteConfirmOpen, deleteConfirmHandlers] = useDisclosure(false);
 
   // Auto-open editor when entering create mode, close when leaving
   useEffect(() => {
@@ -140,10 +140,18 @@ export function AnnouncementDetailCard({
     editingHandlers.close();
   };
 
-  const handleDeleteConfirm = () => {
-    onDelete();
-    deleteConfirmHandlers.close();
-    editingHandlers.close();
+  const handleDeleteConfirm = async () => {
+    const confirmed = await confirm({
+      title: t("modal.deleteAnnouncement"),
+      description: t("confirm.delete"),
+      confirmLabel: t("action.delete"),
+      cancelLabel: t("action.cancel"),
+      intent: "danger",
+    });
+    if (confirmed) {
+      onDelete();
+      editingHandlers.close();
+    }
   };
 
   const handleCloseEditor = () => {
@@ -325,7 +333,8 @@ export function AnnouncementDetailCard({
                           color="red"
                           variant="filled"
                           size="sm"
-                          onClick={deleteConfirmHandlers.open}
+                          onClick={() => void handleDeleteConfirm()}
+                          loading={deletePending}
                           aria-label={t("action.delete")}
                         >
                           <TrashIcon size={16} />
@@ -366,31 +375,6 @@ export function AnnouncementDetailCard({
         </Stack>
       </div>
 
-      {/* ── Delete Confirmation Modal ── */}
-      <Modal
-        opened={deleteConfirmOpen}
-        onClose={deleteConfirmHandlers.close}
-        title={t("modal.deleteAnnouncement")}
-        centered
-        size="sm"
-      >
-        <Stack gap={16}>
-          <Text>{t("confirm.delete")}</Text>
-          <Group justify="flex-end" gap={8}>
-            <Button variant="default" onClick={deleteConfirmHandlers.close} leftSection={<XIcon size={16} />}>
-              {t("action.cancel")}
-            </Button>
-            <Button
-              color="red"
-              onClick={handleDeleteConfirm}
-              loading={deletePending}
-              leftSection={<TrashIcon size={16} />}
-            >
-              {t("action.delete")}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
     </PortalCard>
   );
 }

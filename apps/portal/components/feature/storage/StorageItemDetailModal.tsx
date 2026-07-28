@@ -1,31 +1,22 @@
 import type { StorageItem, StorageTransaction } from "@guild/shared";
-import { ActionIcon, Badge, Group, Image, Modal, Stack, Text } from "@mantine/core";
+import { ActionIcon, Badge, Group, Image, Loader, Modal, Pagination, Stack, Text } from "@mantine/core";
 import { ChevronLeftIcon, ChevronRightIcon, PhotoOffIcon } from "@portal/components/icons";
+import { resolveStorageMediaUrl } from "@portal/utils/media";
+import { useStorageTransactions } from "@portal/hooks/useStorage";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 type StorageItemDetailModalProps = {
   opened: boolean;
   item: StorageItem | null;
-  transactions: StorageTransaction[];
-  resolveImageUrl: (key: string) => string;
-  formatDateTime: (iso: string) => string;
   onClose: () => void;
-  labels: {
-    stock: string;
-    description: string;
-    noDescription: string;
-    ledger: string;
-    emptyLedger: string;
-    intake: string;
-    distribute: string;
-    adjust: string;
-    recipient: string;
-    note: string;
-    actor: string;
-    date: string;
-    stockChange: string;
-  };
 };
+
+function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "-";
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+}
 
 function txClassName(type: StorageTransaction["type"]): string {
   if (type === "intake") return "storage-ledger-row--intake";
@@ -36,21 +27,29 @@ function txClassName(type: StorageTransaction["type"]): string {
 export function StorageItemDetailModal({
   opened,
   item,
-  transactions,
-  resolveImageUrl,
-  formatDateTime,
   onClose,
-  labels,
 }: StorageItemDetailModalProps) {
+  const { t } = useTranslation("storage");
+  const { t: tCommon } = useTranslation("common");
   const [imageIndex, setImageIndex] = useState(0);
+  const [ledgerPage, setLedgerPage] = useState(1);
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
+  const transactionsQuery = useStorageTransactions({
+    itemId: item?.id,
+    page: ledgerPage,
+    limit: 20,
+    enabled: opened && Boolean(item?.id),
+  });
+  const transactions = transactionsQuery.data?.data ?? [];
+  const totalPages = transactionsQuery.data?.total_pages ?? 1;
   const activeImage = useMemo(() => item?.images[imageIndex] ?? item?.images[0] ?? null, [imageIndex, item]);
   const activeImageKey = activeImage?.r2_key ?? null;
   const imageIsBroken = activeImageKey ? brokenImages.has(activeImageKey) : false;
-  const txLabels = { intake: labels.intake, distribute: labels.distribute, adjust: labels.adjust };
+  const txLabels = { intake: t("tx.intake"), distribute: t("tx.distribute"), adjust: t("tx.adjust") };
 
   useEffect(() => {
     setImageIndex(0);
+    setLedgerPage(1);
     setBrokenImages(new Set());
   }, [item?.id]);
 
@@ -61,7 +60,7 @@ export function StorageItemDetailModal({
           <aside className="storage-detail-media">
             {activeImage && !imageIsBroken ? (
               <Image
-                src={resolveImageUrl(activeImage.r2_key)}
+                src={resolveStorageMediaUrl(activeImage.r2_key)}
                 alt={item.name}
                 fit="contain"
                 className="storage-detail-media__image"
@@ -84,22 +83,25 @@ export function StorageItemDetailModal({
               </Group>
             ) : null}
             <div className="storage-detail-media__meta">
-              <Text size="xs" c="dimmed">{labels.stock}</Text>
+              <Text size="xs" c="dimmed">{t("field.stock")}</Text>
               <Text fw={900}>{item.quantity}</Text>
             </div>
           </aside>
           <Stack gap="sm" className="storage-detail__content">
             <section className="storage-detail__panel storage-detail__panel--summary">
               <Group gap={8}>
-                <Badge color={item.quantity > 0 ? "green" : "gray"}>{labels.stock}: {item.quantity}</Badge>
-                {item.allow_member_deposit ? <Badge variant="light" color="green">{labels.intake}</Badge> : null}
-                {item.allow_member_withdraw ? <Badge variant="light" color="teal">{labels.distribute}</Badge> : null}
+                <Badge color={item.quantity > 0 ? "green" : "gray"}>{t("field.stock")}: {item.quantity}</Badge>
+                {item.allow_member_deposit ? <Badge variant="light" color="green">{t("tx.intake")}</Badge> : null}
+                {item.allow_member_withdraw ? <Badge variant="light" color="teal">{t("tx.distribute")}</Badge> : null}
               </Group>
-              <Text size="sm" fw={800} mt={12}>{labels.description}</Text>
-              <Text size="sm" c={item.description ? undefined : "dimmed"}>{item.description || labels.noDescription}</Text>
+              <Text size="sm" fw={800} mt={12}>{t("field.description")}</Text>
+              <Text size="sm" c={item.description ? undefined : "dimmed"}>{item.description || t("empty.noDescription")}</Text>
             </section>
             <section className="storage-detail__panel">
-              <Text size="sm" fw={800} mb={10}>{labels.ledger}</Text>
+              <Group justify="space-between" gap={8} mb={10}>
+                <Text size="sm" fw={800}>{t("ledger.title")}</Text>
+                {transactionsQuery.isFetching ? <Loader size="xs" /> : null}
+              </Group>
               {transactions.length > 0 ? (
                 <div className="storage-ledger">
                   {transactions.map((tx) => (
@@ -113,8 +115,8 @@ export function StorageItemDetailModal({
                           <Text size="xs" c="dimmed">{formatDateTime(tx.created_at)}</Text>
                         </Group>
                         <Text size="xs" c="dimmed" mt={5}>
-                          {labels.actor}: {tx.actor_username ?? tx.actor_id}
-                          {tx.recipient_username ? ` / ${labels.recipient}: ${tx.recipient_username}` : ""}
+                          {t("field.actor")}: {tx.actor_username ?? tx.actor_id}
+                          {tx.recipient_username ? ` / ${t("field.recipient")}: ${tx.recipient_username}` : ""}
                         </Text>
                         {tx.note ? <Text size="sm" mt={5}>{tx.note}</Text> : null}
                       </div>
@@ -122,8 +124,23 @@ export function StorageItemDetailModal({
                   ))}
                 </div>
               ) : (
-                <Text size="sm" c="dimmed">{labels.emptyLedger}</Text>
+                <Text size="sm" c="dimmed">{t("ledger.empty")}</Text>
               )}
+              {totalPages > 1 ? (
+                <Pagination
+                  className="storage-ledger-pagination"
+                  value={ledgerPage}
+                  total={totalPages}
+                  onChange={setLedgerPage}
+                  withEdges
+                  size="sm"
+                  getControlProps={(control) => ({
+                    "aria-label": tCommon(
+                      control === "previous" ? "pagination.prev" : `pagination.${control}`,
+                    ),
+                  })}
+                />
+              ) : null}
             </section>
           </Stack>
         </div>

@@ -40,6 +40,23 @@
   --palette-violet-700: #534AB7;
   --palette-violet-900: #26215C;
 
+  /* ── 琥珀 orange ──
+   * 档位分工与上面三条一致（500 = 深色模式文字档，700 = 浅色模式文字档，
+   * 900 = 500 填充上的墨，300/100/50 只作装饰）。橙色是四条里最难配的色相：
+   * 500 要够亮才能在深色表面上过 AA、700 要够暗才能在浅色表面上过 AA，
+   * 而 600 两头受夹——既要浅到让纯黑墨过 AA，又要深到让 900 墨压不过 AA
+   * （那条反向断言，见 theme-tokens.test.ts）。这七个值不是挑的，是按
+   * theme-tokens.test.ts 里逐条断言算出来的，并且额外贴合既有三条色阶的
+   * 对比度画像，好让四条主色在观感强度上是同一家人。改任何一档之前
+   * 请先重算，别凭眼睛调。 */
+  --palette-orange-50: #FDF0E3;
+  --palette-orange-100: #FADCBD;
+  --palette-orange-300: #F5AD66;
+  --palette-orange-500: #EC7F13;
+  --palette-orange-600: #C25E00;
+  --palette-orange-700: #954804;
+  --palette-orange-900: #3F2612;
+
   /* ── 中性 · 暖色温 ──
    * 浅色端是「纸」不是「屏」：暖白纸 #FAF9F5 承载纯白卡片。
    * 深色端沿用现有的四级近黑，避免顺手改掉一整套已调好的深色表面。
@@ -75,7 +92,11 @@
 
   /* ── 语义色 ──
    * 亮档给深色模式（近黑底），深档给浅色模式（纸底）。
-   * 这个分档规则是现有 styles.css:104-111 注释里已经确立的，此处沿用。 */
+   * 这个分档规则现由 semantic.css 的 --status-*（浅色模式 :30-33 取 *-deep，
+   * 深色模式 :68-71 取 *-bright）体现，此处沿用同一分配（复审 T3：此前这里
+   * 写的是「styles.css:104-111 注释里已经确立」，核实后那两行现在是
+   * .star-border 的定义，规则早已随 status 语义色一起迁进了 semantic.css，
+   * 不再住在 styles.css）。 */
   --palette-success-bright: #4ADE80;
   --palette-success-deep: #15803D;
   --palette-warning-bright: #FBBF24;
@@ -86,12 +107,26 @@
   --palette-info-deep: #0369A1;
 
   /* ── Mantine light variant 的文字档（Task 4 迁入） ──
-   * Mantine 的 light variant 在 12% alpha 填充上放 shade-6 文字，浅色模式下
-   * 只有约 2.9:1。每个色阶的文字档要钉到「仍能在自己的 light 填充上过 4.5:1
-   * 的最深一档」。gray / pink / grape / violet / indigo / blue / cyan 七个色阶
-   * 库里恰好有对应档位，直接引用库变量即可，不在这里重复；下面这六个比库里
-   * 最深的 shade 9 还深，库里没有对应档位，只能落在 L1。
-   * 唯一消费处是 styles.css 的 Mantine 桥接块。 */
+   * Mantine 的 light variant 在 10% alpha 填充上放 shade-6 文字（不是曾经写的
+   * 12%——@mantine/core 的 get-css-color-variables.mjs 里是
+   * alpha(colors[X][primaryShade], 0.1)，已去 node_modules 核实，
+   * theme-tokens.test.ts 的 MANTINE_LIGHT_FILL_ALPHA = 0.1 是对的，这条注释
+   * 此前手抄错了百分比），浅色模式下只有约 2.9:1。
+   *
+   * 下面这六个（红/青瓷/绿/黄绿/黄/橙）比库里最深的 shade 9 还深，库里没有
+   * 对应档位，只能落在 L1；gray / pink / grape / violet / indigo / blue / cyan
+   * 七个色阶库里恰好有对应档位，直接引用库变量，不在这里重复。
+   *
+   * 但「引用库变量」不等于「过 AA」——这条注释此前声称全部十三条都钉到了
+   * 「仍能在自己的 light 填充上过 4.5:1 的最深一档」，实测证伪：在三层浅色
+   * 表面（--palette-neutral-0/25/50）上逐条算过之后，只有 gray / red / blue /
+   * teal / green 五条全过，其余八条（pink / grape / violet / indigo / cyan /
+   * lime / yellow / orange）至少在最不利的 sunken 表面上不过 4.5:1，
+   * lime / yellow 甚至在中间那层表面上也不过。这是已知缺口、非本次引入，
+   * 库里已经是各自能用的最深档位，控制者尚未裁决是否要为这八条另开更深的
+   * L1 档位。清单与实测值见 theme-tokens.test.ts 的
+   * 「Mantine light variant 的文字色在浅色模式下过 AA」一组，任何一条数字
+   * 漂移都会让测试变红。 */
   --palette-mantine-red-text: #B02121;
   --palette-mantine-teal-text: #0A6B4E;
   --palette-mantine-green-text: #1F6B2E;
@@ -100,16 +135,17 @@
   --palette-mantine-orange-text: #C1400D;
 
   /* ── 旧品牌辅色（Task 4 迁入，Task 9 批 1 收口 D 节）──
-   * 装饰性渐变（登录页光晕、侧栏描边、活动卡强调）在消费的两个暖色。
-   * --palette-copper-warm：styles.css 旧名转发块的 --color-accent 曾是唯一
-   * 消费处，且当时已是 0 消费者；该转发块随本任务整体删除，此名现无消费者。
+   * 装饰性渐变（登录页光晕、侧栏描边、活动卡强调）在消费的暖色。
    * --palette-bronze-warm：没有语义对应物、不随模式变化，但仍有 2 处组件层
    * 消费（EquipmentCalcModal.css .ecm__stats__card--intent、MyProfilePage.css
    * .profile-preview-stat-icon--video）。组件层不许直接引用 L1（守卫 rule 6），
    * 故本任务在 semantic.css 开了 L2 名字 --brand-secondary，两处消费者已改指
-   * 过去；本值的唯一消费处从旧名转发块换成了 --brand-secondary。 */
+   * 过去；本值的唯一消费处从旧名转发块换成了 --brand-secondary。
+   * （复审 M6：--palette-copper-warm 此前留在这里，注释自己写着「此名现无
+   * 消费者」——它是 styles.css 旧名转发块 --color-accent 曾经的唯一消费处，
+   * 该转发块随本任务整体删除后就是零消费死 token，已删除，不保留「可能有用」
+   * 的侥幸。） */
   --palette-bronze-warm: #8B7355;
-  --palette-copper-warm: #C17F3E;
 
   /* ── 查找高亮（与模式、与 accent 都无关，复审 I-7 / N-4 收口）──
    * tiptap-editor.css 的「查找命中」标记色（黄/橙），独立于主题色阶，语义上

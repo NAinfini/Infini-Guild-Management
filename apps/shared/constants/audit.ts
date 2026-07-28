@@ -18,6 +18,11 @@ export const AUDIT_ENTITY_TYPES = [
   "member_absence",
   "member_badge",
   "member_profile",
+  // No code writes these two any more — the member onboarding feature was
+  // removed. They stay listed because auditLogSchema validates stored rows
+  // with `z.enum(AUDIT_ENTITY_TYPES)`, so dropping them would make any
+  // historical onboarding audit row unparseable and take the whole audit log
+  // page down. Safe to delete once you are certain no such rows exist.
   "onboarding",
   "onboarding_ack",
   "recurring_template",

@@ -57,15 +57,12 @@ export const queryKeys = {
     tree: () => [...queryKeys.storage.all, "tree"] as const,
     items: (storageId: string, categoryId: string | null, search: string) => [...queryKeys.storage.all, "items", storageId, categoryId, search] as const,
     item: (id: string | null) => [...queryKeys.storage.all, "item", id] as const,
-    transactions: (filter: string, page: number) => [...queryKeys.storage.all, "transactions", filter, page] as const,
+    transactions: (filter: string, page: number, limit: number) =>
+      [...queryKeys.storage.all, "transactions", filter, page, limit] as const,
   },
   siteConfig: {
     all: ["site-config"] as const,
     admin: () => [...queryKeys.siteConfig.all, "admin"] as const,
-  },
-  onboarding: {
-    all: ["onboarding"] as const,
-    me: () => [...queryKeys.onboarding.all, "me"] as const,
   },
   dashboard: {
     all: ["dashboard"] as const,
@@ -93,7 +90,8 @@ export const queryKeys = {
     events: () => [...queryKeys.guildWar.all, "events"] as const,
     eventDetail: (eventId: string | null) => [...queryKeys.guildWar.all, "event-detail", eventId] as const,
     active: (eventIdKey: string | null) => [...queryKeys.guildWar.all, "active", eventIdKey] as const,
-    history: (fromKey: string, toKey: string, page?: number, perPage?: number) => [...queryKeys.guildWar.all, "history", fromKey, toKey, page ?? 1, perPage ?? 20] as const,
+    history: (fromKey: string, toKey: string, searchKey: string, page?: number, perPage?: number) =>
+      [...queryKeys.guildWar.all, "history", fromKey, toKey, searchKey, page ?? 1, perPage ?? 20] as const,
     historyAll: () => [...queryKeys.guildWar.all, "history"] as const,
     historyDetail: (historyId: string | null) => [...queryKeys.guildWar.all, "history-detail", historyId] as const,
     analytics: (warIdsKey: string) => [...queryKeys.guildWar.all, "analytics", warIdsKey] as const,

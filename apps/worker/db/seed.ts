@@ -22,7 +22,6 @@ import {
   roles,
   recurringTemplates,
   sessions,
-  onboardingConfig,
   storageCategories,
   storageItems,
   storages,
@@ -96,26 +95,6 @@ export async function clearAllData(env: Bindings): Promise<void> {
 import { activeGame } from "@guild/shared/games";
 
 const CLASSES = activeGame.classes.map((c) => c.id);
-
-const DEFAULT_ONBOARDING_BODY_JSON = JSON.stringify({
-  type: "doc",
-  content: [
-    {
-      type: "paragraph",
-      content: [{ type: "text", text: "Welcome to the guild. Review the rules before joining events, claiming storage, or participating in guild war planning." }],
-    },
-    {
-      type: "paragraph",
-      content: [{ type: "text", text: "Keep your profile current and contact leadership when your availability, name, role, or class changes." }],
-    },
-  ],
-});
-
-const DEFAULT_ONBOARDING_CHECKLIST = [
-  { id: "read-rules", label: "Read guild rules", description: "Understand expectations for events, storage, guild war, and member communication.", required: true },
-  { id: "complete-profile", label: "Complete your profile", description: "Add your power, class, availability, and contact details.", required: true },
-  { id: "ask-questions", label: "Ask questions early", description: "Contact leadership if any rule or workflow is unclear.", required: false },
-] as const;
 
 const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
   "admin.users.view",
@@ -325,16 +304,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       },
     }),
   });
-  await db.insert(onboardingConfig).values({
-    id: "default",
-    title: "Member onboarding",
-    bodyJson: DEFAULT_ONBOARDING_BODY_JSON,
-    checklistJson: JSON.stringify(DEFAULT_ONBOARDING_CHECKLIST),
-    requireAck: true,
-    publishedAt: null,
-    updatedBy: adminId,
-  });
-
   const passwords = new Map<string, string>([
     [adminId, "admin123"],
     ...moderatorIds.map((id, index) => [id, `moderator${index + 1}23`] as const),

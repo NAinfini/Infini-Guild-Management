@@ -23,6 +23,8 @@ type GuildWarHistoryTabWrapperProps = {
   setHistoryDateFrom: (date: string) => void;
   historyDateTo: string;
   setHistoryDateTo: (date: string) => void;
+  historySearch: string;
+  setHistorySearch: (search: string) => void;
   historyPage: number;
   setHistoryPage: (page: number) => void;
   historyPerPage: number;
@@ -48,6 +50,8 @@ export function GuildWarHistoryTabWrapper({
   setHistoryDateFrom,
   historyDateTo,
   setHistoryDateTo,
+  historySearch,
+  setHistorySearch,
   historyPage,
   setHistoryPage,
   historyPerPage,
@@ -67,6 +71,8 @@ export function GuildWarHistoryTabWrapper({
   const historyDetail = historyDetailQuery.data ?? null;
   const controller = useWarHistoryTabController({
     initialSearch,
+    historySearch,
+    onHistorySearchChange: setHistorySearch,
     historyRows,
     historyPage,
     historyPerPage,
@@ -113,6 +119,7 @@ export function GuildWarHistoryTabWrapper({
         historyLoading={historyQuery.isLoading}
         historyError={historyQuery.isError}
         historyRows={historyRows}
+        historyTotal={historyQuery.data?.total ?? 0}
         historyTotalPages={historyQuery.data?.total_pages ?? 1}
         historyPage={historyPage}
         historyPerPage={historyPerPage}

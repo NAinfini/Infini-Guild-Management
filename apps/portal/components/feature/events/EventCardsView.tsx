@@ -1,6 +1,7 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
 import { EVENT_TYPE_COLORS, UNKNOWN_EVENT_TYPE_COLOR } from "@portal/utils/event-colors";
-import { Badge, Button, Group, HoverCard, Modal, SimpleGrid, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
+import { Badge, Button, Group, HoverCard, SimpleGrid, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
@@ -193,10 +194,23 @@ export function EventCardsView({
   onLoadMore,
 }: EventCardsViewProps) {
   const { t, i18n } = useTranslation("events");
+  const confirm = useConfirmDialog();
   const [detailModalEvent, setDetailModalEvent] = useState<Event | null>(null);
-  const [archiveConfirmEvent, setArchiveConfirmEvent] = useState<Event | null>(null);
   const detailModalMembers = detailModalEvent ? (eventMembersMap.get(detailModalEvent.id) ?? []) : [];
   const now = new Date();
+
+  const requestArchiveEvent = async (event: Event) => {
+    const confirmed = await confirm({
+      title: t("archive.confirmTitle"),
+      description: t("archive.confirmDescription", { title: event.title }),
+      confirmLabel: t("archive.confirm"),
+      cancelLabel: t("archive.cancel"),
+      intent: "warning",
+    });
+    if (confirmed) {
+      onArchiveEvent(event.id);
+    }
+  };
 
   if (events.length === 0) {
     return (
@@ -385,7 +399,13 @@ export function EventCardsView({
                         <InfiniMenu.Divider />
                         <InfiniMenu.Item
                           leftSection={event.archived_at ? <ArchiveOffIcon size={14} /> : <ArchiveIcon size={14} />}
-                          onClick={() => event.archived_at ? onUnarchiveEvent(event.id) : setArchiveConfirmEvent(event)}
+                          onClick={() => {
+                            if (event.archived_at) {
+                              onUnarchiveEvent(event.id);
+                              return;
+                            }
+                            void requestArchiveEvent(event);
+                          }}
                         >
                           {event.archived_at ? t("menu.unarchive") : t("menu.archive")}
                         </InfiniMenu.Item>
@@ -522,37 +542,6 @@ export function EventCardsView({
         drawRafflePending={drawRafflePending}
       />
 
-      {/* ── Archive Confirmation Modal ── */}
-      <Modal
-        opened={archiveConfirmEvent !== null}
-        onClose={() => setArchiveConfirmEvent(null)}
-        title={t("archive.confirmTitle")}
-        centered
-        size="sm"
-      >
-        <Stack gap={12}>
-          <Text size="sm">
-            {t("archive.confirmDescription", { title: archiveConfirmEvent?.title ?? "" })}
-          </Text>
-          <Group justify="flex-end" gap={8}>
-            <Button variant="default" onClick={() => setArchiveConfirmEvent(null)}>
-              {t("archive.cancel")}
-            </Button>
-            <Button
-              color="portal-accent"
-              onClick={() => {
-                if (archiveConfirmEvent) {
-                  onArchiveEvent(archiveConfirmEvent.id);
-                  setArchiveConfirmEvent(null);
-                }
-              }}
-            >
-              {t("archive.confirm")}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
     </>
   );
 }
-

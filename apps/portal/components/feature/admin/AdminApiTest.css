@@ -42,6 +42,17 @@
   flex-wrap: wrap;
 }
 
+.api-console__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.api-console__header .api-console__run-all {
+  min-height: 44px;
+}
+
 .api-console__stats {
   display: flex;
   align-items: center;
@@ -150,15 +161,30 @@
 .api-cat__row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px 10px 18px;
-  cursor: pointer;
+  min-height: 48px;
+  padding-right: 8px;
   user-select: none;
   transition: background 150ms ease;
 }
 
 .api-cat__row:hover {
   background: color-mix(in srgb, var(--accent-fill) 3%, transparent);
+}
+
+.api-cat__toggle {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  align-self: stretch;
+  padding: 10px 4px 10px 18px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .api-cat__chevron {
@@ -253,15 +279,15 @@
   flex-shrink: 0;
 }
 
-/* 去掉感叹号优先级，先去掉跑一遍确认：同上一处 .api-console__header button，
-   .api-cat__actions button 也是 (0,1,1)，赢过 Mantine 单类的 (0,1,0)。
-   4px 落在 --radius-xs 上直接替换；3px、6px、11px 不在标度上，min-width /
-   line-height 也不属于简报枚举的六个可吸附属性，一律保留字面量。 */
-.api-cat__actions button {
-  padding: 3px 6px;
+/* Keep the icon action's real box large enough for touch; the previous 23×17px
+   box was clipped on 320–375px viewports. */
+.api-cat__actions .api-cat__run-button {
+  width: 44px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0;
   font-size: 11px;
   border-radius: var(--radius-xs);
-  min-width: auto;
   line-height: 1;
 }
 
@@ -436,6 +462,8 @@
 }
 
 .api-debug__filter-btn {
+  min-width: 44px;
+  min-height: 44px;
   font-size: 10.5px;
   font-weight: 600;
   padding: 3px 10px;
@@ -489,16 +517,26 @@
 
 .api-debug__row-main {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 8px;
   padding: 6px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   transition: background 100ms ease;
-  min-height: 32px;
+  min-height: 44px;
 }
 
 .api-debug__row-main:hover {
   background: color-mix(in srgb, var(--accent-fill) 3%, transparent);
+}
+
+.api-debug__row-main--static {
+  cursor: default;
 }
 
 .api-debug__row-dot {
@@ -623,6 +661,42 @@
   font-weight: 600;
   color: var(--status-danger);
   padding: 0 16px 6px 50px;
+}
+
+@media (max-width: 600px) {
+  .api-console__header,
+  .api-console__header-actions {
+    align-items: stretch;
+  }
+
+  .api-console__header {
+    flex-direction: column;
+  }
+
+  .api-console__header-actions > * {
+    flex: 1;
+  }
+
+  .api-cat__toggle {
+    gap: 8px;
+    padding-left: 12px;
+  }
+
+  .api-cat__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .api-cat__ring,
+  .api-cat__pct,
+  .api-cat__avg-latency {
+    display: none;
+  }
+
+  .api-cat__endpoints {
+    padding-left: 38px;
+  }
 }
 
 /* ── Reduced Motion ── */

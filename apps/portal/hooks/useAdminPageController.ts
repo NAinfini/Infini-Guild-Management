@@ -38,12 +38,11 @@ export function useAdminPageController() {
   const { showError } = useAppError();
   const { member: memberSearchParam, tab: tabSearchParam } = useSearch({ strict: false }) as { member?: string; tab?: string };
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<AdminTab>(tabSearchParam && isAdminTab(tabSearchParam) ? tabSearchParam : "member");
+  const activeTab: AdminTab = tabSearchParam && isAdminTab(tabSearchParam) ? tabSearchParam : "member";
   const [memberSearch, setMemberSearch] = useState("");
 
   const handleTabChange = useCallback((value: string | null) => {
     if (!value || !isAdminTab(value)) return;
-    setActiveTab(value);
     const tab = value === "member" ? undefined : value;
     void navigate({ to: "/admin", search: (prev) => ({ ...prev, tab }), replace: true, viewTransition: false });
   }, [navigate]);
@@ -84,6 +83,7 @@ export function useAdminPageController() {
   } = useAdminData({
     isModerator: userCanAccessAdmin(user),
     userRole: viewingAs,
+    activeTab,
     effectivePermissions: effectiveAdminPermissions,
     auditPage: auditFilter.page,
     auditSearch: auditFilter.search,
@@ -165,7 +165,9 @@ export function useAdminPageController() {
   const firstAvailableTab = useMemo<AdminTab | null>(() => {
     return ADMIN_TABS.find((tab) => tabAccess[tab]) ?? null;
   }, [tabAccess]);
-  const badgesController = useAdminBadgesController(canManageBadges);
+  const badgesController = useAdminBadgesController(
+    canManageBadges && activeTab === "badges",
+  );
   const siteConfigMutations = useSiteConfigMutations({ showError });
 
   useEffect(() => {
@@ -331,7 +333,6 @@ export function useAdminPageController() {
     createMemberModalOpen,
     firstAvailableTab,
     handleCopyConfigSummary,
-    handleTabChange,
     inviteLinksQuery,
     inviteStatsQuery,
     ...inviteController,

@@ -127,5 +127,6 @@ export function withMediaAndPublishAnnouncement(c: Context) {
     ...withMedia(c),
     publishAnnouncementPublished: (payload: { announcementId: string; title: string; publishedAt?: string }) =>
       publishAnnouncementPublished(c, payload),
+    signingSecret: (c.env as Bindings).SIGNING_SECRET,
   };
 }

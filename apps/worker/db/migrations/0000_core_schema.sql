@@ -735,9 +735,8 @@ CREATE INDEX IF NOT EXISTS idx_member_absences_end_start ON member_absences(end_
 
 
 -- ===== GUILD STORAGE =====
--- Stock invariant: storage_items.quantity changes only via an atomic
--- "UPDATE quantity + INSERT storage_transactions" batch, so
--- SUM(quantity_delta) per item always equals the current quantity.
+-- Stock invariant: every quantity change and its storage_transactions insert
+-- share one atomic D1 batch, so SUM(quantity_delta) per item equals current quantity.
 -- recipient_user_id is SET NULL (not cascade) so deleting a user keeps the ledger row.
 
 CREATE TABLE IF NOT EXISTS storages (
@@ -766,7 +765,8 @@ CREATE TABLE IF NOT EXISTS storage_items (
   allow_member_deposit INTEGER NOT NULL DEFAULT 0,
   allow_member_withdraw INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  CONSTRAINT storage_items_quantity_nonnegative CHECK (quantity >= 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_storage_items_storage_category ON storage_items(storage_id, category_id);

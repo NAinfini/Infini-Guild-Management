@@ -62,6 +62,21 @@ function parseValidationFieldErrors(details: unknown): FieldErrorMap {
   return mapped;
 }
 
+/* 后端 checkUsername（AuthService.ts:199）会给出「不可用」的具体原因，此前 UI 一律
+ * 显示 usernameUnavailable（「用户名已被占用」）—— 对格式非法和系统保留前缀两种情况
+ * 都是假话。这里按 reason 分发到对应文案。
+ * reason 缺省表示真的被占用；出现未知 reason 时落到 Generic 而不是「已被占用」，
+ * 否则后端新增一种原因就会无声地把假话说回去。 */
+const USERNAME_UNAVAILABLE_KEY: Record<string, string> = {
+  invalid_format: "usernameInvalidFormat",
+  reserved_prefix: "usernameReserved",
+};
+
+function usernameUnavailableKey(reason: string | undefined): string {
+  if (reason === undefined) return "usernameUnavailable";
+  return USERNAME_UNAVAILABLE_KEY[reason] ?? "usernameUnavailableGeneric";
+}
+
 export function RegisterPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
@@ -147,7 +162,7 @@ export function RegisterPage() {
       !usernameAvailabilityQuery.data.available &&
       values.username.trim() === debouncedUsername
     ) {
-      setSubmitError(t("usernameUnavailable"));
+      setSubmitError(t(usernameUnavailableKey(usernameAvailabilityQuery.data.reason)));
       return;
     }
     registerMutation.mutate(values);
@@ -282,7 +297,9 @@ export function RegisterPage() {
                       </Text>
                     ) : usernameAvailabilityQuery.data ? (
                       <Text c={usernameAvailabilityQuery.data.available ? "teal" : "red"} size="sm">
-                        {usernameAvailabilityQuery.data.available ? t("usernameAvailable") : t("usernameUnavailable")}
+                        {usernameAvailabilityQuery.data.available
+                          ? t("usernameAvailable")
+                          : t(usernameUnavailableKey(usernameAvailabilityQuery.data.reason))}
                       </Text>
                     ) : null
                   ) : null}

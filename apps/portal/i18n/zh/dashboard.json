@@ -7,6 +7,7 @@
   "card.upcomingEvents.title": "即将开始活动",
   "card.upcomingEvents.unit": "场",
   "card.upcomingEvents.viewEvent": "查看活动",
+  "card.upcomingEvents.viewAll": "查看全部 {{count}} 场",
   "card.mySignups.title": "我的报名",
   "card.mySignups.unit": "场",
   "card.mySignups.empty": "本周暂无报名",

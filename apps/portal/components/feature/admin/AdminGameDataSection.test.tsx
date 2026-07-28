@@ -109,4 +109,34 @@ describe("AdminGameDataSection", () => {
     expect(await screen.findByText(/Invalid JSON:/)).toBeInTheDocument();
     expect(uploadGameData).not.toHaveBeenCalled();
   });
+
+  it("shows a retryable error instead of the empty upload state when game data fails to load", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchGameDataFull).mockRejectedValueOnce(new Error("offline"));
+    renderGameDataSection();
+
+    expect(await screen.findByText("loadError")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "gameData.upload" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "action.retry" }));
+
+    expect(await screen.findByText("gameData.editorTitle")).toBeInTheDocument();
+    expect(fetchGameDataFull).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows an independent retryable error when version history fails to load", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchGameDataVersions).mockRejectedValueOnce(new Error("offline"));
+    renderGameDataSection();
+
+    expect(await screen.findByText("gameData.editorTitle")).toBeInTheDocument();
+    expect(await screen.findByText("loadError")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "action.retry" }));
+
+    await waitFor(() => {
+      expect(fetchGameDataVersions).toHaveBeenCalledTimes(2);
+    });
+  });
 });

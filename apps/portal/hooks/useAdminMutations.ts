@@ -1,4 +1,4 @@
-import { modals } from "@mantine/modals";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createElement, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -54,6 +54,7 @@ export function useAdminMutations({
   resolveUsername,
 }: UseAdminMutationsParams) {
   const { t } = useTranslation("admin");
+  const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [batchProgress, setBatchProgress] = useState(0);
@@ -352,18 +353,12 @@ export function useAdminMutations({
           createElement("span", { style: { fontSize: "0.875rem", color: "var(--mantine-color-dimmed)", wordBreak: "break-word" as const } }, names.join("、")),
         )
       : null;
-    return new Promise<boolean>((resolve) => {
-      modals.openConfirmModal({
-        title: t("confirm.batchActionTitle"),
-        children: createElement("div", null, message, nameList),
-        labels: { confirm: t("common:action.save"), cancel: t("common:action.cancel") },
-        confirmProps: { color: "yellow" },
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
-        closeOnConfirm: true,
-        closeOnCancel: true,
-        centered: true,
-      });
+    return confirm({
+      title: t("confirm.batchActionTitle"),
+      description: createElement("div", null, message, nameList),
+      confirmLabel: t("common:action.save"),
+      cancelLabel: t("common:action.cancel"),
+      intent: "warning",
     });
   };
 

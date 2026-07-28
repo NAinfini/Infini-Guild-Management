@@ -53,7 +53,7 @@ export function RosterGrid({
   const rowVirtualizer = useVirtualizer({
     count: rowChunks.length,
     getScrollElement: () => virtualScrollRef.current,
-    estimateSize: () => 84,
+    estimateSize: () => 280,
     overscan: 6,
     gap: 8,
     measureElement: (el) => el.getBoundingClientRect().height,

@@ -1,4 +1,3 @@
-import type { MemberProfile, User } from "@guild/shared";
 import { activeGame } from "@guild/shared/games";
 import { Avatar, Group, HoverCard, Stack, Text } from "@mantine/core";
 import { ShieldIcon, SwordIcon, HeartbeatIcon, BoltIcon } from "@portal/components/icons";
@@ -33,7 +32,7 @@ function classToRole(cls: string): string {
   return CLASS_TO_ROLE[cls] ?? activeGame.defaultRole;
 }
 
-function getUniqueRoles(classes: string[]): string[] {
+function getUniqueRoles(classes: readonly string[]): string[] {
   if (classes.length === 0) return [activeGame.defaultRole];
   const seen = new Set<string>();
   const roles: string[] = [];
@@ -57,8 +56,14 @@ function getPrimaryAvatarColor(roles: string[]): string {
 }
 
 type MemberRoleAvatarProps = {
-  user: User;
-  profile: MemberProfile;
+  user: {
+    username: string;
+  };
+  profile: {
+    classes: readonly string[];
+    power: number;
+    avatar_key: string | null;
+  };
   size?: number;
   withTooltip?: boolean;
 };

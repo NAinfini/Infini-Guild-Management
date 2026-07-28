@@ -54,7 +54,6 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       endpoints: [
         { label: t("status.api.ep.healthCheck"), method: "GET", path: "/api/health" },
         { label: t("status.api.ep.siteConfig"), method: "GET", path: "/api/site-config" },
-        { label: t("status.api.ep.memberOnboarding"), method: "GET", path: "/api/onboarding" },
         { label: t("status.api.ep.adminStatus"), method: "GET", path: "/api/admin/status" },
         { label: t("status.api.ep.analyticsSettings"), method: "GET", path: "/api/admin/analytics-settings" },
         { label: t("status.api.ep.updateAnalyticsSettings"), method: "PATCH", path: "/api/admin/analytics-settings" },
@@ -133,6 +132,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       label: t("status.api.cat.announcements"),
       endpoints: [
         { label: t("status.api.ep.listAnnouncements"), method: "GET", path: "/api/announcements?page=1&limit=5" },
+        { label: t("status.api.ep.stageAnnouncementImages"), method: "POST", path: "/api/announcements/images/stage" },
         { label: t("status.api.ep.createAnnouncement"), method: "POST", path: "/api/announcements" },
         { label: t("status.api.ep.getAnnouncement"), method: "GET", path: "/api/announcements/:id" },
         { label: t("status.api.ep.updateAnnouncement"), method: "PATCH", path: "/api/announcements/:id" },
@@ -217,6 +217,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.storageTransactionIntake"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=intake" },
         { label: t("status.api.ep.storageTransactionDistribute"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=distribute" },
         { label: t("status.api.ep.storageTransactionAdjust"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=adjust" },
+        { label: t("status.api.ep.storageTransactionBatch"), method: "POST", path: "/api/storage/transactions/batch" },
         { label: t("status.api.ep.listStorageTransactions"), method: "GET", path: "/api/storage/transactions?page=1&limit=5" },
         { label: t("status.api.ep.deleteStorageItem"), method: "DELETE", path: "/api/storage/items/:id" },
         { label: t("status.api.ep.deleteStorageCategory"), method: "DELETE", path: "/api/storage/storages/:storageId/categories/:id" },

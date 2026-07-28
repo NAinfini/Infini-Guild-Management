@@ -1,6 +1,6 @@
 import type { Event, User } from "@guild/shared";
 import type { ImageGridEditorItem } from "@portal/types/media";
-import { modals } from "@mantine/modals";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
@@ -48,6 +48,7 @@ export function useEventsMutations({
   showError,
 }: UseEventsMutationsParams) {
   const { t } = useTranslation("events");
+  const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
 
   const invalidateEventsAndDashboard = async () => {
@@ -65,27 +66,14 @@ export function useEventsMutations({
 
   const openConfirm = useCallback(
     (options: { title: string; description?: string; intent: "neutral" | "warning" | "danger" }) =>
-      new Promise<boolean>((resolve) => {
-        modals.openConfirmModal({
-          title: options.title,
-          children: options.description,
-          confirmProps: {
-            color:
-              options.intent === "danger"
-                ? "red"
-                : options.intent === "warning"
-                  ? "yellow"
-                  : "blue",
-          },
-          labels: { confirm: t("common:action.confirm"), cancel: t("common:action.cancel") },
-          onConfirm: () => resolve(true),
-          onCancel: () => resolve(false),
-          closeOnConfirm: true,
-          closeOnCancel: true,
-          centered: true,
-        });
+      confirm({
+        title: options.title,
+        description: options.description,
+        confirmLabel: t("common:action.confirm"),
+        cancelLabel: t("common:action.cancel"),
+        intent: options.intent,
       }),
-    [t],
+    [confirm, t],
   );
 
   const participantMutations = useEventsParticipantMutations({

@@ -5,30 +5,21 @@ import {
   DEFAULT_SITE_MEDIA_POLICY,
   DEFAULT_SITE_STORAGE_POLICY,
   adminSiteConfigResponseSchema,
-  memberOnboardingResponseSchema,
-  onboardingChecklistItemSchema,
-  onboardingConfigSchema,
   publicSiteConfigSchema,
   siteAbsencePolicySchema,
   siteAnalyticsSettingsSchema,
   siteConfigSchema,
   siteMediaPolicySchema,
   siteStoragePolicySchema,
-  updateMemberOnboardingSchema,
-  updateOnboardingConfigSchema,
   updateSiteConfigSchema,
-  type OnboardingChecklistItem,
   type AdminSiteConfigResponse,
-  type MemberOnboardingResponse,
   type PublicSiteConfig,
-  type UpdateMemberOnboardingPayload,
-  type UpdateOnboardingConfigPayload,
   type UpdateSiteConfigPayload,
 } from "@guild/shared";
 import { featureFlagsSchema } from "@guild/shared/config/features";
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
-import { onboardingConfig, memberOnboardingState, siteConfig } from "../db/schema";
+import { siteConfig } from "../db/schema";
 import { logger } from "../utils/logger";
 import type { WriteAuditLogInput } from "./audit";
 import { captureUploadValidation } from "./media";
@@ -48,8 +39,6 @@ type SiteConfigDeps = {
 const DEFAULT_ID = "default";
 const SITE_LOGO_ROUTE = "/api/site-config/logo";
 type SiteConfigRow = typeof siteConfig.$inferSelect;
-type OnboardingConfigRow = typeof onboardingConfig.$inferSelect;
-type MemberOnboardingStateRow = typeof memberOnboardingState.$inferSelect;
 
 function parseJsonOrDefault<T>(
   value: string | undefined | null,
@@ -71,11 +60,6 @@ function parseJsonOrDefault<T>(
     });
     return fallback;
   }
-}
-
-function parseChecklist(value: string): OnboardingChecklistItem[] {
-  const parsed = JSON.parse(value) as unknown;
-  return onboardingChecklistItemSchema.array().parse(parsed);
 }
 
 function mapSiteConfig(row: SiteConfigRow | null, deps: SiteConfigDeps) {
@@ -103,54 +87,6 @@ function normalizeAnalyticsWeights(settings: ReturnType<typeof siteAnalyticsSett
   };
 }
 
-function mapOnboarding(row: OnboardingConfigRow) {
-  return onboardingConfigSchema.parse({
-    title: row.title,
-    body_json: row.bodyJson,
-    checklist: parseChecklist(row.checklistJson),
-    enabled: row.publishedAt !== null,
-    require_ack: row.requireAck,
-    published_at: row.publishedAt,
-    updated_by: row.updatedBy,
-    created_at: row.createdAt,
-    updated_at: row.updatedAt,
-  });
-}
-
-function missingOnboardingConfig() {
-  return err("SERVER_ERROR", "Onboarding config is not initialized");
-}
-
-function disabledOnboardingConfig() {
-  return err("NOT_FOUND", "Onboarding is disabled");
-}
-
-function mapState(row: MemberOnboardingStateRow | null, userId: string) {
-  return {
-    user_id: userId,
-    completed_item_ids: row ? JSON.parse(row.completedItemIdsJson) as string[] : [],
-    acknowledged_at: row?.acknowledgedAt ?? null,
-    created_at: row?.createdAt ?? null,
-    updated_at: row?.updatedAt ?? null,
-  };
-}
-
-function isComplete(config: ReturnType<typeof mapOnboarding>, state: ReturnType<typeof mapState>): boolean {
-  const requiredIds = config.checklist.filter((item) => item.required).map((item) => item.id);
-  const completed = new Set(state.completed_item_ids);
-  const checklistComplete = requiredIds.every((id) => completed.has(id));
-  const ackComplete = !config.require_ack || state.acknowledged_at !== null;
-  return checklistComplete && ackComplete;
-}
-
-function memberResponse(config: ReturnType<typeof mapOnboarding>, state: ReturnType<typeof mapState>) {
-  return memberOnboardingResponseSchema.parse({
-    config,
-    state,
-    is_complete: isComplete(config, state),
-  });
-}
-
 function siteLogoUrlForKey(key: string): string {
   return `${SITE_LOGO_ROUTE}?key=${encodeURIComponent(key)}`;
 }
@@ -176,11 +112,9 @@ export class SiteConfigService {
   }
 
   async getAdminConfig(): Promise<ServiceResult<AdminSiteConfigResponse>> {
-    const [siteRow, onboardingRow] = await Promise.all([this.getSiteRow(), this.getOnboardingRow()]);
-    if (!onboardingRow) return missingOnboardingConfig();
+    const siteRow = await this.getSiteRow();
     return ok(adminSiteConfigResponseSchema.parse({
       site: mapSiteConfig(siteRow, this.deps),
-      onboarding: mapOnboarding(onboardingRow),
     }));
   }
 
@@ -327,112 +261,6 @@ export class SiteConfigService {
     return updated;
   }
 
-  async updateOnboardingConfig(actorId: string, input: UpdateOnboardingConfigPayload): Promise<ServiceResult<AdminSiteConfigResponse>> {
-    const parsed = updateOnboardingConfigSchema.safeParse(input);
-    if (!parsed.success) return err("VALIDATION_ERROR", "Invalid onboarding payload", parsed.error.flatten());
-    const previous = await this.getOnboardingRow();
-    if (!previous) return missingOnboardingConfig();
-    const nowIso = this.nowIso();
-    const patch: Partial<typeof onboardingConfig.$inferInsert> = { updatedAt: nowIso, updatedBy: actorId };
-    if (parsed.data.title !== undefined) patch.title = parsed.data.title.trim();
-    if (parsed.data.body_json !== undefined) patch.bodyJson = parsed.data.body_json;
-    if (parsed.data.checklist !== undefined) patch.checklistJson = JSON.stringify(parsed.data.checklist);
-    if (parsed.data.enabled !== undefined) patch.publishedAt = parsed.data.enabled ? previous.publishedAt ?? nowIso : null;
-    if (parsed.data.require_ack !== undefined) patch.requireAck = parsed.data.require_ack;
-
-    await this.db.update(onboardingConfig).set(patch).where(eq(onboardingConfig.id, DEFAULT_ID));
-
-    await this.deps.writeAuditLog({
-      entityType: "onboarding",
-      action: "update",
-      actorId,
-      entityId: DEFAULT_ID,
-      diffTitle: "Onboarding",
-      detailText: JSON.stringify({ fields: Object.keys(patch).filter((key) => key !== "updatedAt" && key !== "updatedBy") }),
-    });
-    return this.getAdminConfig();
-  }
-
-  async getMemberOnboarding(userId: string): Promise<ServiceResult<MemberOnboardingResponse>> {
-    const configRow = await this.getOnboardingRow();
-    if (!configRow) return missingOnboardingConfig();
-    if (!configRow.publishedAt) return disabledOnboardingConfig();
-    const config = mapOnboarding(configRow);
-    const stateRow = await this.getMemberStateRow(userId);
-    const state = mapState(stateRow, userId);
-    return ok(memberResponse(config, state));
-  }
-
-  async updateMemberProgress(userId: string, input: UpdateMemberOnboardingPayload): Promise<ServiceResult<MemberOnboardingResponse>> {
-    const parsed = updateMemberOnboardingSchema.safeParse(input);
-    if (!parsed.success) return err("VALIDATION_ERROR", "Invalid onboarding progress payload", parsed.error.flatten());
-    const configRow = await this.getOnboardingRow();
-    if (!configRow) return missingOnboardingConfig();
-    if (!configRow.publishedAt) return disabledOnboardingConfig();
-    const config = mapOnboarding(configRow);
-    const allowed = new Set(config.checklist.map((item) => item.id));
-    const completed = [...new Set(parsed.data.completed_item_ids.filter((id) => allowed.has(id)))];
-    const current = await this.getMemberStateRow(userId);
-    const nowIso = this.nowIso();
-    const acknowledgedAt = current?.acknowledgedAt ?? null;
-    await this.upsertMemberState(userId, completed, acknowledgedAt, nowIso, current);
-    return ok(memberResponse(config, {
-      user_id: userId,
-      completed_item_ids: completed,
-      acknowledged_at: acknowledgedAt,
-      created_at: current?.createdAt ?? nowIso,
-      updated_at: nowIso,
-    }));
-  }
-
-  async acknowledgeOnboarding(userId: string): Promise<ServiceResult<MemberOnboardingResponse>> {
-    const configRow = await this.getOnboardingRow();
-    if (!configRow) return missingOnboardingConfig();
-    if (!configRow.publishedAt) return disabledOnboardingConfig();
-    const config = mapOnboarding(configRow);
-    const current = await this.getMemberStateRow(userId);
-    const nowIso = this.nowIso();
-    const completed = current ? JSON.parse(current.completedItemIdsJson) as string[] : [];
-    const completedSet = new Set(completed);
-    const missingRequired = config.checklist.some((item) => item.required && !completedSet.has(item.id));
-    if (missingRequired) return err("VALIDATION_ERROR", "Required onboarding checklist items must be completed before acknowledgement");
-    await this.upsertMemberState(userId, completed, nowIso, nowIso, current);
-    await this.deps.writeAuditLog({
-      entityType: "onboarding_ack",
-      action: "acknowledge",
-      actorId: userId,
-      entityId: userId,
-      diffTitle: "Onboarding",
-    });
-    return ok(memberResponse(config, {
-      user_id: userId,
-      completed_item_ids: completed,
-      acknowledged_at: nowIso,
-      created_at: current?.createdAt ?? nowIso,
-      updated_at: nowIso,
-    }));
-  }
-
-  private async upsertMemberState(
-    userId: string,
-    completedItemIds: string[],
-    acknowledgedAt: string | null,
-    nowIso: string,
-    existing: MemberOnboardingStateRow | null,
-  ) {
-    const payload = {
-      userId,
-      completedItemIdsJson: JSON.stringify(completedItemIds),
-      acknowledgedAt,
-      updatedAt: nowIso,
-    };
-    if (existing) {
-      await this.db.update(memberOnboardingState).set(payload).where(eq(memberOnboardingState.userId, userId));
-    } else {
-      await this.db.insert(memberOnboardingState).values({ ...payload, createdAt: nowIso });
-    }
-  }
-
   private async getSiteRow(): Promise<SiteConfigRow | null> {
     const rows = await (this.db.select().from(siteConfig) as { where: (where: unknown) => { limit: (limit: number) => Promise<SiteConfigRow[]> } })
       .where(eq(siteConfig.id, DEFAULT_ID))
@@ -474,20 +302,6 @@ export class SiteConfigService {
       detailText: JSON.stringify({ fields: ["siteLogoUrl"] }),
     });
     return this.getAdminConfig();
-  }
-
-  private async getOnboardingRow(): Promise<OnboardingConfigRow | null> {
-    const rows = await (this.db.select().from(onboardingConfig) as { where: (where: unknown) => { limit: (limit: number) => Promise<OnboardingConfigRow[]> } })
-      .where(eq(onboardingConfig.id, DEFAULT_ID))
-      .limit(1);
-    return rows[0] ?? null;
-  }
-
-  private async getMemberStateRow(userId: string): Promise<MemberOnboardingStateRow | null> {
-    const rows = await (this.db.select().from(memberOnboardingState) as { where: (where: unknown) => { limit: (limit: number) => Promise<MemberOnboardingStateRow[]> } })
-      .where(eq(memberOnboardingState.userId, userId))
-      .limit(1);
-    return rows[0] ?? null;
   }
 
   private nowIso(): string {

@@ -1,10 +1,8 @@
-import { ArrowLeftIcon } from "@portal/components/icons";
 import type { SensorDescriptor, SensorOptions } from "@dnd-kit/core";
-import { Button, Card, Group, Modal, MultiSelect, Skeleton, Stack, Text } from "@mantine/core";
+import { Button, Card, Group, Modal, MultiSelect, Skeleton, Stack } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
 import { useQueryClient } from "@tanstack/react-query";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "../../../hooks/useAppError";
 import { absenceQueryKeys, concludeGuildWar, guildWarQueryKeys, moveGuildWarMember, usersQueryKeys } from "../../../services/GuildWarService";
@@ -49,6 +47,16 @@ type GuildWarActiveTabProps = {
   concludeWarDisabledReason: string | undefined;
 };
 
+export function resolveGuildWarAbsenceWindow(
+  startAt: string | null | undefined,
+): { from: string; to: string } | null {
+  const day = startAt?.slice(0, 10);
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    return null;
+  }
+  return { from: day, to: day };
+}
+
 export function GuildWarActiveTab({
   selectedEventId,
   setSelectedEventId,
@@ -74,11 +82,16 @@ export function GuildWarActiveTab({
   });
 
   // Absences (请假) covering the war date — marks members on the drag board.
-  const warDate = activeQuery.data?.event?.start_at?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+  const absenceWindow = resolveGuildWarAbsenceWindow(activeQuery.data?.event?.start_at);
   const absencesQuery = useQuery({
-    queryKey: absenceQueryKeys.window(warDate, warDate),
-    queryFn: () => fetchAbsencesWindow(warDate, warDate),
-    enabled: Boolean(selectedEventId),
+    queryKey: absenceQueryKeys.window(absenceWindow?.from ?? "", absenceWindow?.to ?? ""),
+    queryFn: () => {
+      if (!absenceWindow) {
+        throw new Error("Guild war absence query requires the selected event date");
+      }
+      return fetchAbsencesWindow(absenceWindow.from, absenceWindow.to);
+    },
+    enabled: canManageActive && Boolean(selectedEventId) && Boolean(absenceWindow),
     staleTime: 60_000,
   });
   const absentUserIds = useMemo(
@@ -194,104 +207,6 @@ export function GuildWarActiveTab({
       setConcludeWarPending(false);
     }
   }, [concludeWarHandlers, queryClient, selectedEventId, setSelectedEventId, showError, t]);
-
-  // --- Undo commit timeout ---
-  const undoMoveRef = activeController.undoMove;
-
-  useEffect(() => {
-    if (!undoMoveRef) return;
-
-    const delay = Math.max(0, undoMoveRef.expiresAt - Date.now());
-    const pendingMove = undoMoveRef;
-
-    activeController.commitTimeoutRef.current = window.setTimeout(() => {
-      activeController.commitTimeoutRef.current = null;
-      activeController.setUndoMove(null);
-      const commitQueuedMoves = async () => {
-        try {
-          await moveGuildWarMember({
-            event_id: pendingMove.eventId,
-            moves: pendingMove.moves.map((move) => ({ user_id: move.userId, to: move.to })),
-            etag: pendingMove.etag ?? activeQuery.data?.etag ?? undefined,
-          });
-          await queryClient.invalidateQueries({
-            queryKey: guildWarQueryKeys.active(selectedEventId ?? null),
-          });
-          message.success(
-            pendingMove.moves.length === 1
-              ? t("message.memberMoved")
-              : t("message.membersMoved", { count: pendingMove.moves.length }),
-          );
-        } catch (error) {
-          showError(
-            error,
-            pendingMove.moves.length > 1 ? t("message.batchMoveCommitFailed") : t("message.memberMoveFailed"),
-          );
-        }
-      };
-      void commitQueuedMoves();
-    }, delay);
-
-    return () => {
-      if (activeController.commitTimeoutRef.current !== null) {
-        window.clearTimeout(activeController.commitTimeoutRef.current);
-        activeController.commitTimeoutRef.current = null;
-      }
-    };
-   
-  }, [undoMoveRef]);
-
-  // --- Undo notification toast ---
-  const UNDO_NOTIFICATION_ID = "guild-war-undo-move";
-  const undoCancelRef = useRef(() => activeController.setUndoMove(null));
-  undoCancelRef.current = () => activeController.setUndoMove(null);
-  const undoNotificationShownRef = useRef(false);
-
-  useEffect(() => {
-    if (!activeController.undoMove || activeController.undoRemainingSec <= 0) {
-      if (undoNotificationShownRef.current) {
-        notifications.hide(UNDO_NOTIFICATION_ID);
-        undoNotificationShownRef.current = false;
-      }
-      return;
-    }
-    const undoText = activeController.undoMove.moves.length === 1
-      ? t("active.undo.single", {
-          userId: guildWarDrag.resolveUsername(activeController.undoMove.moves[0]?.userId ?? "-"),
-          to: guildWarDrag.resolveTeamName(activeController.undoMove.moves[0]?.to ?? "-"),
-          seconds: activeController.undoRemainingSec,
-        })
-      : t("active.undo.multi", {
-          count: activeController.undoMove.moves.length,
-          seconds: activeController.undoRemainingSec,
-        });
-    const payload = {
-      id: UNDO_NOTIFICATION_ID,
-      color: "blue" as const,
-      autoClose: false as const,
-      withCloseButton: false,
-      message: (
-        <Group justify="space-between" align="center" wrap="wrap" gap="xs">
-          <Text size="sm">{undoText}</Text>
-          <Button
-            size="xs"
-            variant="light"
-            color="red"
-            leftSection={<ArrowLeftIcon size={16} />}
-            onClick={() => undoCancelRef.current()}
-          >
-            {t("active.undo.cancel")}
-          </Button>
-        </Group>
-      ),
-    };
-    if (undoNotificationShownRef.current) {
-      notifications.update(payload);
-    } else {
-      notifications.show(payload);
-      undoNotificationShownRef.current = true;
-    }
-  }, [activeController.undoMove, activeController.undoRemainingSec, guildWarDrag, t]);
 
   return (
     <Stack gap={12} style={{ display: "flex" }}>
@@ -409,59 +324,6 @@ export function GuildWarActiveTab({
         />
       </Suspense>
 
-      <Modal
-        opened={Boolean(guildWarDrag.pendingRemove)}
-        onClose={guildWarDrag.cancelRemove}
-        title={t("active.removeConfirm.title")}
-        centered
-        size="sm"
-      >
-        <Stack gap={12}>
-          <Text size="sm">
-            {guildWarDrag.pendingRemove?.userIds.length === 1
-              ? t("active.removeConfirm.descSingle", {
-                  username: guildWarDrag.resolveUsername(guildWarDrag.pendingRemove.userIds[0] ?? ""),
-                })
-              : t("active.removeConfirm.descMulti", {
-                  count: guildWarDrag.pendingRemove?.userIds.length ?? 0,
-                })}
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={guildWarDrag.cancelRemove}>
-              {t("common:action.cancel")}
-            </Button>
-            <Button color="red" onClick={guildWarDrag.confirmRemove}>
-              {t("active.removeConfirm.confirm")}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-
-      <Modal
-        opened={Boolean(guildWarDrag.pendingDeleteTeamId)}
-        onClose={guildWarDrag.cancelDeleteTeam}
-        title={t("active.deleteTeamConfirm.title")}
-        centered
-        size="sm"
-      >
-        <Stack gap={12}>
-          <Text size="sm">
-            {t("active.deleteTeamConfirm.desc", {
-              teamName: guildWarDrag.pendingDeleteTeamId
-                ? guildWarDrag.resolveTeamName(guildWarDrag.pendingDeleteTeamId)
-                : "",
-            })}
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={guildWarDrag.cancelDeleteTeam}>
-              {t("common:action.cancel")}
-            </Button>
-            <Button color="red" onClick={guildWarDrag.confirmDeleteTeam}>
-              {t("active.deleteTeamConfirm.confirm")}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
     </Stack>
   );
 }

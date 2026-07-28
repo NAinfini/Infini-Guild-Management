@@ -6,7 +6,6 @@ import {
   createInviteLinkSchema,
   createRoleSchema,
   updateRoleSchema,
-  updateOnboardingConfigSchema,
   updateSiteConfigSchema,
 } from "@guild/shared";
 import { desc, eq, sql } from "drizzle-orm";
@@ -270,13 +269,6 @@ adminRoutes.post("/site-config/logo", async (c) => {
   const file = form.get("file");
   if (!(file instanceof File)) return buildError(c, "VALIDATION_ERROR", "Logo file is required");
   return handleResult(c, await getSiteConfigService(c).uploadSiteLogo(sessionUser.id, file));
-});
-
-adminRoutes.patch("/site-config/onboarding", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.siteConfig.manage", { freshPermissions: true });
-  const parsed = updateOnboardingConfigSchema.safeParse(await parseJsonBody(c));
-  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid onboarding payload", parsed.error.flatten());
-  return handleResult(c, await getSiteConfigService(c).updateOnboardingConfig(sessionUser.id, parsed.data));
 });
 
 adminRoutes.get("/status", async (c) => {

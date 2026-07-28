@@ -1,5 +1,5 @@
 import type { User } from "@guild/shared";
-import { modals } from "@mantine/modals";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback } from "react";
@@ -32,32 +32,20 @@ export function useEventsParticipantMutations({
   showError,
 }: UseEventsParticipantMutationsParams) {
   const { t } = useTranslation("events");
+  const confirm = useConfirmDialog();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const openConfirm = useCallback(
     (options: { title: string; description?: string; intent: "neutral" | "warning" | "danger" }) =>
-      new Promise<boolean>((resolve) => {
-        modals.openConfirmModal({
-          title: options.title,
-          children: options.description,
-          confirmProps: {
-            color:
-              options.intent === "danger"
-                ? "red"
-                : options.intent === "warning"
-                  ? "yellow"
-                  : "blue",
-          },
-          labels: { confirm: t("common:action.confirm"), cancel: t("common:action.cancel") },
-          onConfirm: () => resolve(true),
-          onCancel: () => resolve(false),
-          closeOnConfirm: true,
-          closeOnCancel: true,
-          centered: true,
-        });
+      confirm({
+        title: options.title,
+        description: options.description,
+        confirmLabel: t("common:action.confirm"),
+        cancelLabel: t("common:action.cancel"),
+        intent: options.intent,
       }),
-    [t],
+    [confirm, t],
   );
 
   const joinMutation = useMutation({

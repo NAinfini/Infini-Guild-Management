@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { functionalColourHits, keywordColourHits } from "./colour-literal-detectors";
 
 const repoRoot = process.cwd();
 const portalRoot = resolve(repoRoot, "apps/portal");
@@ -16,6 +17,7 @@ export const MIGRATED: string[] = [
   "apps/portal/styles.css",
   "apps/portal/components/layout/AppShell.css",
   "apps/portal/components/layout/PageLayout.css",
+  "apps/portal/components/layout/PageTabs.css",
   "apps/portal/components/pages/GuildWarPage.css",
   "apps/portal/components/pages/StoragePage.css",
   "apps/portal/components/pages/AuthPages.css",
@@ -34,6 +36,7 @@ export const MIGRATED: string[] = [
   "apps/portal/components/feature/admin/AdminApiTest.css",
   /* Task 7 批 B（task-7-addendum.md D 节）。 */
   "apps/portal/components/shared/tiptap-editor.css",
+  "apps/portal/components/shared/ConfirmDialog.css",
   "apps/portal/components/feature/events/RecurringTemplateFormModal.css",
   "apps/portal/components/feature/events/EventCardsView.css",
   "apps/portal/components/feature/admin/AuditLogViewer.css",
@@ -91,6 +94,14 @@ const RUNTIME_INJECTED_VARS: string[] = [
    * 这个变量的 var() 兜底（rule 1 不允许兜底），暴露出它并不落在
    * --mantine-color- 前缀下，需要单独列出处。 */
   "--mantine-font-family-monospace",
+  /* Mantine Checkbox / InlineInput 在组件根运行期写入尺寸与标签间距，命中区的
+   * label 伪元素读取它们，才能覆盖视觉 checkbox 而不把 20px 方框放大。 */
+  "--checkbox-size",
+  "--mantine-spacing-sm",
+  /* Mantine Group 在运行期写入（@mantine/core 的
+   * esm/components/Group/Group.mjs:33）。紧凑 ActionIcon 组用它保留原有较大
+   * 间距，同时把过小间距抬到不会让 44px 命中区互相覆盖的下限。 */
+  "--group-gap",
   /* EventCardAvatarStrip.tsx:71，在 .event-card__avatar-grid 根元素的 style
    * 上无条件内联写入（avatarSize 用 ?? AVATAR_MAX_SIZE 兜底，不会是
    * undefined）。Task 7 批 B 在 EventCardsView.css 里去掉了这个变量的 var()
@@ -132,80 +143,9 @@ const RUNTIME_INJECTED_VARS: string[] = [
  * （@mantine/core 的 MantineCssVariables），逐个列名不现实，按前缀豁免。 */
 const MANTINE_COLOR_PREFIX = "--mantine-color-";
 
-/**
- * CSS Color Module 的基础 + 扩展关键字色，逐个都是真实固定 RGB 值 ——
- * 唯二排除的两个关键字 `transparent` / `currentColor`（连同 `inherit`）不在
- * 此列：前者是恒定的 0 透明度，渲染结果与所在模式无关；后两个根本不是颜色，
- * 只是「沿用级联已经算出来的那个值」的引用，正是 token 系统想要的效果，
- * 本来就不构成绕过。 */
-const CSS_NAMED_COLOURS: string[] = [
-  "aliceblue", "antiquewhite", "aqua", "aquamarine", "azure", "beige", "bisque",
-  "black", "blanchedalmond", "blue", "blueviolet", "brown", "burlywood",
-  "cadetblue", "chartreuse", "chocolate", "coral", "cornflowerblue", "cornsilk",
-  "crimson", "cyan", "darkblue", "darkcyan", "darkgoldenrod", "darkgray",
-  "darkgreen", "darkgrey", "darkkhaki", "darkmagenta", "darkolivegreen",
-  "darkorange", "darkorchid", "darkred", "darksalmon", "darkseagreen",
-  "darkslateblue", "darkslategray", "darkslategrey", "darkturquoise",
-  "darkviolet", "deeppink", "deepskyblue", "dimgray", "dimgrey", "dodgerblue",
-  "firebrick", "floralwhite", "forestgreen", "fuchsia", "gainsboro",
-  "ghostwhite", "gold", "goldenrod", "gray", "grey", "green", "greenyellow",
-  "honeydew", "hotpink", "indianred", "indigo", "ivory", "khaki", "lavender",
-  "lavenderblush", "lawngreen", "lemonchiffon", "lightblue", "lightcoral",
-  "lightcyan", "lightgoldenrodyellow", "lightgray", "lightgreen", "lightgrey",
-  "lightpink", "lightsalmon", "lightseagreen", "lightskyblue",
-  "lightslategray", "lightslategrey", "lightsteelblue", "lightyellow", "lime",
-  "limegreen", "linen", "magenta", "maroon", "mediumaquamarine", "mediumblue",
-  "mediumorchid", "mediumpurple", "mediumseagreen", "mediumslateblue",
-  "mediumspringgreen", "mediumturquoise", "mediumvioletred", "midnightblue",
-  "mintcream", "mistyrose", "moccasin", "navajowhite", "navy", "oldlace",
-  "olive", "olivedrab", "orange", "orangered", "orchid", "palegoldenrod",
-  "palegreen", "paleturquoise", "palevioletred", "papayawhip", "peachpuff",
-  "peru", "pink", "plum", "powderblue", "purple", "rebeccapurple", "red",
-  "rosybrown", "royalblue", "saddlebrown", "salmon", "sandybrown", "seagreen",
-  "seashell", "sienna", "silver", "skyblue", "slateblue", "slategray",
-  "slategrey", "snow", "springgreen", "steelblue", "tan", "teal", "thistle",
-  "tomato", "turquoise", "violet", "wheat", "white", "whitesmoke", "yellow",
-  "yellowgreen",
-];
-
-/**
- * 逐个字面关键字色的检测，两端都设了边界。左边界排除字母/数字/下划线/双引号/
- * 单引号/句点/连字符：双引号、单引号是因为 `[data-accent="teal"]` /
- * `[data-accent='teal']` / `content: 'red'` 这类字符串字面量里的颜色词不是
- * 颜色（task-9-addendum.md E 节 + 复审 M-1 都实测过，本项目三个 accent 名恰好
- * 是 teal/indigo/violet，单引号写法是最可能真实撞上的一种）；句点是因为
- * `.gold { }` / `&.plum` 这类类选择器名不是颜色。右边界同理排除
- * `--palette-teal-500` 这类自定义属性名的一部分，并额外排除 `(`：
- * `tan(30deg)` 这类 CSS 函数名（如 rotate(calc(1deg * tan(30deg)))）在没有
- * 这层排除时会被误判成命中 "tan"。 */
-function keywordColourHits(withoutComments: string): string[] {
-  const re = new RegExp(`(?<![a-zA-Z0-9_"'.\\-])(${CSS_NAMED_COLOURS.join("|")})(?![a-zA-Z0-9_"'.\\-(])`, "gi");
-  return [...withoutComments.matchAll(re)].map((match) => match[1]!.toLowerCase());
-}
-
-/**
- * 逐个字面 rgb()/rgba()/hsl()/hsla()/oklch()/oklab()/lab()/lch()/hwb()/color()
- * 调用。加 `i` 标志：CSS 函数名大小写不敏感（`RGBA(0,0,0,.5)` 是合法 CSS，
- * 复审 I-4 用这个输入验证过旧版没有 `i` 标志时会漏检，见 task-9-report.md 的
- * 变异证明）。`color` 用 `(?!-mix)` 负向断言排除 `color-mix(`——后者是本仓库
- * 大量在用的「颜色 + 透明度」合成写法，不该被这条规则当成新引入的字面颜色。
- *
- * 允许一层嵌套括号，只是为了不让内部的 `var(...)`/`color-mix(...)` 破坏配对；
- * 两层嵌套（例如 `rgb(calc(2 * (10 + 5)) 0 0)`）会匹配失败——这是已知限制，
- * 现实 CSS 里几乎不会写出这种嵌套（T-2），暂不处理。
- *
- * 紧接着的 `.filter` 是一条**有意放宽的近似，不是逐通道的精确判断**：只要调用
- * 里任意一个通道来自 var()，整个调用（含其余写死的通道）都会被放行。例如
- * AuthPages.css 的 `hsla(var(--bubble-hue), 60%, 60%, 0.1)` 只有色相来自
- * var()，饱和度/亮度/透明度三个通道都是字面量，也会被整体放行——这在当前仓库
- * 是可以接受的，因为这是唯一一处用例，放宽换来的假阴性面很小；但这不是通则：
- * 如果以后出现「色相来自 var()、但饱和度/亮度是刻意写死的另一个品牌值」这类
- * 真正该被拦下的写法，这条近似会连带放它一马，届时需要收紧为逐通道判断
- * （复审 I-4）。 */
-function functionalColourHits(withoutComments: string): string[] {
-  const re = /\b(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb|color(?!-mix))\(((?:[^()]|\([^()]*\))*)\)/gi;
-  return [...withoutComments.matchAll(re)].filter((match) => !match[1]!.includes("var(")).map((match) => match[0]);
-}
+/* CSS_NAMED_COLOURS / keywordColourHits / functionalColourHits 复审 I4 迁到了
+ * ./colour-literal-detectors（inline-colour.test.ts 的 .tsx 关键字/功能色扫描
+ * 复用同一份实现，见该文件顶部的说明）。 */
 
 type LiteralColourExemption = {
   /** 定位这条豁免对应的选择器/规则块，方便回查源码。 */
@@ -470,6 +410,24 @@ function readMigrated(): Array<{ path: string; source: string }> {
   return MIGRATED.map((path) => ({ path, source: readFileSync(resolve(repoRoot, path), "utf8") }));
 }
 
+export function bareButtonHeightOffenders(path: string, source: string): string[] {
+  const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
+  const offenders: string[] = [];
+
+  for (const match of withoutComments.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = match[1]!.trim();
+    const body = match[2]!;
+    const targetsButton = /\bbutton\b|(?:^|[._-])(?:btn|button)(?:[_-]|$)|ActionIcon/i.test(selector);
+    if (!targetsButton) continue;
+
+    for (const height of body.matchAll(/(?:^|;)\s*height\s*:\s*(\d+(?:\.\d+)?)px\b/g)) {
+      offenders.push(`${path}: ${selector} -> height: ${height[1]}px`);
+    }
+  }
+
+  return offenders;
+}
+
 /* ── 硬规则 1–5 ───────────────────────────────────────────── */
 
 describe("theme token hard rules", () => {
@@ -589,6 +547,71 @@ describe("theme token hard rules", () => {
   });
 });
 
+describe("control sizing scale (Task 1)", () => {
+  const scale = readFileSync(resolve(repoRoot, SCALE_FILE), "utf8");
+  const entry = readFileSync(resolve(repoRoot, ENTRY_FILE), "utf8");
+  const tipTap = readFileSync(
+    resolve(repoRoot, "apps/portal/components/shared/tiptap-editor.css"),
+    "utf8",
+  );
+
+  it("defines compact, regular, large, icon, and 44px hit-area tokens", () => {
+    expect(scale).toMatch(/--control-height-compact:\s*32px\b/);
+    expect(scale).toMatch(/--control-height-regular:\s*44px\b/);
+    expect(scale).toMatch(/--control-height-large:\s*52px\b/);
+    expect(scale).toMatch(/--control-icon-size-compact:\s*22px\b/);
+    expect(scale).toMatch(/--control-icon-size-regular:\s*28px\b/);
+    expect(scale).toMatch(/--control-icon-size-large:\s*40px\b/);
+    expect(scale).toMatch(/--control-hit-area:\s*44px\b/);
+  });
+
+  it("bridges Mantine Button, Input, ActionIcon, and Tabs onto the scale", () => {
+    expect(entry).toContain("--button-height-xs: var(--control-height-compact)");
+    expect(entry).toContain("--button-height-sm: var(--control-height-regular)");
+    expect(entry).toContain("--input-height-sm: var(--control-height-regular)");
+    expect(entry).toContain("--ai-size-sm: var(--control-icon-size-compact)");
+    expect(entry).toContain("--ai-size-md: var(--control-icon-size-regular)");
+    expect(entry).toMatch(/\.mantine-Tabs-tab[\s\S]*?min-height:\s*var\(--control-height-regular\)/);
+  });
+
+  it("uses a transparent pseudo-element for controls smaller than the hit-area token", () => {
+    expect(entry).toMatch(/::before\s*\{[\s\S]*?width:\s*max\(var\(--control-hit-area\)/);
+    expect(entry).toMatch(/::before\s*\{[\s\S]*?height:\s*max\(var\(--control-hit-area\)/);
+    expect(entry).toMatch(/::before\s*\{[\s\S]*?background:\s*transparent/);
+  });
+
+  it("keeps adjacent compact icon hit areas from overlapping", () => {
+    expect(entry).toMatch(
+      /\.mantine-Group-root:has\([^}]+\)\s*\{[^}]*gap:\s*max\(var\(--group-gap\),\s*var\(--control-icon-size-compact\)\)/,
+    );
+    expect(entry).toMatch(
+      /\.roster-audio-popover\.roster-audio-popover\s*\{[^}]*gap:\s*var\(--control-icon-size-compact\)/,
+    );
+    expect(tipTap).toMatch(
+      /\.infini-tiptap-toolbar\s*\{[^}]*gap:\s*var\(--control-icon-size-compact\)/,
+    );
+    expect(tipTap).toMatch(
+      /\.infini-tiptap-toolbar__group\s*\{[^}]*gap:\s*var\(--control-icon-size-compact\)/,
+    );
+  });
+
+  it("flags bare pixel heights on button selectors", () => {
+    expect(bareButtonHeightOffenders("sample.css", ".save-button { height: 38px; }")).toEqual([
+      "sample.css: .save-button -> height: 38px",
+    ]);
+    expect(bareButtonHeightOffenders("sample.css", ".save-button { min-height: 38px; }")).toEqual([]);
+    expect(bareButtonHeightOffenders("sample.css", ".status-dot { height: 8px; }")).toEqual([]);
+  });
+
+  it("component CSS has no bare pixel height applied to a button", () => {
+    const offenders = listCssFiles(portalRoot).flatMap((file) => {
+      const path = toRepoPath(file);
+      return bareButtonHeightOffenders(path, readFileSync(file, "utf8"));
+    });
+    expect(offenders).toEqual([]);
+  });
+});
+
 /* ── 对比度 ───────────────────────────────────────────────── */
 
 function channel(value: number): number {
@@ -637,7 +660,7 @@ function token(map: Record<string, string>, name: string): string {
 }
 
 const AA_TEXT = 4.5;
-const ACCENTS = ["teal", "indigo", "violet"] as const;
+const ACCENTS = ["teal", "indigo", "violet", "orange"] as const;
 
 /* 浅色模式三个表面 --surface-sunken / --surface-base / --surface-raised
  * 全部覆盖：sunken = neutral-50（三者中最暗）是最不利的文字底，
@@ -888,12 +911,15 @@ describe("Mantine light variant 的文字色在浅色模式下过 AA", () => {
  * Mantine 就会改取第 5 档，而上面两条 AA 断言仍按第 6 档算——静默测错档位。
  * 这条断言不核对数值是否同步（做不到），只保证「没有人动过这个开关」：
  * createTheme 的实参里不出现 primaryShade。 */
-/** 取 `createTheme(` 之后到括号配平为止的那段源码。 */
-function createThemeArgument(source: string): string {
-  const marker = "createTheme(";
+/**
+ * 取 `marker` 之后到括号配平为止的那段源码。createThemeArgument /
+ * menuExtendArgument 此前是同一段逻辑各抄一份、只换了 marker 与错误文案里的
+ * 说明文字（复审 T5）——两处唯一的差异就是这两点，故收成一个共享实现，
+ * 两个具名函数只负责传参。 */
+function extractBalancedCall(source: string, marker: string, description: string): string {
   const open = source.indexOf(marker);
   if (open === -1) {
-    throw new Error(`${THEME_PROVIDER_FILE}: 找不到 createTheme( —— Mantine 主题配置被挪走或改名了，请同步改这个测试。`);
+    throw new Error(`${THEME_PROVIDER_FILE}: 找不到 ${marker} —— ${description}被挪走或改名了，请同步改这个测试。`);
   }
   let depth = 0;
   for (let i = open + marker.length - 1; i < source.length; i += 1) {
@@ -904,7 +930,12 @@ function createThemeArgument(source: string): string {
       if (depth === 0) return source.slice(open, i + 1);
     }
   }
-  throw new Error(`${THEME_PROVIDER_FILE}: createTheme( 的括号没有配平，无法切出配置对象。`);
+  throw new Error(`${THEME_PROVIDER_FILE}: ${marker} 的括号没有配平，无法切出配置对象。`);
+}
+
+/** 取 `createTheme(` 之后到括号配平为止的那段源码。 */
+function createThemeArgument(source: string): string {
+  return extractBalancedCall(source, "createTheme(", "Mantine 主题配置");
 }
 
 describe("primaryShade 未被覆盖（H-2b）", () => {
@@ -931,21 +962,7 @@ describe("primaryShade 未被覆盖（H-2b）", () => {
  */
 /** 取 `Menu.extend(` 之后到括号配平为止的那段源码。 */
 function menuExtendArgument(source: string): string {
-  const marker = "Menu.extend(";
-  const open = source.indexOf(marker);
-  if (open === -1) {
-    throw new Error(`${THEME_PROVIDER_FILE}: 找不到 Menu.extend( —— 菜单的 Mantine 配置被挪走或改名了，请同步改这个测试。`);
-  }
-  let depth = 0;
-  for (let i = open + marker.length - 1; i < source.length; i += 1) {
-    const ch = source[i];
-    if (ch === "(") depth += 1;
-    else if (ch === ")") {
-      depth -= 1;
-      if (depth === 0) return source.slice(open, i + 1);
-    }
-  }
-  throw new Error(`${THEME_PROVIDER_FILE}: Menu.extend( 的括号没有配平，无法切出配置对象。`);
+  return extractBalancedCall(source, "Menu.extend(", "菜单的 Mantine 配置");
 }
 
 describe("menu single source of truth (Task 3)", () => {

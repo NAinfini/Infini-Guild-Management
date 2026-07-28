@@ -16,11 +16,12 @@ export function useEffectivePermissions(): {
 } {
   const viewingAs = useViewingAs();
   const user = useAuthStore((s) => s.user);
+  const canReadRoles = user?.permissions["admin.roles.view"] === true;
 
   const rolesQuery = useQuery({
     queryKey: queryKeys.admin.roles(),
     queryFn: fetchRoles,
-    enabled: Boolean(user),
+    enabled: canReadRoles,
     staleTime: 5 * 60_000,
   });
 

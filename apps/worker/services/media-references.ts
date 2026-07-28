@@ -16,11 +16,13 @@ function uniqueKeys(keys: readonly string[]): string[] {
   return [...new Set(keys.filter((key) => typeof key === "string" && key.length > 0))];
 }
 
-/**
- * Replaces the full reference set for one entity (delete + inserts in a single
- * atomic D1 batch). Pass an empty array to clear all references.
- */
-export async function replaceMediaRefs(db: D1Database, entityType: MediaRefEntityType, entityId: string, keys: readonly string[]): Promise<void> {
+/** Builds the atomic delete/insert statement set used by media-bearing writes. */
+export function buildReplaceMediaRefsStatements(
+  db: D1Database,
+  entityType: MediaRefEntityType,
+  entityId: string,
+  keys: readonly string[],
+): D1PreparedStatement[] {
   const statements = [
     db.prepare(`DELETE FROM media_references WHERE entity_type = ? AND entity_id = ?`).bind(entityType, entityId),
   ];
@@ -29,7 +31,15 @@ export async function replaceMediaRefs(db: D1Database, entityType: MediaRefEntit
       db.prepare(`INSERT OR IGNORE INTO media_references (media_key, entity_type, entity_id) VALUES (?, ?, ?)`).bind(key, entityType, entityId),
     );
   }
-  await db.batch(statements);
+  return statements;
+}
+
+/**
+ * Replaces the full reference set for one entity (delete + inserts in a single
+ * atomic D1 batch). Pass an empty array to clear all references.
+ */
+export async function replaceMediaRefs(db: D1Database, entityType: MediaRefEntityType, entityId: string, keys: readonly string[]): Promise<void> {
+  await db.batch(buildReplaceMediaRefsStatements(db, entityType, entityId, keys));
 }
 
 /** Removes all references held by one entity (call on entity deletion). */
@@ -101,4 +111,32 @@ export function extractRichTextMediaKeys(bodyJson: string | null | undefined, do
     if (match[1] && match[1].startsWith(prefix)) keys.push(match[1]);
   }
   return keys;
+}
+
+/** Extracts only TipTap image-node sources, including the announcement image endpoint URL. */
+export function extractAnnouncementImageNodeKeys(bodyJson: string | null | undefined, announcementId: string): string[] {
+  if (!bodyJson) return [];
+  const prefix = `announcement/${announcementId}/images/`;
+  let document: unknown;
+  try { document = JSON.parse(bodyJson) as unknown; } catch { return []; }
+  const keys = new Set<string>();
+  const extractSrc = (src: string): string | null => {
+    if (src.startsWith(prefix)) return src;
+    try {
+      const url = new URL(src, "https://guild.invalid");
+      const key = url.pathname === "/api/announcements/image" ? url.searchParams.get("key") : null;
+      return key?.startsWith(prefix) ? key : null;
+    } catch { return null; }
+  };
+  const visit = (value: unknown) => {
+    if (!value || typeof value !== "object") return;
+    const node = value as { type?: unknown; attrs?: { src?: unknown }; content?: unknown };
+    if (node.type === "image" && typeof node.attrs?.src === "string") {
+      const key = extractSrc(node.attrs.src);
+      if (key) keys.add(key);
+    }
+    if (Array.isArray(node.content)) node.content.forEach(visit);
+  };
+  visit(document);
+  return [...keys];
 }

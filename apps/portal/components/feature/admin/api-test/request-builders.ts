@@ -739,13 +739,45 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         title: `[systemtest] API Template Updated ${nowId}`,
       });
 
-    case "POST /api/announcements":
+    case "POST /api/announcements/images/stage":
+      return buildFormRequest(path, [["files", createTinyPngFile()]]);
+
+    case "POST /api/announcements": {
+      const stagedKey = context.announcementImageKey;
+      const stagingToken = context.announcementStagingToken;
+      const bodyJson = stagingToken && stagedKey
+        ? {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "[systemtest] Created by API tester" }],
+              },
+              {
+                type: "image",
+                attrs: {
+                  src: `/api/announcements/image?key=${encodeURIComponent(stagedKey)}`,
+                },
+              },
+            ],
+          }
+        : {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "[systemtest] Created by API tester" }],
+              },
+            ],
+          };
       return buildJsonRequest(path, {
         title: `[systemtest] API Announcement ${nowId}`,
-        body_json: "{\"content\":\"[systemtest] Created by API tester\"}",
+        body_json: JSON.stringify(bodyJson),
         pinned: false,
         status: "draft",
+        ...(stagingToken && stagedKey ? { staging_token: stagingToken } : {}),
       });
+    }
 
     case "PATCH /api/announcements/:id":
       return buildJsonRequest(path, {
@@ -1138,6 +1170,17 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         type: "adjust",
         target_quantity: 6,
         note: "[systemtest] API storage adjustment",
+      });
+
+    case "POST /api/storage/transactions/batch":
+      if (!context.createdStorageItemId) {
+        return skipEndpoint(path, "Missing created storage item for storage batch");
+      }
+      return buildJsonRequest(path, {
+        idempotency_key: crypto.randomUUID(),
+        type: "intake",
+        entries: [{ item_id: context.createdStorageItemId, quantity: 2 }],
+        note: "[systemtest] API storage batch",
       });
 
     case "POST /api/storage/items/:id/images":

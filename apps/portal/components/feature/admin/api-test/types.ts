@@ -24,6 +24,7 @@ export type TestRunContext = {
   pollOptionId: string | null;
   eventTemplateId: string | null;
   announcementId: string | null;
+  announcementStagingToken: string | null;
   galleryItemId: string | null;
   galleryDeleteId: string | null;
   warEventId: string | null;
@@ -137,6 +138,7 @@ export function createInitialTestRunContext(): TestRunContext {
     pollOptionId: null,
     eventTemplateId: null,
     announcementId: null,
+    announcementStagingToken: null,
     galleryItemId: null,
     galleryDeleteId: null,
     warEventId: null,

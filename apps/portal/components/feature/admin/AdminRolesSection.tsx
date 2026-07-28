@@ -1,4 +1,5 @@
 import { PERMISSIONS, type AdminRole, type Permission } from "@guild/shared";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import {
   ActionIcon,
@@ -17,7 +18,6 @@ import {
   ThemeIcon,
   UnstyledButton,
 } from "@mantine/core";
-import { modals } from "@mantine/modals";
 import {
   AlertTriangleIcon,
   ArchiveIcon,
@@ -256,6 +256,7 @@ export function AdminRolesSection({
 }: AdminRolesSectionProps) {
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
+  const confirm = useConfirmDialog();
   const user = useAuthStore((state) => state.user);
   const isAdmin = userCanManageRoles(user);
   const loadErrorMessage = tc("loadError");
@@ -299,21 +300,12 @@ export function AdminRolesSection({
   };
 
   const handleDeleteRole = async (role: AdminRole) => {
-    const confirmed = await new Promise<boolean>((resolve) => {
-      modals.openConfirmModal({
-        title: t("roles.confirmDeleteTitle"),
-        children: t("roles.confirmDeleteDescription", { name: role.name }),
-        confirmProps: { color: "red" },
-        labels: {
-          confirm: t("roles.delete"),
-          cancel: t("roles.cancel"),
-        },
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
-        closeOnCancel: true,
-        closeOnConfirm: true,
-        centered: true,
-      });
+    const confirmed = await confirm({
+      title: t("roles.confirmDeleteTitle"),
+      description: t("roles.confirmDeleteDescription", { name: role.name }),
+      confirmLabel: t("roles.delete"),
+      cancelLabel: t("roles.cancel"),
+      intent: "danger",
     });
 
     if (!confirmed) {

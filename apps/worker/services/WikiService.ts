@@ -6,7 +6,7 @@ import {
 } from "@guild/shared";
 import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
-import { and, asc, desc, eq, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { wikiArticles, wikiCategories, wikiRevisions } from "../db/schema";
@@ -267,10 +267,10 @@ export class WikiService {
 
   // --- Articles ---
 
-  async listArticles(opts: { page: number; limit: number; categoryId?: string; archived?: boolean; pinned?: boolean; search?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
+  async listArticles(opts: { page: number; limit: number; categoryIds?: string[]; archived?: boolean; pinned?: boolean; search?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
     const offset = (opts.page - 1) * opts.limit;
     const filters: SQL<unknown>[] = [];
-    if (opts.categoryId) filters.push(eq(wikiArticles.categoryId, opts.categoryId));
+    if (opts.categoryIds?.length) filters.push(inArray(wikiArticles.categoryId, opts.categoryIds));
     if (opts.archived === true) { filters.push(isNotNull(wikiArticles.archivedAt)); }
     else if (opts.archived === false) { filters.push(isNull(wikiArticles.archivedAt)); }
     if (opts.pinned !== undefined) filters.push(eq(wikiArticles.pinned, opts.pinned));

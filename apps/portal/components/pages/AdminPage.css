@@ -27,6 +27,29 @@
   -webkit-user-select: none;
 }
 
+/* Invite management */
+
+.admin-invite-card-content {
+  padding: 1.2rem;
+}
+
+.admin-invite-table-content {
+  overflow-x: auto;
+}
+
+.admin-invite-status-popover {
+  border-radius: 10px;
+}
+
+.admin-invite-status-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.admin-invite-status-copy {
+  min-width: 0;
+}
+
 /* ── Responsive member table / cards ── */
 
 .admin-member-cards-mobile {

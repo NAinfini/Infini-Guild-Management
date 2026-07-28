@@ -7,7 +7,7 @@
   text-align: left;
   cursor: pointer;
   box-shadow: none;
-  transition: box-shadow var(--transition-smooth), border-color var(--transition-smooth);
+  transition: transform var(--transition-smooth), box-shadow var(--transition-smooth), border-color var(--transition-smooth);
 }
 
 /*
@@ -23,9 +23,15 @@
   border-color: var(--border-subtle);
 }
 
+/* 3D 倾斜的「舞台」。perspective 必须挂在卡片的父级上而不是卡片自己身上：
+ * 挂在自己身上时每张卡各有一个灭点，鼠标扫过一排会看到透视方向逐张跳变。
+ * 附带后果——perspective 会建立层叠上下文，所以悬停时把卡抬到邻居之上的
+ * z-index 提不到这里，必须提到网格项上（见 RosterPage.css 的
+ * .roster-card-cell:hover / .roster-virtual-cell:hover）。 */
 .member-card__frame {
   cursor: pointer;
   height: 100%;
+  perspective: 800px;
 }
 
 .member-card:focus-visible {
@@ -39,57 +45,125 @@
 }
 
 /*
- * A roster row, not a portrait billboard. The card used to be a full-width 1:1
- * avatar tile with the name underneath, so nineteen members — almost none of whom
- * have uploaded a picture — filled four screens with empty grey squares. The
- * picture is now a 56px thumbnail beside the text, which is all it ever needed to
- * be, and the whole roster fits in two rows.
+ * Big icon card, restored per user request: a full-width 1:1 avatar tile with
+ * the name/title underneath, plus a lift + colour-glow hover treatment. This
+ * predates the token migration, so the geometry/spacing/hover transform below
+ * are recreated from the pre-flattening version but the colours are wired to
+ * the new L2 semantic tokens rather than the old fallback-style var() calls
+ * (rule 1 bans var() fallback values, see theme-tokens.test.ts). RosterGrid's
+ * virtualiser estimateSize and RosterPage's column-count breakpoints were
+ * restored alongside this to match the taller card.
  */
+/* transform-origin 从 center bottom 改成 center center：这里的 transform 已经
+ * 不是原来那个「向上平移」，而是绕 X/Y 轴的三维旋转，绕底边转会让卡整个
+ * 甩出去而不是就地翻转。overflow:hidden 是给下面的高光层兜底的（那一层
+ * 铺得比卡大，靠这里裁到圆角内），元素自身的外投影不受它影响。 */
 .member-card--full {
-  padding: 10px 12px;
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  grid-template-areas:
-    "avatar name"
-    "avatar meta";
-  align-items: center;
-  gap: 2px var(--space-sm);
+  padding: 10px;
+  position: relative;
+  overflow: hidden;
+  transform-origin: center center;
+  will-change: transform, box-shadow;
   height: 100%;
 }
 
-.member-card--full:hover {
-  box-shadow: var(--shadow-sm);
-  border-color: var(--border-strong);
+/*
+ * 悬停辉光 = 色散投影：左冷、中紫、右暖三束，模拟一束白光穿过卡面之后被
+ * 拆开（三个色相固定不随主色变，理由见 semantic.css 的 --glow-dispersion-*）；
+ * 只有边框跟着当前主色走，让辉光仍然认得出是这个站点的。
+ *
+ * 倾斜与缩放刻意不在这里。CSS transition 是定时长的，光标从半米外甩过来
+ * 和贴着边挪一格花的时间一样；弹簧的时长是由 F = -k(x - target) - c·v 解
+ * 出来的，快甩会滞后、过冲、再稳住。那个手感是这次改版的全部目的，所以
+ * transform 由 MemberCard.tsx 的 useSpring 逐帧写内联样式。
+ */
+.member-card__frame:hover .member-card--full {
+  border-color: color-mix(in srgb, var(--accent-fill) 40%, transparent);
+  box-shadow:
+    -16px 14px 30px -8px color-mix(in srgb, var(--glow-dispersion-cool) 38%, transparent),
+    0 18px 34px -8px color-mix(in srgb, var(--glow-dispersion-mid) 34%, transparent),
+    16px 14px 30px -8px color-mix(in srgb, var(--glow-dispersion-warm) 34%, transparent);
+}
+
+/*
+ * 高光层：跟随当前主色。光源固定在左上方，动的是卡——所以这一层要朝倾斜的
+ * 反方向平移，才读成「反光扫过卡面」而不是「印在卡上的一块渐变」。平移量
+ * 同样由 MemberCard.tsx 的弹簧写在 transform 上，这里只管配色和淡入。
+ * inset 取负值把渐变铺得比卡大一圈，平移到极限时边缘才不会露出硬边。
+ */
+.member-card__spec {
+  position: absolute;
+  inset: -30%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition-smooth);
+  background: linear-gradient(
+    150deg,
+    color-mix(in srgb, var(--accent-fill) 30%, transparent) 0%,
+    color-mix(in srgb, var(--accent-fill) 8%, transparent) 20%,
+    transparent 42%
+  );
+}
+
+.member-card__frame:hover .member-card__spec {
+  opacity: 1;
+}
+
+.member-card--blue:hover {
+  box-shadow:
+    0 12px 32px color-mix(in srgb, var(--accent-fill) 22%, transparent),
+    inset 0 0 20px color-mix(in srgb, var(--accent-fill) 4%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 35%, transparent);
+}
+
+.member-card--green:hover {
+  box-shadow:
+    0 12px 32px color-mix(in srgb, var(--status-success) 22%, transparent),
+    inset 0 0 20px color-mix(in srgb, var(--status-success) 4%, transparent);
+  border-color: color-mix(in srgb, var(--status-success) 35%, transparent);
+}
+
+.member-card--purple:hover {
+  box-shadow:
+    0 12px 32px color-mix(in srgb, var(--accent-fill) 24%, transparent),
+    inset 0 0 20px color-mix(in srgb, var(--accent-fill) 5%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 40%, transparent);
+}
+
+.member-card--dark-red:hover {
+  box-shadow:
+    0 12px 32px color-mix(in srgb, var(--status-danger) 20%, transparent),
+    inset 0 0 20px color-mix(in srgb, var(--status-danger) 4%, transparent);
+  border-color: color-mix(in srgb, var(--status-danger) 30%, transparent);
 }
 
 .member-card__avatar-wrap {
-  grid-area: avatar;
   position: relative;
-  width: 56px; height: 56px;
-  align-self: center;
-  border-radius: var(--radius-md); overflow: hidden;
+  width: 100%; height: auto;
+  aspect-ratio: 1 / 1;
+  margin-inline: auto; border-radius: var(--radius-lg); overflow: hidden;
   border: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--surface-base) 88%, var(--text-primary) 12%);
   pointer-events: none;
 }
 
 .member-card__avatar,
-.member-card__avatar-fallback { width: 100%; height: 100%; object-fit: cover; pointer-events: none; border-radius: var(--radius-md); }
+.member-card__avatar-fallback { width: 100%; height: 100%; object-fit: cover; pointer-events: none; border-radius: var(--radius-lg); }
 
 .member-card__avatar { object-position: top center; }
 
 .member-card__avatar-fallback {
   display: grid; place-items: center;
-  font-size: 22px; font-weight: var(--fw-strong);
+  font-size: 52px; font-weight: var(--fw-strong);
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .member-card__status-dot {
   position: absolute;
-  bottom: 3px; right: 3px;
-  width: 11px; height: 11px;
+  bottom: 6px; right: 6px;
+  width: 14px; height: 14px;
   border-radius: 50%;
-  border: 2px solid var(--surface-base);
+  border: 2.5px solid var(--surface-base);
   background: color-mix(in srgb, var(--text-primary) 35%, transparent);
   pointer-events: none;
 }
@@ -108,7 +182,7 @@
   box-shadow: 0 0 6px color-mix(in srgb, var(--status-danger) 40%, transparent);
 }
 
-.member-card__meta-row { grid-area: meta; align-self: start; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.member-card__meta-row { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 
 .member-card__pill {
   display: inline-flex; align-items: center; gap: 3px;
@@ -135,12 +209,11 @@
   color: color-mix(in srgb, var(--accent-fill-hover) 50%, var(--text-primary));
 }
 
-.member-card__content { grid-area: name; align-self: end; min-width: 0; }
+.member-card__content { margin-top: 6px; }
 .member-card__username { display: block; font-size: var(--text-body); font-weight: var(--fw-medium); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .member-card__title {
-  font-size: var(--text-meta);
-  line-height: 1.35;
+  margin-top: 2px; min-height: 18px; line-height: 1.35;
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden;
 }
@@ -233,7 +306,11 @@
   color: var(--role-color);
 }
 
+/* 倾斜与缩放的关闭不在这里——那两个是 JS 写的内联 transform，CSS 覆盖不到，
+ * 由 MemberCard.tsx 的 useReducedMotion() 在源头上不派发。这里只关掉纯 CSS
+ * 的两处过渡；辉光与高光本身（静态的颜色差）保留，否则悬停就完全没有反馈了。 */
 @media (prefers-reduced-motion: reduce) {
   .member-card { transition: none; }
+  .member-card__spec { transition: none; }
 }
 

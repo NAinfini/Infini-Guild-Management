@@ -44,6 +44,19 @@ export type NavItem = {
 export const SIDEBAR_WIDTH = 236;
 export const SIDEBAR_COLLAPSED_WIDTH = 56;
 
+// 移动端外壳的断点上限：宽度 <= 此值走移动端布局（顶栏 + 底部导航），> 此值走桌面
+// 侧栏。AppShell 同时用它驱动 useMediaQuery 和 Mantine AppShell 的
+// navbar.breakpoint，两者必须一致：Mantine 在 max-width 命中 navbar.breakpoint 时
+// 会把 navbar 切成 --app-shell-navbar-width: 100% / --app-shell-navbar-offset: 0，
+// 若该断点比这里大，中间那段宽度会渲染出铺满整屏、盖住主内容的侧栏。
+export const MOBILE_BREAKPOINT_PX = 767;
+
+// 表头工具组进入紧凑态（搜索条折叠成图标）的宽度上限。桌面表头是三列
+// grid，第三列按内容定宽且不收缩：完整搜索条会让右列达到约 398px，在 768px
+// 视口下（侧栏已占 236px）只剩约 70px 留给标题，页面标题被省略号截成一两个字母。
+// 折叠后右列约 278px，标题可得约 190px。
+export const HEADER_COMPACT_BREAKPOINT_PX = 1023;
+
 export const NAV_ITEMS: NavItem[] = [
   { to: "/", labelKey: "nav.dashboard", icon: DashboardOutlined },
   { to: "/announcements", labelKey: "nav.announcements", icon: NotificationOutlined, feature: "announcements", featureFlag: "announcements" },

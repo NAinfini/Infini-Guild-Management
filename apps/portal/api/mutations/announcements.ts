@@ -1,5 +1,7 @@
 import {
   type Announcement,
+  type AnnouncementImageStagingResponse,
+  announcementImageStagingResponseSchema,
   createAnnouncementSchema,
   updateAnnouncementSchema,
 } from "@guild/shared";
@@ -39,15 +41,38 @@ export function deleteAnnouncement(id: string): Promise<{ ok: true }> {
   });
 }
 
-export async function uploadAnnouncementImages(
-  announcementId: string,
-  files: File[],
-): Promise<{ keys: string[] }> {
+async function buildAnnouncementImageFormData(files: File[]): Promise<FormData> {
   const converted = await convertFilesForUpload(files);
   const formData = new FormData();
   for (const file of converted) {
     formData.append("files", file);
   }
+  return formData;
+}
+
+export async function stageAnnouncementImages(
+  stagingToken: string | null,
+  files: File[],
+): Promise<AnnouncementImageStagingResponse> {
+  const formData = await buildAnnouncementImageFormData(files);
+  if (stagingToken) {
+    formData.set("staging_token", stagingToken);
+  }
+  const response = await apiRequest<AnnouncementImageStagingResponse>(
+    "/api/announcements/images/stage",
+    {
+      method: "POST",
+      body: formData,
+    },
+  );
+  return announcementImageStagingResponseSchema.parse(response);
+}
+
+export async function uploadAnnouncementImages(
+  announcementId: string,
+  files: File[],
+): Promise<{ keys: string[] }> {
+  const formData = await buildAnnouncementImageFormData(files);
   return apiRequest<{ keys: string[] }>(`/api/announcements/${announcementId}/images`, {
     method: "POST",
     body: formData,

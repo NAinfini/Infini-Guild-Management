@@ -205,3 +205,99 @@ describe(".tsx carries no bare hex outside the class-1 exemption table", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/* ── .tsx 内联间距也必须走 token 或显式豁免（Task 1 / D5） ───────── */
+
+const INLINE_SPACING_PROPS = [
+  "padding",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "paddingInline",
+  "paddingBlock",
+  "margin",
+  "marginTop",
+  "marginRight",
+  "marginBottom",
+  "marginLeft",
+  "marginInline",
+  "marginBlock",
+  "gap",
+  "rowGap",
+  "columnGap",
+] as const;
+
+/**
+ * 现存的运行期几何例外按「文件 + property:value + 次数」登记。与裸 hex 表一样，
+ * 每条 allowance 只消费一次；同文件后来再多写一处相同字面量仍会报错。
+ */
+const INLINE_SPACING_EXEMPTIONS: Record<string, string[]> = {
+  /* 2px/4px optical icon alignment is intentionally below the 4px spacing tier. */
+  "apps/portal/components/dashboard/LastWarCard.tsx": ["marginBottom:2"],
+  "apps/portal/components/dashboard/MySignupsCard.tsx": ["marginTop:2"],
+  "apps/portal/components/feature/admin/AdminApiDebugConsole.tsx": ["marginTop:2", "marginTop:2"],
+  "apps/portal/components/feature/admin/AdminRolesSection.tsx": ["marginTop:2"],
+  "apps/portal/components/feature/admin/AdminSiteConfigSection.tsx": ["marginTop:2"],
+  "apps/portal/components/feature/admin/AdminSystemSection.tsx": ["marginTop:2", "marginTop:2"],
+  "apps/portal/components/feature/announcements/AnnouncementListCard.tsx": ["marginTop:2"],
+  "apps/portal/components/feature/events/EventCardsView.tsx": ["marginTop:2"],
+  "apps/portal/components/feature/events/EventDetailModal.tsx": ["marginRight:4", "marginRight:4", "marginRight:4"],
+  "apps/portal/components/feature/events/EventMonthView.tsx": ["marginTop:2"],
+  "apps/portal/components/feature/events/RecurringTemplatesTab.tsx": ["marginTop:2", "marginTop:2"],
+  "apps/portal/components/feature/gallery/GalleryFiltersCard.tsx": ["marginTop:2"],
+  "apps/portal/components/feature/guild-war/GuildWarAnalyticsChartPanel.tsx": ["marginTop:2"],
+  "apps/portal/components/feature/guild-war/GuildWarAnalyticsTab.tsx": ["marginTop:2"],
+  "apps/portal/components/feature/guild-war/GuildWarDragBoardSections.tsx": ["marginTop:2"],
+  "apps/portal/components/feature/guild-war/WarHistoryTable.tsx": ["marginTop:2"],
+  "apps/portal/components/feature/wiki/WikiArticleListCard.tsx": ["marginTop:2", "marginTop:2"],
+  "apps/portal/components/layout/NotificationPopover.tsx": ["marginTop:2"],
+  "apps/portal/hooks/guild-war/useWarHistoryTabController.tsx": ["marginTop:2", "marginTop:2"],
+
+  /* Local compound-layout geometry that cannot be replaced by one global token. */
+  "apps/portal/components/feature/admin/AdminStatusTab.tsx": ["gap:6"],
+  "apps/portal/components/feature/profile/ProfileProfileTab.tsx": ["gap:2", "marginTop:6"],
+  "apps/portal/components/shared/AvailabilityGridEditor.tsx": ["paddingRight:6", "paddingTop:2"],
+  "apps/portal/components/shared/ImageGridEditor.tsx": ["padding:0", "margin:0"],
+  "apps/portal/components/shared/InfiniTable.tsx": ["marginLeft:4", "gap:4"],
+
+  /* These render before the themed app/CSS is available, so CSS variables are unsafe. */
+  "apps/portal/main.tsx": ["margin:0", "marginTop:8", "marginBottom:0"],
+  "apps/portal/router.tsx": ["gap:12", "padding:24", "gap:12", "padding:24"],
+};
+
+function inlineSpacingOffenders(repoPath: string, source: string): string[] {
+  const propertyPattern = INLINE_SPACING_PROPS.join("|");
+  const pattern = new RegExp(`\\b(${propertyPattern})\\s*:\\s*(\\d+(?:\\.\\d+)?)\\b`, "g");
+  const allowances = new Map<string, number>();
+  for (const value of INLINE_SPACING_EXEMPTIONS[repoPath] ?? []) {
+    allowances.set(value, (allowances.get(value) ?? 0) + 1);
+  }
+
+  const offenders: string[] = [];
+  for (const block of inlineStyleBlocks(source)) {
+    for (const match of block.matchAll(pattern)) {
+      const value = `${match[1]}:${match[2]}`;
+      const remaining = allowances.get(value) ?? 0;
+      if (remaining > 0) allowances.set(value, remaining - 1);
+      else offenders.push(value);
+    }
+  }
+  return offenders;
+}
+
+describe(".tsx inline spacing uses tokens or the counted exemption table", () => {
+  it("flags a literal, ignores a dynamic value, and consumes exemptions by count", () => {
+    expect(inlineSpacingOffenders("sample.tsx", "style={{ gap: 8, padding: spacing }}")).toEqual(["gap:8"]);
+  });
+
+  it("has no unregistered inline spacing literals", () => {
+    const offenders: string[] = [];
+    for (const file of listTsx(portalRoot)) {
+      const repoPath = relative(repoRoot, file).replace(/\\/g, "/");
+      const hits = inlineSpacingOffenders(repoPath, readFileSync(file, "utf8"));
+      if (hits.length > 0) offenders.push(`${repoPath}: ${hits.join(", ")}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+});

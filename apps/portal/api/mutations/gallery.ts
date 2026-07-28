@@ -8,8 +8,11 @@ export type CreateGalleryVideoPayload = z.input<typeof createGalleryItemSchema>;
 export async function uploadGalleryImages(
   files: File[],
   captions: Array<string | undefined> = [],
+  options: { signal?: AbortSignal } = {},
 ): Promise<{ data: GalleryItem[] }> {
+  options.signal?.throwIfAborted();
   const converted = await convertFilesForUpload(files.filter(Boolean));
+  options.signal?.throwIfAborted();
   const formData = new FormData();
   for (let index = 0; index < converted.length; index += 1) {
     const file = converted[index];
@@ -21,6 +24,7 @@ export async function uploadGalleryImages(
   return apiRequest<{ data: GalleryItem[] }>("/api/gallery/images", {
     method: "POST",
     body: formData,
+    signal: options.signal,
   });
 }
 

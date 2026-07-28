@@ -218,6 +218,52 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys.indexOf("POST /api/guild-war/save-teams")).toBeLessThan(endpointKeys.indexOf("POST /api/guild-war/conclude"));
   });
 
+  it("stages an announcement image before creating and claiming it", () => {
+    const endpointKeys = buildApiCategories((key) => key)
+      .find((category) => category.key === "announcements")
+      ?.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`) ?? [];
+    expect(endpointKeys.indexOf("POST /api/announcements/images/stage"))
+      .toBeLessThan(endpointKeys.indexOf("POST /api/announcements"));
+
+    const stageEndpoint = {
+      label: "Stage Announcement Image",
+      method: "POST" as const,
+      path: "/api/announcements/images/stage",
+    };
+    const stageRequest = prepareEndpointRequest(stageEndpoint, createInitialTestRunContext());
+    expect(stageRequest.body).toBeInstanceOf(FormData);
+    expect((stageRequest.body as FormData).get("files")).toBeInstanceOf(File);
+
+    const stagedContext = captureContextFromResponse(
+      createInitialTestRunContext(),
+      stageEndpoint,
+      {
+        status: 201,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-07-28T00:00:00.000Z",
+        parsedJson: {
+          staging_id: "abcdefghijklmnopqrstu",
+          staging_token: "signed-staging-token",
+          keys: ["announcement/abcdefghijklmnopqrstu/images/image.png"],
+        },
+      },
+    );
+    expect(stagedContext.announcementStagingToken).toBe("signed-staging-token");
+    expect(stagedContext.announcementImageKey).toBe("announcement/abcdefghijklmnopqrstu/images/image.png");
+
+    const createRequest = prepareEndpointRequest(
+      { label: "Create Announcement", method: "POST", path: "/api/announcements" },
+      stagedContext,
+    );
+    const createBody = parseJsonBody(createRequest) as Record<string, unknown>;
+    expect(createBody.staging_token).toBe("signed-staging-token");
+    expect(createBody.body_json).toContain(
+      encodeURIComponent("announcement/abcdefghijklmnopqrstu/images/image.png"),
+    );
+  });
+
   it("uses concluded history for member stats requests", () => {
     const ctx = contextWith({
       warHistoryId: "seed-war",
@@ -749,6 +795,7 @@ describe("AdminApiTestEngine request preparation", () => {
       "DELETE /api/events/templates/:id",
       "GET /api/announcements?page=1&limit=5",
       "GET /api/announcements/:id",
+      "POST /api/announcements/images/stage",
       "POST /api/announcements",
       "PATCH /api/announcements/:id",
       "DELETE /api/announcements/:id",
@@ -913,7 +960,7 @@ describe("AdminApiTestEngine request preparation", () => {
     const visibleStorageEndpoints = filtered.find((category) => category.key === "storage")?.endpoints ?? [];
     const visibleEndpointKeys = visibleStorageEndpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`);
 
-    expect(storageEndpoints).toHaveLength(19);
+    expect(storageEndpoints).toHaveLength(20);
     expect(visibleStorageEndpoints).toHaveLength(storageEndpoints.length);
     expect(visibleEndpointKeys).toEqual(storageEndpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
     expect(visibleEndpointKeys).toEqual(expect.arrayContaining([
@@ -928,6 +975,7 @@ describe("AdminApiTestEngine request preparation", () => {
       "POST /api/storage/items/:id/transactions?fixture=intake",
       "POST /api/storage/items/:id/transactions?fixture=distribute",
       "POST /api/storage/items/:id/transactions?fixture=adjust",
+      "POST /api/storage/transactions/batch",
       "DELETE /api/storage/items/:id",
       "DELETE /api/storage/storages/:storageId/categories/:id",
       "DELETE /api/storage/storages/:id",
@@ -1189,7 +1237,6 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys).toEqual(expect.arrayContaining([
       "GET /api/health",
       "GET /api/site-config",
-      "GET /api/onboarding",
       "GET /api/admin/status",
       "GET /api/admin/analytics-settings",
       "GET /api/dashboard/summary",
@@ -1229,13 +1276,11 @@ describe("AdminApiTestEngine request preparation", () => {
 
     expect(endpointKeys).toEqual(expect.arrayContaining([
       "GET /api/site-config",
-      "GET /api/onboarding",
       "GET /api/admin/site-config",
     ]));
     expect(visibleWithoutSiteConfigPermission).not.toContain("GET /api/admin/site-config");
     expect(visibleWithSiteConfigPermission).toContain("GET /api/admin/site-config");
     expect(endpointKeys).not.toContain("PATCH /api/admin/site-config");
-    expect(endpointKeys).not.toContain("POST /api/admin/site-config/onboarding/publish");
   });
 
   it("prepares additional production read endpoints without mutating existing database state", () => {

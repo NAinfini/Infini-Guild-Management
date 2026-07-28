@@ -434,6 +434,8 @@ export function AdminStatusTab({
   const runCategory = useCallback(async (category: CategoryDef) => {
     const controller = await beginRun();
     clearRunConsole();
+    setResultMap(new Map());
+    contextRef.current = createInitialTestRunContext();
     setSuppressed(true);
     // Teardown lives in `finally`: an aborted run still has rows to delete.
     const run = (async () => {
@@ -505,6 +507,7 @@ export function AdminStatusTab({
     else if (r.status !== null && r.status >= 200 && r.status < 400) passedEndpoints++;
     else failedEndpoints++;
   }
+  const isRunning = runningAll || runningSet.size > 0;
 
   return (
     <Stack gap={16}>
@@ -529,7 +532,7 @@ export function AdminStatusTab({
             <Group justify="space-between" mb={12}>
               <Text fw={600} size="sm">{t("status.healthLogs.title")}</Text>
               <Button
-                size="compact-xs"
+                h={44}
                 variant="default"
                 onClick={onCopyConfigSummary}
                 disabled={!canCopyConfigSummary}
@@ -603,32 +606,45 @@ export function AdminStatusTab({
                 <span className="api-console__stat">
                   <span className="api-console__stat-dot api-console__stat-dot--pass" />
                   <span className="api-console__stat-value">{passedEndpoints}</span>
-                  pass
+                  {t("status.api.pass")}
                 </span>
                 {failedEndpoints > 0 ? (
                   <span className="api-console__stat">
                     <span className="api-console__stat-dot api-console__stat-dot--fail" />
                     <span className="api-console__stat-value">{failedEndpoints}</span>
-                    fail
+                    {t("status.api.fail")}
                   </span>
                 ) : null}
               </div>
             ) : null}
           </div>
 
-          <ProgressButton
-            onPress={runAllCategories}
-            loadingLabel={t("status.api.runAll")}
-            successLabel={t("status.api.runAll")}
-            errorLabel={t("status.api.runAll")}
-            indicator="spinner"
-            disabled={runningAll}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <PlayIcon size={14} />
-              <span>{t("status.api.runAll")}</span>
-            </span>
-          </ProgressButton>
+          <div className="api-console__header-actions">
+            {isRunning ? (
+              <Button
+                h={44}
+                color="red"
+                variant="light"
+                onClick={() => abortRef.current?.abort()}
+              >
+                {t("status.api.stop")}
+              </Button>
+            ) : null}
+            <ProgressButton
+              className="api-console__run-all"
+              onPress={runAllCategories}
+              loadingLabel={t("status.api.runAll")}
+              successLabel={t("status.api.runAll")}
+              errorLabel={t("status.api.runAll")}
+              indicator="spinner"
+              disabled={isRunning}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <PlayIcon size={14} />
+                <span>{t("status.api.runAll")}</span>
+              </span>
+            </ProgressButton>
+          </div>
         </div>
 
         <div className="api-console__progress-track">

@@ -27,6 +27,7 @@ export type DashboardSummaryResponse = {
   total_member_count: number;
   active_events_count: number;
   all_war_win_rate: number;
+  featured_events: DashboardSummaryEvent[];
   upcoming_events: DashboardSummaryEvent[];
   my_signup_event_ids: string[];
   recent_wars: WarHistory[];

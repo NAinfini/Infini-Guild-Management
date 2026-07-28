@@ -18,6 +18,7 @@ import {
 } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
+import { ConfirmDialogProvider } from "../components/shared/ConfirmDialog";
 import i18n from "../i18n";
 import { usePreferencesStore } from "../stores/preferences";
 
@@ -115,7 +116,7 @@ const portalTheme = createTheme({
 });
 
 type Theme = "light" | "dark";
-type Accent = "teal" | "indigo" | "violet";
+type Accent = "teal" | "indigo" | "violet" | "orange";
 
 interface ThemeContextValue {
   theme: Theme;
@@ -184,7 +185,7 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
       <MantineProvider theme={mantineTheme} forceColorScheme={theme}>
         <Notifications position="top-right" />
         <ModalsProvider>
-          {children}
+          <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
         </ModalsProvider>
       </MantineProvider>
     </ThemeContext.Provider>

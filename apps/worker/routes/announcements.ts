@@ -8,6 +8,8 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { AnnouncementService } from "../services/AnnouncementService";
+import { AnnouncementImageStagingService } from "../services/announcement-image-staging";
+import { validateUploadBytes } from "../services/media";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
 import { hasMediaQuotaCapacity, withMediaAndPublishAnnouncement } from "./service-factory";
 
@@ -15,6 +17,11 @@ export const announcementsRoutes = new Hono();
 
 function getService(c: Context): AnnouncementService {
   return new AnnouncementService(getDb(c), withMediaAndPublishAnnouncement(c));
+}
+
+function getStagingService(c: Context): AnnouncementImageStagingService {
+  const deps = withMediaAndPublishAnnouncement(c);
+  return new AnnouncementImageStagingService({ media: deps.media, rawDb: deps.rawDb, signingSecret: deps.signingSecret });
 }
 
 async function requireAnnouncementCreate(c: Context) { return requirePermission(c, "announcements.create"); }
@@ -54,6 +61,29 @@ announcementsRoutes.post("/", async (c) => {
   const result = await getService(c).create(sessionUser.id, parsed.data);
   if (!result.ok) return buildError(c, result.code, result.message, result.details);
   return c.json(result.data, 201);
+});
+
+announcementsRoutes.post("/images/stage", async (c) => {
+  const sessionUser = await requireAnnouncementCreate(c);
+  const form = await safeFormData(c);
+  const files = collectFiles(form);
+  if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
+  const mediaPolicy = await withMediaAndPublishAnnouncement(c).getMediaPolicy();
+  if (files.length > mediaPolicy.quotas.announcement) {
+    return buildError(c, "VALIDATION_ERROR", `Maximum ${mediaPolicy.quotas.announcement} announcement images per upload`);
+  }
+  const allowedTypes = new Set<string>(ALLOWED_IMAGE_TYPES);
+  const fileData: Array<{ data: ArrayBuffer; contentType: string }> = [];
+  for (const file of files) {
+    if (file.size > mediaPolicy.max_file_size_bytes.announcement_image) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
+    const data = await file.arrayBuffer();
+    const validation = validateUploadBytes(data, file.type || "application/octet-stream", allowedTypes);
+    if (!validation.ok) return buildError(c, "VALIDATION_ERROR", validation.message);
+    fileData.push({ data, contentType: validation.contentType });
+  }
+  const token = form.get("staging_token");
+  const result = await getStagingService(c).stage(sessionUser.id, fileData, typeof token === "string" ? token : undefined, mediaPolicy.quotas.announcement);
+  return handleResult(c, result, 201);
 });
 
 announcementsRoutes.patch("/:id", async (c) => {

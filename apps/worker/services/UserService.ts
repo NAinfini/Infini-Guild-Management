@@ -193,8 +193,8 @@ function toProfilePayload(profile: ProfileRow, options: { includeNotes: boolean;
     audio_key: profile.audioKey,
     video_urls: parseStringArray(profile.videoUrls),
     availability: options.includePrivate ? parseRecord(profile.availability) : null,
-    vacation_start: profile.vacationStart,
-    vacation_end: profile.vacationEnd,
+    vacation_start: options.includePrivate ? profile.vacationStart : null,
+    vacation_end: options.includePrivate ? profile.vacationEnd : null,
     notes: options.includeNotes ? profile.notes : null,
     created_at: profile.createdAt,
     updated_at: profile.updatedAt,
@@ -704,9 +704,10 @@ export class UserService {
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid username change payload", parsed.error.flatten());
 
     /*
-     * Unconditional, unlike the registration and admin-create guards: nothing
-     * legitimately renames an account into the system-test namespace, and the
-     * cleanup cron would permanently delete it a day later.
+     * Same reservation enforced at registration (AuthService.register) and at
+     * admin-created accounts (AdminService.createMember): nothing legitimately
+     * renames an account into the system-test namespace, and the cleanup cron
+     * would permanently delete it a day later.
      */
     if (isReservedSystemTestUsername(parsed.data.newUsername)) {
       return err("VALIDATION_ERROR", `Usernames beginning with "${SYSTEM_TEST_USERNAME_PREFIX}" are reserved`);

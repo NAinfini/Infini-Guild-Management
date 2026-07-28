@@ -1,5 +1,5 @@
 import { EVENT_TYPES, type Event } from "@guild/shared";
-import { modals } from "@mantine/modals";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { useCallback, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
@@ -54,6 +54,7 @@ type UseEventsEditorControllerParams = {
 
 export function useEventsEditorController({ attachmentSnapshot }: UseEventsEditorControllerParams) {
   const { t } = useTranslation("events");
+  const confirm = useConfirmDialog();
   const [editorOpen, editorHandlers] = useDisclosure(false);
   const [editorTouched, setEditorTouched] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
@@ -254,18 +255,12 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
 
   const closeEditor = useCallback(async () => {
     if (isEditorDirty) {
-      const confirmed = await new Promise<boolean>((resolve) => {
-        modals.openConfirmModal({
-          title: t("confirm.discardUnsaved.title"),
-          children: t("confirm.discardUnsaved.description"),
-          labels: { confirm: t("common:action.delete"), cancel: t("common:action.cancel") },
-          confirmProps: { color: "yellow" },
-          onConfirm: () => resolve(true),
-          onCancel: () => resolve(false),
-          closeOnConfirm: true,
-          closeOnCancel: true,
-          centered: true,
-        });
+      const confirmed = await confirm({
+        title: t("confirm.discardUnsaved.title"),
+        description: t("confirm.discardUnsaved.description"),
+        confirmLabel: t("common:action.delete"),
+        cancelLabel: t("common:action.cancel"),
+        intent: "warning",
       });
       if (!confirmed) {
         return false;
@@ -275,7 +270,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorTouched(false);
     setEditorBaseline(null);
     return true;
-  }, [isEditorDirty, t]);
+  }, [confirm, isEditorDirty, t]);
   const closeEditorAfterSave = useCallback(() => {
     editorHandlers.close();
     setEditorTouched(false);

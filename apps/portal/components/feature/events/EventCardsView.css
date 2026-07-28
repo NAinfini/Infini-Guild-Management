@@ -25,9 +25,13 @@
   opacity: 0.85;
   pointer-events: none;
   /* --event-card-accent 的兜底一直是死代码：下面的六条 :has() 规则
-     （weekly_mission/raid、guild_war、social、poll、raffle、other）覆盖了
+     （weekly_mission、guild_war、social、poll、raffle、other）覆盖了
      EventCardsView.tsx:54 `type in EVENT_TYPE_COLORS ? type : "other"` 的
-     全部分支，没有第七种未匹配的情况，去掉兜底不改变任何行为（rule 1）。 */
+     全部分支，没有第七种未匹配的情况，去掉兜底不改变任何行为（rule 1）。
+     这个覆盖关系今天成立，但 CSS 侧类名硬编码、配置侧数据驱动，两者原本无
+     守卫绑定——现在由 event-colors.test.ts 里的一条断言把两边钉在一起：
+     往游戏配置加一个事件类型且这里漏加对应规则会直接测红，而不是让
+     --event-card-accent 静默解析不出来（final-review.md I3）。 */
   background: linear-gradient(to right, var(--event-card-accent) 0 4px, transparent 4px);
 }
 
@@ -41,8 +45,12 @@
   content: none;
 }
 
-.event-card:has(.event-card__header--weekly_mission),
-.event-card:has(.event-card__header--raid) {
+/* 竖条取色策略：weekly_mission 与下面的 social 两类刻意吃 --accent-fill /
+   --accent-fill-hover（主题强调色），不吃 utils/event-colors.ts 为徽章/标签
+   派生的游戏配置色（yan-yun.ts 现在把这两类配成 cyan / grape）。这是本次
+   改版引入的有意视觉分歧：同一张卡上竖条与徽章可能不同色，是否统一由后续
+   视觉决策裁定，见 event-colors.ts 顶部注释（final-review.md I2）。 */
+.event-card:has(.event-card__header--weekly_mission) {
   --event-card-accent: var(--accent-fill);
 }
 
@@ -51,9 +59,10 @@
 }
 
 /* --color-secondary（古铜色）是本次改版要消灭的暖金配色，装饰性用途收敛到
-   「更深一档主色」= --accent-fill-hover，与 raid/weekly_mission 的
+   「更深一档主色」= --accent-fill-hover，与 weekly_mission 的
    --accent-fill 区分开，保留分类可辨识度（task-7-addendum.md 前序约定段，
-   不用 --accent-600）。 */
+   不用 --accent-600）。竖条取色刻意跟主题色而非游戏配置色的说明见上方
+   weekly_mission 规则前的注释（final-review.md I2）。 */
 .event-card:has(.event-card__header--social) {
   --event-card-accent: var(--accent-fill-hover);
 }
@@ -128,8 +137,8 @@
 }
 
 .event-card__type-badge {
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: normal;
   font-weight: 700;
   min-height: 24px;
 }
@@ -154,8 +163,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--control-icon-size-regular);
+  height: var(--control-icon-size-regular);
   border-radius: 6px;
   cursor: pointer;
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);

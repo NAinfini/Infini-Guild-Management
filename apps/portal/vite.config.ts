@@ -1,18 +1,77 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { Buffer } from "node:buffer";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineConfig, loadEnv } from "vite";
+import { gzipSync } from "node:zlib";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 
 const portalDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(portalDir, "..", "..");
 export const API_PROXY_CONTEXT = "^/api(?:/|$)";
 const SOURCE_MODULE_PATH_PATTERN = /\/[^/?#]+\.[^/?#]+$/;
 
+export const ECHARTS_CHUNK_BUDGET = {
+  rawBytes: 575_000,
+  gzipBytes: 200_000,
+} as const;
+
+export type LogicalChunkSize = {
+  name: string;
+  rawBytes: number;
+  gzipBytes: number;
+};
+
+export function findEChartsChunkBudgetViolation(
+  chunks: readonly LogicalChunkSize[],
+): string | null {
+  const chunk = chunks.find(({ name }) => name === "echarts-core");
+  if (!chunk) return null;
+
+  const exceeded: string[] = [];
+  if (chunk.rawBytes > ECHARTS_CHUNK_BUDGET.rawBytes) {
+    exceeded.push(`raw ${chunk.rawBytes} > ${ECHARTS_CHUNK_BUDGET.rawBytes} bytes`);
+  }
+  if (chunk.gzipBytes > ECHARTS_CHUNK_BUDGET.gzipBytes) {
+    exceeded.push(`gzip ${chunk.gzipBytes} > ${ECHARTS_CHUNK_BUDGET.gzipBytes} bytes`);
+  }
+  return exceeded.length > 0
+    ? `ECharts logical chunk exceeded its bundle budget: ${exceeded.join(", ")}`
+    : null;
+}
+
+function echartsBundleBudgetPlugin(): Plugin {
+  return {
+    name: "echarts-bundle-budget",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      const sizes = Object.values(bundle)
+        .filter((output) => output.type === "chunk")
+        .map((chunk) => ({
+          name: chunk.name,
+          rawBytes: Buffer.byteLength(chunk.code),
+          gzipBytes: gzipSync(chunk.code).byteLength,
+        }));
+      const violation = findEChartsChunkBudgetViolation(sizes);
+      if (violation) this.error(violation);
+    },
+  };
+}
+
 export function shouldProxyApiRequest(url: string): boolean {
   const queryIndex = url.search(/[?#]/);
   const pathname = queryIndex === -1 ? url : url.slice(0, queryIndex);
   return new RegExp(API_PROXY_CONTEXT).test(pathname) && !SOURCE_MODULE_PATH_PATTERN.test(pathname);
+}
+
+export function replaceSiteConfigPlaceholders(
+  html: string,
+  siteName: string,
+  siteLogoUrl: string,
+): string {
+  return html
+    .replaceAll("{{SITE_NAME}}", siteName)
+    .replaceAll("{{SITE_LOGO_URL}}", siteLogoUrl);
 }
 
 function normalizeTarget(value: string): string {
@@ -35,13 +94,26 @@ export default defineConfig(({ mode }) => {
     env.VITE_WORKER_API_ORIGIN ?? process.env.VITE_WORKER_API_ORIGIN ?? "http://127.0.0.1:8787",
   );
   const workerWsTarget = toWsTarget(workerHttpTarget);
+  const localSiteName = env.VITE_SITE_NAME?.trim() || "Infini Guild";
+  const localSiteLogoUrl = env.VITE_SITE_LOGO_URL?.trim() || "/guild-logo.webp";
 
   return {
     root: portalDir,
-    plugins: [tailwindcss(), react()],
+    plugins: [
+      {
+        name: "local-site-config",
+        apply: "serve",
+        transformIndexHtml(html) {
+          return replaceSiteConfigPlaceholders(html, localSiteName, localSiteLogoUrl);
+        },
+      },
+      echartsBundleBudgetPlugin(),
+      tailwindcss(),
+      react(),
+    ],
     build: {
       sourcemap: mode !== "production",
-      chunkSizeWarningLimit: 550,
+      chunkSizeWarningLimit: 600,
       rollupOptions: {
         output: {
           manualChunks(id) {

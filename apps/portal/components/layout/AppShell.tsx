@@ -24,7 +24,14 @@ import { isExternalViewSearch } from "../../utils/external-view";
 import { AppErrorOverlay } from "../shared/AppErrorOverlay";
 import { OverlayRegistrar } from "../shared/OverlayRegistrar";
 import { BottomNav } from "./BottomNav";
-import { AppSidebar, NAV_ITEMS, SIDEBAR_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from "./AppSidebar";
+import {
+  AppSidebar,
+  NAV_ITEMS,
+  SIDEBAR_WIDTH,
+  SIDEBAR_COLLAPSED_WIDTH,
+  MOBILE_BREAKPOINT_PX,
+  HEADER_COMPACT_BREAKPOINT_PX,
+} from "./AppSidebar";
 import type { NavItem } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
 import "./AppShell.css";
@@ -104,7 +111,8 @@ export function AppShell() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
   const isExternalView = isExternalViewSearch(searchStr);
-  const isMobile = useMediaQuery("(max-width: 767px)") ?? false;
+  const isMobile = useMediaQuery(`(max-width: ${MOBILE_BREAKPOINT_PX}px)`) ?? false;
+  const isHeaderCompact = useMediaQuery(`(max-width: ${HEADER_COMPACT_BREAKPOINT_PX}px)`) ?? false;
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const isSidebarCollapsed = !isSidebarExpanded;
   const sidebarWidth = isSidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH;
@@ -116,7 +124,6 @@ export function AppShell() {
   const user = useAuthStore((s) => s.user);
   const clearSession = useAuthStore((s) => s.clearSession);
   const locale = usePreferencesStore((s) => s.locale);
-  const pushNotificationSound = usePreferencesStore((s) => s.pushNotificationSound);
   const notificationFeatures = useNotificationStore((state) => state.features);
   const pushEntries = useNotificationStore((state) => state.pushHistory);
   const { markFeatureAsRead, markPushAsRead, markAllPushAsRead, clearPushHistory } = useNotificationStore.getState();
@@ -229,7 +236,6 @@ export function AppShell() {
   useNotificationPresentation({
     enabled: Boolean(user),
     showToast: true,
-    playSound: pushNotificationSound,
   });
 
   const logoutMutation = useMutation({
@@ -245,7 +251,7 @@ export function AppShell() {
     logoutMutation.mutate();
   };
 
-  const canSwitchView = userCanAccessAdmin(user);
+  const canSwitchView = user?.permissions["admin.roles.view"] === true;
 
   const rolesQuery = useQuery({
     queryKey: queryKeys.admin.roles(),
@@ -269,6 +275,9 @@ export function AppShell() {
           return false;
         }
         if (item.requiresModerator) {
+          if (viewingAs === user?.role) {
+            return userCanAccessAdmin(user);
+          }
           const roles = rolesQuery.data ?? [];
           return canAccessAdmin(roles, viewingAs);
         }
@@ -388,7 +397,7 @@ export function AppShell() {
         className="app-shell-root"
         layout="alt"
         header={{ height: isMobile ? 56 : 64 }}
-        navbar={!isMobile ? { width: sidebarWidth, breakpoint: "md" } : undefined}
+        navbar={!isMobile ? { width: sidebarWidth, breakpoint: MOBILE_BREAKPOINT_PX } : undefined}
         padding={0}
       >
         <ScrollProgress thicknessPx={3} zIndex={1000} container={scrollContainerRef} />
@@ -419,6 +428,7 @@ export function AppShell() {
 
         <AppHeader
           isMobile={isMobile}
+          isHeaderCompact={isHeaderCompact}
           activePageTitle={activePageTitle}
           headerActions={headerActions}
           user={user}

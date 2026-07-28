@@ -7,6 +7,7 @@
   "card.upcomingEvents.title": "Upcoming Events",
   "card.upcomingEvents.unit": "events",
   "card.upcomingEvents.viewEvent": "View event",
+  "card.upcomingEvents.viewAll": "View all {{count}}",
   "card.mySignups.title": "My Signups",
   "card.mySignups.unit": "events",
   "card.mySignups.empty": "No signups this week",

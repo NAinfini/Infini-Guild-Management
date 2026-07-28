@@ -18,7 +18,7 @@ import {
   TrophyIcon,
   UsersIcon,
 } from "@portal/components/icons";
-import { type ComponentType, useState } from "react";
+import { type ComponentType, useId, useState } from "react";
 import { type CategoryDef, type EndpointResult, type EndpointDef } from "./AdminApiTestEngine";
 import "./AdminApiTest.css";
 
@@ -92,7 +92,10 @@ function progressState(allPassed: boolean, hasFail: boolean): ProgressState {
  * toRgba——所以字面 var() 字符串不会重演那次「变黑」，Badge/Alert 这类
  * 组件上真正的风险是上一段说的 isLight 误判，不是变黑。
  */
-const PROGRESS_STATE_COLOR_VAR: Record<ProgressState, string> = {
+// 导出（而不只是模块内 const）是因为 AdminApiTestCategory.test.ts 里的守卫
+// 断言要拿它跟 AdminApiTest.css 的 .api-cat__progress-fill--* 逐值比对，
+// 防止两份同义 token 表悄悄漂移（final-review.md M3）。
+export const PROGRESS_STATE_COLOR_VAR: Record<ProgressState, string> = {
   fail: "var(--status-danger)",
   pass: "var(--status-success)",
   pending: "var(--accent-fill)",
@@ -140,6 +143,7 @@ export function ApiTestCategory({
   resultMap: Map<string, EndpointResult>;
 }) {
   const [open, setOpen] = useState(false);
+  const endpointsId = useId();
 
   const catRunning = category.endpoints.some((ep) => runningSet.has(epKey(category.key, ep)));
   const catDone = category.endpoints.filter((ep) => resultMap.has(epKey(category.key, ep))).length;
@@ -189,37 +193,47 @@ export function ApiTestCategory({
     <div className="api-cat">
       <div className={`api-cat__accent ${accentCls}`} />
 
-      <div className="api-cat__row" onClick={() => setOpen((p) => !p)}>
-        <div className={`api-cat__chevron ${isOpen ? "api-cat__chevron--open" : ""}`}>
-          <ChevronRightIcon size={13} />
-        </div>
+      <div className="api-cat__row">
+        <button
+          type="button"
+          className="api-cat__toggle"
+          aria-expanded={isOpen}
+          aria-controls={endpointsId}
+          aria-label={`${category.label}: ${catDone}/${catTotal}`}
+          onClick={() => setOpen((previous) => !previous)}
+        >
+          <span className={`api-cat__chevron ${isOpen ? "api-cat__chevron--open" : ""}`}>
+            <ChevronRightIcon size={13} />
+          </span>
 
-        <div className="api-cat__icon">
-          <Icon size={15} />
-        </div>
+          <span className="api-cat__icon">
+            <Icon size={15} />
+          </span>
 
-        <span className="api-cat__name">{category.label}</span>
+          <span className="api-cat__name">{category.label}</span>
 
-        {catDone > 0 ? (
-          <RingProgress
-            className="api-cat__ring"
-            size={28}
-            thickness={3}
-            roundCaps
-            sections={[{ value: pct, color: ringColor }]}
-          />
-        ) : null}
+          {catDone > 0 ? (
+            <RingProgress
+              className="api-cat__ring"
+              size={28}
+              thickness={3}
+              roundCaps
+              sections={[{ value: pct, color: ringColor }]}
+            />
+          ) : null}
 
-        <span className="api-cat__fraction">{catDone}/{catTotal}</span>
-        {catDone > 0 ? <span className="api-cat__pct">{pct}%</span> : null}
-        {latencyCount > 0 ? <span className="api-cat__avg-latency">{avgLatency}ms</span> : null}
-        {statusDot ? <span className={`api-cat__status-dot ${statusDot}`} /> : null}
+          <span className="api-cat__fraction">{catDone}/{catTotal}</span>
+          {catDone > 0 ? <span className="api-cat__pct">{pct}%</span> : null}
+          {latencyCount > 0 ? <span className="api-cat__avg-latency">{avgLatency}ms</span> : null}
+          {statusDot ? <span className={`api-cat__status-dot ${statusDot}`} /> : null}
 
-        <span className="api-cat__spacer" />
+          <span className="api-cat__spacer" />
+        </button>
 
-        <div className="api-cat__actions" onClick={(e) => e.stopPropagation()}>
+        <div className="api-cat__actions">
           {catRunning ? <span className="api-ep__running" /> : null}
           <ProgressButton
+            className="api-cat__run-button"
             ariaLabel={category.label}
             onPress={() => onRunCategory(category)}
             disabled={catRunning}
@@ -239,7 +253,7 @@ export function ApiTestCategory({
       ) : null}
 
       {isOpen ? (
-        <div className="api-cat__endpoints">
+        <div id={endpointsId} className="api-cat__endpoints">
           {category.endpoints.map((ep) => (
             <EndpointRow
               key={epKey(category.key, ep)}

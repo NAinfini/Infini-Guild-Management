@@ -11,6 +11,7 @@ import { fetchAbsencesWindow } from "../../services/UserService";
 import { queryKeys } from "../../api/query-keys";
 import { useShallow } from "zustand/react/shallow";
 import { useGuildWarStore } from "../../stores/guildWar";
+import { useAuthStore } from "../../stores/auth";
 import type { AnalyticsDatePreset } from "../../types/guild-war";
 import { copyPlainText } from "../../utils/copy";
 import { useGuildWarAnalyticsComputed } from "./useGuildWarAnalyticsComputed";
@@ -40,6 +41,7 @@ export function useGuildWarAnalytics({
   guildWarService,
 }: UseGuildWarAnalyticsParams) {
   const { t } = useTranslation("guild-war");
+  const hasSession = useAuthStore((state) => Boolean(state.user));
   const {
     analyticsMode,
     setAnalyticsMode,
@@ -179,7 +181,7 @@ export function useGuildWarAnalytics({
   const absencesQuery = useQuery({
     queryKey: queryKeys.absences.window(absencesWindow?.from ?? "", absencesWindow?.to ?? ""),
     queryFn: () => fetchAbsencesWindow(absencesWindow!.from, absencesWindow!.to),
-    enabled: Boolean(absencesWindow),
+    enabled: hasSession && Boolean(absencesWindow),
     staleTime: 60_000,
     placeholderData: keepPreviousData,
   });

@@ -1,5 +1,5 @@
 import { type WikiArticle } from "@guild/shared";
-import { modals } from "@mantine/modals";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
@@ -28,6 +28,7 @@ function toArchivedParam(mode: WikiArchivedMode): boolean | undefined {
 
 export function useWikiPageController() {
   const { t } = useTranslation("wiki");
+  const confirm = useConfirmDialog();
   const navigate = useNavigate();
   const params = useParams({ strict: false });
   const routeSlug = (params as { slug?: string }).slug ?? null;
@@ -66,7 +67,6 @@ export function useWikiPageController() {
 
   const selectedCategoryFilterKey =
     selectedCategoryIds.length === 0 ? "all" : [...selectedCategoryIds].sort().join(",");
-  const singleSelectedCategoryId = selectedCategoryIds.length === 1 ? selectedCategoryIds[0] : undefined;
 
   const articlesQuery = useQuery({
     queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, archivedMode, pinnedOnly, articlesPage),
@@ -74,7 +74,7 @@ export function useWikiPageController() {
       fetchWikiArticles({
         page: articlesPage,
         limit: 50,
-        category_id: singleSelectedCategoryId,
+        category_id: selectedCategoryIds,
         search: debouncedSearch || undefined,
         archived: toArchivedParam(archivedMode),
         pinned: pinnedOnly ? true : undefined,
@@ -119,15 +119,7 @@ export function useWikiPageController() {
 
   const articlesHasMore = accumulatedArticles.length < articlesTotal;
 
-  const articles = useMemo(() => {
-    const selectedSet = new Set(selectedCategoryIds);
-    return accumulatedArticles.filter((item) => {
-      if (selectedCategoryIds.length > 0 && !selectedSet.has(item.category_id)) {
-        return false;
-      }
-      return true;
-    });
-  }, [accumulatedArticles, selectedCategoryIds]);
+  const articles = accumulatedArticles;
 
   const selectedArticle = detailQuery.data ?? null;
 
@@ -249,27 +241,22 @@ export function useWikiPageController() {
     }
   }, [editorPaneHandlers, isMobile]);
 
-  const handleExitArticleEditor = useCallback(() => {
+  const handleExitArticleEditor = useCallback(async () => {
     if (articleEditor.isDirty) {
-      modals.openConfirmModal({
+      const confirmed = await confirm({
         title: t("confirm.discardArticle.title"),
-        children: t("confirm.discardArticle.description"),
-        centered: true,
-        confirmProps: { color: "red" },
-        labels: {
-          cancel: t("common:action.cancel"),
-          confirm: t("common:action.discard"),
-        },
-        onConfirm: () => {
-          articleEditor.exitEditor();
-          editorPaneHandlers.close();
-        },
+        description: t("confirm.discardArticle.description"),
+        confirmLabel: t("common:action.discard"),
+        cancelLabel: t("common:action.cancel"),
+        intent: "danger",
       });
-      return;
+      if (!confirmed) {
+        return;
+      }
     }
     articleEditor.exitEditor();
     editorPaneHandlers.close();
-  }, [articleEditor, editorPaneHandlers, t]);
+  }, [articleEditor, confirm, editorPaneHandlers, t]);
 
   const setSkipAutoSelectOnceTrue = useCallback(() => {
     setSkipAutoSelectOnce(true);
@@ -285,21 +272,20 @@ export function useWikiPageController() {
     editorPaneHandlers.close();
   }, [categoryEditor, editorPaneHandlers]);
 
-  const handleDeleteCategory = useCallback((categoryId: string) => {
+  const handleDeleteCategory = useCallback(async (categoryId: string) => {
     const category = categoriesById.get(categoryId);
     if (!category) return;
-    modals.openConfirmModal({
+    const confirmed = await confirm({
       title: t("confirm.deleteCategory.title"),
-      children: t("confirm.deleteCategory.description", { name: category.name }),
-      centered: true,
-      confirmProps: { color: "red" },
-      labels: {
-        cancel: t("common:action.cancel"),
-        confirm: t("common:action.delete"),
-      },
-      onConfirm: () => categoryEditor.deleteCategory(categoryId),
+      description: t("confirm.deleteCategory.description", { name: category.name }),
+      confirmLabel: t("common:action.delete"),
+      cancelLabel: t("common:action.cancel"),
+      intent: "danger",
     });
-  }, [categoriesById, categoryEditor, t]);
+    if (confirmed) {
+      categoryEditor.deleteCategory(categoryId);
+    }
+  }, [categoriesById, categoryEditor, confirm, t]);
 
   return {
     // layout / responsive

@@ -1,14 +1,17 @@
 import {
   createStorageCategorySchema,
   createStorageItemSchema,
+  createStorageBatchTransactionSchema,
   createStorageSchema,
   createStorageTransactionSchema,
   updateStorageItemSchema,
   type CreateStorageCategoryPayload,
+  type CreateStorageBatchTransactionPayload,
   type CreateStorageItemPayload,
   type CreateStoragePayload,
   type CreateStorageTransactionPayload,
   type Storage,
+  type StorageBatchTransactionResult,
   type StorageCategory,
   type StorageItem,
   type StorageTransaction,
@@ -68,4 +71,13 @@ export function deleteStorageItemImage(itemId: string, imageId: string): Promise
 
 export function createStorageTransaction(itemId: string, payload: CreateStorageTransactionPayload): Promise<StorageTransaction> {
   return apiRequest<StorageTransaction>(`/api/storage/items/${itemId}/transactions`, { method: "POST", bodyJson: createStorageTransactionSchema.parse(payload) });
+}
+
+export function createStorageBatchTransaction(
+  payload: CreateStorageBatchTransactionPayload,
+): Promise<StorageBatchTransactionResult> {
+  return apiRequest<StorageBatchTransactionResult>("/api/storage/transactions/batch", {
+    method: "POST",
+    bodyJson: createStorageBatchTransactionSchema.parse(payload),
+  });
 }

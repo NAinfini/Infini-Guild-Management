@@ -6,6 +6,7 @@ export {
 } from "../api/queries/storage";
 export {
   createStorage,
+  createStorageBatchTransaction,
   createStorageCategory,
   createStorageItem,
   createStorageTransaction,

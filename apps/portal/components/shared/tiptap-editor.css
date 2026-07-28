@@ -1,6 +1,6 @@
 .infini-tiptap-toolbar {
   display: flex;
-  gap: 6px;
+  gap: var(--control-icon-size-compact);
   flex-wrap: wrap;
   overflow: visible;
   padding-block: 4px;
@@ -13,7 +13,7 @@
 .infini-tiptap-toolbar__group {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--control-icon-size-compact);
   padding-right: 6px;
   border-right: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
 }

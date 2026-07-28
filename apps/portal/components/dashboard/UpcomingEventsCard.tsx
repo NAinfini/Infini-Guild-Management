@@ -35,6 +35,7 @@ type UpcomingEventsCardProps = {
   featuredRows: DashboardUpcomingEventRow[];
   rows: DashboardUpcomingEventRow[];
   onOpenEvent: (event: Pick<Event, "id" | "title">) => void;
+  onViewAll: () => void;
 };
 
 export const UpcomingEventsCard = memo(function UpcomingEventsCard({
@@ -42,6 +43,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
   featuredRows,
   rows,
   onOpenEvent,
+  onViewAll,
 }: UpcomingEventsCardProps) {
   const { t, i18n } = useTranslation("dashboard");
   const safeUpcomingCount = Math.max(0, upcomingEventsCount);
@@ -54,16 +56,21 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
       <Group gap={8} align="center" wrap="nowrap" justify="space-between">
         {cardHeading(t("card.upcomingEvents.title"), <CalendarEventOutlined size={18} />)}
         {safeUpcomingCount > 0 ? (
-          <Badge size="sm" variant="light" color="gray" style={{ flexShrink: 0 }}>
-            <NumberTicker value={safeUpcomingCount} /> {t("card.upcomingEvents.unit")}
-          </Badge>
+          <Group gap={6} wrap="nowrap">
+            <Badge size="sm" variant="light" color="gray" style={{ flexShrink: 0 }}>
+              <NumberTicker value={safeUpcomingCount} /> {t("card.upcomingEvents.unit")}
+            </Badge>
+            <Button size="xs" variant="subtle" onClick={onViewAll}>
+              {t("card.upcomingEvents.viewAll", { count: safeUpcomingCount })}
+            </Button>
+          </Group>
         ) : null}
       </Group>
         {!hasAnyRows ? (
           <EmptyState title={t("empty")} />
         ) : (
           <Stack gap={8} mt={12}>
-            {[...featuredRows, ...rows].slice(0, 5).map((item) => {
+            {[...featuredRows, ...rows].map((item) => {
               const signedUpCount = item.members.length;
               const capacity = item.item.capacity ?? 0;
               const percentage = capacity > 0 ? Math.round((signedUpCount / capacity) * 100) : 0;
@@ -79,7 +86,14 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                       <Text size="xl" fw={700}>{day}</Text>
                     </Stack>
                     <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-                      <Text fw={600} size="sm" truncate>{item.item.title}</Text>
+                      <Text
+                        fw={600}
+                        size="sm"
+                        lineClamp={2}
+                        className="upcoming-event-row__title"
+                      >
+                        {item.item.title}
+                      </Text>
                       {item.item.description ? (
                         <Text size="xs" c="dimmed" lineClamp={1}>
                           {item.item.description}
@@ -99,7 +113,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                     </Stack>
                       {/* Ten 48px avatars ate the row and truncated the event title to
                           "Weekly Missio…". Six smaller ones leave the title readable. */}
-                      <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+                      <Group gap={4} wrap="nowrap" className="upcoming-event-row__avatars" style={{ flexShrink: 0 }}>
                         {item.members.slice(0, 6).map((member) => (
                           <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={36} />
                         ))}

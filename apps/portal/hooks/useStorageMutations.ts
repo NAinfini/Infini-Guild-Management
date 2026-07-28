@@ -1,5 +1,6 @@
 import type {
   CreateStorageCategoryPayload,
+  CreateStorageBatchTransactionPayload,
   CreateStorageItemPayload,
   CreateStoragePayload,
   CreateStorageTransactionPayload,
@@ -10,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { queryKeys } from "../api/query-keys";
 import {
   createStorage,
+  createStorageBatchTransaction,
   createStorageCategory,
   createStorageItem,
   createStorageTransaction,
@@ -105,6 +107,12 @@ export function useStorageMutations() {
     onError,
   });
 
+  const createBatchTransactionMutation = useMutation({
+    mutationFn: (payload: CreateStorageBatchTransactionPayload) => createStorageBatchTransaction(payload),
+    onSuccess: async () => { notifySuccess(t("message.batchSaved")); await invalidateStorage(); },
+    onError,
+  });
+
   return {
     createStorageMutation,
     updateStorageMutation,
@@ -118,5 +126,6 @@ export function useStorageMutations() {
     uploadImagesMutation,
     deleteImageMutation,
     createTransactionMutation,
+    createBatchTransactionMutation,
   };
 }

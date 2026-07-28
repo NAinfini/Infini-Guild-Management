@@ -80,6 +80,57 @@ describe("UserService", () => {
     expect(sqlDebug).not.toContain("json_each");
   });
 
+  it("hides absence dates from the public roster payload", async () => {
+    const offset = vi.fn().mockResolvedValue([{
+      userId: "u-1",
+      username: "Alpha",
+      role: "member",
+      isActive: true,
+      deletedAt: null,
+      userCreatedAt: "2026-01-01T00:00:00.000Z",
+      userUpdatedAt: "2026-01-01T00:00:00.000Z",
+      profileId: "profile-1",
+      profileUserId: "u-1",
+      power: 100,
+      classes: "[]",
+      titleHtml: null,
+      bio: null,
+      images: "[]",
+      avatarKey: null,
+      audioKey: null,
+      videoUrls: "[]",
+      availability: null,
+      vacationStart: "2026-07-26",
+      vacationEnd: "2026-07-30",
+      notes: null,
+      profileCreatedAt: "2026-01-01T00:00:00.000Z",
+      profileUpdatedAt: "2026-01-01T00:00:00.000Z",
+    }]);
+    const limit = vi.fn(() => ({ offset }));
+    const orderBy = vi.fn(() => ({ limit }));
+    const where = vi.fn(() => ({ orderBy }));
+    const leftJoin = vi.fn(() => ({ where }));
+    const from = vi.fn(() => ({ leftJoin }));
+    const service = new UserService({ select: vi.fn(() => ({ from })) } as never, createDeps());
+
+    const result = await service.listUsers({
+      page: 1,
+      limit: 20,
+      search: "",
+      sessionUser: null,
+      includeTotal: false,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.data[0]).toMatchObject({
+      profile: {
+        vacation_start: null,
+        vacation_end: null,
+      },
+    });
+  });
+
   it("deletes multiple profile images with one profile update", async () => {
     const updateSet = vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) }));
     const select = vi

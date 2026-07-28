@@ -1,9 +1,10 @@
 import { updateMemberStatsSchema } from "@guild/shared";
-import { and, asc, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
 import { events, users, warHistory, warPoolMembers, warTeamMembers, warTeams } from "../../db/schema";
 import { err, ok, type ServiceResult } from "../result";
+import { escapeLikePattern, likeEscaped } from "../helpers";
 import {
   GuildWarCoreService,
   toMemberPayload,
@@ -174,11 +175,22 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     await this.deps.rawDb.batch(stmts);
   }
 
-  async listHistory(page: number, limit: number, filters: { dateFrom?: string; dateTo?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
+  async listHistory(page: number, limit: number, filters: { dateFrom?: string; dateTo?: string; search?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
     const offset = (page - 1) * limit;
     const where: SQL<unknown>[] = [];
     if (filters.dateFrom) where.push(gte(warHistory.createdAt, filters.dateFrom));
     if (filters.dateTo) where.push(lte(warHistory.createdAt, filters.dateTo));
+    if (filters.search?.trim()) {
+      const pattern = `%${escapeLikePattern(filters.search.trim())}%`;
+      where.push(or(
+        likeEscaped(warHistory.warName, pattern),
+        likeEscaped(warHistory.enemyName, pattern),
+        likeEscaped(warHistory.result, pattern),
+        likeEscaped(warHistory.createdAt, pattern),
+        likeEscaped(warHistory.ownStats, pattern),
+        likeEscaped(warHistory.enemyStats, pattern),
+      )!);
+    }
     const whereClause = where.length > 0 ? and(...where) : undefined;
     const selectFields = { id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt };
     const [rows, countRow] = await Promise.all([

@@ -9,7 +9,7 @@ export function fetchWikiCategories(): Promise<WikiCategory[]> {
 export function fetchWikiArticles(params: {
   page?: number;
   limit?: number;
-  category_id?: string;
+  category_id?: string | string[];
   archived?: boolean;
   pinned?: boolean;
   search?: string;
@@ -17,7 +17,12 @@ export function fetchWikiArticles(params: {
   const query = new URLSearchParams();
   query.set("page", String(params.page ?? 1));
   query.set("limit", String(params.limit ?? LIMITS.pagination.wiki));
-  if (params.category_id) query.set("category_id", params.category_id);
+  const categoryIds = typeof params.category_id === "string"
+    ? [params.category_id]
+    : params.category_id ?? [];
+  for (const categoryId of categoryIds) {
+    if (categoryId) query.append("category_id", categoryId);
+  }
   if (params.archived !== undefined) query.set("archived", String(params.archived));
   if (params.pinned !== undefined) query.set("pinned", String(params.pinned));
   if (params.search) query.set("search", params.search);

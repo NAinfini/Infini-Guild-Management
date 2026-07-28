@@ -79,7 +79,7 @@
 .roster-card-grid {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   padding: 16px;
   margin: -16px;
 }
@@ -99,6 +99,20 @@
 .roster-card-cell {
   min-width: 0;
   height: 100%;
+}
+
+/*
+ * 悬停时卡片放大到 1.1 并做三维倾斜，而网格间距只有 8px，所以它一定会压到
+ * 左右邻居身上——被压的那张必须在下面，否则邻卡的边框会横穿抬起来的卡面。
+ *
+ * z-index 提在网格项上，不是提在卡片上：卡片的父级 .member-card__frame 带
+ * perspective，那是一个层叠上下文，在它内部提 z-index 出不去这个格子。
+ * 网格项即使是 position: static 也认 z-index（弹性/网格子项的例外规则），
+ * 所以这里不需要额外加 position。两个分支各有一套容器，都要覆盖。
+ */
+.roster-card-cell:hover,
+.roster-virtual-cell:hover {
+  z-index: 5;
 }
 
 .roster-load-more {
@@ -165,7 +179,7 @@
   }
 
   .roster-card-grid {
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 8px;
   }
 

@@ -1,7 +1,7 @@
 import { type Announcement, type PaginatedResponse } from "@guild/shared";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/tiptap-meta";
 import { notifications } from "@mantine/notifications";
-import { modals } from "@mantine/modals";
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { format, isValid, parseISO } from "date-fns";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -15,6 +15,7 @@ import {
   archiveAnnouncement,
   createAnnouncement,
   deleteAnnouncement,
+  stageAnnouncementImages,
   type UpdateAnnouncementPayload,
   updateAnnouncement,
   uploadAnnouncementImages,
@@ -59,6 +60,7 @@ function readAnnouncementsLastSeenAt(): string | null {
 
 export function useAnnouncementsController() {
   const { t } = useTranslation("announcements");
+  const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const isExternalView = useExternalView();
   const { showError } = useAppError();
@@ -75,7 +77,7 @@ export function useAnnouncementsController() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [skipAutoSelectOnce, setSkipAutoSelectOnce] = useState(false);
   const [isCreating, isCreatingHandlers] = useDisclosure(false);
-  const [draftAnnouncementId, setDraftAnnouncementId] = useState<string | null>(null);
+  const [imageStagingToken, setImageStagingToken] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [bodyJson, setBodyJson] = useState(TIPTAP_DEFAULT_JSON);
   const [pinned, setPinned] = useState(false);
@@ -119,6 +121,7 @@ export function useAnnouncementsController() {
       message.success(t("message.created"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
       isCreatingHandlers.close();
+      setImageStagingToken(null);
       setSkipAutoSelectOnce(false);
       setSelectedId(data.id);
     },
@@ -380,38 +383,30 @@ export function useAnnouncementsController() {
 
   const handleCreateByStatus = useCallback(() => {
     isCreatingHandlers.open();
-    setDraftAnnouncementId(null);
+    setImageStagingToken(null);
     setSkipAutoSelectOnce(false);
     setSelectedId(null);
   }, []);
 
-  const handleSelectId = useCallback((id: string | null) => {
+  const handleSelectId = useCallback(async (id: string | null) => {
     if (isDirty) {
-      modals.openConfirmModal({
+      const confirmed = await confirm({
         title: t("confirm.discardUnsaved.title"),
-        children: t("confirm.discardUnsaved.description"),
-        centered: true,
-        confirmProps: { color: "red" },
-        labels: {
-          cancel: t("action.cancel"),
-          confirm: t("common:action.discard"),
-        },
-        onConfirm: () => {
-          if (id !== null) {
-            isCreatingHandlers.close();
-          }
-          setSkipAutoSelectOnce(false);
-          setSelectedId(id);
-        },
+        description: t("confirm.discardUnsaved.description"),
+        confirmLabel: t("common:action.discard"),
+        cancelLabel: t("action.cancel"),
+        intent: "danger",
       });
-      return;
+      if (!confirmed) {
+        return;
+      }
     }
     if (id !== null) {
       isCreatingHandlers.close();
     }
     setSkipAutoSelectOnce(false);
     setSelectedId(id);
-  }, [isDirty, isCreatingHandlers, t]);
+  }, [confirm, isDirty, isCreatingHandlers, t]);
 
   const resetFilters = useCallback(() => {
     setSearch("");
@@ -430,30 +425,13 @@ export function useAnnouncementsController() {
       };
       const status = statusMap[mode] ?? "published";
 
-      if (draftAnnouncementId) {
-        updateMutation.mutate({
-          id: draftAnnouncementId,
-          payload: {
-            title,
-            body_json: bodyJson,
-            pinned,
-            status,
-            publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
-          },
-        });
-        isCreatingHandlers.close();
-        setSkipAutoSelectOnce(false);
-        setSelectedId(draftAnnouncementId);
-        setDraftAnnouncementId(null);
-        return;
-      }
-
       createMutation.mutate({
         title,
         body_json: bodyJson,
         pinned,
         status,
         publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
+        staging_token: imageStagingToken ?? undefined,
       });
       return;
     }
@@ -487,12 +465,8 @@ export function useAnnouncementsController() {
 
   const handleCloseEditor = () => {
     if (isCreating) {
-      const orphanDraftId = draftAnnouncementId;
       isCreatingHandlers.close();
-      setDraftAnnouncementId(null);
-      if (orphanDraftId) {
-        archiveMutation.mutate(orphanDraftId);
-      }
+      setImageStagingToken(null);
       if (rows.length > 0) {
         setSelectedId(rows[0]?.id ?? null);
       }
@@ -514,25 +488,17 @@ export function useAnnouncementsController() {
   };
 
   const handleUploadAnnouncementImages = async (file: File) => {
-    let announcementId = selectedId;
-
-    if (isCreating || !announcementId) {
-      if (draftAnnouncementId) {
-        announcementId = draftAnnouncementId;
-      } else {
-        const created = await createAnnouncement({
-          title: title.trim() || t("draftTitle"),
-          body_json: bodyJson || TIPTAP_DEFAULT_JSON,
-          pinned: false,
-          status: "draft",
-        });
-        setDraftAnnouncementId(created.id);
-        announcementId = created.id;
-        await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+    if (isCreating || !selectedId) {
+      const staged = await stageAnnouncementImages(imageStagingToken, [file]);
+      setImageStagingToken(staged.staging_token);
+      const stagedKey = staged.keys[0];
+      if (!stagedKey) {
+        throw new Error("Image staging returned no key");
       }
+      return buildAnnouncementImageUrl(stagedKey);
     }
 
-    const uploaded = await uploadAnnouncementImages(announcementId, [file]);
+    const uploaded = await uploadAnnouncementImages(selectedId, [file]);
     const key = uploaded.keys[0];
     if (!key) {
       throw new Error("Image upload returned no key");

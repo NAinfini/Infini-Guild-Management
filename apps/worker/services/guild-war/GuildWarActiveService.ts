@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
 import { eventParticipants, events, users, warTeamMembers } from "../../db/schema";
+import { isEventPubliclyVisible } from "../events/event-visibility";
 import { err, ok, type ServiceResult } from "../result";
 import {
   buildActiveEtag,
@@ -41,9 +42,10 @@ export class GuildWarActiveService extends GuildWarCoreService {
     return super.getPoolMembersForEvent(eventId);
   }
 
-  private async getEventPayload(eventId: string): Promise<EventPayload> {
+  private async getEventPayload(eventId: string, canManage: boolean): Promise<EventPayload> {
     const eventRow = (await this.db.select({ id: events.id, type: events.type, title: events.title, description: events.description, startAt: events.startAt, endAt: events.endAt, capacity: events.capacity, pinned: events.pinned, signupLocked: events.signupLocked, autoArchive: events.autoArchive, autoArchived: events.autoArchived, visibleAt: events.visibleAt, archivedAt: events.archivedAt, createdBy: events.createdBy, updatedBy: events.updatedBy, seriesId: events.seriesId, instanceDate: events.instanceDate, createdAt: events.createdAt, updatedAt: events.updatedAt }).from(events).where(eq(events.id, eventId)).limit(1))[0];
     if (!eventRow) return null;
+    if (!canManage && !isEventPubliclyVisible(eventRow.visibleAt, new Date().toISOString())) return null;
     return eventSchema.parse({ id: eventRow.id, type: eventRow.type, title: eventRow.title, description: eventRow.description, start_at: eventRow.startAt, end_at: eventRow.endAt ?? null, capacity: eventRow.capacity ?? null, pinned: eventRow.pinned, signup_locked: eventRow.signupLocked, auto_archive: eventRow.autoArchive, auto_archived: eventRow.autoArchived, visible_at: eventRow.visibleAt ?? null, archived_at: eventRow.archivedAt ?? null, created_by: eventRow.createdBy, updated_by: eventRow.updatedBy ?? null, series_id: eventRow.seriesId ?? null, instance_date: eventRow.instanceDate ?? null, created_at: eventRow.createdAt, updated_at: eventRow.updatedAt });
   }
 
@@ -78,8 +80,11 @@ export class GuildWarActiveService extends GuildWarCoreService {
     await rawDb.batch(stmts);
   }
 
-  async getActive(eventId?: string): Promise<ServiceResult<unknown>> {
+  async getActive(eventId?: string, canManage = false): Promise<ServiceResult<unknown>> {
     if (!eventId) return ok({ war_history: null, event: null, teams: [], pool: [], participants: [], etag: null });
+
+    const eventPayload = await this.getEventPayload(eventId, canManage);
+    if (!eventPayload) return err("NOT_FOUND", "Guild war event not found");
 
     const teams = await this.getTeamsForEvent(eventId);
     const teamIds = teams.map((t) => t.id);
@@ -88,7 +93,6 @@ export class GuildWarActiveService extends GuildWarCoreService {
     const participantUserIds = await this.getEventParticipantUserIds(eventId);
 
     if (teams.length === 0 && dbPool.length === 0) {
-      const eventPayload = await this.getEventPayload(eventId);
       const virtualPool = participantUserIds.map((userId) => ({ id: `virtual:${userId}`, warHistoryId: null, eventId, userId }));
       return ok({
         war_history: null, event: eventPayload, etag: null,
@@ -105,7 +109,6 @@ export class GuildWarActiveService extends GuildWarCoreService {
       .filter((uid) => !assignedUserIds.has(uid))
       .map((uid) => ({ id: `virtual:${uid}`, warHistoryId: null, eventId, userId: uid }));
 
-    const eventPayload = await this.getEventPayload(eventId);
     const etag = buildActiveEtag(eventId, teams, members);
 
     return ok({

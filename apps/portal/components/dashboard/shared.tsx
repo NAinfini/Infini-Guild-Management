@@ -1,4 +1,4 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+import type { Event } from "@guild/shared";
 import { EVENT_TYPE_COLORS, UNKNOWN_EVENT_TYPE_COLOR } from "@portal/utils/event-colors";
 import { Group, Text } from "@mantine/core";
 import { format } from "date-fns";
@@ -29,8 +29,15 @@ export function cardHeading(text: string, icon?: ReactNode) {
 }
 
 export type DashboardMember = {
-  user: User;
-  profile: MemberProfile;
+  user: {
+    id: string;
+    username: string;
+  };
+  profile: {
+    classes: string[];
+    power: number;
+    avatar_key: string | null;
+  };
 };
 
 export type DashboardUpcomingEventRow = {

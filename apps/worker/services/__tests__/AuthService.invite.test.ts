@@ -83,3 +83,62 @@ describe("AuthService.register invite redemption", () => {
     expect(JSON.stringify(deps.writeAuditLog.mock.calls)).not.toContain("SECRET-INVITE-CODE");
   });
 });
+
+describe("AuthService.register reserved system-test username", () => {
+  /*
+   * system-test-cleanup permanently deletes users in this namespace, so a
+   * real member must never be able to register into it — the row would be
+   * gone a day later with no warning.
+   */
+  it("refuses to register an account into the system-test namespace", async () => {
+    const select = vi.fn();
+    const deps = createMockDeps("invite-id-1");
+    const service = new AuthService({ select } as never, deps);
+
+    const result = await service.register("VALID-CODE", "systemtest_hijack", "password123");
+
+    expect(result).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      message: 'Usernames beginning with "systemtest_" are reserved',
+    });
+    // Rejected before any lookup, so no duplicate check or invite redemption happens.
+    expect(select).not.toHaveBeenCalled();
+    expect((deps.rawDb as unknown as { prepare: ReturnType<typeof vi.fn> }).prepare).not.toHaveBeenCalled();
+  });
+
+  it("matches the reserved prefix case-insensitively", async () => {
+    const select = vi.fn();
+    const service = new AuthService({ select } as never, createMockDeps("invite-id-1"));
+
+    const result = await service.register("VALID-CODE", "SystemTest_Hijack", "password123");
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+  });
+});
+
+describe("AuthService.checkUsername reserved system-test username", () => {
+  /*
+   * The availability precheck must agree with the guards on register/
+   * admin-create/rename: otherwise it tells the registration form a
+   * `systemtest_` name is available, only for the submit to be rejected a
+   * moment later by AuthService.register.
+   */
+  it("reports a reserved-namespace username as unavailable without querying the database", async () => {
+    const select = vi.fn();
+    const service = new AuthService({ select } as never, createMockDeps(null));
+
+    const result = await service.checkUsername("systemtest_foo");
+
+    expect(result).toEqual({ ok: true, data: { available: false, reason: "reserved_prefix" } });
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it("matches the reserved prefix case-insensitively", async () => {
+    const service = new AuthService({ select: vi.fn() } as never, createMockDeps(null));
+
+    const result = await service.checkUsername("SystemTest_Foo");
+
+    expect(result).toEqual({ ok: true, data: { available: false, reason: "reserved_prefix" } });
+  });
+});

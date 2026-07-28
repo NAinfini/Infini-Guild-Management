@@ -3,9 +3,9 @@ import { EVENT_TYPES } from "@guild/shared";
 import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
 import { tzOffsetToAnchorIso, buildFormState, computeNextLifecyclePreview, formatLifecycleDate, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
 import { PortalCard } from "@portal/components/shared/PortalCard";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, UsersIcon } from "@portal/components/icons";
 import { Badge, Group, HoverCard, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
-import { modals } from "@mantine/modals";
 import { useCallback, useEffect, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
@@ -71,6 +71,7 @@ export function RecurringTemplatesTab({
   onDeleteTemplate,
 }: RecurringTemplatesTabProps) {
   const { t, i18n } = useTranslation("events");
+  const confirm = useConfirmDialog();
 
   const [formOpen, formHandlers] = useDisclosure(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
@@ -93,21 +94,19 @@ export function RecurringTemplatesTab({
   }, []);
 
   const handleDelete = useCallback(
-    (template: RecurringTemplate) => {
-      modals.openConfirmModal({
+    async (template: RecurringTemplate) => {
+      const accepted = await confirm({
         title: t("recurring.confirm.delete.title"),
-        children: (
+        description: (
           <Text size="sm">{t("recurring.confirm.delete.description", { title: template.title })}</Text>
         ),
-        confirmProps: { color: "red" },
-        labels: { confirm: t("common:action.confirm"), cancel: t("common:action.cancel") },
-        onConfirm: () => {
-          void onDeleteTemplate(template.id);
-        },
-        centered: true,
+        confirmLabel: t("common:action.confirm"),
+        cancelLabel: t("common:action.cancel"),
+        intent: "danger",
       });
+      if (accepted) await onDeleteTemplate(template.id);
     },
-    [onDeleteTemplate, t],
+    [confirm, onDeleteTemplate, t],
   );
 
   const handleFormSave = useCallback(

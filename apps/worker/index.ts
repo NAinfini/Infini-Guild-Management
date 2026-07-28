@@ -23,7 +23,7 @@ import { galleryRoutes } from "./routes/gallery";
 import { guildWarRoutes } from "./routes/guild-war";
 import { searchRoutes } from "./routes/search";
 import { storageRoutes } from "./routes/storage";
-import { onboardingRoutes, siteConfigRoutes } from "./routes/site-config";
+import { siteConfigRoutes } from "./routes/site-config";
 import { usersRoutes } from "./routes/users";
 import { wikiRoutes } from "./routes/wiki";
 import { badgeRoutes } from "./routes/badges";
@@ -105,6 +105,7 @@ function isUploadPath(path: string): boolean {
   return (
     path === "/api/events" ||
     path === "/api/gallery/images" ||
+    path === "/api/announcements/images/stage" ||
     path === "/api/game-data" ||
     path === "/api/admin/site-config/logo" ||
     /^\/api\/users\/[^/]+\/media\/(?:images|avatar|audio)$/.test(path) ||
@@ -288,7 +289,6 @@ app.route("/api/badges", badgeRoutes);
 app.route("/api/game-data", gameDataRoutes);
 app.route("/api/storage", storageRoutes);
 app.route("/api/site-config", siteConfigRoutes);
-app.route("/api/onboarding", onboardingRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/admin/maintenance", adminMaintenanceRoutes);
 

@@ -4,7 +4,7 @@ import { LayoutGridIcon } from "@portal/components/icons";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { differenceInHours } from "date-fns";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
@@ -56,35 +56,16 @@ export function buildDashboardUpcomingEventsQueryParams(now: Date) {
   };
 }
 
-function participantToDashboardMember(participant: DashboardSummaryEvent["participants"][number]): DashboardMember {
+export function participantToDashboardMember(participant: DashboardSummaryEvent["participants"][number]): DashboardMember {
   return {
     user: {
       id: participant.user_id,
       username: participant.username,
-      role: participant.role,
-      permissions: {} as DashboardMember["user"]["permissions"],
-      is_active: true,
-      deleted_at: null,
-      created_at: "",
-      updated_at: "",
     },
     profile: {
-      id: participant.user_id,
-      user_id: participant.user_id,
       power: participant.power,
-      classes: participant.classes as DashboardMember["profile"]["classes"],
-      title_html: null,
-      bio: null,
+      classes: participant.classes,
       avatar_key: participant.avatar_key,
-      images: [],
-      audio_key: null,
-      video_urls: [],
-      availability: null,
-      vacation_start: null,
-      vacation_end: null,
-      notes: null,
-      created_at: "",
-      updated_at: "",
     },
   };
 }
@@ -146,15 +127,20 @@ export function DashboardPage() {
   });
 
   const summary = summaryQuery.data;
+  const featuredEvents = summary?.featured_events ?? [];
   const upcomingEvents = summary?.upcoming_events ?? [];
+  const dashboardEvents = useMemo(
+    () => [...featuredEvents, ...upcomingEvents],
+    [featuredEvents, upcomingEvents],
+  );
   const recentWars = summary?.recent_wars ?? [];
 
   const mySignupEvents = useMemo(() => {
     const mySignupIds = new Set(summary?.my_signup_event_ids ?? []);
-    return upcomingEvents
+    return dashboardEvents
       .filter((event) => mySignupIds.has(event.id))
       .map((event) => ({ event, participantCount: event.participants.length }));
-  }, [summary?.my_signup_event_ids, upcomingEvents]);
+  }, [dashboardEvents, summary?.my_signup_event_ids]);
 
   const recentWarMvps = useMemo<DashboardLastWarMvp[]>(() => {
     return (summary?.recent_war_mvps ?? []).map((warMvp) =>
@@ -165,20 +151,26 @@ export function DashboardPage() {
     );
   }, [summary?.recent_war_mvps, t]);
 
-  const orderedUpcomingEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
+  const featuredEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
     return orderDashboardUpcomingRows(
-      upcomingEvents.map((item) => buildUpcomingEventRow(item, upcomingEvents, now, user?.id)),
-    ).slice(0, 5);
-  }, [now, upcomingEvents, user?.id]);
+      featuredEvents.map((item) => buildUpcomingEventRow(item, dashboardEvents, now, user?.id)),
+    );
+  }, [dashboardEvents, featuredEvents, now, user?.id]);
 
-  const featuredEventRows = useMemo(
-    () => orderedUpcomingEventRows.filter((row) => row.item.pinned),
-    [orderedUpcomingEventRows],
-  );
+  const upcomingEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
+    return orderDashboardUpcomingRows(
+      upcomingEvents.map((item) => buildUpcomingEventRow(item, dashboardEvents, now, user?.id)),
+    );
+  }, [dashboardEvents, now, upcomingEvents, user?.id]);
 
-  const upcomingEventRows = useMemo(
-    () => orderedUpcomingEventRows.filter((row) => !row.item.pinned),
-    [orderedUpcomingEventRows],
+  const openAllEvents = useCallback(
+    () => {
+      void navigate({
+        to: "/events",
+        search: { view: "cards" },
+      });
+    },
+    [navigate],
   );
 
   const openEventDetail = (event: Pick<Event, "id" | "title">) => {
@@ -208,10 +200,11 @@ export function DashboardPage() {
 
             <Skeleton visible={summaryQuery.isLoading} radius={8}>
               <UpcomingEventsCard
-                upcomingEventsCount={upcomingEvents.length}
+                upcomingEventsCount={summary?.active_events_count ?? 0}
                 featuredRows={featuredEventRows}
                 rows={upcomingEventRows}
                 onOpenEvent={openEventDetail}
+                onViewAll={openAllEvents}
               />
             </Skeleton>
           </Stack>

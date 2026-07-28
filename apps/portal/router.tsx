@@ -40,6 +40,18 @@ const GUILD_WAR_SEARCH_SCHEMA = z.object({
   warName: z.string().optional(),
 });
 
+const PROFILE_SEARCH_SCHEMA = z.object({
+  tab: z.enum(["profile", "availability", "account"]).optional(),
+});
+
+const STORAGE_SEARCH_SCHEMA = z.object({
+  storageId: z.string().trim().min(1).optional(),
+});
+
+const STORAGE_MANAGE_SEARCH_SCHEMA = STORAGE_SEARCH_SCHEMA.extend({
+  categoryId: z.string().trim().min(1).optional(),
+});
+
 export function isRouteFeatureEnabled(feature: keyof FeatureFlags): boolean {
   const features = useSiteConfigStore.getState().features;
   if (feature === "equipmentCalc") return features.tools && features.equipmentCalc;
@@ -62,6 +74,9 @@ const LazyDashboardPage = lazy(() =>
 const LazyEventsPage = lazy(() => import("./components/pages/EventsPage").then((mod) => ({ default: mod.EventsPage })));
 const LazyGalleryPage = lazy(() => import("./components/pages/GalleryPage").then((mod) => ({ default: mod.GalleryPage })));
 const LazyStoragePage = lazy(() => import("./components/pages/StoragePage").then((mod) => ({ default: mod.StoragePage })));
+const LazyStorageManagePage = lazy(() =>
+  import("./components/pages/StorageManagePage").then((mod) => ({ default: mod.StorageManagePage })),
+);
 const LazyGuildWarPage = lazy(() =>
   import("./components/pages/GuildWarPage").then((mod) => ({ default: mod.GuildWarPage })),
 );
@@ -138,6 +153,14 @@ function StorageRoutePage() {
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
       <LazyStoragePage />
+    </Suspense>
+  );
+}
+
+function StorageManageRoutePage() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <LazyStorageManagePage />
     </Suspense>
   );
 }
@@ -391,6 +414,7 @@ const rosterRoute = createRoute({
 const profileRoute = createRoute({
   getParentRoute: () => authenticatedOnlyRoute,
   path: "/profile",
+  validateSearch: (search) => PROFILE_SEARCH_SCHEMA.parse(search),
   beforeLoad: ({ location }) => {
     if (isExternalViewSearch((location as { searchStr?: string }).searchStr)) {
       throw redirect({ to: "/" });
@@ -424,8 +448,26 @@ const galleryRoute = createRoute({
 const storageRoute = createRoute({
   getParentRoute: () => authenticatedOnlyRoute,
   path: "/storage",
+  validateSearch: (search) => STORAGE_SEARCH_SCHEMA.parse(search),
   beforeLoad: () => requireRouteFeature("storage"),
   component: StorageRoutePage,
+});
+
+const storageManageRoute = createRoute({
+  getParentRoute: () => authenticatedOnlyRoute,
+  path: "/storage/manage",
+  validateSearch: (search) => STORAGE_MANAGE_SEARCH_SCHEMA.parse(search),
+  beforeLoad: () => {
+    requireRouteFeature("storage");
+    const user = useAuthStore.getState().user;
+    if (
+      !user?.permissions["admin.storage.structure"]
+      && !user?.permissions["admin.storage.manage"]
+    ) {
+      throw redirect({ to: "/storage" });
+    }
+  },
+  component: StorageManageRoutePage,
 });
 
 const wikiRoute = createRoute({
@@ -488,6 +530,7 @@ const routeTree = rootRoute.addChildren([
   // User, moderator, and admin-only features stay locked behind session checks.
   authenticatedOnlyRoute.addChildren([
     storageRoute,
+    storageManageRoute,
     profileRoute,
     adminRoute,
   ]),

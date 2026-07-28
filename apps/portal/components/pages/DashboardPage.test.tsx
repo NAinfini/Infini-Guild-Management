@@ -3,6 +3,7 @@ import {
   DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
   buildDashboardUpcomingEventsQueryParams,
   orderDashboardUpcomingRows,
+  participantToDashboardMember,
 } from "./DashboardPage";
 import { fetchDashboardSummary } from "../../services/DashboardService";
 
@@ -43,6 +44,29 @@ describe("DashboardPage upcoming event query", () => {
       "may-09",
       "may-11",
     ]);
+  });
+
+  it("maps summary participants without fabricating full user or profile records", () => {
+    expect(
+      participantToDashboardMember({
+        user_id: "user-1",
+        username: "Aster",
+        role: "member",
+        classes: ["tank"],
+        power: 4200,
+        avatar_key: "members/user-1/avatar.webp",
+      }),
+    ).toEqual({
+      user: {
+        id: "user-1",
+        username: "Aster",
+      },
+      profile: {
+        classes: ["tank"],
+        power: 4200,
+        avatar_key: "members/user-1/avatar.webp",
+      },
+    });
   });
 
   it("fetches dashboard through one purpose-built summary endpoint", async () => {

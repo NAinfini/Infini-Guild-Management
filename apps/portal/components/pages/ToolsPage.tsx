@@ -276,7 +276,7 @@ export function ToolsPage() {
                   {/* span, not the default <p>: PaletteIcon renders a <div>, and a
                       block element inside <p> is invalid HTML that React flags. */}
                   <Text component="span" size="xs" fw={600} c="dimmed" className="sandbox__section-label">
-                    <PaletteIcon size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
+                    <PaletteIcon size={14} className="sandbox__section-icon" />
                     {t("sandbox.section.color")}
                   </Text>
 
@@ -289,7 +289,7 @@ export function ToolsPage() {
                     style={{ width: "100%", pointerEvents: isExternalView ? "none" : "auto", opacity: isExternalView ? 0.5 : 1 }}
                   />
 
-                  <div className="sandbox__opacity-wrap" style={{ marginTop: 12 }}>
+                  <div className="sandbox__opacity-wrap">
                     <Text size="xs" c="dimmed">{t("sandbox.label.opacity")}</Text>
                     <Slider min={0} max={100} value={opacity} onChange={setOpacity} aria-label={t("sandbox.aria.opacitySlider")} disabled={isExternalView} className="sandbox__opacity-slider" />
                     <Text size="xs" fw={500} className="sandbox__opacity-value">{opacity}%</Text>
@@ -519,4 +519,3 @@ export function ToolsPage() {
     </PageLayout>
   );
 }
-

@@ -99,11 +99,27 @@ describe("AdminStatusTab", () => {
     expect(source).not.toContain("import.meta.env.DEV");
   });
 
+  it("clears stale endpoint results before a single-category run", () => {
+    const source = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/admin/AdminStatusTab.tsx"), "utf8");
+    const runCategoryBlock = source.slice(
+      source.indexOf("const runCategory = useCallback"),
+      source.indexOf("const runAllCategories = useCallback"),
+    );
+
+    expect(runCategoryBlock).toContain("setResultMap(new Map())");
+    expect(runCategoryBlock).toContain(
+      "contextRef.current = createInitialTestRunContext()",
+    );
+  });
+
   it("renders the API test console for authorized admins in production builds", () => {
     renderStatusTab();
 
     expect(screen.getByText("status.section.apiTests")).toBeInTheDocument();
     expect(screen.getByText("status.api.debugTitle")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "status.api.runAll" })).toHaveClass(
+      "api-console__run-all",
+    );
   });
 
   it("renders healthy service tiles, latency, empty health logs, and endpoint count", () => {

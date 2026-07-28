@@ -146,10 +146,13 @@
   background:
     linear-gradient(
       110deg,
-      /* Same technique as the light-mode override below (:430): mix toward
+      /* Same technique as the light-mode override below (:466): mix toward
          --text-primary, not a literal white — in dark mode --text-primary
          (#F0EDE8) is visually indistinguishable from #FFFFFF at these mix
-         ratios, but stays mode-correct, token-pure, and guard-visible. */
+         ratios, but stays mode-correct, token-pure, and guard-visible.
+         (T3: this used to point at :430, which is inside the section intro
+         comment, not the actual override rule — retargeted to the real
+         .login-page__brand-text override below.) */
       color-mix(in srgb, var(--accent-text) 78%, var(--text-primary) 22%) 0%,
       var(--accent-text) 24%,
       color-mix(in srgb, var(--accent-fill-hover) 82%, var(--text-primary) 18%) 46%,

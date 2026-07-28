@@ -136,7 +136,10 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
-  flex: 1 1 auto;
+  /* Categories already own horizontal overflow. Let the adjacent filters absorb
+     the small desktop deficit so an almost-fitting category row does not grow
+     an 11px stub scrollbar. */
+  flex: 1 0 auto;
 }
 
 .storage-command__filters {
@@ -156,12 +159,12 @@
   min-width: 0;
   max-width: 520px;
   overflow-x: auto;
-  padding: 2px 0;
-  flex-wrap: nowrap;
+  overflow-y: hidden;
+  padding: 2px 1px;
   scrollbar-width: thin;
 }
 
-.storage-command__categories .mantine-Button-root {
+.storage-command__categories .mantine-SegmentedControl-control {
   flex: 0 0 auto;
 }
 
@@ -211,6 +214,65 @@
 .storage-loading {
   border: 1px solid var(--storage-border);
   background: var(--storage-muted);
+}
+
+.storage-inventory-layout {
+  min-width: 0;
+}
+
+.storage-inventory-layout--batch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  align-items: start;
+  gap: var(--space-md);
+}
+
+.storage-batch-panel {
+  position: relative;
+  min-width: 0;
+}
+
+.storage-batch-panel__card {
+  position: sticky;
+  top: 8px;
+  border-color: var(--storage-border-strong);
+  background: var(--storage-surface-raised);
+  box-shadow: var(--shadow-md);
+}
+
+.storage-batch-panel__card .portal-card__inner {
+  padding: var(--space-md);
+}
+
+.storage-batch-panel__empty {
+  padding: var(--space-md);
+  border: 1px dashed var(--storage-border);
+  border-radius: var(--storage-radius-sm);
+  background: var(--storage-muted);
+  text-align: center;
+}
+
+.storage-batch-panel__items {
+  max-height: min(32vh, 280px);
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+}
+
+.storage-batch-panel__item {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--storage-border);
+  border-radius: var(--storage-radius-sm);
+  background: var(--storage-muted);
+}
+
+.storage-batch-panel__item > .mantine-Text-root {
+  min-width: 0;
+}
+
+.storage-batch-panel__actions .mantine-Button-root {
+  flex: 1 1 0;
 }
 
 /*
@@ -392,6 +454,20 @@
   min-width: 0;
 }
 
+.storage-item-card__batch {
+  display: grid;
+  min-height: 30px;
+  padding-right: var(--space-xs);
+  border-right: 1px solid var(--storage-border);
+  place-items: center;
+}
+
+.storage-item-card__batch-quantity {
+  min-width: 24px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
 /* Below ~576px the row folds: identity on top, actions right-aligned under it. */
 @media (max-width: 575px) {
   .storage-item-card__body {
@@ -555,12 +631,21 @@
   color: var(--accent-text);
 }
 
+.storage-ledger-pagination {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
 .storage-management-modal,
 .storage-item-editor {
   display: grid;
   grid-template-columns: minmax(280px, 0.42fr) minmax(0, 1fr);
   gap: 14px;
   align-items: start;
+}
+
+.storage-manage-page .storage-management-modal__tree {
+  max-height: min(68vh, 640px);
 }
 
 .storage-management-modal__tree {
@@ -1037,6 +1122,18 @@
 }
 
 @media (max-width: 1180px) {
+  .storage-inventory-layout--batch {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .storage-batch-panel {
+    position: static;
+  }
+
+  .storage-batch-panel__card {
+    position: static;
+  }
+
   .storage-grid {
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
@@ -1087,6 +1184,10 @@
 }
 
 @media (max-width: 640px) {
+  .storage-batch-panel {
+    scroll-margin-bottom: calc(var(--bottom-nav-height) + 8px + env(safe-area-inset-bottom));
+  }
+
   .storage-tabs__list {
     gap: 8px;
     padding-top: 6px;
@@ -1161,8 +1262,25 @@
     flex-wrap: wrap;
   }
 
+  .storage-item-card__batch {
+    width: 100%;
+    padding: 0 0 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--storage-border);
+  }
+
   .storage-item-card__actions .mantine-ActionIcon-root {
     width: 100%;
+  }
+
+  .storage-item-card__batch .mantine-ActionIcon-root,
+  .storage-batch-panel__item .mantine-ActionIcon-root {
+    width: 28px;
+  }
+
+  .storage-batch-panel__card .portal-card__inner {
+    max-height: min(64dvh, 520px);
+    overflow-y: auto;
   }
 
   .storage-grid {

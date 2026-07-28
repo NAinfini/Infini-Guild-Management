@@ -97,6 +97,34 @@ export const createStorageTransactionSchema = z
     message: "target_quantity required for adjust",
   });
 
+const batchIdempotencyKey = z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{15,63}$/, "Invalid idempotency key");
+
+export const createStorageBatchTransactionSchema = z
+  .object({
+    idempotency_key: batchIdempotencyKey,
+    type: z.enum(["intake", "distribute"]),
+    entries: z.array(z.object({
+      item_id: z.string().trim().min(1).max(128),
+      quantity: txQuantity,
+    })).min(1).max(20),
+    recipient_user_id: z.string().trim().min(1).max(128).optional().nullable(),
+    note: z.string().trim().max(L.storageNote.max).optional().nullable(),
+  })
+  .superRefine((value, ctx) => {
+    const itemIds = new Set<string>();
+    for (const [index, entry] of value.entries.entries()) {
+      if (itemIds.has(entry.item_id)) {
+        ctx.addIssue({ code: "custom", path: ["entries", index, "item_id"], message: "item_id entries must be unique" });
+      }
+      itemIds.add(entry.item_id);
+    }
+  });
+
+export const storageBatchTransactionResultSchema = z.object({
+  data: z.array(storageTransactionSchema),
+  replayed: z.boolean(),
+});
+
 export type Storage = z.infer<typeof storageSchema>;
 export type StorageCategory = z.infer<typeof storageCategorySchema>;
 export type StorageItem = z.infer<typeof storageItemSchema>;
@@ -106,3 +134,5 @@ export type CreateStorageCategoryPayload = z.input<typeof createStorageCategoryS
 export type CreateStorageItemPayload = z.input<typeof createStorageItemSchema>;
 export type UpdateStorageItemPayload = z.input<typeof updateStorageItemSchema>;
 export type CreateStorageTransactionPayload = z.input<typeof createStorageTransactionSchema>;
+export type CreateStorageBatchTransactionPayload = z.input<typeof createStorageBatchTransactionSchema>;
+export type StorageBatchTransactionResult = z.infer<typeof storageBatchTransactionResultSchema>;

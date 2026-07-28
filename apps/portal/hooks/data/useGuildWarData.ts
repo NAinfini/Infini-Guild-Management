@@ -16,13 +16,13 @@ type UseGuildWarDataOptions = {
   selectedHistoryId: string | null;
   historyDateFrom: string;
   historyDateTo: string;
+  historySearch: string;
   historyPage: number;
   historyPerPage: number;
-  hasSession?: boolean;
 };
 
 export function useGuildWarData(options: UseGuildWarDataOptions) {
-  const { selectedEventId, selectedHistoryId, historyDateFrom, historyDateTo, historyPage, historyPerPage, hasSession = true } = options;
+  const { selectedEventId, selectedHistoryId, historyDateFrom, historyDateTo, historySearch, historyPage, historyPerPage } = options;
 
   const warEventsQuery = useQuery({
     queryKey: queryKeys.guildWar.events(),
@@ -51,18 +51,25 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
   const activeQuery = useQuery({
     queryKey: queryKeys.guildWar.active(selectedEventId ?? null),
     queryFn: () => fetchGuildWarActive(selectedEventId),
-    enabled: hasSession && Boolean(selectedEventId),
+    enabled: Boolean(selectedEventId),
     staleTime: 10 * 60_000,
   });
 
   const historyQuery = useQuery({
-    queryKey: queryKeys.guildWar.history(historyDateFrom || "none", historyDateTo || "none", historyPage, historyPerPage),
+    queryKey: queryKeys.guildWar.history(
+      historyDateFrom || "none",
+      historyDateTo || "none",
+      historySearch || "none",
+      historyPage,
+      historyPerPage,
+    ),
     queryFn: () =>
       fetchGuildWarHistory({
         page: historyPage,
         limit: historyPerPage,
         date_from: historyDateFrom ? `${historyDateFrom}T00:00:00.000Z` : undefined,
         date_to: historyDateTo ? `${historyDateTo}T23:59:59.999Z` : undefined,
+        search: historySearch || undefined,
       }),
     staleTime: 10 * 60_000,
     placeholderData: keepPreviousData,

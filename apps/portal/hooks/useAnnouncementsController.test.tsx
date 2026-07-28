@@ -11,6 +11,7 @@ const serviceMocks = vi.hoisted(() => ({
   deleteAnnouncement: vi.fn(),
   fetchAnnouncement: vi.fn(),
   fetchAnnouncements: vi.fn(),
+  stageAnnouncementImages: vi.fn(),
   updateAnnouncement: vi.fn(),
   uploadAnnouncementImages: vi.fn(),
 }));
@@ -21,6 +22,7 @@ vi.mock("../services/AnnouncementService", () => ({
   deleteAnnouncement: serviceMocks.deleteAnnouncement,
   fetchAnnouncement: serviceMocks.fetchAnnouncement,
   fetchAnnouncements: serviceMocks.fetchAnnouncements,
+  stageAnnouncementImages: serviceMocks.stageAnnouncementImages,
   updateAnnouncement: serviceMocks.updateAnnouncement,
   uploadAnnouncementImages: serviceMocks.uploadAnnouncementImages,
 }));
@@ -65,12 +67,24 @@ function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
 }
 
 describe("useAnnouncementsController", () => {
+  const stagingResponse = {
+    staging_id: "nanoid1234567890abcde",
+    staging_token: "signed-announcement-staging-token".repeat(3),
+    expires_at: "2026-07-29T00:00:00.000Z",
+    keys: ["announcement/nanoid1234567890abcde/images/image-1"],
+  };
+
   beforeEach(() => {
     for (const mock of Object.values(serviceMocks)) {
       mock.mockReset();
     }
     serviceMocks.fetchAnnouncements.mockResolvedValue({ data: [], total: 0 });
+    serviceMocks.fetchAnnouncement.mockResolvedValue(null);
     serviceMocks.createAnnouncement.mockResolvedValue({ id: "announcement-1" });
+    serviceMocks.stageAnnouncementImages.mockResolvedValue(stagingResponse);
+    serviceMocks.uploadAnnouncementImages.mockResolvedValue({
+      keys: ["announcement/announcement-1/images/image-1"],
+    });
   });
 
   it("does not include unsupported expires_at in create payloads", async () => {
@@ -87,6 +101,77 @@ describe("useAnnouncementsController", () => {
 
     await waitFor(() => expect(serviceMocks.createAnnouncement).toHaveBeenCalled());
     expect(serviceMocks.createAnnouncement.mock.calls[0]?.[0]).not.toHaveProperty("expires_at");
+  });
+
+  it("stages create-mode images without creating a ghost announcement", async () => {
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+    const file = new File(["image"], "image.webp", { type: "image/webp" });
+
+    act(() => {
+      result.current.handleCreateByStatus();
+    });
+
+    let imageUrl = "";
+    await act(async () => {
+      imageUrl = await result.current.handleUploadAnnouncementImages(file);
+    });
+
+    expect(serviceMocks.createAnnouncement).not.toHaveBeenCalled();
+    expect(serviceMocks.stageAnnouncementImages).toHaveBeenCalledWith(null, [file]);
+    expect(imageUrl).toContain(encodeURIComponent(stagingResponse.keys[0]!));
+
+    await act(async () => {
+      await result.current.handleUploadAnnouncementImages(file);
+    });
+    expect(serviceMocks.stageAnnouncementImages).toHaveBeenLastCalledWith(
+      stagingResponse.staging_token,
+      [file],
+    );
+  });
+
+  it("claims the staging token only on explicit save", async () => {
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+    const file = new File(["image"], "image.webp", { type: "image/webp" });
+
+    act(() => {
+      result.current.handleCreateByStatus();
+    });
+    await act(async () => {
+      await result.current.handleUploadAnnouncementImages(file);
+    });
+    act(() => {
+      result.current.setTitle("Maintenance");
+      result.current.setBodyJson('{"type":"doc","content":[]}');
+    });
+    act(() => {
+      result.current.handleFinish("draft");
+    });
+
+    await waitFor(() => expect(serviceMocks.createAnnouncement).toHaveBeenCalled());
+    expect(serviceMocks.createAnnouncement.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        staging_token: stagingResponse.staging_token,
+      }),
+    );
+  });
+
+  it("abandons staged images without creating or archiving a record", async () => {
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+    const file = new File(["image"], "image.webp", { type: "image/webp" });
+
+    act(() => {
+      result.current.handleCreateByStatus();
+    });
+    await act(async () => {
+      await result.current.handleUploadAnnouncementImages(file);
+    });
+    act(() => {
+      result.current.handleCloseEditor();
+    });
+
+    expect(serviceMocks.createAnnouncement).not.toHaveBeenCalled();
+    expect(serviceMocks.updateAnnouncement).not.toHaveBeenCalled();
+    expect(serviceMocks.archiveAnnouncement).not.toHaveBeenCalled();
   });
 
   it("keeps the announcement detail empty after deleting the selected announcement", async () => {

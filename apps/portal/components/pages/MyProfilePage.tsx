@@ -1,11 +1,10 @@
 import { PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Badge, Grid, Group, Skeleton, Stack, Tabs, Text } from "@mantine/core";
+import { Badge, Grid, Group, Skeleton, Stack, Text } from "@mantine/core";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { TrashIcon, UserCircleIcon } from "@portal/components/icons";
 import { IconGripVertical } from "@tabler/icons-react";
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CLASS_COLOR_GROUP } from "@guild/shared/constants/classes";
 import { uploadProfileAudio, uploadProfileImages } from "../../services/UserService";
@@ -16,16 +15,14 @@ import { useMediaUpload } from "../../hooks/useMediaUpload";
 import { useProfileFormState } from "../../hooks/useProfileFormState";
 import { useProfileMutations } from "../../hooks/useProfileMutations";
 import { useProfileAvatarMutations } from "../../hooks/useProfileAvatarMutations";
-import { useMemberOnboardingData } from "../../hooks/data/useSiteConfigData";
-import { useMemberOnboardingMutations } from "../../hooks/useSiteConfigMutations";
 import { useAuthStore } from "../../stores/auth";
 import { useAppError } from "../../hooks/useAppError";
 import { ProfileAccountTab } from "../feature/profile/ProfileAccountTab";
 import { ProfileAvailabilityTab } from "../feature/profile/ProfileAvailabilityTab";
 import { ProfilePreviewCard } from "../feature/profile/ProfilePreviewCard";
 import { ProfileProfileTab } from "../feature/profile/ProfileProfileTab";
-import { MemberOnboardingCard } from "../feature/onboarding/MemberOnboardingCard";
 import { PageLayout } from "../layout/PageLayout";
+import { PageTabPanel, PageTabs } from "../layout/PageTabs";
 import "./MyProfilePage.css";
 
 const CLASS_BADGE_COLOR: Record<string, string> = {
@@ -89,7 +86,6 @@ function moveListItem<T>(list: T[], index: number, delta: number): T[] {
 export function MyProfilePage() {
   const { t } = useTranslation("profile");
   const user = useAuthStore((state) => state.user);
-  const [activeTab, setActiveTab] = useState("profile");
   const classSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const { profileQuery } = useProfileData({
@@ -141,8 +137,6 @@ export function MyProfilePage() {
   });
 
   const { showError } = useAppError();
-  const { onboardingQuery } = useMemberOnboardingData(Boolean(user));
-  const onboardingMutations = useMemberOnboardingMutations({ showError });
   const { avatarUploadMutation, avatarDeleteMutation } = useProfileAvatarMutations({
     userId: user?.id,
     showError,
@@ -189,15 +183,16 @@ export function MyProfilePage() {
           </div>
         </Grid.Col>
         <Grid.Col span={{ base: 12, lg: 9 }}>
-          <Tabs value={activeTab} onChange={(value) => value && setActiveTab(value)}>
-            <Tabs.List>
-              <Tabs.Tab value="profile">{t("tab.profile")}</Tabs.Tab>
-              <Tabs.Tab value="availability">{t("tab.availability")}</Tabs.Tab>
-              <Tabs.Tab value="onboarding">{t("tab.onboarding")}</Tabs.Tab>
-              <Tabs.Tab value="account">{t("tab.account")}</Tabs.Tab>
-            </Tabs.List>
+          <PageTabs
+            defaultValue="profile"
+            tabs={[
+              { value: "profile", label: t("tab.profile") },
+              { value: "availability", label: t("tab.availability") },
+              { value: "account", label: t("tab.account") },
+            ]}
+          >
 
-            <Tabs.Panel value="profile" pt="md">
+            <PageTabPanel value="profile" pt="md">
               <ProfileProfileTab
                 power={form.power}
                 classDraft={form.classDraft}
@@ -255,9 +250,9 @@ export function MyProfilePage() {
                 onRemoveImage={mutations.removeImage}
                 onRemoveAudio={mutations.removeAudio}
               />
-            </Tabs.Panel>
+            </PageTabPanel>
 
-            <Tabs.Panel value="availability" pt="md">
+            <PageTabPanel value="availability" pt="md">
               <ProfileAvailabilityTab
                 userId={user?.id}
                 availabilityData={form.availabilityData}
@@ -266,20 +261,9 @@ export function MyProfilePage() {
                 savePending={mutations.saveProfileMutation.isPending}
                 isDirty={form.isDirty}
               />
-            </Tabs.Panel>
+            </PageTabPanel>
 
-            <Tabs.Panel value="onboarding" pt="md">
-              <MemberOnboardingCard
-                onboarding={onboardingQuery.data ?? null}
-                loading={onboardingQuery.isLoading}
-                updating={onboardingMutations.updateOnboardingProgressMutation.isPending}
-                acknowledging={onboardingMutations.acknowledgeOnboardingMutation.isPending}
-                onProgressChange={(completedItemIds) => onboardingMutations.updateOnboardingProgressMutation.mutate({ completed_item_ids: completedItemIds })}
-                onAcknowledge={() => onboardingMutations.acknowledgeOnboardingMutation.mutate()}
-              />
-            </Tabs.Panel>
-
-            <Tabs.Panel value="account" pt="md">
+            <PageTabPanel value="account" pt="md">
               <ProfileAccountTab
                 currentPassword={form.currentPassword}
                 newPassword={form.newPassword}
@@ -299,8 +283,8 @@ export function MyProfilePage() {
                 changePasswordPending={mutations.changePasswordMutation.isPending}
                 changeUsernamePending={mutations.changeUsernameMutation.isPending}
               />
-            </Tabs.Panel>
-          </Tabs>
+            </PageTabPanel>
+          </PageTabs>
         </Grid.Col>
       </Grid>
       )}

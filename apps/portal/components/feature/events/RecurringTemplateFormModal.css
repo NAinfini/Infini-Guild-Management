@@ -96,8 +96,8 @@
 .rtf-weekday-btn {
   all: unset;
   box-sizing: border-box;
-  width: 38px;
-  height: 38px;
+  width: var(--control-icon-size-large);
+  height: var(--control-icon-size-large);
   border-radius: 50%;
   cursor: pointer;
   font-size: 13px;

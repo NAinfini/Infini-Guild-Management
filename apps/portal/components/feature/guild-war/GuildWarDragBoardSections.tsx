@@ -264,7 +264,7 @@ export function DroppableMemberColumn({
     >
       <div ref={setNodeRef} style={{ display: "flex", flexDirection: "column", flex: 1 }}>
         <Stack gap={8} mb="sm" className="guild-war-column-header">
-          <Group gap={8} justify="space-between" wrap="nowrap">
+          <Group gap={8} justify="space-between" wrap="wrap">
             <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
               {isTeamColumn && isEditingName && onDraftNameChange ? (
                 <TextInput
@@ -301,7 +301,11 @@ export function DroppableMemberColumn({
                 />
               ) : null}
             </Group>
-            <Group gap={4} wrap="nowrap">
+            <Group
+              gap={4}
+              justify="flex-end"
+              wrap="wrap"
+            >
               {isTeamColumn && onToggleLock ? (
                 <GuildWarColumnActionCard
                   label={(

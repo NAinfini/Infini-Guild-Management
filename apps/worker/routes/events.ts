@@ -20,6 +20,7 @@ import {
   toRaffleWinnerPayload,
   toTemplatePayload,
 } from "../services/EventService";
+import { isEventPubliclyVisible } from "../services/events/event-visibility";
 import { buildError, collectFiles, getDb, parseBoolean, parseJsonBody, parsePage, requireSessionUser, serveR2Object } from "./_shared";
 import { commonDeps, getMediaPolicy } from "./service-factory";
 
@@ -99,7 +100,19 @@ eventsRoutes.post("/batch-details", async (c) => {
 eventsRoutes.get("/image", async (c) => {
   const key = c.req.query("key");
   if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  if (!key.startsWith("events/")) return buildError(c, "FORBIDDEN", "Invalid event image key");
+  const eventId = /^events\/([A-Za-z0-9_-]+)\/images\/[^/]+$/.exec(key)?.[1];
+  if (!eventId) return buildError(c, "FORBIDDEN", "Invalid event image key");
+  const viewer = await getRequestUser(c);
+  const event = await getEventService(c).getEventById(eventId);
+  if (
+    !event
+    || (
+      !viewer?.permissions.has("events.edit")
+      && !isEventPubliclyVisible(event.visibleAt, new Date().toISOString())
+    )
+  ) {
+    return buildError(c, "NOT_FOUND", "Event image not found");
+  }
   return serveR2Object(c, key, "Event image not found");
 });
 

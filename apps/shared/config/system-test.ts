@@ -3,9 +3,11 @@
  *
  * A daily cron (apps/worker/crons/system-test-cleanup.ts) permanently deletes
  * rows carrying these markers, so they have to name a space no real member can
- * occupy: SYSTEM_TEST_USERNAME_PREFIX is rejected at registration and at
- * username change. Without that reservation the cron could delete a real
- * account that merely happened to pick the prefix.
+ * occupy: SYSTEM_TEST_USERNAME_PREFIX is rejected at registration
+ * (AuthService.register), at admin-created accounts (AdminService.createMember),
+ * and at username change (UserService.changeUsername). Without that
+ * reservation the cron could delete a real account that merely happened to
+ * pick the prefix.
  */
 export const SYSTEM_TEST_USERNAME_PREFIX = "systemtest_";
 export const SYSTEM_TEST_CONTENT_MARKER = "[systemtest]";

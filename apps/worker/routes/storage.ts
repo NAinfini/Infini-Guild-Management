@@ -94,6 +94,11 @@ storageRoutes.get("/transactions", async (c) => {
   }));
 });
 
+storageRoutes.post("/transactions/batch", async (c) => {
+  const user = await requireSessionUser(c);
+  return handleResult(c, await getService(c).applyBatchTransactions(user, await parseJsonBody(c)), 201);
+});
+
 storageRoutes.get("/items", async (c) => {
   await requireSessionUser(c);
   return handleResult(c, await getService(c).listItems({

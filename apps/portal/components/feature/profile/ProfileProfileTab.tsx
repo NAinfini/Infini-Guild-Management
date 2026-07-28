@@ -5,8 +5,8 @@ import type { ImageGridEditorItem } from "@portal/types/media";
 import { PortalCard } from "../../shared/PortalCard";
 import { FloatingSaveBar } from "../../shared/FloatingSaveBar";
 import { DepthButton } from "@portal/components/shared/DepthButton";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { Avatar, Button, Divider, FileButton, Grid, Group, NumberInput, Progress, Select, Stack, Text, TextInput, Textarea } from "@mantine/core";
-import { modals } from "@mantine/modals";
 import { ExternalLinkIcon, PlusIcon, TrashIcon, UploadIcon, UserIcon } from "@portal/components/icons";
 import { useMemo, type ReactNode } from "react";
 import DOMPurify from "dompurify";
@@ -105,6 +105,7 @@ export function ProfileProfileTab({
   onRemoveAudio,
 }: ProfileProfileTabProps) {
   const { t } = useTranslation("profile");
+  const confirm = useConfirmDialog();
 
   const safeTitleHtml = useMemo(
     () => (titleHtml ? DOMPurify.sanitize(titleHtml) : ""),
@@ -116,6 +117,45 @@ export function ProfileProfileTab({
     src: resolveProfileMediaUrl(key),
     alt: key,
   }));
+
+  const handleRemoveAvatar = async () => {
+    const confirmed = await confirm({
+      title: t("confirm.removeAvatar.title"),
+      description: t("confirm.removeAvatar.description"),
+      confirmLabel: t("common:action.delete"),
+      cancelLabel: t("common:action.cancel"),
+      intent: "danger",
+    });
+    if (confirmed) {
+      onRemoveAvatar();
+    }
+  };
+
+  const handleRemoveImage = async (key: string) => {
+    const confirmed = await confirm({
+      title: t("confirm.removeImage.title"),
+      description: t("confirm.removeImage.description"),
+      confirmLabel: t("common:action.delete"),
+      cancelLabel: t("common:action.cancel"),
+      intent: "danger",
+    });
+    if (confirmed) {
+      onRemoveImage(key);
+    }
+  };
+
+  const handleRemoveAudio = async () => {
+    const confirmed = await confirm({
+      title: t("confirm.removeAudio.title"),
+      description: t("confirm.removeAudio.description"),
+      confirmLabel: t("common:action.delete"),
+      cancelLabel: t("common:action.cancel"),
+      intent: "danger",
+    });
+    if (confirmed) {
+      onRemoveAudio();
+    }
+  };
 
   return (
     <>
@@ -217,16 +257,7 @@ export function ProfileProfileTab({
                   </FileButton>
                   {avatarKey ? (
                     <Button variant="subtle" color="red" size="compact-xs" leftSection={<TrashIcon size={12} />}
-                      onClick={() => {
-                        modals.openConfirmModal({
-                          title: t("confirm.removeAvatar.title"),
-                          children: t("confirm.removeAvatar.description"),
-                          centered: true,
-                          confirmProps: { color: "red" },
-                          labels: { cancel: t("common:action.cancel"), confirm: t("common:action.delete") },
-                          onConfirm: onRemoveAvatar,
-                        });
-                      }}
+                      onClick={() => void handleRemoveAvatar()}
                     >
                       {t("media.removeAvatar")}
                     </Button>
@@ -244,16 +275,7 @@ export function ProfileProfileTab({
               <ImageGridEditor
                 items={imageItems}
                 onReorder={(items) => onReorderImages(items.map((item) => item.id))}
-                onDelete={(item) => {
-                  modals.openConfirmModal({
-                    title: t("confirm.removeImage.title"),
-                    children: t("confirm.removeImage.description"),
-                    centered: true,
-                    confirmProps: { color: "red" },
-                    labels: { cancel: t("common:action.cancel"), confirm: t("common:action.delete") },
-                    onConfirm: () => onRemoveImage(item.id),
-                  });
-                }}
+                onDelete={(item) => void handleRemoveImage(item.id)}
                 onFilesSelected={(files) => imageUploader.selectFiles(files)}
                 maxImages={10}
                 imageSize={80}
@@ -305,7 +327,12 @@ export function ProfileProfileTab({
                     <Group key={`${item}-${index}`} gap={8} wrap="wrap" align="center"
                       className="profile-media-chip-row"
                     >
-                      <Text size="sm" style={{ flex: 1, minWidth: 0 }} truncate="end">{item}</Text>
+                      <Text
+                        size="sm"
+                        style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}
+                      >
+                        {item}
+                      </Text>
                       <Group gap={4} wrap="nowrap">
                         <Button size="compact-xs" variant="default" onClick={() => onMoveVideo(index, -1)} disabled={index === 0}>{t("action.up")}</Button>
                         <Button size="compact-xs" variant="default" onClick={() => onMoveVideo(index, 1)} disabled={index === videoList.length - 1}>{t("action.down")}</Button>
@@ -354,17 +381,13 @@ export function ProfileProfileTab({
                 <Group gap={8} align="center" mt={8}
                   className="profile-media-chip-row"
                 >
-                  <Text size="sm" style={{ flex: 1 }} truncate="end">{profileAudioKey.split("/").pop()}</Text>
-                  <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={14} />} onClick={() => {
-                    modals.openConfirmModal({
-                      title: t("confirm.removeAudio.title"),
-                      children: t("confirm.removeAudio.description"),
-                      centered: true,
-                      confirmProps: { color: "red" },
-                      labels: { cancel: t("common:action.cancel"), confirm: t("common:action.delete") },
-                      onConfirm: onRemoveAudio,
-                    });
-                  }} tooltip={{ label: t("action.delete"), withArrow: true }} />
+                  <Text
+                    size="sm"
+                    style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}
+                  >
+                    {profileAudioKey.split("/").pop()}
+                  </Text>
+                  <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={14} />} onClick={() => void handleRemoveAudio()} tooltip={{ label: t("action.delete"), withArrow: true }} />
                 </Group>
               ) : null}
             </Stack>

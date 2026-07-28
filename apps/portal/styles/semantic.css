@@ -3,10 +3,10 @@
  *
  * 两个彼此正交的维度：
  *   [data-theme]  = light | dark        → 重映射表面 / 文字 / 边框 / 语义色
- *   [data-accent] = teal | indigo | violet → 重映射 --accent-*
+ *   [data-accent] = teal | indigo | violet | orange → 重映射 --accent-*
  *
- * 正交意味着 3 主色 × 2 模式 = 6 种组合只需要 2 + 3 = 5 个块，
- * 而不是 6 套定义。
+ * 正交意味着 4 主色 × 2 模式 = 8 种组合只需要 2 + 4 = 6 个块，
+ * 而不是 8 套定义。
  *
  * --accent-text 与 --accent-on-fill 必须分模式取不同档位，
  * 因此 accent 块只能定义 fill / tint / border 这些与模式无关的部分，
@@ -116,6 +116,17 @@
   --accent-900: var(--palette-violet-900);
 }
 
+/* ── 主色：琥珀 ── */
+[data-accent="orange"] {
+  --accent-50: var(--palette-orange-50);
+  --accent-100: var(--palette-orange-100);
+  --accent-300: var(--palette-orange-300);
+  --accent-500: var(--palette-orange-500);
+  --accent-600: var(--palette-orange-600);
+  --accent-700: var(--palette-orange-700);
+  --accent-900: var(--palette-orange-900);
+}
+
 /* ── 与模式无关的 accent 派生 ── */
 :root {
   --accent-fill: var(--accent-500);
@@ -151,6 +162,31 @@
    * 复审 T-1：此前这是紧挨着上面那块的第二个 :root，两块之间只隔一段注释，
    * 合并成一块。 */
   --brand-secondary: var(--palette-bronze-warm);
+
+  /* ── 主色选择器的色块（与模式、与当前 accent 都无关）──
+   *
+   * 设置页的主色选择器要同时把四个主色摆出来，每一块显示的是「那个选项的
+   * 颜色」而不是「当前生效的主色」——所以它们不能走 --accent-*，那个会跟着
+   * [data-accent] 一起变，四块会同时变成同一个颜色。组件层又不许直接引用
+   * L1 的 --palette-*（守卫 rule 6），故照 --brand-secondary 的先例在这里
+   * 给四个 500 档各开一个 L2 名字。只有这一个消费者：SettingsPage.css 的
+   * .settings-accent-swatch--*。 */
+  --accent-swatch-teal: var(--palette-teal-500);
+  --accent-swatch-indigo: var(--palette-indigo-500);
+  --accent-swatch-violet: var(--palette-violet-500);
+  --accent-swatch-orange: var(--palette-orange-500);
+
+  /* ── 卡片悬停的色散辉光（与模式、与当前 accent 都无关）──
+   *
+   * roster 卡片悬停时下方的三束投影：左冷、中紫、右暖，模拟一束白光穿过
+   * 卡面之后被拆开。这三个色相是固定的——它们表达的是「一束光被拆成三段」，
+   * 不是「当前主色」，所以不能走 --accent-*：那样三束会塌成同一个颜色，
+   * 色散本身就不成立了。组件层又不许直接引用 L1 的 --palette-*（守卫 rule 6），
+   * 故照上面 --accent-swatch-* 的先例在这里各开一个 L2 名字。
+   * 只有一个消费者：MemberCard.css 的 .member-card__frame:hover。 */
+  --glow-dispersion-cool: var(--palette-teal-500);
+  --glow-dispersion-mid: var(--palette-violet-500);
+  --glow-dispersion-warm: var(--palette-orange-500);
 
   /* ── 查找高亮（与模式、与 accent 都无关，复审 I-7 / N-4 收口）──
    *

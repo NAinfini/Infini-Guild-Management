@@ -14,7 +14,7 @@ import {
   Text,
   Textarea,
 } from "@mantine/core";
-import { modals } from "@mantine/modals";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { EmptyState } from "../../shared/EmptyState";
 import { ArrowDownIcon, UploadIcon, RefreshCwIcon, ChevronDownIcon } from "@portal/components/icons";
@@ -43,6 +43,8 @@ function relativeTime(dateStr: string, t: (key: string, opts?: Record<string, un
 
 export function AdminGameDataSection() {
   const { t } = useTranslation("admin");
+  const { t: tc } = useTranslation("common");
+  const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -154,14 +156,15 @@ export function AdminGameDataSection() {
     }
   };
 
-  const handleRollback = (versionId: number) => {
-    modals.openConfirmModal({
+  const handleRollback = async (versionId: number) => {
+    const accepted = await confirm({
       title: t("gameData.rollback"),
-      children: <Text size="sm">{t("gameData.rollbackConfirm")}</Text>,
-      confirmProps: { color: "red" },
-      labels: { confirm: t("gameData.rollback"), cancel: t("badges.action.cancel") },
-      onConfirm: () => rollbackMutation.mutate(versionId),
+      description: <Text size="sm">{t("gameData.rollbackConfirm")}</Text>,
+      confirmLabel: t("gameData.rollback"),
+      cancelLabel: t("badges.action.cancel"),
+      intent: "danger",
     });
+    if (accepted) rollbackMutation.mutate(versionId);
   };
 
   const isLoading = gameDataQuery.isLoading;
@@ -176,6 +179,26 @@ export function AdminGameDataSection() {
         <Skeleton height={60} />
         <Skeleton height={120} />
       </Stack>
+    );
+  }
+
+  if (gameDataQuery.isError) {
+    return (
+      <EmptyState
+        status="error"
+        title={tc("loadError")}
+        actions={(
+          <DepthButton
+            type="secondary"
+            onClick={() => {
+              void gameDataQuery.refetch();
+            }}
+            loading={gameDataQuery.isFetching}
+          >
+            {tc("action.retry")}
+          </DepthButton>
+        )}
+      />
     );
   }
 
@@ -352,55 +375,74 @@ export function AdminGameDataSection() {
         </Group>
         {versionsQuery.isLoading ? (
           <Skeleton height={100} />
+        ) : versionsQuery.isError ? (
+          <EmptyState
+            status="error"
+            title={tc("loadError")}
+            actions={(
+              <DepthButton
+                type="secondary"
+                size="sm"
+                onClick={() => {
+                  void versionsQuery.refetch();
+                }}
+                loading={versionsQuery.isFetching}
+              >
+                {tc("action.retry")}
+              </DepthButton>
+            )}
+          />
         ) : recentVersions.length === 0 ? (
           <Text size="sm" c="dimmed">-</Text>
         ) : (
-          <Table highlightOnHover className="admin-game-data__versions-table">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("gameData.currentVersion")}</Table.Th>
-                <Table.Th>{t("gameData.uploadedBy")}</Table.Th>
-                <Table.Th>{t("gameData.updatedAt")}</Table.Th>
-                <Table.Th />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {recentVersions.map((v, index) => (
-                <Table.Tr
-                  key={v.id}
-                  className={v.version === version ? "admin-game-data__active-row" : undefined}
-                >
-                  <Table.Td>
-                    <Group gap={8}>
-                      <Badge variant="outline" color="gray" size="sm">{v.version}</Badge>
-                      {index === 0 ? <Badge size="xs" color="gray" variant="light">{t("gameData.active")}</Badge> : null}
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{v.uploaded_by_name ?? v.uploaded_by}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{new Date(v.created_at).toLocaleString()}</Text>
-                    <span className="admin-game-data__relative-time">{relativeTime(v.created_at, t)}</span>
-                  </Table.Td>
-                  <Table.Td>
-                    {v.version !== version ? (
-                      <DepthButton
-                        type="warning"
-                        size="sm"
-                        className="admin-game-data__rollback-btn"
-                        onClick={() => handleRollback(v.id)}
-                        loading={rollbackMutation.isPending}
-                      >
-                        <RefreshCwIcon size={14} />
-                        {t("gameData.rollback")}
-                      </DepthButton>
-                    ) : null}
-                  </Table.Td>
+          <Table.ScrollContainer minWidth={620}>
+            <Table highlightOnHover className="admin-game-data__versions-table">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t("gameData.currentVersion")}</Table.Th>
+                  <Table.Th>{t("gameData.uploadedBy")}</Table.Th>
+                  <Table.Th>{t("gameData.updatedAt")}</Table.Th>
+                  <Table.Th />
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
+              </Table.Thead>
+              <Table.Tbody>
+                {recentVersions.map((v, index) => (
+                  <Table.Tr
+                    key={v.id}
+                    className={v.version === version ? "admin-game-data__active-row" : undefined}
+                  >
+                    <Table.Td>
+                      <Group gap={8}>
+                        <Badge variant="outline" color="gray" size="sm">{v.version}</Badge>
+                        {index === 0 ? <Badge size="xs" color="gray" variant="light">{t("gameData.active")}</Badge> : null}
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{v.uploaded_by_name ?? v.uploaded_by}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{new Date(v.created_at).toLocaleString()}</Text>
+                      <span className="admin-game-data__relative-time">{relativeTime(v.created_at, t)}</span>
+                    </Table.Td>
+                    <Table.Td>
+                      {v.version !== version ? (
+                        <DepthButton
+                          type="warning"
+                          size="sm"
+                          className="admin-game-data__rollback-btn"
+                          onClick={() => handleRollback(v.id)}
+                          loading={rollbackMutation.isPending}
+                        >
+                          <RefreshCwIcon size={14} />
+                          {t("gameData.rollback")}
+                        </DepthButton>
+                      ) : null}
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
         )}
       </Stack>
     </Stack>

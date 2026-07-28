@@ -16,6 +16,7 @@ import type { AdminCapabilities } from "../../utils/permissions";
 type UseAdminDataOptions = {
   isModerator: boolean;
   userRole: string;
+  activeTab: string;
   effectivePermissions?: AdminCapabilities;
   auditPage: number;
   auditSearch: string;
@@ -29,6 +30,7 @@ export function useAdminData(options: UseAdminDataOptions) {
   const {
     isModerator,
     userRole,
+    activeTab,
     effectivePermissions,
     auditPage,
     auditSearch,
@@ -48,11 +50,13 @@ export function useAdminData(options: UseAdminDataOptions) {
   const roles = rolesQuery.data ?? [];
   const rolePermissions = getAdminCapabilities(roles, userRole);
   const permissions = rolesQuery.isSuccess ? rolePermissions : effectivePermissions ?? rolePermissions;
+  const needsUsers =
+    activeTab === "member" || activeTab === "audit" || activeTab === "badges";
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
     queryFn: () => fetchAllUsersListWithOptions(),
-    enabled: permissions.canViewUsers,
+    enabled: permissions.canViewUsers && needsUsers,
     staleTime: 10 * 60_000,
   });
 
@@ -63,14 +67,14 @@ export function useAdminData(options: UseAdminDataOptions) {
         include_expired: true,
         include_revoked: true,
       }),
-    enabled: permissions.canViewInvites,
+    enabled: permissions.canViewInvites && activeTab === "invite",
     staleTime: 5 * 60_000,
   });
 
   const inviteStatsQuery = useQuery({
     queryKey: queryKeys.admin.inviteStats(),
     queryFn: fetchAdminInviteStats,
-    enabled: permissions.canViewInvites,
+    enabled: permissions.canViewInvites && activeTab === "invite",
     staleTime: 5 * 60_000,
   });
 
@@ -86,7 +90,7 @@ export function useAdminData(options: UseAdminDataOptions) {
         entity_type: auditEntityType || undefined,
         actor_id: auditActorId || undefined,
       }),
-    enabled: permissions.canViewAudit,
+    enabled: permissions.canViewAudit && activeTab === "audit",
     placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
   });
@@ -94,21 +98,21 @@ export function useAdminData(options: UseAdminDataOptions) {
   const auditMonthsQuery = useQuery({
     queryKey: queryKeys.admin.auditMonths(),
     queryFn: fetchAdminAuditArchiveMonths,
-    enabled: permissions.canExportAudit,
+    enabled: permissions.canExportAudit && activeTab === "audit",
     staleTime: 10 * 60_000,
   });
 
   const statusQuery = useQuery({
     queryKey: queryKeys.admin.status(),
     queryFn: fetchAdminStatus,
-    enabled: permissions.canViewStatus,
+    enabled: permissions.canViewStatus && activeTab === "status",
     staleTime: 5 * 60_000,
   });
 
   const siteConfigQuery = useQuery({
     queryKey: queryKeys.siteConfig.admin(),
     queryFn: fetchAdminSiteConfig,
-    enabled: permissions.canManageSiteConfig,
+    enabled: permissions.canManageSiteConfig && activeTab === "siteConfig",
     staleTime: 5 * 60_000,
   });
 

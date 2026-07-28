@@ -5,6 +5,7 @@ import {
   userSchema,
   type Permission,
 } from "@guild/shared";
+import { SYSTEM_TEST_USERNAME_PREFIX, isReservedSystemTestUsername } from "@guild/shared/config/system-test";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { eq, sql } from "drizzle-orm";
@@ -197,6 +198,7 @@ export class AuthService {
 
   async checkUsername(username: string): Promise<ServiceResult<{ available: boolean; reason?: string }>> {
     if (!/^[a-zA-Z0-9_一-鿿]{1,50}$/.test(username)) return ok({ available: false, reason: "invalid_format" });
+    if (isReservedSystemTestUsername(username)) return ok({ available: false, reason: "reserved_prefix" });
     const existing = (await this.db.select({ id: users.id }).from(users).where(usernameEquals(username)).limit(1))[0];
     return ok({ available: !existing });
   }
@@ -211,6 +213,10 @@ export class AuthService {
   }
 
   async register(inviteCode: string, username: string, password: string): Promise<ServiceResult<{ user: unknown }>> {
+    if (isReservedSystemTestUsername(username)) {
+      return err("VALIDATION_ERROR", `Usernames beginning with "${SYSTEM_TEST_USERNAME_PREFIX}" are reserved`);
+    }
+
     const nowIso = new Date().toISOString();
     const existing = (await this.db.select({ id: users.id }).from(users).where(usernameEquals(username)).limit(1))[0];
     if (existing) return err("CONFLICT", "Username already taken");

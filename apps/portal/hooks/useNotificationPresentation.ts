@@ -1,13 +1,12 @@
 import { notifications } from "@mantine/notifications";
 import type { PushMessage } from "@guild/shared";
-import { useEffect, useRef, type MutableRefObject } from "react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useNotificationStore } from "../stores/notifications";
 
 type UseNotificationPresentationOptions = {
   enabled?: boolean;
   showToast?: boolean;
-  playSound?: boolean;
 };
 
 type PushSignalPayload = {
@@ -15,15 +14,9 @@ type PushSignalPayload = {
   titleKey: string;
   message: string;
   color: "blue" | "yellow";
-  frequencyHz: number;
-};
-
-type AudioContextWindow = Window & {
-  webkitAudioContext?: typeof AudioContext;
 };
 
 const SIGNAL_DEDUPE_MS = 10_000;
-const SIGNAL_TONE_MS = 120;
 
 function resolveHintMessage(hint: string, t: (key: string, options?: Record<string, unknown>) => string): string {
   const key = `notification.hint.${hint}`;
@@ -39,7 +32,6 @@ function resolveSignalPayload(message: PushMessage, t: (key: string, options?: R
       titleKey: "notification.type.announcement",
       message: message.title,
       color: "blue",
-      frequencyHz: 880,
     };
   }
 
@@ -52,7 +44,6 @@ function resolveSignalPayload(message: PushMessage, t: (key: string, options?: R
         titleKey: "notification.type.announcement",
         message: resolveHintMessage(hint, t),
         color: "blue",
-        frequencyHz: 660,
       };
     }
 
@@ -62,7 +53,6 @@ function resolveSignalPayload(message: PushMessage, t: (key: string, options?: R
         titleKey: "notification.type.eventReminder",
         message: resolveHintMessage(hint, t),
         color: "yellow",
-        frequencyHz: 660,
       };
     }
 
@@ -72,7 +62,6 @@ function resolveSignalPayload(message: PushMessage, t: (key: string, options?: R
         titleKey: "notification.type.wiki",
         message: resolveHintMessage(hint, t),
         color: "blue",
-        frequencyHz: 660,
       };
     }
 
@@ -82,7 +71,6 @@ function resolveSignalPayload(message: PushMessage, t: (key: string, options?: R
         titleKey: "notification.type.memberOnline",
         message: resolveHintMessage(hint, t),
         color: "yellow",
-        frequencyHz: 660,
       };
     }
   }
@@ -90,56 +78,14 @@ function resolveSignalPayload(message: PushMessage, t: (key: string, options?: R
   return null;
 }
 
-function getAudioContextInstance(cache: MutableRefObject<AudioContext | null>): AudioContext | null {
-  if (cache.current) {
-    return cache.current;
-  }
-
-  const ctor = window.AudioContext ?? (window as AudioContextWindow).webkitAudioContext;
-  if (!ctor) {
-    return null;
-  }
-  cache.current = new ctor();
-  return cache.current;
-}
-
-async function playSignalTone(cache: MutableRefObject<AudioContext | null>, frequencyHz: number): Promise<void> {
-  const context = getAudioContextInstance(cache);
-  if (!context) {
-    throw new Error("AudioContext is not supported in this browser.");
-  }
-
-  if (context.state === "suspended") {
-    await context.resume();
-  }
-
-  const now = context.currentTime;
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-
-  oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(frequencyHz, now);
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(0.055, now + 0.015);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + SIGNAL_TONE_MS / 1000);
-
-  oscillator.connect(gain);
-  gain.connect(context.destination);
-
-  oscillator.start(now);
-  oscillator.stop(now + SIGNAL_TONE_MS / 1000 + 0.01);
-}
-
 export function useNotificationPresentation(options: UseNotificationPresentationOptions = {}) {
   const enabled = options.enabled ?? true;
   const showToast = options.showToast ?? true;
-  const playSound = options.playSound ?? false;
   const { t } = useTranslation("common");
   const signalSequence = useNotificationStore((state) => state.signalSequence);
   const lastSignalMessage = useNotificationStore((state) => state.lastSignalMessage);
   const suppressed = useNotificationStore((state) => state.suppressed);
   const lastSignalRef = useRef<Map<string, number>>(new Map());
-  const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     if (!enabled || suppressed || !lastSignalMessage || signalSequence <= 0) {
@@ -165,38 +111,7 @@ export function useNotificationPresentation(options: UseNotificationPresentation
         message: payload.message,
       });
     }
-
-    if (playSound) {
-      void playSignalTone(audioContextRef, payload.frequencyHz).catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(`[push-sound] ${message}`);
-      });
-    }
-  }, [enabled, lastSignalMessage, playSound, showToast, signalSequence, suppressed, t]);
-
-  useEffect(() => {
-    if (playSound) {
-      return;
-    }
-    if (!audioContextRef.current) {
-      return;
-    }
-    const context = audioContextRef.current;
-    audioContextRef.current = null;
-    void context.close().catch(() => undefined);
-  }, [playSound]);
-
-  useEffect(
-    () => () => {
-      if (!audioContextRef.current) {
-        return;
-      }
-      const context = audioContextRef.current;
-      audioContextRef.current = null;
-      void context.close().catch(() => undefined);
-    },
-    [],
-  );
+  }, [enabled, lastSignalMessage, showToast, signalSequence, suppressed, t]);
 }
 
 

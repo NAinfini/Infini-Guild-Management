@@ -10,7 +10,7 @@ import {
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { requirePermission } from "../middleware/rbac";
+import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { GuildWarService } from "../services/GuildWarService";
 import { buildError, getDb, handleResult, parsePage, parseJsonBody } from "./_shared";
 import { withMedia } from "./service-factory";
@@ -33,7 +33,11 @@ async function requireGuildWarHistoryEditor(c: Context) { return requirePermissi
 guildWarRoutes.get("/active", async (c) => {
   // Guest-visible read route: browsing war boards/history is public; team
   // editing, concluding wars, exports, and stat mutations remain permission-gated.
-  const result = await getService(c).getActive(c.req.query("event_id"));
+  const viewer = await getRequestUser(c);
+  const result = await getService(c).getActive(
+    c.req.query("event_id"),
+    viewer?.permissions.has("guildwar.teams.edit") ?? false,
+  );
   return handleResult(c, result);
 });
 
@@ -96,7 +100,11 @@ guildWarRoutes.get("/history", async (c) => {
   // Guest-visible read route; write/export routes below retain stricter guards.
   const page = parsePage(c.req.query("page"), 1);
   const limit = Math.min(100, parsePage(c.req.query("limit"), 20));
-  const result = await getService(c).listHistory(page, limit, { dateFrom: c.req.query("date_from"), dateTo: c.req.query("date_to") });
+  const result = await getService(c).listHistory(page, limit, {
+    dateFrom: c.req.query("date_from"),
+    dateTo: c.req.query("date_to"),
+    search: c.req.query("search"),
+  });
   return handleResult(c, result);
 });
 

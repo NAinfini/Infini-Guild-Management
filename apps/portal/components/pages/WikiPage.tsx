@@ -1,5 +1,5 @@
 import { Button, Card, Drawer, Group, SegmentedControl, Skeleton, Stack, Text, TextInput, VisuallyHidden } from "@mantine/core";
-import { modals } from "@mantine/modals";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
@@ -39,25 +39,22 @@ export function WikiPage() {
   const { t } = useTranslation("wiki");
   const { t: te } = useTranslation("editor");
   const editorLabels = useMemo(() => buildTipTapEditorLabels(te), [te]);
+  const confirm = useConfirmDialog();
 
   const controller = useWikiPageController();
 
-  const handleDeleteArticle = () => {
+  const handleDeleteArticle = async () => {
     if (!controller.selectedArticle) return;
-    modals.openConfirmModal({
+    const accepted = await confirm({
       title: t("confirm.deleteArticle.title"),
-      children: <Text size="sm">{t("confirm.deleteArticle.description", { title: controller.selectedArticle.title })}</Text>,
-      centered: true,
-      confirmProps: { color: "red" },
-      labels: {
-        cancel: t("common:action.cancel"),
-        confirm: t("common:action.delete"),
-      },
-      onConfirm: () => {
-        controller.setSkipAutoSelectOnceTrue();
-        controller.articleEditor.deleteArticle(controller.selectedArticle!.id);
-      },
+      description: <Text size="sm">{t("confirm.deleteArticle.description", { title: controller.selectedArticle.title })}</Text>,
+      cancelLabel: t("common:action.cancel"),
+      confirmLabel: t("common:action.delete"),
+      intent: "danger",
     });
+    if (!accepted || !controller.selectedArticle) return;
+    controller.setSkipAutoSelectOnceTrue();
+    controller.articleEditor.deleteArticle(controller.selectedArticle.id);
   };
 
   useLoadWarningToast(

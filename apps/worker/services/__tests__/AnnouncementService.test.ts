@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { AnnouncementService } from "../AnnouncementService";
+import { signAnnouncementImageStagingToken } from "../announcement-image-staging";
 
 // Minimal D1Database mock that captures batch/run calls.
 function createRawDb() {
   const batchMock = vi.fn().mockResolvedValue([]);
   const runMock = vi.fn().mockResolvedValue({ results: [], success: true, meta: {} });
-  const bindMock = vi.fn().mockReturnValue({ run: runMock });
+  const bindMock = vi.fn().mockReturnValue({ run: runMock, first: vi.fn().mockResolvedValue(null) });
   const prepareMock = vi.fn().mockReturnValue({ bind: bindMock });
   return {
     rawDb: { prepare: prepareMock, batch: batchMock } as unknown as D1Database,
@@ -22,6 +23,7 @@ function createDeps(rawDb: D1Database = createRawDb().rawDb) {
     writeAuditLog: vi.fn().mockResolvedValue(undefined),
     publishEntityChanged: vi.fn().mockResolvedValue(undefined),
     publishAnnouncementPublished: vi.fn().mockResolvedValue(undefined),
+    signingSecret: "test-secret",
   };
 }
 
@@ -123,6 +125,45 @@ describe("AnnouncementService", () => {
 
     // replaceMediaRefs issues a db.batch with at least the DELETE statement
     expect(batchMock).toHaveBeenCalled();
+  });
+
+  it("creates a staged announcement and its media references in one raw D1 batch", async () => {
+    const id = "Abcdefghijklmnopqrstu";
+    const rawDb = {
+      prepare: vi.fn(() => ({ bind: vi.fn(() => ({})) })),
+      batch: vi.fn().mockResolvedValue([]),
+    } as unknown as D1Database;
+    let lookups = 0;
+    const row = { ...BASE_ANNOUNCEMENT_ROW, id };
+    const db = {
+      select: vi.fn(() => ({ from: () => ({ where: () => ({ limit: vi.fn().mockImplementation(() => Promise.resolve(lookups++ === 0 ? [] : [row])) }) }) })),
+    };
+    const deps = createDeps(rawDb);
+    deps.media = { head: vi.fn().mockResolvedValue({ key: `announcement/${id}/images/a.png` }) } as unknown as R2Bucket;
+    const service = new AnnouncementService(db as never, deps);
+    const token = await signAnnouncementImageStagingToken("test-secret", { version: 1, purpose: "announcement-image-staging", announcement_id: id, actor_id: "u1", exp: Math.floor(Date.now() / 1000) + 60 });
+    const body = JSON.stringify({ type: "doc", content: [{ type: "image", attrs: { src: `/api/announcements/image?key=${encodeURIComponent(`announcement/${id}/images/a.png`)}` } }] });
+
+    const result = await service.create("u1", { title: "T", body_json: body, pinned: false, status: "draft", staging_token: token });
+
+    expect(result.ok).toBe(true);
+    expect(rawDb.batch).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({}),
+    ]));
+    expect(rawDb.batch).toHaveBeenCalledTimes(1);
+    expect((rawDb.batch as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toHaveLength(3);
+  });
+
+  it("does not turn ordinary announcement text into a media reference on update", async () => {
+    const bodyJson = JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "announcement/ann1/images/not-an-image-node.png" }] }] });
+    const { batchMock, rawDb } = createRawDb();
+    const { db } = createCrudDb({ ...BASE_ANNOUNCEMENT_ROW, bodyJson });
+    const service = new AnnouncementService(db as never, createDeps(rawDb));
+
+    await service.update("u1", "ann1", { body_json: bodyJson });
+
+    expect(batchMock).toHaveBeenCalledTimes(1);
+    expect(batchMock.mock.calls[0]![0]).toHaveLength(1);
   });
 
   it("calls replaceMediaRefs after update when body_json is provided", async () => {

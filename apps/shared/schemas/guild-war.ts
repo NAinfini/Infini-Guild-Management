@@ -5,7 +5,9 @@ import { activeGame } from "../games";
 
 const L = LIMITS.content;
 
-const statsObjectSchema = z.record(z.string(), z.number().int().nullable()).nullable();
+const statValueSchema = z.number();
+const writeStatsObjectSchema = z.record(z.string(), statValueSchema.nullable());
+const statsObjectSchema = writeStatsObjectSchema.nullable();
 
 const WAR_RESULTS = activeGame.war.resultOptions as unknown as [string, ...string[]];
 
@@ -30,8 +32,8 @@ export const createWarHistorySchema = z.object({
   war_name: z.string().min(L.warName.min).max(L.warName.max),
   enemy_name: z.string().max(L.warEnemyName.max).optional(),
   result: z.enum(WAR_RESULTS).optional(),
-  own_stats: z.record(z.string(), z.number().int().nullable()).optional(),
-  enemy_stats: z.record(z.string(), z.number().int().nullable()).optional(),
+  own_stats: writeStatsObjectSchema.optional(),
+  enemy_stats: writeStatsObjectSchema.optional(),
   duration_minutes: z.number().positive().optional(),
   notes: z.string().max(L.warNotes.max).optional(),
 });
@@ -83,7 +85,7 @@ export const saveTeamsPayloadSchema = z.object({
 });
 
 export const updateMemberStatsSchema = z.object({
-  stats: z.record(z.string(), z.number().int().nullable()).optional(),
+  stats: writeStatsObjectSchema.optional(),
   note: z.string().nullable().optional(),
 });
 
@@ -113,13 +115,13 @@ export const concludeWarPayloadSchema = z.object({
     enemy_name: z.string().max(L.warEnemyName.max).optional(),
     result: z.enum(WAR_RESULTS),
     duration_minutes: z.number().positive().nullable().optional(),
-    own_stats: z.record(z.string(), z.number().int().nullable()).optional(),
-    enemy_stats: z.record(z.string(), z.number().int().nullable()).optional(),
+    own_stats: writeStatsObjectSchema.optional(),
+    enemy_stats: writeStatsObjectSchema.optional(),
   }),
   member_stats: z.array(
     z.object({
       user_id: z.string(),
-      stats: z.record(z.string(), z.number().int()),
+      stats: z.record(z.string(), statValueSchema),
     }),
   ).optional(),
 });

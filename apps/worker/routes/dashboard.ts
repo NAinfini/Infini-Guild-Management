@@ -11,6 +11,7 @@ import {
   warTeams,
 } from "../db/schema";
 import { parseStringArray } from "../services/helpers";
+import { eventPublicVisibilityFilter } from "../services/events/event-visibility";
 import { toEventPayload, type EventRow } from "../services/EventService";
 import { toWarHistoryPayload } from "../services/GuildWarService";
 import { getRequestUser } from "../middleware/rbac";
@@ -19,8 +20,32 @@ import { getFeatureFlags } from "./service-factory";
 
 export const dashboardRoutes = new Hono();
 
-const UPCOMING_EVENT_LIMIT = 20;
+const UPCOMING_EVENT_GROUP_LIMIT = 5;
 const RECENT_WAR_LIMIT = 4;
+
+const DASHBOARD_EVENT_FIELDS = {
+  id: events.id,
+  type: events.type,
+  title: events.title,
+  description: events.description,
+  startAt: events.startAt,
+  endAt: events.endAt,
+  capacity: events.capacity,
+  pinned: events.pinned,
+  signupLocked: events.signupLocked,
+  visibleAt: events.visibleAt,
+  archivedAt: events.archivedAt,
+  autoArchive: events.autoArchive,
+  autoArchived: events.autoArchived,
+  createdBy: events.createdBy,
+  updatedBy: events.updatedBy,
+  attachments: events.attachments,
+  seriesId: events.seriesId,
+  instanceDate: events.instanceDate,
+  winnerCount: events.winnerCount,
+  createdAt: events.createdAt,
+  updatedAt: events.updatedAt,
+} as const;
 
 function weekWindow(now = new Date()): { start: string; end: string } {
   const end = new Date(now);
@@ -39,8 +64,24 @@ dashboardRoutes.get("/summary", async (c) => {
   const features = await getFeatureFlags(c);
   const db = getDb(c);
   const window = weekWindow();
+  const eventVisibilityFilter = viewer?.permissions.has("events.edit")
+    ? undefined
+    : eventPublicVisibilityFilter(window.start);
+  const upcomingEventFilter = and(
+    isNull(events.archivedAt),
+    gte(events.startAt, window.start),
+    lte(events.startAt, window.end),
+    eventVisibilityFilter,
+  );
 
-  const [memberStatsRows, upcomingEventRows, recentWarRows, warStatsRows] = await Promise.all([
+  const [
+    memberStatsRows,
+    featuredEventRows,
+    upcomingEventRows,
+    upcomingEventCountRows,
+    recentWarRows,
+    warStatsRows,
+  ] = await Promise.all([
     db
       .select({
         activeMembers: sql<number>`sum(case when ${users.deletedAt} is null and ${users.isActive} = 1 then 1 else 0 end)`,
@@ -48,33 +89,21 @@ dashboardRoutes.get("/summary", async (c) => {
       })
       .from(users),
     db
-      .select({
-        id: events.id,
-        type: events.type,
-        title: events.title,
-        description: events.description,
-        startAt: events.startAt,
-        endAt: events.endAt,
-        capacity: events.capacity,
-        pinned: events.pinned,
-        signupLocked: events.signupLocked,
-        visibleAt: events.visibleAt,
-        archivedAt: events.archivedAt,
-        autoArchive: events.autoArchive,
-        autoArchived: events.autoArchived,
-        createdBy: events.createdBy,
-        updatedBy: events.updatedBy,
-        attachments: events.attachments,
-        seriesId: events.seriesId,
-        instanceDate: events.instanceDate,
-        winnerCount: events.winnerCount,
-        createdAt: events.createdAt,
-        updatedAt: events.updatedAt,
-      })
+      .select(DASHBOARD_EVENT_FIELDS)
       .from(events)
-      .where(and(isNull(events.archivedAt), gte(events.startAt, window.start), lte(events.startAt, window.end)))
+      .where(and(upcomingEventFilter, eq(events.pinned, true)))
       .orderBy(asc(events.startAt), asc(events.id))
-      .limit(UPCOMING_EVENT_LIMIT),
+      .limit(UPCOMING_EVENT_GROUP_LIMIT),
+    db
+      .select(DASHBOARD_EVENT_FIELDS)
+      .from(events)
+      .where(and(upcomingEventFilter, eq(events.pinned, false)))
+      .orderBy(asc(events.startAt), asc(events.id))
+      .limit(UPCOMING_EVENT_GROUP_LIMIT),
+    db
+      .select({ total: sql<number>`count(*)` })
+      .from(events)
+      .where(upcomingEventFilter),
     db
       .select({
         id: warHistory.id,
@@ -103,7 +132,8 @@ dashboardRoutes.get("/summary", async (c) => {
       .where(isNotNull(warHistory.result)),
   ]);
 
-  const eventIds = upcomingEventRows.map((row) => row.id);
+  const dashboardEventRows = [...featuredEventRows, ...upcomingEventRows];
+  const eventIds = dashboardEventRows.map((row) => row.id);
   const warIds = recentWarRows.map((row) => row.id);
 
   const [participantRows, warMemberRows] = await Promise.all([
@@ -189,16 +219,19 @@ dashboardRoutes.get("/summary", async (c) => {
     ? 0
     : (Number(warStats.wins) / Number(warStats.total)) * 100;
   const memberStats = memberStatsRows[0];
+  const upcomingEventCount = Number(upcomingEventCountRows[0]?.total ?? 0);
+  const toDashboardEvent = (row: (typeof dashboardEventRows)[number]) => ({
+    ...toEventPayload(row as EventRow),
+    participants: participantsByEvent.get(row.id) ?? [],
+  });
 
   return c.json({
     active_member_count: Number(memberStats?.activeMembers ?? 0),
     total_member_count: Number(memberStats?.totalMembers ?? 0),
-    active_events_count: features.events ? upcomingEventRows.length : 0,
+    active_events_count: features.events ? upcomingEventCount : 0,
     all_war_win_rate: features.guildWar ? allWarWinRate : 0,
-    upcoming_events: features.events ? upcomingEventRows.map((row) => ({
-      ...toEventPayload(row as EventRow),
-      participants: participantsByEvent.get(row.id) ?? [],
-    })) : [],
+    featured_events: features.events ? featuredEventRows.map(toDashboardEvent) : [],
+    upcoming_events: features.events ? upcomingEventRows.map(toDashboardEvent) : [],
     my_signup_event_ids: features.events ? Array.from(mySignupEventIds) : [],
     recent_wars: features.guildWar ? recentWarRows.map(toWarHistoryPayload) : [],
     recent_war_mvps: features.guildWar ? recentWarMvps : [],

@@ -84,7 +84,12 @@ export const DepthButton = forwardRef<HTMLButtonElement, DepthButtonProps>(
 
     if (!tooltipLabel) return btn;
     const tipProps = typeof tooltip === "string" ? { label: tooltip } : tooltip!;
-    return <Tooltip {...tipProps}>{btn}</Tooltip>;
+    const target = disabled ? (
+      <span data-disabled-tooltip-target style={{ display: "inline-flex" }}>
+        {btn}
+      </span>
+    ) : btn;
+    return <Tooltip {...tipProps}>{target}</Tooltip>;
   },
 );
 DepthButton.displayName = "DepthButton";

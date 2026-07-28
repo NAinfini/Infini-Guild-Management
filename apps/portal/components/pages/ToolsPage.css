@@ -79,7 +79,7 @@
 /*
  * The label must never be the element that gives: in a narrow card the flex
  * default (shrink to min-content) breaks "数据版本" into one CJK glyph per line.
- * Only the value truncates.
+ * The value wraps at any character so long version identifiers remain readable.
  */
 .tool-card__meta .mantine-Text-root:first-child {
   flex-shrink: 0;
@@ -87,10 +87,9 @@
 }
 
 .tool-card__meta .mantine-Text-root:last-child {
+  min-width: 0;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
 
@@ -275,6 +274,15 @@ a.tool-card__btn {
   margin-top: 4px;
 }
 
+.sandbox__section-icon {
+  margin-right: var(--space-xs);
+  vertical-align: middle;
+}
+
+.sandbox__opacity-wrap {
+  margin-top: var(--space-md);
+}
+
 .sandbox__slider-icon {
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   flex-shrink: 0;
@@ -355,8 +363,8 @@ a.tool-card__btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: var(--control-icon-size-compact);
+  height: var(--control-icon-size-compact);
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--text-primary) 16%, transparent);
   border-radius: var(--radius-sm);

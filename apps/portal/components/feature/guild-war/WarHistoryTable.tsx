@@ -20,6 +20,7 @@ type WarHistoryTableProps = {
   loadErrorMessage: string;
   filteredHistoryRows: HistorySummaryRow[];
   historyRows: HistorySummaryRow[];
+  historyTotal: number;
   canManage: boolean;
   selectedHistoryIds: Set<string>;
   summaryTable: ReturnType<typeof useReactTable<HistorySummaryRow>>;
@@ -53,6 +54,7 @@ export function WarHistoryTable({
   loadErrorMessage,
   filteredHistoryRows,
   historyRows,
+  historyTotal,
   canManage,
   selectedHistoryIds,
   summaryTable,
@@ -139,7 +141,7 @@ export function WarHistoryTable({
                   ) : null}
                 </Group>
                 <Group gap={8}>
-                  <Badge color="gray">{filteredHistoryRows.length} / {historyRows.length}</Badge>
+                  <Badge color="gray">{historyRows.length} / {historyTotal}</Badge>
                 </Group>
               </Group>
               <div className="war-history-list-table-wrap">

@@ -396,3 +396,36 @@ describe("AdminService role assignment guardrails", () => {
     expect(insert).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("AdminService.createMember reserved system-test username", () => {
+  /*
+   * system-test-cleanup permanently deletes users in this namespace, so an
+   * admin-created account must never be able to land in it — the row would
+   * be gone a day later with no warning.
+   */
+  it("refuses to create an account in the system-test namespace", async () => {
+    const select = vi.fn();
+    const rawDb = createRawDb();
+    const service = createService({ select }, rawDb);
+
+    const result = await service.createMember("admin-1", "systemtest_hijack");
+
+    expect(result).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      message: 'Usernames beginning with "systemtest_" are reserved',
+    });
+    // Rejected before any lookup or insert.
+    expect(select).not.toHaveBeenCalled();
+    expect(rawDb.batch).not.toHaveBeenCalled();
+  });
+
+  it("matches the reserved prefix case-insensitively", async () => {
+    const select = vi.fn();
+    const service = createService({ select }, createRawDb());
+
+    const result = await service.createMember("admin-1", "SystemTest_Hijack");
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+  });
+});
