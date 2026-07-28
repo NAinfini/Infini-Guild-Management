@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  EVENTS_ROUTE_SEARCH_SCHEMA,
   buildEventWorkbenchSearch,
   sanitizeEventsRouteSearch,
 } from "./event-navigation";
@@ -41,6 +42,7 @@ describe("event navigation", () => {
         status: "archived",
         pinned: true,
         locked: true,
+        tab: "recurring",
         eventId: "event-42",
         view: "month",
       }),
@@ -50,6 +52,7 @@ describe("event navigation", () => {
       status: "archived",
       pinned: true,
       locked: true,
+      tab: "recurring",
       eventId: "event-42",
       view: "month",
     });
@@ -57,5 +60,12 @@ describe("event navigation", () => {
 
   it("keeps all status explicit because it changes server filtering", () => {
     expect(sanitizeEventsRouteSearch({ status: "all" })).toEqual({ status: "all" });
+  });
+
+  it("keeps the default events tab implicit and rejects recurring as a view mode", () => {
+    expect(sanitizeEventsRouteSearch({ tab: "events", view: "cards" })).toEqual({
+      view: "cards",
+    });
+    expect(EVENTS_ROUTE_SEARCH_SCHEMA.parse({ view: "recurring" })).toEqual({});
   });
 });

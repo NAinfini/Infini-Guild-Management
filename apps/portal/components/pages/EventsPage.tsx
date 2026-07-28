@@ -1,7 +1,7 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
 import type { ImageGridEditorItem } from "@portal/types/media";
 import { CalendarEventIcon } from "@portal/components/icons";
-import { useClipboard, useLocalStorage } from "@mantine/hooks";
+import { useClipboard } from "@mantine/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
@@ -30,6 +30,7 @@ import { sanitizeEventsRouteSearch, type EventWorkbenchViewMode, type EventsRout
 import { useEventsEditorController } from "../feature/events/useEventsEditorController";
 import { useRecurringTemplatesController } from "../feature/events/useRecurringTemplatesController";
 import { PageLayout } from "../layout/PageLayout";
+import { PageTabPanel, PageTabs } from "../layout/PageTabs";
 import { EventDetailModal } from "../feature/events/EventDetailModal";
 import "./EventsPage.css";
 
@@ -48,8 +49,6 @@ const LazyEventFormModal = lazy(() =>
 const LazyRecurringTemplatesTab = lazy(() =>
   import("../feature/events/RecurringTemplatesTab").then((mod) => ({ default: mod.RecurringTemplatesTab })),
 );
-const EVENTS_VIEW_MODE_KEY = "events.viewMode";
-
 function buildAttachmentSnapshot(items: ImageGridEditorItem[]) {
   return JSON.stringify(
     items.map((item) => ({
@@ -78,18 +77,13 @@ export function EventsPage() {
   const canManage = isModerator && !isExternalView;
   const canInteract = Boolean(user) && !isExternalView;
 
-  const [storedViewMode, setStoredViewMode] = useLocalStorage<EventWorkbenchViewMode>({
-    key: EVENTS_VIEW_MODE_KEY,
-    defaultValue: "cards",
-  });
-  const viewMode = eventsRouteSearch.view ?? storedViewMode;
+  const viewMode = eventsRouteSearch.view ?? "cards";
+  const activeTab = eventsRouteSearch.tab === "recurring" && canManage ? "recurring" : "events";
   const [, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [createTemplateRequested, setCreateTemplateRequested] = useState(0);
   const [monthDetailEvent, setMonthDetailEvent] = useState<Event | null>(null);
   const [attachmentItems, setAttachmentItems] = useState<ImageGridEditorItem[]>([]);
 
   const setViewMode = useCallback((value: EventWorkbenchViewMode) => {
-    setStoredViewMode(value);
     void navigate({
       to: "/events",
       search: (prev) =>
@@ -101,7 +95,7 @@ export function EventsPage() {
       resetScroll: false,
       viewTransition: false,
     });
-  }, [navigate, setStoredViewMode]);
+  }, [navigate]);
 
   const attachmentService = useAttachmentService();
   const attachmentSnapshot = useMemo(() => buildAttachmentSnapshot(attachmentItems), [attachmentItems]);
@@ -114,7 +108,7 @@ export function EventsPage() {
     [attachmentService, queryClient],
   );
   const recurringTemplatesController = useRecurringTemplatesController({
-    enabled: canManage && viewMode === "recurring",
+    enabled: canManage && activeTab === "recurring",
     showError,
   });
   const filtering = useEventsFiltering({
@@ -252,98 +246,115 @@ export function EventsPage() {
 
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<CalendarEventIcon size={22} />} className="events-page">
-      <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={36} radius={8} /></Stack></Card>}>
-        <LazyEventsFiltersCard
-          searchQuery={filtering.searchQuery}
-          eventType={filtering.eventType}
-          eventStatus={filtering.eventStatus}
-          pinnedOnly={filtering.pinnedOnly}
-          lockedOnly={filtering.lockedOnly}
-          viewMode={viewMode}
-          canManage={canManage}
-          onSearchChange={filtering.setSearchQuery}
-          onEventTypeChange={filtering.setEventType}
-          onEventStatusChange={filtering.setEventStatus}
-          onPinnedOnlyChange={filtering.setPinnedOnly}
-          onLockedOnlyChange={filtering.setLockedOnly}
-          onViewModeChange={setViewMode}
-          onCreateEvent={() => openCreateEditor()}
-          onCreateTemplate={() => setCreateTemplateRequested((n) => n + 1)}
-        />
-      </Suspense>
+      <PageTabs
+        keepMounted={false}
+        defaultValue="events"
+        tabs={[
+          { value: "events", label: t("tab.events") },
+          ...(canManage ? [{ value: "recurring" as const, label: t("recurring.tab") }] : []),
+        ]}
+      >
+        <PageTabPanel value="events" pt="sm">
+          <Stack gap={12}>
+            <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={36} radius={8} /></Stack></Card>}>
+              <LazyEventsFiltersCard
+                searchQuery={filtering.searchQuery}
+                eventType={filtering.eventType}
+                eventStatus={filtering.eventStatus}
+                pinnedOnly={filtering.pinnedOnly}
+                lockedOnly={filtering.lockedOnly}
+                viewMode={viewMode}
+                canManage={canManage}
+                onSearchChange={filtering.setSearchQuery}
+                onEventTypeChange={filtering.setEventType}
+                onEventStatusChange={filtering.setEventStatus}
+                onPinnedOnlyChange={filtering.setPinnedOnly}
+                onLockedOnlyChange={filtering.setLockedOnly}
+                onViewModeChange={setViewMode}
+                onCreateEvent={() => openCreateEditor()}
+              />
+            </Suspense>
 
-      <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
-        {viewMode === "recurring" && canManage ? (
-          <LazyRecurringTemplatesTab
-            canManage={canManage}
-            createRequested={createTemplateRequested}
-            templates={recurringTemplatesController.templates}
-            loading={recurringTemplatesController.loading}
-            formSaving={recurringTemplatesController.formSaving}
-            onCreateTemplate={recurringTemplatesController.createRecurringTemplate}
-            onUpdateTemplate={recurringTemplatesController.updateRecurringTemplate}
-            onPauseTemplate={recurringTemplatesController.pauseRecurringTemplate}
-            onResumeTemplate={recurringTemplatesController.resumeRecurringTemplate}
-            onDeleteTemplate={recurringTemplatesController.deleteRecurringTemplate}
-          />
-        ) : viewMode === "cards" ? (
-          <LazyEventCardsView
-            events={filtering.sortedEvents}
-            cardsEmptyDescription={filtering.cardsEmptyDescription}
-            canManage={canManage}
-            canInteract={canInteract}
-            currentUserId={user?.id ?? null}
-            eventType={filtering.eventType}
-            archivedOnly={filtering.archivedOnly}
-            pinnedOnly={filtering.pinnedOnly}
-            lockedOnly={filtering.lockedOnly}
-            hasAnyFilter={filtering.hasAnyFilter}
-            focusedEventId={filtering.focusEventId}
-            eventFlags={filtering.eventFlags}
-            eventMembersMap={filtering.eventMembersMap}
-            allUsers={asMemberEntries(filtering.usersQuery.data?.data ?? [])}
-            createPending={mutations.createPending}
-            updatePending={mutations.updatePending}
-            archivePending={mutations.archivePending}
-            joinPending={mutations.joinPending}
-            leavePending={mutations.leavePending}
-            votePending={mutations.votePending}
-            onResetFilters={filtering.resetFilters}
-            onCreateEvent={() => openCreateEditor()}
-            onJoinEvent={(eventId) => {
-              void mutations.handleJoin(eventId);
-            }}
-            onLeaveEvent={mutations.handleLeave}
-            onCopyMentions={handleCopyMentionsForEvent}
-            onEditEvent={openEditEditor}
-            onDuplicateEvent={mutations.duplicateEvent}
-            onTogglePinEvent={mutations.togglePinnedEvent}
-            onToggleLockEvent={mutations.toggleLockedEvent}
-            onArchiveEvent={mutations.archiveEventById}
-            onUnarchiveEvent={mutations.unarchiveEventById}
-            onDeleteEvent={(event) => { void mutations.deleteEventWithConfirm(event); }}
-            onAddParticipant={mutations.addParticipant}
-            onRemoveParticipant={mutations.removeParticipant}
-            onVotePoll={canInteract ? mutations.votePoll : undefined}
-            onDrawRaffle={canManage ? mutations.drawRaffle : undefined}
-            drawRafflePending={mutations.drawRafflePending}
-            hasMore={filtering.eventsHasMore}
-            isLoadingMore={filtering.eventsLoadingMore}
-            onLoadMore={filtering.onLoadMoreEvents}
-          />
-        ) : (
-          <LazyEventCalendarView
-            canManage={canManage}
-            eventsByDay={filtering.eventsByDay}
-            availabilityDayPeakByDay={filtering.availabilityHeatData.dayPeakByDay}
-            availabilityMaxCount={filtering.availabilityHeatData.maxCount}
-            onSelectDate={setSelectedDate}
-            onCreateEvent={openCreateEditor}
-            onEditEvent={openEditEditor}
-            onViewEvent={setMonthDetailEvent}
-          />
-        )}
-      </Suspense>
+            <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
+              {viewMode === "cards" ? (
+                <LazyEventCardsView
+                  events={filtering.sortedEvents}
+                  cardsEmptyDescription={filtering.cardsEmptyDescription}
+                  canManage={canManage}
+                  canInteract={canInteract}
+                  currentUserId={user?.id ?? null}
+                  eventType={filtering.eventType}
+                  archivedOnly={filtering.archivedOnly}
+                  pinnedOnly={filtering.pinnedOnly}
+                  lockedOnly={filtering.lockedOnly}
+                  hasAnyFilter={filtering.hasAnyFilter}
+                  focusedEventId={filtering.focusEventId}
+                  eventFlags={filtering.eventFlags}
+                  eventMembersMap={filtering.eventMembersMap}
+                  allUsers={asMemberEntries(filtering.usersQuery.data?.data ?? [])}
+                  createPending={mutations.createPending}
+                  updatePending={mutations.updatePending}
+                  archivePending={mutations.archivePending}
+                  joinPending={mutations.joinPending}
+                  leavePending={mutations.leavePending}
+                  votePending={mutations.votePending}
+                  onResetFilters={filtering.resetFilters}
+                  onCreateEvent={() => openCreateEditor()}
+                  onJoinEvent={(eventId) => {
+                    void mutations.handleJoin(eventId);
+                  }}
+                  onLeaveEvent={mutations.handleLeave}
+                  onCopyMentions={handleCopyMentionsForEvent}
+                  onEditEvent={openEditEditor}
+                  onDuplicateEvent={mutations.duplicateEvent}
+                  onTogglePinEvent={mutations.togglePinnedEvent}
+                  onToggleLockEvent={mutations.toggleLockedEvent}
+                  onArchiveEvent={mutations.archiveEventById}
+                  onUnarchiveEvent={mutations.unarchiveEventById}
+                  onDeleteEvent={(event) => { void mutations.deleteEventWithConfirm(event); }}
+                  onAddParticipant={mutations.addParticipant}
+                  onRemoveParticipant={mutations.removeParticipant}
+                  onVotePoll={canInteract ? mutations.votePoll : undefined}
+                  onDrawRaffle={canManage ? mutations.drawRaffle : undefined}
+                  drawRafflePending={mutations.drawRafflePending}
+                  hasMore={filtering.eventsHasMore}
+                  isLoadingMore={filtering.eventsLoadingMore}
+                  onLoadMore={filtering.onLoadMoreEvents}
+                />
+              ) : (
+                <LazyEventCalendarView
+                  canManage={canManage}
+                  eventsByDay={filtering.eventsByDay}
+                  availabilityDayPeakByDay={filtering.availabilityHeatData.dayPeakByDay}
+                  availabilityMaxCount={filtering.availabilityHeatData.maxCount}
+                  onSelectDate={setSelectedDate}
+                  onCreateEvent={openCreateEditor}
+                  onEditEvent={openEditEditor}
+                  onViewEvent={setMonthDetailEvent}
+                />
+              )}
+            </Suspense>
+          </Stack>
+        </PageTabPanel>
+
+        {canManage ? (
+          <PageTabPanel value="recurring" pt="sm">
+            <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
+              <LazyRecurringTemplatesTab
+                canManage={canManage}
+                templates={recurringTemplatesController.templates}
+                loading={recurringTemplatesController.loading}
+                formSaving={recurringTemplatesController.formSaving}
+                onCreateTemplate={recurringTemplatesController.createRecurringTemplate}
+                onUpdateTemplate={recurringTemplatesController.updateRecurringTemplate}
+                onPauseTemplate={recurringTemplatesController.pauseRecurringTemplate}
+                onResumeTemplate={recurringTemplatesController.resumeRecurringTemplate}
+                onDeleteTemplate={recurringTemplatesController.deleteRecurringTemplate}
+              />
+            </Suspense>
+          </PageTabPanel>
+        ) : null}
+      </PageTabs>
 
       {editorOpen ? (
         <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={120} radius={8} /></Stack></Card>}>

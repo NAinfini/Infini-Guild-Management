@@ -1,6 +1,7 @@
 {
   "title": "Events",
   "subtitle": "Schedule",
+  "tab.events": "Events",
   "view.cards": "Cards",
   "view.calendar": "Month",
   "view.week": "Week",

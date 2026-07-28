@@ -4,9 +4,10 @@ import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
 import { tzOffsetToAnchorIso, buildFormState, computeNextLifecyclePreview, formatLifecycleDate, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
 import { PortalCard } from "@portal/components/shared/PortalCard";
 import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, UsersIcon } from "@portal/components/icons";
 import { Badge, Group, HoverCard, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import {
@@ -47,7 +48,6 @@ function buildRecurrenceSummary(
 
 type RecurringTemplatesTabProps = {
   canManage: boolean;
-  createRequested?: number;
   templates: RecurringTemplate[];
   loading: boolean;
   formSaving: boolean;
@@ -60,7 +60,6 @@ type RecurringTemplatesTabProps = {
 
 export function RecurringTemplatesTab({
   canManage,
-  createRequested,
   templates,
   loading,
   formSaving,
@@ -82,10 +81,6 @@ export function RecurringTemplatesTab({
     setEditingTemplate(null);
     formHandlers.open();
   }, []);
-
-  useEffect(() => {
-    if (createRequested) handleCreate();
-  }, [createRequested, handleCreate]);
 
   const handleEdit = useCallback((template: RecurringTemplate) => {
     setFormMode("edit");
@@ -140,11 +135,23 @@ export function RecurringTemplatesTab({
   return (
     <>
       <Stack gap={12}>
+        {canManage && templates.length > 0 ? (
+          <Group justify="flex-end">
+            <DepthButton type="primary" size="sm" onClick={handleCreate}>
+              {t("recurring.create")}
+            </DepthButton>
+          </Group>
+        ) : null}
         {templates.length === 0 ? (
           <PortalCard interactive={false}>
             <Stack align="center" gap={8} py={40} px={16}>
               <CalendarRepeatIcon size={40} style={{ opacity: 0.3 }} />
               <Text c="dimmed" size="sm">{t("recurring.empty")}</Text>
+              {canManage ? (
+                <DepthButton type="primary" size="sm" onClick={handleCreate}>
+                  {t("recurring.create")}
+                </DepthButton>
+              ) : null}
             </Stack>
           </PortalCard>
         ) : (
