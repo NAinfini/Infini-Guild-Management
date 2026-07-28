@@ -100,7 +100,7 @@ describe("AdminStatusTab", () => {
   });
 
   it("clears stale endpoint results before a single-category run", () => {
-    const source = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/admin/AdminStatusTab.tsx"), "utf8");
+    const source = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/admin/useAdminApiTestRunner.ts"), "utf8");
     const runCategoryBlock = source.slice(
       source.indexOf("const runCategory = useCallback"),
       source.indexOf("const runAllCategories = useCallback"),
