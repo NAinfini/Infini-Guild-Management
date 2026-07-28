@@ -76,6 +76,84 @@ function createService(db: unknown, rawDb: unknown = { batch: vi.fn(), prepare: 
 }
 
 describe("AdminService role assignment guardrails", () => {
+  it("paginates invite links and reports an uncapped total", async () => {
+    const inviteRows = [
+      {
+        id: "invite-3",
+        code: "THREE",
+        createdBy: "admin-1",
+        maxUses: 5,
+        usedCount: 1,
+        expiresAt: null,
+        createdAt: "2026-05-18T00:00:00.000Z",
+        revokedAt: null,
+      },
+      {
+        id: "invite-2",
+        code: "TWO",
+        createdBy: "admin-1",
+        maxUses: 5,
+        usedCount: 0,
+        expiresAt: null,
+        createdAt: "2026-05-17T00:00:00.000Z",
+        revokedAt: null,
+      },
+    ];
+    const offset = vi.fn().mockResolvedValue(inviteRows);
+    const limit = vi.fn(() => ({ offset }));
+    const orderBy = vi.fn(() => ({ limit }));
+    const listWhere = vi.fn(() => ({ orderBy }));
+    const countWhere = vi.fn().mockResolvedValue([{ total: 12 }]);
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: listWhere })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: countWhere })) });
+    const service = createService({ select });
+
+    const result = await service.listInviteLinks({
+      cursor: 4,
+      limit: 1,
+      visibility: "active",
+      search: "three",
+      searchCodes: true,
+    });
+
+    expect(limit).toHaveBeenCalledWith(2);
+    expect(offset).toHaveBeenCalledWith(4);
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        data: [expect.objectContaining({ id: "invite-3", code: "THREE" })],
+        next_cursor: "5",
+        total: 12,
+      },
+    });
+  });
+
+  it("aggregates invite stats in SQL without a 100-row cap", async () => {
+    const from = vi.fn().mockResolvedValue([{
+      total: 321,
+      active: 120,
+      revoked: 31,
+      expired: 170,
+    }]);
+    const service = createService({
+      select: vi.fn(() => ({ from })),
+    });
+
+    const result = await service.getInviteLinkStats();
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        total: 321,
+        active: 120,
+        revoked: 31,
+        expired: 170,
+      },
+    });
+  });
+
   it("records the invite id instead of the invite code in create audit logs", async () => {
     const inviteRow = {
       id: "invite-id-1",

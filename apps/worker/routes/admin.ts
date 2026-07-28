@@ -8,6 +8,7 @@ import {
   updateRoleSchema,
   updateSiteConfigSchema,
 } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { desc, eq, sql } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -20,7 +21,7 @@ import { AdminService, type MediaLike } from "../services/AdminService";
 import { AdminAuditService, AuditLogQueryError } from "../services/AdminAuditService";
 import { createPasswordHash } from "../services/auth";
 import { errorLog } from "../db/schema/error-log";
-import { buildError, getDb, handleResult, parseBoolean, parseJsonBody, parsePage } from "./_shared";
+import { buildError, getDb, handleResult, parseJsonBody, parsePage } from "./_shared";
 import { getSiteConfigService } from "./site-config";
 
 const generateInviteCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 16);
@@ -83,11 +84,31 @@ function buildArchiveDownloadUrl(c: Context, token: string): string {
 // Invite Links
 adminRoutes.get("/invite-links", async (c) => {
   const sessionUser = await requirePermission(c, "admin.invite.view");
-  const result = await getAdminService(c).listInviteLinks(parseBoolean(c.req.query("include_expired")) ?? false, parseBoolean(c.req.query("include_revoked")) ?? false);
-  if (!result.ok) return handleResult(c, result);
   const canManage = sessionUser.permissions.has("admin.invite.manage");
-  const data = canManage ? result.data : (result.data as Record<string, unknown>[]).map(({ code: _, ...rest }) => ({ ...rest, code: "••••••••••••••••" }));
-  return c.json(data);
+  const cursorRaw = Number.parseInt(c.req.query("cursor") ?? "", 10);
+  const limitRaw = Number.parseInt(c.req.query("limit") ?? "", 10);
+  const visibilityRaw = c.req.query("visibility");
+  const visibility = visibilityRaw === "expired" || visibilityRaw === "revoked"
+    ? visibilityRaw
+    : "active";
+  const search = (c.req.query("search") ?? "").trim().slice(0, 200);
+  const result = await getAdminService(c).listInviteLinks({
+    cursor: Number.isFinite(cursorRaw) && cursorRaw >= 0 ? cursorRaw : 0,
+    limit: Number.isFinite(limitRaw) && limitRaw > 0
+      ? Math.min(limitRaw, 100)
+      : LIMITS.pagination.admin,
+    visibility,
+    search: search || undefined,
+    searchCodes: canManage,
+  });
+  if (!result.ok) return handleResult(c, result);
+  const data = canManage
+    ? result.data.data
+    : (result.data.data as Record<string, unknown>[]).map(({ code: _, ...rest }) => ({
+        ...rest,
+        code: "••••••••••••••••",
+      }));
+  return c.json({ ...result.data, data });
 });
 
 adminRoutes.get("/invite-links/stats", async (c) => {

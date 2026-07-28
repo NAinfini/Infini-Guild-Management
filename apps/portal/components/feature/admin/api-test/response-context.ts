@@ -396,8 +396,8 @@ export function captureContextFromResponse(
   }
 
   if (endpoint.path === "/api/admin/invite-links") {
-    if (Array.isArray(payload)) {
-      const firstInvite = payload.find((item): item is Record<string, unknown> => isRecord(item));
+    if (endpoint.method === "GET") {
+      const firstInvite = firstArrayItem(payload.data);
       next.registerInviteCode = readString(firstInvite?.code) ?? next.registerInviteCode;
     } else {
       if (endpoint.method === "POST") {

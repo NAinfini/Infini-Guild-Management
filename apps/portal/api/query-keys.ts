@@ -77,7 +77,9 @@ export const queryKeys = {
   },
   admin: {
     all: ["admin"] as const,
-    inviteLinks: () => [...queryKeys.admin.all, "invite-links"] as const,
+    inviteLinksAll: () => [...queryKeys.admin.all, "invite-links"] as const,
+    inviteLinks: (visibility: string, search: string) =>
+      [...queryKeys.admin.inviteLinksAll(), visibility, search] as const,
     inviteStats: () => [...queryKeys.admin.all, "invite-stats"] as const,
     auditLog: (page: number, search: string, startAt: string, endAt: string, entityType?: string, actorId?: string) =>
       [...queryKeys.admin.all, "audit-log", page, search, startAt, endAt, entityType ?? null, actorId ?? null] as const,

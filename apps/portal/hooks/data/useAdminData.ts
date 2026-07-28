@@ -1,4 +1,5 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { LIMITS } from "@guild/shared/config/limits";
 import {
   fetchAdminAuditArchiveMonths,
   fetchAdminAuditLog,
@@ -12,6 +13,7 @@ import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { getAdminCapabilities } from "../../utils/permissions";
 import { fetchAdminSiteConfig } from "../../services/SiteConfigService";
 import type { AdminCapabilities } from "../../utils/permissions";
+import type { InviteVisibility } from "../../services/AdminService";
 
 type UseAdminDataOptions = {
   isModerator: boolean;
@@ -24,6 +26,8 @@ type UseAdminDataOptions = {
   auditDateTo: string;
   auditEntityType: string;
   auditActorId: string;
+  inviteVisibility: InviteVisibility;
+  inviteSearch: string;
 };
 
 export function useAdminData(options: UseAdminDataOptions) {
@@ -38,6 +42,8 @@ export function useAdminData(options: UseAdminDataOptions) {
     auditDateTo,
     auditEntityType,
     auditActorId,
+    inviteVisibility,
+    inviteSearch,
   } = options;
 
   const rolesQuery = useQuery({
@@ -60,13 +66,17 @@ export function useAdminData(options: UseAdminDataOptions) {
     staleTime: 10 * 60_000,
   });
 
-  const inviteLinksQuery = useQuery({
-    queryKey: queryKeys.admin.inviteLinks(),
-    queryFn: () =>
+  const inviteLinksQuery = useInfiniteQuery({
+    queryKey: queryKeys.admin.inviteLinks(inviteVisibility, inviteSearch),
+    queryFn: ({ pageParam }) =>
       fetchAdminInviteLinks({
-        include_expired: true,
-        include_revoked: true,
+        cursor: pageParam,
+        limit: LIMITS.pagination.admin,
+        visibility: inviteVisibility,
+        search: inviteSearch || undefined,
       }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    initialPageParam: undefined as string | undefined,
     enabled: permissions.canViewInvites && activeTab === "invite",
     staleTime: 5 * 60_000,
   });

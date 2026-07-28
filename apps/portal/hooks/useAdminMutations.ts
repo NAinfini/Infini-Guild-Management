@@ -28,8 +28,6 @@ import {
 import { queryKeys } from "../api/query-keys";
 import { copyPlainText } from "../utils/copy";
 import { auditExportDatePart, downloadFileBlob, toIsoOrUndefined } from "../utils/admin";
-import type { InviteState } from "./useAdminInviteController";
-
 type AuditFilterState = {
   search: string;
   dateFrom: string;
@@ -39,7 +37,6 @@ type AuditFilterState = {
 };
 
 type UseAdminMutationsParams = {
-  invite: InviteState;
   auditFilter: AuditFilterState;
   batchSelectionLimit: number;
   showError: (error: unknown, fallbackMessage: string) => void;
@@ -47,7 +44,6 @@ type UseAdminMutationsParams = {
 };
 
 export function useAdminMutations({
-  invite,
   auditFilter,
   batchSelectionLimit,
   showError,
@@ -64,7 +60,7 @@ export function useAdminMutations({
   };
 
   const invalidateInviteData = async () => {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.admin.inviteLinks() });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.admin.inviteLinksAll() });
     await queryClient.invalidateQueries({ queryKey: queryKeys.admin.inviteStats() });
   };
 
@@ -180,10 +176,10 @@ export function useAdminMutations({
   });
 
   const createInviteMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: ({ maxUses, expiresAt }: { maxUses: number; expiresAt: string }) =>
       createAdminInviteLink({
-        max_uses: invite.maxUses,
-        expires_at: toIsoOrUndefined(invite.expiresAt),
+        max_uses: maxUses,
+        expires_at: toIsoOrUndefined(expiresAt),
       }),
     onSuccess: async () => {
       notifySuccess(t("message.inviteCreated"));

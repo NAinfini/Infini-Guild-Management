@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAdminData } from "./useAdminData";
@@ -195,7 +195,13 @@ describe("portal data hooks", () => {
       },
     ]);
     serviceMocks.fetchAllUsersListWithOptions.mockResolvedValue({ data: [] });
-    serviceMocks.fetchAdminInviteLinks.mockResolvedValue([]);
+    serviceMocks.fetchAdminInviteLinks.mockImplementation(
+      ({ cursor }: { cursor?: string }) => Promise.resolve({
+        data: [],
+        next_cursor: cursor ? null : "50",
+        total: 75,
+      }),
+    );
     serviceMocks.fetchAdminInviteStats.mockResolvedValue({});
     serviceMocks.fetchAdminAuditLog.mockResolvedValue({ data: [] });
     serviceMocks.fetchAdminAuditArchiveMonths.mockResolvedValue([]);
@@ -203,7 +209,15 @@ describe("portal data hooks", () => {
     serviceMocks.fetchAdminSiteConfig.mockResolvedValue({ site: {} });
 
     const { result, rerender } = renderHook(
-      ({ activeTab }: { activeTab: string }) =>
+      ({
+        activeTab,
+        inviteVisibility,
+        inviteSearch,
+      }: {
+        activeTab: string;
+        inviteVisibility: "active" | "expired" | "revoked";
+        inviteSearch: string;
+      }) =>
         useAdminData({
           isModerator: true,
           userRole: "admin",
@@ -214,9 +228,15 @@ describe("portal data hooks", () => {
           auditDateTo: "2026-03-08",
           auditEntityType: "",
           auditActorId: "",
+          inviteVisibility,
+          inviteSearch,
         }),
       {
-        initialProps: { activeTab: "status" },
+        initialProps: {
+          activeTab: "status",
+          inviteVisibility: "active" as "active" | "expired" | "revoked",
+          inviteSearch: "",
+        },
         wrapper: createWrapper(),
       },
     );
@@ -233,17 +253,42 @@ describe("portal data hooks", () => {
     expect(serviceMocks.fetchAdminAuditLog).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminSiteConfig).not.toHaveBeenCalled();
 
-    rerender({ activeTab: "invite" });
+    rerender({ activeTab: "invite", inviteVisibility: "active", inviteSearch: "" });
     await waitFor(() => {
       expect(result.current.inviteLinksQuery.isSuccess).toBe(true);
       expect(result.current.inviteStatsQuery.isSuccess).toBe(true);
     });
     expect(serviceMocks.fetchAdminInviteLinks).toHaveBeenCalledWith({
-      include_expired: true,
-      include_revoked: true,
+      cursor: undefined,
+      limit: 50,
+      visibility: "active",
+      search: undefined,
+    });
+    await act(async () => {
+      await result.current.inviteLinksQuery.fetchNextPage();
+    });
+    expect(serviceMocks.fetchAdminInviteLinks).toHaveBeenCalledWith({
+      cursor: "50",
+      limit: 50,
+      visibility: "active",
+      search: undefined,
     });
 
-    rerender({ activeTab: "audit" });
+    rerender({
+      activeTab: "invite",
+      inviteVisibility: "expired",
+      inviteSearch: "2026-07",
+    });
+    await waitFor(() => {
+      expect(serviceMocks.fetchAdminInviteLinks).toHaveBeenCalledWith({
+        cursor: undefined,
+        limit: 50,
+        visibility: "expired",
+        search: "2026-07",
+      });
+    });
+
+    rerender({ activeTab: "audit", inviteVisibility: "expired", inviteSearch: "2026-07" });
     await waitFor(() => {
       expect(result.current.usersQuery.isSuccess).toBe(true);
       expect(result.current.auditLogQuery.isSuccess).toBe(true);
@@ -257,7 +302,7 @@ describe("portal data hooks", () => {
       end_at: "2026-03-08T23:59:59.999Z",
     });
 
-    rerender({ activeTab: "siteConfig" });
+    rerender({ activeTab: "siteConfig", inviteVisibility: "expired", inviteSearch: "2026-07" });
     await waitFor(() => {
       expect(result.current.siteConfigQuery.isSuccess).toBe(true);
     });
@@ -300,6 +345,8 @@ describe("portal data hooks", () => {
           auditDateTo: "",
           auditEntityType: "",
           auditActorId: "",
+          inviteVisibility: "active",
+          inviteSearch: "",
         }),
       { wrapper: createWrapper() },
     );
@@ -351,6 +398,8 @@ describe("portal data hooks", () => {
           auditDateTo: "",
           auditEntityType: "",
           auditActorId: "",
+          inviteVisibility: "active",
+          inviteSearch: "",
         }),
       { wrapper: createWrapper() },
     );
@@ -396,6 +445,8 @@ describe("portal data hooks", () => {
           auditDateTo: "",
           auditEntityType: "",
           auditActorId: "",
+          inviteVisibility: "active",
+          inviteSearch: "",
           effectivePermissions: {
             canAccessAdmin: true,
             canViewUsers: true,

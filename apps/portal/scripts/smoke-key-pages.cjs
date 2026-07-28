@@ -39,7 +39,7 @@ const STATIC_PAGE_API_CHECKS = [
   { page: "Gallery", path: "/api/gallery?limit=20" },
   { page: "Wiki", path: "/api/wiki/categories" },
   { page: "Wiki", path: "/api/wiki/articles?page=1&limit=10" },
-  { page: "Admin", path: "/api/admin/invite-links?include_expired=true&include_revoked=true" },
+  { page: "Admin", path: "/api/admin/invite-links?visibility=active&limit=50" },
   { page: "Admin", path: "/api/admin/invite-links/stats" },
   { page: "Admin", path: "/api/admin/audit-log?page=1&limit=20" },
   { page: "Admin", path: "/api/admin/roles" },

@@ -73,6 +73,7 @@ export function AdminPage() {
     deactivateMutation,
     invite,
     inviteRows,
+    inviteTotal,
     inviteLinksQuery,
     inviteStatsQuery,
     isInviteInactive,
@@ -107,8 +108,6 @@ export function AdminPage() {
     setAuditDateTo,
     setAuditPage,
     setAuditSearch,
-    setInviteExpiresAt,
-    setInviteMaxUses,
     setInviteSearch,
     setInviteVisibility,
     setMemberDetailId,
@@ -218,18 +217,21 @@ export function AdminPage() {
             <LazyAdminInviteSection
               inviteVisibility={invite.visibility}
               onInviteVisibilityChange={setInviteVisibility}
-              inviteMaxUses={invite.maxUses}
-              onInviteMaxUsesChange={setInviteMaxUses}
-              inviteExpiresAt={invite.expiresAt}
-              onInviteExpiresAtChange={setInviteExpiresAt}
-              onCreateInvite={() => createInviteMutation.mutate()}
+              onCreateInvite={(input, onSuccess) => {
+                createInviteMutation.mutate(input, { onSuccess });
+              }}
               createInvitePending={createInviteMutation.isPending}
-              createInviteSuccess={createInviteMutation.isSuccess}
               inviteStatsLoading={inviteStatsQuery.isLoading}
               inviteStats={inviteStatsQuery.data ?? null}
               inviteLinksLoading={inviteLinksQuery.isLoading}
               inviteLinksError={inviteLinksQuery.isError}
               inviteRows={inviteRows}
+              inviteTotal={inviteTotal}
+              hasMoreInvites={inviteLinksQuery.hasNextPage}
+              loadingMoreInvites={inviteLinksQuery.isFetchingNextPage}
+              onLoadMoreInvites={() => {
+                void inviteLinksQuery.fetchNextPage();
+              }}
               inviteSearch={invite.search}
               onInviteSearchChange={setInviteSearch}
               isInviteInactive={isInviteInactive}

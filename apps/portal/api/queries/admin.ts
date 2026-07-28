@@ -1,7 +1,7 @@
 import type {
   AuditLogEntry,
+  CursorResponse,
   InviteLink,
-  InviteLinkStats,
   PaginatedResponse,
 } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
@@ -12,7 +12,12 @@ export type InviteLinkStatsSummary = {
   active: number;
   revoked: number;
   expired: number;
-  data: InviteLinkStats[];
+};
+
+export type InviteVisibility = "active" | "expired" | "revoked";
+
+export type AdminInviteLinksResponse = CursorResponse<InviteLink> & {
+  total: number;
 };
 
 export type AdminStatus = {
@@ -46,20 +51,18 @@ export type AdminAuditExportParams = {
 };
 
 export function fetchAdminInviteLinks(params: {
-  include_expired?: boolean;
-  include_revoked?: boolean;
-} = {}): Promise<InviteLink[]> {
+  cursor?: string;
+  limit?: number;
+  visibility: InviteVisibility;
+  search?: string;
+}): Promise<AdminInviteLinksResponse> {
   const query = new URLSearchParams();
-  if (params.include_expired !== undefined) {
-    query.set("include_expired", String(params.include_expired));
-  }
-  if (params.include_revoked !== undefined) {
-    query.set("include_revoked", String(params.include_revoked));
-  }
+  if (params.cursor !== undefined) query.set("cursor", params.cursor);
+  query.set("limit", String(params.limit ?? LIMITS.pagination.admin));
+  query.set("visibility", params.visibility);
+  if (params.search) query.set("search", params.search);
 
-  return apiRequest<InviteLink[]>(
-    `/api/admin/invite-links${query.size > 0 ? `?${query.toString()}` : ""}`,
-  );
+  return apiRequest<AdminInviteLinksResponse>(`/api/admin/invite-links?${query.toString()}`);
 }
 
 export function fetchAdminInviteStats(): Promise<InviteLinkStatsSummary> {

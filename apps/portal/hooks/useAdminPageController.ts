@@ -55,6 +55,7 @@ export function useAdminPageController() {
     setAuditDateTo,
     setAuditDatePreset,
   } = useAdminAuditFilter();
+  const inviteController = useAdminInviteController();
 
   const effectiveAdminPermissions = useMemo(() => ({
     canAccessAdmin: userCanAccessAdmin(user),
@@ -91,11 +92,20 @@ export function useAdminPageController() {
     auditDateTo: auditFilter.dateTo,
     auditEntityType: auditFilter.entityType,
     auditActorId: auditFilter.actorId,
+    inviteVisibility: inviteController.invite.visibility,
+    inviteSearch: inviteController.debouncedInviteSearch,
   });
 
-  const inviteController = useAdminInviteController({
-    inviteLinks: inviteLinksQuery.data ?? [],
-  });
+  const inviteRows = useMemo(() => {
+    const uniqueRows = new Map<string, NonNullable<typeof inviteLinksQuery.data>["pages"][number]["data"][number]>();
+    for (const page of inviteLinksQuery.data?.pages ?? []) {
+      for (const row of page.data) {
+        uniqueRows.set(row.id, row);
+      }
+    }
+    return [...uniqueRows.values()];
+  }, [inviteLinksQuery.data]);
+  const inviteTotal = inviteLinksQuery.data?.pages.at(-1)?.total ?? 0;
 
   const userRowsRaw = usersQuery.data?.data ?? [];
   const userMap = useMemo(() => {
@@ -108,7 +118,6 @@ export function useAdminPageController() {
   const resolveUsername = useCallback((id: string) => userMap.get(id), [userMap]);
 
   const adminMutations = useAdminMutations({
-    invite: inviteController.invite,
     auditFilter,
     batchSelectionLimit: BATCH_SELECTION_LIMIT,
     showError,
@@ -334,6 +343,8 @@ export function useAdminPageController() {
     firstAvailableTab,
     handleCopyConfigSummary,
     inviteLinksQuery,
+    inviteRows,
+    inviteTotal,
     inviteStatsQuery,
     ...inviteController,
     isAdmin,

@@ -353,6 +353,27 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(imageCtx.galleryImageKey).toBe("gallery/images/user-1/key");
   });
 
+  it("captures an invite code from the cursor response envelope", () => {
+    const next = captureContextFromResponse(
+      createInitialTestRunContext(),
+      { label: "Invites", method: "GET", path: "/api/admin/invite-links" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-07-28T00:00:00.000Z",
+        parsedJson: {
+          data: [{ id: "invite-1", code: "CURSOR-INVITE-CODE" }],
+          next_cursor: null,
+          total: 1,
+        },
+      },
+    );
+
+    expect(next.registerInviteCode).toBe("CURSOR-INVITE-CODE");
+  });
+
   it("does not capture seeded mock image paths as profile media keys", () => {
     const next = captureContextFromResponse(
       createInitialTestRunContext(),

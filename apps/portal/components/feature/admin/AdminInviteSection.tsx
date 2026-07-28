@@ -7,19 +7,16 @@ import { DepthButton } from "@portal/components/shared/DepthButton";
 import {
   InfiniTable,
   getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
   useReactTable,
 } from "@portal/components/shared/InfiniTable";
-import type { ColumnDef, PaginationState, SortingState } from "@portal/components/shared/InfiniTable";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ColumnDef } from "@portal/components/shared/InfiniTable";
+import { useCallback, useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { useEffectivePermissions } from "../../../hooks/useEffectivePermissions";
 import { formatDateTime } from "../../../utils/admin";
 import { copyPlainText } from "../../../utils/copy";
 import { resolveInviteStatus, type InviteStatus } from "../../../utils/invite-status";
-import { TablePagination } from "../../shared/TablePagination";
 import type { InviteLinkStatsSummary } from "../../../services/AdminService";
 
 type InviteRow = InviteLink;
@@ -64,18 +61,20 @@ function InviteStatusBadge({ invite }: { invite: InviteRow }) {
 type AdminInviteSectionProps = {
   inviteVisibility: "active" | "expired" | "revoked";
   onInviteVisibilityChange: (value: "active" | "expired" | "revoked") => void;
-  inviteMaxUses: number;
-  onInviteMaxUsesChange: (value: number) => void;
-  inviteExpiresAt: string;
-  onInviteExpiresAtChange: (value: string) => void;
-  onCreateInvite: () => void;
+  onCreateInvite: (
+    input: { maxUses: number; expiresAt: string },
+    onSuccess: () => void,
+  ) => void;
   createInvitePending: boolean;
-  createInviteSuccess: boolean;
   inviteStatsLoading: boolean;
   inviteStats: InviteStats | null;
   inviteLinksLoading: boolean;
   inviteLinksError: boolean;
   inviteRows: InviteRow[];
+  inviteTotal: number;
+  hasMoreInvites: boolean;
+  loadingMoreInvites: boolean;
+  onLoadMoreInvites: () => void;
   inviteSearch: string;
   onInviteSearchChange: (value: string) => void;
   isInviteInactive: (row: InviteRow) => boolean;
@@ -86,18 +85,17 @@ type AdminInviteSectionProps = {
 export function AdminInviteSection({
   inviteVisibility,
   onInviteVisibilityChange,
-  inviteMaxUses,
-  onInviteMaxUsesChange,
-  inviteExpiresAt,
-  onInviteExpiresAtChange,
   onCreateInvite,
   createInvitePending,
-  createInviteSuccess,
   inviteStatsLoading,
   inviteStats,
   inviteLinksLoading,
   inviteLinksError,
   inviteRows,
+  inviteTotal,
+  hasMoreInvites,
+  loadingMoreInvites,
+  onLoadMoreInvites,
   inviteSearch,
   onInviteSearchChange,
   isInviteInactive,
@@ -111,14 +109,27 @@ export function AdminInviteSection({
   const isAdmin = canManagePermission(["admin.invite.manage"]);
   const loadErrorMessage = tc("loadError");
   const [createModalOpen, createModalHandlers] = useDisclosure(false);
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
+  const [inviteMaxUses, setInviteMaxUses] = useState(10);
+  const [inviteExpiresAt, setInviteExpiresAt] = useState("");
 
-  useEffect(() => {
-    if (createInviteSuccess && createModalOpen) {
-      createModalHandlers.close();
-    }
-  }, [createInviteSuccess, createModalOpen, createModalHandlers]);
+  const resetCreateForm = useCallback(() => {
+    setInviteMaxUses(10);
+    setInviteExpiresAt("");
+  }, []);
+  const handleOpenCreateModal = useCallback(() => {
+    resetCreateForm();
+    createModalHandlers.open();
+  }, [createModalHandlers, resetCreateForm]);
+  const handleCloseCreateModal = useCallback(() => {
+    createModalHandlers.close();
+    resetCreateForm();
+  }, [createModalHandlers, resetCreateForm]);
+  const handleCreateInvite = useCallback(() => {
+    onCreateInvite(
+      { maxUses: inviteMaxUses, expiresAt: inviteExpiresAt },
+      handleCloseCreateModal,
+    );
+  }, [handleCloseCreateModal, inviteExpiresAt, inviteMaxUses, onCreateInvite]);
 
   const handleCopyInviteLink = useCallback((row: InviteRow) => {
     void copyPlainText(`${window.location.origin}/register/${row.code}`);
@@ -247,13 +258,8 @@ export function AdminInviteSection({
   const table = useReactTable({
     data: inviteRows,
     columns,
-    state: { sorting, pagination },
-    onSortingChange: setSorting,
-    onPaginationChange: setPagination,
-    autoResetPageIndex: false,
+    enableSorting: false,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     getRowId: (row) => row.id,
   });
 
@@ -293,13 +299,13 @@ export function AdminInviteSection({
             </Group>
             <Group wrap="wrap" gap={8}>
               <TextInput
-                placeholder={t("invite.search")}
+                placeholder={t(isAdmin ? "invite.search" : "invite.searchDateOnly")}
                 value={inviteSearch}
                 onChange={(event) => onInviteSearchChange(event.currentTarget.value)}
                 style={{ width: 220 }}
               />
               {isAdmin ? (
-                <DepthButton size="sm" type="primary" before={<PlusIcon size={16} />} onClick={createModalHandlers.open}>
+                <DepthButton size="sm" type="primary" before={<PlusIcon size={16} />} onClick={handleOpenCreateModal}>
                   {t("invite.create")}
                 </DepthButton>
               ) : null}
@@ -315,7 +321,25 @@ export function AdminInviteSection({
         <PortalCard interactive={false}>
           <div className="admin-invite-card-content admin-invite-table-content">
             <InfiniTable table={table} />
-            <TablePagination table={table} />
+            <Group justify="space-between" align="center" mt="md">
+              <Text size="sm" c="dimmed">
+                {t("invite.loadedCount", {
+                  loaded: inviteRows.length,
+                  total: inviteTotal,
+                })}
+              </Text>
+              {hasMoreInvites ? (
+                <DepthButton
+                  size="sm"
+                  type="secondary"
+                  loading={loadingMoreInvites}
+                  disabled={loadingMoreInvites}
+                  onClick={onLoadMoreInvites}
+                >
+                  {t("invite.loadMore")}
+                </DepthButton>
+              ) : null}
+            </Group>
           </div>
         </PortalCard>
       ) : null}
@@ -323,7 +347,7 @@ export function AdminInviteSection({
       {/* Create Invite Modal */}
       <Modal
         opened={createModalOpen}
-        onClose={createModalHandlers.close}
+        onClose={handleCloseCreateModal}
         title={t("invite.createTitle")}
         centered
       >
@@ -333,7 +357,7 @@ export function AdminInviteSection({
             <NumberInput
               min={1}
               value={inviteMaxUses}
-              onChange={(value) => onInviteMaxUsesChange(typeof value === "number" ? value : 1)}
+              onChange={(value) => setInviteMaxUses(typeof value === "number" ? value : 1)}
               aria-label={t("invite.aria.maxUses")}
               style={{ flex: 1 }}
             />
@@ -342,8 +366,8 @@ export function AdminInviteSection({
             <Text size="sm" c="dimmed">{t("invite.expiresAt")}</Text>
             <TextInput
               type="datetime-local"
-              value={inviteExpiresAt || undefined}
-              onChange={(event) => onInviteExpiresAtChange(event.currentTarget.value)}
+              value={inviteExpiresAt}
+              onChange={(event) => setInviteExpiresAt(event.currentTarget.value)}
               aria-label={t("invite.aria.expiresAt")}
             />
           </Stack>
@@ -352,9 +376,7 @@ export function AdminInviteSection({
             before={<PlusIcon size={16} />}
             loading={createInvitePending}
             disabled={createInvitePending}
-            onClick={() => {
-              onCreateInvite();
-            }}
+            onClick={handleCreateInvite}
             style={{ width: "100%" }}
           >
             {t("invite.create")}
