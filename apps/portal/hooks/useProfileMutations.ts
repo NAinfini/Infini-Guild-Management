@@ -45,6 +45,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       });
     },
     onSuccess: async (updatedProfile) => {
+      form.acceptServerProfile(updatedProfile);
       setProfile(updatedProfile);
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });

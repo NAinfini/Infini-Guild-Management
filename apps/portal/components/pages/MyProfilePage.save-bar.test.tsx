@@ -30,6 +30,8 @@ describe("MyProfilePage save flow", () => {
     expect(pageSource.match(/<FloatingSaveBar/g)).toHaveLength(1);
     expect(profileTabSource).not.toContain("<FloatingSaveBar");
     expect(availabilityTabSource).not.toContain("<FloatingSaveBar");
+    expect(pageSource).toContain("profileQuery.isError && !profileQuery.data");
+    expect(pageSource).toContain("profileQuery.refetch()");
   });
 
   it("only enables saving when the page has unsaved changes", () => {

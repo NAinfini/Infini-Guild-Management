@@ -21,6 +21,7 @@ import { ProfileAccountTab } from "../feature/profile/ProfileAccountTab";
 import { ProfileAvailabilityTab } from "../feature/profile/ProfileAvailabilityTab";
 import { ProfilePreviewCard } from "../feature/profile/ProfilePreviewCard";
 import { ProfileProfileTab } from "../feature/profile/ProfileProfileTab";
+import { EmptyState } from "../shared/EmptyState";
 import { FloatingSaveBar } from "../shared/FloatingSaveBar";
 import { PageLayout } from "../layout/PageLayout";
 import { PageTabPanel, PageTabs } from "../layout/PageTabs";
@@ -92,10 +93,13 @@ export function MyProfilePage() {
   const { profileQuery } = useProfileData({
     userId: user?.id,
   });
-  useLoadWarningToast(profileQuery.isError, t("common:loadErrorRetry"));
+  useLoadWarningToast(
+    profileQuery.isError && Boolean(profileQuery.data),
+    t("common:loadErrorRetry"),
+  );
 
   const form = useProfileFormState({ profile: profileQuery.data?.profile });
-  useBeforeUnloadPrompt(form.isDirty);
+  useBeforeUnloadPrompt(form.isDirty, { allowSamePathNavigation: true });
 
   const imageUploader = useMediaUpload(
     async (files) => {
@@ -167,6 +171,23 @@ export function MyProfilePage() {
             </Stack>
           </Grid.Col>
         </Grid>
+      ) : profileQuery.isError && !profileQuery.data ? (
+        <EmptyState
+          status="error"
+          title={t("common:loadError")}
+          description={t("common:errors.connectionIssue")}
+          actions={(
+            <DepthButton
+              type="primary"
+              loading={profileQuery.isFetching}
+              onClick={() => {
+                void profileQuery.refetch();
+              }}
+            >
+              {t("common:action.retry")}
+            </DepthButton>
+          )}
+        />
       ) : (
       <Grid gutter="md">
         <Grid.Col span={{ base: 12, lg: 3 }}>
