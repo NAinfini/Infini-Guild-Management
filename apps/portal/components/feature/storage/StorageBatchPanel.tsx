@@ -22,6 +22,7 @@ export type StorageBatchDraft = {
   idempotencyKey: string;
   type: StorageBatchDirection;
   quantities: Record<string, number>;
+  itemSnapshots: Record<string, StorageItem>;
   recipientUserId: string | null;
   note: string;
 };
@@ -30,7 +31,6 @@ type UserOption = { user: User };
 
 type StorageBatchPanelProps = {
   draft: StorageBatchDraft;
-  items: StorageItem[];
   users: UserOption[];
   currentUsername?: string;
   canManageStock: boolean;
@@ -46,7 +46,6 @@ type StorageBatchPanelProps = {
 
 export function StorageBatchPanel({
   draft,
-  items,
   users,
   currentUsername,
   canManageStock,
@@ -61,8 +60,8 @@ export function StorageBatchPanel({
 }: StorageBatchPanelProps) {
   const { t } = useTranslation("storage");
   const itemsById = useMemo(
-    () => new Map(items.map((item) => [item.id, item])),
-    [items],
+    () => new Map(Object.entries(draft.itemSnapshots)),
+    [draft.itemSnapshots],
   );
   const selectedEntries = Object.entries(draft.quantities)
     .filter(([, quantity]) => quantity > 0)

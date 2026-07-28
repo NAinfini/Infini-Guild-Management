@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createStorageBatchTransactionSchema, storageBatchTransactionResultSchema } from "./storage";
+import { createStorageBatchTransactionSchema, STORAGE_STOCK_FILTERS, storageBatchTransactionResultSchema, storageItemsListQuerySchema } from "./storage";
 
 describe("createStorageBatchTransactionSchema", () => {
   const valid = {
@@ -40,5 +40,21 @@ describe("storageBatchTransactionResultSchema", () => {
   it("requires a transaction list and replay marker", () => {
     expect(storageBatchTransactionResultSchema.safeParse({ data: [], replayed: false }).success).toBe(true);
     expect(storageBatchTransactionResultSchema.safeParse({ data: [], replayed: "false" }).success).toBe(false);
+  });
+});
+
+describe("storageItemsListQuerySchema", () => {
+  it("accepts every supported stock filter and the storage page defaults", () => {
+    expect(STORAGE_STOCK_FILTERS).toEqual(["all", "available", "empty", "deposit", "withdraw"]);
+    expect(storageItemsListQuerySchema.parse({ stock: "available" })).toMatchObject({
+      stock: "available",
+      limit: 24,
+    });
+  });
+
+  it("rejects invalid stock filters and limits outside the supported range", () => {
+    expect(storageItemsListQuerySchema.safeParse({ stock: "missing" }).success).toBe(false);
+    expect(storageItemsListQuerySchema.safeParse({ limit: "0" }).success).toBe(false);
+    expect(storageItemsListQuerySchema.safeParse({ limit: "101" }).success).toBe(false);
   });
 });

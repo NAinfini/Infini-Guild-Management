@@ -22,6 +22,7 @@
   "action.submit": "提交",
   "action.submitDeposit": "提交存入",
   "action.submitWithdraw": "提交取出",
+  "action.loadMore": "加载更多",
   "action.startBatch": "批量操作",
   "action.clearBatch": "清空批次",
   "action.closeBatch": "关闭批次",

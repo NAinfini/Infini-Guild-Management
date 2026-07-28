@@ -12,7 +12,7 @@ import {
   Textarea,
 } from "@mantine/core";
 import { ArrowRightIcon } from "@portal/components/icons";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 type TransactionMode = CreateStorageTransactionPayload["type"];
@@ -25,8 +25,13 @@ type StorageTransactionModalProps = {
   initialItem: StorageItem | null;
   initialMode: TransactionMode;
   canManageStock: boolean;
+  itemsHasMore?: boolean;
+  itemsLoadingMore?: boolean;
+  itemSearch?: string;
   defaultRecipientUserId?: string;
   isSaving: boolean;
+  onItemSearchChange?: (value: string) => void;
+  onLoadMoreItems?: () => void;
   onClose: () => void;
   onSubmit: (itemId: string, payload: CreateStorageTransactionPayload) => void;
 };
@@ -42,19 +47,28 @@ export function StorageTransactionModal({
   initialItem,
   initialMode,
   canManageStock,
+  itemsHasMore = false,
+  itemsLoadingMore = false,
+  itemSearch,
   defaultRecipientUserId,
   isSaving,
+  onItemSearchChange,
+  onLoadMoreItems,
   onClose,
   onSubmit,
 }: StorageTransactionModalProps) {
   const { t } = useTranslation("storage");
   const [itemId, setItemId] = useState<string | null>(null);
+  const [selectedItemSnapshot, setSelectedItemSnapshot] = useState<StorageItem | null>(null);
   const [recipientUserId, setRecipientUserId] = useState<string | null>(null);
   const [type, setType] = useState<TransactionMode>("intake");
   const [quantity, setQuantity] = useState<number | string>(1);
   const [note, setNote] = useState("");
+  const initializedSessionRef = useRef<string | null>(null);
 
-  const selectedItem = items.find((item) => item.id === itemId) ?? initialItem;
+  const selectedItem = items.find((item) => item.id === itemId)
+    ?? selectedItemSnapshot
+    ?? initialItem;
   const selectedUser = users.find(({ user }) => user.id === recipientUserId)?.user ?? null;
   const itemOptions = useMemo(
     () => items.map((item) => ({ value: item.id, label: `${item.name} (${item.quantity})` })),
@@ -101,11 +115,21 @@ export function StorageTransactionModal({
       ? t("action.withdraw")
       : t("tx.adjust");
 
+  const sessionKey = opened
+    ? `${initialItem?.id ?? "manual"}:${initialMode}:${canManageStock ? "manager" : "member"}`
+    : null;
+
   useEffect(() => {
-    if (!opened) return;
+    if (!sessionKey) {
+      initializedSessionRef.current = null;
+      return;
+    }
+    if (initializedSessionRef.current === sessionKey) return;
+    initializedSessionRef.current = sessionKey;
     const nextType = canManageStock ? initialMode : initialMode === "adjust" ? "intake" : initialMode;
     const nextItem = initialItem ?? items[0] ?? null;
     setItemId(nextItem?.id ?? null);
+    setSelectedItemSnapshot(nextItem);
     setRecipientUserId(
       users.some(({ user }) => user.id === defaultRecipientUserId)
         ? defaultRecipientUserId ?? null
@@ -114,7 +138,19 @@ export function StorageTransactionModal({
     setType(nextType);
     setQuantity(nextType === "adjust" ? nextItem?.quantity ?? 0 : 1);
     setNote("");
-  }, [canManageStock, defaultRecipientUserId, initialItem, initialMode, items, opened, users]);
+  }, [canManageStock, defaultRecipientUserId, initialItem, initialMode, items, sessionKey, users]);
+
+  useEffect(() => {
+    if (!opened || itemId || !items[0]) return;
+    setItemId(items[0].id);
+    setSelectedItemSnapshot(items[0]);
+    if (type === "adjust") setQuantity(items[0].quantity);
+  }, [itemId, items, opened, type]);
+
+  useEffect(() => {
+    if (!opened || recipientUserId || !users[0]) return;
+    setRecipientUserId(users[0].user.id);
+  }, [opened, recipientUserId, users]);
 
   const handleTypeChange = (value: string) => {
     const nextType = value as TransactionMode;
@@ -204,19 +240,36 @@ export function StorageTransactionModal({
 
         <div className={`storage-admin-transaction-grid ${type === "adjust" ? "storage-admin-transaction-grid--adjust" : ""}`}>
           {canManageStock ? (
-            <Select
-              label={t("field.item")}
-              data={itemOptions}
-              value={itemId}
-              onChange={(value) => {
-                setItemId(value);
-                if (type === "adjust") {
-                  setQuantity(items.find((item) => item.id === value)?.quantity ?? 0);
-                }
-              }}
-              searchable
-              nothingFoundMessage={t("empty.noItems")}
-            />
+            <Stack gap={6}>
+              <Select
+                label={t("field.item")}
+                data={itemOptions}
+                value={itemId}
+                onChange={(value) => {
+                  setItemId(value);
+                  setSelectedItemSnapshot(
+                    items.find((item) => item.id === value) ?? null,
+                  );
+                  if (type === "adjust") {
+                    setQuantity(items.find((item) => item.id === value)?.quantity ?? 0);
+                  }
+                }}
+                searchable
+                searchValue={itemSearch}
+                onSearchChange={onItemSearchChange}
+                nothingFoundMessage={t("empty.noItems")}
+              />
+              {itemsHasMore ? (
+                <Button
+                  size="compact-sm"
+                  variant="subtle"
+                  loading={itemsLoadingMore}
+                  onClick={onLoadMoreItems}
+                >
+                  {t("action.loadMore")}
+                </Button>
+              ) : null}
+            </Stack>
           ) : null}
           {canManageStock && requiresRecipient ? (
             <Select

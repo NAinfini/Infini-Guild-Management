@@ -46,6 +46,17 @@ describe("core schema storage invariants", () => {
     expect(drizzleChecks).toContain("storage_items_quantity_nonnegative");
     expect(schemaSql).toContain("CONSTRAINT storage_items_quantity_nonnegative CHECK (quantity >= 0)");
   });
+
+  it("keeps keyset pagination indexes in Drizzle and the baseline SQL", () => {
+    const drizzleIndexes = getTableConfig(storageItems).indexes.map((index) => index.config.name);
+
+    expect(drizzleIndexes).toEqual(expect.arrayContaining([
+      "idx_storage_items_storage_name_id",
+      "idx_storage_items_storage_category_name_id",
+    ]));
+    expect(schemaSql).toContain("CREATE INDEX IF NOT EXISTS idx_storage_items_storage_name_id ON storage_items(storage_id, name, id)");
+    expect(schemaSql).toContain("CREATE INDEX IF NOT EXISTS idx_storage_items_storage_category_name_id ON storage_items(storage_id, category_id, name, id)");
+  });
 });
 
 describe("core schema role baseline data", () => {

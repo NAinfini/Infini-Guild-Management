@@ -767,7 +767,8 @@ CREATE TABLE IF NOT EXISTS storage_items (
   CONSTRAINT storage_items_quantity_nonnegative CHECK (quantity >= 0)
 );
 
-CREATE INDEX IF NOT EXISTS idx_storage_items_storage_category ON storage_items(storage_id, category_id);
+CREATE INDEX IF NOT EXISTS idx_storage_items_storage_name_id ON storage_items(storage_id, name, id);
+CREATE INDEX IF NOT EXISTS idx_storage_items_storage_category_name_id ON storage_items(storage_id, category_id, name, id);
 
 CREATE TABLE IF NOT EXISTS storage_item_images (
   id TEXT PRIMARY KEY,

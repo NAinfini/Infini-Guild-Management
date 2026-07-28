@@ -56,7 +56,21 @@ export const queryKeys = {
   storage: {
     all: ["storage"] as const,
     tree: () => [...queryKeys.storage.all, "tree"] as const,
-    items: (storageId: string, categoryId: string | null, search: string) => [...queryKeys.storage.all, "items", storageId, categoryId, search] as const,
+    itemsRoot: () => [...queryKeys.storage.all, "items"] as const,
+    items: (
+      storageId: string,
+      categoryId: string | null,
+      search: string,
+      stock: string,
+      limit: number,
+    ) => [
+      ...queryKeys.storage.itemsRoot(),
+      storageId,
+      categoryId,
+      search,
+      stock,
+      limit,
+    ] as const,
     item: (id: string | null) => [...queryKeys.storage.all, "item", id] as const,
     transactions: (filter: string, page: number, limit: number) =>
       [...queryKeys.storage.all, "transactions", filter, page, limit] as const,

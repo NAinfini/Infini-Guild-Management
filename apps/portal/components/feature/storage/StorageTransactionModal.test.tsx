@@ -38,6 +38,9 @@ const member: User = {
 function renderModal(options: {
   canManageStock: boolean;
   mode?: "intake" | "distribute" | "adjust";
+  initialItem?: StorageItem | null;
+  itemsHasMore?: boolean;
+  onLoadMoreItems?: () => void;
 }) {
   const onSubmit = vi.fn<(itemId: string, payload: CreateStorageTransactionPayload) => void>();
   render(
@@ -46,9 +49,14 @@ function renderModal(options: {
         opened
         items={[item]}
         users={[{ user: member }]}
-        initialItem={item}
+        initialItem={options.initialItem === undefined ? item : options.initialItem}
         initialMode={options.mode ?? "intake"}
         canManageStock={options.canManageStock}
+        itemsHasMore={options.itemsHasMore ?? false}
+        itemsLoadingMore={false}
+        itemSearch=""
+        onItemSearchChange={vi.fn()}
+        onLoadMoreItems={options.onLoadMoreItems ?? vi.fn()}
         defaultRecipientUserId={member.id}
         isSaving={false}
         onClose={vi.fn()}
@@ -112,5 +120,63 @@ describe("StorageTransactionModal", () => {
       target_quantity: 12,
       note: null,
     });
+  });
+
+  it("loads another server page in the global manager item picker", async () => {
+    const user = userEvent.setup();
+    const loadMore = vi.fn();
+    renderModal({
+      canManageStock: true,
+      initialItem: null,
+      itemsHasMore: true,
+      onLoadMoreItems: loadMore,
+    });
+
+    await user.click(screen.getByRole("button", { name: "action.loadMore" }));
+
+    expect(loadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not reset an in-progress entry when another item page arrives", async () => {
+    const user = userEvent.setup();
+    const commonProps = {
+      opened: true,
+      users: [{ user: member }],
+      initialItem: null,
+      initialMode: "intake" as const,
+      canManageStock: true,
+      defaultRecipientUserId: member.id,
+      isSaving: false,
+      onClose: vi.fn(),
+      onSubmit: vi.fn(),
+    };
+    const { rerender } = render(
+      <MantineProvider>
+        <StorageTransactionModal {...commonProps} items={[item]} />
+      </MantineProvider>,
+    );
+    const quantityInput = screen.getByRole("textbox", { name: "field.quantity" });
+    await user.clear(quantityInput);
+    await user.type(quantityInput, "5");
+
+    rerender(
+      <MantineProvider>
+        <StorageTransactionModal
+          {...commonProps}
+          items={[item, { ...item, id: "item-2", name: "Ore" }]}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByRole("textbox", { name: "field.quantity" })).toHaveValue("5");
+
+    rerender(
+      <MantineProvider>
+        <StorageTransactionModal {...commonProps} items={[]} />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByText("Crystal")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "action.submit" })).toBeEnabled();
   });
 });

@@ -22,6 +22,7 @@
   "action.submit": "Submit",
   "action.submitDeposit": "Submit Deposit",
   "action.submitWithdraw": "Submit Withdraw",
+  "action.loadMore": "Load more",
   "action.startBatch": "Batch operation",
   "action.clearBatch": "Clear batch",
   "action.closeBatch": "Close batch",

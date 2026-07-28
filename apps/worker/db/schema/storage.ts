@@ -47,7 +47,8 @@ export const storageItems = sqliteTable(
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
   (table) => [
-    index("idx_storage_items_storage_category").on(table.storageId, table.categoryId),
+    index("idx_storage_items_storage_name_id").on(table.storageId, table.name, table.id),
+    index("idx_storage_items_storage_category_name_id").on(table.storageId, table.categoryId, table.name, table.id),
     check("storage_items_quantity_nonnegative", sql`${table.quantity} >= 0`),
   ],
 );

@@ -1,4 +1,4 @@
-import type { Storage, StorageItem } from "@guild/shared";
+import type { Storage, StorageItem, StorageStockFilter } from "@guild/shared";
 import {
   Button,
   Group,
@@ -9,8 +9,9 @@ import {
   TextInput,
 } from "@mantine/core";
 import { ClipboardIcon, PlusIcon, SearchIcon } from "@portal/components/icons";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useDebouncedSearch } from "../../../hooks/useDebouncedSearch";
 import { useStorageItems } from "../../../hooks/useStorage";
 import { resolveStorageMediaUrl } from "../../../utils/media";
 import { PageLayout } from "../../layout/PageLayout";
@@ -18,7 +19,6 @@ import { EmptyState } from "../../shared/EmptyState";
 import type { StorageBatchDraft } from "./StorageBatchPanel";
 import { StorageItemCard } from "./StorageItemCard";
 
-type StockFilter = "all" | "available" | "empty" | "deposit" | "withdraw";
 type MemberTransactionMode = "intake" | "distribute";
 
 type StorageInventoryPanelProps = {
@@ -28,19 +28,11 @@ type StorageInventoryPanelProps = {
   hasAnyItems: boolean;
   batchDraft?: StorageBatchDraft;
   onStartBatch: () => void;
-  onBatchQuantityChange: (itemId: string, quantity: number) => void;
+  onBatchQuantityChange: (item: StorageItem, quantity: number) => void;
   onOpenItem: (item: StorageItem) => void;
   onEditItem: (item: StorageItem | null) => void;
   onOpenTransaction: (item: StorageItem | null, mode: MemberTransactionMode) => void;
 };
-
-function filterItems(items: StorageItem[], stockFilter: StockFilter): StorageItem[] {
-  if (stockFilter === "available") return items.filter((item) => item.quantity > 0);
-  if (stockFilter === "empty") return items.filter((item) => item.quantity === 0);
-  if (stockFilter === "deposit") return items.filter((item) => item.allow_member_deposit);
-  if (stockFilter === "withdraw") return items.filter((item) => item.allow_member_withdraw);
-  return items;
-}
 
 export function StorageInventoryPanel({
   storage,
@@ -56,16 +48,15 @@ export function StorageInventoryPanel({
 }: StorageInventoryPanelProps) {
   const { t } = useTranslation("storage");
   const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [stockFilter, setStockFilter] = useState<StockFilter>("all");
-  const itemsQuery = useStorageItems(storage.id, categoryId, search);
-  const items = useMemo(
-    () => filterItems(
-      [...(itemsQuery.data?.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
-      stockFilter,
-    ),
-    [itemsQuery.data?.data, stockFilter],
-  );
+  const { search, setSearch, debouncedSearch } = useDebouncedSearch();
+  const [stockFilter, setStockFilter] = useState<StorageStockFilter>("all");
+  const itemsQuery = useStorageItems({
+    storageId: storage.id,
+    categoryId,
+    search: debouncedSearch,
+    stock: stockFilter,
+  });
+  const items = itemsQuery.items;
   const stockFilterOptions = [
     { value: "all", label: t("filter.stockAll") },
     { value: "available", label: t("filter.available") },
@@ -105,7 +96,7 @@ export function StorageInventoryPanel({
                 className="storage-command__stock"
                 data={stockFilterOptions}
                 value={stockFilter}
-                onChange={(value) => setStockFilter((value as StockFilter) ?? "all")}
+                onChange={(value) => setStockFilter((value as StorageStockFilter) ?? "all")}
               />
               <TextInput
                 className="storage-command__search"
@@ -179,7 +170,7 @@ export function StorageInventoryPanel({
                   quantity: batchDraft.quantities[item.id] ?? 0,
                   canManageStock,
                   limitReached: batchLimitReached,
-                  onChange: (quantity) => onBatchQuantityChange(item.id, quantity),
+                  onChange: (quantity) => onBatchQuantityChange(item, quantity),
                 } : undefined}
                 onOpen={onOpenItem}
                 onDeposit={(next) => onOpenTransaction(next, "intake")}
@@ -188,6 +179,17 @@ export function StorageInventoryPanel({
               />
             ))}
           </div>
+          {itemsQuery.hasNextPage ? (
+            <Group justify="center" mt="md">
+              <Button
+                variant="default"
+                onClick={() => void itemsQuery.fetchNextPage()}
+                loading={itemsQuery.isFetchingNextPage}
+              >
+                {t("action.loadMore")}
+              </Button>
+            </Group>
+          ) : null}
         </PageLayout.Section>
       ) : null}
     </Stack>

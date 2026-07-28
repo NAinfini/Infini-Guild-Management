@@ -4,9 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "@tanstack/react-router";
 import { PlusIcon, SettingsIcon } from "@portal/components/icons";
 import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../../api/query-keys";
+import { useDebouncedSearch } from "../../hooks/useDebouncedSearch";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { useStorageItem, useStorageItems, useStorageTree } from "../../hooks/useStorage";
 import { useStorageMutations } from "../../hooks/useStorageMutations";
@@ -38,6 +39,7 @@ function createBatchDraft(recipientUserId: string | null): StorageBatchDraft {
     idempotencyKey: crypto.randomUUID(),
     type: "intake",
     quantities: {},
+    itemSnapshots: {},
     recipientUserId,
     note: "",
   };
@@ -62,13 +64,17 @@ export function StoragePage() {
   const storages = treeQuery.data?.data ?? [];
   const { storageId } = useSearch({ strict: false }) as { storageId?: string };
   const activeStorage = storages.find((storage) => storage.id === storageId) ?? storages[0] ?? null;
-  const allItemsQuery = useStorageItems(activeStorage?.id, null, "");
-  const allItems = useMemo(
-    () => [...(allItemsQuery.data?.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
-    [allItemsQuery.data?.data],
-  );
+  const inventoryProbeQuery = useStorageItems({
+    storageId: activeStorage?.id,
+    limit: 1,
+  });
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [batchDrafts, setBatchDrafts] = useState<Record<string, StorageBatchDraft>>({});
+  const {
+    search: manualItemSearch,
+    setSearch: setManualItemSearch,
+    debouncedSearch: debouncedManualItemSearch,
+  } = useDebouncedSearch();
   const activeBatchDraft = activeStorage ? batchDrafts[activeStorage.id] : undefined;
   const detailState = activeModal?.type === "detail" ? activeModal : null;
   const detailItemId = detailState?.item.id ?? null;
@@ -82,11 +88,19 @@ export function StoragePage() {
   });
   const editingItem = activeModal?.type === "item-editor" ? activeModal.item : null;
   const transactionState = activeModal?.type === "transaction" ? activeModal : null;
-  const transactionItems = canManageStock
-    ? allItems
-    : transactionState?.item
-      ? [transactionState.item]
-      : [];
+  const manualEntryOpen = Boolean(
+    canManageStock
+    && transactionState
+    && transactionState.item === null,
+  );
+  const manualItemsQuery = useStorageItems({
+    storageId: activeStorage?.id,
+    search: debouncedManualItemSearch,
+    enabled: manualEntryOpen,
+  });
+  const transactionItems = transactionState?.item
+    ? [transactionState.item]
+    : manualItemsQuery.items;
   const confirmDelete = async (title: string, onConfirm: () => void) => {
     const confirmed = await confirm({
       title,
@@ -127,11 +141,18 @@ export function StoragePage() {
   const handleBatchTypeChange = async (type: StorageBatchDirection) => {
     if (!activeBatchDraft || activeBatchDraft.type === type) return;
     if (!await confirmBatchReset(t("confirm.changeBatchDirection"))) return;
-    updateActiveBatch((draft) => refreshBatchKey(draft, { type, quantities: {} }));
+    updateActiveBatch((draft) => refreshBatchKey(draft, {
+      type,
+      quantities: {},
+      itemSnapshots: {},
+    }));
   };
   const handleClearBatch = async () => {
     if (!await confirmBatchReset(t("confirm.clearBatch"))) return;
-    updateActiveBatch((draft) => refreshBatchKey(draft, { quantities: {} }));
+    updateActiveBatch((draft) => refreshBatchKey(draft, {
+      quantities: {},
+      itemSnapshots: {},
+    }));
   };
   const handleCloseBatch = async () => {
     if (!await confirmBatchReset(t("confirm.discardBatch"))) return;
@@ -208,7 +229,7 @@ export function StoragePage() {
                       storage={storage}
                       canManageItems={canManageItems}
                       canManageStock={canManageStock}
-                      hasAnyItems={allItems.length > 0}
+                      hasAnyItems={inventoryProbeQuery.items.length > 0}
                       batchDraft={activeBatchDraft}
                       onStartBatch={() => {
                         if (activeBatchDraft) {
@@ -225,27 +246,30 @@ export function StoragePage() {
                           [storage.id]: createBatchDraft(defaultRecipientId),
                         }));
                       }}
-                      onBatchQuantityChange={(itemId, quantity) => {
+                      onBatchQuantityChange={(item, quantity) => {
                         updateActiveBatch((draft) => {
                           const quantities = { ...draft.quantities };
+                          const itemSnapshots = { ...draft.itemSnapshots };
                           if (quantity > 0) {
-                            quantities[itemId] = quantity;
+                            quantities[item.id] = quantity;
+                            itemSnapshots[item.id] = item;
                           } else {
-                            delete quantities[itemId];
+                            delete quantities[item.id];
+                            delete itemSnapshots[item.id];
                           }
-                          return refreshBatchKey(draft, { quantities });
+                          return refreshBatchKey(draft, { quantities, itemSnapshots });
                         });
                       }}
                       onOpenItem={(item) => setActiveModal({ type: "detail", item })}
                       onEditItem={(item) => setActiveModal({ type: "item-editor", item })}
                       onOpenTransaction={(item, mode) => {
+                        if (!item) setManualItemSearch("");
                         setActiveModal({ type: "transaction", item, mode });
                       }}
                     />
                     {activeBatchDraft ? (
                       <StorageBatchPanel
                         draft={activeBatchDraft}
-                        items={allItems}
                         users={usersQuery.data?.data ?? []}
                         currentUsername={user?.username}
                         canManageStock={canManageStock}
@@ -318,8 +342,13 @@ export function StoragePage() {
         initialItem={transactionState?.item ?? null}
         initialMode={transactionState?.mode ?? "intake"}
         canManageStock={canManageStock}
+        itemsHasMore={manualEntryOpen && Boolean(manualItemsQuery.hasNextPage)}
+        itemsLoadingMore={manualItemsQuery.isFetchingNextPage}
+        itemSearch={manualEntryOpen ? manualItemSearch : undefined}
         defaultRecipientUserId={user?.id}
         isSaving={mutations.createTransactionMutation.isPending}
+        onItemSearchChange={manualEntryOpen ? setManualItemSearch : undefined}
+        onLoadMoreItems={() => void manualItemsQuery.fetchNextPage()}
         onClose={() => setActiveModal(null)}
         onSubmit={(itemId, payload) => {
           mutations.createTransactionMutation.mutate(

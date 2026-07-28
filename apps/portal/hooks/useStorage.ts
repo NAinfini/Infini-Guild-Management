@@ -1,4 +1,6 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { LIMITS, type StorageStockFilter } from "@guild/shared";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { queryKeys } from "../api/query-keys";
 import {
   fetchStorageItem,
@@ -14,12 +16,50 @@ export function useStorageTree() {
   });
 }
 
-export function useStorageItems(storageId?: string, categoryId?: string | null, search = "") {
-  return useQuery({
-    queryKey: queryKeys.storage.items(storageId ?? "all", categoryId ?? null, search.trim()),
-    queryFn: () => fetchStorageItems({ storageId, categoryId, search: search.trim() || undefined }),
-    enabled: Boolean(storageId),
+type UseStorageItemsOptions = {
+  storageId?: string;
+  categoryId?: string | null;
+  search?: string;
+  stock?: StorageStockFilter;
+  limit?: number;
+  enabled?: boolean;
+};
+
+export function useStorageItems({
+  storageId,
+  categoryId = null,
+  search = "",
+  stock = "all",
+  limit = LIMITS.pagination.storage,
+  enabled = true,
+}: UseStorageItemsOptions) {
+  const normalizedSearch = search.trim();
+  const query = useInfiniteQuery({
+    queryKey: queryKeys.storage.items(
+      storageId ?? "all",
+      categoryId,
+      normalizedSearch,
+      stock,
+      limit,
+    ),
+    queryFn: ({ pageParam }) => fetchStorageItems({
+      storageId,
+      categoryId,
+      search: normalizedSearch || undefined,
+      stock,
+      cursor: pageParam ?? undefined,
+      limit,
+    }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    enabled: enabled && Boolean(storageId),
   });
+  const items = useMemo(
+    () => query.data?.pages.flatMap((page) => page.data) ?? [],
+    [query.data],
+  );
+
+  return { ...query, items };
 }
 
 export function useStorageItem(id: string | null) {

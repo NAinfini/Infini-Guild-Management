@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { Storage, StorageItem } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,9 +13,11 @@ const storageState = vi.hoisted(() => ({
   search: {} as Record<string, unknown>,
   storages: [] as Storage[],
   allItems: [] as StorageItem[],
+  manualHasMore: false,
 }));
 
 const storageHooks = vi.hoisted(() => ({
+  fetchNextPage: vi.fn(),
   useStorageItems: vi.fn(),
 }));
 
@@ -140,11 +142,33 @@ vi.mock("../feature/storage/StorageTransactionModal", () => ({
   StorageTransactionModal: ({
     opened,
     items,
+    itemSearch,
+    itemsHasMore,
+    onItemSearchChange,
+    onLoadMoreItems,
   }: {
     opened: boolean;
     items: StorageItem[];
+    itemSearch?: string;
+    itemsHasMore?: boolean;
+    onItemSearchChange?: (value: string) => void;
+    onLoadMoreItems?: () => void;
   }) => opened
-    ? <div data-testid="storage-admin-items">{items.map((item) => item.name).join(",")}</div>
+    ? (
+        <div>
+          <div data-testid="storage-admin-items">{items.map((item) => item.name).join(",")}</div>
+          {onItemSearchChange ? (
+            <input
+              aria-label="manual-item-search"
+              value={itemSearch ?? ""}
+              onChange={(event) => onItemSearchChange(event.currentTarget.value)}
+            />
+          ) : null}
+          {itemsHasMore ? (
+            <button type="button" onClick={onLoadMoreItems}>manual-load-more</button>
+          ) : null}
+        </div>
+      )
     : null,
 }));
 
@@ -194,11 +218,19 @@ describe("StoragePage recovery and filter isolation", () => {
     storageState.search = {};
     storageState.storages = [];
     storageState.allItems = [item];
+    storageState.manualHasMore = false;
+    storageHooks.fetchNextPage.mockReset();
     storageHooks.useStorageItems.mockReset();
     mutationMocks.createBatchTransaction.mockReset();
-    storageHooks.useStorageItems.mockImplementation((_storageId, _categoryId, search = "") => ({
-      data: { data: search ? [] : storageState.allItems },
+    storageHooks.useStorageItems.mockImplementation((options: {
+      search?: string;
+      enabled?: boolean;
+    } = {}) => ({
+      items: options.search ? [] : storageState.allItems,
       isLoading: false,
+      hasNextPage: Boolean(options.enabled && storageState.manualHasMore),
+      isFetchingNextPage: false,
+      fetchNextPage: storageHooks.fetchNextPage,
     }));
   });
 
@@ -223,10 +255,12 @@ describe("StoragePage recovery and filter isolation", () => {
     storageState.search = { storageId: "storage-2" };
     renderPage();
 
-    expect(storageHooks.useStorageItems).toHaveBeenCalledWith("storage-2", null, "");
+    expect(storageHooks.useStorageItems).toHaveBeenCalledWith(expect.objectContaining({
+      storageId: "storage-2",
+    }));
   });
 
-  it("keeps manual entry available and passes the complete storage list when filters match nothing", async () => {
+  it("keeps manual entry independent from inventory filters", async () => {
     const user = userEvent.setup();
     storageState.storages = storages;
     storageState.canManageStock = true;
@@ -239,7 +273,31 @@ describe("StoragePage recovery and filter isolation", () => {
     await user.click(manualEntry);
 
     expect(screen.getByTestId("storage-admin-items")).toHaveTextContent("Crystal");
-    expect(storageHooks.useStorageItems).toHaveBeenCalledWith("storage-1", null, "");
+    expect(storageHooks.useStorageItems).toHaveBeenCalledWith(expect.objectContaining({
+      storageId: "storage-1",
+      enabled: true,
+    }));
+  });
+
+  it("searches and paginates the global manager item picker on the server", async () => {
+    const user = userEvent.setup();
+    storageState.storages = [storages[0]!];
+    storageState.canManageStock = true;
+    storageState.manualHasMore = true;
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "action.manualEntry" }));
+    await user.type(screen.getByRole("textbox", { name: "manual-item-search" }), "ore");
+    await waitFor(() => {
+      expect(storageHooks.useStorageItems).toHaveBeenCalledWith(expect.objectContaining({
+        storageId: "storage-1",
+        search: "ore",
+        enabled: true,
+      }));
+    });
+    await user.click(screen.getByRole("button", { name: "manual-load-more" }));
+
+    expect(storageHooks.fetchNextPage).toHaveBeenCalledTimes(1);
   });
 
   it("submits a stable attributed batch through the batch mutation", async () => {

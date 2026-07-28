@@ -32,6 +32,17 @@ export const storageItemSchema = z.object({
 });
 
 export const STORAGE_TRANSACTION_TYPES = ["intake", "distribute", "adjust"] as const;
+export const STORAGE_STOCK_FILTERS = ["all", "available", "empty", "deposit", "withdraw"] as const;
+export const storageStockFilterSchema = z.enum(STORAGE_STOCK_FILTERS);
+
+export const storageItemsListQuerySchema = z.object({
+  storage_id: z.string().trim().min(1).optional(),
+  category_id: z.string().trim().min(1).optional(),
+  search: z.string().trim().max(L.storageItemName.max).optional(),
+  stock: storageStockFilterSchema.default("all"),
+  limit: z.coerce.number().int().min(1).max(100).default(LIMITS.pagination.storage),
+  cursor: z.string().min(1).max(512).optional(),
+});
 
 export const storageTransactionSchema = z.object({
   id: z.string(),
@@ -129,6 +140,8 @@ export type Storage = z.infer<typeof storageSchema>;
 export type StorageCategory = z.infer<typeof storageCategorySchema>;
 export type StorageItem = z.infer<typeof storageItemSchema>;
 export type StorageTransaction = z.infer<typeof storageTransactionSchema>;
+export type StorageStockFilter = z.infer<typeof storageStockFilterSchema>;
+export type StorageItemsListQuery = z.infer<typeof storageItemsListQuerySchema>;
 export type CreateStoragePayload = z.input<typeof createStorageSchema>;
 export type CreateStorageCategoryPayload = z.input<typeof createStorageCategorySchema>;
 export type CreateStorageItemPayload = z.input<typeof createStorageItemSchema>;

@@ -3,10 +3,11 @@ import {
   createStorageItemSchema,
   createStorageSchema,
   createStorageTransactionSchema,
+  type StorageStockFilter,
   type StorageBatchTransactionResult,
   updateStorageItemSchema,
 } from "@guild/shared";
-import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { storageCategories, storageItemImages, storageItems, storages } from "../db/schema";
@@ -24,6 +25,7 @@ import {
 import { getStorageTransactionPayload, listStorageTransactionPayloads } from "./StorageTransactionQueries";
 import { deleteStorageImage, uploadStorageImages } from "./StorageImageService";
 import { applyStorageBatchTransactions } from "./StorageBatchService";
+import { escapeLikePattern, likeEscaped } from "./helpers";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: PushHint };
@@ -56,6 +58,33 @@ function getCommittedDelta(payload: unknown): number | null {
   if (!payload || typeof payload !== "object" || !("quantity_delta" in payload)) return null;
   const value = (payload as { quantity_delta?: unknown }).quantity_delta;
   return typeof value === "number" && Number.isInteger(value) ? value : null;
+}
+
+type StorageItemCursor = { name: string; id: string };
+const STORAGE_CURSOR_MAX_LENGTH = 512;
+
+function decodeStorageItemCursor(value: string): StorageItemCursor | null {
+  if (value.length === 0 || value.length > STORAGE_CURSOR_MAX_LENGTH || !/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1) return null;
+  try {
+    const base64 = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+    const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+    const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const cursor = parsed as Record<string, unknown>;
+    if (Object.keys(cursor).length !== 2 || typeof cursor.name !== "string" || typeof cursor.id !== "string") return null;
+    if (cursor.name.length === 0 || cursor.name.length > 100 || cursor.id.length === 0 || cursor.id.length > 128) return null;
+    return { name: cursor.name, id: cursor.id };
+  } catch {
+    return null;
+  }
+}
+
+function encodeStorageItemCursor(cursor: StorageItemCursor): string {
+  const json = JSON.stringify(cursor);
+  const bytes = new TextEncoder().encode(json);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 export class StorageService {
@@ -151,17 +180,38 @@ export class StorageService {
     return ok({ ok: true });
   }
 
-  async listItems(options: { storageId?: string; categoryId?: string | null; search?: string }): Promise<ServiceResult<{ data: unknown[] }>> {
+  async listItems(options: {
+    storageId?: string;
+    categoryId?: string | null;
+    search?: string;
+    stock: StorageStockFilter;
+    limit: number;
+    cursor?: string;
+  }): Promise<ServiceResult<{ data: unknown[]; next_cursor: string | null }>> {
+    const cursor = options.cursor ? decodeStorageItemCursor(options.cursor) : undefined;
+    if (options.cursor && !cursor) return err("VALIDATION_ERROR", "Invalid storage item cursor");
     const filters: SQL<unknown>[] = [];
     if (options.storageId) filters.push(eq(storageItems.storageId, options.storageId));
     if (options.categoryId) filters.push(eq(storageItems.categoryId, options.categoryId));
-    if (options.search) filters.push(sql`lower(${storageItems.name}) LIKE ${`%${options.search.toLowerCase()}%`}`);
-    const itemRows = await this.db.select().from(storageItems).where(and(...filters)).orderBy(asc(storageItems.name), asc(storageItems.id));
-    const ids = itemRows.map((item) => item.id);
+    const search = options.search?.trim().toLowerCase();
+    if (search) filters.push(likeEscaped(sql`lower(${storageItems.name})`, `%${escapeLikePattern(search)}%`));
+    if (options.stock === "available") filters.push(gt(storageItems.quantity, 0));
+    if (options.stock === "empty") filters.push(eq(storageItems.quantity, 0));
+    if (options.stock === "deposit") filters.push(eq(storageItems.allowMemberDeposit, true));
+    if (options.stock === "withdraw") filters.push(eq(storageItems.allowMemberWithdraw, true));
+    if (cursor) filters.push(or(gt(storageItems.name, cursor.name), and(eq(storageItems.name, cursor.name), gt(storageItems.id, cursor.id)))!);
+    const itemRows = await this.db.select().from(storageItems).where(and(...filters)).orderBy(asc(storageItems.name), asc(storageItems.id)).limit(options.limit + 1);
+    const hasMore = itemRows.length > options.limit;
+    const pageRows = hasMore ? itemRows.slice(0, options.limit) : itemRows;
+    const ids = pageRows.map((item) => item.id);
     const imageRows = ids.length > 0
       ? await this.db.select().from(storageItemImages).where(inArray(storageItemImages.itemId, ids)).orderBy(storageItemImages.createdAt, storageItemImages.id)
       : [];
-    return ok({ data: itemRows.map((item) => toItemPayload(item, imageRows.filter((image) => image.itemId === item.id))) });
+    const lastItem = pageRows.at(-1);
+    return ok({
+      data: pageRows.map((item) => toItemPayload(item, imageRows.filter((image) => image.itemId === item.id))),
+      next_cursor: hasMore && lastItem ? encodeStorageItemCursor({ name: lastItem.name, id: lastItem.id }) : null,
+    });
   }
 
   async getItem(itemId: string): Promise<ServiceResult<unknown>> {

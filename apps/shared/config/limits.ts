@@ -69,6 +69,7 @@ export const LIMITS = {
     events: 100,
     gallery: 24,
     guildWar: 20,
+    storage: 24,
     users: 500,
     wiki: 50,
   },

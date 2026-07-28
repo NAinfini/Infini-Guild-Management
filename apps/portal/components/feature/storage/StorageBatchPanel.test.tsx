@@ -47,6 +47,7 @@ const draft: StorageBatchDraft = {
   idempotencyKey: "00000000-0000-4000-8000-000000000001",
   type: "intake",
   quantities: { "item-1": 2, "item-2": 3 },
+  itemSnapshots: Object.fromEntries(items.map((item) => [item.id, item])),
   recipientUserId: "user-1",
   note: "",
 };
@@ -54,7 +55,6 @@ const draft: StorageBatchDraft = {
 function renderPanel(overrides: Partial<ComponentProps<typeof StorageBatchPanel>> = {}) {
   const props: ComponentProps<typeof StorageBatchPanel> = {
     draft,
-    items,
     users: [],
     currentUsername: "Member",
     canManageStock: false,
@@ -96,7 +96,6 @@ describe("StorageBatchPanel", () => {
       <MantineProvider>
         <StorageBatchPanel
           draft={draft}
-          items={items}
           users={[]}
           currentUsername="Member"
           canManageStock={false}
@@ -118,8 +117,7 @@ describe("StorageBatchPanel", () => {
     rerender(
       <MantineProvider>
         <StorageBatchPanel
-          draft={{ ...draft, quantities: {} }}
-          items={items}
+          draft={{ ...draft, quantities: {}, itemSnapshots: {} }}
           users={[]}
           currentUsername="Member"
           canManageStock={false}
