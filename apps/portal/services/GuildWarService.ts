@@ -102,12 +102,16 @@ export class GuildWarService {
 
   async persistTeamSnapshot(input: PersistTeamSnapshotInput) {
     const response = await this.saveGuildWarTeamsFn(this.buildSaveTeamsPayload(input), input.etag);
-    await this.queryClient?.invalidateQueries({
-      queryKey: queryKeys.guildWar.active(input.eventId),
-    });
-    await this.queryClient?.invalidateQueries({
-      queryKey: queryKeys.guildWar.historyAll(),
-    });
+    if (this.queryClient) {
+      await Promise.all([
+        this.queryClient.invalidateQueries({
+          queryKey: queryKeys.guildWar.active(input.eventId),
+        }),
+        this.queryClient.invalidateQueries({
+          queryKey: queryKeys.guildWar.historyAll(),
+        }),
+      ]);
+    }
     return response;
   }
 

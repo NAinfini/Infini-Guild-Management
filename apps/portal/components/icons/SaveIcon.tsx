@@ -16,7 +16,7 @@ interface SaveIconProps extends HTMLAttributes<HTMLDivElement> {
 
 const SVG_VARIANTS: Variants = {
   normal: { translateY: 0, transition: { duration: 0.3 } },
-  animate: { translateY: [0, -2, 0], transition: { duration: 0.4, type: "spring", stiffness: 200, damping: 12 } },
+  animate: { translateY: [0, -2, 0], transition: { duration: 0.4, type: "tween", ease: "easeInOut" } },
 };
 
 const SaveIcon = forwardRef<SaveIconHandle, SaveIconProps>(

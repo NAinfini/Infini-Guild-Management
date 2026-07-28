@@ -1,6 +1,6 @@
-import { ActionIcon, Button, Group, Select, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Button, Group, Select, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
-import { ChevronLeftIcon, ChevronRightIcon, FlagIcon, PlusIcon } from "@portal/components/icons";
+import { ChevronLeftIcon, ChevronRightIcon, FlagIcon, PlusIcon, SaveIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { DepthButton } from "../../shared/DepthButton";
 
@@ -22,6 +22,9 @@ type GuildWarActiveTopCardProps = {
   concludeWarDisabled?: boolean;
   concludeWarDisabledReason?: string;
   onAddTeam?: () => void;
+  onSaveTeams?: () => void | Promise<boolean>;
+  saveTeamsPending?: boolean;
+  teamsDirty?: boolean;
 };
 
 export function GuildWarActiveTopCard({
@@ -42,6 +45,9 @@ export function GuildWarActiveTopCard({
   concludeWarDisabled,
   concludeWarDisabledReason,
   onAddTeam,
+  onSaveTeams,
+  saveTeamsPending,
+  teamsDirty,
 }: GuildWarActiveTopCardProps) {
   const { t } = useTranslation("guild-war");
   return (
@@ -74,7 +80,28 @@ export function GuildWarActiveTopCard({
               aria-label={t("active.aria.selectEvent")}
               onChange={(value) => onSelectedEventIdChange(value ?? "")}
               data={eventOptions}
+              disabled={saveTeamsPending}
             />
+            {canManage && onSaveTeams ? (
+              <Group gap={6} wrap="nowrap">
+                {teamsDirty ? (
+                  <Badge color="orange" variant="light" size="sm">
+                    {t("active.unsaved")}
+                  </Badge>
+                ) : null}
+                <DepthButton
+                  type="primary"
+                  size="xs"
+                  before={<SaveIcon size={16} />}
+                  onClick={onSaveTeams}
+                  loading={saveTeamsPending}
+                  disabled={!teamsDirty || saveTeamsPending}
+                  tooltip={!teamsDirty ? t("active.noUnsavedChanges") : undefined}
+                >
+                  {t("active.saveTeams")}
+                </DepthButton>
+              </Group>
+            ) : null}
             {canManage && onAddTeam ? (
               <Button
                 variant="default"
