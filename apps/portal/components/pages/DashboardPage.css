@@ -590,8 +590,8 @@
    加上日期列、环形进度与箭头按钮，一行最小需要约 430px，而 375px 视口下卡片内宽
    只有 335px —— 超出的环形进度和箭头按钮会被 .dashboard-card 的 overflow: hidden
    裁掉且无法点击。头像是次要信息，移动端整组隐藏，把宽度让给标题与行尾控件。
-   断点与 AppSidebar 的 MOBILE_BREAKPOINT_PX 一致。 */
-@media (max-width: 767px) {
+   768–1023px 仍保留侧栏，内容列反而比无侧栏手机更窄，因此平板也隐藏头像。 */
+@media (max-width: 1023px) {
   .upcoming-event-row__avatars {
     display: none;
   }

@@ -100,7 +100,6 @@ const portalTheme = createTheme({
     Select: Select.extend({ defaultProps: { radius: "md" } }),
     Card: Card.extend({ defaultProps: { radius: "md", shadow: "sm" } }),
     Badge: Badge.extend({ defaultProps: { radius: "sm" } }),
-    Modal: Modal.extend({ defaultProps: { radius: "lg", centered: true, transitionProps: { duration: 0 } } }),
     Skeleton: Skeleton.extend({ defaultProps: { radius: "md" } }),
     Tabs: Tabs.extend({ defaultProps: { radius: "md", variant: "pills" } }),
     Menu: Menu.extend({
@@ -165,8 +164,9 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
   );
 
   /*
-   * The notification close button renders an icon only, so screen readers get a
-   * nameless control. The label has to be translated, and i18n finishes loading
+   * Modal and notification close buttons render icons only, so screen readers
+   * otherwise get nameless controls. The labels have to be translated, and i18n
+   * finishes loading
    * after this module is evaluated but before the tree mounts (bootstrap.tsx
    * awaits i18nReady), so it is resolved here rather than in `portalTheme`.
    */
@@ -174,6 +174,14 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
     ...portalTheme,
     components: {
       ...portalTheme.components,
+      Modal: Modal.extend({
+        defaultProps: {
+          radius: "lg",
+          centered: true,
+          transitionProps: { duration: 0 },
+          closeButtonProps: { "aria-label": i18n.t("common:action.close") },
+        },
+      }),
       Notification: Notification.extend({
         defaultProps: { closeButtonProps: { "aria-label": i18n.t("common:action.close") } },
       }),

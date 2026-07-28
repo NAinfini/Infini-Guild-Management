@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
-import { fireEvent, render } from "@testing-library/react";
+import { Modal } from "@mantine/core";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
+import i18n from "../../i18n";
 import { usePreferencesStore } from "../../stores/preferences";
 import { PortalThemeProvider, useTheme } from "../ThemeProvider";
 
@@ -75,5 +77,19 @@ describe("PortalThemeProvider", () => {
 
     expect(usePreferencesStore.getState().accent).toBe("violet");
     expect(document.documentElement.dataset.accent).toBe("violet");
+  });
+
+  it("gives modal close buttons a translated accessible name", () => {
+    render(
+      <PortalThemeProvider>
+        <Modal opened onClose={() => undefined} title="Test dialog">
+          Dialog content
+        </Modal>
+      </PortalThemeProvider>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: i18n.t("common:action.close") }),
+    ).toBeInTheDocument();
   });
 });
