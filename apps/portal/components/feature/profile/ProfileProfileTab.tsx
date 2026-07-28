@@ -3,7 +3,6 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import type { ImageGridEditorItem } from "@portal/types/media";
 import { PortalCard } from "../../shared/PortalCard";
-import { FloatingSaveBar } from "../../shared/FloatingSaveBar";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { Avatar, Button, Divider, FileButton, Grid, Group, NumberInput, Progress, Select, Stack, Text, TextInput, Textarea } from "@mantine/core";
@@ -40,9 +39,6 @@ type ProfileProfileTabProps = {
   onClassDragEnd: (event: DragEndEvent) => void;
   renderSortableClassRow: (value: string, index: number) => ReactNode;
   onBioChange: (value: string) => void;
-  onSaveProfile: () => void;
-  savePending: boolean;
-  isDirty: boolean;
   fieldBioPlaceholder: string;
   videoDraft: string;
   videoList: string[];
@@ -80,9 +76,6 @@ export function ProfileProfileTab({
   onClassDragEnd,
   renderSortableClassRow,
   onBioChange,
-  onSaveProfile,
-  savePending,
-  isDirty,
   fieldBioPlaceholder,
   videoDraft,
   videoList,
@@ -394,7 +387,6 @@ export function ProfileProfileTab({
           </PortalCard>
         </Grid.Col>
       </Grid>
-      <FloatingSaveBar isDirty={isDirty} saving={savePending} onSave={onSaveProfile} />
     </>
   );
 }

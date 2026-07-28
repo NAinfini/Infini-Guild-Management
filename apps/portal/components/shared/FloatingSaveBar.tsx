@@ -17,7 +17,12 @@ export function FloatingSaveBar({ isDirty, saving, onSave, label }: FloatingSave
         <Badge color={isDirty ? "yellow" : "green"} variant="light">
           {isDirty ? t("status.unsavedChanges") : t("status.saved")}
         </Badge>
-        <Button onClick={onSave} loading={saving} leftSection={<SaveIcon size={16} />}>
+        <Button
+          onClick={onSave}
+          loading={saving}
+          disabled={!isDirty}
+          leftSection={<SaveIcon size={16} />}
+        >
           {label ?? t("action.saveProfile")}
         </Button>
       </Group>

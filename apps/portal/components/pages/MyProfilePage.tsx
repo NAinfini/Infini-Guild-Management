@@ -21,6 +21,7 @@ import { ProfileAccountTab } from "../feature/profile/ProfileAccountTab";
 import { ProfileAvailabilityTab } from "../feature/profile/ProfileAvailabilityTab";
 import { ProfilePreviewCard } from "../feature/profile/ProfilePreviewCard";
 import { ProfileProfileTab } from "../feature/profile/ProfileProfileTab";
+import { FloatingSaveBar } from "../shared/FloatingSaveBar";
 import { PageLayout } from "../layout/PageLayout";
 import { PageTabPanel, PageTabs } from "../layout/PageTabs";
 import "./MyProfilePage.css";
@@ -218,9 +219,6 @@ export function MyProfilePage() {
                   />
                 )}
                 onBioChange={form.setBio}
-                onSaveProfile={mutations.saveProfile}
-                savePending={mutations.saveProfileMutation.isPending}
-                isDirty={form.isDirty}
                 fieldBioPlaceholder={t("field.bio")}
                 videoDraft={form.videoDraft}
                 videoList={form.videoList}
@@ -257,9 +255,6 @@ export function MyProfilePage() {
                 userId={user?.id}
                 availabilityData={form.availabilityData}
                 onAvailabilityChange={form.setAvailabilityData}
-                onSaveAvailability={mutations.saveProfile}
-                savePending={mutations.saveProfileMutation.isPending}
-                isDirty={form.isDirty}
               />
             </PageTabPanel>
 
@@ -285,6 +280,11 @@ export function MyProfilePage() {
               />
             </PageTabPanel>
           </PageTabs>
+          <FloatingSaveBar
+            isDirty={form.isDirty}
+            saving={mutations.saveProfileMutation.isPending}
+            onSave={mutations.saveProfile}
+          />
         </Grid.Col>
       </Grid>
       )}
