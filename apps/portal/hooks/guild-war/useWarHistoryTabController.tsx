@@ -1,7 +1,8 @@
-import { Checkbox, Badge, Group, HoverCard, NumberInput, Text, ThemeIcon } from "@mantine/core";
+import { Checkbox, Badge, Group, HoverCard, Text, ThemeIcon } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { activeGame } from "@guild/shared/games";
 import { CircleCheckIcon, AlertTriangleIcon } from "@portal/components/icons";
+import { MetricGridInput } from "@portal/components/shared/MetricGridInput";
 import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import {
   getCoreRowModel,
@@ -9,7 +10,7 @@ import {
   useReactTable,
 } from "@portal/components/shared/InfiniTable";
 import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   HistoryDetailData,
@@ -22,56 +23,6 @@ type EditableMetricKey = string;
 type MemberStatDraft = Record<string, number>;
 
 const EDITABLE_METRIC_KEYS: string[] = activeGame.war.memberStats.map((stat) => stat.key);
-
-type EditableStatCellProps = {
-  value: number;
-  onChange: (value: string | number) => void;
-  decimalScale?: number;
-};
-
-function EditableStatCell({ value, onChange, decimalScale }: EditableStatCellProps) {
-  const [editing, setEditing] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (editing) {
-      inputRef.current?.select();
-    }
-  }, [editing]);
-
-  if (!editing) {
-    return (
-      <Text
-        size="xs"
-        style={{ cursor: "pointer", padding: "4px 6px", borderRadius: 4, minWidth: 40 }}
-        onClick={() => setEditing(true)}
-      >
-        {decimalScale != null ? value.toFixed(decimalScale) : value}
-      </Text>
-    );
-  }
-
-  return (
-    <NumberInput
-      ref={inputRef}
-      hideControls
-      min={0}
-      size="xs"
-      value={value}
-      onChange={(nextValue) => {
-        onChange(nextValue);
-      }}
-      onBlur={() => setEditing(false)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          setEditing(false);
-        }
-      }}
-      decimalScale={decimalScale}
-      autoFocus
-    />
-  );
-}
 
 export function toDraftMetricValue(value: string | number | null | undefined): number {
   const numericValue = Number(value ?? 0);
@@ -405,18 +356,39 @@ export function useWarHistoryTabController({
       accessorFn: (row) => row.role_tag ?? "",
       cell: ({ row }) => row.original.role_tag ?? "-",
     },
-    ...EDITABLE_METRIC_KEYS.map((metricKey): ColumnDef<HistoryMemberStat, unknown> => ({
+    ...EDITABLE_METRIC_KEYS.map((metricKey, columnIndex): ColumnDef<HistoryMemberStat, unknown> => ({
       header: t(`history.table.${metricKey === "building_damage" ? "building" : metricKey === "damage_taken" ? "damageTaken" : metricKey}`),
       id: metricKey,
       accessorFn: (row) => row.stats?.[metricKey] ?? 0,
-      cell: ({ row }) =>
-        canManage ? (
-          <EditableStatCell
+      cell: ({ row, table }) => {
+        if (!canManage) {
+          return row.original.stats?.[metricKey] ?? "-";
+        }
+
+        const visibleRows = table.getRowModel().rows;
+        const visibleRowIndex = visibleRows.findIndex((visibleRow) => visibleRow.id === row.id);
+        return (
+          <MetricGridInput
+            aria-label={t("history.aria.memberMetric", {
+              member: row.original.username ?? row.original.user_id,
+              metric: t(`history.table.${metricKey === "building_damage" ? "building" : metricKey === "damage_taken" ? "damageTaken" : metricKey}`),
+            })}
+            gridId="guild-war-history-metrics"
+            rowIndex={visibleRowIndex}
+            columnIndex={columnIndex}
+            rowCount={visibleRows.length}
+            columnCount={EDITABLE_METRIC_KEYS.length}
+            hideControls
+            min={0}
+            size="xs"
+            variant="unstyled"
             value={row.original.stats?.[metricKey] ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, metricKey, value)}
             decimalScale={["damage", "healing", "building_damage", "damage_taken"].includes(metricKey) ? 2 : undefined}
+            styles={{ input: { minWidth: 64, padding: "2px 4px", textAlign: "center" } }}
           />
-        ) : (row.original.stats?.[metricKey] ?? "-"),
+        );
+      },
     })),
     {
       header: t("analytics.metric.kda"),

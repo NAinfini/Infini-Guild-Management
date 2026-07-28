@@ -11,6 +11,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { FlagIcon } from "@portal/components/icons";
+import { MetricGridInput } from "@portal/components/shared/MetricGridInput";
 import { activeGame } from "@guild/shared/games";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -179,18 +180,34 @@ export function ConcludeWarModal({
         {/* Own vs Enemy stats — driven by teamObjectives */}
         {TEAM_OBJECTIVE_FIELDS.length > 0 ? (
           <Group gap={10} wrap="wrap" grow>
-            {TEAM_OBJECTIVE_FIELDS.map((obj) => (
+            {TEAM_OBJECTIVE_FIELDS.map((obj, rowIndex) => (
               <Group key={obj.key} gap={10} wrap="wrap" grow style={{ flex: "1 1 200px" }}>
-                <NumberInput
+                <MetricGridInput
                   label={t(`conclude.field.own_${obj.key}`, { defaultValue: `Own ${obj.key}` })}
+                  aria-label={t("conclude.aria.objectiveMetric", {
+                    metric: t(`conclude.field.own_${obj.key}`, { defaultValue: `Own ${obj.key}` }),
+                  })}
+                  gridId="conclude-war-objectives"
+                  rowIndex={rowIndex}
+                  columnIndex={0}
+                  rowCount={TEAM_OBJECTIVE_FIELDS.length}
+                  columnCount={2}
                   value={warInfo.ownStats[obj.key] ?? ""}
                   onChange={(v) => updateOwnStat(obj.key, typeof v === "number" ? v : null)}
                   min={0}
                   hideControls
                   style={{ flex: "1 1 100px" }}
                 />
-                <NumberInput
+                <MetricGridInput
                   label={t(`conclude.field.enemy_${obj.key}`, { defaultValue: `Enemy ${obj.key}` })}
+                  aria-label={t("conclude.aria.objectiveMetric", {
+                    metric: t(`conclude.field.enemy_${obj.key}`, { defaultValue: `Enemy ${obj.key}` }),
+                  })}
+                  gridId="conclude-war-objectives"
+                  rowIndex={rowIndex}
+                  columnIndex={1}
+                  rowCount={TEAM_OBJECTIVE_FIELDS.length}
+                  columnCount={2}
                   value={warInfo.enemyStats[obj.key] ?? ""}
                   onChange={(v) => updateEnemyStat(obj.key, typeof v === "number" ? v : null)}
                   min={0}
@@ -208,6 +225,9 @@ export function ConcludeWarModal({
             <Text size="sm" fw={600} tt="uppercase" c="dimmed">
               {t("conclude.section.memberStats")}
             </Text>
+            <Text size="xs" c="dimmed">
+              {t("conclude.keyboardHint")}
+            </Text>
             <ScrollArea h={Math.min(members.length * 48 + 48, 360)} type="auto">
               <Table striped highlightOnHover withTableBorder withColumnBorders style={{ fontSize: "0.8rem" }}>
                 <Table.Thead>
@@ -223,7 +243,7 @@ export function ConcludeWarModal({
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {members.map((member) => {
+                  {members.map((member, rowIndex) => {
                     const stats = memberStatsMap.get(member.userId) ?? {};
                     return (
                       <Table.Tr key={member.userId}>
@@ -231,9 +251,18 @@ export function ConcludeWarModal({
                           <Text size="xs" fw={500} lineClamp={1}>{member.username}</Text>
                           <Text size="xs" c="dimmed">{member.teamName}</Text>
                         </Table.Td>
-                        {MEMBER_STAT_FIELDS.map((f) => (
+                        {MEMBER_STAT_FIELDS.map((f, columnIndex) => (
                           <Table.Td key={f.key} style={{ padding: "2px 4px" }}>
-                            <NumberInput
+                            <MetricGridInput
+                              aria-label={t("conclude.aria.memberMetric", {
+                                member: member.username,
+                                metric: t(`conclude.col.${f.key}`),
+                              })}
+                              gridId="conclude-war-member-stats"
+                              rowIndex={rowIndex}
+                              columnIndex={columnIndex}
+                              rowCount={members.length}
+                              columnCount={MEMBER_STAT_FIELDS.length}
                               size="xs"
                               variant="unstyled"
                               hideControls

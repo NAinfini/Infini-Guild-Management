@@ -235,9 +235,16 @@ export function WarHistoryDetail({
               ) : null}
             </Group>
             {historyViewMode === "table" ? (
-              <div className="war-history-detail-table-wrap">
-                <InfiniTable table={detailTable} />
-              </div>
+              <>
+                {canManage ? (
+                  <Text size="xs" c="dimmed">
+                    {t("history.keyboardHint")}
+                  </Text>
+                ) : null}
+                <div className="war-history-detail-table-wrap">
+                  <InfiniTable table={detailTable} />
+                </div>
+              </>
             ) : (
               <div className="whd-chart-wrap">
                 <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={8}>{t("history.chartTitle", { metric: getMetricLabel(historyChartMetric) })}</Text>
