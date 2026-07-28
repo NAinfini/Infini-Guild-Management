@@ -5,7 +5,8 @@ import { PERMISSIONS, type Event, type MemberProfile, type Permission, type User
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { EventCardsView, getParticipantActionDisabledReasonKey } from "./EventCardsView";
+import { EventCardsView } from "./EventCardsView";
+import { getParticipantActionDisabledReasonKey } from "./participant-action";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({

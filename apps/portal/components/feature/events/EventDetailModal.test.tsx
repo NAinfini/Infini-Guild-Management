@@ -137,6 +137,44 @@ describe("EventDetailModal", () => {
     expect(screen.queryByText("Should not linger after close")).not.toBeInTheDocument();
   });
 
+  it("explains why the signup action is disabled", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <EventDetailModal
+          event={{
+            id: "event-archived",
+            title: "Archived event",
+            type: "social",
+            start_at: "2099-03-12T16:00:00.000Z",
+            end_at: "2099-03-12T18:00:00.000Z",
+            description: null,
+            capacity: 10,
+            signup_locked: true,
+            archived_at: "2026-03-12T18:00:00.000Z",
+            attachments: [],
+          } as never}
+          members={[]}
+          allUsers={[]}
+          canManage={false}
+          currentUserId="user-1"
+          onClose={() => {}}
+          onJoin={() => {}}
+          onAddParticipant={() => {}}
+          onRemoveParticipant={() => {}}
+        />
+      </MantineProvider>,
+    );
+
+    const joinButton = screen.getByRole("button", { name: "button.join" });
+    expect(joinButton).toBeDisabled();
+    expect(joinButton.parentElement).toHaveAttribute("data-disabled-tooltip-target");
+
+    await user.hover(joinButton.parentElement!);
+    expect(await screen.findByText("button.disabled.archived")).toBeInTheDocument();
+  });
+
   it("lets users vote in poll detail and still shows voter breakdown", async () => {
     const user = userEvent.setup();
     const onVotePoll = vi.fn();

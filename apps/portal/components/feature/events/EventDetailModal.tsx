@@ -17,6 +17,7 @@ import {
 } from "@portal/components/icons";
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { getParticipantActionDisabledReasonKey } from "./participant-action";
 import "./EventDetailModal.css";
 
 export type MemberEntry = { user: User; profile: MemberProfile };
@@ -93,9 +94,17 @@ export function EventDetailModal({
   const raffleWinners = event?.raffle_winners ?? [];
   const raffleHasDrawn = raffleWinners.length > 0;
   const showMemberAction = Boolean(currentUserId && (isJoined ? onLeave : onJoin));
-  const memberActionDisabled = event
-    ? event.signup_locked || Boolean(event.archived_at) || hasEnded || (!isJoined && isFull)
-    : true;
+  const memberActionDisabledReasonKey = event
+    ? getParticipantActionDisabledReasonKey({
+        isArchived: Boolean(event.archived_at),
+        hasEnded,
+        signupLocked: event.signup_locked,
+        isFull,
+        isJoined,
+        pending: Boolean(joinPending || leavePending),
+      })
+    : null;
+  const memberActionDisabled = event === null || memberActionDisabledReasonKey !== null;
   const memberActionLabel = isJoined
     ? t("button.leave")
     : isFull
@@ -400,8 +409,9 @@ export function EventDetailModal({
                           }
                           onJoin?.(event.id);
                         }}
-                        disabled={memberActionDisabled || joinPending || leavePending}
+                        disabled={memberActionDisabled}
                         loading={joinPending || leavePending}
+                        tooltip={memberActionDisabledReasonKey ? t(memberActionDisabledReasonKey) : undefined}
                       >
                         {isJoined ? <UserMinusIcon size={14} style={{ marginRight: 4 }} /> : <UserPlusIcon size={14} style={{ marginRight: 4 }} />}
                         {memberActionLabel}

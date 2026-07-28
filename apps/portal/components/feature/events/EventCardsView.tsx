@@ -37,6 +37,7 @@ import { type EventTypeFilter } from "../../../utils/event-navigation";
 import { EmptyState } from "../../shared/EmptyState";
 import { EventCardAvatarStrip } from "./EventCardAvatarStrip";
 import { EventDetailModal } from "./EventDetailModal";
+import { getParticipantActionDisabledReasonKey } from "./participant-action";
 import "./EventCardsView.css";
 
 // Icons are not carried in the game config (config stores string identifiers like
@@ -81,31 +82,6 @@ function formatLocalTime(startAt: string, endAt: string | null, locale: string):
 }
 
 type MemberEntry = { user: User; profile: MemberProfile };
-
-type ParticipantActionState = {
-  isArchived: boolean;
-  hasEnded: boolean;
-  signupLocked: boolean;
-  isFull: boolean;
-  isJoined: boolean;
-  pending: boolean;
-};
-
-export function getParticipantActionDisabledReasonKey({
-  isArchived,
-  hasEnded,
-  signupLocked,
-  isFull,
-  isJoined,
-  pending,
-}: ParticipantActionState): string | null {
-  if (isArchived) return "button.disabled.archived";
-  if (!isJoined && hasEnded) return "button.disabled.ended";
-  if (!isJoined && signupLocked) return "button.disabled.locked";
-  if (!isJoined && isFull) return "button.disabled.full";
-  if (pending) return "button.disabled.pending";
-  return null;
-}
 
 type EventStatusIndicatorProps = {
   children: React.ReactNode;
