@@ -3,10 +3,7 @@ import { Avatar, Badge, Group, Spoiler, Stack, Text } from "@mantine/core";
 import { PhotoIcon, VideoIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { resolveProfileMediaUrl } from "../../../utils/media";
-import { CLASS_COLOR_GROUP } from "@guild/shared/constants/classes";
-import { activeGame } from "@guild/shared/games";
-
-const CLASS_BADGE_COLOR: Record<string, string> = activeGame.classColorMapping;
+import { resolveClassDisplayColor } from "@guild/shared/constants/classes";
 
 type ProfilePreviewCardProps = {
   username: string;
@@ -60,7 +57,9 @@ export function ProfilePreviewCard({
                 {activeNowEstimate}
               </Badge>
               {primaryClass && primaryClass !== "-" ? (
-                <Badge size="xs" variant="light" color={CLASS_BADGE_COLOR[(CLASS_COLOR_GROUP as Record<string, string>)[primaryClass] ?? ""] ?? "yellow"}>{primaryClass}</Badge>
+                <Badge size="xs" variant="light" color={resolveClassDisplayColor(primaryClass)}>
+                  {primaryClass}
+                </Badge>
               ) : null}
             </Group>
           </Stack>

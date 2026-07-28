@@ -1,17 +1,17 @@
-import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import type { DragEndEvent } from "@dnd-kit/core";
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import type { ImageGridEditorItem } from "@portal/types/media";
 import { PortalCard } from "../../shared/PortalCard";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
-import { Avatar, Button, Divider, FileButton, Grid, Group, NumberInput, Progress, Select, Stack, Text, TextInput, Textarea } from "@mantine/core";
+import { Avatar, Button, Divider, FileButton, Grid, Group, NumberInput, Progress, Stack, Text, TextInput, Textarea } from "@mantine/core";
 import { ExternalLinkIcon, PlusIcon, TrashIcon, UploadIcon, UserIcon } from "@portal/components/icons";
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 import DOMPurify from "dompurify";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { resolveProfileMediaUrl } from "../../../utils/media";
+import { ProfileClassEditor } from "./ProfileClassEditor";
 
 type UploaderState = {
   files: File[];
@@ -32,14 +32,12 @@ type ProfileProfileTabProps = {
   titleHtml: string;
   onTitleHtmlChange: (value: string) => void;
   bio: string;
-  classSensors: ReturnType<typeof import("@dnd-kit/core").useSensors>;
   onPowerChange: (value: number) => void;
   onClassDraftChange: (value: string) => void;
   onAddClass: () => void;
   onClassDragEnd: (event: DragEndEvent) => void;
-  renderSortableClassRow: (value: string, index: number) => ReactNode;
+  onRemoveClass: (index: number) => void;
   onBioChange: (value: string) => void;
-  fieldBioPlaceholder: string;
   videoDraft: string;
   videoList: string[];
   imageList: string[];
@@ -69,14 +67,12 @@ export function ProfileProfileTab({
   titleHtml,
   onTitleHtmlChange,
   bio,
-  classSensors,
   onPowerChange,
   onClassDraftChange,
   onAddClass,
   onClassDragEnd,
-  renderSortableClassRow,
+  onRemoveClass,
   onBioChange,
-  fieldBioPlaceholder,
   videoDraft,
   videoList,
   imageList,
@@ -168,27 +164,15 @@ export function ProfileProfileTab({
 
               <Divider my={16} />
 
-              <Text fw={700} size="sm" c="dimmed" tt="uppercase" lts={0.5} mb={10}>{t("section.classes")}</Text>
-              <Group gap={8} wrap="nowrap">
-                <Select
-                  searchable
-                  value={classDraft || null}
-                  data={classOptions}
-                  style={{ flex: 1 }}
-                  placeholder={t("field.selectClass")}
-                  aria-label={t("aria.selectClass")}
-                  onChange={(value) => onClassDraftChange(value ?? "")}
-                  onSearchChange={(value) => onClassDraftChange(value)}
-                />
-                <DepthButton type="primary" onClick={onAddClass} before={<PlusIcon size={16} />}>{t("action.add")}</DepthButton>
-              </Group>
-              {classList.length > 0 && (
-                <DndContext sensors={classSensors} collisionDetection={closestCenter} onDragEnd={onClassDragEnd}>
-                  <SortableContext items={classList} strategy={verticalListSortingStrategy}>
-                    <Stack gap={6} mt={8}>{classList.map((item, index) => renderSortableClassRow(item, index))}</Stack>
-                  </SortableContext>
-                </DndContext>
-              )}
+              <ProfileClassEditor
+                classDraft={classDraft}
+                classOptions={classOptions}
+                classList={classList}
+                onClassDraftChange={onClassDraftChange}
+                onAddClass={onAddClass}
+                onClassDragEnd={onClassDragEnd}
+                onRemoveClass={onRemoveClass}
+              />
 
               <Divider my={16} />
 
@@ -219,7 +203,7 @@ export function ProfileProfileTab({
                 minRows={3}
                 autosize
                 maxRows={8}
-                placeholder={fieldBioPlaceholder}
+                placeholder={t("field.bio")}
                 mt={12}
               />
             </Stack>

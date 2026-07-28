@@ -1,12 +1,7 @@
-import { PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { Badge, Grid, Group, Skeleton, Stack, Text } from "@mantine/core";
+import { Grid, Skeleton, Stack } from "@mantine/core";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { TrashIcon, UserCircleIcon } from "@portal/components/icons";
-import { IconGripVertical } from "@tabler/icons-react";
+import { UserCircleIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
-import { CLASS_COLOR_GROUP } from "@guild/shared/constants/classes";
 import { uploadProfileAudio, uploadProfileImages } from "../../services/UserService";
 import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
 import { useProfileData } from "../../hooks/data/useProfileData";
@@ -27,49 +22,6 @@ import { PageLayout } from "../layout/PageLayout";
 import { PageTabPanel, PageTabs } from "../layout/PageTabs";
 import "./MyProfilePage.css";
 
-const CLASS_BADGE_COLOR: Record<string, string> = {
-  blue: "blue",
-  green: "teal",
-  purple: "violet",
-  "dark-red": "red",
-};
-
-type SortableClassRowProps = {
-  value: string;
-  index: number;
-  isPrimary: boolean;
-  onRemove: () => void;
-};
-
-function SortableClassRow(props: SortableClassRowProps) {
-  const { value, index, isPrimary, onRemove } = props;
-  const { t } = useTranslation("profile");
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: value });
-
-  return (
-    <Group
-      ref={setNodeRef}
-      wrap="wrap"
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-      }}
-      className={`my-profile-sortable-row ${isDragging ? "my-profile-sortable-row--dragging" : ""}`.trim()}
-    >
-      <div {...attributes} {...listeners} style={{ cursor: "grab", display: "flex", alignItems: "center" }} aria-label={t("classRow.aria.drag", { value })}>
-        <IconGripVertical size={18} />
-      </div>
-      <Badge color={CLASS_BADGE_COLOR[(CLASS_COLOR_GROUP as Record<string, string>)[value] ?? ""] ?? (isPrimary ? "yellow" : "gray")}>{value}</Badge>
-      <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={16} />} onClick={onRemove}
-        tooltip={{ label: t("classRow.remove"), withArrow: true }}
-      />
-      <Text c="dimmed" size="sm" style={{ fontSize: 12 }}>
-        #{index + 1}
-      </Text>
-    </Group>
-  );
-}
-
 function moveListItem<T>(list: T[], index: number, delta: number): T[] {
   const nextIndex = index + delta;
   if (nextIndex < 0 || nextIndex >= list.length) {
@@ -88,7 +40,6 @@ function moveListItem<T>(list: T[], index: number, delta: number): T[] {
 export function MyProfilePage() {
   const { t } = useTranslation("profile");
   const user = useAuthStore((state) => state.user);
-  const classSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const { profileQuery } = useProfileData({
     userId: user?.id,
@@ -223,24 +174,12 @@ export function MyProfilePage() {
                 titleHtml={form.titleHtml}
                 onTitleHtmlChange={form.setTitleHtml}
                 bio={form.bio}
-                classSensors={classSensors}
                 onPowerChange={form.setPower}
                 onClassDraftChange={form.setClassDraft}
                 onAddClass={form.addClass}
                 onClassDragEnd={form.handleClassDragEnd}
-                renderSortableClassRow={(value, index) => (
-                  <SortableClassRow
-                    key={value}
-                    value={value}
-                    index={index}
-                    isPrimary={index === 0}
-                    onRemove={() =>
-                      form.setClassList((current) => current.filter((_, valueIndex) => valueIndex !== index))
-                    }
-                  />
-                )}
+                onRemoveClass={form.removeClass}
                 onBioChange={form.setBio}
-                fieldBioPlaceholder={t("field.bio")}
                 videoDraft={form.videoDraft}
                 videoList={form.videoList}
                 imageList={form.imageList}
@@ -294,8 +233,6 @@ export function MyProfilePage() {
                 onChangePassword={mutations.changePassword}
                 onChangeUsername={mutations.changeUsername}
                 onLogout={mutations.logout}
-                changePasswordLabel={t("button.changePassword")}
-                changeUsernameLabel={t("button.changeUsername")}
                 changePasswordPending={mutations.changePasswordMutation.isPending}
                 changeUsernamePending={mutations.changeUsernameMutation.isPending}
               />

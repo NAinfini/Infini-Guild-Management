@@ -236,6 +236,10 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     });
   };
 
+  const removeClass = (index: number) => {
+    setClassList((current) => current.filter((_, valueIndex) => valueIndex !== index));
+  };
+
   const isDirty = useMemo(() => {
     if (!baseline) return false;
     return (
@@ -292,6 +296,7 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     isDirty,
     acceptServerProfile,
     addClass,
+    removeClass,
     addVideoUrl,
     handleClassDragEnd,
   };

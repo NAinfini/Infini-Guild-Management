@@ -7,3 +7,11 @@ export type ClassName = (typeof CLASS_NAMES)[number];
 export const CLASS_COLOR_GROUP: Record<string, string> = Object.fromEntries(
   activeGame.classes.map((c) => [c.id, c.colorGroup]),
 );
+
+export function resolveClassDisplayColor(
+  className: string | null | undefined,
+  fallback = "yellow",
+): string {
+  const colorGroup = className ? CLASS_COLOR_GROUP[className] : undefined;
+  return colorGroup ? (activeGame.classColorMapping[colorGroup] ?? fallback) : fallback;
+}

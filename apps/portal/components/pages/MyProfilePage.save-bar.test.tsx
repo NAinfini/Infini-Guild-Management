@@ -26,12 +26,25 @@ describe("MyProfilePage save flow", () => {
       resolve(process.cwd(), "apps/portal/components/feature/profile/ProfileAvailabilityTab.tsx"),
       "utf8",
     );
+    const classEditorSource = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/profile/ProfileClassEditor.tsx"),
+      "utf8",
+    );
 
     expect(pageSource.match(/<FloatingSaveBar/g)).toHaveLength(1);
     expect(profileTabSource).not.toContain("<FloatingSaveBar");
     expect(availabilityTabSource).not.toContain("<FloatingSaveBar");
     expect(pageSource).toContain("profileQuery.isError && !profileQuery.data");
     expect(pageSource).toContain("profileQuery.refetch()");
+    expect(pageSource).not.toContain("fieldBioPlaceholder");
+    expect(pageSource).not.toContain("changePasswordLabel");
+    expect(pageSource).not.toContain("changeUsernameLabel");
+    expect(pageSource).not.toContain("classSensors");
+    expect(pageSource).not.toContain("renderSortableClassRow");
+    expect(profileTabSource).toContain("<ProfileClassEditor");
+    expect(classEditorSource).toContain("KeyboardSensor");
+    expect(classEditorSource).toContain("sortableKeyboardCoordinates");
+    expect(classEditorSource).toContain("setActivatorNodeRef");
   });
 
   it("only enables saving when the page has unsaved changes", () => {
