@@ -127,9 +127,6 @@ type EventCardsViewProps = {
   eventFlags: Map<string, "NEW" | "UPDATED">;
   eventMembersMap: Map<string, MemberEntry[]>;
   allUsers: MemberEntry[];
-  createPending: boolean;
-  updatePending: boolean;
-  archivePending: boolean;
   joinPending: boolean;
   votePending?: boolean;
   hasMore?: boolean;

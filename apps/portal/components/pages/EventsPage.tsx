@@ -292,9 +292,6 @@ export function EventsPage() {
                   eventFlags={filtering.eventFlags}
                   eventMembersMap={filtering.eventMembersMap}
                   allUsers={asMemberEntries(filtering.usersQuery.data?.data ?? [])}
-                  createPending={mutations.createPending}
-                  updatePending={mutations.updatePending}
-                  archivePending={mutations.archivePending}
                   joinPending={mutations.joinPending}
                   leavePending={mutations.leavePending}
                   votePending={mutations.votePending}

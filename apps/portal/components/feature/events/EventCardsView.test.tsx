@@ -113,9 +113,6 @@ function renderCardsView(
         eventFlags={new Map()}
         eventMembersMap={new Map([[event.id, members]])}
         allUsers={members}
-        createPending={false}
-        updatePending={false}
-        archivePending={false}
         joinPending={false}
         leavePending={false}
         onResetFilters={() => {}}
