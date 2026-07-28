@@ -82,6 +82,31 @@ function formatLocalTime(startAt: string, endAt: string | null, locale: string):
 
 type MemberEntry = { user: User; profile: MemberProfile };
 
+type ParticipantActionState = {
+  isArchived: boolean;
+  hasEnded: boolean;
+  signupLocked: boolean;
+  isFull: boolean;
+  isJoined: boolean;
+  pending: boolean;
+};
+
+export function getParticipantActionDisabledReasonKey({
+  isArchived,
+  hasEnded,
+  signupLocked,
+  isFull,
+  isJoined,
+  pending,
+}: ParticipantActionState): string | null {
+  if (isArchived) return "button.disabled.archived";
+  if (!isJoined && hasEnded) return "button.disabled.ended";
+  if (!isJoined && signupLocked) return "button.disabled.locked";
+  if (!isJoined && isFull) return "button.disabled.full";
+  if (pending) return "button.disabled.pending";
+  return null;
+}
+
 type EventStatusIndicatorProps = {
   children: React.ReactNode;
   color: string;
@@ -259,7 +284,15 @@ export function EventCardsView({
           const isArchived = Boolean(event.archived_at);
           const visibleMembers = members;
           const hiddenMembersCount = 0;
-          const participantActionDisabled = joinPending || leavePending || isArchived || (!isJoined && (event.signup_locked || isFull || hasEnded));
+          const participantActionDisabledReasonKey = getParticipantActionDisabledReasonKey({
+            isArchived,
+            hasEnded,
+            signupLocked: event.signup_locked,
+            isFull,
+            isJoined,
+            pending: joinPending || leavePending,
+          });
+          const participantActionDisabled = participantActionDisabledReasonKey !== null;
           const statusIndicators = (
             <>
               {event.series_id ? (
@@ -496,7 +529,7 @@ export function EventCardsView({
                         type={isJoined ? "danger" : "success"}
                         size="xs"
                         disabled={participantActionDisabled}
-                        tooltip={isJoined ? t("button.leave") : t("button.join")}
+                        tooltip={t(participantActionDisabledReasonKey ?? (isJoined ? "button.leave" : "button.join"))}
                       >
                         {isJoined ? <UserMinusIcon size={14} /> : <UserPlusIcon size={14} />}
                         {isJoined ? t("button.leave") : t("button.join")}
