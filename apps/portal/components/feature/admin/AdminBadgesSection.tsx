@@ -195,7 +195,14 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
               )}
             />
           ) : badges.length === 0 && !isCreating ? (
-            <EmptyState title={t("badges.empty")} />
+            <EmptyState
+              title={t("badges.empty")}
+              actions={(
+                <DepthButton type="primary" size="sm" onClick={startCreate}>
+                  {t("badges.action.create")}
+                </DepthButton>
+              )}
+            />
           ) : (
             <Stack gap={4}>
               {badges.map((badge) => (

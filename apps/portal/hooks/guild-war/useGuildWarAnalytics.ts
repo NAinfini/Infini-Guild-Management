@@ -24,11 +24,6 @@ import {
   normalizeMetricValue,
 } from "../../utils/guild-war-analytics";
 
-const message = {
-  success: (content: string) => notifySuccess(content),
-  warning: (content: string) => notifyWarning(content),
-};
-
 type UseGuildWarAnalyticsParams = {
   historyRows: Array<{ id: string; war_name: string; created_at: string }>;
   chartPalette: string[];
@@ -254,9 +249,9 @@ export function useGuildWarAnalytics({
   const applyAnalyticsSelection = (nextSelection: string[]) => {
     const result = guildWarService.applyAnalyticsSelection(nextSelection);
     if (result.warning?.type === "capped") {
-      message.warning(t("analytics.selectionCapped", { cap: result.warning.cap }));
+      notifyWarning(t("analytics.selectionCapped", { cap: result.warning.cap }));
     } else if (result.warning?.type === "large") {
-      message.warning(t("analytics.largeCompareWarning", { count: result.warning.count }));
+      notifyWarning(t("analytics.largeCompareWarning", { count: result.warning.count }));
     }
     setAnalyticsSelectedUsers(result.selection);
   };
@@ -278,7 +273,7 @@ export function useGuildWarAnalytics({
       );
     }
     await copyPlainText(lines.join("\n"));
-    message.success(t("message.csvCopied"));
+    notifySuccess(t("message.csvCopied"));
   };
 
   const handleAnalyticsDatePresetChange = (value: AnalyticsDatePreset) => {

@@ -86,6 +86,7 @@
   "welcome.title": "欢迎来到 Wiki",
   "welcome.description": "从侧边栏选择一篇文章开始阅读。",
   "action.loadMore": "加载更多",
+  "action.resetFilters": "重置筛选",
   "aria.articleTitle": "Wiki 文章标题",
   "aria.articleCategory": "Wiki 文章分类",
   "aria.categoryName": "Wiki 分类名称",

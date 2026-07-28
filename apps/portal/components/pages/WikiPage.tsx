@@ -42,6 +42,18 @@ export function WikiPage() {
   const confirm = useConfirmDialog();
 
   const controller = useWikiPageController();
+  const hasActiveFilters = Boolean(
+    controller.search.trim()
+    || controller.pinnedOnly
+    || controller.archivedMode !== "active"
+    || controller.selectedCategoryIds.length > 0,
+  );
+  const resetFilters = () => {
+    controller.setSearch("");
+    controller.setPinnedOnly(false);
+    controller.setArchivedMode("active");
+    controller.handleCategoryFilterChange([]);
+  };
 
   const handleDeleteArticle = async () => {
     if (!controller.selectedArticle) return;
@@ -213,7 +225,7 @@ export function WikiPage() {
     <PageLayout title={t("title")} subtitle={t("subtitle")}>
       <PageLayout.Section>
         <FilterToolbar
-          active={Boolean(controller.search.trim()) || controller.pinnedOnly || controller.archivedMode !== "active"}
+          active={hasActiveFilters}
           primary={
               <TextInput
                 placeholder={t("filter.search")}
@@ -259,13 +271,17 @@ export function WikiPage() {
           >
             <WikiArticleListCard
               title={t("articles.title")}
-              canEdit={controller.canEdit}
+              canCreateArticle={controller.canCreateArticle}
+              canManageCategories={controller.canManageCategories}
               createLabel={t("articleEditor.create")}
               onCreateArticle={controller.handleStartCreateArticle}
               onOpenCategoryEditor={controller.handleOpenCategoryEditor}
               categoryOptions={controller.categoryOptions}
               selectedCategoryIds={controller.selectedCategoryIds}
               onCategoryFilterChange={controller.handleCategoryFilterChange}
+              hasActiveFilters={hasActiveFilters}
+              resetFiltersLabel={t("action.resetFilters")}
+              onResetFilters={resetFilters}
               isLoading={controller.articlesQuery.isLoading}
               isError={controller.articlesQuery.isError}
               warningMessage={t("common:loadError")}

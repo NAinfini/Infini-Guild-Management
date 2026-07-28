@@ -179,7 +179,9 @@ export function GalleryPage() {
         retryLabel={t("common:action.retry")}
         retryPending={c.galleryQuery.isFetching}
         hasActiveFilters={c.hasActiveFilters}
+        canUpload={c.canUpload}
         resetFiltersLabel={t("action.resetFilters")}
+        addMediaLabel={t("action.addMedia")}
         onRetry={() => {
           void c.galleryQuery.refetch();
         }}
@@ -189,6 +191,7 @@ export function GalleryPage() {
           c.setDateTo("");
           c.setSearch("");
         }}
+        onAddMedia={() => c.openAddMediaModal("image")}
         onToggleSelect={c.toggleSelect}
         onDelete={c.handleDeleteItem}
         onOpenLightbox={c.setLightboxId}

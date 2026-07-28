@@ -23,9 +23,12 @@ type GalleryGridProps = {
   retryLabel: string;
   retryPending: boolean;
   hasActiveFilters: boolean;
+  canUpload: boolean;
   resetFiltersLabel: string;
+  addMediaLabel: string;
   onRetry: () => void;
   onResetFilters: () => void;
+  onAddMedia: () => void;
   onToggleSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onOpenLightbox: (id: string) => void;
@@ -49,9 +52,12 @@ export function GalleryGrid({
   retryLabel,
   retryPending,
   hasActiveFilters,
+  canUpload,
   resetFiltersLabel,
+  addMediaLabel,
   onRetry,
   onResetFilters,
+  onAddMedia,
   onToggleSelect,
   onDelete,
   onOpenLightbox,
@@ -122,6 +128,8 @@ export function GalleryGrid({
                 <Button onClick={onResetFilters}>
                   {resetFiltersLabel}
                 </Button>
+              ) : canUpload ? (
+                <Button onClick={onAddMedia}>{addMediaLabel}</Button>
               ) : undefined
             }
           />

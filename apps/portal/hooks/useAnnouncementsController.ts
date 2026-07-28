@@ -1,7 +1,6 @@
 import { type Announcement, type PaginatedResponse } from "@guild/shared";
 import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/tiptap-meta";
-import { notifications } from "@mantine/notifications";
 import {
   useInfiniteQuery,
   useMutation,
@@ -32,6 +31,7 @@ import {
 import { queryKeys } from "../api/query-keys";
 import { useEffectivePermissions } from "./useEffectivePermissions";
 import { toIsoOrUndefined } from "../utils/iso-dates";
+import { notifySuccess } from "../utils/notifications";
 
 function buildAnnouncementImageUrl(key: string): string {
   if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:")) return key;
@@ -40,14 +40,21 @@ function buildAnnouncementImageUrl(key: string): string {
   return new URL(path, window.location.origin).toString();
 }
 
-const message = {
-  success: (text: string) => notifications.show({ color: "green", message: text, autoClose: 3000 }),
-};
-
 type AnnouncementSelection =
   | { kind: "auto" }
   | { kind: "none" }
   | { kind: "selected"; id: string };
+
+type AnnouncementFinishMode = "none" | "draft" | "archived" | "scheduled";
+
+const ANNOUNCEMENT_STATUS_BY_FINISH_MODE = {
+  none: "published",
+  draft: "draft",
+  scheduled: "scheduled",
+} satisfies Record<
+  Exclude<AnnouncementFinishMode, "archived">,
+  Announcement["status"]
+>;
 
 type AnnouncementRouteSearch = {
   announcementId?: string;
@@ -125,6 +132,7 @@ export function useAnnouncementsController() {
 
   const isModerator = canManagePermission(["announcements.create", "announcements.edit", "announcements.archive", "announcements.delete"]);
   const canEdit = isModerator && !isExternalView;
+  const canCreate = canManagePermission(["announcements.create"]) && !isExternalView;
 
   const [pinnedFilter, setPinnedFilter] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
@@ -192,7 +200,7 @@ export function useAnnouncementsController() {
   const createMutation = useMutation({
     mutationFn: createAnnouncement,
     onSuccess: async (data) => {
-      message.success(t("message.created"));
+      notifySuccess(t("message.created"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
       isCreatingHandlers.close();
       setImageStagingToken(null);
@@ -248,7 +256,7 @@ export function useAnnouncementsController() {
       return { previousLists, previousDetail };
     },
     onSuccess: async () => {
-      message.success(t("message.saved"));
+      notifySuccess(t("message.saved"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
       if (selectedId) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.detail(selectedId) });
@@ -281,7 +289,7 @@ export function useAnnouncementsController() {
       return { previousLists };
     },
     onSuccess: async () => {
-      message.success(t("message.archived"));
+      notifySuccess(t("message.archived"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
       setAnnouncementSelection({ kind: "none" }, { replace: true });
     },
@@ -311,7 +319,7 @@ export function useAnnouncementsController() {
       return { previousLists };
     },
     onSuccess: async () => {
-      message.success(t("message.deleted"));
+      notifySuccess(t("message.deleted"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
       setAnnouncementSelection({ kind: "none" }, { replace: true });
     },
@@ -409,10 +417,11 @@ export function useAnnouncementsController() {
   useBeforeUnloadPrompt(isDirty);
 
   const handleCreateByStatus = useCallback(() => {
+    if (!canCreate) return;
     isCreatingHandlers.open();
     setImageStagingToken(null);
     setAnnouncementSelection({ kind: "none" });
-  }, [isCreatingHandlers, setAnnouncementSelection]);
+  }, [canCreate, isCreatingHandlers, setAnnouncementSelection]);
 
   const handleSelectId = useCallback(async (id: string | null) => {
     if (isDirty) {
@@ -441,16 +450,11 @@ export function useAnnouncementsController() {
     setPinnedFilter(false);
   }, []);
 
-  const handleFinish = (mode: "none" | "draft" | "archived" | "scheduled") => {
+  const handleFinish = (mode: AnnouncementFinishMode) => {
     if (isCreating) {
       if (mode === "archived") return;
 
-      const statusMap: Record<string, Announcement["status"]> = {
-        none: "published",
-        draft: "draft",
-        scheduled: "scheduled",
-      };
-      const status = statusMap[mode] ?? "published";
+      const status = ANNOUNCEMENT_STATUS_BY_FINISH_MODE[mode];
 
       createMutation.mutate({
         title,
@@ -470,12 +474,7 @@ export function useAnnouncementsController() {
       return;
     }
 
-    const statusMap: Record<string, Announcement["status"]> = {
-      none: "published",
-      draft: "draft",
-      scheduled: "scheduled",
-    };
-    const status = statusMap[mode] ?? "published";
+    const status = ANNOUNCEMENT_STATUS_BY_FINISH_MODE[mode];
 
     updateMutation.mutate({
       id: selectedId,
@@ -536,6 +535,7 @@ export function useAnnouncementsController() {
 
   return {
     canEdit,
+    canCreate,
     pinnedFilter,
     setPinnedFilter,
     statusFilter,

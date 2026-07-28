@@ -36,6 +36,7 @@ type AnnouncementListCardProps = {
   rows: Announcement[];
   selectedId: string | null;
   canEdit: boolean;
+  canCreate: boolean;
   announcementsLastSeenAt: string | null;
   isLoading: boolean;
   isError: boolean;
@@ -53,6 +54,7 @@ export function AnnouncementListCard({
   rows,
   selectedId,
   canEdit,
+  canCreate,
   announcementsLastSeenAt,
   isLoading,
   isError,
@@ -71,7 +73,7 @@ export function AnnouncementListCard({
         <Stack gap={8}>
           <Group justify="space-between" align="center">
             <Text fw={600}>{title}</Text>
-            {canEdit && onCreate ? (
+            {canCreate && onCreate ? (
               <DepthButton
                 onClick={() => onCreate()}
                 type="primary"
@@ -175,4 +177,3 @@ export function AnnouncementListCard({
     </PortalCard>
   );
 }
-

@@ -1,6 +1,5 @@
 import type { GuildWarActiveResponse } from "@guild/shared";
 import { activeGame } from "@guild/shared/games";
-import { notifications } from "@mantine/notifications";
 import { useQueryClient } from "@tanstack/react-query";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
@@ -66,12 +65,6 @@ type UseGuildWarDragControllerParams = {
   roleTagMutation: RoleTagMutation;
   guildWarService: GuildWarService;
   showError: (error: unknown, fallbackMessage: string) => void;
-};
-
-const message = {
-  success: (content: string) => notifySuccess(content),
-  warning: (content: string) => notifyWarning(content),
-  info: (content: string) => notifications.show({ color: "blue", message: content }),
 };
 
 function parseUserIdFromDragId(value: string): string | null {
@@ -201,7 +194,7 @@ export function useGuildWarDragController({
         await queryClient.invalidateQueries({
           queryKey: guildWarQueryKeys.active(selectedEventId ?? null),
         });
-        message.success(
+        notifySuccess(
           normalizedMoves.length === 1
             ? t("message.memberMoved")
             : t("message.membersMoved", { count: normalizedMoves.length }),
@@ -252,7 +245,7 @@ export function useGuildWarDragController({
     const column = dragColumns.find((c) => c.containerId === containerId);
     if (!column) return;
     void copyPlainText(column.members.map((m) => `@${m.username}`).join(" "));
-    message.success(t("active.teamCopied"));
+    notifySuccess(t("active.teamCopied"));
   };
 
   const handleTeamSelectAll = (containerId: string) => {
@@ -456,7 +449,7 @@ export function useGuildWarDragController({
     if (!sourceContainer || !targetContainer || !userId || sourceContainer === targetContainer) return;
 
     if (lockedTeamIds.has(targetContainer)) {
-      message.warning(t("message.targetTeamLocked"));
+      notifyWarning(t("message.targetTeamLocked"));
       return;
     }
 

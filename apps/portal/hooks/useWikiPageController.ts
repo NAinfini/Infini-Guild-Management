@@ -74,6 +74,8 @@ export function useWikiPageController() {
   const { canManage: canManagePermission } = useEffectivePermissions();
   const isModerator = canManagePermission(["wiki.articles.create", "wiki.articles.edit", "wiki.articles.archive", "wiki.articles.delete", "wiki.categories.manage"]);
   const canEdit = isModerator && !isExternalView;
+  const canCreateArticle = canManagePermission(["wiki.articles.create"]) && !isExternalView;
+  const canManageCategories = canManagePermission(["wiki.categories.manage"]) && !isExternalView;
 
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim();
@@ -227,6 +229,7 @@ export function useWikiPageController() {
   }, [isMobile, setWikiSelection]);
 
   const handleStartCreateArticle = useCallback(() => {
+    if (!canCreateArticle) return;
     setEditorTab("article");
     editorPaneHandlers.open();
     articleEditor.startCreateArticle();
@@ -234,7 +237,7 @@ export function useWikiPageController() {
     if (isMobile) {
       setMobilePane("article");
     }
-  }, [articleEditor, editorPaneHandlers, isMobile, setWikiSelection]);
+  }, [articleEditor, canCreateArticle, editorPaneHandlers, isMobile, setWikiSelection]);
 
   const handleOpenArticleEditor = useCallback(() => {
     setEditorTab("article");
@@ -245,12 +248,13 @@ export function useWikiPageController() {
   }, [editorPaneHandlers, isMobile]);
 
   const handleOpenCategoryEditor = useCallback(() => {
+    if (!canManageCategories) return;
     setEditorTab("categories");
     editorPaneHandlers.open();
     if (isMobile) {
       setMobilePane("article");
     }
-  }, [editorPaneHandlers, isMobile]);
+  }, [canManageCategories, editorPaneHandlers, isMobile]);
 
   const handleExitArticleEditor = useCallback(async () => {
     if (articleEditor.isDirty) {
@@ -337,6 +341,8 @@ export function useWikiPageController() {
     selectedSlug,
     selectedCategory,
     canEdit,
+    canCreateArticle,
+    canManageCategories,
 
     // revision history
     isHistoryOpen,

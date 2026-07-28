@@ -1,5 +1,5 @@
 import { SpeakerphoneIcon } from "@portal/components/icons";
-import { Loader } from "@mantine/core";
+import { Button, Loader } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { usePageHeaderActions } from "../../context/PageHeaderContext";
 import { useAnnouncementsController } from "../../hooks/useAnnouncementsController";
@@ -18,9 +18,17 @@ export function AnnouncementsPage() {
   usePageHeaderActions(null);
   useLoadWarningToast(controller.listQuery.isError || controller.detailQuery.isError, t("common:loadErrorRetry"));
 
+  const hasActiveFilters = Boolean(
+    controller.search.trim() || controller.statusFilter || controller.pinnedFilter,
+  );
   const emptyText = (
     <EmptyState
-      title={controller.search.trim() || controller.statusFilter || controller.pinnedFilter ? t("empty.filtered") : t("empty")}
+      title={hasActiveFilters ? t("empty.filtered") : t("empty")}
+      actions={hasActiveFilters ? (
+        <Button onClick={controller.resetFilters}>{t("action.resetFilters")}</Button>
+      ) : controller.canCreate ? (
+        <Button onClick={controller.handleCreateByStatus}>{t("action.newAnnouncement")}</Button>
+      ) : undefined}
     />
   );
 
@@ -43,6 +51,7 @@ export function AnnouncementsPage() {
             rows={controller.rows}
             selectedId={controller.selectedId}
             canEdit={controller.canEdit}
+            canCreate={controller.canCreate}
             announcementsLastSeenAt={controller.announcementsLastSeenAt}
             isLoading={controller.listQuery.isLoading}
             isError={controller.listQuery.isError}

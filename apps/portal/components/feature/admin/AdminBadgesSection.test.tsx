@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -137,5 +137,19 @@ describe("AdminBadgesSection", () => {
     await user.click(screen.getByRole("button", { name: "action.retry" }));
 
     expect(retryAssignments).toHaveBeenCalledOnce();
+  });
+
+  it("offers badge creation from the global empty state", async () => {
+    const user = userEvent.setup();
+    const startCreate = vi.fn();
+    renderBadges(createController({ startCreate }));
+
+    const emptyState = screen.getByText("badges.empty").closest(".empty-state");
+    expect(emptyState).not.toBeNull();
+    await user.click(within(emptyState as HTMLElement).getByRole("button", {
+      name: "badges.action.create",
+    }));
+
+    expect(startCreate).toHaveBeenCalledOnce();
   });
 });

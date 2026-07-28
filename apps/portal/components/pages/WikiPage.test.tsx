@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MantineProvider } from "@mantine/core";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WikiPage } from "./WikiPage";
@@ -14,6 +14,10 @@ const resetCategoryDraftsMock = vi.hoisted(() => vi.fn());
 const categoryEditorState = vi.hoisted(() => ({ isDirty: false }));
 const wikiEditorMock = vi.hoisted(() => vi.fn());
 const categoryEditorMock = vi.hoisted(() => vi.fn());
+const startCreateArticleMock = vi.hoisted(() => vi.fn());
+const permissionState = vi.hoisted(() => ({
+  allowed: null as Set<string> | null,
+}));
 const serviceMocks = vi.hoisted(() => ({
   fetchWikiArticleBySlug: vi.fn(),
   fetchWikiArticles: vi.fn(),
@@ -54,7 +58,10 @@ vi.mock("../../hooks/useWikiCategoryEditor", () => ({
 
 vi.mock("../../hooks/useEffectivePermissions", () => ({
   useEffectivePermissions: () => ({
-    canManage: () => true,
+    canManage: (permissions: string[]) => (
+      permissionState.allowed === null
+      || permissions.some((permission) => permissionState.allowed?.has(permission))
+    ),
   }),
 }));
 
@@ -108,6 +115,8 @@ describe("WikiPage", () => {
     confirmMock.mockReset();
     confirmMock.mockResolvedValue(true);
     resetCategoryDraftsMock.mockReset();
+    startCreateArticleMock.mockReset();
+    permissionState.allowed = null;
     categoryEditorState.isDirty = false;
     paramsMock.slug = "deleted-article";
     routeSearchMock.selection = undefined;
@@ -187,7 +196,7 @@ describe("WikiPage", () => {
       isSaving: false,
       isCreating: false,
       canCreateArticle: true,
-      startCreateArticle: vi.fn(),
+      startCreateArticle: startCreateArticleMock,
       exitEditor: vi.fn(),
       createArticle: vi.fn(),
       saveSelectedArticle: vi.fn(),
@@ -314,5 +323,74 @@ describe("WikiPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "editor.closeNoSave" }));
 
     await waitFor(() => expect(resetCategoryDraftsMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("offers article creation when the resource is globally empty", async () => {
+    paramsMock.slug = undefined;
+    serviceMocks.fetchWikiArticleBySlug.mockResolvedValue(null);
+    serviceMocks.fetchWikiArticles.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 50,
+      total_pages: 0,
+    });
+
+    renderWikiPage();
+
+    const emptyState = (await screen.findByText("empty")).closest(".empty-state");
+    expect(emptyState).not.toBeNull();
+    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", {
+      name: "articleEditor.create",
+    }));
+
+    expect(startCreateArticleMock).toHaveBeenCalledOnce();
+  });
+
+  it("offers filter reset instead of article creation when filters hide all results", async () => {
+    paramsMock.slug = undefined;
+    serviceMocks.fetchWikiArticleBySlug.mockResolvedValue(null);
+    serviceMocks.fetchWikiArticles.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 50,
+      total_pages: 0,
+    });
+
+    renderWikiPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "filter.showPinned" }));
+    const emptyState = (await screen.findByText("empty")).closest(".empty-state");
+    expect(emptyState).not.toBeNull();
+    expect(within(emptyState as HTMLElement).queryByRole("button", {
+      name: "articleEditor.create",
+    })).not.toBeInTheDocument();
+    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", {
+      name: "action.resetFilters",
+    }));
+
+    expect(await screen.findByRole("button", { name: "filter.showPinned" })).toBeInTheDocument();
+  });
+
+  it("does not expose article creation when the user only has edit permission", async () => {
+    permissionState.allowed = new Set(["wiki.articles.edit"]);
+    paramsMock.slug = undefined;
+    serviceMocks.fetchWikiArticleBySlug.mockResolvedValue(null);
+    serviceMocks.fetchWikiArticles.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 50,
+      total_pages: 0,
+    });
+
+    renderWikiPage();
+
+    const emptyState = (await screen.findByText("empty")).closest(".empty-state");
+    expect(emptyState).not.toBeNull();
+    expect(within(emptyState as HTMLElement).queryByRole("button", {
+      name: "articleEditor.create",
+    })).not.toBeInTheDocument();
   });
 });
