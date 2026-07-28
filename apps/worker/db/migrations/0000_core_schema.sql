@@ -390,10 +390,8 @@ CREATE INDEX IF NOT EXISTS idx_announcements_expiry
   ON announcements(status, expires_at);
 
 -- war_history
-CREATE INDEX IF NOT EXISTS idx_war_history_event_id
+CREATE UNIQUE INDEX IF NOT EXISTS ux_war_history_event_id
   ON war_history(event_id);
-CREATE INDEX IF NOT EXISTS idx_war_history_event_created
-  ON war_history(event_id, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_war_history_created
   ON war_history(created_at, id);
 

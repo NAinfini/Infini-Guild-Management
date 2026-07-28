@@ -27,8 +27,7 @@ export const warHistory = sqliteTable(
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
   (table) => ({
-    idxEventId: index("idx_war_history_event_id").on(table.eventId),
-    idxEventCreated: index("idx_war_history_event_created").on(table.eventId, table.createdAt, table.id),
+    uxEventId: uniqueIndex("ux_war_history_event_id").on(table.eventId),
     idxCreated: index("idx_war_history_created").on(table.createdAt, table.id),
   }),
 );

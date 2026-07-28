@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { BUILTIN_ROLES, PERMISSIONS } from "@guild/shared";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
-import { storageItems } from "../schema";
+import { storageItems, warHistory } from "../schema";
 
 const schemaSql = readFileSync("apps/worker/db/migrations/0000_core_schema.sql", "utf8");
 
@@ -10,7 +10,6 @@ describe("core schema performance indexes", () => {
   it("includes composite indexes for hot list and filtered lookup queries", () => {
     const expectedIndexes = [
       "idx_events_archived_start",
-      "idx_war_history_event_created",
       "idx_audit_log_entity_created",
       "idx_audit_log_actor_created",
       "idx_wiki_categories_sort",
@@ -22,6 +21,21 @@ describe("core schema performance indexes", () => {
     for (const indexName of expectedIndexes) {
       expect(schemaSql).toContain(`CREATE INDEX IF NOT EXISTS ${indexName}`);
     }
+  });
+});
+
+describe("core schema guild-war invariants", () => {
+  it("allows at most one history record for each event in Drizzle and baseline SQL", () => {
+    const eventIndex = getTableConfig(warHistory).indexes
+      .find((index) => index.config.name === "ux_war_history_event_id");
+
+    expect(eventIndex?.config.unique).toBe(true);
+    expect(schemaSql).toContain(
+      "CREATE UNIQUE INDEX IF NOT EXISTS ux_war_history_event_id",
+    );
+    expect(schemaSql).not.toContain(
+      "CREATE INDEX IF NOT EXISTS idx_war_history_event_id",
+    );
   });
 });
 

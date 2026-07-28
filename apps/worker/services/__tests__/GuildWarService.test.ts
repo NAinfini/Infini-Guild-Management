@@ -26,6 +26,50 @@ const historyRow = {
   updatedAt: "2026-03-08T12:00:00.000Z",
 };
 
+function createConcludeService(batch: ReturnType<typeof vi.fn>) {
+  const prepare = vi.fn((sql: string) => ({
+    sql,
+    bind: vi.fn((...bindings: unknown[]) => ({ sql, bindings })),
+  }));
+  const select = vi.fn(() => {
+    const builder = {
+      from: vi.fn(() => builder),
+      where: vi.fn(() => builder),
+      limit: vi.fn().mockResolvedValue([{ title: "Siege Night" }]),
+    };
+    return builder;
+  });
+  const service = new GuildWarService({ select } as never, {
+    media: { get: vi.fn() },
+    writeAuditLog: vi.fn(),
+    publishEntityChanged: vi.fn(),
+    rawDb: { prepare, batch } as never,
+  });
+  vi.spyOn(service, "getTeamsForEvent").mockResolvedValue([
+    {
+      id: "team-1",
+      warHistoryId: null,
+      eventId: "event-1",
+      teamName: "Alpha",
+      sortOrder: 0,
+      notes: null,
+      isLocked: false,
+    },
+  ]);
+  vi.spyOn(service, "getMembersForTeams").mockResolvedValue([
+    {
+      id: "member-1",
+      warTeamId: "team-1",
+      userId: "user-1",
+      roleTag: null,
+      sortOrder: 0,
+      stats: null,
+      note: null,
+    },
+  ]);
+  return service;
+}
+
 describe("GuildWarService helpers", () => {
   it("toWarHistoryPayload maps camelCase to snake_case", () => {
     const payload = toWarHistoryPayload(historyRow);
@@ -270,6 +314,119 @@ describe("GuildWarService helpers", () => {
       action: "move_member",
       detailText: expect.stringContaining("\"count\":2"),
     }));
+  });
+
+  it("returns the existing history for an idempotent conclude retry", async () => {
+    const batch = vi.fn();
+    const service = new GuildWarService({} as never, {
+      media: { get: vi.fn() },
+      writeAuditLog: vi.fn(),
+      publishEntityChanged: vi.fn(),
+      rawDb: { batch } as never,
+    });
+    vi.spyOn(service, "getLatestWarHistory").mockResolvedValue({
+      ...historyRow,
+      result: "win",
+    });
+    const getTeamsForEvent = vi.spyOn(service, "getTeamsForEvent");
+
+    const result = await service.concludeWar("mod-1", "event-1", {
+      result: "win",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "CONFLICT",
+      message: "This guild war event already has a history record",
+      details: { war_history_id: "war-1" },
+    });
+    expect(getTeamsForEvent).not.toHaveBeenCalled();
+    expect(batch).not.toHaveBeenCalled();
+  });
+
+  it("maps a concurrent conclude unique violation to a conflict without leaking database errors", async () => {
+    const batch = vi.fn().mockRejectedValue(
+      new Error("D1_ERROR: UNIQUE constraint failed: war_history.event_id"),
+    );
+    const service = createConcludeService(batch);
+    vi.spyOn(service, "getLatestWarHistory")
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...historyRow, result: "win" });
+
+    const result = await service.concludeWar("mod-1", "event-1", {
+      result: "win",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "CONFLICT",
+      message: "This guild war event already has a history record",
+      details: { war_history_id: "war-1" },
+    });
+    expect(JSON.stringify(result)).not.toContain("UNIQUE constraint");
+  });
+
+  it("keeps unrelated conclude failures generic for clients", async () => {
+    const batch = vi.fn().mockRejectedValue(new Error("database unavailable"));
+    const service = createConcludeService(batch);
+    vi.spyOn(service, "getLatestWarHistory").mockResolvedValue(null);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const result = await service.concludeWar("mod-1", "event-1", {
+      result: "win",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "SERVER_ERROR",
+      message: "Failed to conclude war",
+    });
+    expect(JSON.stringify(result)).not.toContain("database unavailable");
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it("maps duplicate event history creates and reassignment updates to conflicts", async () => {
+    const uniqueError = new Error(
+      "D1_ERROR: UNIQUE constraint failed: war_history.event_id",
+    );
+    const values = vi.fn().mockRejectedValue(uniqueError);
+    const where = vi.fn().mockRejectedValue(uniqueError);
+    const set = vi.fn(() => ({ where }));
+    const service = new GuildWarService({
+      insert: vi.fn(() => ({ values })),
+      update: vi.fn(() => ({ set })),
+    } as never, {
+      media: { get: vi.fn() },
+      writeAuditLog: vi.fn(),
+      publishEntityChanged: vi.fn(),
+      rawDb: {} as never,
+    });
+    vi.spyOn(service, "getWarHistoryById").mockResolvedValue(historyRow);
+    vi.spyOn(service, "getLatestWarHistory")
+      .mockResolvedValueOnce({ ...historyRow, id: "war-existing" })
+      .mockResolvedValueOnce({ ...historyRow, id: "war-existing" });
+
+    const createResult = await service.createHistory("mod-1", {
+      event_id: "event-1",
+      war_name: "Duplicate",
+    });
+    const updateResult = await service.updateHistory("mod-1", "war-1", {
+      event_id: "event-2",
+    });
+
+    expect(createResult).toEqual({
+      ok: false,
+      code: "CONFLICT",
+      message: "This guild war event already has a history record",
+      details: { war_history_id: "war-existing" },
+    });
+    expect(updateResult).toEqual({
+      ok: false,
+      code: "CONFLICT",
+      message: "This guild war event already has a history record",
+      details: { war_history_id: "war-existing" },
+    });
   });
 
   it("updates multiple role tags through one batched service operation", async () => {

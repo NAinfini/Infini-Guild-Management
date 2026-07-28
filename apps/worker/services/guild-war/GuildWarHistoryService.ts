@@ -21,6 +21,7 @@ import {
 type GuildWarFacade = Pick<
   GuildWarCoreService,
   | "getWarHistoryById"
+  | "getLatestWarHistory"
   | "getTeamsForEvent"
   | "getTeamsForHistory"
   | "getMembersForTeams"
@@ -29,6 +30,23 @@ type GuildWarFacade = Pick<
 > & {
   replaceHistoryTeams(warHistoryId: string, snapshot: WarTemplateSnapshot): Promise<void>;
 };
+
+const EVENT_HISTORY_CONFLICT_MESSAGE =
+  "This guild war event already has a history record";
+
+function isEventHistoryUniqueConflict(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("UNIQUE constraint failed: war_history.event_id")
+    || message.includes("ux_war_history_event_id");
+}
+
+function eventHistoryConflict(historyId?: string): ServiceResult<never> {
+  return err(
+    "CONFLICT",
+    EVENT_HISTORY_CONFLICT_MESSAGE,
+    historyId ? { war_history_id: historyId } : undefined,
+  );
+}
 
 function buildWarHistoryDiff(
   existing: { eventId: string | null; warName: string; enemyName: string | null; result: string | null; ownStats: Record<string, number | null> | null; enemyStats: Record<string, number | null> | null; durationMinutes: number | null; notes: string | null },
@@ -63,6 +81,10 @@ export class GuildWarHistoryService extends GuildWarCoreService {
 
   override getWarHistoryById(warId: string) {
     return this.facade?.getWarHistoryById(warId) ?? super.getWarHistoryById(warId);
+  }
+
+  override getLatestWarHistory(eventId?: string) {
+    return this.facade?.getLatestWarHistory(eventId) ?? super.getLatestWarHistory(eventId);
   }
 
   override getTeamsForEvent(eventId: string) {
@@ -101,6 +123,9 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     warInfo: { enemy_name?: string; result: string; duration_minutes?: number | null; own_stats?: Record<string, number | null>; enemy_stats?: Record<string, number | null> },
     memberStats?: Array<{ user_id: string; stats: Record<string, number> }>,
   ): Promise<ServiceResult<{ war_history_id: string }>> {
+    const existingHistory = await this.getLatestWarHistory(eventId);
+    if (existingHistory) return eventHistoryConflict(existingHistory.id);
+
     const teams = await this.getTeamsForEvent(eventId);
     if (teams.length === 0) return err("VALIDATION_ERROR", "No active teams found for this event");
     const members = await this.getMembersForTeams(teams.map((t) => t.id));
@@ -135,8 +160,12 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     try {
       await this.deps.rawDb.batch(stmts);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return err("SERVER_ERROR", `Failed to conclude war: ${msg}`);
+      if (isEventHistoryUniqueConflict(e)) {
+        const conflictingHistory = await this.getLatestWarHistory(eventId);
+        return eventHistoryConflict(conflictingHistory?.id);
+      }
+      console.error("concludeWar batch failed", { error: String(e), eventId });
+      return err("SERVER_ERROR", "Failed to conclude war");
     }
 
     try {
@@ -239,7 +268,18 @@ export class GuildWarHistoryService extends GuildWarCoreService {
 
   async createHistory(actorId: string, input: CreateWarHistoryInput): Promise<ServiceResult<unknown>> {
     const historyId = nanoid();
-    await this.db.insert(warHistory).values({ id: historyId, eventId: input.event_id ?? null, warName: input.war_name, enemyName: input.enemy_name ?? null, result: input.result ?? null, ownStats: input.own_stats ?? null, enemyStats: input.enemy_stats ?? null, notes: input.notes ?? null, createdBy: actorId });
+    try {
+      await this.db.insert(warHistory).values({ id: historyId, eventId: input.event_id ?? null, warName: input.war_name, enemyName: input.enemy_name ?? null, result: input.result ?? null, ownStats: input.own_stats ?? null, enemyStats: input.enemy_stats ?? null, notes: input.notes ?? null, createdBy: actorId });
+    } catch (error) {
+      if (isEventHistoryUniqueConflict(error)) {
+        const conflictingHistory = input.event_id
+          ? await this.getLatestWarHistory(input.event_id)
+          : null;
+        return eventHistoryConflict(conflictingHistory?.id);
+      }
+      console.error("createHistory insert failed", { error: String(error) });
+      return err("SERVER_ERROR", "Failed to create war history");
+    }
     if (input.event_id) {
       const teams = await this.getTeamsForEvent(input.event_id);
       const members = await this.getMembersForTeams(teams.map((team) => team.id));
@@ -278,7 +318,18 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     if (input.enemy_stats !== undefined) patch.enemyStats = input.enemy_stats;
     if (input.duration_minutes !== undefined) patch.durationMinutes = input.duration_minutes;
     if (input.notes !== undefined) patch.notes = input.notes;
-    await this.db.update(warHistory).set(patch).where(eq(warHistory.id, warId));
+    try {
+      await this.db.update(warHistory).set(patch).where(eq(warHistory.id, warId));
+    } catch (error) {
+      if (isEventHistoryUniqueConflict(error)) {
+        const conflictingHistory = input.event_id
+          ? await this.getLatestWarHistory(input.event_id)
+          : null;
+        return eventHistoryConflict(conflictingHistory?.id);
+      }
+      console.error("updateHistory write failed", { error: String(error), warId });
+      return err("SERVER_ERROR", "Failed to update war history");
+    }
     const updated = await this.getWarHistoryById(warId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated war history");
     const historyDiff = buildWarHistoryDiff(existing, input);
