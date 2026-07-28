@@ -82,7 +82,7 @@ type BareHexExemption = {
  * 豁免粒度按「文件 + 该文件内已核实过的具体 hex 值」授予，不是整文件豁免——
  * 整文件豁免太粗，日后这个文件如果混入类 2/3/4 的裸 hex 也会被放过；也不是按
  * 行号豁免——行号会漂。之所以不能再往下收紧到纯「按常量名」（本节以下每条的
- * `source` 字段本该是那个粒度），是因为 ToolsPage.tsx 的取色器初值不是一个具
+ * `source` 字段本该是那个粒度），是因为 TitleSandboxModal.tsx 的取色器初值不是一个具
  * 名常量，而批 A 的范围只许新建这一个测试文件、不许改 .tsx 去给它起名字。
  * 已经在 task-8-report.md 的「A 批」一节按文件逐处核实过：下面五个文件里，
  * style={{}} 之外的裸 hex 清一色只有这些列出的值，没有混入其它类别——所以
@@ -115,7 +115,7 @@ const BARE_HEX_EXEMPTIONS: Record<string, BareHexExemption[]> = {
       values: ["#fef08a", "#bbf7d0", "#bfdbfe", "#fecdd3", "#e9d5ff", "#fed7aa"],
     },
   ],
-  "apps/portal/components/pages/ToolsPage.tsx": [
+  "apps/portal/components/feature/tools/TitleSandboxModal.tsx": [
     {
       source: "PRESET_COLORS",
       reason: "沙盒工具的文字色预设：选中值经 rgbaColor 拼进生成的 HTML 片段（`color: rgba(...)`），用户复制这段 HTML 到站外使用，不是站内主题。",
@@ -186,7 +186,7 @@ describe(".tsx carries no bare hex outside the class-1 exemption table", () => {
     expect(bareHexOffenders("some/file.tsx", 'style={{ color: "#123456" }}')).toEqual([]);
     expect(
       bareHexOffenders(
-        "apps/portal/components/pages/ToolsPage.tsx",
+        "apps/portal/components/feature/tools/TitleSandboxModal.tsx",
         'const PRESET_COLORS = ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"];',
       ),
     ).toEqual([]);

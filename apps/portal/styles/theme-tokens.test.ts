@@ -122,7 +122,7 @@ const RUNTIME_INJECTED_VARS: string[] = [
   "--role-color",
   /* --swatch-color：色板/取色按钮各自的色号，来自 TipTapEditorToolbar.tsx /
    * TipTapEditorContextMenu.tsx 的 TEXT_COLORS / HIGHLIGHT_COLORS、
-   * AdminBadgesSection.tsx 的 COLOR_PRESETS，以及 ToolsPage.tsx 的
+   * AdminBadgesSection.tsx 的 COLOR_PRESETS，以及 TitleSandboxModal.tsx 的
    * recentColors（localStorage 持久化的用户历史取色，等同 class-1 数据），
    * 不在本任务范围内改名/改值，运行期由这四个文件的色板/色点按钮无条件
    * 内联写入。Task 8 批 B 在 tiptap-editor.css / AdminBadgesSection.css /
