@@ -239,7 +239,7 @@ describe("runMediaOrphanCleanupCron", () => {
       }
       if (sql.includes("announcements")) {
         return {
-          all: vi.fn().mockResolvedValue({ results: [{ id: "ann-1", body_json: null }] }),
+          all: vi.fn().mockResolvedValue({ results: [{ id: "ann-1", body_json: JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "announcement/ann-1/images/plain-text.png" }] }] }) }] }),
           bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue({ results: [] }) }),
           first: vi.fn().mockResolvedValue(null),
         };
@@ -269,6 +269,7 @@ describe("runMediaOrphanCleanupCron", () => {
     expect(replaceMediaRefs).toHaveBeenCalledWith(expect.anything(), "event", "ev-1", ["events/ev-1/attach.png"]);
     // and for the recurring_template row (latent bug fix)
     expect(replaceMediaRefs).toHaveBeenCalledWith(expect.anything(), "recurring_template", "rt-1", ["events/template/file.pdf"]);
+    expect(replaceMediaRefs).not.toHaveBeenCalledWith(expect.anything(), "announcement", "ann-1", expect.anything());
   });
 
   it("skips backfill when media_references table has rows (count > 0)", async () => {

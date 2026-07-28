@@ -1,4 +1,4 @@
-﻿export * from "./config/limits";
+export * from "./config/limits";
 export * from "./config/features";
 export * from "./games";
 

@@ -7,10 +7,10 @@ import {
 } from "@dnd-kit/core";
 import { buildEChartsTheme } from "../../theme/echarts";
 import { useTheme } from "../../providers/ThemeProvider";
-import { Tabs } from "@mantine/core";
 import { useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useDebouncedValue } from "@mantine/hooks";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import { useAppError } from "../../hooks/useAppError";
@@ -23,69 +23,15 @@ import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { GuildWarService } from "../../services/GuildWarService";
 import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { queryKeys } from "../../api/query-keys";
-import { useAuthStore } from "../../stores/auth";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { useGuildWarStore } from "../../stores/guildWar";
 import { PageLayout } from "../layout/PageLayout";
+import { PageTabPanel, PageTabs } from "../layout/PageTabs";
 import { useGuildWarActiveController } from "../feature/guild-war/useGuildWarActiveController";
 import { GuildWarActiveTab } from "./guild-war/GuildWarActiveTab";
 import { GuildWarHistoryTabWrapper } from "./guild-war/GuildWarHistoryTabWrapper";
 import { GuildWarAnalyticsTabWrapper } from "./guild-war/GuildWarAnalyticsTabWrapper";
 import "./GuildWarPage.css";
-
-type TabItem = {
-  key: string;
-  label: ReactNode;
-  children: ReactNode;
-};
-
-type PageTabsProps = {
-  items: TabItem[];
-  destroyInactiveTabPane?: boolean;
-  initialActiveKey?: string;
-};
-
-function PageTabs({ items, destroyInactiveTabPane = false, initialActiveKey }: PageTabsProps) {
-  const [activeKey, setActiveKey] = useState<string | null>(initialActiveKey ?? items[0]?.key ?? null);
-
-  useEffect(() => {
-    if (!initialActiveKey) {
-      return;
-    }
-    if (!items.some((item) => item.key === initialActiveKey)) {
-      return;
-    }
-    setActiveKey((current) => (current === initialActiveKey ? current : initialActiveKey));
-  }, [initialActiveKey, items]);
-
-  useEffect(() => {
-    if (activeKey && items.some((item) => item.key === activeKey)) {
-      return;
-    }
-    setActiveKey(items[0]?.key ?? null);
-  }, [activeKey, items]);
-
-  if (!activeKey) {
-    return null;
-  }
-
-  return (
-    <Tabs value={activeKey} onChange={setActiveKey} keepMounted={!destroyInactiveTabPane}>
-      <Tabs.List>
-        {items.map((item) => (
-          <Tabs.Tab key={item.key} value={item.key}>
-            {item.label}
-          </Tabs.Tab>
-        ))}
-      </Tabs.List>
-      {items.map((item) => (
-        <Tabs.Panel key={item.key} value={item.key} pt="sm">
-          {item.children}
-        </Tabs.Panel>
-      ))}
-    </Tabs>
-  );
-}
 
 export function GuildWarPage() {
   const { t } = useTranslation("guild-war");
@@ -105,7 +51,6 @@ export function GuildWarPage() {
     }
   }, []);
 
-  const user = useAuthStore((state) => state.user);
   const isExternalView = useExternalView();
   const { canManage: canManagePermission } = useEffectivePermissions();
   const isModerator = canManagePermission(["guildwar.teams.edit"]);
@@ -159,6 +104,17 @@ export function GuildWarPage() {
       setHistoryPerPage: s.setHistoryPerPage,
     })),
   );
+  const [historySearch, setHistorySearchValue] = useState(guildWarSearch.warName ?? "");
+  const [debouncedHistorySearch] = useDebouncedValue(historySearch.trim(), 250);
+  const setHistorySearch = useCallback((value: string) => {
+    setHistorySearchValue(value);
+    setHistoryPage(1);
+  }, [setHistoryPage]);
+
+  useEffect(() => {
+    setHistorySearchValue(guildWarSearch.warName ?? "");
+    setHistoryPage(1);
+  }, [guildWarSearch.warName, setHistoryPage]);
 
   const initialTabKey = useMemo(() => {
     if (guildWarSearch.tab) {
@@ -192,9 +148,9 @@ export function GuildWarPage() {
     selectedHistoryId,
     historyDateFrom,
     historyDateTo,
+    historySearch: debouncedHistorySearch,
     historyPage,
     historyPerPage,
-    hasSession: Boolean(user),
   });
 
   const activeController = useGuildWarActiveController({
@@ -288,79 +244,86 @@ export function GuildWarPage() {
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<SwordsIcon size={22} />} className="guild-war-page">
       <PageTabs
-        destroyInactiveTabPane
-        initialActiveKey={initialTabKey}
-        items={[
+        keepMounted={false}
+        defaultValue={initialTabKey ?? (isExternalView ? "history" : "active")}
+        tabs={[
           ...(!isExternalView
             ? [
                 {
-                  key: "active",
+                  value: "active" as const,
                   label: t("tab.active"),
-                  children: (
-                    <GuildWarActiveTab
-                      selectedEventId={selectedEventId}
-                      setSelectedEventId={setSelectedEventId}
-                      canManageActive={canManageActive}
-                      activeController={activeController}
-                      guildWarDrag={guildWarDrag}
-                      guildWarHistory={guildWarHistory}
-                      warEventsQuery={warEventsQuery}
-                      concludedEventIdSet={concludedEventIdSet}
-                      activeQuery={activeQuery}
-                      sensors={sensors}
-                      concludeWarDisabled={concludeWarDisabled}
-                      concludeWarDisabledReason={concludeWarDisabledReason}
-                    />
-                  ),
                 },
               ]
             : []),
           {
-            key: "history",
+            value: "history" as const,
             label: t("tab.history"),
-            children: (
-              <GuildWarHistoryTabWrapper
-                canManageActive={canManageActive}
-                historyViewMode={historyViewMode}
-                setHistoryViewMode={setHistoryViewMode}
-                historyChartMetric={historyChartMetric}
-                setHistoryChartMetric={setHistoryChartMetric}
-                historyDateFrom={historyDateFrom}
-                setHistoryDateFrom={setHistoryDateFrom}
-                historyDateTo={historyDateTo}
-                setHistoryDateTo={setHistoryDateTo}
-                historyPage={historyPage}
-                setHistoryPage={setHistoryPage}
-                historyPerPage={historyPerPage}
-                setHistoryPerPage={setHistoryPerPage}
-                setSelectedHistoryId={setSelectedHistoryId}
-                guildWarHistory={guildWarHistory}
-                guildWarMutations={guildWarMutations}
-                historyQuery={historyQuery}
-                historyDetailQuery={historyDetailQuery}
-                chartThemeName={chartThemeName}
-                chartThemeConfig={chartThemeConfig}
-                chartPalette={chartPalette}
-                initialSearch={guildWarSearch.warName}
-              />
-            ),
           },
           {
-            key: "analytics",
+            value: "analytics" as const,
             label: t("tab.analytics"),
-            children: (
-              <GuildWarAnalyticsTabWrapper
-                historyQuery={historyQuery}
-                chartPalette={chartPalette}
-                guildWarService={guildWarService}
-                chartThemeName={chartThemeName}
-                chartThemeConfig={chartThemeConfig}
-                canManageWeights={isModerator}
-              />
-            ),
           },
         ]}
-      />
+      >
+        {!isExternalView ? (
+          <PageTabPanel value="active" pt="sm">
+            <GuildWarActiveTab
+              selectedEventId={selectedEventId}
+              setSelectedEventId={setSelectedEventId}
+              canManageActive={canManageActive}
+              activeController={activeController}
+              guildWarDrag={guildWarDrag}
+              guildWarHistory={guildWarHistory}
+              warEventsQuery={warEventsQuery}
+              concludedEventIdSet={concludedEventIdSet}
+              activeQuery={activeQuery}
+              sensors={sensors}
+              concludeWarDisabled={concludeWarDisabled}
+              concludeWarDisabledReason={concludeWarDisabledReason}
+            />
+          </PageTabPanel>
+        ) : null}
+
+        <PageTabPanel value="history" pt="sm">
+          <GuildWarHistoryTabWrapper
+            canManageActive={canManageActive}
+            historyViewMode={historyViewMode}
+            setHistoryViewMode={setHistoryViewMode}
+            historyChartMetric={historyChartMetric}
+            setHistoryChartMetric={setHistoryChartMetric}
+            historyDateFrom={historyDateFrom}
+            setHistoryDateFrom={setHistoryDateFrom}
+            historyDateTo={historyDateTo}
+            setHistoryDateTo={setHistoryDateTo}
+            historySearch={historySearch}
+            setHistorySearch={setHistorySearch}
+            historyPage={historyPage}
+            setHistoryPage={setHistoryPage}
+            historyPerPage={historyPerPage}
+            setHistoryPerPage={setHistoryPerPage}
+            setSelectedHistoryId={setSelectedHistoryId}
+            guildWarHistory={guildWarHistory}
+            guildWarMutations={guildWarMutations}
+            historyQuery={historyQuery}
+            historyDetailQuery={historyDetailQuery}
+            chartThemeName={chartThemeName}
+            chartThemeConfig={chartThemeConfig}
+            chartPalette={chartPalette}
+            initialSearch={guildWarSearch.warName}
+          />
+        </PageTabPanel>
+
+        <PageTabPanel value="analytics" pt="sm">
+          <GuildWarAnalyticsTabWrapper
+            historyQuery={historyQuery}
+            chartPalette={chartPalette}
+            guildWarService={guildWarService}
+            chartThemeName={chartThemeName}
+            chartThemeConfig={chartThemeConfig}
+            canManageWeights={isModerator}
+          />
+        </PageTabPanel>
+      </PageTabs>
     </PageLayout>
   );
 }

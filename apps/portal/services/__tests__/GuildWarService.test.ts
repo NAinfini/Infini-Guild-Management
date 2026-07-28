@@ -84,7 +84,7 @@ describe("GuildWarService", () => {
     });
   });
 
-  it("persists snapshots and invalidates the active guild war query", async () => {
+  it("persists snapshots with concurrency control and invalidates dependent queries", async () => {
     const saveGuildWarTeams = vi.fn().mockResolvedValue({ id: "war-1" });
     const invalidateQueries = vi.fn().mockResolvedValue(undefined);
     const service = new GuildWarService({
@@ -99,16 +99,20 @@ describe("GuildWarService", () => {
       teamDraftNames: {},
       teamDraftNotes: {},
       teamDraftLocks: {},
+      etag: '"active-etag"',
     });
 
     expect(saveGuildWarTeams).toHaveBeenCalledWith(
       expect.objectContaining({
         event_id: "event-1",
       }),
-      undefined,
+      '"active-etag"',
     );
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.guildWar.active("event-1"),
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.guildWar.historyAll(),
     });
   });
 

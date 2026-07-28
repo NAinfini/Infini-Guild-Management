@@ -292,7 +292,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                         <iframe
                           src={toEmbedVideoUrl(item.source)}
                           title={item.label}
-                          style={{ width: "100%", height: "calc(100% - 40px)", border: "none", borderRadius: 8 }}
+                          className="infini-media-gallery-video-embed"
                           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                           allowFullScreen
                         />

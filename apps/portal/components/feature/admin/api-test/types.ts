@@ -24,6 +24,7 @@ export type TestRunContext = {
   pollOptionId: string | null;
   eventTemplateId: string | null;
   announcementId: string | null;
+  announcementStagingToken: string | null;
   galleryItemId: string | null;
   galleryDeleteId: string | null;
   warEventId: string | null;
@@ -31,6 +32,8 @@ export type TestRunContext = {
   warTeamId: string | null;
   warMemberUserId: string | null;
   createdConcludedWarHistoryId: string | null;
+  /** Captured from GET /api/game-data so the rotations endpoint has a real class. */
+  gameDataClassId: string | null;
   wikiCategoryId: string | null;
   wikiArticleId: string | null;
   wikiArticleSlug: string | null;
@@ -135,6 +138,7 @@ export function createInitialTestRunContext(): TestRunContext {
     pollOptionId: null,
     eventTemplateId: null,
     announcementId: null,
+    announcementStagingToken: null,
     galleryItemId: null,
     galleryDeleteId: null,
     warEventId: null,
@@ -142,6 +146,7 @@ export function createInitialTestRunContext(): TestRunContext {
     warTeamId: null,
     warMemberUserId: null,
     createdConcludedWarHistoryId: null,
+    gameDataClassId: null,
     wikiCategoryId: null,
     wikiArticleId: null,
     wikiArticleSlug: null,

@@ -1,32 +1,24 @@
 import type { GuildWarActiveResponse } from "@guild/shared";
 import { activeGame } from "@guild/shared/games";
-import { notifications } from "@mantine/notifications";
+import { useQueryClient } from "@tanstack/react-query";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
-  createElement,
   useCallback,
   useMemo,
-  useState,
   type Dispatch,
   type MouseEvent,
   type ReactNode,
   type SetStateAction,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { useConfirmDialog } from "../../components/shared/ConfirmDialog";
 import type { UsersListResponse } from "../../services/UserService";
-import { GuildWarService } from "../../services/GuildWarService";
+import { GuildWarService, guildWarQueryKeys, moveGuildWarMember } from "../../services/GuildWarService";
 import { copyPlainText } from "../../utils/copy";
 import { notifySuccess, notifyWarning } from "../../utils/notifications";
 import { useGuildWarDragData, type DragMemberColumn } from "./useGuildWarDragData";
 import { useGuildWarSearch } from "./useGuildWarSearch";
 import { TeamStatusPanel } from "../../components/feature/guild-war/TeamStatusPanel";
-
-type UndoMoveState = {
-  eventId: string;
-  moves: Array<{ userId: string; from: string; to: string }>;
-  etag?: string;
-  expiresAt: number;
-};
 
 type MovePayload = {
   event_id: string;
@@ -36,11 +28,6 @@ type MovePayload = {
   etag?: string;
 };
 
-export type PendingRemove = {
-  userIds: string[];
-  payloads: MovePayload[];
-};
-
 type ActiveControllerState = {
   selectedDragUserIds: string[];
   setSelectedDragUserIds: Dispatch<SetStateAction<string[]>>;
@@ -48,8 +35,6 @@ type ActiveControllerState = {
   setSelectionAnchorUserId: Dispatch<SetStateAction<string | null>>;
   activeDragItemId: string | null;
   setActiveDragItemId: Dispatch<SetStateAction<string | null>>;
-  undoMove: UndoMoveState | null;
-  setUndoMove: (value: UndoMoveState | null) => void;
   teamDraftNames: Record<string, string>;
   setTeamDraftNames: Dispatch<SetStateAction<Record<string, string>>>;
   teamDraftNotes: Record<string, string>;
@@ -82,38 +67,6 @@ type UseGuildWarDragControllerParams = {
   showError: (error: unknown, fallbackMessage: string) => void;
 };
 
-const UNDO_NOTIFICATION_ID = "guild-war-undo-move";
-
-const message = {
-  success: (content: string) => notifySuccess(content),
-  warning: (content: string) => notifyWarning(content),
-  info: (content: string) => notifications.show({ color: "blue", message: content }),
-  undoMove: (content: string, onUndo: () => void, undoLabel: string) =>
-    notifications.show({
-      id: UNDO_NOTIFICATION_ID,
-      color: "blue",
-      autoClose: 5000,
-      message: createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 } },
-        createElement("span", null, content),
-        createElement("button", {
-          type: "button",
-          onClick: () => { onUndo(); notifications.hide(UNDO_NOTIFICATION_ID); },
-          style: {
-            flexShrink: 0,
-            padding: "4px 10px",
-            fontSize: 12,
-            fontWeight: 600,
-            borderRadius: 4,
-            border: "1px solid var(--mantine-color-red-6)",
-            color: "var(--mantine-color-red-6)",
-            background: "transparent",
-            cursor: "pointer",
-          },
-        }, undoLabel),
-      ),
-    }),
-};
-
 function parseUserIdFromDragId(value: string): string | null {
   if (!value.startsWith("member:")) return null;
   const userId = value.slice("member:".length).trim();
@@ -142,6 +95,8 @@ export function useGuildWarDragController({
   showError,
 }: UseGuildWarDragControllerParams) {
   const { t } = useTranslation("guild-war");
+  const confirm = useConfirmDialog();
+  const queryClient = useQueryClient();
 
   const {
     selectedDragUserIds,
@@ -150,8 +105,6 @@ export function useGuildWarDragController({
     setSelectionAnchorUserId,
     activeDragItemId,
     setActiveDragItemId,
-    undoMove,
-    setUndoMove,
     teamDraftNames,
     setTeamDraftNames,
     teamDraftNotes,
@@ -187,62 +140,26 @@ export function useGuildWarDragController({
     lockedTeamIds,
     activeMemberDetailByUserId,
     dragColumns,
-    memberContainerMap: _serverMemberContainerMap,
+    memberContainerMap,
     dragItemMap,
     pool,
     draggableUserOrder,
     draggableUserOrderIndexMap,
   } = dragData;
 
-  const [pendingRemove, setPendingRemove] = useState<PendingRemove | null>(null);
-  const [pendingDeleteTeamId, setPendingDeleteTeamId] = useState<string | null>(null);
-
-  // --- Optimistic drag columns (apply pending undo moves locally) ---
-  const optimisticDragColumns = useMemo(() => {
-    if (!undoMove || undoMove.moves.length === 0) return dragColumns;
-
-    const movesByUserId = new Map(undoMove.moves.map((m) => [m.userId, m]));
-    const movedItemsByTarget = new Map<string, typeof dragColumns[number]["members"]>();
-
-    for (const col of dragColumns) {
-      for (const member of col.members) {
-        const move = movesByUserId.get(member.userId);
-        if (move && move.to !== "remove") {
-          const list = movedItemsByTarget.get(move.to) ?? [];
-          list.push(member);
-          movedItemsByTarget.set(move.to, list);
-        }
-      }
-    }
-
-    return dragColumns.map((col) => {
-      const filtered = col.members.filter((m) => !movesByUserId.has(m.userId));
-      const incoming = movedItemsByTarget.get(col.containerId) ?? [];
-      return { ...col, members: [...filtered, ...incoming] };
-    });
-  }, [dragColumns, undoMove]);
-
-  const optimisticMemberContainerMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const column of optimisticDragColumns) {
-      for (const member of column.members) map.set(member.itemId, column.containerId);
-    }
-    return map;
-  }, [optimisticDragColumns]);
-
   const search = useGuildWarSearch({
     activeSearch: activeController.activeSearch,
     searchJumpIndex: activeController.searchJumpIndex,
     setSearchJumpIndex: activeController.setSearchJumpIndex,
     selectedEventId,
-    dragColumns: optimisticDragColumns,
+    dragColumns,
   });
 
   const activeDragItem = activeDragItemId ? dragItemMap.get(activeDragItemId) ?? null : null;
   const selectedDragUserIdSet = useMemo(() => new Set(selectedDragUserIds), [selectedDragUserIds]);
   const activeDetail = activeDetailUserId ? activeMemberDetailByUserId.get(activeDetailUserId) ?? null : null;
 
-  // --- Move / Undo ---
+  // --- Move ---
 
   const resolveTeamName = useCallback((containerId: string) => {
     if (containerId === "pool") return t("active.pool");
@@ -255,32 +172,42 @@ export function useGuildWarDragController({
     return userDataMap.get(userId)?.username ?? userId;
   }, [userDataMap]);
 
-  const queueMoveWithUndo = useCallback((payloads: MovePayload[]) => {
+  const applyMove = useCallback((payloads: MovePayload[]) => {
     if (!canManageActive || payloads.length === 0) return;
-    if (undoMove) {
-      message.warning(t("message.moveQueueBusy"));
-      return;
-    }
     const firstPayload = payloads[0];
     if (!firstPayload) return;
     const normalizedMoves = payloads
       .map((p) => ({ userId: p.user_id, from: p.from ?? "unknown", to: p.to }))
       .filter((p) => p.from !== p.to);
     if (normalizedMoves.length === 0) return;
-    setUndoMove({
-      eventId: firstPayload.event_id,
-      moves: normalizedMoves,
-      etag: firstPayload.etag,
-      expiresAt: Date.now() + 5_000,
-    });
-    const cancelUndo = () => setUndoMove(null);
-    if (normalizedMoves.length === 1) {
-      const m = normalizedMoves[0];
-      if (m) message.undoMove(t("message.moveQueuedSingle", { userId: resolveUsername(m.userId), from: resolveTeamName(m.from), to: resolveTeamName(m.to) }), cancelUndo, t("active.undo.cancel"));
-      return;
-    }
-    message.undoMove(t("message.moveQueuedMulti", { count: normalizedMoves.length }), cancelUndo, t("active.undo.cancel"));
-  }, [canManageActive, resolveTeamName, resolveUsername, setUndoMove, t, undoMove]);
+
+    const eventId = firstPayload.event_id;
+    const etag = firstPayload.etag ?? activeData?.etag ?? undefined;
+
+    const commitMoves = async () => {
+      try {
+        await moveGuildWarMember({
+          event_id: eventId,
+          moves: normalizedMoves.map((move) => ({ user_id: move.userId, to: move.to })),
+          etag,
+        });
+        await queryClient.invalidateQueries({
+          queryKey: guildWarQueryKeys.active(selectedEventId ?? null),
+        });
+        notifySuccess(
+          normalizedMoves.length === 1
+            ? t("message.memberMoved")
+            : t("message.membersMoved", { count: normalizedMoves.length }),
+        );
+      } catch (error) {
+        showError(
+          error,
+          normalizedMoves.length > 1 ? t("message.batchMoveCommitFailed") : t("message.memberMoveFailed"),
+        );
+      }
+    };
+    void commitMoves();
+  }, [activeData?.etag, canManageActive, queryClient, selectedEventId, showError, t]);
 
   const persistTeamSnapshot = useCallback(
     async (nextTeams: typeof orderedTeams) => {
@@ -301,7 +228,7 @@ export function useGuildWarDragController({
   const handleBatchMove = useCallback(
     (moves: Array<{ userId: string; from: string; to: string }>) => {
       if (!selectedEventId) return;
-      queueMoveWithUndo(
+      applyMove(
         moves.map((move) => ({
           event_id: selectedEventId,
           user_id: move.userId,
@@ -311,14 +238,14 @@ export function useGuildWarDragController({
         })),
       );
     },
-    [activeData?.etag, queueMoveWithUndo, selectedEventId],
+    [activeData?.etag, applyMove, selectedEventId],
   );
 
   const handleCopyTeamMentions = (containerId: string) => {
     const column = dragColumns.find((c) => c.containerId === containerId);
     if (!column) return;
     void copyPlainText(column.members.map((m) => `@${m.username}`).join(" "));
-    message.success(t("active.teamCopied"));
+    notifySuccess(t("active.teamCopied"));
   };
 
   const handleTeamSelectAll = (containerId: string) => {
@@ -381,30 +308,47 @@ export function useGuildWarDragController({
     });
   };
 
-  const handleDeleteTeam = (containerId: string) => {
-    setPendingDeleteTeamId(containerId);
-  };
+  const handleDeleteTeam = useCallback((containerId: string) => {
+    const team = teamById.get(containerId);
+    if (!team) return;
 
-  const confirmDeleteTeam = useCallback(() => {
-    if (!pendingDeleteTeamId) return;
-    const team = teamById.get(pendingDeleteTeamId);
-    if (!team) { setPendingDeleteTeamId(null); return; }
-    const nextTeams = orderedTeams
-      .filter((t) => t.id !== pendingDeleteTeamId)
-      .map((t, i) => ({ ...t, sort_order: i }));
-    const poolMembers = team.members.map((m) => ({ userId: m.user_id, from: pendingDeleteTeamId, to: "pool" }));
-    if (poolMembers.length > 0) {
-      handleBatchMove(poolMembers);
-    }
-    void persistTeamSnapshot(nextTeams).catch((error) => {
-      showError(error, t("message.deleteTeamFailed"));
-    });
-    setPendingDeleteTeamId(null);
-  }, [pendingDeleteTeamId, teamById, orderedTeams, handleBatchMove, persistTeamSnapshot, showError, t]);
+    void (async () => {
+      const confirmed = await confirm({
+        title: t("active.deleteTeamConfirm.title"),
+        description: t("active.deleteTeamConfirm.desc", {
+          teamName: resolveTeamName(containerId),
+        }),
+        confirmLabel: t("active.deleteTeamConfirm.confirm"),
+        cancelLabel: t("common:action.cancel"),
+        intent: "danger",
+      });
+      if (!confirmed) return;
 
-  const cancelDeleteTeam = useCallback(() => {
-    setPendingDeleteTeamId(null);
-  }, []);
+      const nextTeams = orderedTeams
+        .filter((candidate) => candidate.id !== containerId)
+        .map((candidate, index) => ({ ...candidate, sort_order: index }));
+      const poolMembers = team.members.map((member) => ({
+        userId: member.user_id,
+        from: containerId,
+        to: "pool",
+      }));
+      if (poolMembers.length > 0) {
+        handleBatchMove(poolMembers);
+      }
+      void persistTeamSnapshot(nextTeams).catch((error) => {
+        showError(error, t("message.deleteTeamFailed"));
+      });
+    })();
+  }, [
+    confirm,
+    handleBatchMove,
+    orderedTeams,
+    persistTeamSnapshot,
+    resolveTeamName,
+    showError,
+    t,
+    teamById,
+  ]);
 
   const handleTeamSwap = (fromId: string, toId: string) => {
     const fromTeam = teamById.get(fromId);
@@ -499,13 +443,13 @@ export function useGuildWarDragController({
     if (!canManageActive || !selectedEventId) return;
 
     const activeId = String(event.active.id);
-    const sourceContainer = optimisticMemberContainerMap.get(activeId);
-    const targetContainer = resolveContainerFromOverId(event.over?.id, optimisticMemberContainerMap);
+    const sourceContainer = memberContainerMap.get(activeId);
+    const targetContainer = resolveContainerFromOverId(event.over?.id, memberContainerMap);
     const userId = parseUserIdFromDragId(activeId);
     if (!sourceContainer || !targetContainer || !userId || sourceContainer === targetContainer) return;
 
     if (lockedTeamIds.has(targetContainer)) {
-      message.warning(t("message.targetTeamLocked"));
+      notifyWarning(t("message.targetTeamLocked"));
       return;
     }
 
@@ -517,15 +461,32 @@ export function useGuildWarDragController({
         event_id: selectedEventId,
         user_id: uid,
         to: "remove" as const,
-        from: optimisticMemberContainerMap.get(`member:${uid}`) ?? sourceContainer,
+        from: memberContainerMap.get(`member:${uid}`) ?? sourceContainer,
         etag: activeData?.etag ?? undefined,
       }));
-      setPendingRemove({ userIds: uniqueUserIds, payloads });
+      void (async () => {
+        const confirmed = await confirm({
+          title: t("active.removeConfirm.title"),
+          description: uniqueUserIds.length === 1
+            ? t("active.removeConfirm.descSingle", {
+                username: resolveUsername(uniqueUserIds[0] ?? ""),
+              })
+            : t("active.removeConfirm.descMulti", {
+                count: uniqueUserIds.length,
+              }),
+          confirmLabel: t("active.removeConfirm.confirm"),
+          cancelLabel: t("common:action.cancel"),
+          intent: "danger",
+        });
+        if (confirmed) {
+          applyMove(payloads);
+        }
+      })();
       return;
     }
 
     if (uniqueUserIds.length <= 1) {
-      queueMoveWithUndo([{
+      applyMove([{
         event_id: selectedEventId,
         user_id: userId,
         to: targetContainer,
@@ -535,12 +496,12 @@ export function useGuildWarDragController({
       return;
     }
 
-    queueMoveWithUndo(
+    applyMove(
       uniqueUserIds.map((uid) => ({
         event_id: selectedEventId,
         user_id: uid,
         to: targetContainer,
-        from: optimisticMemberContainerMap.get(`member:${uid}`),
+        from: memberContainerMap.get(`member:${uid}`),
         etag: activeData?.etag ?? undefined,
       })),
     );
@@ -583,26 +544,16 @@ export function useGuildWarDragController({
   const handleRemoveFromWar = useCallback(
     (userId: string) => {
       if (!selectedEventId || !canManageActive) return;
-      queueMoveWithUndo([{
+      applyMove([{
         event_id: selectedEventId,
         user_id: userId,
         to: "remove",
-        from: optimisticMemberContainerMap.get(`member:${userId}`) ?? "pool",
+        from: memberContainerMap.get(`member:${userId}`) ?? "pool",
         etag: activeData?.etag ?? undefined,
       }]);
     },
-    [activeData?.etag, canManageActive, optimisticMemberContainerMap, queueMoveWithUndo, selectedEventId],
+    [activeData?.etag, canManageActive, memberContainerMap, applyMove, selectedEventId],
   );
-
-  const confirmRemove = useCallback(() => {
-    if (!pendingRemove) return;
-    queueMoveWithUndo(pendingRemove.payloads);
-    setPendingRemove(null);
-  }, [pendingRemove, queueMoveWithUndo]);
-
-  const cancelRemove = useCallback(() => {
-    setPendingRemove(null);
-  }, []);
 
   return {
     orderedTeams,
@@ -614,11 +565,11 @@ export function useGuildWarDragController({
     selectedDragUserIdSet,
     matchedItemIds: search.matchedItemIds,
     activeMatchIndex: search.activeMatchIndex,
-    dragColumns: optimisticDragColumns,
+    dragColumns,
     activePoolStatus: null as ReactNode,
     teamStatusContentByContainerId,
     toMemberDomId: search.toMemberDomId,
-    memberContainerMap: optimisticMemberContainerMap,
+    memberContainerMap,
     handleCopyTeamMentions,
     handleTeamSelectAll,
     handleTeamClear,
@@ -640,12 +591,6 @@ export function useGuildWarDragController({
     handleDraftNameChange,
     handleMoveTeamOrder: moveTeamOrder,
     handleRemoveFromWar,
-    pendingRemove,
-    confirmRemove,
-    cancelRemove,
-    pendingDeleteTeamId,
-    confirmDeleteTeam,
-    cancelDeleteTeam,
     lockedTeamIds,
     teamIndexMap,
     teamCount: orderedTeams.length,

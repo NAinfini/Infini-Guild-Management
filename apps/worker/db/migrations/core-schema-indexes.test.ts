@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { BUILTIN_ROLES, PERMISSIONS } from "@guild/shared";
+import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
+import { storageItems, warHistory } from "../schema";
 
 const schemaSql = readFileSync("apps/worker/db/migrations/0000_core_schema.sql", "utf8");
 
@@ -8,7 +10,6 @@ describe("core schema performance indexes", () => {
   it("includes composite indexes for hot list and filtered lookup queries", () => {
     const expectedIndexes = [
       "idx_events_archived_start",
-      "idx_war_history_event_created",
       "idx_audit_log_entity_created",
       "idx_audit_log_actor_created",
       "idx_wiki_categories_sort",
@@ -20,6 +21,41 @@ describe("core schema performance indexes", () => {
     for (const indexName of expectedIndexes) {
       expect(schemaSql).toContain(`CREATE INDEX IF NOT EXISTS ${indexName}`);
     }
+  });
+});
+
+describe("core schema guild-war invariants", () => {
+  it("allows at most one history record for each event in Drizzle and baseline SQL", () => {
+    const eventIndex = getTableConfig(warHistory).indexes
+      .find((index) => index.config.name === "ux_war_history_event_id");
+
+    expect(eventIndex?.config.unique).toBe(true);
+    expect(schemaSql).toContain(
+      "CREATE UNIQUE INDEX IF NOT EXISTS ux_war_history_event_id",
+    );
+    expect(schemaSql).not.toContain(
+      "CREATE INDEX IF NOT EXISTS idx_war_history_event_id",
+    );
+  });
+});
+
+describe("core schema storage invariants", () => {
+  it("keeps storage quantity nonnegative in Drizzle and the baseline SQL", () => {
+    const drizzleChecks = getTableConfig(storageItems).checks.map((constraint) => constraint.name);
+
+    expect(drizzleChecks).toContain("storage_items_quantity_nonnegative");
+    expect(schemaSql).toContain("CONSTRAINT storage_items_quantity_nonnegative CHECK (quantity >= 0)");
+  });
+
+  it("keeps keyset pagination indexes in Drizzle and the baseline SQL", () => {
+    const drizzleIndexes = getTableConfig(storageItems).indexes.map((index) => index.config.name);
+
+    expect(drizzleIndexes).toEqual(expect.arrayContaining([
+      "idx_storage_items_storage_name_id",
+      "idx_storage_items_storage_category_name_id",
+    ]));
+    expect(schemaSql).toContain("CREATE INDEX IF NOT EXISTS idx_storage_items_storage_name_id ON storage_items(storage_id, name, id)");
+    expect(schemaSql).toContain("CREATE INDEX IF NOT EXISTS idx_storage_items_storage_category_name_id ON storage_items(storage_id, category_id, name, id)");
   });
 });
 

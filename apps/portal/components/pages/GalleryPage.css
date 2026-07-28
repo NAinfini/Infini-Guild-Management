@@ -1,9 +1,9 @@
 .gallery-dropzone {
   min-width: 260px;
   min-height: 92px;
-  border: 1px dashed color-mix(in srgb, var(--color-text, #1A1815) 22%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--text-primary) 22%, transparent);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
   display: grid;
   place-items: center;
   gap: 8px;
@@ -58,13 +58,19 @@
   transform: scale(1.03);
 }
 
+/* mode-independent literal: the video-thumb placeholder background is a fixed
+   Mantine dark swatch (--mantine-color-dark-6) regardless of [data-theme] —
+   same "always near-black" precedent as the lightbox overlay below — so its
+   icon colour (and the hover variant right below) stays a fixed white-alpha
+   too rather than a surface/text token that would go invisible against it in
+   light mode. */
 .gallery-video-thumb {
   width: 100%;
   height: 180px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--mantine-color-dark-6, #1a1a2e);
+  background: var(--mantine-color-dark-6);
   color: rgba(255, 255, 255, 0.55);
   transition: color 200ms ease;
 }
@@ -73,10 +79,15 @@
   color: rgba(255, 255, 255, 0.85);
 }
 
+/* mode-independent literal: this uploader-name chip overlays an arbitrary photo
+   or video frame, not a themed surface, so both its text (fixed white) and its
+   backing pill (a fixed black wash, semi-transparent so the photo still shows
+   through) need to stay legible over any image regardless of [data-theme] —
+   same reasoning as the lightbox controls below. */
 .gallery-preview-uploader {
   position: absolute; top: 8px; left: 8px; z-index: 1;
   max-width: calc(100% - 16px); border-radius: var(--radius-pill); padding: 2px 8px;
-  font-size: 12px; line-height: 1.4; color: #ffffff;
+  font-size: 12px; line-height: 1.4; color: rgb(255 255 255);
   background: color-mix(in srgb, black 58%, transparent);
   backdrop-filter: blur(4px);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -107,6 +118,11 @@
 }
 
 /* ── Full-screen lightbox ── */
+/* mode-independent literal: the lightbox overlay is always near-black
+   regardless of [data-theme] so photos/videos get a consistent viewing
+   backdrop — every white-alpha literal on the controls below (close/nav
+   buttons, caption bar) sits on this same fixed-dark backdrop and follows the
+   same rationale. */
 .gallery-lb-overlay {
   position: fixed;
   inset: 0;
@@ -127,13 +143,17 @@
   flex-direction: column;
 }
 
+/* mode-independent literal: the close button sits on the fixed-dark lightbox
+   overlay above, not a themed surface, so its glass chip (white-alpha
+   background) and icon colour stay fixed white-alpha in both the base and
+   :hover state rather than surface/text tokens. */
 .gallery-lb__close {
   position: absolute;
   top: 16px;
   right: 16px;
   z-index: 10;
-  width: 40px;
-  height: 40px;
+  width: var(--control-icon-size-large);
+  height: var(--control-icon-size-large);
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.1);
@@ -148,16 +168,18 @@
 
 .gallery-lb__close:hover {
   background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  color: rgb(255 255 255);
 }
 
+/* mode-independent literal, same rationale as .gallery-lb__close above: fixed
+   glass chip on the fixed-dark overlay, not a themed surface. */
 .gallery-lb__nav {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
   z-index: 10;
-  width: 44px;
-  height: 44px;
+  width: var(--control-hit-area);
+  height: var(--control-hit-area);
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.08);
@@ -172,7 +194,7 @@
 
 .gallery-lb__nav:hover {
   background: rgba(255, 255, 255, 0.18);
-  color: #fff;
+  color: rgb(255 255 255);
 }
 
 .gallery-lb__nav--prev { left: 16px; }
@@ -227,10 +249,32 @@
   flex-shrink: 0;
 }
 
+/* Lightbox info-bar text, moved out of style={{}} (task-8 批 B). Same
+   mode-independent-literal precedent as .gallery-lb__close/.gallery-lb__nav
+   above: the lightbox overlay is always near-black regardless of
+   [data-theme], so these stay literal white-alpha rather than a surface/text
+   token. Each class targets a distinct <Text>, no other rule in this file
+   sets `color` on these elements. */
+.gallery-lb__caption {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.gallery-lb__uploader {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.gallery-lb__date {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.gallery-lb__count {
+  color: rgba(255, 255, 255, 0.5);
+}
+
 .gallery-object-placeholder {
   width: 100%; min-height: 140px; border-radius: var(--radius-sm);
-  border: 1px dashed color-mix(in srgb, var(--color-text, #1A1815) 22%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--text-primary) 22%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
   display: grid; gap: 8px; place-items: center; padding: 12px; text-align: center;
 }
 
@@ -239,6 +283,27 @@
   .gallery-video-url-input, .gallery-video-caption-input { width: 100%; }
   .gallery-dropzone { min-width: 0; width: 100%; }
   .gallery-masonry { column-count: 2; }
+  .gallery-card__footer { flex-wrap: wrap; }
+  .gallery-card__actions {
+    flex-basis: 100%;
+    padding-top: 4px;
+    --group-justify: flex-end;
+  }
+  .gallery-card__select-target {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-sm);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+  }
+  .gallery-card__actions .mantine-ActionIcon-root {
+    width: var(--control-hit-area);
+    min-width: var(--control-hit-area);
+    height: var(--control-hit-area);
+    color: var(--mantine-color-red-light-color);
+    background: var(--mantine-color-red-light);
+  }
   .gallery-lb__media { padding: 56px 16px 0; }
   .gallery-lb__nav--prev { left: 8px; }
   .gallery-lb__nav--next { right: 8px; }

@@ -1,4 +1,4 @@
-import { Paper, Title, type PaperProps } from "@mantine/core";
+import { Paper, Text, Title, type PaperProps } from "@mantine/core";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import "./PageLayout.css";
 
@@ -6,6 +6,7 @@ type PageLayoutProps = {
   title?: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
+  breadcrumbs?: ReactNode;
   icon?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -46,11 +47,51 @@ type PageLayoutCompound = ((props: PageLayoutProps) => ReactElement) & {
   Divider: () => ReactElement;
 };
 
-function PageLayoutRoot({ actions, children, className }: PageLayoutProps) {
+function PageLayoutRoot({
+  title,
+  subtitle,
+  actions,
+  breadcrumbs,
+  icon,
+  children,
+  className,
+}: PageLayoutProps) {
+  const hasHeader = Boolean(title || subtitle || actions || breadcrumbs || icon);
+
   return (
     <div className={`page-layout ${className ?? ""}`.trim()}>
-      {actions ? (
-        <div className="page-layout__actions-bar">{actions}</div>
+      {hasHeader ? (
+        <header className="page-layout__header">
+          {breadcrumbs ? (
+            <nav className="page-layout__breadcrumbs" aria-label="Breadcrumb">
+              {breadcrumbs}
+            </nav>
+          ) : null}
+
+          <div className="page-layout__heading-row">
+            <div className="page-layout__heading">
+              {icon ? (
+                <span className="page-layout__icon" aria-hidden="true">
+                  {icon}
+                </span>
+              ) : null}
+              <div className="page-layout__heading-copy">
+                {title ? (
+                  <Title order={1} className="page-layout__title">
+                    {title}
+                  </Title>
+                ) : null}
+                {subtitle ? (
+                  <Text component="div" className="page-layout__subtitle">
+                    {subtitle}
+                  </Text>
+                ) : null}
+              </div>
+            </div>
+
+            {actions ? <div className="page-layout__primary-action">{actions}</div> : null}
+          </div>
+        </header>
       ) : null}
       <div className="page-layout__content">{children}</div>
     </div>

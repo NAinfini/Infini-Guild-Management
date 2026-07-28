@@ -51,6 +51,7 @@ export function GalleryPage() {
             <Stack gap={10}>
               <Dropzone
                 onDrop={(files) => c.selectFiles(files)}
+                onReject={(rejections) => c.selectFiles(rejections.map(({ file }) => file))}
                 accept={IMAGE_MIME_TYPE}
                 maxSize={MAX_GALLERY_IMAGE_SIZE_BYTES}
                 className="gallery-dropzone gallery-dropzone--modal"
@@ -72,6 +73,11 @@ export function GalleryPage() {
                   >
                     {uploadImagesLabel}
                   </DepthButton>
+                  {c.uploadingCount > 0 ? (
+                    <Button variant="light" onClick={c.cancelUploadQueue}>
+                      {t("action.cancelUpload")}
+                    </Button>
+                  ) : null}
                   <Button
                     onClick={c.clearFinishedUploads}
                     disabled={c.uploadQueue.every((item) => item.status !== "done")}
@@ -92,7 +98,12 @@ export function GalleryPage() {
                 uploadingCount={c.uploadingCount}
                 uploadQueueTitle={t("uploadQueue")}
                 captionPlaceholder={t("field.caption")}
+                retryLabel={t("common:action.retry")}
+                removeLabel={t("action.removeUpload")}
+                canRetryUpload={c.canRetryUpload}
                 onCaptionChange={c.handleCaptionChange}
+                onRetry={c.retryUpload}
+                onRemove={c.removeUpload}
               />
             </Stack>
           </Tabs.Panel>
@@ -164,13 +175,23 @@ export function GalleryPage() {
         emptyTitle={c.emptyTitle}
         emptyDescription={c.emptyDescription}
         errorTitle={t("empty.error")}
-        disableResetFilters={!c.typeFilter && !c.dateFrom && !c.dateTo}
+        errorDescription={t("empty.errorDescription")}
+        retryLabel={t("common:action.retry")}
+        retryPending={c.galleryQuery.isFetching}
+        hasActiveFilters={c.hasActiveFilters}
+        canUpload={c.canUpload}
         resetFiltersLabel={t("action.resetFilters")}
+        addMediaLabel={t("action.addMedia")}
+        onRetry={() => {
+          void c.galleryQuery.refetch();
+        }}
         onResetFilters={() => {
           c.setTypeFilter(undefined);
           c.setDateFrom("");
           c.setDateTo("");
+          c.setSearch("");
         }}
+        onAddMedia={() => c.openAddMediaModal("image")}
         onToggleSelect={c.toggleSelect}
         onDelete={c.handleDeleteItem}
         onOpenLightbox={c.setLightboxId}

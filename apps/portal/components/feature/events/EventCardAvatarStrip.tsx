@@ -65,7 +65,7 @@ export function EventCardAvatarStrip({ members, visibleMembers, hiddenMembersCou
 
   return (
     <>
-      <div ref={sizerRef} style={{ width: "100%", height: 0, overflow: "hidden", padding: 0, margin: 0, border: "none" }} />
+      <div ref={sizerRef} className="event-card__avatar-strip-sizer" />
       <div
         className="event-card__avatar-grid"
         style={{ "--event-card-avatar-size": `${avatarSize}px` } as React.CSSProperties}

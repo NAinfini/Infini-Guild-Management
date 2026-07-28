@@ -26,7 +26,6 @@ type EventsFiltersCardProps = {
   onLockedOnlyChange: (value: boolean) => void;
   onViewModeChange: (value: EventWorkbenchViewMode) => void;
   onCreateEvent?: () => void;
-  onCreateTemplate?: () => void;
 };
 
 export function EventsFiltersCard({
@@ -44,7 +43,6 @@ export function EventsFiltersCard({
   onLockedOnlyChange,
   onViewModeChange,
   onCreateEvent,
-  onCreateTemplate,
 }: EventsFiltersCardProps) {
   const { t } = useTranslation("events");
   const hasActiveFilters = Boolean(searchQuery.trim()) || Boolean(eventType) || eventStatus !== "active" || pinnedOnly || lockedOnly;
@@ -119,25 +117,15 @@ export function EventsFiltersCard({
           data={[
             { value: "cards", label: t("view.cards") },
             { value: "month", label: t("view.calendar") },
-            ...(canManage ? [{ value: "recurring", label: t("recurring.tab") }] : []),
           ]}
           className="events-filter-view"
         />
       }
       actions={
-        canManage && (onCreateEvent || onCreateTemplate) ? (
-          <>
-            {viewMode !== "recurring" && onCreateEvent ? (
-              <DepthButton onClick={onCreateEvent} type="primary" size="sm">
-                {t("button.create")}
-              </DepthButton>
-            ) : null}
-            {viewMode === "recurring" && onCreateTemplate ? (
-              <DepthButton onClick={onCreateTemplate} type="primary" size="sm">
-                {t("recurring.create")}
-              </DepthButton>
-            ) : null}
-          </>
+        canManage && onCreateEvent ? (
+          <DepthButton onClick={onCreateEvent} type="primary" size="sm">
+            {t("button.create")}
+          </DepthButton>
         ) : null
       }
     />

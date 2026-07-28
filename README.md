@@ -13,7 +13,7 @@ Built as one Cloudflare Worker plus one React app, with shared TypeScript contra
 
 [English](./README.md) | [中文](./README.zh.md)
 
-[Setup guide](./SETUP.md) · [Public release checklist](./OPEN_SOURCE_CHECKLIST.md) · [Security policy](./SECURITY.md)
+[Setup guide](./SETUP.md) · [Contributing](./CONTRIBUTING.md) · [Security policy](./SECURITY.md)
 
 </div>
 

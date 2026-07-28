@@ -49,7 +49,11 @@ function siteConfigRow(analyticsSettingsJson: string) {
   };
 }
 
-function createService(db: unknown): AdminService {
+function createRawDb() {
+  return { batch: vi.fn().mockResolvedValue([]), prepare: vi.fn(() => ({ bind: vi.fn(() => ({})) })) };
+}
+
+function createService(db: unknown, rawDb: unknown = { batch: vi.fn(), prepare: vi.fn() }): AdminService {
   const media = {
     get: vi.fn(),
     put: vi.fn(),
@@ -58,7 +62,7 @@ function createService(db: unknown): AdminService {
   return new AdminService({
     db: db as never,
     media: media as never,
-    rawDb: { batch: vi.fn(), prepare: vi.fn() } as never,
+    rawDb: rawDb as never,
     writeAuditLog: vi.fn(),
     writeAuditLogDurable: vi.fn(),
     createPasswordHash: vi.fn(),
@@ -72,6 +76,84 @@ function createService(db: unknown): AdminService {
 }
 
 describe("AdminService role assignment guardrails", () => {
+  it("paginates invite links and reports an uncapped total", async () => {
+    const inviteRows = [
+      {
+        id: "invite-3",
+        code: "THREE",
+        createdBy: "admin-1",
+        maxUses: 5,
+        usedCount: 1,
+        expiresAt: null,
+        createdAt: "2026-05-18T00:00:00.000Z",
+        revokedAt: null,
+      },
+      {
+        id: "invite-2",
+        code: "TWO",
+        createdBy: "admin-1",
+        maxUses: 5,
+        usedCount: 0,
+        expiresAt: null,
+        createdAt: "2026-05-17T00:00:00.000Z",
+        revokedAt: null,
+      },
+    ];
+    const offset = vi.fn().mockResolvedValue(inviteRows);
+    const limit = vi.fn(() => ({ offset }));
+    const orderBy = vi.fn(() => ({ limit }));
+    const listWhere = vi.fn(() => ({ orderBy }));
+    const countWhere = vi.fn().mockResolvedValue([{ total: 12 }]);
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: listWhere })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: countWhere })) });
+    const service = createService({ select });
+
+    const result = await service.listInviteLinks({
+      cursor: 4,
+      limit: 1,
+      visibility: "active",
+      search: "three",
+      searchCodes: true,
+    });
+
+    expect(limit).toHaveBeenCalledWith(2);
+    expect(offset).toHaveBeenCalledWith(4);
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        data: [expect.objectContaining({ id: "invite-3", code: "THREE" })],
+        next_cursor: "5",
+        total: 12,
+      },
+    });
+  });
+
+  it("aggregates invite stats in SQL without a 100-row cap", async () => {
+    const from = vi.fn().mockResolvedValue([{
+      total: 321,
+      active: 120,
+      revoked: 31,
+      expired: 170,
+    }]);
+    const service = createService({
+      select: vi.fn(() => ({ from })),
+    });
+
+    const result = await service.getInviteLinkStats();
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        total: 321,
+        active: 120,
+        revoked: 31,
+        expired: 170,
+      },
+    });
+  });
+
   it("records the invite id instead of the invite code in create audit logs", async () => {
     const inviteRow = {
       id: "invite-id-1",
@@ -290,5 +372,138 @@ describe("AdminService role assignment guardrails", () => {
       message: "Only admin can assign roles containing high-risk permissions",
     });
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("blocks a role manager from granting permissions it does not hold itself", async () => {
+    const values = vi.fn();
+    const insert = vi.fn(() => ({ values }));
+    const select = vi
+      .fn()
+      // getActorRoleLevel
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          innerJoin: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn().mockResolvedValue([{ roleId: "moderator", level: 50 }]),
+            })),
+          })),
+        })),
+      })
+      // duplicate role id check
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })),
+        })),
+      })
+      // permissions actually held by the actor's own role
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue([
+            { permission: "admin.roles.manage", granted: true },
+            { permission: "events.create", granted: true },
+          ]),
+        })),
+      });
+    const service = createService({ select, insert });
+
+    const result = await service.createRole("actor-1", {
+      id: "custom_helper",
+      name: "Helper",
+      level: 10,
+      permissions: { "events.create": true, "admin.audit.view": true },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "FORBIDDEN",
+      message: "Cannot grant permissions you do not hold: admin.audit.view",
+    });
+    // The role row must not survive a rejected request.
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("lets a role manager re-grant permissions it holds without escalating", async () => {
+    const values = vi.fn().mockResolvedValue(undefined);
+    const insert = vi.fn(() => ({ values }));
+    const createdRow = {
+      id: "custom_helper",
+      name: "Helper",
+      level: 10,
+      color: null,
+      isBuiltin: false,
+      createdAt: "2026-05-18T00:00:00.000Z",
+      updatedAt: "2026-05-18T00:00:00.000Z",
+    };
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          innerJoin: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn().mockResolvedValue([{ roleId: "moderator", level: 50 }]),
+            })),
+          })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue([{ permission: "events.create", granted: true }]),
+        })),
+      })
+      // reload of the created role
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([createdRow]) })),
+        })),
+      });
+    const service = createService({ select, insert }, createRawDb());
+
+    const result = await service.createRole("actor-1", {
+      id: "custom_helper",
+      name: "Helper",
+      level: 10,
+      permissions: { "events.create": true },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(insert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AdminService.createMember reserved system-test username", () => {
+  /*
+   * system-test-cleanup permanently deletes users in this namespace, so an
+   * admin-created account must never be able to land in it — the row would
+   * be gone a day later with no warning.
+   */
+  it("refuses to create an account in the system-test namespace", async () => {
+    const select = vi.fn();
+    const rawDb = createRawDb();
+    const service = createService({ select }, rawDb);
+
+    const result = await service.createMember("admin-1", "systemtest_hijack");
+
+    expect(result).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      message: 'Usernames beginning with "systemtest_" are reserved',
+    });
+    // Rejected before any lookup or insert.
+    expect(select).not.toHaveBeenCalled();
+    expect(rawDb.batch).not.toHaveBeenCalled();
+  });
+
+  it("matches the reserved prefix case-insensitively", async () => {
+    const select = vi.fn();
+    const service = createService({ select }, createRawDb());
+
+    const result = await service.createMember("admin-1", "SystemTest_Hijack");
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
   });
 });

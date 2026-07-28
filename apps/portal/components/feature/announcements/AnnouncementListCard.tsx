@@ -1,8 +1,8 @@
-﻿import type { Announcement } from "@guild/shared";
+import type { Announcement } from "@guild/shared";
 import { PushpinOutlined } from "@portal/utils/icons";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
-import { Alert, Badge, Button, Group, HoverCard, Indicator, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
+import { Alert, Badge, Button, Group, Indicator, Skeleton, Stack, Text, ThemeIcon, Tooltip, VisuallyHidden } from "@mantine/core";
 import { ArchiveIcon, CalendarTimeIcon, CircleCheckIcon, FileTextIcon, PlusIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -18,10 +18,10 @@ function formatDateTime(iso: string | null): string {
 }
 
 const STATUS_ICON = {
-  draft: <FileTextIcon size={14} style={{ color: "var(--mantine-color-dimmed)" }} />,
-  scheduled: <CalendarTimeIcon size={14} style={{ color: "var(--mantine-color-blue-filled)" }} />,
-  published: <CircleCheckIcon size={14} style={{ color: "var(--mantine-color-green-filled)" }} />,
-  archived: <ArchiveIcon size={14} style={{ color: "var(--mantine-color-red-filled)" }} />,
+  draft: <FileTextIcon size={14} className="announcement-item-status-icon--draft" />,
+  scheduled: <CalendarTimeIcon size={14} className="announcement-item-status-icon--scheduled" />,
+  published: <CircleCheckIcon size={14} className="announcement-item-status-icon--published" />,
+  archived: <ArchiveIcon size={14} className="announcement-item-status-icon--archived" />,
 } satisfies Record<AnnouncementStatus, ReactNode>;
 
 const STATUS_THEME = {
@@ -36,6 +36,7 @@ type AnnouncementListCardProps = {
   rows: Announcement[];
   selectedId: string | null;
   canEdit: boolean;
+  canCreate: boolean;
   announcementsLastSeenAt: string | null;
   isLoading: boolean;
   isError: boolean;
@@ -53,6 +54,7 @@ export function AnnouncementListCard({
   rows,
   selectedId,
   canEdit,
+  canCreate,
   announcementsLastSeenAt,
   isLoading,
   isError,
@@ -71,7 +73,7 @@ export function AnnouncementListCard({
         <Stack gap={8}>
           <Group justify="space-between" align="center">
             <Text fw={600}>{title}</Text>
-            {canEdit && onCreate ? (
+            {canCreate && onCreate ? (
               <DepthButton
                 onClick={() => onCreate()}
                 type="primary"
@@ -92,7 +94,7 @@ export function AnnouncementListCard({
               ))}
             </Stack>
           ) : null}
-          {isError ? <Alert color="yellow" title={warningMessage} /> : null}
+          {isError ? <Alert color="red" title={warningMessage} /> : null}
           {!isLoading && !isError ? (
             rows.length > 0 ? (
               <Stack gap={8}>
@@ -111,7 +113,6 @@ export function AnnouncementListCard({
                     <button
                       type="button"
                       onClick={() => onSelect(item.id)}
-                      aria-label={t("aria.openAnnouncement", { title: item.title })}
                       aria-pressed={item.id === selectedId}
                       className={`announcement-item ${item.id === selectedId ? "announcement-item--active" : ""}`.trim()}
                     >
@@ -122,11 +123,15 @@ export function AnnouncementListCard({
                           {canEdit || item.status === "archived" ? (() => {
                             const { color, icon } = STATUS_THEME[item.status];
                             return (
-                              <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                                <HoverCard.Target>
-                                  <span style={{ display: "inline-flex", lineHeight: 0 }} data-animate-icon-trigger>{STATUS_ICON[item.status]}</span>
-                                </HoverCard.Target>
-                                <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                              <Tooltip
+                                multiline
+                                w={280}
+                                withArrow
+                                arrowSize={10}
+                                openDelay={350}
+                                closeDelay={80}
+                                position="top"
+                                label={
                                   <Group gap={10} wrap="nowrap" align="flex-start">
                                     <ThemeIcon variant="light" color={color} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                                       {icon}
@@ -136,8 +141,13 @@ export function AnnouncementListCard({
                                       <Text size="xs" c="dimmed" lh={1.5}>{t(`tooltip.status.${item.status}.desc`)}</Text>
                                     </div>
                                   </Group>
-                                </HoverCard.Dropdown>
-                              </HoverCard>
+                                }
+                              >
+                                <span style={{ display: "inline-flex", lineHeight: 0 }} data-animate-icon-trigger>
+                                  {STATUS_ICON[item.status]}
+                                  <VisuallyHidden>{t(`status.${item.status}`)}</VisuallyHidden>
+                                </span>
+                              </Tooltip>
                             );
                           })() : null}
                         </div>
@@ -175,4 +185,3 @@ export function AnnouncementListCard({
     </PortalCard>
   );
 }
-

@@ -17,6 +17,10 @@ const LazyProfileModal = lazy(() =>
   import("../shared/ProfileModal").then((mod) => ({ default: mod.ProfileModal })),
 );
 
+/*
+ * Restored per user request alongside the big-icon-card MemberCard geometry:
+ * fewer, wider columns so the full-width square avatar has room to breathe.
+ */
 function resolveColumnCount(width: number): number {
   if (width >= 1600) return 8;
   if (width >= 1200) return 6;

@@ -9,7 +9,7 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: var(--color-bg, #0a0a1a);
+  background: var(--surface-sunken);
 }
 
 .login-page__bg {
@@ -17,11 +17,11 @@
   inset: 0;
   z-index: 0;
   background:
-    radial-gradient(ellipse 120% 80% at 15% 20%, color-mix(in srgb, var(--color-primary, #D4A843) 35%, transparent) 0%, transparent 55%),
-    radial-gradient(ellipse 100% 70% at 85% 25%, color-mix(in srgb, var(--color-accent, #8B7355) 28%, transparent) 0%, transparent 50%),
-    radial-gradient(ellipse 110% 80% at 50% 85%, color-mix(in srgb, var(--color-secondary, #C17F3E) 24%, transparent) 0%, transparent 55%),
-    radial-gradient(ellipse 80% 60% at 70% 60%, color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent) 0%, transparent 45%),
-    radial-gradient(ellipse 60% 40% at 30% 50%, color-mix(in srgb, var(--color-accent, #8B7355) 10%, transparent) 0%, transparent 40%);
+    radial-gradient(ellipse 120% 80% at 15% 20%, color-mix(in srgb, var(--accent-fill) 35%, transparent) 0%, transparent 55%),
+    radial-gradient(ellipse 100% 70% at 85% 25%, color-mix(in srgb, var(--accent-fill-hover) 28%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse 110% 80% at 50% 85%, color-mix(in srgb, var(--accent-fill-hover) 24%, transparent) 0%, transparent 55%),
+    radial-gradient(ellipse 80% 60% at 70% 60%, color-mix(in srgb, var(--accent-fill) 15%, transparent) 0%, transparent 45%),
+    radial-gradient(ellipse 60% 40% at 30% 50%, color-mix(in srgb, var(--accent-fill-hover) 10%, transparent) 0%, transparent 40%);
   animation: login-bg-drift 16s ease-in-out infinite alternate;
 }
 
@@ -35,6 +35,15 @@
   position: absolute;
   inset: 0;
   z-index: 0;
+}
+
+/* ── BubbleBackground ── (moved out of style={{}}, task-8 批 B).
+   --bubble-hue is a per-bubble hue seeded from a deterministic PRNG
+   (BubbleBackground.tsx's seededRandom(42)), a continuous 30-60 value with
+   no fixed enum — a genuine channel, registered in theme-tokens.test.ts
+   RUNTIME_INJECTED_VARS. */
+.bubble-background__bubble {
+  background: hsla(var(--bubble-hue), 60%, 60%, 0.1);
 }
 
 .login-page__content {
@@ -108,10 +117,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 22%, transparent);
-  color: var(--color-primary, #D4A843);
+  background: color-mix(in srgb, var(--accent-fill) 22%, transparent);
+  color: var(--accent-text);
   font-size: 22px;
-  box-shadow: 0 0 24px color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--accent-fill) 30%, transparent);
 }
 
 .login-page__brand-logo {
@@ -119,12 +128,12 @@
   height: 56px;
   border-radius: var(--radius-md);
   object-fit: contain;
-  filter: drop-shadow(0 0 20px rgba(212, 168, 67, 0.35)) drop-shadow(0 0 40px rgba(212, 168, 67, 0.15));
+  filter: drop-shadow(0 0 20px color-mix(in srgb, var(--accent-fill) 35%, transparent)) drop-shadow(0 0 40px color-mix(in srgb, var(--accent-fill) 15%, transparent));
   transition: filter 0.3s ease, transform 0.3s ease;
 }
 
 .login-page__brand:hover .login-page__brand-logo {
-  filter: drop-shadow(0 0 24px rgba(212, 168, 67, 0.5)) drop-shadow(0 0 48px rgba(212, 168, 67, 0.25));
+  filter: drop-shadow(0 0 24px color-mix(in srgb, var(--accent-fill) 50%, transparent)) drop-shadow(0 0 48px color-mix(in srgb, var(--accent-fill) 25%, transparent));
   transform: scale(1.05);
 }
 
@@ -133,23 +142,30 @@
   font-weight: 800;
   letter-spacing: -0.02em;
   font-family: inherit;
-  color: var(--color-primary, #D4A843);
+  color: var(--accent-text);
   background:
     linear-gradient(
       110deg,
-      color-mix(in srgb, var(--color-primary, #D4A843) 78%, #ffffff 22%) 0%,
-      var(--color-primary, #D4A843) 24%,
-      color-mix(in srgb, var(--color-accent, #C17F3E) 82%, #ffffff 18%) 46%,
-      color-mix(in srgb, var(--color-secondary, #8B7355) 72%, var(--color-primary, #D4A843) 28%) 66%,
-      color-mix(in srgb, var(--color-primary, #D4A843) 82%, #ffffff 18%) 100%
+      /* Same technique as the light-mode override below (:466): mix toward
+         --text-primary, not a literal white — in dark mode --text-primary
+         (#F0EDE8) is visually indistinguishable from #FFFFFF at these mix
+         ratios, but stays mode-correct, token-pure, and guard-visible.
+         (T3: this used to point at :430, which is inside the section intro
+         comment, not the actual override rule — retargeted to the real
+         .login-page__brand-text override below.) */
+      color-mix(in srgb, var(--accent-text) 78%, var(--text-primary) 22%) 0%,
+      var(--accent-text) 24%,
+      color-mix(in srgb, var(--accent-fill-hover) 82%, var(--text-primary) 18%) 46%,
+      color-mix(in srgb, var(--accent-fill-hover) 72%, var(--accent-text) 28%) 66%,
+      color-mix(in srgb, var(--accent-text) 82%, var(--text-primary) 18%) 100%
     );
   background-size: 280% auto;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   filter:
-    drop-shadow(0 0 16px color-mix(in srgb, var(--color-primary, #D4A843) 24%, transparent))
-    drop-shadow(0 0 34px color-mix(in srgb, var(--color-accent, #C17F3E) 10%, transparent));
+    drop-shadow(0 0 16px color-mix(in srgb, var(--accent-fill) 24%, transparent))
+    drop-shadow(0 0 34px color-mix(in srgb, var(--accent-fill-hover) 10%, transparent));
   animation: login-brand-shimmer 5s cubic-bezier(0.45, 0, 0.25, 1) infinite;
 }
 
@@ -168,18 +184,35 @@
 
 /* ── Form card ── */
 
+/*
+ * Tint and blur come from the shared `.glass-effect` rule; setting them here as
+ * variables (instead of props on GlassEffect) is what lets the light theme block
+ * at the bottom of this file re-tint the same card.
+ */
 .login-page__card {
+  --glass-blur: 20px;
+  --glass-opacity: 65%;
+  --glass-border-opacity: 15%;
   width: 100%;
   border-radius: var(--radius-lg);
   padding: clamp(24px, 4vw, 36px);
+  /* mode-independent literal: the outer drop shadow below is what grounds this
+     glass card against BubbleBackground's animated gradient, which is not a
+     [data-theme] surface — it needs the same amount of darkening underneath
+     regardless of the page's own light/dark mode, same rationale as the
+     tiptap floating-dialog shadows (tiptap-editor.css) and the login card's
+     own inset highlight two lines below. */
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.2),
-    0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #ffffff 6%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--accent-fill) 8%, transparent),
+    /* mode-independent literal: this is a fixed glass top-edge highlight, not a
+       themed color — it stays the same sliver of white in both light and dark
+       mode, and there is no L2/L3 token for "always-white, never-themed
+       highlight" (precedent: styles.css glass-effect rule). This literal is
+       registered in theme-tokens.test.ts's
+       LITERAL_COLOUR_EXEMPTIONS["apps/portal/components/pages/AuthPages.css"]. */
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
   position: relative;
-  background: color-mix(in srgb, var(--color-surface, #141418) 65%, transparent);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
 }
 
 .login-page__card::before {
@@ -190,12 +223,20 @@
   padding: 1px;
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--color-primary, #D4A843) 40%, transparent) 0%,
-    color-mix(in srgb, var(--color-accent, #8B7355) 25%, transparent) 50%,
-    color-mix(in srgb, var(--color-secondary, #C17F3E) 30%, transparent) 100%
+    color-mix(in srgb, var(--accent-fill) 40%, transparent) 0%,
+    color-mix(in srgb, var(--accent-fill-hover) 25%, transparent) 50%,
+    color-mix(in srgb, var(--accent-fill-hover) 30%, transparent) 100%
   );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  /* mode-independent literal: mask/-webkit-mask read only the alpha channel of
+     this gradient to decide what's cut out — the color channels never render,
+     so "white" here isn't a color choice at all and swapping it for any
+     surface/text token would be a no-op at best and misleading at worst. Any
+     opaque color works identically; white is just the conventional spelling
+     for "fully opaque" in a mask gradient. This literal is registered in
+     theme-tokens.test.ts's
+     LITERAL_COLOUR_EXEMPTIONS["apps/portal/components/pages/AuthPages.css"]. */
+  -webkit-mask: linear-gradient(rgb(255 255 255) 0 0) content-box, linear-gradient(rgb(255 255 255) 0 0);
+  mask: linear-gradient(rgb(255 255 255) 0 0) content-box, linear-gradient(rgb(255 255 255) 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
@@ -214,7 +255,7 @@
   border-radius: inherit;
   background: radial-gradient(
     ellipse at 30% 0%,
-    color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent),
+    color-mix(in srgb, var(--accent-fill) 6%, transparent),
     transparent 70%
   );
   pointer-events: none;
@@ -222,18 +263,18 @@
 
 .login-page__card .mantine-TextInput-input,
 .login-page__card .mantine-PasswordInput-input {
-  background: color-mix(in srgb, var(--color-surface, #141418) 55%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 18%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 55%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 18%, transparent);
   transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
 }
 
 .login-page__card .mantine-TextInput-input:focus,
 .login-page__card .mantine-PasswordInput-input:focus {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 60%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 60%, transparent);
   box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent),
-    0 0 20px color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #141418) 70%, transparent);
+    0 0 0 3px color-mix(in srgb, var(--accent-fill) 15%, transparent),
+    0 0 20px color-mix(in srgb, var(--accent-fill) 8%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 70%, transparent);
 }
 
 /* ── Floating label inputs ── */
@@ -255,7 +296,7 @@
   pointer-events: none;
   font-size: 14px;
   font-weight: 500;
-  color: color-mix(in srgb, var(--color-text, #e2e8f0) 50%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   transition: top var(--transition-smooth), transform var(--transition-smooth), font-size var(--transition-smooth), color var(--transition-smooth);
   line-height: 1;
   padding: 0 4px;
@@ -268,8 +309,8 @@
   top: 0;
   transform: translateY(-50%);
   font-size: 11px;
-  color: var(--color-primary, #D4A843);
-  background: color-mix(in srgb, var(--color-surface, #141418) 90%, transparent);
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--surface-base) 90%, transparent);
   border-radius: var(--radius-sm);
 }
 
@@ -304,22 +345,61 @@
   border: none;
   padding: 2px;
   cursor: pointer;
-  color: color-mix(in srgb, var(--color-text, #e2e8f0) 60%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   transition: color var(--transition-normal);
 }
 
 .login-page__eye-btn:hover {
-  color: var(--color-text, #e2e8f0);
+  color: var(--text-primary);
 }
 
 .login-page__caps-icon {
-  color: #eab308;
+  color: var(--status-warning);
   animation: login-caps-fadein 200ms ease;
 }
 
 @keyframes login-caps-fadein {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Inline notices (session expired / login required / submit error) ── */
+
+/*
+ * A slim banner instead of Mantine's Alert: an Alert with only a `title` renders
+ * a tall block in its own palette, which reads as a foreign element inside the
+ * glass card. This keeps the card's border/tint language and its own spacing.
+ */
+.login-page__notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--login-notice-color) 34%, transparent);
+  border-left-width: 3px;
+  background: color-mix(in srgb, var(--login-notice-color) 10%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 88%, transparent);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.login-page__notice-icon {
+  flex-shrink: 0;
+  color: var(--login-notice-color);
+}
+
+.login-page__notice--info {
+  --login-notice-color: var(--accent-text);
+}
+
+.login-page__notice--warning {
+  --login-notice-color: var(--status-warning);
+}
+
+.login-page__notice--error {
+  --login-notice-color: var(--status-danger);
 }
 
 /* ── Back to portal link ── */
@@ -340,7 +420,94 @@
 }
 
 .login-page__back-anchor:hover {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 12%, transparent);
+}
+
+/* ── Light theme ──
+ *
+ * The page is designed dark-first: saturated accent gradients and a 65%-opaque
+ * glass card read well on the near-black dark surface but collapse onto the
+ * parchment background (axe measured 1.39:1 on the brand text). Light mode
+ * keeps the same composition — lamp, bubbles, glass card — with a calmer
+ * backdrop, a nearly opaque card and darker accent-text ramps so text clears
+ * 4.5:1.
+ */
+
+:root[data-theme="light"] .login-page__bg {
+  opacity: 0.5;
+}
+
+:root[data-theme="light"] .login-page__card {
+  --glass-opacity: 94%;
+  --glass-border-opacity: 100%;
+  box-shadow:
+    var(--shadow-lg),
+    0 0 0 1px color-mix(in srgb, var(--accent-fill) 24%, transparent);
+}
+
+:root[data-theme="light"] .login-page__card .mantine-TextInput-input,
+:root[data-theme="light"] .login-page__card .mantine-PasswordInput-input {
+  background: var(--surface-base);
+  border-color: color-mix(in srgb, var(--accent-fill) 45%, var(--border-subtle));
+}
+
+:root[data-theme="light"] .login-page__card .mantine-TextInput-input:focus,
+:root[data-theme="light"] .login-page__card .mantine-PasswordInput-input:focus {
+  background: var(--surface-base);
+}
+
+/* --accent-text already clears AA on white/paper/sunken in light mode for all
+   three accents (see theme-tokens.test.ts "light-mode accent text clears AA
+   on ..."). Mixing it toward --text-primary (near-black) only lowers its
+   luminance further, and lowering text luminance against this fixed light
+   backdrop can only raise the contrast ratio — so every stop stays >= AA
+   (task-6 addendum: this replaces the old hand-picked #7D641E/#9A7B26/#8A5729
+   gold-copper ramp measured at 5.2:1 / 4.9:1 on white). */
+:root[data-theme="light"] .login-page__brand-text {
+  background-image: linear-gradient(
+    110deg,
+    var(--accent-text) 0%,
+    color-mix(in srgb, var(--accent-text) 85%, var(--text-primary) 15%) 30%,
+    color-mix(in srgb, var(--accent-text) 70%, var(--text-primary) 30%) 60%,
+    var(--accent-text) 100%
+  );
+  filter: none;
+}
+
+:root[data-theme="light"] .login-page__brand-logo {
+  filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--accent-text) 28%, transparent));
+}
+
+:root[data-theme="light"] .login-page__brand:hover .login-page__brand-logo {
+  filter: drop-shadow(0 3px 10px color-mix(in srgb, var(--accent-text) 40%, transparent));
+}
+
+:root[data-theme="light"] .login-page__brand-icon {
+  color: var(--accent-text);
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .login-page__subtitle.login-page__subtitle {
+  opacity: 1;
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .login-floating-label {
+  color: color-mix(in srgb, var(--text-primary) 66%, transparent);
+}
+
+:root[data-theme="light"] .login-floating-field:focus-within .login-floating-label,
+:root[data-theme="light"] .login-floating-field--filled .login-floating-label {
+  color: var(--accent-text);
+  background: var(--surface-base);
+}
+
+:root[data-theme="light"] .login-page__eye-btn {
+  color: color-mix(in srgb, var(--text-primary) 70%, transparent);
+}
+
+:root[data-theme="light"] .login-page__caps-icon {
+  color: var(--status-warning);
 }
 
 /* ── Responsive ── */
@@ -368,6 +535,11 @@
   .login-page__card::before {
     transition: none;
   }
+  /* Accessibility override, not a specificity workaround: unconditionally
+   * kills every login-page entrance animation when the user has asked for
+   * reduced motion. Guard rule 3 carves out this exact block, and the
+   * global no-!important rule was amended for this case (task-6 addendum D)
+   * — deleting it would silently re-enable motion for reduced-motion users. */
   .login-page__content,
   .login-page__heading,
   .login-page__card {

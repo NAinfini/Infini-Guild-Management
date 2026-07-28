@@ -125,7 +125,7 @@ export function WarHistoryDetail({
     >
       <Stack gap={16}>
         {historyDetailLoading ? <Stack gap={8}><Skeleton height={20} width="40%" />{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={16} />)}</Stack> : null}
-        {historyDetailError ? <Alert color="yellow">{loadErrorMessage}</Alert> : null}
+        {historyDetailError ? <Alert color="red">{loadErrorMessage}</Alert> : null}
         {!historyDetailLoading && !historyDetailError && historyDetail ? (
           <Stack gap={20}>
             {/* Hero header */}
@@ -235,9 +235,16 @@ export function WarHistoryDetail({
               ) : null}
             </Group>
             {historyViewMode === "table" ? (
-              <div className="war-history-detail-table-wrap">
-                <InfiniTable table={detailTable} />
-              </div>
+              <>
+                {canManage ? (
+                  <Text size="xs" c="dimmed">
+                    {t("history.keyboardHint")}
+                  </Text>
+                ) : null}
+                <div className="war-history-detail-table-wrap">
+                  <InfiniTable table={detailTable} />
+                </div>
+              </>
             ) : (
               <div className="whd-chart-wrap">
                 <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={8}>{t("history.chartTitle", { metric: getMetricLabel(historyChartMetric) })}</Text>

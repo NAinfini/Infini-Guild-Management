@@ -1,7 +1,7 @@
 import { inspect } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_SITE_MEDIA_POLICY } from "@guild/shared";
-import { UserService } from "../UserService";
+import { UserService, sanitizeTitleHtml } from "../UserService";
 
 function createDeps() {
   return {
@@ -78,6 +78,57 @@ describe("UserService", () => {
     const sqlDebug = inspect(whereFilter, { depth: 20 });
     expect(sqlDebug).toContain("member_profile_classes");
     expect(sqlDebug).not.toContain("json_each");
+  });
+
+  it("hides absence dates from the public roster payload", async () => {
+    const offset = vi.fn().mockResolvedValue([{
+      userId: "u-1",
+      username: "Alpha",
+      role: "member",
+      isActive: true,
+      deletedAt: null,
+      userCreatedAt: "2026-01-01T00:00:00.000Z",
+      userUpdatedAt: "2026-01-01T00:00:00.000Z",
+      profileId: "profile-1",
+      profileUserId: "u-1",
+      power: 100,
+      classes: "[]",
+      titleHtml: null,
+      bio: null,
+      images: "[]",
+      avatarKey: null,
+      audioKey: null,
+      videoUrls: "[]",
+      availability: null,
+      vacationStart: "2026-07-26",
+      vacationEnd: "2026-07-30",
+      notes: null,
+      profileCreatedAt: "2026-01-01T00:00:00.000Z",
+      profileUpdatedAt: "2026-01-01T00:00:00.000Z",
+    }]);
+    const limit = vi.fn(() => ({ offset }));
+    const orderBy = vi.fn(() => ({ limit }));
+    const where = vi.fn(() => ({ orderBy }));
+    const leftJoin = vi.fn(() => ({ where }));
+    const from = vi.fn(() => ({ leftJoin }));
+    const service = new UserService({ select: vi.fn(() => ({ from })) } as never, createDeps());
+
+    const result = await service.listUsers({
+      page: 1,
+      limit: 20,
+      search: "",
+      sessionUser: null,
+      includeTotal: false,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.data[0]).toMatchObject({
+      profile: {
+        vacation_start: null,
+        vacation_end: null,
+      },
+    });
   });
 
   it("deletes multiple profile images with one profile update", async () => {
@@ -208,5 +259,125 @@ describe("UserService", () => {
 
     expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
     expect(deps.storeProfileImage).not.toHaveBeenCalled();
+  });
+
+  it("refuses to attach an R2 key that is not already on the profile", async () => {
+    const update = vi.fn();
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn().mockResolvedValue([{ role: "member", deletedAt: null, username: "Alpha" }]),
+          })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn().mockResolvedValue([
+              { userId: "u-1", images: JSON.stringify(["members/u-1/own.webp"]), avatarKey: null },
+            ]),
+          })),
+        })),
+      });
+    const service = new UserService({ select, update } as never, createDeps());
+
+    const result = await service.updateProfile(
+      { id: "u-1", role: "member", permissions: new Set() } as never,
+      "u-1",
+      { images: ["members/u-1/own.webp", "members/victim/avatar.webp"] },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      message: "images may only reorder or remove existing profile media: members/victim/avatar.webp",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe("sanitizeTitleHtml", () => {
+  it("keeps allowlisted tags and style declarations", () => {
+    expect(sanitizeTitleHtml('<span style="color: #ff0000">Rank</span>')).toBe(
+      '<span style="color: #ff0000">Rank</span>',
+    );
+    expect(sanitizeTitleHtml("<b>A</b><i>B</i><br>")).toBe("<b>A</b><i>B</i><br>");
+  });
+
+  it("removes tags that are not on the allowlist and escapes their text", () => {
+    expect(sanitizeTitleHtml("<script>alert(1)</script>")).toBe("alert(1)");
+    expect(sanitizeTitleHtml('<img src=x onerror="alert(1)">')).toBe("");
+    expect(sanitizeTitleHtml("a < b & c > d")).toBe("a &lt; b &amp; c &gt; d");
+  });
+
+  it("drops every attribute except an allowlisted style", () => {
+    expect(sanitizeTitleHtml('<span onclick="alert(1)">x</span>')).toBe("<span>x</span>");
+    expect(sanitizeTitleHtml('<span style="color: red" onmouseover="alert(1)">x</span>')).toBe(
+      '<span style="color: red">x</span>',
+    );
+  });
+
+  it("drops style declarations that could load or evaluate anything", () => {
+    expect(sanitizeTitleHtml('<span style="background-color: url(javascript:alert(1))">x</span>')).toBe(
+      "<span>x</span>",
+    );
+    expect(sanitizeTitleHtml('<span style="color: expression(alert(1))">x</span>')).toBe("<span>x</span>");
+    expect(sanitizeTitleHtml('<span style="behavior: url(#x)">x</span>')).toBe("<span>x</span>");
+    expect(sanitizeTitleHtml('<span style="color: red; behavior: url(#x)">x</span>')).toBe(
+      '<span style="color: red">x</span>',
+    );
+    expect(sanitizeTitleHtml('<span style="color: \\75 rl(x)">x</span>')).toBe("<span>x</span>");
+  });
+
+  it("cannot be tricked into emitting an unbalanced attribute", () => {
+    // A `>` inside the attribute value must not let the payload escape the
+    // quoted style attribute the sanitizer rebuilds.
+    expect(sanitizeTitleHtml('<span style="color: red" x="><script>alert(1)</script>')).not.toContain("<script");
+    expect(sanitizeTitleHtml('<span style="red&quot; onload=&quot;alert(1)">x</span>')).toBe("<span>x</span>");
+  });
+});
+
+describe("reserved system-test username namespace", () => {
+  async function attemptRename(newUsername: string) {
+    // Resolves to no auth row, so a username that passes the guard stops at the
+    // password lookup rather than reaching an update.
+    const limit = vi.fn().mockResolvedValue([]);
+    const where = vi.fn(() => ({ limit }));
+    const from = vi.fn(() => ({ where }));
+    const select = vi.fn(() => ({ from }));
+    const service = new UserService({ select } as never, createDeps());
+    const result = await service.changeUsername(
+      { id: "member-1" } as never,
+      "member-1",
+      { currentPassword: "hunter2", newUsername },
+    );
+    return { result, select };
+  }
+
+  /*
+   * system-test-cleanup permanently deletes users in this namespace, so an
+   * account must never be able to move into it — the row would be gone a day
+   * later with no warning.
+   */
+  it("refuses to rename an account into the system-test namespace", async () => {
+    const { result, select } = await attemptRename("systemtest_hijack");
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+    // Rejected before the password check, so it cannot be used as a password oracle.
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it("matches the reserved prefix case-insensitively", async () => {
+    const { result } = await attemptRename("SystemTest_Hijack");
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+  });
+
+  it("leaves usernames that merely resemble the prefix alone", async () => {
+    // `systemtestX` is outside the namespace; the cron escapes the underscore
+    // precisely so this name survives.
+    const { select } = await attemptRename("systemtestX_member");
+    expect(select).toHaveBeenCalled();
   });
 });

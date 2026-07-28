@@ -1,4 +1,4 @@
-import { ALLOWED_IMAGE_TYPES, type Permission } from "@guild/shared";
+import { ALLOWED_IMAGE_TYPES, storageItemsListQuerySchema, type Permission } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
@@ -94,12 +94,29 @@ storageRoutes.get("/transactions", async (c) => {
   }));
 });
 
+storageRoutes.post("/transactions/batch", async (c) => {
+  const user = await requireSessionUser(c);
+  return handleResult(c, await getService(c).applyBatchTransactions(user, await parseJsonBody(c)), 201);
+});
+
 storageRoutes.get("/items", async (c) => {
   await requireSessionUser(c);
+  const parsed = storageItemsListQuerySchema.safeParse({
+    storage_id: c.req.query("storage_id"),
+    category_id: c.req.query("category_id"),
+    search: c.req.query("search"),
+    stock: c.req.query("stock"),
+    limit: c.req.query("limit"),
+    cursor: c.req.query("cursor"),
+  });
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid storage item query", parsed.error.flatten());
   return handleResult(c, await getService(c).listItems({
-    storageId: c.req.query("storage_id"),
-    categoryId: c.req.query("category_id") || undefined,
-    search: c.req.query("search") || undefined,
+    storageId: parsed.data.storage_id,
+    categoryId: parsed.data.category_id,
+    search: parsed.data.search,
+    stock: parsed.data.stock,
+    limit: parsed.data.limit,
+    cursor: parsed.data.cursor,
   }));
 });
 

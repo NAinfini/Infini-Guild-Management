@@ -5,6 +5,7 @@ import {
   userSchema,
   type Permission,
 } from "@guild/shared";
+import { SYSTEM_TEST_USERNAME_PREFIX, isReservedSystemTestUsername } from "@guild/shared/config/system-test";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { eq, sql } from "drizzle-orm";
@@ -12,7 +13,8 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { memberProfiles, rolePermissions, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
-import { parseStringArray, parseRecord } from "./helpers";
+import { parseStringArray, parseRecord, usernameEquals } from "./helpers";
+import { clearLoginFailures, readLockout, recordLoginFailure } from "./login-lockout";
 import { logger } from "../utils/logger";
 
 // --- Types ---
@@ -28,9 +30,10 @@ export type AuthServiceDeps = {
   verifyPassword: (password: string, salt: string, hash: string) => Promise<boolean>;
   createSession: (userId: string, opts?: { stayLoggedIn?: boolean }) => Promise<void>;
   destroySession: (sessionId?: string) => Promise<void>;
-  deleteUserSessions: (userId: string) => Promise<void>;
+  enforceSessionLimit: (userId: string) => Promise<void>;
   publishEntityChanged?: (input: { entityType: PushEntityType; entityId: string; hint: PushHint; displayName?: string }) => Promise<void>;
   writeAuditLog: (input: { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null }) => Promise<void>;
+  now?: () => Date;
 };
 
 // --- Helpers ---
@@ -108,20 +111,80 @@ export class AuthService {
     return created;
   }
 
-  async login(username: string, password: string, stayLoggedIn: boolean): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
-    const account = (await this.db.select({ ...USER_COLS, passwordHash: userAuthPassword.passwordHash, salt: userAuthPassword.salt }).from(users).innerJoin(userAuthPassword, eq(users.id, userAuthPassword.userId)).where(eq(users.username, username)).limit(1))[0];
+  private now(): Date {
+    return this.deps.now?.() ?? new Date();
+  }
+
+  /**
+   * Records a failed attempt on the lockout ladder, and audits it when the
+   * username belongs to a real account.
+   *
+   * The audit row is skipped for unknown usernames on purpose: `audit_log.actor_id`
+   * is a NOT NULL foreign key to `users.id`, and auditing arbitrary
+   * attacker-supplied usernames would let anyone grow the table without bound.
+   * Unknown usernames are still recorded on the ladder (see login-lockout.ts) so
+   * the response stays identical either way. `actorId` is the *targeted*
+   * account — the real actor is unauthenticated and therefore unknown.
+   *
+   * `password` is never passed in here, let alone stored.
+   */
+  private async registerLoginFailure(
+    attemptedUsername: string,
+    account: { id: string; username: string } | null,
+    reason: "unknown_or_inactive_account" | "wrong_password",
+    clientIp: string | null,
+    now: Date,
+  ): Promise<void> {
+    const lock = await recordLoginFailure(this.db, attemptedUsername, now);
+    logger.warn("Login failed", { username: attemptedUsername, reason, failCount: lock.failCount });
+    if (!account) return;
+    await this.deps.writeAuditLog({
+      entityType: "user_auth",
+      action: "login_failed",
+      actorId: account.id,
+      entityId: account.id,
+      diffTitle: account.username,
+      detailText: JSON.stringify({
+        reason,
+        client_ip: clientIp,
+        fail_count: lock.failCount,
+        locked_for_seconds: lock.retryAfterSeconds,
+      }),
+    });
+  }
+
+  async login(username: string, password: string, stayLoggedIn: boolean, clientIp: string | null = null): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
+    const now = this.now();
+    const attempted = username.trim();
+
+    // Checked before the account lookup and before any key derivation: a locked
+    // username costs nothing, and attempts made during the lock are ignored
+    // rather than counted, so they cannot extend it.
+    const activeLock = await readLockout(this.db, attempted, now);
+    if (activeLock) {
+      return err(
+        "RATE_LIMITED",
+        `Too many failed login attempts. This account is locked for another ${activeLock.retryAfterSeconds} seconds; passwords entered before then are not checked and do not extend the lock.`,
+        { retry_after_seconds: activeLock.retryAfterSeconds },
+      );
+    }
+
+    const account = (await this.db.select({ ...USER_COLS, passwordHash: userAuthPassword.passwordHash, salt: userAuthPassword.salt }).from(users).innerJoin(userAuthPassword, eq(users.id, userAuthPassword.userId)).where(usernameEquals(username)).limit(1))[0];
     if (!account || !account.isActive || account.deletedAt !== null) {
       // Run password derivation with a dummy salt to prevent timing-based username enumeration
       await this.deps.verifyPassword(password, "AAAAAAAAAAAAAAAAAAAAAA==", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
-      logger.warn("Login failed: invalid credentials or inactive account", { username });
+      await this.registerLoginFailure(attempted, account ? { id: account.id, username: account.username } : null, "unknown_or_inactive_account", clientIp, now);
       return err("UNAUTHORIZED", "Invalid credentials");
     }
     const valid = await this.deps.verifyPassword(password, account.salt, account.passwordHash);
     if (!valid) {
-      logger.warn("Login failed: wrong password", { username });
+      await this.registerLoginFailure(attempted, { id: account.id, username: account.username }, "wrong_password", clientIp, now);
       return err("UNAUTHORIZED", "Invalid credentials");
     }
-    await this.deps.deleteUserSessions(account.id);
+    // Correct password resets the ladder, so a run of typos never accumulates.
+    await clearLoginFailures(this.db, attempted);
+    // Keeps at most MAX_SESSIONS_PER_USER logins alive; the oldest is evicted.
+    await this.deps.enforceSessionLimit(account.id);
     await this.deps.createSession(account.id, { stayLoggedIn });
     const profile = await this.ensureProfile(account.id);
     const extra = await this.resolveUserPermissions(account.role);
@@ -135,7 +198,8 @@ export class AuthService {
 
   async checkUsername(username: string): Promise<ServiceResult<{ available: boolean; reason?: string }>> {
     if (!/^[a-zA-Z0-9_一-鿿]{1,50}$/.test(username)) return ok({ available: false, reason: "invalid_format" });
-    const existing = (await this.db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1))[0];
+    if (isReservedSystemTestUsername(username)) return ok({ available: false, reason: "reserved_prefix" });
+    const existing = (await this.db.select({ id: users.id }).from(users).where(usernameEquals(username)).limit(1))[0];
     return ok({ available: !existing });
   }
 
@@ -149,8 +213,12 @@ export class AuthService {
   }
 
   async register(inviteCode: string, username: string, password: string): Promise<ServiceResult<{ user: unknown }>> {
+    if (isReservedSystemTestUsername(username)) {
+      return err("VALIDATION_ERROR", `Usernames beginning with "${SYSTEM_TEST_USERNAME_PREFIX}" are reserved`);
+    }
+
     const nowIso = new Date().toISOString();
-    const existing = (await this.db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1))[0];
+    const existing = (await this.db.select({ id: users.id }).from(users).where(usernameEquals(username)).limit(1))[0];
     if (existing) return err("CONFLICT", "Username already taken");
 
     const userId = nanoid();

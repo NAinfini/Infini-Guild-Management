@@ -1,15 +1,16 @@
-import { Checkbox, Badge, Group, HoverCard, NumberInput, Text, ThemeIcon } from "@mantine/core";
-import { modals } from "@mantine/modals";
+import { Checkbox, Badge, Group, HoverCard, Text, ThemeIcon } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { activeGame } from "@guild/shared/games";
 import { CircleCheckIcon, AlertTriangleIcon } from "@portal/components/icons";
+import { MetricGridInput } from "@portal/components/shared/MetricGridInput";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import {
   getCoreRowModel,
   getSortedRowModel,
   useReactTable,
 } from "@portal/components/shared/InfiniTable";
 import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   HistoryDetailData,
@@ -23,62 +24,12 @@ type MemberStatDraft = Record<string, number>;
 
 const EDITABLE_METRIC_KEYS: string[] = activeGame.war.memberStats.map((stat) => stat.key);
 
-type EditableStatCellProps = {
-  value: number;
-  onChange: (value: string | number) => void;
-  decimalScale?: number;
-};
-
-function EditableStatCell({ value, onChange, decimalScale }: EditableStatCellProps) {
-  const [editing, setEditing] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (editing) {
-      inputRef.current?.select();
-    }
-  }, [editing]);
-
-  if (!editing) {
-    return (
-      <Text
-        size="xs"
-        style={{ cursor: "pointer", padding: "4px 6px", borderRadius: 4, minWidth: 40 }}
-        onClick={() => setEditing(true)}
-      >
-        {decimalScale != null ? value.toFixed(decimalScale) : value}
-      </Text>
-    );
-  }
-
-  return (
-    <NumberInput
-      ref={inputRef}
-      hideControls
-      min={0}
-      size="xs"
-      value={value}
-      onChange={(nextValue) => {
-        onChange(nextValue);
-      }}
-      onBlur={() => setEditing(false)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          setEditing(false);
-        }
-      }}
-      decimalScale={decimalScale}
-      autoFocus
-    />
-  );
-}
-
-function toDraftMetricValue(value: string | number | null | undefined): number {
+export function toDraftMetricValue(value: string | number | null | undefined): number {
   const numericValue = Number(value ?? 0);
   if (!Number.isFinite(numericValue)) {
     return 0;
   }
-  return Math.max(0, Math.floor(numericValue));
+  return Math.max(0, numericValue);
 }
 
 function createMemberDraft(row: HistoryMemberStat): MemberStatDraft {
@@ -97,6 +48,8 @@ function createDraftMap(rows: HistoryMemberStat[]): Record<string, MemberStatDra
 
 type UseWarHistoryTabControllerParams = {
   initialSearch?: string;
+  historySearch: string;
+  onHistorySearchChange: (search: string) => void;
   historyRows: HistorySummaryRow[];
   historyPage: number;
   historyPerPage: number;
@@ -112,9 +65,9 @@ type UseWarHistoryTabControllerParams = {
 
 export function useWarHistoryTabController({
   initialSearch,
+  historySearch,
+  onHistorySearchChange,
   historyRows,
-  historyPage,
-  historyPerPage,
   historyColumns,
   historyDetail,
   canManage,
@@ -125,7 +78,7 @@ export function useWarHistoryTabController({
   onBulkDeleteHistory,
 }: UseWarHistoryTabControllerParams) {
   const { t } = useTranslation("guild-war");
-  const [historySearch, setHistorySearch] = useState(initialSearch ?? "");
+  const confirm = useConfirmDialog();
   const [detailModalOpen, detailModalHandlers] = useDisclosure(false);
   const [highlightRowId, setHighlightRowId] = useState<string | null>(null);
   const [summarySorting, setSummarySorting] = useState<SortingState>([]);
@@ -133,14 +86,6 @@ export function useWarHistoryTabController({
   const [memberStatsBaseline, setMemberStatsBaseline] = useState<Record<string, MemberStatDraft>>({});
   const [memberStatsDraft, setMemberStatsDraft] = useState<Record<string, MemberStatDraft>>({});
   const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    setSelectedHistoryIds(new Set());
-  }, [historyPage, historyPerPage]);
-
-  useEffect(() => {
-    setHistorySearch(initialSearch ?? "");
-  }, [initialSearch]);
 
   useEffect(() => {
     if (!initialSearch) {
@@ -170,20 +115,7 @@ export function useWarHistoryTabController({
     setMemberStatsDraft(nextDraft);
   }, [detailModalOpen, historyDetail, historyDetailId]);
 
-  const filteredHistoryRows = useMemo(() => {
-    const keyword = historySearch.trim().toLowerCase();
-    if (!keyword) {
-      return historyRows;
-    }
-    return historyRows.filter((row) => (
-      row.war_name.toLowerCase().includes(keyword)
-      || (row.enemy_name ?? "").toLowerCase().includes(keyword)
-      || (row.result ?? "").toLowerCase().includes(keyword)
-      || row.created_at.toLowerCase().includes(keyword)
-      || String(row.own_stats?.kills ?? "").includes(keyword)
-      || String(row.enemy_stats?.kills ?? "").includes(keyword)
-    ));
-  }, [historyRows, historySearch]);
+  const filteredHistoryRows = historyRows;
 
   const pendingMemberStatUpdates = useMemo<HistoryMemberStatsUpdate[]>(() => {
     if (!canManage || !historyDetail) {
@@ -219,23 +151,14 @@ export function useWarHistoryTabController({
     if (!hasUnsavedMemberChanges) {
       return true;
     }
-    return await new Promise<boolean>((resolve) => {
-      modals.openConfirmModal({
-        title: t("history.unsavedChanges"),
-        children: t("history.unsavedExitConfirm"),
-        labels: {
-          cancel: t("common:action.cancel"),
-          confirm: t("history.discardChanges"),
-        },
-        confirmProps: { color: "yellow" },
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
-        closeOnConfirm: true,
-        closeOnCancel: true,
-        centered: true,
-      });
+    return confirm({
+      title: t("history.unsavedChanges"),
+      description: t("history.unsavedExitConfirm"),
+      confirmLabel: t("history.discardChanges"),
+      cancelLabel: t("common:action.cancel"),
+      intent: "warning",
     });
-  }, [hasUnsavedMemberChanges, t]);
+  }, [confirm, hasUnsavedMemberChanges, t]);
 
   const requestCloseDetailModal = useCallback(async () => {
     if (saveMemberStatsPending) {
@@ -266,21 +189,12 @@ export function useWarHistoryTabController({
     if (!canManage || !historyDetail) {
       return;
     }
-    const confirmed = await new Promise<boolean>((resolve) => {
-      modals.openConfirmModal({
-        title: t("history.deleteConfirmTitle"),
-        children: t("history.deleteConfirmDescription", { name: historyDetail.war_name }),
-        labels: {
-          cancel: t("common:action.cancel"),
-          confirm: t("common:action.delete"),
-        },
-        confirmProps: { color: "red" },
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
-        closeOnConfirm: true,
-        closeOnCancel: true,
-        centered: true,
-      });
+    const confirmed = await confirm({
+      title: t("history.deleteConfirmTitle"),
+      description: t("history.deleteConfirmDescription", { name: historyDetail.war_name }),
+      confirmLabel: t("common:action.delete"),
+      cancelLabel: t("common:action.cancel"),
+      intent: "danger",
     });
     if (confirmed) {
       onDeleteHistory(historyDetail.id);
@@ -288,33 +202,24 @@ export function useWarHistoryTabController({
       setMemberStatsBaseline({});
       setMemberStatsDraft({});
     }
-  }, [canManage, detailModalHandlers, historyDetail, onDeleteHistory, t]);
+  }, [canManage, confirm, detailModalHandlers, historyDetail, onDeleteHistory, t]);
 
   const handleBulkDelete = useCallback(async () => {
     if (!canManage || selectedHistoryIds.size === 0) {
       return;
     }
-    const confirmed = await new Promise<boolean>((resolve) => {
-      modals.openConfirmModal({
-        title: t("history.bulkDeleteConfirmTitle"),
-        children: t("history.bulkDeleteConfirmDescription", { count: selectedHistoryIds.size }),
-        labels: {
-          cancel: t("common:action.cancel"),
-          confirm: t("common:action.delete"),
-        },
-        confirmProps: { color: "red" },
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
-        closeOnConfirm: true,
-        closeOnCancel: true,
-        centered: true,
-      });
+    const confirmed = await confirm({
+      title: t("history.bulkDeleteConfirmTitle"),
+      description: t("history.bulkDeleteConfirmDescription", { count: selectedHistoryIds.size }),
+      confirmLabel: t("common:action.delete"),
+      cancelLabel: t("common:action.cancel"),
+      intent: "danger",
     });
     if (confirmed) {
       onBulkDeleteHistory(Array.from(selectedHistoryIds));
       setSelectedHistoryIds(new Set());
     }
-  }, [canManage, onBulkDeleteHistory, selectedHistoryIds, t]);
+  }, [canManage, confirm, onBulkDeleteHistory, selectedHistoryIds, t]);
 
   const toggleHistorySelection = useCallback((id: string) => {
     setSelectedHistoryIds((prev) => {
@@ -330,13 +235,20 @@ export function useWarHistoryTabController({
 
   const allFilteredSelected = filteredHistoryRows.length > 0
     && filteredHistoryRows.every((row) => selectedHistoryIds.has(row.id));
+  const someFilteredSelected = filteredHistoryRows.some((row) => selectedHistoryIds.has(row.id));
 
   const toggleSelectAll = useCallback(() => {
-    if (allFilteredSelected) {
-      setSelectedHistoryIds(new Set());
-    } else {
-      setSelectedHistoryIds(new Set(filteredHistoryRows.map((row) => row.id)));
-    }
+    setSelectedHistoryIds((current) => {
+      const next = new Set(current);
+      for (const row of filteredHistoryRows) {
+        if (allFilteredSelected) {
+          next.delete(row.id);
+        } else {
+          next.add(row.id);
+        }
+      }
+      return next;
+    });
   }, [allFilteredSelected, filteredHistoryRows]);
 
   const updateDraftMetric = useCallback((userId: string, key: EditableMetricKey, value: string | number) => {
@@ -396,7 +308,7 @@ export function useWarHistoryTabController({
         <Checkbox
           size="xs"
           checked={allFilteredSelected}
-          indeterminate={selectedHistoryIds.size > 0 && !allFilteredSelected}
+          indeterminate={someFilteredSelected && !allFilteredSelected}
           onChange={toggleSelectAll}
           onClick={(event) => event.stopPropagation()}
         />
@@ -416,6 +328,7 @@ export function useWarHistoryTabController({
     canManage,
     historyColumns,
     selectedHistoryIds,
+    someFilteredSelected,
     toggleHistorySelection,
     toggleSelectAll,
   ]);
@@ -443,18 +356,39 @@ export function useWarHistoryTabController({
       accessorFn: (row) => row.role_tag ?? "",
       cell: ({ row }) => row.original.role_tag ?? "-",
     },
-    ...EDITABLE_METRIC_KEYS.map((metricKey): ColumnDef<HistoryMemberStat, unknown> => ({
+    ...EDITABLE_METRIC_KEYS.map((metricKey, columnIndex): ColumnDef<HistoryMemberStat, unknown> => ({
       header: t(`history.table.${metricKey === "building_damage" ? "building" : metricKey === "damage_taken" ? "damageTaken" : metricKey}`),
       id: metricKey,
       accessorFn: (row) => row.stats?.[metricKey] ?? 0,
-      cell: ({ row }) =>
-        canManage ? (
-          <EditableStatCell
+      cell: ({ row, table }) => {
+        if (!canManage) {
+          return row.original.stats?.[metricKey] ?? "-";
+        }
+
+        const visibleRows = table.getRowModel().rows;
+        const visibleRowIndex = visibleRows.findIndex((visibleRow) => visibleRow.id === row.id);
+        return (
+          <MetricGridInput
+            aria-label={t("history.aria.memberMetric", {
+              member: row.original.username ?? row.original.user_id,
+              metric: t(`history.table.${metricKey === "building_damage" ? "building" : metricKey === "damage_taken" ? "damageTaken" : metricKey}`),
+            })}
+            gridId="guild-war-history-metrics"
+            rowIndex={visibleRowIndex}
+            columnIndex={columnIndex}
+            rowCount={visibleRows.length}
+            columnCount={EDITABLE_METRIC_KEYS.length}
+            hideControls
+            min={0}
+            size="xs"
+            variant="unstyled"
             value={row.original.stats?.[metricKey] ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, metricKey, value)}
             decimalScale={["damage", "healing", "building_damage", "damage_taken"].includes(metricKey) ? 2 : undefined}
+            styles={{ input: { minWidth: 64, padding: "2px 4px", textAlign: "center" } }}
           />
-        ) : (row.original.stats?.[metricKey] ?? "-"),
+        );
+      },
     })),
     {
       header: t("analytics.metric.kda"),
@@ -533,7 +467,7 @@ export function useWarHistoryTabController({
 
   return {
     historySearch,
-    setHistorySearch,
+    setHistorySearch: onHistorySearchChange,
     detailModalOpen,
     filteredHistoryRows,
     selectedHistoryIds,
@@ -543,6 +477,8 @@ export function useWarHistoryTabController({
     hasUnsavedMemberChanges,
     handleSelectHistoryId,
     handleBulkDelete,
+    toggleHistorySelection,
+    toggleSelectAll,
     handleSaveMemberStats,
     handleDeleteHistory,
     requestCloseDetailModal,

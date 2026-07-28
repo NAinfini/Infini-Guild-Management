@@ -1,4 +1,4 @@
-﻿import type { MemberProfile, User } from "@guild/shared";
+import type { MemberProfile, User } from "@guild/shared";
 import { create } from "zustand";
 
 type AuthState = {

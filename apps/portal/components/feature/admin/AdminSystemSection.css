@@ -15,8 +15,8 @@
   gap: 6px;
   padding: 14px 16px;
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #1A1815));
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 97%, var(--text-primary));
   min-width: 80px;
   flex: 1;
   transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
@@ -24,26 +24,26 @@
 
 .system-health-tile:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .system-health-tile--ok {
-  border-color: color-mix(in srgb, #10b981 20%, transparent);
+  border-color: color-mix(in srgb, var(--status-success) 20%, transparent);
 }
 
 .system-health-tile--ok:hover {
-  border-color: color-mix(in srgb, #10b981 40%, transparent);
-  box-shadow: 0 4px 16px color-mix(in srgb, #10b981 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-success) 40%, transparent);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--status-success) 12%, transparent);
 }
 
 .system-health-tile--error {
-  border-color: color-mix(in srgb, #ef4444 25%, transparent);
-  background: color-mix(in srgb, #ef4444 3%, var(--color-surface, #fff));
+  border-color: color-mix(in srgb, var(--status-danger) 25%, transparent);
+  background: color-mix(in srgb, var(--status-danger) 3%, var(--surface-base));
 }
 
 .system-health-tile--error:hover {
-  border-color: color-mix(in srgb, #ef4444 45%, transparent);
-  box-shadow: 0 4px 16px color-mix(in srgb, #ef4444 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-danger) 45%, transparent);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--status-danger) 12%, transparent);
 }
 
 .system-health-tile--latency {
@@ -68,9 +68,16 @@
   transform: scale(1.1);
 }
 
+/* 服务图标色调，替代 AdminSystemSection.tsx 里 style={{ color }} 拼字符串
+   （task-8-addendum.md B 节类 2，Task 8 批 C 收敛）。这三条是本文件里唯一
+   给 .system-health-tile__icon 设 color 的规则，无同名/同选择器冲突。 */
+.system-health-tile__icon--ok { color: var(--status-success); }
+.system-health-tile__icon--warning { color: var(--status-warning); }
+.system-health-tile__icon--danger { color: var(--status-danger); }
+
 .system-health-tile__label {
   letter-spacing: 0.03em;
-  color: var(--color-text, #1A1815);
+  color: var(--text-primary);
 }
 
 .system-health-tile__badge {
@@ -94,13 +101,13 @@
 }
 
 .system-health-overall--ok {
-  border-color: color-mix(in srgb, #10b981 25%, transparent);
-  background: color-mix(in srgb, #10b981 4%, var(--color-surface, #fff));
+  border-color: color-mix(in srgb, var(--status-success) 25%, transparent);
+  background: color-mix(in srgb, var(--status-success) 4%, var(--surface-base));
 }
 
 .system-health-overall--warn {
-  border-color: color-mix(in srgb, #eab308 30%, transparent);
-  background: color-mix(in srgb, #eab308 5%, var(--color-surface, #fff));
+  border-color: color-mix(in srgb, var(--status-warning) 30%, transparent);
+  background: color-mix(in srgb, var(--status-warning) 5%, var(--surface-base));
 }
 
 .system-health-overall__dot {
@@ -111,14 +118,14 @@
 }
 
 .system-health-overall__dot--ok {
-  background: #10b981;
-  box-shadow: 0 0 8px #10b98166;
+  background: var(--status-success);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--status-success) 40%, transparent);
   animation: healthPulse 2s ease-in-out infinite;
 }
 
 .system-health-overall__dot--warn {
-  background: #eab308;
-  box-shadow: 0 0 8px #eab30866;
+  background: var(--status-warning);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--status-warning) 40%, transparent);
   animation: healthPulse 1.5s ease-in-out infinite;
 }
 
@@ -143,18 +150,18 @@
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 50%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
   white-space: nowrap;
   position: sticky;
   top: 0;
-  background: var(--color-surface, #fff);
+  background: var(--surface-base);
   z-index: 1;
 }
 
 .health-log-table td {
   padding: 5px 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -164,7 +171,7 @@
 }
 
 .health-log-table tr:hover td {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 3%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 3%, transparent);
 }
 
 .health-log-dot {
@@ -176,9 +183,9 @@
   margin-right: 4px;
 }
 
-.health-log-dot--ok { background: #10b981; }
-.health-log-dot--warn { background: #eab308; }
-.health-log-dot--error { background: #ef4444; }
+.health-log-dot--ok { background: var(--status-success); }
+.health-log-dot--warn { background: var(--status-warning); }
+.health-log-dot--error { background: var(--status-danger); }
 
 .health-log-latency {
   display: inline-flex;
@@ -191,6 +198,32 @@
   border-radius: 2px;
   transition: width 300ms ease;
 }
+
+/* AdminStatusTab.tsx's latency column, moved out of style={{}} (task-8 批 B).
+   Time column: no existing rule in this file sets `color` on
+   `.health-log-table td`, so this plain class needs no specificity fight. */
+.health-log-time {
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+}
+
+/* 三态穷举（good/warn/bad），来自 AdminSystemSection.tsx 的
+   LATENCY_BAND_COLOR_VAR（latencyBand() 分档，task-8-addendum.md B 节类 2）。
+   同一个常量对象还以字面 var() 字符串的形式喂给这个组件里 RingProgress 的
+   color prop（延迟环），因为该 prop 只吃字面字符串、不认 className，这条例外
+   走的是 AdminApiTest.css:282-286 记录过的同一条通道。这三条与下面
+   .health-log-latency-value--* 是本文件里给这一组状态色分别设 background/color
+   的规则，三处共用同一组 token，不各自维护一份颜色。 */
+.health-log-latency-bar--good { background: var(--status-success); }
+.health-log-latency-bar--warn { background: var(--status-warning); }
+.health-log-latency-bar--bad { background: var(--status-danger); }
+
+.health-log-latency-value {
+  font-weight: 600;
+}
+
+.health-log-latency-value--good { color: var(--status-success); }
+.health-log-latency-value--warn { color: var(--status-warning); }
+.health-log-latency-value--bad { color: var(--status-danger); }
 
 @media (prefers-reduced-motion: reduce) {
   .system-health-overall__dot--ok,

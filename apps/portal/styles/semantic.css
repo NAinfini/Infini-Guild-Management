@@ -1,0 +1,213 @@
+/* ═══════════════════════════════════════════════════════════════
+ * L2 · 语义 token
+ *
+ * 两个彼此正交的维度：
+ *   [data-theme]  = light | dark        → 重映射表面 / 文字 / 边框 / 语义色
+ *   [data-accent] = teal | indigo | violet | orange → 重映射 --accent-*
+ *
+ * 正交意味着 4 主色 × 2 模式 = 8 种组合只需要 2 + 4 = 6 个块，
+ * 而不是 8 套定义。
+ *
+ * --accent-text 与 --accent-on-fill 必须分模式取不同档位，
+ * 因此 accent 块只能定义 fill / tint / border 这些与模式无关的部分，
+ * 文字档在 theme 块里按模式挑。见下方 --accent-text 的两处定义。
+ * ═══════════════════════════════════════════════════════════════ */
+
+/* ── 模式：浅色 ── */
+[data-theme="light"] {
+  --surface-sunken: var(--palette-neutral-50);
+  --surface-base: var(--palette-neutral-25);
+  --surface-raised: var(--palette-neutral-0);
+  --surface-overlay: var(--palette-neutral-0);
+
+  --text-primary: var(--palette-neutral-800);
+  --text-secondary: var(--palette-neutral-700);
+  --text-muted: var(--palette-neutral-500);
+
+  --border-subtle: var(--palette-neutral-100);
+  --border-strong: var(--palette-neutral-200);
+
+  --status-success: var(--palette-success-deep);
+  --status-warning: var(--palette-warning-deep);
+  --status-danger: var(--palette-danger-deep);
+  --status-info: var(--palette-info-deep);
+  --status-on-fill: var(--palette-neutral-0);
+
+  /* accent 的文字档：浅色模式用 700 */
+  --accent-text: var(--accent-700);
+  /* accent 填充上的文字：浅色模式在 500 填充上放 900 墨 */
+  --accent-on-fill: var(--accent-900);
+
+  /* 阴影墨色：与模式无关的字面黑/近黑，不是可主题化的语义色（设计如此）。
+   * --shadow-ink 与下面四档标度阴影同一个墨色，供组件层的一次性（非标度）投影
+   * 通过 color-mix 复用（复审 N-1，见 AppShell.css .app-sider、
+   * styles.css .floating-save-bar）。全部已登记进 theme-tokens.test.ts 的
+   * LITERAL_COLOUR_EXEMPTIONS["apps/portal/styles/semantic.css"]（复审 I-3 /
+   * N-3 收口）。 */
+  --shadow-ink: rgb(10 10 15);
+  --shadow-xs: 0 1px 2px rgb(10 10 15 / 0.06);
+  --shadow-sm: 0 1px 3px rgb(10 10 15 / 0.08), 0 1px 2px rgb(10 10 15 / 0.04);
+  --shadow-md: 0 4px 12px rgb(10 10 15 / 0.10), 0 1px 3px rgb(10 10 15 / 0.06);
+  --shadow-lg: 0 8px 24px rgb(10 10 15 / 0.14), 0 2px 6px rgb(10 10 15 / 0.06);
+}
+
+/* ── 模式：深色 ── */
+[data-theme="dark"] {
+  --surface-sunken: var(--palette-neutral-950);
+  --surface-base: var(--palette-neutral-900);
+  --surface-raised: var(--palette-neutral-850);
+  --surface-overlay: var(--palette-neutral-850);
+
+  --text-primary: var(--palette-ink-warm);
+  --text-secondary: var(--palette-neutral-200);
+  --text-muted: var(--palette-neutral-400);
+
+  --border-subtle: var(--palette-neutral-700);
+  --border-strong: var(--palette-neutral-500);
+
+  --status-success: var(--palette-success-bright);
+  --status-warning: var(--palette-warning-bright);
+  --status-danger: var(--palette-danger-bright);
+  --status-info: var(--palette-info-bright);
+  --status-on-fill: var(--palette-neutral-950);
+
+  /* accent 的文字档：深色模式用 500 */
+  --accent-text: var(--accent-500);
+  --accent-on-fill: var(--accent-900);
+
+  /* 阴影墨色：同上，深色模式的另一套数值（复审 N-1 / N-3 收口）。 */
+  --shadow-ink: rgb(0 0 0);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.20);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.24), 0 1px 2px rgb(0 0 0 / 0.16);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.28), 0 1px 3px rgb(0 0 0 / 0.16);
+  --shadow-lg: 0 8px 24px rgb(0 0 0 / 0.32), 0 2px 6px rgb(0 0 0 / 0.16);
+}
+
+/* ── 主色：青瓷 ── */
+[data-accent="teal"] {
+  --accent-50: var(--palette-teal-50);
+  --accent-100: var(--palette-teal-100);
+  --accent-300: var(--palette-teal-300);
+  --accent-500: var(--palette-teal-500);
+  --accent-600: var(--palette-teal-600);
+  --accent-700: var(--palette-teal-700);
+  --accent-900: var(--palette-teal-900);
+}
+
+/* ── 主色：靛蓝 ── */
+[data-accent="indigo"] {
+  --accent-50: var(--palette-indigo-50);
+  --accent-100: var(--palette-indigo-100);
+  --accent-300: var(--palette-indigo-300);
+  --accent-500: var(--palette-indigo-500);
+  --accent-600: var(--palette-indigo-600);
+  --accent-700: var(--palette-indigo-700);
+  --accent-900: var(--palette-indigo-900);
+}
+
+/* ── 主色：紫罗兰 ── */
+[data-accent="violet"] {
+  --accent-50: var(--palette-violet-50);
+  --accent-100: var(--palette-violet-100);
+  --accent-300: var(--palette-violet-300);
+  --accent-500: var(--palette-violet-500);
+  --accent-600: var(--palette-violet-600);
+  --accent-700: var(--palette-violet-700);
+  --accent-900: var(--palette-violet-900);
+}
+
+/* ── 主色：琥珀 ── */
+[data-accent="orange"] {
+  --accent-50: var(--palette-orange-50);
+  --accent-100: var(--palette-orange-100);
+  --accent-300: var(--palette-orange-300);
+  --accent-500: var(--palette-orange-500);
+  --accent-600: var(--palette-orange-600);
+  --accent-700: var(--palette-orange-700);
+  --accent-900: var(--palette-orange-900);
+}
+
+/* ── 与模式无关的 accent 派生 ── */
+:root {
+  --accent-fill: var(--accent-500);
+  --accent-fill-hover: var(--accent-600);
+  --accent-border: var(--accent-300);
+  /* --accent-on-fill 只按 --accent-fill（500）校准，压在 --accent-fill-hover
+   * （600）上不过 AA（task-7 修复轮次 1 修复 I2，实测 3.16–3.50）。
+   * --accent-fill-hover 必须保持比 --accent-fill 深一档，不能为了凑文字对比度
+   * 调浅，所以换一个 hover 专用、跨 accent 共用的纯黑墨，只在「文字压在
+   * --accent-fill-hover 上」这一种场景使用。 */
+  --accent-on-fill-hover: var(--palette-ink-black);
+
+  /* 迁自 styles.css 旧名转发块的 --shadow-primary-sm/-md（task-9-addendum.md D 节）。
+   * 这是「accent 强调光晕」，跟上面 [data-theme] 分支里的 --shadow-xs/sm/md/lg
+   * 不是同一档：那四档是中性色（rgb(10 10 15 / …) / rgb(0 0 0 / …)）标度阴影，
+   * 不随 accent 变化；这两个必须混 --accent-fill，用在悬浮态 / 品牌标记上，
+   * 让阴影本身带出「这跟主色相关」的信号，两者不可互相替代。
+   * 数值原样保留自转发块，只改了挂靠的名字。
+   * 消费者：AppShell.css（app-brand-mark、app-header-icon-btn:hover）、
+   * ToolsPage.css（dice__roll-btn:hover）。 */
+  --shadow-accent-sm: 0 2px 8px color-mix(in srgb, var(--accent-fill) 15%, transparent);
+  --shadow-accent-md: 0 4px 16px color-mix(in srgb, var(--accent-fill) 22%, transparent);
+
+  /* ── 旧品牌辅色（与模式、与 accent 选择都无关）──
+   *
+   * 迁自 styles.css 旧名转发块的 --color-secondary（task-9-addendum.md D 节）。
+   * tokens.css 的 --palette-bronze-warm 本身没有语义、不随 [data-theme] 或
+   * [data-accent] 变化，只是历史遗留的第二品牌色，用来把某一类目跟当前选中的
+   * accent 区分开（不是「危险 / 警告」这类状态色，纯粹是另一条视觉分类线）。
+   * 组件层不许直接引用 L1 的 --palette-*（守卫 rule 6），这里给它一个 L2 名字。
+   * 消费者：EquipmentCalcModal.css（.ecm__stats__card--intent）、
+   * MyProfilePage.css（.profile-preview-stat-icon--video）。
+   * 复审 T-1：此前这是紧挨着上面那块的第二个 :root，两块之间只隔一段注释，
+   * 合并成一块。 */
+  --brand-secondary: var(--palette-bronze-warm);
+
+  /* ── 主色选择器的色块（与模式、与当前 accent 都无关）──
+   *
+   * 设置页的主色选择器要同时把四个主色摆出来，每一块显示的是「那个选项的
+   * 颜色」而不是「当前生效的主色」——所以它们不能走 --accent-*，那个会跟着
+   * [data-accent] 一起变，四块会同时变成同一个颜色。组件层又不许直接引用
+   * L1 的 --palette-*（守卫 rule 6），故照 --brand-secondary 的先例在这里
+   * 给四个 500 档各开一个 L2 名字。只有这一个消费者：SettingsPage.css 的
+   * .settings-accent-swatch--*。 */
+  --accent-swatch-teal: var(--palette-teal-500);
+  --accent-swatch-indigo: var(--palette-indigo-500);
+  --accent-swatch-violet: var(--palette-violet-500);
+  --accent-swatch-orange: var(--palette-orange-500);
+
+  /* ── 卡片悬停的色散辉光（与模式、与当前 accent 都无关）──
+   *
+   * roster 卡片悬停时下方的三束投影：左冷、中紫、右暖，模拟一束白光穿过
+   * 卡面之后被拆开。这三个色相是固定的——它们表达的是「一束光被拆成三段」，
+   * 不是「当前主色」，所以不能走 --accent-*：那样三束会塌成同一个颜色，
+   * 色散本身就不成立了。组件层又不许直接引用 L1 的 --palette-*（守卫 rule 6），
+   * 故照上面 --accent-swatch-* 的先例在这里各开一个 L2 名字。
+   * 只有一个消费者：MemberCard.css 的 .member-card__frame:hover。 */
+  --glow-dispersion-cool: var(--palette-teal-500);
+  --glow-dispersion-mid: var(--palette-violet-500);
+  --glow-dispersion-warm: var(--palette-orange-500);
+
+  /* ── 查找高亮（与模式、与 accent 都无关，复审 I-7 / N-4 收口）──
+   *
+   * tiptap-editor.css 的「查找命中」标记色（黄/橙），独立于主题色阶、不随
+   * [data-theme] 反色。批 2 曾把它登记为字面量豁免，复审 I-7 指出它是全表
+   * 唯一一处「真正有色相」的豁免，且批 1 刚为完全同类的 --palette-bronze-warm
+   * 建立了「L1 落值 + L2 开名」的先例——这里补齐同样的处理，不是重新设计。
+   * L1 值见 tokens.css 的 --palette-highlight-search(-active)（复审 N-4 后
+   * 已改成不透明 hex）。这里不再是直接转发，而是用 color-mix 把 alpha
+   * 通道还原回来（35% / 55%，与原 rgba(255, 217, 0, 0.35) /
+   * rgba(255, 140, 0, 0.55) 逐字等价），供组件层消费（守卫 rule 6 不许组件层
+   * 直接引用 --palette-*）。 */
+  --highlight-search: color-mix(in srgb, var(--palette-highlight-search) 35%, transparent);
+  --highlight-search-active: color-mix(in srgb, var(--palette-highlight-search-active) 55%, transparent);
+}
+
+[data-theme="light"] {
+  --accent-tint: var(--accent-50);
+}
+
+[data-theme="dark"] {
+  /* 深色模式没有「更浅的一档」可用作 tint，用 accent 混进表面。 */
+  --accent-tint: color-mix(in srgb, var(--accent-500) 14%, var(--surface-raised));
+}

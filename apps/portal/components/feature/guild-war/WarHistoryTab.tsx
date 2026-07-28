@@ -32,6 +32,7 @@ type WarHistoryTabProps = {
   historyLoading: boolean;
   historyError: boolean;
   historyRows: HistorySummaryRow[];
+  historyTotal: number;
   historyTotalPages: number;
   historyPage: number;
   historyPerPage: number;
@@ -74,6 +75,7 @@ export function WarHistoryTab({
   historyLoading,
   historyError,
   historyRows,
+  historyTotal,
   historyTotalPages,
   historyPage,
   historyPerPage,
@@ -113,6 +115,7 @@ export function WarHistoryTab({
         loadErrorMessage={loadErrorMessage}
         filteredHistoryRows={controller.filteredHistoryRows}
         historyRows={historyRows}
+        historyTotal={historyTotal}
         canManage={canManage}
         selectedHistoryIds={controller.selectedHistoryIds}
         summaryTable={controller.summaryTable}

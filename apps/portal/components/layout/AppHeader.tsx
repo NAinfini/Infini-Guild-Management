@@ -10,7 +10,6 @@ import { useTheme } from "../../providers/ThemeProvider";
 import {
   ActionIcon,
   AppShell as MantineAppShell,
-  Title,
 } from "@mantine/core";
 import { type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -31,6 +30,7 @@ type PushEntry = {
 
 type AppHeaderProps = {
   isMobile: boolean;
+  isHeaderCompact: boolean;
   activePageTitle: string;
   headerActions: ReactNode;
   user: User | null;
@@ -46,6 +46,7 @@ type AppHeaderProps = {
 
 export function AppHeader({
   isMobile,
+  isHeaderCompact,
   activePageTitle,
   headerActions,
   user,
@@ -67,16 +68,14 @@ export function AppHeader({
   return (
     <MantineAppShell.Header className="app-header">
       <div className="app-header__left">
-        <Title order={1} className="app-header__page-title">
-          {activePageTitle}
-        </Title>
+        <div className="app-header__page-title">{activePageTitle}</div>
       </div>
 
       <div className="app-header__center">{headerActions}</div>
 
       <div className="app-header__right">
         <div className="app-header-tools">
-          {!isMobile ? <CmdKSearch /> : <CmdKSearch asIcon />}
+          {isMobile || isHeaderCompact ? <CmdKSearch asIcon /> : <CmdKSearch />}
           <NotificationPopover
             user={user}
             pushHasUnread={pushHasUnread}

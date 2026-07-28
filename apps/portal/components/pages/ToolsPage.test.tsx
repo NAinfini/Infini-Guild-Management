@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ToolsPage } from "./ToolsPage";
 import { fetchGameData } from "@portal/services/GameDataService";
+import type { GameDataBaseInput } from "@guild/shared/schemas/equipment-calc";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -42,8 +43,9 @@ function renderToolsPage() {
 
 describe("ToolsPage", () => {
   beforeEach(() => {
+    // ToolsPage only reads `version`; the rest of the payload is irrelevant here.
     vi.mocked(fetchGameData).mockResolvedValue({
-      data: {},
+      data: {} as GameDataBaseInput,
       version: "workbook-2026-06-27-7d9f97f8",
       schemaVersion: 1,
     });

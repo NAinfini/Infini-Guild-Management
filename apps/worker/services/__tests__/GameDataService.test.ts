@@ -16,7 +16,6 @@ function createServiceWithRows(rows: Array<{ data: string; version: string; crea
 
   return new GameDataService({ select } as never, {
     writeAuditLog: vi.fn(),
-    putR2Object: vi.fn(),
   });
 }
 
@@ -146,10 +145,56 @@ describe("GameDataService getLatest regression cases", () => {
   });
 });
 
+describe("GameDataService response split", () => {
+  const seeded = () => createServiceWithRows([
+    { data: JSON.stringify(seedGameData), version: seedGameData.version, createdAt: "2026-05-20T00:00:00.000Z" },
+  ]);
+
+  it("omits rotations from getLatest but keeps them in getFull", async () => {
+    const latest = await seeded().getLatest();
+    const full = await seeded().getFull();
+
+    expect(latest.ok && full.ok).toBe(true);
+    if (!latest.ok || !full.ok || latest.data === null || full.data === null) return;
+    expect("rotations" in latest.data.data).toBe(false);
+    expect(Object.keys(full.data.data.rotations).length).toBeGreaterThan(0);
+    // The whole point of the split: the trimmed payload is a fraction of the size.
+    expect(JSON.stringify(latest.data.data).length * 4).toBeLessThan(JSON.stringify(full.data.data).length);
+  });
+
+  it("serves one class's rotation from getRotation", async () => {
+    const classId = Object.keys(seedGameData.rotations)[0]!;
+
+    const result = await seeded().getRotation(classId);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.class_id).toBe(classId);
+    expect(result.data.rotation.rotation.length).toBeGreaterThan(0);
+  });
+
+  it("fails loudly for an unknown class instead of returning nothing", async () => {
+    const result = await seeded().getRotation("__no_such_class__");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("NOT_FOUND");
+  });
+
+  it("fails loudly when no game data has been uploaded at all", async () => {
+    const result = await createServiceWithRows([]).getRotation("anything");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe("NOT_FOUND");
+    expect(result.message).toBe("No game data has been uploaded");
+  });
+});
+
 describe("GameDataService upload", () => {
-  it("accepts bundled seed uploads with reference-skipped rotation rows", async () => {
+  function createUploadService() {
     const returning = vi.fn().mockResolvedValue([{ id: 1 }]);
-    const values = vi.fn(() => ({ returning }));
+    const values = vi.fn((_row: { data: string }) => ({ returning }));
     const insert = vi.fn(() => ({ values }));
     const limit = vi.fn().mockResolvedValue([]);
     const orderBy = vi.fn(() => ({ limit }));
@@ -158,12 +203,41 @@ describe("GameDataService upload", () => {
     const deleteFn = vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) }));
     const service = new GameDataService({ insert, select, delete: deleteFn } as never, {
       writeAuditLog: vi.fn(),
-      putR2Object: vi.fn(),
     });
+    return { service, values };
+  }
+
+  it("accepts bundled seed uploads with reference-skipped rotation rows", async () => {
+    const { service } = createUploadService();
 
     const result = await service.upload(JSON.stringify(seedGameData), "admin-1");
 
     expect(result.ok).toBe(true);
+  });
+
+  it("stores the document minified but otherwise unchanged", async () => {
+    const { service, values } = createUploadService();
+    const prettyPrinted = JSON.stringify(seedGameData, null, 2);
+
+    const result = await service.upload(prettyPrinted, "admin-1");
+
+    expect(result.ok).toBe(true);
+    const stored = values.mock.calls[0]![0].data;
+    expect(stored.length).toBeLessThan(prettyPrinted.length);
+    // Lossless: re-parsing the stored string must equal the uploaded document,
+    // including keys the schema does not know about and defaults it would fill in.
+    expect(JSON.parse(stored)).toEqual(JSON.parse(prettyPrinted));
+  });
+
+  it("keeps keys the schema does not declare", async () => {
+    const { service, values } = createUploadService();
+    const withExtra = { ...seedGameData, __vendorNote: "keep me" };
+
+    const result = await service.upload(JSON.stringify(withExtra), "admin-1");
+
+    expect(result.ok).toBe(true);
+    const stored = values.mock.calls[0]![0].data;
+    expect(JSON.parse(stored).__vendorNote).toBe("keep me");
   });
 });
 
@@ -184,7 +258,6 @@ describe("GameDataService rollback", () => {
     const writeAuditLog = vi.fn();
     const service = new GameDataService({ select, insert } as never, {
       writeAuditLog,
-      putR2Object: vi.fn(),
     });
 
     const result = await service.rollback(7, "admin-1");

@@ -3,10 +3,11 @@ import { EVENT_TYPES } from "@guild/shared";
 import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
 import { tzOffsetToAnchorIso, buildFormState, computeNextLifecyclePreview, formatLifecycleDate, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
 import { PortalCard } from "@portal/components/shared/PortalCard";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { DepthButton } from "@portal/components/shared/DepthButton";
 import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, UsersIcon } from "@portal/components/icons";
 import { Badge, Group, HoverCard, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
-import { modals } from "@mantine/modals";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import {
@@ -47,7 +48,6 @@ function buildRecurrenceSummary(
 
 type RecurringTemplatesTabProps = {
   canManage: boolean;
-  createRequested?: number;
   templates: RecurringTemplate[];
   loading: boolean;
   formSaving: boolean;
@@ -60,7 +60,6 @@ type RecurringTemplatesTabProps = {
 
 export function RecurringTemplatesTab({
   canManage,
-  createRequested,
   templates,
   loading,
   formSaving,
@@ -71,6 +70,7 @@ export function RecurringTemplatesTab({
   onDeleteTemplate,
 }: RecurringTemplatesTabProps) {
   const { t, i18n } = useTranslation("events");
+  const confirm = useConfirmDialog();
 
   const [formOpen, formHandlers] = useDisclosure(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
@@ -82,10 +82,6 @@ export function RecurringTemplatesTab({
     formHandlers.open();
   }, []);
 
-  useEffect(() => {
-    if (createRequested) handleCreate();
-  }, [createRequested, handleCreate]);
-
   const handleEdit = useCallback((template: RecurringTemplate) => {
     setFormMode("edit");
     setEditingTemplate(template);
@@ -93,21 +89,19 @@ export function RecurringTemplatesTab({
   }, []);
 
   const handleDelete = useCallback(
-    (template: RecurringTemplate) => {
-      modals.openConfirmModal({
+    async (template: RecurringTemplate) => {
+      const accepted = await confirm({
         title: t("recurring.confirm.delete.title"),
-        children: (
+        description: (
           <Text size="sm">{t("recurring.confirm.delete.description", { title: template.title })}</Text>
         ),
-        confirmProps: { color: "red" },
-        labels: { confirm: t("common:action.confirm"), cancel: t("common:action.cancel") },
-        onConfirm: () => {
-          void onDeleteTemplate(template.id);
-        },
-        centered: true,
+        confirmLabel: t("common:action.confirm"),
+        cancelLabel: t("common:action.cancel"),
+        intent: "danger",
       });
+      if (accepted) await onDeleteTemplate(template.id);
     },
-    [onDeleteTemplate, t],
+    [confirm, onDeleteTemplate, t],
   );
 
   const handleFormSave = useCallback(
@@ -141,11 +135,23 @@ export function RecurringTemplatesTab({
   return (
     <>
       <Stack gap={12}>
+        {canManage && templates.length > 0 ? (
+          <Group justify="flex-end">
+            <DepthButton type="primary" size="sm" onClick={handleCreate}>
+              {t("recurring.create")}
+            </DepthButton>
+          </Group>
+        ) : null}
         {templates.length === 0 ? (
           <PortalCard interactive={false}>
             <Stack align="center" gap={8} py={40} px={16}>
               <CalendarRepeatIcon size={40} style={{ opacity: 0.3 }} />
               <Text c="dimmed" size="sm">{t("recurring.empty")}</Text>
+              {canManage ? (
+                <DepthButton type="primary" size="sm" onClick={handleCreate}>
+                  {t("recurring.create")}
+                </DepthButton>
+              ) : null}
             </Stack>
           </PortalCard>
         ) : (
@@ -159,31 +165,17 @@ export function RecurringTemplatesTab({
               <PortalCard
                 key={template.id}
                 interactive={canManage}
-                style={{ opacity: isPaused ? 0.65 : 1, transition: "opacity 150ms ease" }}
+                /* Dimming the whole row dragged every label to ~2.3:1. The
+                   "paused" badge already says it, so the row stays readable. */
                 onClick={canManage ? () => handleEdit(template) : undefined}
               >
                 <div style={{ padding: "12px 16px" }}>
                   <Group justify="space-between" align="center" wrap="nowrap">
                     <Group gap={12} align="center" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 8,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          background: isPaused
-                            ? "color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent)"
-                            : "color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent)",
-                          flexShrink: 0,
-                        }}
-                      >
+                      <div className="recurring-template-icon-wrap">
                         <CalendarRepeatIcon
                           size={20}
-                          style={{
-                            color: isPaused ? "var(--color-text-muted, #6B665E)" : "var(--color-primary, #D4A843)",
-                          }}
+                          className={`recurring-template-icon${isPaused ? " recurring-template-icon--paused" : ""}`}
                         />
                       </div>
 
@@ -245,17 +237,17 @@ export function RecurringTemplatesTab({
 
                         {lifecycle && (
                           <Group gap={14} wrap="wrap" mt={4}>
-                            <Text size="xs" style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-text-muted, #6B665E)" }}>
-                              <Text span fw={600} size="xs" style={{ opacity: 0.7 }}>{t("recurring.lifecycle.nextCreation")}</Text>
+                            <Text size="xs" className="recurring-template-lifecycle-muted">
+                              <Text span fw={600} size="xs">{t("recurring.lifecycle.nextCreation")}</Text>
                               {" "}{formatLifecycleDate(lifecycle.creationTime, lang)}
                             </Text>
-                            <Text size="xs" fw={500} style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-primary, #D4A843)" }}>
-                              <Text span fw={700} size="xs" style={{ color: "var(--color-primary, #D4A843)" }}>{t("recurring.lifecycle.nextStart")}</Text>
+                            <Text size="xs" fw={500} className="recurring-template-lifecycle-accent">
+                              <Text span fw={700} size="xs" className="recurring-template-lifecycle-accent">{t("recurring.lifecycle.nextStart")}</Text>
                               {" "}{formatLifecycleDate(lifecycle.startTime, lang)}
                             </Text>
                             {lifecycle.endTime && (
-                              <Text size="xs" style={{ fontVariantNumeric: "tabular-nums", color: "var(--color-text-muted, #6B665E)" }}>
-                                <Text span fw={600} size="xs" style={{ opacity: 0.7 }}>{t("recurring.lifecycle.nextEnd")}</Text>
+                              <Text size="xs" className="recurring-template-lifecycle-muted">
+                                <Text span fw={600} size="xs">{t("recurring.lifecycle.nextEnd")}</Text>
                                 {" "}{formatLifecycleDate(lifecycle.endTime, lang)}
                               </Text>
                             )}
@@ -274,7 +266,7 @@ export function RecurringTemplatesTab({
                           </HoverCard.Target>
                           <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                             <Group gap={10} wrap="nowrap" align="flex-start">
-                              <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                              <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                                 <ClockIcon size={16} />
                               </ThemeIcon>
                               <div style={{ minWidth: 0 }}>

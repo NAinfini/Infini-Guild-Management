@@ -29,7 +29,6 @@
   "label.notifications": "Notifications",
   "label.theme": "Theme",
   "label.motion": "Motion",
-  "label.fancyEffects": "Fancy effects",
   "profile.menu.profile": "Profile",
   "profile.menu.settings": "Settings",
   "profile.menu.quickTheme": "Quick Theme",
@@ -224,5 +223,6 @@
   "pagination.next": "Next page",
   "profile.field.badges": "Badges",
   "profile.noBadges": "No badges",
-  "filter.toggle": "Toggle filters"
+  "filter.toggle": "Toggle filters",
+  "action.close": "Close"
 }

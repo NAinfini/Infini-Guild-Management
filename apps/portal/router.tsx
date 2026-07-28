@@ -40,6 +40,27 @@ const GUILD_WAR_SEARCH_SCHEMA = z.object({
   warName: z.string().optional(),
 });
 
+const PROFILE_SEARCH_SCHEMA = z.object({
+  tab: z.enum(["profile", "availability", "account"]).optional(),
+});
+
+const ANNOUNCEMENTS_SEARCH_SCHEMA = z.object({
+  announcementId: z.string().trim().min(1).optional(),
+  selection: z.literal("none").optional(),
+}).passthrough();
+
+const WIKI_SEARCH_SCHEMA = z.object({
+  selection: z.literal("none").optional(),
+}).passthrough();
+
+const STORAGE_SEARCH_SCHEMA = z.object({
+  storageId: z.string().trim().min(1).optional(),
+});
+
+const STORAGE_MANAGE_SEARCH_SCHEMA = STORAGE_SEARCH_SCHEMA.extend({
+  categoryId: z.string().trim().min(1).optional(),
+});
+
 export function isRouteFeatureEnabled(feature: keyof FeatureFlags): boolean {
   const features = useSiteConfigStore.getState().features;
   if (feature === "equipmentCalc") return features.tools && features.equipmentCalc;
@@ -62,6 +83,9 @@ const LazyDashboardPage = lazy(() =>
 const LazyEventsPage = lazy(() => import("./components/pages/EventsPage").then((mod) => ({ default: mod.EventsPage })));
 const LazyGalleryPage = lazy(() => import("./components/pages/GalleryPage").then((mod) => ({ default: mod.GalleryPage })));
 const LazyStoragePage = lazy(() => import("./components/pages/StoragePage").then((mod) => ({ default: mod.StoragePage })));
+const LazyStorageManagePage = lazy(() =>
+  import("./components/pages/StorageManagePage").then((mod) => ({ default: mod.StorageManagePage })),
+);
 const LazyGuildWarPage = lazy(() =>
   import("./components/pages/GuildWarPage").then((mod) => ({ default: mod.GuildWarPage })),
 );
@@ -138,6 +162,14 @@ function StorageRoutePage() {
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
       <LazyStoragePage />
+    </Suspense>
+  );
+}
+
+function StorageManageRoutePage() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <LazyStorageManagePage />
     </Suspense>
   );
 }
@@ -243,9 +275,9 @@ function NotFoundPage(): ReactNode {
 
   return (
     <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
-      <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.15 }}>404</span>
+      <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.5 }}>404</span>
       <span style={{ fontSize: 16, fontWeight: 600 }}>{t("notFound.title")}</span>
-      <a href="/" style={{ fontSize: 14, color: "var(--color-primary, #D4A843)" }}>{t("notFound.backHome")}</a>
+      <a href="/" className="not-found-page__link" style={{ fontSize: 14 }}>{t("notFound.backHome")}</a>
     </div>
   );
 }
@@ -254,22 +286,14 @@ function RouteErrorFallback(): ReactNode {
   const { t } = useTranslation("common");
   return (
     <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
-      <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.15, color: "#dc2626" }}>{t("errors.somethingWentWrong")}</span>
+      {/* This is the headline of the error screen, not decoration — the old 0.15
+          opacity rendered it at 1.3:1. */}
+      <span className="route-error__headline">{t("errors.somethingWentWrong")}</span>
       <span style={{ fontSize: 16, fontWeight: 600 }}>{t("errors.generic")}</span>
       <button
         type="button"
         onClick={() => window.location.reload()}
-        style={{
-          marginTop: 8,
-          padding: "8px 20px",
-          borderRadius: 8,
-          border: "none",
-          background: "var(--color-primary, #D4A843)",
-          color: "#fff",
-          fontSize: 14,
-          fontWeight: 600,
-          cursor: "pointer",
-        }}
+        className="route-error__reload-button"
       >
         {t("action.reloadPage")}
       </button>
@@ -316,6 +340,15 @@ const loginRoute = createRoute({
 const registerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/register/$inviteCode",
+  component: RegisterRoutePage,
+});
+
+// Same page without a code in the URL: it asks for the invite code first. This
+// is where the login page's register link points, so the code is typed on a
+// full registration page instead of inside the login card.
+const registerEntryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/register",
   component: RegisterRoutePage,
 });
 
@@ -390,6 +423,7 @@ const rosterRoute = createRoute({
 const profileRoute = createRoute({
   getParentRoute: () => authenticatedOnlyRoute,
   path: "/profile",
+  validateSearch: (search) => PROFILE_SEARCH_SCHEMA.parse(search),
   beforeLoad: ({ location }) => {
     if (isExternalViewSearch((location as { searchStr?: string }).searchStr)) {
       throw redirect({ to: "/" });
@@ -402,6 +436,7 @@ const announcementsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/announcements",
   beforeLoad: () => requireRouteFeature("announcements"),
+  validateSearch: (search) => ANNOUNCEMENTS_SEARCH_SCHEMA.parse(search),
   component: AnnouncementsRoutePage,
 });
 
@@ -423,14 +458,33 @@ const galleryRoute = createRoute({
 const storageRoute = createRoute({
   getParentRoute: () => authenticatedOnlyRoute,
   path: "/storage",
+  validateSearch: (search) => STORAGE_SEARCH_SCHEMA.parse(search),
   beforeLoad: () => requireRouteFeature("storage"),
   component: StorageRoutePage,
+});
+
+const storageManageRoute = createRoute({
+  getParentRoute: () => authenticatedOnlyRoute,
+  path: "/storage/manage",
+  validateSearch: (search) => STORAGE_MANAGE_SEARCH_SCHEMA.parse(search),
+  beforeLoad: () => {
+    requireRouteFeature("storage");
+    const user = useAuthStore.getState().user;
+    if (
+      !user?.permissions["admin.storage.structure"]
+      && !user?.permissions["admin.storage.manage"]
+    ) {
+      throw redirect({ to: "/storage" });
+    }
+  },
+  component: StorageManageRoutePage,
 });
 
 const wikiRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/wiki",
   beforeLoad: () => requireRouteFeature("wiki"),
+  validateSearch: (search) => WIKI_SEARCH_SCHEMA.parse(search),
   component: WikiRoutePage,
 });
 
@@ -438,6 +492,7 @@ const wikiSlugRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/wiki/$slug",
   beforeLoad: () => requireRouteFeature("wiki"),
+  validateSearch: (search) => WIKI_SEARCH_SCHEMA.parse(search),
   component: WikiRoutePage,
 });
 
@@ -483,9 +538,11 @@ const routeTree = rootRoute.addChildren([
   publicToolsRoute,
   loginRoute,
   registerRoute,
+  registerEntryRoute,
   // User, moderator, and admin-only features stay locked behind session checks.
   authenticatedOnlyRoute.addChildren([
     storageRoute,
+    storageManageRoute,
     profileRoute,
     adminRoute,
   ]),

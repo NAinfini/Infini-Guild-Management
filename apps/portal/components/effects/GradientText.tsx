@@ -28,7 +28,7 @@ export function GradientText({
       )}
       style={{
         ...(from || to
-          ? { backgroundImage: `linear-gradient(to right, ${from ?? "#D4A843"}, ${to ?? "#C17F3E"})` }
+          ? { backgroundImage: `linear-gradient(to right, ${from ?? "var(--accent-fill)"}, ${to ?? "var(--accent-fill-hover)"})` }
           : undefined),
         ...(animated ? { animationDuration: `${duration}s` } : undefined),
       }}

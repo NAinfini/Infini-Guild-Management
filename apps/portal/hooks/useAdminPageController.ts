@@ -38,12 +38,11 @@ export function useAdminPageController() {
   const { showError } = useAppError();
   const { member: memberSearchParam, tab: tabSearchParam } = useSearch({ strict: false }) as { member?: string; tab?: string };
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<AdminTab>(tabSearchParam && isAdminTab(tabSearchParam) ? tabSearchParam : "member");
+  const activeTab: AdminTab = tabSearchParam && isAdminTab(tabSearchParam) ? tabSearchParam : "member";
   const [memberSearch, setMemberSearch] = useState("");
 
   const handleTabChange = useCallback((value: string | null) => {
     if (!value || !isAdminTab(value)) return;
-    setActiveTab(value);
     const tab = value === "member" ? undefined : value;
     void navigate({ to: "/admin", search: (prev) => ({ ...prev, tab }), replace: true, viewTransition: false });
   }, [navigate]);
@@ -56,6 +55,7 @@ export function useAdminPageController() {
     setAuditDateTo,
     setAuditDatePreset,
   } = useAdminAuditFilter();
+  const inviteController = useAdminInviteController();
 
   const effectiveAdminPermissions = useMemo(() => ({
     canAccessAdmin: userCanAccessAdmin(user),
@@ -84,6 +84,7 @@ export function useAdminPageController() {
   } = useAdminData({
     isModerator: userCanAccessAdmin(user),
     userRole: viewingAs,
+    activeTab,
     effectivePermissions: effectiveAdminPermissions,
     auditPage: auditFilter.page,
     auditSearch: auditFilter.search,
@@ -91,11 +92,20 @@ export function useAdminPageController() {
     auditDateTo: auditFilter.dateTo,
     auditEntityType: auditFilter.entityType,
     auditActorId: auditFilter.actorId,
+    inviteVisibility: inviteController.invite.visibility,
+    inviteSearch: inviteController.debouncedInviteSearch,
   });
 
-  const inviteController = useAdminInviteController({
-    inviteLinks: inviteLinksQuery.data ?? [],
-  });
+  const inviteRows = useMemo(() => {
+    const uniqueRows = new Map<string, NonNullable<typeof inviteLinksQuery.data>["pages"][number]["data"][number]>();
+    for (const page of inviteLinksQuery.data?.pages ?? []) {
+      for (const row of page.data) {
+        uniqueRows.set(row.id, row);
+      }
+    }
+    return [...uniqueRows.values()];
+  }, [inviteLinksQuery.data]);
+  const inviteTotal = inviteLinksQuery.data?.pages.at(-1)?.total ?? 0;
 
   const userRowsRaw = usersQuery.data?.data ?? [];
   const userMap = useMemo(() => {
@@ -108,7 +118,6 @@ export function useAdminPageController() {
   const resolveUsername = useCallback((id: string) => userMap.get(id), [userMap]);
 
   const adminMutations = useAdminMutations({
-    invite: inviteController.invite,
     auditFilter,
     batchSelectionLimit: BATCH_SELECTION_LIMIT,
     showError,
@@ -165,7 +174,9 @@ export function useAdminPageController() {
   const firstAvailableTab = useMemo<AdminTab | null>(() => {
     return ADMIN_TABS.find((tab) => tabAccess[tab]) ?? null;
   }, [tabAccess]);
-  const badgesController = useAdminBadgesController(canManageBadges);
+  const badgesController = useAdminBadgesController(
+    canManageBadges && activeTab === "badges",
+  );
   const siteConfigMutations = useSiteConfigMutations({ showError });
 
   useEffect(() => {
@@ -331,8 +342,9 @@ export function useAdminPageController() {
     createMemberModalOpen,
     firstAvailableTab,
     handleCopyConfigSummary,
-    handleTabChange,
     inviteLinksQuery,
+    inviteRows,
+    inviteTotal,
     inviteStatsQuery,
     ...inviteController,
     isAdmin,

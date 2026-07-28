@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  STALE_ARTIFACT_PROBES,
   buildJsonRequest,
   buildCleanupSteps,
   buildApiCategories,
   captureContextFromResponse,
+  countStaleSystemTestArtifacts,
   createInitialTestRunContext,
   filterApiCategoriesForPermissions,
   prepareEndpointRequest,
@@ -216,6 +218,52 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys.indexOf("POST /api/guild-war/save-teams")).toBeLessThan(endpointKeys.indexOf("POST /api/guild-war/conclude"));
   });
 
+  it("stages an announcement image before creating and claiming it", () => {
+    const endpointKeys = buildApiCategories((key) => key)
+      .find((category) => category.key === "announcements")
+      ?.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`) ?? [];
+    expect(endpointKeys.indexOf("POST /api/announcements/images/stage"))
+      .toBeLessThan(endpointKeys.indexOf("POST /api/announcements"));
+
+    const stageEndpoint = {
+      label: "Stage Announcement Image",
+      method: "POST" as const,
+      path: "/api/announcements/images/stage",
+    };
+    const stageRequest = prepareEndpointRequest(stageEndpoint, createInitialTestRunContext());
+    expect(stageRequest.body).toBeInstanceOf(FormData);
+    expect((stageRequest.body as FormData).get("files")).toBeInstanceOf(File);
+
+    const stagedContext = captureContextFromResponse(
+      createInitialTestRunContext(),
+      stageEndpoint,
+      {
+        status: 201,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-07-28T00:00:00.000Z",
+        parsedJson: {
+          staging_id: "abcdefghijklmnopqrstu",
+          staging_token: "signed-staging-token",
+          keys: ["announcement/abcdefghijklmnopqrstu/images/image.png"],
+        },
+      },
+    );
+    expect(stagedContext.announcementStagingToken).toBe("signed-staging-token");
+    expect(stagedContext.announcementImageKey).toBe("announcement/abcdefghijklmnopqrstu/images/image.png");
+
+    const createRequest = prepareEndpointRequest(
+      { label: "Create Announcement", method: "POST", path: "/api/announcements" },
+      stagedContext,
+    );
+    const createBody = parseJsonBody(createRequest) as Record<string, unknown>;
+    expect(createBody.staging_token).toBe("signed-staging-token");
+    expect(createBody.body_json).toContain(
+      encodeURIComponent("announcement/abcdefghijklmnopqrstu/images/image.png"),
+    );
+  });
+
   it("uses concluded history for member stats requests", () => {
     const ctx = contextWith({
       warHistoryId: "seed-war",
@@ -303,6 +351,27 @@ describe("AdminApiTestEngine request preparation", () => {
     );
 
     expect(imageCtx.galleryImageKey).toBe("gallery/images/user-1/key");
+  });
+
+  it("captures an invite code from the cursor response envelope", () => {
+    const next = captureContextFromResponse(
+      createInitialTestRunContext(),
+      { label: "Invites", method: "GET", path: "/api/admin/invite-links" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-07-28T00:00:00.000Z",
+        parsedJson: {
+          data: [{ id: "invite-1", code: "CURSOR-INVITE-CODE" }],
+          next_cursor: null,
+          total: 1,
+        },
+      },
+    );
+
+    expect(next.registerInviteCode).toBe("CURSOR-INVITE-CODE");
   });
 
   it("does not capture seeded mock image paths as profile media keys", () => {
@@ -643,6 +712,59 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(next.warMemberUserId).toBe("disposable-member");
   });
 
+  it("never captures a live guild-war board member as a mutation target", () => {
+    const next = captureContextFromResponse(
+      contextWith({
+        meId: "real-admin",
+        adminCreatedUserId: "disposable-member",
+      }),
+      { label: "Active War", method: "GET", path: "/api/guild-war/active" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-05-18T00:00:00.000Z",
+        parsedJson: {
+          event: { id: "real-war-event" },
+          teams: [{ id: "real-team", members: [{ user_id: "real-guild-member" }] }],
+        },
+      },
+    );
+
+    // move / role-tag / conclude all target warMemberUserId.
+    expect(next.warMemberUserId).toBe("disposable-member");
+    expect(next.warMemberUserId).not.toBe("real-guild-member");
+  });
+
+  it("leaves guild-war mutations unrunnable when no disposable member exists yet", () => {
+    const next = captureContextFromResponse(
+      contextWith({ meId: "real-admin" }),
+      { label: "Active War", method: "GET", path: "/api/guild-war/active" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-05-18T00:00:00.000Z",
+        parsedJson: {
+          event: { id: "real-war-event" },
+          teams: [{ id: "real-team", members: [{ user_id: "real-guild-member" }] }],
+        },
+      },
+    );
+
+    // Null is the safe outcome: the guild-war builders skip instead of
+    // falling back to whoever happens to be on the live board.
+    expect(next.warMemberUserId).toBeNull();
+
+    const prepared = prepareEndpointRequest(
+      { label: "Role Tag", method: "PATCH", path: "/api/guild-war/role-tag" },
+      next,
+    );
+    expect(prepared.skipReason).toBeTruthy();
+  });
+
   it("covers every actionable worker route in the smoke registry", () => {
     const endpointKeys = new Set(buildApiCategories((key) => key)
       .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`)));
@@ -654,7 +776,9 @@ describe("AdminApiTestEngine request preparation", () => {
       "GET /api/auth/verify-invite/:code",
       "POST /api/auth/register/:inviteCode",
       "GET /api/auth/me",
-      "GET /api/dashboard/summary",
+      "GET /api/dashboard/members",
+      "GET /api/dashboard/events",
+      "GET /api/dashboard/wars",
       "GET /api/search?q=systemtest&limit=5",
       "GET /api/users?page=1&limit=5",
       "GET /api/users/stats",
@@ -694,6 +818,7 @@ describe("AdminApiTestEngine request preparation", () => {
       "DELETE /api/events/templates/:id",
       "GET /api/announcements?page=1&limit=5",
       "GET /api/announcements/:id",
+      "POST /api/announcements/images/stage",
       "POST /api/announcements",
       "PATCH /api/announcements/:id",
       "DELETE /api/announcements/:id",
@@ -758,6 +883,7 @@ describe("AdminApiTestEngine request preparation", () => {
       "PATCH /api/admin/users/:id/deactivate",
       "PATCH /api/admin/users/:id/reactivate",
       "POST /api/admin/users/:id/reset-password",
+      "POST /api/admin/users/:id/reset-login-lock",
       "GET /api/admin/roles",
       "POST /api/admin/roles",
       "PATCH /api/admin/roles/:id",
@@ -788,6 +914,10 @@ describe("AdminApiTestEngine request preparation", () => {
       "DELETE /api/storage/items/:id",
       "DELETE /api/storage/storages/:storageId/categories/:id",
       "DELETE /api/storage/storages/:id",
+      "GET /api/game-data",
+      "GET /api/game-data/rotations/:classId",
+      "GET /api/game-data/full",
+      "GET /api/game-data/versions",
     ];
 
     expect(expectedRoutes.filter((route) => !endpointKeys.has(route))).toEqual([]);
@@ -853,7 +983,7 @@ describe("AdminApiTestEngine request preparation", () => {
     const visibleStorageEndpoints = filtered.find((category) => category.key === "storage")?.endpoints ?? [];
     const visibleEndpointKeys = visibleStorageEndpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`);
 
-    expect(storageEndpoints).toHaveLength(19);
+    expect(storageEndpoints).toHaveLength(20);
     expect(visibleStorageEndpoints).toHaveLength(storageEndpoints.length);
     expect(visibleEndpointKeys).toEqual(storageEndpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
     expect(visibleEndpointKeys).toEqual(expect.arrayContaining([
@@ -868,6 +998,7 @@ describe("AdminApiTestEngine request preparation", () => {
       "POST /api/storage/items/:id/transactions?fixture=intake",
       "POST /api/storage/items/:id/transactions?fixture=distribute",
       "POST /api/storage/items/:id/transactions?fixture=adjust",
+      "POST /api/storage/transactions/batch",
       "DELETE /api/storage/items/:id",
       "DELETE /api/storage/storages/:storageId/categories/:id",
       "DELETE /api/storage/storages/:id",
@@ -1117,7 +1248,11 @@ describe("AdminApiTestEngine request preparation", () => {
     const endpointKeys = buildApiCategories((key) => key)
       .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
 
-    expect(endpointKeys).toContain("GET /api/dashboard/summary");
+    expect(endpointKeys).toEqual(expect.arrayContaining([
+      "GET /api/dashboard/members",
+      "GET /api/dashboard/events",
+      "GET /api/dashboard/wars",
+    ]));
     expect(endpointKeys).toContain("GET /api/search?q=systemtest&limit=5");
     expect(endpointKeys).toContain("GET /api/guild-war/concluded-event-ids");
   });
@@ -1129,10 +1264,11 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys).toEqual(expect.arrayContaining([
       "GET /api/health",
       "GET /api/site-config",
-      "GET /api/onboarding",
       "GET /api/admin/status",
       "GET /api/admin/analytics-settings",
-      "GET /api/dashboard/summary",
+      "GET /api/dashboard/members",
+      "GET /api/dashboard/events",
+      "GET /api/dashboard/wars",
       "GET /api/search?q=systemtest&limit=5",
       "GET /api/admin/error-log?page=1&limit=5",
     ]));
@@ -1169,13 +1305,11 @@ describe("AdminApiTestEngine request preparation", () => {
 
     expect(endpointKeys).toEqual(expect.arrayContaining([
       "GET /api/site-config",
-      "GET /api/onboarding",
       "GET /api/admin/site-config",
     ]));
     expect(visibleWithoutSiteConfigPermission).not.toContain("GET /api/admin/site-config");
     expect(visibleWithSiteConfigPermission).toContain("GET /api/admin/site-config");
     expect(endpointKeys).not.toContain("PATCH /api/admin/site-config");
-    expect(endpointKeys).not.toContain("POST /api/admin/site-config/onboarding/publish");
   });
 
   it("prepares additional production read endpoints without mutating existing database state", () => {
@@ -1366,4 +1500,48 @@ describe("AdminApiTestEngine request preparation", () => {
     );
   });
 
+});
+
+describe("stale [systemtest] artifact probes", () => {
+  function probe(label: string): string {
+    const found = STALE_ARTIFACT_PROBES.find((p) => p.label === label);
+    if (!found) throw new Error(`no probe named ${label}`);
+    return found.path;
+  }
+
+  /*
+   * A leaked fixture is by definition one teardown never touched, so it is still
+   * active and still unarchived. Every one of these probes previously narrowed by
+   * exactly the state a leak cannot be in, which made them report a clean run
+   * over a database that still held test rows.
+   */
+  it("does not narrow the leak probes by a state a leaked fixture cannot be in", () => {
+    expect(probe("Users")).not.toContain("active=");
+    expect(probe("Events")).not.toContain("archived=");
+    expect(probe("Announcements")).not.toContain("archived=");
+  });
+
+  it("searches users by the username the engine actually generates", () => {
+    const context = createInitialTestRunContext();
+    context.registerInviteCode = "invite-code";
+    prepareEndpointRequest(
+      { label: "Register", method: "POST", path: "/api/auth/register/:inviteCode" },
+      context,
+    );
+
+    const searchTerm = decodeURIComponent(new URL(probe("Users"), "http://x").searchParams.get("search") ?? "");
+    expect(searchTerm).not.toBe("");
+    /*
+     * The users query matches `search` against the username column alone, so a
+     * term that is not a substring of the generated username can never match —
+     * which is how `[systemtest]` came to be searched against `systemtest_<ts>`.
+     */
+    expect(context.registeredUsername).toContain(searchTerm);
+  });
+
+  it("counts both fixture naming schemes as stale artifacts", () => {
+    expect(countStaleSystemTestArtifacts({ data: [{ user: { username: "systemtest_1785085457897" } }] })).toBe(1);
+    expect(countStaleSystemTestArtifacts({ data: [{ title: "[systemtest] API Poll Event" }] })).toBe(1);
+    expect(countStaleSystemTestArtifacts({ data: [{ user: { username: "admin" } }, { title: "Guild meeting" }] })).toBe(0);
+  });
 });

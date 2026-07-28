@@ -1,4 +1,4 @@
-﻿import { drizzle } from "drizzle-orm/d1";
+import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { nanoid } from "nanoid";
 import { auditLog } from "../db/schema";

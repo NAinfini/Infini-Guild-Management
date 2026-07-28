@@ -1,10 +1,6 @@
 import { create } from "zustand";
 
 type Locale = "en" | "zh";
-type MotionMode = "off" | "minimum" | "reduced" | "full";
-const DEFAULT_FANCY_EFFECTS = true;
-const DEFAULT_PUSH_NOTIFICATION_SOUND = false;
-const DEFAULT_MOTION_MODE: MotionMode = "full";
 
 function resolveDefaultLocale(): Locale {
   if (typeof navigator !== "undefined" && navigator.language.startsWith("zh")) {
@@ -41,19 +37,30 @@ function removeStorage(key: string): void {
   }
 }
 
-function isMotionMode(value: string | null): value is MotionMode {
-  return value === "off" || value === "minimum" || value === "reduced" || value === "full";
+type ThemeMode = "light" | "dark";
+type Accent = "teal" | "indigo" | "violet" | "orange";
+const DEFAULT_ACCENT: Accent = "teal";
+
+function isThemeMode(value: string | null): value is ThemeMode {
+  return value === "light" || value === "dark";
+}
+
+function isAccent(value: string | null): value is Accent {
+  return value === "teal" || value === "indigo" || value === "violet" || value === "orange";
+}
+
+function resolveDefaultThemeMode(): ThemeMode {
+  if (typeof window === "undefined") return "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 type PreferencesState = {
   locale: Locale;
-  motionMode: MotionMode;
-  fancyEffects: boolean;
-  pushNotificationSound: boolean;
+  themeMode: ThemeMode;
+  accent: Accent;
   setLocale: (locale: Locale) => void;
-  setMotionMode: (mode: MotionMode) => void;
-  setFancyEffects: (enabled: boolean) => void;
-  setPushNotificationSound: (enabled: boolean) => void;
+  setThemeMode: (mode: ThemeMode) => void;
+  setAccent: (accent: Accent) => void;
   resetPreferences: () => void;
 };
 
@@ -62,36 +69,29 @@ const initialLocale = isLocale(initialLocaleRaw) ? initialLocaleRaw : resolveDef
 
 export const usePreferencesStore = create<PreferencesState>((set) => ({
   locale: initialLocale,
-  motionMode: (() => { const v = readStorage("motionMode"); return isMotionMode(v) ? v : DEFAULT_MOTION_MODE; })(),
-  fancyEffects: (() => { const v = readStorage("fancyEffects"); return v === null ? DEFAULT_FANCY_EFFECTS : v !== "false"; })(),
-  pushNotificationSound: (() => { const v = readStorage("pushNotificationSound"); return v === null ? DEFAULT_PUSH_NOTIFICATION_SOUND : v !== "false"; })(),
+  themeMode: (() => { const v = readStorage("themeMode"); return isThemeMode(v) ? v : resolveDefaultThemeMode(); })(),
+  accent: (() => { const v = readStorage("accent"); return isAccent(v) ? v : DEFAULT_ACCENT; })(),
   setLocale: (locale) => {
     writeStorage("locale", locale);
     set({ locale });
   },
-  setMotionMode: (motionMode) => {
-    writeStorage("motionMode", motionMode);
-    set({ motionMode });
+  setThemeMode: (themeMode) => {
+    writeStorage("themeMode", themeMode);
+    set({ themeMode });
   },
-  setFancyEffects: (fancyEffects) => {
-    writeStorage("fancyEffects", String(fancyEffects));
-    set({ fancyEffects });
-  },
-  setPushNotificationSound: (pushNotificationSound) => {
-    writeStorage("pushNotificationSound", String(pushNotificationSound));
-    set({ pushNotificationSound });
+  setAccent: (accent) => {
+    writeStorage("accent", accent);
+    set({ accent });
   },
   resetPreferences: () => {
     const locale = resolveDefaultLocale();
     removeStorage("locale");
-    removeStorage("motionMode");
-    removeStorage("fancyEffects");
-    removeStorage("pushNotificationSound");
+    removeStorage("themeMode");
+    removeStorage("accent");
     set({
       locale,
-      motionMode: DEFAULT_MOTION_MODE,
-      fancyEffects: DEFAULT_FANCY_EFFECTS,
-      pushNotificationSound: DEFAULT_PUSH_NOTIFICATION_SOUND,
+      themeMode: resolveDefaultThemeMode(),
+      accent: DEFAULT_ACCENT,
     });
   },
 }));

@@ -3,22 +3,6 @@ import { SiteConfigService } from "../SiteConfigService";
 
 const NOW = new Date("2026-06-12T12:00:00.000Z");
 
-const DEFAULT_BODY = JSON.stringify({ type: "doc", content: [] });
-const CHECKLIST = [
-  { id: "rules", label: "Read rules", description: "Review guild rules", required: true },
-  { id: "profile", label: "Finish profile", description: null, required: true },
-];
-const SEEDED_ONBOARDING_ROW = {
-  id: "default",
-  title: "成员入门须知",
-  bodyJson: DEFAULT_BODY,
-  checklistJson: JSON.stringify(CHECKLIST),
-  requireAck: true,
-  publishedAt: NOW.toISOString(),
-  updatedBy: null,
-  createdAt: NOW.toISOString(),
-  updatedAt: NOW.toISOString(),
-};
 const SEEDED_SITE_ROW = {
   id: "default",
   siteName: "D1 Guild",
@@ -143,8 +127,25 @@ describe("SiteConfigService", () => {
     });
   });
 
+  it("logs an error instead of silently serving defaults over a corrupt feature flag blob", async () => {
+    // A corrupt blob re-enables every feature flag, and the flags gate whole API
+    // prefixes — so this must never happen quietly.
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { service } = createService([[{ ...SEEDED_SITE_ROW, featureFlagsJson: "{not json" }]]);
+
+    const result = await service.getPublicConfig();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // equipmentCalc was false in the stored row; the default is true.
+    expect(result.data.features.equipmentCalc).toBe(true);
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    expect(consoleError.mock.calls[0]?.[0]).toContain("feature_flags_json");
+    consoleError.mockRestore();
+  });
+
   it("keeps analytics settings out of general admin site config", async () => {
-    const { service } = createService([[SEEDED_SITE_ROW], [SEEDED_ONBOARDING_ROW]]);
+    const { service } = createService([[SEEDED_SITE_ROW]]);
 
     const result = await service.getAdminConfig();
 
@@ -167,34 +168,10 @@ describe("SiteConfigService", () => {
     });
   });
 
-  it("marks onboarding disabled when the seeded config is unpublished", async () => {
-    const { service } = createService([[SEEDED_SITE_ROW], [{ ...SEEDED_ONBOARDING_ROW, publishedAt: null }]]);
-
-    const result = await service.getAdminConfig();
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.data.onboarding.enabled).toBe(false);
-    expect(result.data.onboarding.published_at).toBeNull();
-  });
-
-  it("does not create runtime default onboarding content when the database row is missing", async () => {
-    const { service } = createService([[], []]);
-
-    const result = await service.getAdminConfig();
-
-    expect(result).toEqual({
-      ok: false,
-      code: "SERVER_ERROR",
-      message: "Onboarding config is not initialized",
-    });
-  });
-
   it("updates admin site config and writes an audit diff", async () => {
     const { service, deps, calls } = createService([
       [{ id: "default", siteName: "Old Guild", siteLogoUrl: "/old.webp", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
       [{ id: "default", siteName: "New Guild", siteLogoUrl: "/new.webp", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-      [SEEDED_ONBOARDING_ROW],
     ]);
 
     const result = await service.updateAdminConfig("admin-1", {
@@ -214,44 +191,11 @@ describe("SiteConfigService", () => {
     }));
   });
 
-  it("enables onboarding by publishing the existing config", async () => {
-    const { service, calls } = createService([
-      [{ ...SEEDED_ONBOARDING_ROW, publishedAt: null }],
-      [SEEDED_SITE_ROW],
-      [SEEDED_ONBOARDING_ROW],
-    ]);
-
-    const result = await service.updateOnboardingConfig("admin-1", { enabled: true });
-
-    expect(result.ok).toBe(true);
-    expect(calls.set).toHaveBeenCalledWith(expect.objectContaining({
-      publishedAt: NOW.toISOString(),
-      updatedBy: "admin-1",
-    }));
-  });
-
-  it("disables onboarding by clearing the published timestamp", async () => {
-    const { service, calls } = createService([
-      [SEEDED_ONBOARDING_ROW],
-      [SEEDED_SITE_ROW],
-      [{ ...SEEDED_ONBOARDING_ROW, publishedAt: null }],
-    ]);
-
-    const result = await service.updateOnboardingConfig("admin-1", { enabled: false });
-
-    expect(result.ok).toBe(true);
-    expect(calls.set).toHaveBeenCalledWith(expect.objectContaining({
-      publishedAt: null,
-      updatedBy: "admin-1",
-    }));
-  });
-
   it("uploads a site logo, stores the internal logo URL, and removes the previous managed logo", async () => {
     const { service, deps, calls } = createService([
       [{ id: "default", siteName: "Guild", siteLogoUrl: "/api/site-config/logo?key=site%2Flogo%2Fold.webp", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
       [{ id: "default", siteName: "Guild", siteLogoUrl: "/api/site-config/logo?key=site%2Flogo%2Fold.webp", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
       [{ id: "default", siteName: "Guild", siteLogoUrl: "/api/site-config/logo?key=site%2Flogo%2Fnew.webp", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-      [SEEDED_ONBOARDING_ROW],
     ]);
     deps.storeSiteLogo = vi.fn().mockResolvedValue("site/logo/new.webp");
     deps.deleteMediaObject = vi.fn().mockResolvedValue(undefined);
@@ -278,149 +222,4 @@ describe("SiteConfigService", () => {
     expect(deps.storeSiteLogo).not.toHaveBeenCalled();
   });
 
-  it("cleans up a newly uploaded logo when the admin config response cannot be rebuilt", async () => {
-    const { service, deps } = createService([]);
-    deps.storeSiteLogo = vi.fn().mockResolvedValue("site/logo/new.webp");
-    deps.deleteMediaObject = vi.fn().mockResolvedValue(undefined);
-    const file = new File(["logo"], "logo.webp", { type: "image/webp" });
-
-    const result = await service.uploadSiteLogo("admin-1", file);
-
-    expect(result.ok).toBe(false);
-    expect(deps.storeSiteLogo).toHaveBeenCalledWith(file);
-    expect(deps.deleteMediaObject).toHaveBeenCalledWith("site/logo/new.webp");
-  });
-
-  it("returns member onboarding completion status after a member confirms once", async () => {
-    const { service } = createService([
-      [{ id: "default", title: "Rules", bodyJson: DEFAULT_BODY, checklistJson: JSON.stringify(CHECKLIST), requireAck: true, publishedAt: NOW.toISOString(), updatedBy: "admin-1", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-      [{ userId: "member-1", completedItemIdsJson: JSON.stringify(["rules", "profile"]), acknowledgedAt: NOW.toISOString(), createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-    ]);
-
-    const result = await service.getMemberOnboarding("member-1");
-
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      const data = result.data as { is_complete: boolean; state: { acknowledged_at: string | null } };
-      expect(data.is_complete).toBe(true);
-      expect(data.state.acknowledged_at).toBe(NOW.toISOString());
-    }
-  });
-
-  it("does not expose disabled onboarding to members", async () => {
-    const { service } = createService([
-      [{ ...SEEDED_ONBOARDING_ROW, publishedAt: null }],
-    ]);
-
-    const result = await service.getMemberOnboarding("member-1");
-
-    expect(result).toEqual({
-      ok: false,
-      code: "NOT_FOUND",
-      message: "Onboarding is disabled",
-    });
-  });
-
-  it("keeps member onboarding complete after onboarding content changes", async () => {
-    const { service } = createService([
-      [{ id: "default", title: "Updated rules", bodyJson: DEFAULT_BODY, checklistJson: JSON.stringify(CHECKLIST), requireAck: true, publishedAt: NOW.toISOString(), updatedBy: "admin-1", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-      [{ userId: "member-1", completedItemIdsJson: JSON.stringify(["rules", "profile"]), acknowledgedAt: "2026-06-01T00:00:00.000Z", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-    ]);
-
-    const result = await service.getMemberOnboarding("member-1");
-
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.data.is_complete).toBe(true);
-      expect(result.data.state.acknowledged_at).toBe("2026-06-01T00:00:00.000Z");
-    }
-  });
-
-  it("saves checklist progress without acknowledging rules", async () => {
-    const { service, calls } = createService([
-      [{ id: "default", title: "Rules", bodyJson: DEFAULT_BODY, checklistJson: JSON.stringify(CHECKLIST), requireAck: true, publishedAt: NOW.toISOString(), updatedBy: "admin-1", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-      [],
-      [{ userId: "member-1", completedItemIdsJson: JSON.stringify(["rules"]), acknowledgedAt: null, createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-    ]);
-
-    const result = await service.updateMemberProgress("member-1", { completed_item_ids: ["rules", "not-real"] });
-
-    expect(result.ok).toBe(true);
-    expect(calls.values).toHaveBeenCalledWith(expect.objectContaining({
-      userId: "member-1",
-      completedItemIdsJson: JSON.stringify(["rules"]),
-      acknowledgedAt: null,
-    }));
-  });
-
-  it("does not save member progress while onboarding is disabled", async () => {
-    const { service, calls } = createService([
-      [{ ...SEEDED_ONBOARDING_ROW, publishedAt: null }],
-    ]);
-
-    const result = await service.updateMemberProgress("member-1", { completed_item_ids: ["rules"] });
-
-    expect(result).toEqual({
-      ok: false,
-      code: "NOT_FOUND",
-      message: "Onboarding is disabled",
-    });
-    expect(calls.values).not.toHaveBeenCalled();
-    expect(calls.set).not.toHaveBeenCalled();
-  });
-
-  it("acknowledges onboarding once and writes audit", async () => {
-    const { service, deps, calls } = createService([
-      [{ id: "default", title: "Rules", bodyJson: DEFAULT_BODY, checklistJson: JSON.stringify(CHECKLIST), requireAck: true, publishedAt: NOW.toISOString(), updatedBy: "admin-1", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-      [{ userId: "member-1", completedItemIdsJson: JSON.stringify(["rules", "profile"]), acknowledgedAt: null, createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-      [{ userId: "member-1", completedItemIdsJson: JSON.stringify(["rules", "profile"]), acknowledgedAt: NOW.toISOString(), createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-    ]);
-
-    const result = await service.acknowledgeOnboarding("member-1");
-
-    expect(result.ok).toBe(true);
-    expect(calls.set).toHaveBeenCalledWith(expect.objectContaining({
-      acknowledgedAt: NOW.toISOString(),
-    }));
-    expect(deps.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({
-      entityType: "onboarding_ack",
-      action: "acknowledge",
-      actorId: "member-1",
-      entityId: "member-1",
-      diffTitle: "Onboarding",
-    }));
-  });
-
-  it("does not acknowledge onboarding while it is disabled", async () => {
-    const { service, deps, calls } = createService([
-      [{ ...SEEDED_ONBOARDING_ROW, publishedAt: null }],
-    ]);
-
-    const result = await service.acknowledgeOnboarding("member-1");
-
-    expect(result).toEqual({
-      ok: false,
-      code: "NOT_FOUND",
-      message: "Onboarding is disabled",
-    });
-    expect(calls.values).not.toHaveBeenCalled();
-    expect(calls.set).not.toHaveBeenCalled();
-    expect(deps.writeAuditLog).not.toHaveBeenCalled();
-  });
-
-  it("requires current checklist completion before acknowledging onboarding", async () => {
-    const { service, deps } = createService([
-      [{ id: "default", title: "Rules", bodyJson: DEFAULT_BODY, checklistJson: JSON.stringify(CHECKLIST), requireAck: true, publishedAt: NOW.toISOString(), updatedBy: "admin-1", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-      [{ userId: "member-1", completedItemIdsJson: JSON.stringify(["rules"]), acknowledgedAt: null, createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-    ]);
-
-    const result = await service.acknowledgeOnboarding("member-1");
-
-    expect(result).toEqual({
-      ok: false,
-      code: "VALIDATION_ERROR",
-      message: "Required onboarding checklist items must be completed before acknowledgement",
-    });
-    expect(deps.writeAuditLog).not.toHaveBeenCalled();
-  });
 });

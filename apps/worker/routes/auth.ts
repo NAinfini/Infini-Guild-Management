@@ -6,7 +6,7 @@ import { LIMITS } from "@guild/shared/config/limits";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { createPasswordHash, createSession, deleteUserSessions, destroySession, resolveSession, verifyPassword } from "../services/auth";
+import { createPasswordHash, createSession, destroySession, enforceSessionLimit, resolveSession, verifyPassword } from "../services/auth";
 import { AuthService } from "../services/AuthService";
 import { createRateLimitMiddleware } from "../middleware/rate-limit";
 import { buildError, getDb, handleResult, parseJsonBody } from "./_shared";
@@ -35,7 +35,7 @@ function getService(c: Context): AuthService {
     verifyPassword,
     createSession: async (userId, opts) => { await createSession(c, userId, opts); },
     destroySession: (sessionId) => destroySession(c, sessionId),
-    deleteUserSessions: (userId) => deleteUserSessions(c, userId),
+    enforceSessionLimit: (userId) => enforceSessionLimit(c, userId),
     ...commonDeps(c),
   });
 }
@@ -54,7 +54,8 @@ authRoutes.post("/login", async (c) => {
 
   const bodyRecord = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
   const stayLoggedIn = typeof bodyRecord.stay_logged_in === "boolean" ? bodyRecord.stay_logged_in : false;
-  const result = await getService(c).login(parsed.data.username, parsed.data.password, stayLoggedIn);
+  const clientIp = c.req.header("CF-Connecting-IP") ?? c.req.header("X-Forwarded-For")?.split(",")[0]?.trim() ?? null;
+  const result = await getService(c).login(parsed.data.username, parsed.data.password, stayLoggedIn, clientIp);
   return handleResult(c, result);
 });
 

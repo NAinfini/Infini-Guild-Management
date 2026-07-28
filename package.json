@@ -30,7 +30,7 @@
     "smoke:pages": "concurrently -k -s first -n worker,portal,smoke \"pnpm dev:worker\" \"pnpm dev:portal\" \"node apps/portal/scripts/smoke-key-pages.cjs\"",
     "lint": "eslint apps/portal apps/worker",
     "check:secrets": "node scripts/check-no-secrets.mjs",
-    "test": "vitest run",
+    "test": "node scripts/run-vitest.mjs run",
     "db:generate": "drizzle-kit generate --config apps/worker/drizzle.config.ts",
     "db:studio": "drizzle-kit studio --config apps/worker/drizzle.config.ts",
     "db:mock:init": "wrangler d1 migrations apply guild-portal-db --local --config apps/worker/wrangler.jsonc --persist-to apps/worker/.wrangler/state",

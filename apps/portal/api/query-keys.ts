@@ -44,7 +44,8 @@ export const queryKeys = {
   },
   announcements: {
     all: ["announcements"] as const,
-    list: (scope: string, status: string, search: string, page?: number) => [...queryKeys.announcements.all, scope, status, search, page ?? 1] as const,
+    list: (scope: string, status: string, search: string) =>
+      [...queryKeys.announcements.all, "list", scope, status, search] as const,
     detail: (id: string | null) => [...queryKeys.announcements.all, "detail", id] as const,
   },
   gallery: {
@@ -55,22 +56,34 @@ export const queryKeys = {
   storage: {
     all: ["storage"] as const,
     tree: () => [...queryKeys.storage.all, "tree"] as const,
-    items: (storageId: string, categoryId: string | null, search: string) => [...queryKeys.storage.all, "items", storageId, categoryId, search] as const,
+    itemsRoot: () => [...queryKeys.storage.all, "items"] as const,
+    items: (
+      storageId: string,
+      categoryId: string | null,
+      search: string,
+      stock: string,
+      limit: number,
+    ) => [
+      ...queryKeys.storage.itemsRoot(),
+      storageId,
+      categoryId,
+      search,
+      stock,
+      limit,
+    ] as const,
     item: (id: string | null) => [...queryKeys.storage.all, "item", id] as const,
-    transactions: (filter: string, page: number) => [...queryKeys.storage.all, "transactions", filter, page] as const,
+    transactions: (filter: string, page: number, limit: number) =>
+      [...queryKeys.storage.all, "transactions", filter, page, limit] as const,
   },
   siteConfig: {
     all: ["site-config"] as const,
     admin: () => [...queryKeys.siteConfig.all, "admin"] as const,
   },
-  onboarding: {
-    all: ["onboarding"] as const,
-    me: () => [...queryKeys.onboarding.all, "me"] as const,
-  },
   dashboard: {
     all: ["dashboard"] as const,
-    summary: () => [...queryKeys.dashboard.all, "summary"] as const,
-    upcomingEvents: (nowIso: string) => [...queryKeys.dashboard.all, "upcoming-events", nowIso] as const,
+    members: () => [...queryKeys.dashboard.all, "members"] as const,
+    events: (viewerKey: string, externalView: boolean) =>
+      [...queryKeys.dashboard.all, "events", viewerKey, externalView] as const,
     wars: () => [...queryKeys.dashboard.all, "wars"] as const,
     lastWarDetail: (warId: string) => [...queryKeys.dashboard.all, "last-war-detail", warId] as const,
     upcomingEventDetails: (eventIdsKey: string) =>
@@ -79,7 +92,9 @@ export const queryKeys = {
   },
   admin: {
     all: ["admin"] as const,
-    inviteLinks: () => [...queryKeys.admin.all, "invite-links"] as const,
+    inviteLinksAll: () => [...queryKeys.admin.all, "invite-links"] as const,
+    inviteLinks: (visibility: string, search: string) =>
+      [...queryKeys.admin.inviteLinksAll(), visibility, search] as const,
     inviteStats: () => [...queryKeys.admin.all, "invite-stats"] as const,
     auditLog: (page: number, search: string, startAt: string, endAt: string, entityType?: string, actorId?: string) =>
       [...queryKeys.admin.all, "audit-log", page, search, startAt, endAt, entityType ?? null, actorId ?? null] as const,
@@ -93,7 +108,8 @@ export const queryKeys = {
     events: () => [...queryKeys.guildWar.all, "events"] as const,
     eventDetail: (eventId: string | null) => [...queryKeys.guildWar.all, "event-detail", eventId] as const,
     active: (eventIdKey: string | null) => [...queryKeys.guildWar.all, "active", eventIdKey] as const,
-    history: (fromKey: string, toKey: string, page?: number, perPage?: number) => [...queryKeys.guildWar.all, "history", fromKey, toKey, page ?? 1, perPage ?? 20] as const,
+    history: (fromKey: string, toKey: string, searchKey: string, page?: number, perPage?: number) =>
+      [...queryKeys.guildWar.all, "history", fromKey, toKey, searchKey, page ?? 1, perPage ?? 20] as const,
     historyAll: () => [...queryKeys.guildWar.all, "history"] as const,
     historyDetail: (historyId: string | null) => [...queryKeys.guildWar.all, "history-detail", historyId] as const,
     analytics: (warIdsKey: string) => [...queryKeys.guildWar.all, "analytics", warIdsKey] as const,
@@ -104,8 +120,8 @@ export const queryKeys = {
   wiki: {
     all: ["wiki"] as const,
     categories: () => [...queryKeys.wiki.all, "categories"] as const,
-    articles: (categoryId: string, search: string, archivedMode: string, pinnedOnly: boolean, page?: number) =>
-      [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, pinnedOnly, page ?? 1] as const,
+    articles: (categoryId: string, search: string, archivedMode: string, pinnedOnly: boolean) =>
+      [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, pinnedOnly] as const,
     article: (slug: string | null) => [...queryKeys.wiki.all, "article", slug] as const,
     revisions: (articleId: string | null) => [...queryKeys.wiki.all, "revisions", articleId] as const,
     revision: (articleId: string | null, revision: number | null) => [...queryKeys.wiki.all, "revision", articleId, revision] as const,
@@ -119,6 +135,8 @@ export const queryKeys = {
   gameData: {
     all: ["game-data"] as const,
     latest: () => [...queryKeys.gameData.all, "latest"] as const,
+    full: () => [...queryKeys.gameData.all, "full"] as const,
+    rotation: (classId: string) => [...queryKeys.gameData.all, "rotation", classId] as const,
     versions: () => [...queryKeys.gameData.all, "versions"] as const,
   },
   cmdk: {

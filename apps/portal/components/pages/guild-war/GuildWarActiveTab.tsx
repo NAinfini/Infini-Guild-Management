@@ -1,16 +1,13 @@
-import { ArrowLeftIcon } from "@portal/components/icons";
 import type { SensorDescriptor, SensorOptions } from "@dnd-kit/core";
-import { Button, Card, Group, Modal, MultiSelect, Skeleton, Stack, Text } from "@mantine/core";
+import { Button, Card, Group, Modal, MultiSelect, Skeleton, Stack } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
-import { useQueryClient } from "@tanstack/react-query";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Suspense, lazy, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "../../../hooks/useAppError";
 import { absenceQueryKeys, concludeGuildWar, guildWarQueryKeys, moveGuildWarMember, usersQueryKeys } from "../../../services/GuildWarService";
 import { fetchAbsencesWindow, fetchAllUsersListWithOptions } from "../../../services/UserService";
 import { notifySuccess } from "../../../utils/notifications";
-import { useQuery } from "@tanstack/react-query";
 import type { ConcludeWarMember, ConcludeWarSubmitData } from "../../feature/guild-war/ConcludeWarModal";
 import type { useGuildWarActiveController } from "../../feature/guild-war/useGuildWarActiveController";
 import type { useGuildWarDragController } from "../../../hooks/guild-war/useGuildWarDragController";
@@ -30,10 +27,6 @@ const LazyConcludeWarModal = lazy(() =>
   import("../../feature/guild-war/ConcludeWarModal").then((mod) => ({ default: mod.ConcludeWarModal })),
 );
 
-const message = {
-  success: (content: string) => notifySuccess(content),
-};
-
 type GuildWarActiveTabProps = {
   selectedEventId: string | undefined;
   setSelectedEventId: (id: string) => void;
@@ -48,6 +41,16 @@ type GuildWarActiveTabProps = {
   concludeWarDisabled: boolean;
   concludeWarDisabledReason: string | undefined;
 };
+
+export function resolveGuildWarAbsenceWindow(
+  startAt: string | null | undefined,
+): { from: string; to: string } | null {
+  const day = startAt?.slice(0, 10);
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    return null;
+  }
+  return { from: day, to: day };
+}
 
 export function GuildWarActiveTab({
   selectedEventId,
@@ -74,11 +77,16 @@ export function GuildWarActiveTab({
   });
 
   // Absences (请假) covering the war date — marks members on the drag board.
-  const warDate = activeQuery.data?.event?.start_at?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+  const absenceWindow = resolveGuildWarAbsenceWindow(activeQuery.data?.event?.start_at);
   const absencesQuery = useQuery({
-    queryKey: absenceQueryKeys.window(warDate, warDate),
-    queryFn: () => fetchAbsencesWindow(warDate, warDate),
-    enabled: Boolean(selectedEventId),
+    queryKey: absenceQueryKeys.window(absenceWindow?.from ?? "", absenceWindow?.to ?? ""),
+    queryFn: () => {
+      if (!absenceWindow) {
+        throw new Error("Guild war absence query requires the selected event date");
+      }
+      return fetchAbsencesWindow(absenceWindow.from, absenceWindow.to);
+    },
+    enabled: canManageActive && Boolean(selectedEventId) && Boolean(absenceWindow),
     staleTime: 60_000,
   });
   const absentUserIds = useMemo(
@@ -89,7 +97,6 @@ export function GuildWarActiveTab({
   // --- Add to Pool ---
   const [addToPoolOpen, addToPoolHandlers] = useDisclosure(false);
   const [addToPoolSelection, setAddToPoolSelection] = useState<string[]>([]);
-  const [addToPoolPending, setAddToPoolPending] = useState(false);
 
   const availableForPool = useMemo(() => {
     const assignedIds = new Set<string>();
@@ -105,30 +112,35 @@ export function GuildWarActiveTab({
       .map((u) => ({ value: u.user.id, label: u.user.username }));
   }, [activeQuery.data, usersQuery.data]);
 
-  const handleAddToPool = useCallback(async () => {
-    if (!selectedEventId || addToPoolSelection.length === 0) return;
-    setAddToPoolPending(true);
-    try {
-      await moveGuildWarMember({
-        event_id: selectedEventId,
-        moves: addToPoolSelection.map((userId) => ({ user_id: userId, to: "pool" })),
-      });
+  const addToPoolMutation = useMutation({
+    mutationFn: ({ eventId, userIds }: { eventId: string; userIds: string[] }) =>
+      moveGuildWarMember({
+        event_id: eventId,
+        moves: userIds.map((userId) => ({ user_id: userId, to: "pool" })),
+      }),
+    onSuccess: async (_response, variables) => {
       await queryClient.invalidateQueries({
-        queryKey: guildWarQueryKeys.active(selectedEventId ?? null),
+        queryKey: guildWarQueryKeys.active(variables.eventId),
       });
-      message.success(t("message.membersAddedToPool", { count: addToPoolSelection.length }));
+      notifySuccess(t("message.membersAddedToPool", { count: variables.userIds.length }));
       setAddToPoolSelection([]);
       addToPoolHandlers.close();
-    } catch (error) {
+    },
+    onError: (error) => {
       showError(error, t("message.addToPoolFailed"));
-    } finally {
-      setAddToPoolPending(false);
-    }
-  }, [addToPoolHandlers, addToPoolSelection, queryClient, selectedEventId, showError, t]);
+    },
+  });
+
+  const handleAddToPool = useCallback(() => {
+    if (!selectedEventId || addToPoolSelection.length === 0 || addToPoolMutation.isPending) return;
+    addToPoolMutation.mutate({
+      eventId: selectedEventId,
+      userIds: [...addToPoolSelection],
+    });
+  }, [addToPoolMutation, addToPoolSelection, selectedEventId]);
 
   // --- Conclude War ---
   const [concludeWarOpen, concludeWarHandlers] = useDisclosure(false);
-  const [concludeWarPending, setConcludeWarPending] = useState(false);
 
   const concludeWarMembers = useMemo<ConcludeWarMember[]>(() => {
     const activeData = activeQuery.data;
@@ -154,11 +166,8 @@ export function GuildWarActiveTab({
     return members;
   }, [activeQuery.data, usersQuery.data]);
 
-  const handleConcludeWar = useCallback(async (data: ConcludeWarSubmitData) => {
-    if (!selectedEventId) return;
-
-    setConcludeWarPending(true);
-    try {
+  const concludeWarMutation = useMutation({
+    mutationFn: async ({ eventId, data }: { eventId: string; data: ConcludeWarSubmitData }) => {
       const ownStats: Record<string, number | null> = {};
       const enemyStats: Record<string, number | null> = {};
       for (const [key, val] of Object.entries(data.warInfo.ownStats)) {
@@ -168,8 +177,8 @@ export function GuildWarActiveTab({
         if (val !== null) enemyStats[key] = val;
       }
 
-      await concludeGuildWar({
-        event_id: selectedEventId,
+      return concludeGuildWar({
+        event_id: eventId,
         war_info: {
           enemy_name: data.warInfo.enemyName || undefined,
           result: data.warInfo.result as "win" | "loss" | "draw",
@@ -179,119 +188,35 @@ export function GuildWarActiveTab({
         },
         member_stats: data.memberStats.length > 0 ? data.memberStats : undefined,
       });
-
-      await queryClient.invalidateQueries({ queryKey: guildWarQueryKeys.active(selectedEventId ?? null) });
-      await queryClient.invalidateQueries({ queryKey: guildWarQueryKeys.events() });
-      await queryClient.invalidateQueries({ queryKey: guildWarQueryKeys.concludedEventIds() });
-      await queryClient.invalidateQueries({ queryKey: guildWarQueryKeys.historyAll() });
-
-      message.success(t("message.warConcluded"));
+    },
+    onSuccess: async (_response, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: guildWarQueryKeys.active(variables.eventId) }),
+        queryClient.invalidateQueries({ queryKey: guildWarQueryKeys.events() }),
+        queryClient.invalidateQueries({ queryKey: guildWarQueryKeys.concludedEventIds() }),
+        queryClient.invalidateQueries({ queryKey: guildWarQueryKeys.historyAll() }),
+      ]);
+      notifySuccess(t("message.warConcluded"));
       concludeWarHandlers.close();
       setSelectedEventId("");
-    } catch (error) {
+    },
+    onError: (error) => {
       showError(error, t("message.concludeFailed"));
-    } finally {
-      setConcludeWarPending(false);
+    },
+  });
+
+  const handleConcludeWar = useCallback((data: ConcludeWarSubmitData) => {
+    if (!selectedEventId || concludeWarMutation.isPending) return;
+    concludeWarMutation.mutate({ eventId: selectedEventId, data });
+  }, [concludeWarMutation, selectedEventId]);
+
+  const handleSelectedEventIdChange = useCallback(async (nextEventId: string) => {
+    if (nextEventId === (selectedEventId ?? "")) return;
+    const canChangeEvent = await activeController.confirmDiscardTeamsChanges();
+    if (canChangeEvent) {
+      setSelectedEventId(nextEventId);
     }
-  }, [concludeWarHandlers, queryClient, selectedEventId, setSelectedEventId, showError, t]);
-
-  // --- Undo commit timeout ---
-  const undoMoveRef = activeController.undoMove;
-
-  useEffect(() => {
-    if (!undoMoveRef) return;
-
-    const delay = Math.max(0, undoMoveRef.expiresAt - Date.now());
-    const pendingMove = undoMoveRef;
-
-    activeController.commitTimeoutRef.current = window.setTimeout(() => {
-      activeController.commitTimeoutRef.current = null;
-      activeController.setUndoMove(null);
-      const commitQueuedMoves = async () => {
-        try {
-          await moveGuildWarMember({
-            event_id: pendingMove.eventId,
-            moves: pendingMove.moves.map((move) => ({ user_id: move.userId, to: move.to })),
-            etag: pendingMove.etag ?? activeQuery.data?.etag ?? undefined,
-          });
-          await queryClient.invalidateQueries({
-            queryKey: guildWarQueryKeys.active(selectedEventId ?? null),
-          });
-          message.success(
-            pendingMove.moves.length === 1
-              ? t("message.memberMoved")
-              : t("message.membersMoved", { count: pendingMove.moves.length }),
-          );
-        } catch (error) {
-          showError(
-            error,
-            pendingMove.moves.length > 1 ? t("message.batchMoveCommitFailed") : t("message.memberMoveFailed"),
-          );
-        }
-      };
-      void commitQueuedMoves();
-    }, delay);
-
-    return () => {
-      if (activeController.commitTimeoutRef.current !== null) {
-        window.clearTimeout(activeController.commitTimeoutRef.current);
-        activeController.commitTimeoutRef.current = null;
-      }
-    };
-   
-  }, [undoMoveRef]);
-
-  // --- Undo notification toast ---
-  const UNDO_NOTIFICATION_ID = "guild-war-undo-move";
-  const undoCancelRef = useRef(() => activeController.setUndoMove(null));
-  undoCancelRef.current = () => activeController.setUndoMove(null);
-  const undoNotificationShownRef = useRef(false);
-
-  useEffect(() => {
-    if (!activeController.undoMove || activeController.undoRemainingSec <= 0) {
-      if (undoNotificationShownRef.current) {
-        notifications.hide(UNDO_NOTIFICATION_ID);
-        undoNotificationShownRef.current = false;
-      }
-      return;
-    }
-    const undoText = activeController.undoMove.moves.length === 1
-      ? t("active.undo.single", {
-          userId: guildWarDrag.resolveUsername(activeController.undoMove.moves[0]?.userId ?? "-"),
-          to: guildWarDrag.resolveTeamName(activeController.undoMove.moves[0]?.to ?? "-"),
-          seconds: activeController.undoRemainingSec,
-        })
-      : t("active.undo.multi", {
-          count: activeController.undoMove.moves.length,
-          seconds: activeController.undoRemainingSec,
-        });
-    const payload = {
-      id: UNDO_NOTIFICATION_ID,
-      color: "blue" as const,
-      autoClose: false as const,
-      withCloseButton: false,
-      message: (
-        <Group justify="space-between" align="center" wrap="wrap" gap="xs">
-          <Text size="sm">{undoText}</Text>
-          <Button
-            size="xs"
-            variant="light"
-            color="red"
-            leftSection={<ArrowLeftIcon size={16} />}
-            onClick={() => undoCancelRef.current()}
-          >
-            {t("active.undo.cancel")}
-          </Button>
-        </Group>
-      ),
-    };
-    if (undoNotificationShownRef.current) {
-      notifications.update(payload);
-    } else {
-      notifications.show(payload);
-      undoNotificationShownRef.current = true;
-    }
-  }, [activeController.undoMove, activeController.undoRemainingSec, guildWarDrag, t]);
+  }, [activeController, selectedEventId, setSelectedEventId]);
 
   return (
     <Stack gap={12} style={{ display: "flex" }}>
@@ -303,7 +228,9 @@ export function GuildWarActiveTab({
             label: `${item.title} (${guildWarHistory.formatDateTime(item.start_at)})`,
           }))}
           eventPlaceholder={t("active.event")}
-          onSelectedEventIdChange={setSelectedEventId}
+          onSelectedEventIdChange={(nextEventId) => {
+            void handleSelectedEventIdChange(nextEventId);
+          }}
           canManage={canManageActive}
           activeSearch={activeController.activeSearch}
           onActiveSearchChange={activeController.setActiveSearch}
@@ -323,6 +250,9 @@ export function GuildWarActiveTab({
           concludeWarDisabled={concludeWarDisabled}
           concludeWarDisabledReason={concludeWarDisabledReason}
           onAddTeam={canManageActive && selectedEventId ? guildWarDrag.handleAddTeam : undefined}
+          onSaveTeams={canManageActive && selectedEventId ? activeController.handleSaveTeams : undefined}
+          saveTeamsPending={activeController.saveTeamsPending}
+          teamsDirty={activeController.isTeamsDirty}
         />
       </Suspense>
 
@@ -389,8 +319,8 @@ export function GuildWarActiveTab({
             <Button variant="default" onClick={addToPoolHandlers.close}>{t("common:action.cancel")}</Button>
             <Button
               onClick={handleAddToPool}
-              loading={addToPoolPending}
-              disabled={addToPoolSelection.length === 0}
+              loading={addToPoolMutation.isPending}
+              disabled={addToPoolSelection.length === 0 || addToPoolMutation.isPending}
             >
               {t("active.addToPoolConfirm", { count: addToPoolSelection.length })}
             </Button>
@@ -404,64 +334,11 @@ export function GuildWarActiveTab({
           onClose={concludeWarHandlers.close}
           onSubmit={handleConcludeWar}
           members={concludeWarMembers}
-          pending={concludeWarPending}
+          pending={concludeWarMutation.isPending}
           warName={activeQuery.data?.event?.title ?? t("conclude.defaultWarName")}
         />
       </Suspense>
 
-      <Modal
-        opened={Boolean(guildWarDrag.pendingRemove)}
-        onClose={guildWarDrag.cancelRemove}
-        title={t("active.removeConfirm.title")}
-        centered
-        size="sm"
-      >
-        <Stack gap={12}>
-          <Text size="sm">
-            {guildWarDrag.pendingRemove?.userIds.length === 1
-              ? t("active.removeConfirm.descSingle", {
-                  username: guildWarDrag.resolveUsername(guildWarDrag.pendingRemove.userIds[0] ?? ""),
-                })
-              : t("active.removeConfirm.descMulti", {
-                  count: guildWarDrag.pendingRemove?.userIds.length ?? 0,
-                })}
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={guildWarDrag.cancelRemove}>
-              {t("common:action.cancel")}
-            </Button>
-            <Button color="red" onClick={guildWarDrag.confirmRemove}>
-              {t("active.removeConfirm.confirm")}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-
-      <Modal
-        opened={Boolean(guildWarDrag.pendingDeleteTeamId)}
-        onClose={guildWarDrag.cancelDeleteTeam}
-        title={t("active.deleteTeamConfirm.title")}
-        centered
-        size="sm"
-      >
-        <Stack gap={12}>
-          <Text size="sm">
-            {t("active.deleteTeamConfirm.desc", {
-              teamName: guildWarDrag.pendingDeleteTeamId
-                ? guildWarDrag.resolveTeamName(guildWarDrag.pendingDeleteTeamId)
-                : "",
-            })}
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={guildWarDrag.cancelDeleteTeam}>
-              {t("common:action.cancel")}
-            </Button>
-            <Button color="red" onClick={guildWarDrag.confirmDeleteTeam}>
-              {t("active.deleteTeamConfirm.confirm")}
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
     </Stack>
   );
 }

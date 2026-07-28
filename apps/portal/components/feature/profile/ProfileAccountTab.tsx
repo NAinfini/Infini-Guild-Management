@@ -21,8 +21,6 @@ type ProfileAccountTabProps = {
   onChangePassword: () => void;
   onChangeUsername: () => void;
   onLogout: () => void;
-  changePasswordLabel: string;
-  changeUsernameLabel: string;
   changePasswordPending: boolean;
   changeUsernamePending: boolean;
 };
@@ -41,12 +39,12 @@ export function ProfileAccountTab({
   onChangePassword,
   onChangeUsername,
   onLogout,
-  changePasswordLabel,
-  changeUsernameLabel,
   changePasswordPending,
   changeUsernamePending,
 }: ProfileAccountTabProps) {
   const { t } = useTranslation("profile");
+  const changePasswordLabel = t("button.changePassword");
+  const changeUsernameLabel = t("button.changeUsername");
 
   const handleChangePassword = () => {
     if (!currentPassword.trim()) {

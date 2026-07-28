@@ -9,6 +9,7 @@ import { runEventInstanceGenerationCron } from "./event-instance-gen";
 import { runMediaOrphanCleanupCron } from "./media-orphan-cleanup";
 import { runRaffleDrawCron } from "./raffle-draw";
 import { runSessionCleanupCron } from "./session-cleanup";
+import { runSystemTestCleanupCron } from "./system-test-cleanup";
 
 export type MaintenanceJob = {
   name: string;
@@ -22,6 +23,7 @@ export const DAILY_MAINTENANCE_JOBS: readonly MaintenanceJob[] = [
   { name: "audit-archive", run: runAuditArchiveCron },
   { name: "media-orphan-cleanup", run: runMediaOrphanCleanupCron },
   { name: "error-log-cleanup", run: runErrorLogCleanupCron },
+  { name: "system-test-cleanup", run: runSystemTestCleanupCron },
 ];
 
 export const QUARTER_HOURLY_MAINTENANCE_JOBS: readonly MaintenanceJob[] = [

@@ -18,6 +18,37 @@
   width: 200px;
 }
 
+/* ── Recurring Templates Tab ── (moved out of style={{}}, task-8 批 B) */
+
+.recurring-template-icon-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.recurring-template-icon {
+  color: var(--text-primary);
+}
+
+.recurring-template-icon--paused {
+  color: var(--text-muted);
+}
+
+.recurring-template-lifecycle-muted {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.recurring-template-lifecycle-accent {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-text);
+}
+
 @media (max-width: 767px) {
   .events-filter-status,
   .events-filter-type {

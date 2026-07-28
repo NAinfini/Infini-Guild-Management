@@ -2,7 +2,7 @@ import { CLASS_NAMES, type MemberProfile } from "@guild/shared";
 import { isAllowedVideoUrl } from "@guild/shared/utils/video";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import { notifyWarning } from "../utils/notifications";
@@ -11,21 +11,74 @@ type UseProfileFormStateParams = {
   profile: MemberProfile | null | undefined;
 };
 
+type ProfileDraftBaseline = {
+  identity: string;
+  bio: string;
+  titleHtml: string;
+  power: number;
+  classList: Array<(typeof CLASS_NAMES)[number]>;
+  videoList: string[];
+  imageList: string[];
+  availabilityData: Record<string, unknown> | null;
+};
+
+function buildProfileDraftBaseline(profile: MemberProfile): ProfileDraftBaseline {
+  return {
+    identity: `${profile.user_id}:${profile.id}`,
+    bio: profile.bio ?? "",
+    titleHtml: profile.title_html ?? "",
+    power: profile.power,
+    classList: [...profile.classes],
+    videoList: [...profile.video_urls],
+    imageList: [...profile.images],
+    availabilityData: (profile.availability ?? null) as Record<string, unknown> | null,
+  };
+}
+
+function stringArraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function reconcileProfileImages(
+  draft: string[],
+  previousBaseline: string[],
+  nextBaseline: string[],
+): string[] {
+  if (stringArraysEqual(draft, previousBaseline)) {
+    return [...nextBaseline];
+  }
+
+  const serverKeys = new Set(nextBaseline);
+  const preservedDraft = draft.filter((key) => serverKeys.has(key));
+  const preservedKeys = new Set(preservedDraft);
+  return [
+    ...preservedDraft,
+    ...nextBaseline.filter((key) => !preservedKeys.has(key)),
+  ];
+}
+
 export type ProfileFormStateController = ReturnType<typeof useProfileFormState>;
 
 export function useProfileFormState({ profile }: UseProfileFormStateParams) {
   const { t } = useTranslation("profile");
   const { showError } = useAppError();
 
-  const [bio, setBio] = useState("");
-  const [titleHtml, setTitleHtml] = useState("");
-  const [power, setPower] = useState(0);
+  const initialBaseline = useRef(profile ? buildProfileDraftBaseline(profile) : null).current;
+  const [baseline, setBaseline] = useState<ProfileDraftBaseline | null>(initialBaseline);
+  const baselineRef = useRef<ProfileDraftBaseline | null>(initialBaseline);
+  const [bio, setBio] = useState(initialBaseline?.bio ?? "");
+  const [titleHtml, setTitleHtml] = useState(initialBaseline?.titleHtml ?? "");
+  const [power, setPower] = useState(initialBaseline?.power ?? 0);
   const [classDraft, setClassDraft] = useState("");
-  const [classList, setClassList] = useState<Array<(typeof CLASS_NAMES)[number]>>([]);
+  const [classList, setClassList] = useState<Array<(typeof CLASS_NAMES)[number]>>(
+    initialBaseline?.classList ?? [],
+  );
   const [videoDraft, setVideoDraft] = useState("");
-  const [videoList, setVideoList] = useState<string[]>([]);
-  const [imageList, setImageList] = useState<string[]>([]);
-  const [availabilityData, setAvailabilityData] = useState<Record<string, unknown> | null>(null);
+  const [videoList, setVideoList] = useState<string[]>(initialBaseline?.videoList ?? []);
+  const [imageList, setImageList] = useState<string[]>(initialBaseline?.imageList ?? []);
+  const [availabilityData, setAvailabilityData] = useState<Record<string, unknown> | null>(
+    initialBaseline?.availabilityData ?? null,
+  );
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
@@ -37,14 +90,36 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
       return;
     }
 
-    setBio(profile.bio ?? "");
-    setTitleHtml(profile.title_html ?? "");
-    setPower(profile.power);
-    setClassList(profile.classes);
-    setVideoList(profile.video_urls);
-    setImageList(profile.images);
-    setAvailabilityData((profile.availability ?? null) as Record<string, unknown> | null);
+    const nextBaseline = buildProfileDraftBaseline(profile);
+    const previousBaseline = baselineRef.current;
+
+    if (!previousBaseline || previousBaseline.identity !== nextBaseline.identity) {
+      setBio(nextBaseline.bio);
+      setTitleHtml(nextBaseline.titleHtml);
+      setPower(nextBaseline.power);
+      setClassList(nextBaseline.classList);
+      setVideoList(nextBaseline.videoList);
+      setImageList(nextBaseline.imageList);
+      setAvailabilityData(nextBaseline.availabilityData);
+    } else {
+      setImageList((current) =>
+        reconcileProfileImages(
+          current,
+          previousBaseline.imageList,
+          nextBaseline.imageList,
+        ),
+      );
+    }
+
+    baselineRef.current = nextBaseline;
+    setBaseline(nextBaseline);
   }, [profile]);
+
+  const acceptServerProfile = useCallback((serverProfile: MemberProfile) => {
+    const nextBaseline = buildProfileDraftBaseline(serverProfile);
+    baselineRef.current = nextBaseline;
+    setBaseline(nextBaseline);
+  }, []);
 
   const classOptions = useMemo(() => CLASS_NAMES.map((className) => ({ value: className, label: className })), []);
 
@@ -161,24 +236,28 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     });
   };
 
+  const removeClass = (index: number) => {
+    setClassList((current) => current.filter((_, valueIndex) => valueIndex !== index));
+  };
+
   const isDirty = useMemo(() => {
-    if (!profile) return false;
+    if (!baseline) return false;
     return (
-      bio !== (profile.bio ?? "") ||
-      titleHtml !== (profile.title_html ?? "") ||
-      power !== profile.power ||
-      JSON.stringify(classList) !== JSON.stringify(profile.classes) ||
-      JSON.stringify(videoList) !== JSON.stringify(profile.video_urls) ||
-      JSON.stringify(imageList) !== JSON.stringify(profile.images) ||
-      JSON.stringify(availabilityData ?? null) !== JSON.stringify(profile.availability ?? null)
+      bio !== baseline.bio ||
+      titleHtml !== baseline.titleHtml ||
+      power !== baseline.power ||
+      JSON.stringify(classList) !== JSON.stringify(baseline.classList) ||
+      JSON.stringify(videoList) !== JSON.stringify(baseline.videoList) ||
+      JSON.stringify(imageList) !== JSON.stringify(baseline.imageList) ||
+      JSON.stringify(availabilityData ?? null) !== JSON.stringify(baseline.availabilityData)
     );
   }, [
     availabilityData,
+    baseline,
     bio,
     classList,
     imageList,
     power,
-    profile,
     titleHtml,
     videoList,
   ]);
@@ -215,7 +294,9 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     classOptions,
     activeNowEstimate,
     isDirty,
+    acceptServerProfile,
     addClass,
+    removeClass,
     addVideoUrl,
     handleClassDragEnd,
   };

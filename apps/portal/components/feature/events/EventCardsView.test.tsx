@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { EventCardsView } from "./EventCardsView";
+import { getParticipantActionDisabledReasonKey } from "./participant-action";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -112,9 +113,6 @@ function renderCardsView(
         eventFlags={new Map()}
         eventMembersMap={new Map([[event.id, members]])}
         allUsers={members}
-        createPending={false}
-        updatePending={false}
-        archivePending={false}
         joinPending={false}
         leavePending={false}
         onResetFilters={() => {}}
@@ -138,6 +136,49 @@ function renderCardsView(
 }
 
 describe("EventCardsView", () => {
+  it("prioritizes actionable signup-disabled reasons", () => {
+    const base = {
+      isArchived: false,
+      hasEnded: false,
+      signupLocked: false,
+      isFull: false,
+      isJoined: false,
+      pending: false,
+    };
+
+    expect(getParticipantActionDisabledReasonKey({
+      ...base,
+      isArchived: true,
+      hasEnded: true,
+      signupLocked: true,
+      isFull: true,
+      pending: true,
+    })).toBe("button.disabled.archived");
+    expect(getParticipantActionDisabledReasonKey({
+      ...base,
+      hasEnded: true,
+      signupLocked: true,
+      isFull: true,
+      pending: true,
+    })).toBe("button.disabled.ended");
+    expect(getParticipantActionDisabledReasonKey({
+      ...base,
+      signupLocked: true,
+      isFull: true,
+      pending: true,
+    })).toBe("button.disabled.locked");
+    expect(getParticipantActionDisabledReasonKey({
+      ...base,
+      isFull: true,
+      pending: true,
+    })).toBe("button.disabled.full");
+    expect(getParticipantActionDisabledReasonKey({
+      ...base,
+      pending: true,
+    })).toBe("button.disabled.pending");
+    expect(getParticipantActionDisabledReasonKey(base)).toBeNull();
+  });
+
   it("shows player count as a capacity pill in the card header", () => {
     renderCardsView();
 
@@ -201,6 +242,7 @@ describe("EventCardsView", () => {
     const leaveButton = screen.getByRole("button", { name: /button\.leave/i });
 
     expect(leaveButton).toBeDisabled();
+    expect(leaveButton.parentElement).toHaveAttribute("data-disabled-tooltip-target");
     expect(onLeaveEvent).not.toHaveBeenCalled();
   });
 

@@ -59,7 +59,8 @@ vi.mock("../../components/shared/ImageGridEditor", () => ({
 }));
 
 vi.mock("@guild/shared/utils/media", () => ({
-  convertImageToWebP: vi.fn(async (file: File) => file),
+  convertFileForUpload: vi.fn(async (file: File) => file),
+  convertFilesForUpload: vi.fn(async (files: readonly File[]) => [...files]),
   DEFAULT_IMAGE_WEBP_QUALITY: 0.82,
 }));
 

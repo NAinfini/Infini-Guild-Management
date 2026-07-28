@@ -1,4 +1,4 @@
-﻿import type { z } from "zod";
+import type { z } from "zod";
 import type { PushEntityType, PushHint } from "../constants/push-hints";
 import type { userSchema, memberProfileSchema } from "../schemas/user";
 import type { eventSchema, eventParticipantSchema, eventPollSchema, eventRaffleWinnerSchema, recurringTemplateSchema } from "../schemas/event";

@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { ConfirmDialogProvider } from "@portal/components/shared/ConfirmDialog";
 import { EventDetailModal } from "./EventDetailModal";
 
 vi.mock("react-i18next", () => ({
@@ -136,6 +137,44 @@ describe("EventDetailModal", () => {
     expect(screen.queryByText("Should not linger after close")).not.toBeInTheDocument();
   });
 
+  it("explains why the signup action is disabled", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <EventDetailModal
+          event={{
+            id: "event-archived",
+            title: "Archived event",
+            type: "social",
+            start_at: "2099-03-12T16:00:00.000Z",
+            end_at: "2099-03-12T18:00:00.000Z",
+            description: null,
+            capacity: 10,
+            signup_locked: true,
+            archived_at: "2026-03-12T18:00:00.000Z",
+            attachments: [],
+          } as never}
+          members={[]}
+          allUsers={[]}
+          canManage={false}
+          currentUserId="user-1"
+          onClose={() => {}}
+          onJoin={() => {}}
+          onAddParticipant={() => {}}
+          onRemoveParticipant={() => {}}
+        />
+      </MantineProvider>,
+    );
+
+    const joinButton = screen.getByRole("button", { name: "button.join" });
+    expect(joinButton).toBeDisabled();
+    expect(joinButton.parentElement).toHaveAttribute("data-disabled-tooltip-target");
+
+    await user.hover(joinButton.parentElement!);
+    expect(await screen.findByText("button.disabled.archived")).toBeInTheDocument();
+  });
+
   it("lets users vote in poll detail and still shows voter breakdown", async () => {
     const user = userEvent.setup();
     const onVotePoll = vi.fn();
@@ -238,5 +277,62 @@ describe("EventDetailModal", () => {
     expect(screen.getByText("Dungeon")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /poll\.vote/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /poll\.update/i })).not.toBeInTheDocument();
+  });
+
+  it("confirms member removal inside the existing event modal", async () => {
+    const user = userEvent.setup();
+    const onRemoveParticipant = vi.fn();
+
+    render(
+      <MantineProvider>
+        <ConfirmDialogProvider>
+          <EventDetailModal
+            event={{
+              id: "event-1",
+              title: "Guild social",
+              type: "social",
+              start_at: "2099-06-12T16:00:00.000Z",
+              end_at: "2099-06-12T18:00:00.000Z",
+              description: null,
+              capacity: 10,
+              attachments: [],
+            } as never}
+            members={[
+              {
+                user: { id: "user-1", username: "member-1", is_active: true, deleted_at: null },
+                profile: { classes: ["mage"], power: 1000 },
+              },
+            ] as never}
+            allUsers={[]}
+            canManage
+            onClose={() => {}}
+            onAddParticipant={() => {}}
+            onRemoveParticipant={onRemoveParticipant}
+          />
+        </ConfirmDialogProvider>
+      </MantineProvider>,
+    );
+
+    const originDialog = screen.getByRole("dialog", { name: "Guild social" });
+    await user.click(within(originDialog).getByRole("button", { name: "detail.removeMember" }));
+
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    const confirmation = within(originDialog).getByRole("alertdialog", {
+      name: "detail.confirm.removeMember.title",
+    });
+    expect(onRemoveParticipant).not.toHaveBeenCalled();
+
+    await user.click(within(confirmation).getByRole("button", { name: "button.cancel" }));
+    expect(onRemoveParticipant).not.toHaveBeenCalled();
+
+    await user.click(within(originDialog).getByRole("button", { name: "detail.removeMember" }));
+    const acceptedConfirmation = within(originDialog).getByRole("alertdialog", {
+      name: "detail.confirm.removeMember.title",
+    });
+    await user.click(within(acceptedConfirmation).getByRole("button", {
+      name: "detail.removeMember",
+    }));
+
+    expect(onRemoveParticipant).toHaveBeenCalledWith("event-1", "user-1");
   });
 });

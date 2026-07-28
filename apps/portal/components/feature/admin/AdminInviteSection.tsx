@@ -2,43 +2,79 @@ import type { InviteLink } from "@guild/shared";
 import { Alert, Badge, Group, HoverCard, Loader, Modal, NumberInput, SegmentedControl, Skeleton, Stack, Text, TextInput, ThemeIcon } from "@mantine/core";
 import { PortalCard } from "../../shared/PortalCard";
 import { AlertTriangleIcon, BanIcon, CircleCheckIcon, CircleXIcon, CopyIcon, InfoCircleIcon, PlusIcon, TrashIcon } from "@portal/components/icons";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import {
   InfiniTable,
   getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
   useReactTable,
 } from "@portal/components/shared/InfiniTable";
-import type { ColumnDef, PaginationState, SortingState } from "@portal/components/shared/InfiniTable";
-import { useEffect, useMemo, useState } from "react";
+import type { ColumnDef } from "@portal/components/shared/InfiniTable";
+import { useCallback, useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
-import { modals } from "@mantine/modals";
 import { useEffectivePermissions } from "../../../hooks/useEffectivePermissions";
 import { formatDateTime } from "../../../utils/admin";
 import { copyPlainText } from "../../../utils/copy";
-import { TablePagination } from "../../shared/TablePagination";
+import { resolveInviteStatus, type InviteStatus } from "../../../utils/invite-status";
 import type { InviteLinkStatsSummary } from "../../../services/AdminService";
 
 type InviteRow = InviteLink;
 type InviteStats = InviteLinkStatsSummary;
 
+const INVITE_STATUS_PRESENTATION = {
+  revoked: { color: "red", Icon: AlertTriangleIcon },
+  fullyUsed: { color: "orange", Icon: CircleXIcon },
+  expired: { color: "orange", Icon: InfoCircleIcon },
+  active: { color: "green", Icon: CircleCheckIcon },
+} as const satisfies Record<InviteStatus, {
+  color: string;
+  Icon: typeof AlertTriangleIcon;
+}>;
+
+function InviteStatusBadge({ invite }: { invite: InviteRow }) {
+  const { t } = useTranslation("admin");
+  const status = resolveInviteStatus(invite);
+  const { color, Icon } = INVITE_STATUS_PRESENTATION[status];
+  const label = t(`invite.status.${status}`);
+
+  return (
+    <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+      <HoverCard.Target>
+        <Badge data-animate-icon-trigger color={color} variant="light">{label}</Badge>
+      </HoverCard.Target>
+      <HoverCard.Dropdown p="sm" className="admin-invite-status-popover">
+        <Group gap={10} wrap="nowrap" align="flex-start">
+          <ThemeIcon variant="light" color={color} size="lg" radius="md" className="admin-invite-status-icon">
+            <Icon size={16} />
+          </ThemeIcon>
+          <div className="admin-invite-status-copy">
+            <Text size="sm" fw={700} lh={1.3} mb={4}>{label}</Text>
+            <Text size="xs" c="dimmed" lh={1.5}>{t(`invite.tooltip.${status}`)}</Text>
+          </div>
+        </Group>
+      </HoverCard.Dropdown>
+    </HoverCard>
+  );
+}
+
 type AdminInviteSectionProps = {
   inviteVisibility: "active" | "expired" | "revoked";
   onInviteVisibilityChange: (value: "active" | "expired" | "revoked") => void;
-  inviteMaxUses: number;
-  onInviteMaxUsesChange: (value: number) => void;
-  inviteExpiresAt: string;
-  onInviteExpiresAtChange: (value: string) => void;
-  onCreateInvite: () => void;
+  onCreateInvite: (
+    input: { maxUses: number; expiresAt: string },
+    onSuccess: () => void,
+  ) => void;
   createInvitePending: boolean;
-  createInviteSuccess: boolean;
   inviteStatsLoading: boolean;
   inviteStats: InviteStats | null;
   inviteLinksLoading: boolean;
   inviteLinksError: boolean;
   inviteRows: InviteRow[];
+  inviteTotal: number;
+  hasMoreInvites: boolean;
+  loadingMoreInvites: boolean;
+  onLoadMoreInvites: () => void;
   inviteSearch: string;
   onInviteSearchChange: (value: string) => void;
   isInviteInactive: (row: InviteRow) => boolean;
@@ -49,18 +85,17 @@ type AdminInviteSectionProps = {
 export function AdminInviteSection({
   inviteVisibility,
   onInviteVisibilityChange,
-  inviteMaxUses,
-  onInviteMaxUsesChange,
-  inviteExpiresAt,
-  onInviteExpiresAtChange,
   onCreateInvite,
   createInvitePending,
-  createInviteSuccess,
   inviteStatsLoading,
   inviteStats,
   inviteLinksLoading,
   inviteLinksError,
   inviteRows,
+  inviteTotal,
+  hasMoreInvites,
+  loadingMoreInvites,
+  onLoadMoreInvites,
   inviteSearch,
   onInviteSearchChange,
   isInviteInactive,
@@ -69,66 +104,68 @@ export function AdminInviteSection({
 }: AdminInviteSectionProps) {
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
+  const confirm = useConfirmDialog();
   const { canManage: canManagePermission } = useEffectivePermissions();
   const isAdmin = canManagePermission(["admin.invite.manage"]);
   const loadErrorMessage = tc("loadError");
   const [createModalOpen, createModalHandlers] = useDisclosure(false);
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
+  const [inviteMaxUses, setInviteMaxUses] = useState(10);
+  const [inviteExpiresAt, setInviteExpiresAt] = useState("");
 
-  useEffect(() => {
-    if (createInviteSuccess && createModalOpen) {
-      createModalHandlers.close();
-    }
-  }, [createInviteSuccess, createModalOpen, createModalHandlers]);
+  const resetCreateForm = useCallback(() => {
+    setInviteMaxUses(10);
+    setInviteExpiresAt("");
+  }, []);
+  const handleOpenCreateModal = useCallback(() => {
+    resetCreateForm();
+    createModalHandlers.open();
+  }, [createModalHandlers, resetCreateForm]);
+  const handleCloseCreateModal = useCallback(() => {
+    createModalHandlers.close();
+    resetCreateForm();
+  }, [createModalHandlers, resetCreateForm]);
+  const handleCreateInvite = useCallback(() => {
+    onCreateInvite(
+      { maxUses: inviteMaxUses, expiresAt: inviteExpiresAt },
+      handleCloseCreateModal,
+    );
+  }, [handleCloseCreateModal, inviteExpiresAt, inviteMaxUses, onCreateInvite]);
 
-  const handleCopyInviteLink = (row: InviteRow) => {
+  const handleCopyInviteLink = useCallback((row: InviteRow) => {
     void copyPlainText(`${window.location.origin}/register/${row.code}`);
-  };
+  }, []);
 
-  const handleRevokeInvite = (row: InviteRow) => {
+  const handleRevokeInvite = useCallback((row: InviteRow) => {
     void (async () => {
-      const confirmed = await new Promise<boolean>((resolve) => {
-        modals.openConfirmModal({
-          title: t("confirm.revokeInvite.title"),
-          children: t("confirm.revokeInvite.description", { code: row.code }),
-          labels: { confirm: t("invite.revoke"), cancel: t("common:action.cancel") },
-          confirmProps: { color: "red" },
-          onConfirm: () => resolve(true),
-          onCancel: () => resolve(false),
-          closeOnConfirm: true,
-          closeOnCancel: true,
-          centered: true,
-        });
+      const confirmed = await confirm({
+        title: t("confirm.revokeInvite.title"),
+        description: t("confirm.revokeInvite.description", { code: row.code }),
+        confirmLabel: t("invite.revoke"),
+        cancelLabel: t("common:action.cancel"),
+        intent: "danger",
       });
       if (!confirmed) {
         return;
       }
       onRevokeInvite(row.id);
     })();
-  };
+  }, [confirm, onRevokeInvite, t]);
 
-  const handleDeleteInvite = (row: InviteRow) => {
+  const handleDeleteInvite = useCallback((row: InviteRow) => {
     void (async () => {
-      const confirmed = await new Promise<boolean>((resolve) => {
-        modals.openConfirmModal({
-          title: t("confirm.deleteInvite.title"),
-          children: t("confirm.deleteInvite.description", { code: row.code }),
-          labels: { confirm: t("common:action.delete"), cancel: t("common:action.cancel") },
-          confirmProps: { color: "red" },
-          onConfirm: () => resolve(true),
-          onCancel: () => resolve(false),
-          closeOnConfirm: true,
-          closeOnCancel: true,
-          centered: true,
-        });
+      const confirmed = await confirm({
+        title: t("confirm.deleteInvite.title"),
+        description: t("confirm.deleteInvite.description", { code: row.code }),
+        confirmLabel: t("common:action.delete"),
+        cancelLabel: t("common:action.cancel"),
+        intent: "danger",
       });
       if (!confirmed) {
         return;
       }
       onDeleteInvite(row.id);
     })();
-  };
+  }, [confirm, onDeleteInvite, t]);
 
   const columns = useMemo<ColumnDef<InviteRow, unknown>[]>(() => {
     const cols: ColumnDef<InviteRow, unknown>[] = [];
@@ -148,82 +185,12 @@ export function AdminInviteSection({
       cell: ({ row }) => `${row.original.used_count}/${row.original.max_uses}`,
     });
 
-    if (!isAdmin) {
-      cols.push({
-        header: t("invite.table.status"),
-        id: "status",
-        enableSorting: false,
-        cell: ({ row }) => {
-          const r = row.original;
-          const expired = Boolean(r.expires_at && Date.parse(r.expires_at) <= Date.now());
-          const fullyUsed = r.used_count >= r.max_uses;
-          if (r.revoked_at) return (
-            <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-              <HoverCard.Target><Badge data-animate-icon-trigger color="red" variant="light">{t("invite.status.revoked")}</Badge></HoverCard.Target>
-              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                <Group gap={10} wrap="nowrap" align="flex-start">
-                  <ThemeIcon variant="light" color="red" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                    <AlertTriangleIcon size={16} />
-                  </ThemeIcon>
-                  <div style={{ minWidth: 0 }}>
-                    <Text size="sm" fw={700} lh={1.3} mb={4}>{t("invite.status.revoked")}</Text>
-                    <Text size="xs" c="dimmed" lh={1.5}>{t("invite.tooltip.revoked")}</Text>
-                  </div>
-                </Group>
-              </HoverCard.Dropdown>
-            </HoverCard>
-          );
-          if (fullyUsed) return (
-            <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-              <HoverCard.Target><Badge data-animate-icon-trigger color="yellow" variant="light">{t("invite.status.fullyUsed")}</Badge></HoverCard.Target>
-              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                <Group gap={10} wrap="nowrap" align="flex-start">
-                  <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                    <CircleXIcon size={16} />
-                  </ThemeIcon>
-                  <div style={{ minWidth: 0 }}>
-                    <Text size="sm" fw={700} lh={1.3} mb={4}>{t("invite.status.fullyUsed")}</Text>
-                    <Text size="xs" c="dimmed" lh={1.5}>{t("invite.tooltip.fullyUsed")}</Text>
-                  </div>
-                </Group>
-              </HoverCard.Dropdown>
-            </HoverCard>
-          );
-          if (expired) return (
-            <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-              <HoverCard.Target><Badge data-animate-icon-trigger color="yellow" variant="light">{t("invite.status.expired")}</Badge></HoverCard.Target>
-              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                <Group gap={10} wrap="nowrap" align="flex-start">
-                  <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                    <InfoCircleIcon size={16} />
-                  </ThemeIcon>
-                  <div style={{ minWidth: 0 }}>
-                    <Text size="sm" fw={700} lh={1.3} mb={4}>{t("invite.status.expired")}</Text>
-                    <Text size="xs" c="dimmed" lh={1.5}>{t("invite.tooltip.expired")}</Text>
-                  </div>
-                </Group>
-              </HoverCard.Dropdown>
-            </HoverCard>
-          );
-          return (
-            <HoverCard width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-              <HoverCard.Target><Badge data-animate-icon-trigger color="green" variant="light">{t("invite.status.active")}</Badge></HoverCard.Target>
-              <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                <Group gap={10} wrap="nowrap" align="flex-start">
-                  <ThemeIcon variant="light" color="green" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                    <CircleCheckIcon size={16} />
-                  </ThemeIcon>
-                  <div style={{ minWidth: 0 }}>
-                    <Text size="sm" fw={700} lh={1.3} mb={4}>{t("invite.status.active")}</Text>
-                    <Text size="xs" c="dimmed" lh={1.5}>{t("invite.tooltip.active")}</Text>
-                  </div>
-                </Group>
-              </HoverCard.Dropdown>
-            </HoverCard>
-          );
-        },
-      });
-    }
+    cols.push({
+      header: t("invite.table.status"),
+      id: "status",
+      enableSorting: false,
+      cell: ({ row }) => <InviteStatusBadge invite={row.original} />,
+    });
 
     cols.push(
       {
@@ -247,12 +214,29 @@ export function AdminInviteSection({
         enableSorting: false,
         cell: ({ row }) => {
           const inactive = isInviteInactive(row.original);
+          const inactiveReason = t(`invite.tooltip.${resolveInviteStatus(row.original)}`);
           return (
             <Group gap={8}>
-              <DepthButton size="sm" type="info" before={<CopyIcon size={16} />} onClick={() => handleCopyInviteLink(row.original)} disabled={inactive}>
+              <DepthButton
+                size="sm"
+                type="info"
+                before={<CopyIcon size={16} />}
+                onClick={() => handleCopyInviteLink(row.original)}
+                disabled={inactive}
+                tooltip={inactive ? { label: inactiveReason, withArrow: true } : undefined}
+              >
                 {t("invite.copy")}
               </DepthButton>
-              <DepthButton size="sm" type="warning" iconOnly before={<BanIcon size={16} />} disabled={inactive} onClick={() => handleRevokeInvite(row.original)} tooltip={{ label: t("invite.revoke"), withArrow: true }} />
+              <DepthButton
+                size="sm"
+                type="warning"
+                iconOnly
+                before={<BanIcon size={16} />}
+                disabled={inactive}
+                onClick={() => handleRevokeInvite(row.original)}
+                aria-label={t("invite.revoke")}
+                tooltip={{ label: inactive ? inactiveReason : t("invite.revoke"), withArrow: true }}
+              />
               <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={16} />} onClick={() => handleDeleteInvite(row.original)} tooltip={{ label: t("invite.delete"), withArrow: true }} />
             </Group>
           );
@@ -262,18 +246,20 @@ export function AdminInviteSection({
 
     return cols;
    
-  }, [isAdmin, t, isInviteInactive]);
+  }, [
+    handleCopyInviteLink,
+    handleDeleteInvite,
+    handleRevokeInvite,
+    isAdmin,
+    isInviteInactive,
+    t,
+  ]);
 
   const table = useReactTable({
     data: inviteRows,
     columns,
-    state: { sorting, pagination },
-    onSortingChange: setSorting,
-    onPaginationChange: setPagination,
-    autoResetPageIndex: false,
+    enableSorting: false,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     getRowId: (row) => row.id,
   });
 
@@ -281,7 +267,7 @@ export function AdminInviteSection({
     <Stack gap={12}>
       {/* Toolbar card: segment + stats + search + create button */}
       <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+        <div className="admin-invite-card-content">
           <Group wrap="wrap" gap={8} justify="space-between">
             <Group wrap="wrap" gap={8}>
               <SegmentedControl
@@ -296,7 +282,7 @@ export function AdminInviteSection({
               {inviteStatsLoading ? <Loader size="xs" /> : null}
               {inviteStats ? (
                 <Group wrap="wrap" gap={6}>
-                  <Badge color="blue" variant="light">
+                  <Badge color="gray" variant="light">
                     {t("invite.stats.total")}: {inviteStats.total}
                   </Badge>
                   <Badge color="green" variant="light">
@@ -305,7 +291,7 @@ export function AdminInviteSection({
                   <Badge color="red" variant="light">
                     {t("invite.stats.revoked")}: {inviteStats.revoked}
                   </Badge>
-                  <Badge color="yellow" variant="light">
+                  <Badge color="orange" variant="light">
                     {t("invite.stats.expired")}: {inviteStats.expired}
                   </Badge>
                 </Group>
@@ -313,13 +299,13 @@ export function AdminInviteSection({
             </Group>
             <Group wrap="wrap" gap={8}>
               <TextInput
-                placeholder={t("invite.search")}
+                placeholder={t(isAdmin ? "invite.search" : "invite.searchDateOnly")}
                 value={inviteSearch}
                 onChange={(event) => onInviteSearchChange(event.currentTarget.value)}
                 style={{ width: 220 }}
               />
               {isAdmin ? (
-                <DepthButton size="sm" type="primary" before={<PlusIcon size={16} />} onClick={createModalHandlers.open}>
+                <DepthButton size="sm" type="primary" before={<PlusIcon size={16} />} onClick={handleOpenCreateModal}>
                   {t("invite.create")}
                 </DepthButton>
               ) : null}
@@ -330,12 +316,30 @@ export function AdminInviteSection({
 
       {/* Table */}
       {inviteLinksLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {inviteLinksError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
+      {inviteLinksError ? <Alert color="red" title={loadErrorMessage} /> : null}
       {!inviteLinksLoading && !inviteLinksError ? (
         <PortalCard interactive={false}>
-          <div style={{ padding: "1.2rem", overflowX: "auto" }}>
+          <div className="admin-invite-card-content admin-invite-table-content">
             <InfiniTable table={table} />
-            <TablePagination table={table} />
+            <Group justify="space-between" align="center" mt="md">
+              <Text size="sm" c="dimmed">
+                {t("invite.loadedCount", {
+                  loaded: inviteRows.length,
+                  total: inviteTotal,
+                })}
+              </Text>
+              {hasMoreInvites ? (
+                <DepthButton
+                  size="sm"
+                  type="secondary"
+                  loading={loadingMoreInvites}
+                  disabled={loadingMoreInvites}
+                  onClick={onLoadMoreInvites}
+                >
+                  {t("invite.loadMore")}
+                </DepthButton>
+              ) : null}
+            </Group>
           </div>
         </PortalCard>
       ) : null}
@@ -343,7 +347,7 @@ export function AdminInviteSection({
       {/* Create Invite Modal */}
       <Modal
         opened={createModalOpen}
-        onClose={createModalHandlers.close}
+        onClose={handleCloseCreateModal}
         title={t("invite.createTitle")}
         centered
       >
@@ -353,7 +357,7 @@ export function AdminInviteSection({
             <NumberInput
               min={1}
               value={inviteMaxUses}
-              onChange={(value) => onInviteMaxUsesChange(typeof value === "number" ? value : 1)}
+              onChange={(value) => setInviteMaxUses(typeof value === "number" ? value : 1)}
               aria-label={t("invite.aria.maxUses")}
               style={{ flex: 1 }}
             />
@@ -362,8 +366,8 @@ export function AdminInviteSection({
             <Text size="sm" c="dimmed">{t("invite.expiresAt")}</Text>
             <TextInput
               type="datetime-local"
-              value={inviteExpiresAt || undefined}
-              onChange={(event) => onInviteExpiresAtChange(event.currentTarget.value)}
+              value={inviteExpiresAt}
+              onChange={(event) => setInviteExpiresAt(event.currentTarget.value)}
               aria-label={t("invite.aria.expiresAt")}
             />
           </Stack>
@@ -372,9 +376,7 @@ export function AdminInviteSection({
             before={<PlusIcon size={16} />}
             loading={createInvitePending}
             disabled={createInvitePending}
-            onClick={() => {
-              onCreateInvite();
-            }}
+            onClick={handleCreateInvite}
             style={{ width: "100%" }}
           >
             {t("invite.create")}

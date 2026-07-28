@@ -1,10 +1,16 @@
 import { type Announcement, type PaginatedResponse } from "@guild/shared";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/tiptap-meta";
-import { notifications } from "@mantine/notifications";
-import { modals } from "@mantine/modals";
-import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { format, isValid, parseISO } from "date-fns";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import { useTranslation } from "react-i18next";
@@ -15,6 +21,7 @@ import {
   archiveAnnouncement,
   createAnnouncement,
   deleteAnnouncement,
+  stageAnnouncementImages,
   type UpdateAnnouncementPayload,
   updateAnnouncement,
   uploadAnnouncementImages,
@@ -24,6 +31,7 @@ import {
 import { queryKeys } from "../api/query-keys";
 import { useEffectivePermissions } from "./useEffectivePermissions";
 import { toIsoOrUndefined } from "../utils/iso-dates";
+import { notifySuccess } from "../utils/notifications";
 
 function buildAnnouncementImageUrl(key: string): string {
   if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:")) return key;
@@ -32,9 +40,63 @@ function buildAnnouncementImageUrl(key: string): string {
   return new URL(path, window.location.origin).toString();
 }
 
-const message = {
-  success: (text: string) => notifications.show({ color: "green", message: text, autoClose: 3000 }),
+type AnnouncementSelection =
+  | { kind: "auto" }
+  | { kind: "none" }
+  | { kind: "selected"; id: string };
+
+type AnnouncementFinishMode = "none" | "draft" | "archived" | "scheduled";
+
+const ANNOUNCEMENT_STATUS_BY_FINISH_MODE = {
+  none: "published",
+  draft: "draft",
+  scheduled: "scheduled",
+} satisfies Record<
+  Exclude<AnnouncementFinishMode, "archived">,
+  Announcement["status"]
+>;
+
+type AnnouncementRouteSearch = {
+  announcementId?: string;
+  selection?: "none";
 };
+
+type AnnouncementListCache = InfiniteData<PaginatedResponse<Announcement>>;
+
+function selectionFromRoute(search: AnnouncementRouteSearch): AnnouncementSelection {
+  if (search.announcementId) return { kind: "selected", id: search.announcementId };
+  if (search.selection === "none") return { kind: "none" };
+  return { kind: "auto" };
+}
+
+function sameSelection(left: AnnouncementSelection, right: AnnouncementSelection): boolean {
+  return left.kind === right.kind
+    && (left.kind !== "selected" || (right.kind === "selected" && left.id === right.id));
+}
+
+function updateAnnouncementPages(
+  current: AnnouncementListCache | undefined,
+  update: (items: Announcement[]) => Announcement[],
+): AnnouncementListCache | undefined {
+  if (!current) return current;
+  return {
+    ...current,
+    pages: current.pages.map((page) => ({
+      ...page,
+      data: update(page.data),
+    })),
+  };
+}
+
+function flattenUniqueAnnouncements(data: AnnouncementListCache | undefined): Announcement[] {
+  const byId = new Map<string, Announcement>();
+  for (const page of data?.pages ?? []) {
+    for (const announcement of page.data) {
+      if (!byId.has(announcement.id)) byId.set(announcement.id, announcement);
+    }
+  }
+  return [...byId.values()];
+}
 
 function toDateTimePickerValue(iso: string | null): string {
   if (!iso) return "";
@@ -59,7 +121,10 @@ function readAnnouncementsLastSeenAt(): string | null {
 
 export function useAnnouncementsController() {
   const { t } = useTranslation("announcements");
+  const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const routeSearch = useSearch({ strict: false }) as AnnouncementRouteSearch;
   const isExternalView = useExternalView();
   const { showError } = useAppError();
 
@@ -67,15 +132,16 @@ export function useAnnouncementsController() {
 
   const isModerator = canManagePermission(["announcements.create", "announcements.edit", "announcements.archive", "announcements.delete"]);
   const canEdit = isModerator && !isExternalView;
+  const canCreate = canManagePermission(["announcements.create"]) && !isExternalView;
 
   const [pinnedFilter, setPinnedFilter] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [skipAutoSelectOnce, setSkipAutoSelectOnce] = useState(false);
+  const [selection, setSelection] = useState<AnnouncementSelection>(() => selectionFromRoute(routeSearch));
+  const selectedId = selection.kind === "selected" ? selection.id : null;
   const [isCreating, isCreatingHandlers] = useDisclosure(false);
-  const [draftAnnouncementId, setDraftAnnouncementId] = useState<string | null>(null);
+  const [imageStagingToken, setImageStagingToken] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [bodyJson, setBodyJson] = useState(TIPTAP_DEFAULT_JSON);
   const [pinned, setPinned] = useState(false);
@@ -85,24 +151,38 @@ export function useAnnouncementsController() {
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [announcementsLastSeenAt, setAnnouncementsLastSeenAt] = useState<string | null>(null);
 
-  const [listPage, setListPage] = useState(1);
-  const accumulatedAnnouncementsRef = useRef<Announcement[]>([]);
-  const [accumulatedAnnouncements, setAccumulatedAnnouncements] = useState<Announcement[]>([]);
-  const [listTotal, setListTotal] = useState(0);
+  const setAnnouncementSelection = useCallback((
+    next: AnnouncementSelection,
+    options?: { replace?: boolean },
+  ) => {
+    setSelection(next);
+    void navigate({
+      to: "/announcements",
+      search: (previous) => ({
+        ...previous,
+        announcementId: next.kind === "selected" ? next.id : undefined,
+        selection: next.kind === "none" ? "none" as const : undefined,
+      }),
+      replace: options?.replace,
+      viewTransition: false,
+    });
+  }, [navigate]);
 
-  const listQuery = useQuery({
-    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch, listPage),
-    queryFn: () =>
+  const listQuery = useInfiniteQuery({
+    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch),
+    queryFn: ({ pageParam }) =>
       fetchAnnouncements({
-        page: listPage,
+        page: pageParam,
         limit: 50,
         status: statusFilter,
         pinned: pinnedFilter ? true : undefined,
         search: debouncedSearch || undefined,
         archived: statusFilter === "archived",
       }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page < lastPage.total_pages ? lastPage.page + 1 : undefined,
     staleTime: 10 * 60_000,
-    placeholderData: keepPreviousData,
   });
 
   const detailQuery = useQuery({
@@ -110,17 +190,21 @@ export function useAnnouncementsController() {
     enabled: Boolean(selectedId),
     queryFn: () => fetchAnnouncement(selectedId as string),
     staleTime: 10 * 60_000,
-    placeholderData: keepPreviousData,
   });
+
+  useEffect(() => {
+    const next = selectionFromRoute(routeSearch);
+    setSelection((current) => sameSelection(current, next) ? current : next);
+  }, [routeSearch.announcementId, routeSearch.selection]);
 
   const createMutation = useMutation({
     mutationFn: createAnnouncement,
     onSuccess: async (data) => {
-      message.success(t("message.created"));
+      notifySuccess(t("message.created"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
       isCreatingHandlers.close();
-      setSkipAutoSelectOnce(false);
-      setSelectedId(data.id);
+      setImageStagingToken(null);
+      setAnnouncementSelection({ kind: "selected", id: data.id });
     },
     onError: (error) => {
       showError(error, t("message.createFailed"));
@@ -133,22 +217,19 @@ export function useAnnouncementsController() {
       await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
 
       const previousLists = queryClient
-        .getQueriesData<PaginatedResponse<Announcement>>({ queryKey: queryKeys.announcements.all })
-        .filter(([key]) => !(Array.isArray(key) && key[1] === "detail"));
+        .getQueriesData<AnnouncementListCache>({ queryKey: queryKeys.announcements.all })
+        .filter(([key]) => Array.isArray(key) && key[1] === "list");
       const previousDetail = queryClient.getQueryData<Announcement>(queryKeys.announcements.detail(id));
       const nowIso = new Date().toISOString();
 
       for (const [key] of previousLists) {
-        queryClient.setQueryData<PaginatedResponse<Announcement>>(key, (current) => {
-          if (!current) {
-            return current;
-          }
-          const shouldRemove = payload.pinned === false && pinnedFilter;
-          return {
-            ...current,
-            data: shouldRemove
-              ? current.data.filter((item) => item.id !== id)
-              : current.data.map((item) =>
+        queryClient.setQueryData<AnnouncementListCache>(key, (current) => {
+          const shouldRemove = payload.pinned === false && Array.isArray(key) && key[2] === "pinned";
+          return updateAnnouncementPages(
+            current,
+            (items) => shouldRemove
+              ? items.filter((item) => item.id !== id)
+              : items.map((item) =>
                   item.id === id
                     ? {
                         ...item,
@@ -157,7 +238,7 @@ export function useAnnouncementsController() {
                       }
                     : item,
                 ),
-          };
+          );
         });
       }
 
@@ -175,7 +256,7 @@ export function useAnnouncementsController() {
       return { previousLists, previousDetail };
     },
     onSuccess: async () => {
-      message.success(t("message.saved"));
+      notifySuccess(t("message.saved"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
       if (selectedId) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.detail(selectedId) });
@@ -197,26 +278,20 @@ export function useAnnouncementsController() {
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
       const previousLists = queryClient
-        .getQueriesData<PaginatedResponse<Announcement>>({ queryKey: queryKeys.announcements.all })
-        .filter(([key]) => !(Array.isArray(key) && key[1] === "detail"));
+        .getQueriesData<AnnouncementListCache>({ queryKey: queryKeys.announcements.all })
+        .filter(([key]) => Array.isArray(key) && key[1] === "list");
 
       for (const [key] of previousLists) {
-        queryClient.setQueryData<PaginatedResponse<Announcement>>(key, (current) => {
-          if (!current) return current;
-          return {
-            ...current,
-            data: current.data.filter((item) => item.id !== id),
-          };
-        });
+        queryClient.setQueryData<AnnouncementListCache>(key, (current) =>
+          updateAnnouncementPages(current, (items) => items.filter((item) => item.id !== id)));
       }
 
       return { previousLists };
     },
     onSuccess: async () => {
-      message.success(t("message.archived"));
+      notifySuccess(t("message.archived"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
-      setSkipAutoSelectOnce(true);
-      setSelectedId(null);
+      setAnnouncementSelection({ kind: "none" }, { replace: true });
     },
     onError: (error, _variables, context) => {
       if (context) {
@@ -233,26 +308,20 @@ export function useAnnouncementsController() {
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
       const previousLists = queryClient
-        .getQueriesData<PaginatedResponse<Announcement>>({ queryKey: queryKeys.announcements.all })
-        .filter(([key]) => !(Array.isArray(key) && key[1] === "detail"));
+        .getQueriesData<AnnouncementListCache>({ queryKey: queryKeys.announcements.all })
+        .filter(([key]) => Array.isArray(key) && key[1] === "list");
 
       for (const [key] of previousLists) {
-        queryClient.setQueryData<PaginatedResponse<Announcement>>(key, (current) => {
-          if (!current) return current;
-          return {
-            ...current,
-            data: current.data.filter((item) => item.id !== id),
-          };
-        });
+        queryClient.setQueryData<AnnouncementListCache>(key, (current) =>
+          updateAnnouncementPages(current, (items) => items.filter((item) => item.id !== id)));
       }
 
       return { previousLists };
     },
     onSuccess: async () => {
-      message.success(t("message.deleted"));
+      notifySuccess(t("message.deleted"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
-      setSkipAutoSelectOnce(true);
-      setSelectedId(null);
+      setAnnouncementSelection({ kind: "none" }, { replace: true });
     },
     onError: (error, _variables, context) => {
       if (context) {
@@ -263,6 +332,11 @@ export function useAnnouncementsController() {
       showError(error, t("message.deleteFailed"));
     },
   });
+
+  const accumulatedAnnouncements = useMemo(
+    () => flattenUniqueAnnouncements(listQuery.data),
+    [listQuery.data],
+  );
 
   const rows = useMemo(() => {
     let raw = accumulatedAnnouncements;
@@ -285,7 +359,7 @@ export function useAnnouncementsController() {
     });
   }, [canEdit, accumulatedAnnouncements, pinnedFilter, statusFilter]);
 
-  const listHasMore = accumulatedAnnouncements.length < listTotal;
+  const listHasMore = listQuery.hasNextPage ?? false;
 
   const selected = detailQuery.data ?? null;
 
@@ -293,49 +367,13 @@ export function useAnnouncementsController() {
     setAnnouncementsLastSeenAt(readAnnouncementsLastSeenAt());
   }, []);
 
-  // Reset accumulated announcements when filter params change
   useEffect(() => {
-    accumulatedAnnouncementsRef.current = [];
-    setAccumulatedAnnouncements([]);
-    setListTotal(0);
-    setListPage(1);
-   
-  }, [pinnedFilter, statusFilter, debouncedSearch]);
-
-  // Accumulate announcements across pages
-  useEffect(() => {
-    if (!listQuery.data || listQuery.isFetching) return;
-    const newItems = listQuery.data.data;
-    if (listPage === 1) {
-      accumulatedAnnouncementsRef.current = newItems;
-    } else {
-      const existingIds = new Set(accumulatedAnnouncementsRef.current.map((item) => item.id));
-      const deduplicated = newItems.filter((item) => !existingIds.has(item.id));
-      accumulatedAnnouncementsRef.current = [...accumulatedAnnouncementsRef.current, ...deduplicated];
+    if (isCreating || selection.kind !== "auto") return;
+    const firstId = rows[0]?.id;
+    if (firstId) {
+      setAnnouncementSelection({ kind: "selected", id: firstId }, { replace: true });
     }
-    setAccumulatedAnnouncements([...accumulatedAnnouncementsRef.current]);
-    setListTotal(listQuery.data.total);
-  }, [listQuery.data, listQuery.isFetching, listPage]);
-
-  useEffect(() => {
-    if (isCreating) return;
-    if (selectedId && rows.length > 0 && !rows.some((r) => r.id === selectedId)) {
-      setSelectedId(rows[0]?.id ?? null);
-      setSkipAutoSelectOnce(false);
-      return;
-    }
-    if (selectedId && rows.length === 0) {
-      setSelectedId(null);
-      setSkipAutoSelectOnce(false);
-      return;
-    }
-    if (selectedId || skipAutoSelectOnce) {
-      return;
-    }
-    if (rows.length > 0) {
-      setSelectedId(rows[0]?.id ?? null);
-    }
-  }, [isCreating, rows, selectedId, skipAutoSelectOnce]);
+  }, [isCreating, rows, selection.kind, setAnnouncementSelection]);
 
   useEffect(() => {
     if (isCreating) {
@@ -379,39 +417,32 @@ export function useAnnouncementsController() {
   useBeforeUnloadPrompt(isDirty);
 
   const handleCreateByStatus = useCallback(() => {
+    if (!canCreate) return;
     isCreatingHandlers.open();
-    setDraftAnnouncementId(null);
-    setSkipAutoSelectOnce(false);
-    setSelectedId(null);
-  }, []);
+    setImageStagingToken(null);
+    setAnnouncementSelection({ kind: "none" });
+  }, [canCreate, isCreatingHandlers, setAnnouncementSelection]);
 
-  const handleSelectId = useCallback((id: string | null) => {
+  const handleSelectId = useCallback(async (id: string | null) => {
     if (isDirty) {
-      modals.openConfirmModal({
+      const confirmed = await confirm({
         title: t("confirm.discardUnsaved.title"),
-        children: t("confirm.discardUnsaved.description"),
-        centered: true,
-        confirmProps: { color: "red" },
-        labels: {
-          cancel: t("action.cancel"),
-          confirm: t("common:action.discard"),
-        },
-        onConfirm: () => {
-          if (id !== null) {
-            isCreatingHandlers.close();
-          }
-          setSkipAutoSelectOnce(false);
-          setSelectedId(id);
-        },
+        description: t("confirm.discardUnsaved.description"),
+        confirmLabel: t("common:action.discard"),
+        cancelLabel: t("action.cancel"),
+        intent: "danger",
       });
-      return;
+      if (!confirmed) {
+        return;
+      }
     }
     if (id !== null) {
       isCreatingHandlers.close();
     }
-    setSkipAutoSelectOnce(false);
-    setSelectedId(id);
-  }, [isDirty, isCreatingHandlers, t]);
+    setAnnouncementSelection(
+      id === null ? { kind: "none" } : { kind: "selected", id },
+    );
+  }, [confirm, isDirty, isCreatingHandlers, setAnnouncementSelection, t]);
 
   const resetFilters = useCallback(() => {
     setSearch("");
@@ -419,34 +450,11 @@ export function useAnnouncementsController() {
     setPinnedFilter(false);
   }, []);
 
-  const handleFinish = (mode: "none" | "draft" | "archived" | "scheduled") => {
+  const handleFinish = (mode: AnnouncementFinishMode) => {
     if (isCreating) {
       if (mode === "archived") return;
 
-      const statusMap: Record<string, Announcement["status"]> = {
-        none: "published",
-        draft: "draft",
-        scheduled: "scheduled",
-      };
-      const status = statusMap[mode] ?? "published";
-
-      if (draftAnnouncementId) {
-        updateMutation.mutate({
-          id: draftAnnouncementId,
-          payload: {
-            title,
-            body_json: bodyJson,
-            pinned,
-            status,
-            publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
-          },
-        });
-        isCreatingHandlers.close();
-        setSkipAutoSelectOnce(false);
-        setSelectedId(draftAnnouncementId);
-        setDraftAnnouncementId(null);
-        return;
-      }
+      const status = ANNOUNCEMENT_STATUS_BY_FINISH_MODE[mode];
 
       createMutation.mutate({
         title,
@@ -454,6 +462,7 @@ export function useAnnouncementsController() {
         pinned,
         status,
         publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
+        staging_token: imageStagingToken ?? undefined,
       });
       return;
     }
@@ -465,12 +474,7 @@ export function useAnnouncementsController() {
       return;
     }
 
-    const statusMap: Record<string, Announcement["status"]> = {
-      none: "published",
-      draft: "draft",
-      scheduled: "scheduled",
-    };
-    const status = statusMap[mode] ?? "published";
+    const status = ANNOUNCEMENT_STATUS_BY_FINISH_MODE[mode];
 
     updateMutation.mutate({
       id: selectedId,
@@ -487,15 +491,12 @@ export function useAnnouncementsController() {
 
   const handleCloseEditor = () => {
     if (isCreating) {
-      const orphanDraftId = draftAnnouncementId;
       isCreatingHandlers.close();
-      setDraftAnnouncementId(null);
-      if (orphanDraftId) {
-        archiveMutation.mutate(orphanDraftId);
-      }
-      if (rows.length > 0) {
-        setSelectedId(rows[0]?.id ?? null);
-      }
+      setImageStagingToken(null);
+      const firstId = rows[0]?.id;
+      setAnnouncementSelection(
+        firstId ? { kind: "selected", id: firstId } : { kind: "none" },
+      );
       return;
     }
     if (!selected) return;
@@ -514,25 +515,17 @@ export function useAnnouncementsController() {
   };
 
   const handleUploadAnnouncementImages = async (file: File) => {
-    let announcementId = selectedId;
-
-    if (isCreating || !announcementId) {
-      if (draftAnnouncementId) {
-        announcementId = draftAnnouncementId;
-      } else {
-        const created = await createAnnouncement({
-          title: title.trim() || t("draftTitle"),
-          body_json: bodyJson || TIPTAP_DEFAULT_JSON,
-          pinned: false,
-          status: "draft",
-        });
-        setDraftAnnouncementId(created.id);
-        announcementId = created.id;
-        await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+    if (isCreating || !selectedId) {
+      const staged = await stageAnnouncementImages(imageStagingToken, [file]);
+      setImageStagingToken(staged.staging_token);
+      const stagedKey = staged.keys[0];
+      if (!stagedKey) {
+        throw new Error("Image staging returned no key");
       }
+      return buildAnnouncementImageUrl(stagedKey);
     }
 
-    const uploaded = await uploadAnnouncementImages(announcementId, [file]);
+    const uploaded = await uploadAnnouncementImages(selectedId, [file]);
     const key = uploaded.keys[0];
     if (!key) {
       throw new Error("Image upload returned no key");
@@ -542,6 +535,7 @@ export function useAnnouncementsController() {
 
   return {
     canEdit,
+    canCreate,
     pinnedFilter,
     setPinnedFilter,
     statusFilter,
@@ -571,8 +565,8 @@ export function useAnnouncementsController() {
     rows,
     selected,
     listHasMore,
-    listLoadingMore: listQuery.isFetching && listPage > 1,
-    onLoadMoreList: () => setListPage((p) => p + 1),
+    listLoadingMore: listQuery.isFetchingNextPage,
+    onLoadMoreList: () => void listQuery.fetchNextPage(),
     isBusy: createMutation.isPending || updateMutation.isPending || archiveMutation.isPending || deleteMutation.isPending,
     savePending: updateMutation.isPending,
     deletePending: deleteMutation.isPending,

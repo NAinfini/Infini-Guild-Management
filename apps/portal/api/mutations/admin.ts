@@ -75,6 +75,13 @@ export function resetAdminUserPassword(
   );
 }
 
+export function resetAdminUserLoginLock(userId: string): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>(`/api/admin/users/${userId}/reset-login-lock`, {
+    method: "POST",
+    bodyJson: {},
+  });
+}
+
 export function createAdminMember(
   payload: CreateAdminMemberPayload,
 ): Promise<{ ok: true; user_id: string; username: string; temporary_password: string }> {

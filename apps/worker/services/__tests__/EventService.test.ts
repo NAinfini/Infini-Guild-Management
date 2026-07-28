@@ -458,6 +458,63 @@ describe("worker EventService", () => {
     expect(result).toEqual(expect.objectContaining({ ok: false, code: "VALIDATION_ERROR" }));
   });
 
+  it("hides future-visible event details from public readers while allowing managers", async () => {
+    const select = vi.fn((fields: Record<string, unknown>) => {
+      if ("title" in fields) {
+        return {
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn().mockResolvedValue([
+                createEventRow({ visibleAt: "2026-03-09T12:00:00.000Z" }),
+              ]),
+            })),
+          })),
+        };
+      }
+      return {
+        from: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue([]),
+        })),
+      };
+    });
+    const service = new EventService({ select } as never, makeRawDb() as never, { put: vi.fn() } as never, {
+      getEventById: vi.fn(),
+      getUsername: vi.fn(),
+      writeAuditLog: vi.fn(),
+      publishEntityChanged: vi.fn(),
+      now: () => "2026-03-08T12:00:00.000Z",
+    }, stubTemplateDeps);
+
+    await expect(service.getEventDetail("evt-1", null, false)).resolves.toBeNull();
+    await expect(service.getEventDetail("evt-1", "mod-1", true)).resolves.toEqual(
+      expect.objectContaining({
+        id: "evt-1",
+        visible_at: "2026-03-09T12:00:00.000Z",
+      }),
+    );
+  });
+
+  it("omits future-visible events from public batch details", async () => {
+    const select = vi.fn((fields: Record<string, unknown>) => ({
+      from: vi.fn(() => ({
+        where: vi.fn().mockResolvedValue(
+          "title" in fields
+            ? [createEventRow({ visibleAt: "2026-03-09T12:00:00.000Z" })]
+            : [],
+        ),
+      })),
+    }));
+    const service = new EventService({ select } as never, makeRawDb() as never, { put: vi.fn() } as never, {
+      getEventById: vi.fn(),
+      getUsername: vi.fn(),
+      writeAuditLog: vi.fn(),
+      publishEntityChanged: vi.fn(),
+      now: () => "2026-03-08T12:00:00.000Z",
+    }, stubTemplateDeps);
+
+    await expect(service.batchDetails(["evt-1"], null, false)).resolves.toEqual([]);
+  });
+
   it("applies search, pinned, locked, and all-status filters when listing events", async () => {
     function collectColumnNames(value: unknown): string[] {
       if (!value || typeof value !== "object") return [];
@@ -475,18 +532,30 @@ describe("worker EventService", () => {
         pinnedFilter?: boolean;
         lockedFilter?: boolean;
         archivedFilter?: boolean;
+        canManage?: boolean;
+        now?: string;
       }): unknown[];
     }).buildEventsWhereFilters({
       search: "Guild",
       pinnedFilter: true,
       lockedFilter: true,
+      canManage: false,
+      now: "2026-03-08T12:00:00.000Z",
     });
     const columnNames = filters.flatMap(collectColumnNames);
+    const managerColumnNames = (EventService as unknown as {
+      buildEventsWhereFilters(params: { canManage?: boolean; now?: string }): unknown[];
+    }).buildEventsWhereFilters({
+      canManage: true,
+      now: "2026-03-08T12:00:00.000Z",
+    }).flatMap(collectColumnNames);
 
     expect(columnNames).toContain("pinned");
     expect(columnNames).toContain("signup_locked");
     expect(columnNames).toContain("title");
     expect(columnNames).toContain("description");
+    expect(columnNames).toContain("visible_at");
     expect(columnNames).not.toContain("archived_at");
+    expect(managerColumnNames).not.toContain("visible_at");
   });
 });

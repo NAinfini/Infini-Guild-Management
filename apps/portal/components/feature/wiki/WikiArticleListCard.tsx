@@ -1,4 +1,4 @@
-﻿import type { WikiArticle } from "@guild/shared";
+import type { WikiArticle } from "@guild/shared";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { PortalCard } from "../../shared/PortalCard";
 import { Alert, Button, Group, HoverCard, MultiSelect, Skeleton, Stack, Text, ThemeIcon, VisuallyHidden } from "@mantine/core";
@@ -16,13 +16,17 @@ function formatDateTime(iso: string): string {
 
 type WikiArticleListCardProps = {
   title: ReactNode;
-  canEdit: boolean;
+  canCreateArticle: boolean;
+  canManageCategories: boolean;
   createLabel: ReactNode;
   onCreateArticle: () => void;
   onOpenCategoryEditor: () => void;
   categoryOptions: Array<{ value: string; label: string }>;
   selectedCategoryIds: string[];
   onCategoryFilterChange: (values: string[]) => void;
+  hasActiveFilters: boolean;
+  resetFiltersLabel: ReactNode;
+  onResetFilters: () => void;
   isLoading: boolean;
   isError: boolean;
   warningMessage: ReactNode;
@@ -37,13 +41,17 @@ type WikiArticleListCardProps = {
 
 export function WikiArticleListCard({
   title,
-  canEdit,
+  canCreateArticle,
+  canManageCategories,
   createLabel,
   onCreateArticle,
   onOpenCategoryEditor,
   categoryOptions,
   selectedCategoryIds,
   onCategoryFilterChange,
+  hasActiveFilters,
+  resetFiltersLabel,
+  onResetFilters,
   isLoading,
   isError,
   warningMessage,
@@ -63,20 +71,24 @@ export function WikiArticleListCard({
         <Stack gap={10}>
           <Group justify="space-between">
             <Text fw={600}>{title}</Text>
-            {canEdit ? (
+            {canCreateArticle || canManageCategories ? (
               <Group gap={6}>
-                <DepthButton type="primary" size="sm" onClick={onCreateArticle} tooltip={{ label: createLabel, withArrow: true }}>
+                {canCreateArticle ? (
+                  <DepthButton type="primary" size="sm" onClick={onCreateArticle} tooltip={{ label: createLabel, withArrow: true }}>
                     <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                       <PlusIcon size={16} />
                     </span>
                     <VisuallyHidden>{createLabel}</VisuallyHidden>
                   </DepthButton>
-                <DepthButton type="secondary" size="sm" onClick={onOpenCategoryEditor} tooltip={{ label: t("editor.editCategories"), withArrow: true }}>
+                ) : null}
+                {canManageCategories ? (
+                  <DepthButton type="secondary" size="sm" onClick={onOpenCategoryEditor} tooltip={{ label: t("editor.editCategories"), withArrow: true }}>
                     <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                       <PencilIcon size={16} />
                     </span>
                     <VisuallyHidden>{t("editor.editCategories")}</VisuallyHidden>
                   </DepthButton>
+                ) : null}
               </Group>
             ) : null}
           </Group>
@@ -96,10 +108,27 @@ export function WikiArticleListCard({
               ))}
             </Stack>
           ) : null}
-          {isError ? <Alert color="yellow" title={warningMessage} /> : null}
+          {isError ? <Alert color="red" title={warningMessage} /> : null}
           {!isLoading && !isError ? (
             <Stack gap={6}>
-              {articles.length === 0 ? <EmptyState title={emptyTitle} /> : null}
+              {articles.length === 0 ? (
+                <EmptyState
+                  title={emptyTitle}
+                  actions={hasActiveFilters ? (
+                    <Button onClick={onResetFilters}>{resetFiltersLabel}</Button>
+                  ) : categoryOptions.length === 0 && canManageCategories ? (
+                    <Button onClick={onOpenCategoryEditor}>
+                      {t("editor.editCategories")}
+                    </Button>
+                  ) : canCreateArticle && categoryOptions.length > 0 ? (
+                    <Button
+                      onClick={onCreateArticle}
+                    >
+                      {createLabel}
+                    </Button>
+                  ) : undefined}
+                />
+              ) : null}
               {articles.map((item) => (
                 <button
                   key={item.slug}
@@ -115,13 +144,13 @@ export function WikiArticleListCard({
                       {item.pinned ? (
                         <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                           <HoverCard.Target>
-                            <ThemeIcon variant="transparent" color="orange" size="sm" style={{ cursor: "default" }} data-animate-icon-trigger>
+                            <ThemeIcon variant="transparent" color="portal-accent" size="sm" style={{ cursor: "default" }} data-animate-icon-trigger>
                               <PinIcon size={14} aria-hidden />
                             </ThemeIcon>
                           </HoverCard.Target>
                           <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                             <Group gap={10} wrap="nowrap" align="flex-start">
-                              <ThemeIcon variant="light" color="orange" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                              <ThemeIcon variant="light" color="portal-accent" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                                 <PinIcon size={16} />
                               </ThemeIcon>
                               <div style={{ minWidth: 0 }}>

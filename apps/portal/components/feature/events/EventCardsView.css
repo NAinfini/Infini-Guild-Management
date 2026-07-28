@@ -1,7 +1,7 @@
 .event-card {
   overflow: visible;
   position: relative;
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 9%, transparent);
+  border-color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
@@ -10,57 +10,99 @@
   border-radius: inherit;
 }
 
+/*
+ * Type accent rail. It spans the whole card and paints only its left 4px so the
+ * card's own border-radius clips the rail's ends: a plain 4px-wide box would
+ * keep its square corners and stick out past the rounded card edge, which is
+ * visible because `.event-card` turns clipping off (see `overflow: visible`).
+ */
 .event-card::before {
   content: "";
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
+  inset: 0;
+  border-radius: inherit;
   z-index: 3;
   opacity: 0.85;
+  pointer-events: none;
+  /* --event-card-accent 的兜底一直是死代码：下面的六条 :has() 规则
+     （weekly_mission、guild_war、social、poll、raffle、other）覆盖了
+     EventCardsView.tsx:54 `type in EVENT_TYPE_COLORS ? type : "other"` 的
+     全部分支，没有第七种未匹配的情况，去掉兜底不改变任何行为（rule 1）。
+     这个覆盖关系今天成立，但 CSS 侧类名硬编码、配置侧数据驱动，两者原本无
+     守卫绑定——现在由 event-colors.test.ts 里的一条断言把两边钉在一起：
+     往游戏配置加一个事件类型且这里漏加对应规则会直接测红，而不是让
+     --event-card-accent 静默解析不出来（final-review.md I3）。 */
+  background: linear-gradient(to right, var(--event-card-accent) 0 4px, transparent 4px);
 }
 
-.event-card:has(.event-card__header--weekly_mission)::before,
-.event-card:has(.event-card__header--raid)::before {
-  background: var(--color-primary, #D4A843);
+/*
+ * `.portal-card--interactive::after` parks its gold shine one full card-width to
+ * the left and relies on the card clipping it until the hover sweep runs. With
+ * `overflow: visible` that band simply sits beside every card, so the effect is
+ * dropped here instead of bleeding gold onto the page.
+ */
+.event-card.portal-card--interactive::after {
+  content: none;
 }
 
-.event-card:has(.event-card__header--guild_war)::before {
-  background: var(--color-danger, #ef4444);
+/* 竖条取色策略：weekly_mission 与下面的 social 两类刻意吃 --accent-fill /
+   --accent-fill-hover（主题强调色），不吃 utils/event-colors.ts 为徽章/标签
+   派生的游戏配置色（yan-yun.ts 现在把这两类配成 cyan / grape）。这是本次
+   改版引入的有意视觉分歧：同一张卡上竖条与徽章可能不同色，是否统一由后续
+   视觉决策裁定，见 event-colors.ts 顶部注释（final-review.md I2）。 */
+.event-card:has(.event-card__header--weekly_mission) {
+  --event-card-accent: var(--accent-fill);
 }
 
-.event-card:has(.event-card__header--social)::before {
-  background: var(--color-accent, #8B7355);
+.event-card:has(.event-card__header--guild_war) {
+  --event-card-accent: var(--status-danger);
 }
 
-.event-card:has(.event-card__header--poll)::before {
-  background: #14b8a6;
+/* --color-secondary（古铜色）是本次改版要消灭的暖金配色，装饰性用途收敛到
+   「更深一档主色」= --accent-fill-hover，与 weekly_mission 的
+   --accent-fill 区分开，保留分类可辨识度（task-7-addendum.md 前序约定段，
+   不用 --accent-600）。竖条取色刻意跟主题色而非游戏配置色的说明见上方
+   weekly_mission 规则前的注释（final-review.md I2）。 */
+.event-card:has(.event-card__header--social) {
+  --event-card-accent: var(--accent-fill-hover);
 }
 
-.event-card:has(.event-card__header--raffle)::before {
-  background: #ec4899;
+/* poll/raffle 此前是裸 hex，且不对应替换表里任何一个语义角色（不是
+   success/warning/danger，也不是主色）——它们是活动类型的分类色，与站点
+   可切换的强调色主题无关，所以不能收敛到 --accent-fill。utils/event-colors.ts
+   派生自 apps/shared/games/definitions/yan-yun.ts，poll 的真实分类色就是
+   "teal"、raffle 就是 "pink"；下方 .event-card__raffle-winners-badge 的
+   徽章底色本来就在用 --mantine-color-pink-5，这里改用同一套 Mantine 色阶
+   变量以保持分类色与该文件既有写法一致，而不是新造一个 token
+   （task-7-addendum.md H 节）。 */
+.event-card:has(.event-card__header--poll) {
+  --event-card-accent: var(--mantine-color-teal-5);
 }
 
-.event-card:has(.event-card__header--other)::before {
-  background: color-mix(in srgb, var(--color-text, #1A1815) 36%, transparent);
+.event-card:has(.event-card__header--raffle) {
+  --event-card-accent: var(--mantine-color-pink-5);
+}
+
+.event-card:has(.event-card__header--other) {
+  --event-card-accent: color-mix(in srgb, var(--text-primary) 36%, transparent);
 }
 
 .event-card:hover {
   transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 26%, transparent);
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 26%, transparent);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
 .event-card--focused {
   box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--color-primary, #D4A843) 52%, transparent),
-    0 12px 28px color-mix(in srgb, var(--color-primary, #D4A843) 14%, transparent);
+    0 0 0 2px color-mix(in srgb, var(--accent-fill) 52%, transparent),
+    0 12px 28px color-mix(in srgb, var(--accent-fill) 14%, transparent);
 }
 
-.dark .event-card {
-  background: color-mix(in srgb, var(--color-surface, #141418) 92%, transparent);
-}
+/* .event-card 本身在浅色模式下没有另设 background，靠 PageLayout.css 里
+   `.portal-card { background: var(--surface-base); }` 提供表面色，
+   --surface-base 已经分模式解析到正确的深色值。这条 .dark 规则叠加的 92%
+   不透明度混色是重复表面处理，整块删除（task-7-addendum.md E 节：只差颜色）。 */
 
 .event-card__header {
   display: flex;
@@ -68,8 +110,8 @@
   justify-content: space-between;
   gap: 10px;
   padding: 11px 14px 9px 18px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 7%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 72%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 7%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 72%, transparent);
 }
 
 .event-card__header-left {
@@ -91,12 +133,12 @@
 .event-card__header--poll,
 .event-card__header--raffle,
 .event-card__header--other {
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 72%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 72%, transparent);
 }
 
 .event-card__type-badge {
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: normal;
   font-weight: 700;
   min-height: 24px;
 }
@@ -110,9 +152,9 @@
   font-size: 11px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 68%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 86%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 86%, transparent);
   white-space: nowrap;
 }
 
@@ -121,18 +163,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--control-icon-size-regular);
+  height: var(--control-icon-size-regular);
   border-radius: 6px;
   cursor: pointer;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 58%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   flex-shrink: 0;
   transition: color 150ms ease, background 150ms ease;
 }
 
 .event-card__menu-btn:hover {
-  color: var(--color-text, #1A1815);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
 .event-card__body {
@@ -145,6 +187,16 @@
   justify-content: space-between;
   gap: 10px;
   min-width: 0;
+}
+
+/* The card is no longer a role="button", so the title carries the keyboard
+   affordance. It has to shrink exactly like the plain <Text> it replaced. */
+.event-card__title-btn {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  color: inherit;
 }
 
 .event-card__title {
@@ -174,8 +226,31 @@
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 68%, transparent);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 68%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+/* Status-indicator icon colours, moved out of style={{}} (task-8 批 B).
+   Each targets the icon itself, not the .event-card__status-icon wrapper span,
+   so there is no specificity contention with the rule above: the wrapper's
+   `color` would only apply here via inheritance, and an explicit `color` on
+   the icon's own class always wins over an inherited value. Mantine's dynamic
+   --mantine-color-* vars are exempt from the "every var must resolve"
+   guard (theme-tokens.test.ts RUNTIME_INJECTED_VARS). */
+.event-card__status-icon--pinned {
+  color: var(--mantine-color-portal-accent-6);
+}
+
+.event-card__status-icon--locked {
+  color: var(--mantine-color-red-6);
+}
+
+.event-card__status-icon--new {
+  color: var(--mantine-color-green-6);
+}
+
+.event-card__status-icon--updated {
+  color: var(--mantine-color-orange-6);
 }
 
 .event-card__description {
@@ -185,12 +260,12 @@
 
 .event-card__date-text {
   font-weight: 500;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 85%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 85%, transparent);
 }
 
 .event-card__time-text {
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 68%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 68%, transparent);
 }
 
 .event-card__members-bar {
@@ -200,9 +275,9 @@
   justify-content: space-between;
   gap: 8px;
   padding: 8px 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 7%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 
 .event-card__raffle-winners {
@@ -212,9 +287,9 @@
   justify-content: space-between;
   gap: 8px;
   padding: 10px 8px 10px;
-  border: 1px solid color-mix(in srgb, #ec4899 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mantine-color-pink-5) 22%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, #ec4899 6%, transparent);
+  background: color-mix(in srgb, var(--mantine-color-pink-5) 6%, transparent);
 }
 
 .event-card__raffle-winners-badge {
@@ -226,12 +301,19 @@
   gap: 4px;
   padding: 2px 8px 2px 5px;
   border-radius: 10px;
-  background: var(--mantine-color-pink-5, #ec4899);
-  color: #fff;
+  background: var(--mantine-color-pink-5);
+  /* 徽章底色固定吃 --mantine-color-pink-5，不随 [data-theme] 变化，压在
+     它上面的文字也保持不变，直接用 Mantine 自带的 --mantine-color-white，
+     不必新造字面白色（task-7-addendum.md I 节）。 */
+  color: var(--mantine-color-white);
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
+  /* 与模式无关的字面黑：这枚徽章整体（底色/文字）已按上面的注释固定为不随
+     [data-theme] 变化的外观，投影延续同一条设计决定，保持固定，不改用会
+     分模式变化的 --shadow-sm——否则一个固定配色的徽章会带一圈会变化的阴影，
+     视觉上反而不一致。 */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   z-index: 1;
 }
@@ -255,29 +337,45 @@
   overflow: visible;
 }
 
+/* EventCardAvatarStrip.tsx's hidden measuring element, moved out of
+   style={{}} (task-8 批 B). border: none carries no colour, but the
+   COLOUR_PROPS guard matches the property name regardless of value. */
+.event-card__avatar-strip-sizer {
+  width: 100%;
+  height: 0;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  border: none;
+}
+
+/* --event-card-avatar-size 的兜底也是死代码：EventCardAvatarStrip.tsx:71
+   在渲染这两个子元素的父级 .event-card__avatar-grid 上无条件内联写入这个
+   变量（avatarSize 用 ?? AVATAR_MAX_SIZE 兜底，不会是 undefined），去掉
+   CSS 侧兜底不改变任何行为（rule 1）。 */
 .event-card__avatar-placeholder {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--event-card-avatar-size, 36px);
-  height: var(--event-card-avatar-size, 36px);
-  flex: 0 0 var(--event-card-avatar-size, 36px);
+  width: var(--event-card-avatar-size);
+  height: var(--event-card-avatar-size);
+  flex: 0 0 var(--event-card-avatar-size);
   border-radius: 50%;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 36%, transparent);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
-  border: 1px dashed color-mix(in srgb, var(--color-text, #1A1815) 18%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--text-primary) 18%, transparent);
 }
 
 .event-card__avatar-overflow {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--event-card-avatar-size, 36px);
-  height: var(--event-card-avatar-size, 36px);
-  flex: 0 0 var(--event-card-avatar-size, 36px);
+  width: var(--event-card-avatar-size);
+  height: var(--event-card-avatar-size);
+  flex: 0 0 var(--event-card-avatar-size);
   border-radius: 999px;
-  font-size: clamp(10px, calc(var(--event-card-avatar-size, 36px) * 0.34), 12px);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent);
+  font-size: clamp(10px, calc(var(--event-card-avatar-size) * 0.34), 12px);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
 .event-card__header-actions {
@@ -293,7 +391,7 @@
 }
 
 .event-card__icon-muted {
-  color: color-mix(in srgb, var(--color-text, #1A1815) 48%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .event-members-modal__header {
@@ -301,7 +399,7 @@
   grid-template-columns: 1fr 100px 80px;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
 .event-members-modal__row {
@@ -310,12 +408,12 @@
   gap: 8px;
   align-items: center;
   padding: 8px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 5%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
   transition: background 100ms ease;
 }
 
 .event-members-modal__row:hover {
-  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 
 .event-members-modal__player {

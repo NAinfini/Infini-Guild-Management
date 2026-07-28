@@ -5,12 +5,12 @@ import {
   Group,
   Skeleton,
   Stack,
-  Tabs,
 } from "@mantine/core";
 import { Suspense, lazy } from "react";
 import { useTranslation } from "react-i18next";
 import { useAdminPageController } from "../../hooks/useAdminPageController";
 import { PageLayout } from "../layout/PageLayout";
+import { PageTabPanel, PageTabs } from "../layout/PageTabs";
 import { ErrorBoundary } from "@portal/components/effects";
 import "./AdminPage.css";
 
@@ -51,7 +51,6 @@ const LazyCreateMemberModal = lazy(() =>
 export function AdminPage() {
   const { t } = useTranslation("admin");
   const {
-    activeTab,
     auditFilter,
     auditLogQuery,
     auditMonthsQuery,
@@ -74,6 +73,7 @@ export function AdminPage() {
     deactivateMutation,
     invite,
     inviteRows,
+    inviteTotal,
     inviteLinksQuery,
     inviteStatsQuery,
     isInviteInactive,
@@ -87,7 +87,6 @@ export function AdminPage() {
     handleBatchDelete,
     handleBatchRole,
     handleCopyConfigSummary,
-    handleTabChange,
     isAdmin,
     isBatchPending,
     isModerator,
@@ -96,6 +95,7 @@ export function AdminPage() {
     memberSearch,
     patchMemberDetailForm,
     reactivateMutation,
+    resetLoginLockMutation,
     resetPasswordMutation,
     revokeInviteMutation,
     rolesQuery,
@@ -108,8 +108,6 @@ export function AdminPage() {
     setAuditDateTo,
     setAuditPage,
     setAuditSearch,
-    setInviteExpiresAt,
-    setInviteMaxUses,
     setInviteSearch,
     setInviteVisibility,
     setMemberDetailId,
@@ -144,22 +142,23 @@ export function AdminPage() {
     return <Alert color="red" title={t("forbidden")} />;
   }
 
+  const tabs = [
+    { value: "member", label: t("tab.member"), visible: tabAccess.member },
+    { value: "invite", label: t("tab.invite"), visible: tabAccess.invite },
+    { value: "audit", label: t("tab.audit"), visible: tabAccess.audit },
+    { value: "roles", label: t("tab.roles"), visible: tabAccess.roles },
+    { value: "siteConfig", label: t("tab.siteConfig"), visible: tabAccess.siteConfig },
+    { value: "badges", label: t("tab.badges"), visible: tabAccess.badges },
+    { value: "gameData", label: t("tab.gameData"), visible: tabAccess.gameData },
+    { value: "status", label: t("tab.status"), visible: tabAccess.status },
+  ].filter((tab) => tab.visible);
+
   return (
     <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<SettingsIcon size={22} />} className="admin-page">
-        <Tabs value={activeTab} onChange={handleTabChange}>
-          <Tabs.List>
-          {tabAccess.member ? <Tabs.Tab value="member">{t("tab.member")}</Tabs.Tab> : null}
-          {tabAccess.invite ? <Tabs.Tab value="invite">{t("tab.invite")}</Tabs.Tab> : null}
-          {tabAccess.audit ? <Tabs.Tab value="audit">{t("tab.audit")}</Tabs.Tab> : null}
-          {tabAccess.roles ? <Tabs.Tab value="roles">{t("tab.roles")}</Tabs.Tab> : null}
-          {tabAccess.siteConfig ? <Tabs.Tab value="siteConfig">{t("tab.siteConfig")}</Tabs.Tab> : null}
-          {tabAccess.badges ? <Tabs.Tab value="badges">{t("tab.badges")}</Tabs.Tab> : null}
-          {tabAccess.gameData ? <Tabs.Tab value="gameData">{t("tab.gameData")}</Tabs.Tab> : null}
-          {tabAccess.status ? <Tabs.Tab value="status">{t("tab.status")}</Tabs.Tab> : null}
-        </Tabs.List>
+        <PageTabs defaultValue="member" tabs={tabs} keepMounted={false}>
 
         {tabAccess.member ? (
-        <Tabs.Panel value="member" pt="sm">
+        <PageTabPanel value="member" pt="sm">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminUsersSection
@@ -180,6 +179,7 @@ export function AdminPage() {
               singleRolePending={updateRoleMutation.isPending}
               singleActivationPending={deactivateMutation.isPending || reactivateMutation.isPending}
               singleResetPasswordPending={resetPasswordMutation.isPending}
+              singleResetLoginLockPending={resetLoginLockMutation.isPending}
               isBatchPending={isBatchPending}
               batchProgress={batchProgress}
               userRows={userRows}
@@ -201,31 +201,37 @@ export function AdminPage() {
               onSingleResetPassword={(userId) => {
                 resetPasswordMutation.mutate(userId);
               }}
+              onSingleResetLoginLock={(userId) => {
+                resetLoginLockMutation.mutate(userId);
+              }}
             />
           </Suspense>
           </ErrorBoundary>
-        </Tabs.Panel>
+        </PageTabPanel>
         ) : null}
 
         {tabAccess.invite ? (
-        <Tabs.Panel value="invite" pt="sm">
+        <PageTabPanel value="invite" pt="sm">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminInviteSection
               inviteVisibility={invite.visibility}
               onInviteVisibilityChange={setInviteVisibility}
-              inviteMaxUses={invite.maxUses}
-              onInviteMaxUsesChange={setInviteMaxUses}
-              inviteExpiresAt={invite.expiresAt}
-              onInviteExpiresAtChange={setInviteExpiresAt}
-              onCreateInvite={() => createInviteMutation.mutate()}
+              onCreateInvite={(input, onSuccess) => {
+                createInviteMutation.mutate(input, { onSuccess });
+              }}
               createInvitePending={createInviteMutation.isPending}
-              createInviteSuccess={createInviteMutation.isSuccess}
               inviteStatsLoading={inviteStatsQuery.isLoading}
               inviteStats={inviteStatsQuery.data ?? null}
               inviteLinksLoading={inviteLinksQuery.isLoading}
               inviteLinksError={inviteLinksQuery.isError}
               inviteRows={inviteRows}
+              inviteTotal={inviteTotal}
+              hasMoreInvites={inviteLinksQuery.hasNextPage}
+              loadingMoreInvites={inviteLinksQuery.isFetchingNextPage}
+              onLoadMoreInvites={() => {
+                void inviteLinksQuery.fetchNextPage();
+              }}
               inviteSearch={invite.search}
               onInviteSearchChange={setInviteSearch}
               isInviteInactive={isInviteInactive}
@@ -238,11 +244,11 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </Tabs.Panel>
+        </PageTabPanel>
         ) : null}
 
         {tabAccess.audit ? (
-        <Tabs.Panel value="audit" pt="sm">
+        <PageTabPanel value="audit" pt="sm">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminAuditSection
@@ -271,11 +277,11 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </Tabs.Panel>
+        </PageTabPanel>
         ) : null}
 
         {tabAccess.roles ? (
-        <Tabs.Panel value="roles" pt="sm">
+        <PageTabPanel value="roles" pt="sm">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminRolesSection
@@ -291,30 +297,28 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </Tabs.Panel>
+        </PageTabPanel>
         ) : null}
 
         {tabAccess.siteConfig ? (
-          <Tabs.Panel value="siteConfig" pt="sm">
+          <PageTabPanel value="siteConfig" pt="sm">
             <ErrorBoundary>
             <Suspense fallback={suspenseFallback}>
               <LazyAdminSiteConfigSection
                 data={siteConfigQuery.data ?? null}
                 loading={siteConfigQuery.isLoading}
                 saving={siteConfigMutations.updateSiteConfigMutation.isPending}
-                onboardingSaving={siteConfigMutations.updateOnboardingMutation.isPending}
                 logoUploading={siteConfigMutations.uploadSiteLogoMutation.isPending}
                 onSaveSite={(payload) => siteConfigMutations.updateSiteConfigMutation.mutate(payload)}
-                onSaveOnboarding={(payload) => siteConfigMutations.updateOnboardingMutation.mutate(payload)}
                 onUploadLogo={(file) => siteConfigMutations.uploadSiteLogoMutation.mutate(file)}
               />
             </Suspense>
             </ErrorBoundary>
-          </Tabs.Panel>
+          </PageTabPanel>
         ) : null}
 
         {tabAccess.badges ? (
-          <Tabs.Panel value="badges" pt="sm">
+          <PageTabPanel value="badges" pt="sm">
             <ErrorBoundary>
             <Suspense fallback={suspenseFallback}>
               <LazyAdminBadgesSection
@@ -323,21 +327,21 @@ export function AdminPage() {
               />
             </Suspense>
             </ErrorBoundary>
-          </Tabs.Panel>
+          </PageTabPanel>
         ) : null}
 
         {tabAccess.gameData ? (
-          <Tabs.Panel value="gameData" pt="sm">
+          <PageTabPanel value="gameData" pt="sm">
             <ErrorBoundary>
             <Suspense fallback={suspenseFallback}>
               <LazyAdminGameDataSection />
             </Suspense>
             </ErrorBoundary>
-          </Tabs.Panel>
+          </PageTabPanel>
         ) : null}
 
         {tabAccess.status ? (
-        <Tabs.Panel value="status" pt="sm">
+        <PageTabPanel value="status" pt="sm">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminStatusTab
@@ -351,9 +355,9 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </Tabs.Panel>
+        </PageTabPanel>
         ) : null}
-      </Tabs>
+      </PageTabs>
       <Suspense fallback={null}>
         <LazyAdminMemberDetailModal
           open={Boolean(selectedMemberDetail)}

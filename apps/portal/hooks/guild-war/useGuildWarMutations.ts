@@ -10,12 +10,7 @@ import {
 import { useAppError } from "../useAppError";
 import { queryKeys } from "../../api/query-keys";
 import type { HistoryMemberStatsUpdate } from "../../types/guild-war";
-import { notifySuccess, notifyWarning } from "../../utils/notifications";
-
-const message = {
-  success: (content: string) => notifySuccess(content),
-  warning: (content: string) => notifyWarning(content),
-};
+import { notifySuccess } from "../../utils/notifications";
 
 function downloadFileBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
@@ -54,7 +49,7 @@ export function useGuildWarMutations({
         updates: [{ user_id: payload.user_id, role_tag: payload.role_tag }],
       }),
     onSuccess: async () => {
-      message.success(t("message.roleTagUpdated"));
+      notifySuccess(t("message.roleTagUpdated"));
       await queryClient.invalidateQueries({
         queryKey: queryKeys.guildWar.active(selectedEventId ?? null),
       });
@@ -74,7 +69,7 @@ export function useGuildWarMutations({
       }),
     onSuccess: ({ filename, blob }) => {
       downloadFileBlob(filename, blob);
-      message.success(t("history.export.success"));
+      notifySuccess(t("history.export.success"));
     },
     onError: (error) => {
       showError(error, t("history.export.failed"));
@@ -94,7 +89,7 @@ export function useGuildWarMutations({
         updates.map((update) => ({ user_id: update.userId, stats: { stats: update.payload as Record<string, number | null> } })),
       ),
     onSuccess: async () => {
-      message.success(t("history.saveStatsSuccess"));
+      notifySuccess(t("history.saveStatsSuccess"));
       await queryClient.invalidateQueries({
         queryKey: queryKeys.guildWar.historyDetail(selectedHistoryId),
       });
@@ -110,7 +105,7 @@ export function useGuildWarMutations({
   const deleteHistoryMutation = useMutation({
     mutationFn: deleteGuildWarHistory,
     onSuccess: async () => {
-      message.success(t("history.deleteSuccess"));
+      notifySuccess(t("history.deleteSuccess"));
       setSelectedHistoryId("");
       await queryClient.invalidateQueries({
         queryKey: queryKeys.guildWar.historyAll(),
@@ -127,7 +122,7 @@ export function useGuildWarMutations({
   const batchDeleteHistoryMutation = useMutation({
     mutationFn: batchDeleteGuildWarHistory,
     onSuccess: async (_data, ids) => {
-      message.success(t("history.bulkDeleteSuccess", { count: ids.length }));
+      notifySuccess(t("history.bulkDeleteSuccess", { count: ids.length }));
       setSelectedHistoryId("");
       await queryClient.invalidateQueries({
         queryKey: queryKeys.guildWar.historyAll(),

@@ -5,7 +5,7 @@ import { bodyLimit } from "hono/body-limit";
 import { LIMITS } from "@guild/shared/config/limits";
 import { logger } from "./utils/logger";
 import { runDailyMaintenanceCron, runQuarterHourlyMaintenanceCron } from "./crons/maintenance";
-import { WebSocketDO } from "./durable-objects/WebSocketDO";
+import { WebSocketDO, WS_SESSION_ID_HEADER } from "./durable-objects/WebSocketDO";
 import { etagMiddleware } from "./middleware/etag";
 import { featureGateMiddleware } from "./middleware/feature-gate";
 import { handleAppError } from "./middleware/error-handler";
@@ -23,7 +23,7 @@ import { galleryRoutes } from "./routes/gallery";
 import { guildWarRoutes } from "./routes/guild-war";
 import { searchRoutes } from "./routes/search";
 import { storageRoutes } from "./routes/storage";
-import { onboardingRoutes, siteConfigRoutes } from "./routes/site-config";
+import { siteConfigRoutes } from "./routes/site-config";
 import { usersRoutes } from "./routes/users";
 import { wikiRoutes } from "./routes/wiki";
 import { badgeRoutes } from "./routes/badges";
@@ -105,8 +105,8 @@ function isUploadPath(path: string): boolean {
   return (
     path === "/api/events" ||
     path === "/api/gallery/images" ||
+    path === "/api/announcements/images/stage" ||
     path === "/api/game-data" ||
-    path === "/api/game-data/icons" ||
     path === "/api/admin/site-config/logo" ||
     /^\/api\/users\/[^/]+\/media\/(?:images|avatar|audio)$/.test(path) ||
     /^\/api\/(?:announcements|events)\/[^/]+\/images$/.test(path) ||
@@ -266,7 +266,12 @@ app.get("/ws", async (c) => {
 
   const objectId = c.env.WS.idFromName("global");
   const stub = c.env.WS.get(objectId);
-  return stub.fetch(c.req.raw);
+
+  // The DO needs the session id to recheck it periodically while the socket is
+  // open. `set` overwrites, so a client-supplied value of this header is dropped.
+  const headers = new Headers(c.req.raw.headers);
+  headers.set(WS_SESSION_ID_HEADER, session.sessionId);
+  return stub.fetch(c.req.url, { method: "GET", headers });
 });
 
 app.use("/api/*", featureGateMiddleware);
@@ -284,7 +289,6 @@ app.route("/api/badges", badgeRoutes);
 app.route("/api/game-data", gameDataRoutes);
 app.route("/api/storage", storageRoutes);
 app.route("/api/site-config", siteConfigRoutes);
-app.route("/api/onboarding", onboardingRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/admin/maintenance", adminMaintenanceRoutes);
 

@@ -1,8 +1,8 @@
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { ActionIcon, Group, HoverCard, SegmentedControl, Select, Text, TextInput, ThemeIcon } from "@mantine/core";
-import { modals } from "@mantine/modals";
 import { CalendarOffIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
+import { useConfirmDialog } from "../../shared/ConfirmDialog";
 import { FilterToolbar } from "../../shared/FilterToolbar";
 
 type GalleryFiltersCardProps = {
@@ -51,19 +51,15 @@ export function GalleryFiltersCard({
   addMediaLabel,
 }: GalleryFiltersCardProps) {
   const { t } = useTranslation("gallery");
+  const confirm = useConfirmDialog();
 
   const handleBulkDeleteConfirm = async () => {
-    const confirmed = await new Promise<boolean>((resolve) => {
-      modals.openConfirmModal({
-        title: t("confirm.bulkDelete.title"),
-        children: t("confirm.bulkDelete.description", { count: selectedCount }),
-        confirmProps: { color: "red" },
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
-        closeOnConfirm: true,
-        closeOnCancel: true,
-        centered: true,
-      });
+    const confirmed = await confirm({
+      title: t("confirm.bulkDelete.title"),
+      description: t("confirm.bulkDelete.description", { count: selectedCount }),
+      cancelLabel: t("common:action.cancel"),
+      confirmLabel: t("common:action.confirm"),
+      intent: "danger",
     });
     if (confirmed) {
       onBulkDelete();
@@ -128,7 +124,7 @@ export function GalleryFiltersCard({
               </HoverCard.Target>
               <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                 <Group gap={10} wrap="nowrap" align="flex-start">
-                  <ThemeIcon variant="light" color="orange" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                     <CalendarOffIcon size={16} />
                   </ThemeIcon>
                   <div style={{ minWidth: 0 }}>

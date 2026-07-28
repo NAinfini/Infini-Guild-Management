@@ -62,18 +62,18 @@
 }
 
 .wiki-article-item:hover {
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 16%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent);
+  border-color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 6%, transparent);
 }
 
 .wiki-article-item:focus-visible {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 28%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 28%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 6%, transparent);
 }
 
 .wiki-article-item--active {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 28%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent-fill) 28%, transparent);
 }
 
 .wiki-floating-field {
@@ -93,7 +93,7 @@
   pointer-events: none;
   font-size: 14px;
   font-weight: 500;
-  color: color-mix(in srgb, var(--color-text, #e2e8f0) 50%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   transition: top var(--transition-smooth), transform var(--transition-smooth), font-size var(--transition-smooth), color var(--transition-smooth);
   line-height: 1;
   padding: 0 4px;
@@ -105,8 +105,8 @@
   top: 0;
   transform: translateY(-50%);
   font-size: 11px;
-  color: var(--color-primary, #D4A843);
-  background: color-mix(in srgb, var(--color-surface, #1a1a2e) 90%, transparent);
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--surface-base) 90%, transparent);
   border-radius: var(--radius-sm);
 }
 
@@ -116,10 +116,10 @@
 }
 
 .wiki-category-diagram-panel {
-  border: 1px solid color-mix(in srgb, var(--color-text, #e2e8f0) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
   border-radius: var(--radius-md);
   padding: 10px 12px;
-  background: color-mix(in srgb, var(--color-surface, #1A1815) 92%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
 }
 
 .wiki-category-diagram-list {
@@ -144,7 +144,7 @@
   top: 0.8em;
   left: 0;
   width: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--color-text, #e2e8f0) 18%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
 }
 
 .wiki-category-diagram-item::after {
@@ -153,7 +153,7 @@
   top: -6px;
   bottom: -6px;
   left: 0;
-  border-left: 1px solid color-mix(in srgb, var(--color-text, #e2e8f0) 18%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
 }
 
 .wiki-category-diagram-item:last-child::after {
@@ -173,6 +173,18 @@
   min-height: 1.5rem;
   display: flex;
   align-items: center;
+}
+
+/* ── WikiHistoryModal ── (moved out of style={{}}, task-8 批 B). */
+
+.wiki-history-revision-row {
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  width: 100%;
+}
+
+.wiki-history-revision-row--selected {
+  background-color: var(--mantine-color-blue-light);
 }
 
 @media (max-width: 1199px) {

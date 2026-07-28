@@ -11,6 +11,7 @@ import { fetchAbsencesWindow } from "../../services/UserService";
 import { queryKeys } from "../../api/query-keys";
 import { useShallow } from "zustand/react/shallow";
 import { useGuildWarStore } from "../../stores/guildWar";
+import { useAuthStore } from "../../stores/auth";
 import type { AnalyticsDatePreset } from "../../types/guild-war";
 import { copyPlainText } from "../../utils/copy";
 import { useGuildWarAnalyticsComputed } from "./useGuildWarAnalyticsComputed";
@@ -22,11 +23,6 @@ import {
   metricValueOrNullFromWarMember,
   normalizeMetricValue,
 } from "../../utils/guild-war-analytics";
-
-const message = {
-  success: (content: string) => notifySuccess(content),
-  warning: (content: string) => notifyWarning(content),
-};
 
 type UseGuildWarAnalyticsParams = {
   historyRows: Array<{ id: string; war_name: string; created_at: string }>;
@@ -40,6 +36,7 @@ export function useGuildWarAnalytics({
   guildWarService,
 }: UseGuildWarAnalyticsParams) {
   const { t } = useTranslation("guild-war");
+  const hasSession = useAuthStore((state) => Boolean(state.user));
   const {
     analyticsMode,
     setAnalyticsMode,
@@ -179,7 +176,7 @@ export function useGuildWarAnalytics({
   const absencesQuery = useQuery({
     queryKey: queryKeys.absences.window(absencesWindow?.from ?? "", absencesWindow?.to ?? ""),
     queryFn: () => fetchAbsencesWindow(absencesWindow!.from, absencesWindow!.to),
-    enabled: Boolean(absencesWindow),
+    enabled: hasSession && Boolean(absencesWindow),
     staleTime: 60_000,
     placeholderData: keepPreviousData,
   });
@@ -252,9 +249,9 @@ export function useGuildWarAnalytics({
   const applyAnalyticsSelection = (nextSelection: string[]) => {
     const result = guildWarService.applyAnalyticsSelection(nextSelection);
     if (result.warning?.type === "capped") {
-      message.warning(t("analytics.selectionCapped", { cap: result.warning.cap }));
+      notifyWarning(t("analytics.selectionCapped", { cap: result.warning.cap }));
     } else if (result.warning?.type === "large") {
-      message.warning(t("analytics.largeCompareWarning", { count: result.warning.count }));
+      notifyWarning(t("analytics.largeCompareWarning", { count: result.warning.count }));
     }
     setAnalyticsSelectedUsers(result.selection);
   };
@@ -276,7 +273,7 @@ export function useGuildWarAnalytics({
       );
     }
     await copyPlainText(lines.join("\n"));
-    message.success(t("message.csvCopied"));
+    notifySuccess(t("message.csvCopied"));
   };
 
   const handleAnalyticsDatePresetChange = (value: AnalyticsDatePreset) => {

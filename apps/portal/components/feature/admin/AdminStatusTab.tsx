@@ -11,39 +11,17 @@ import {
 import { ProgressButton } from "@portal/components/effects";
 import { PortalCard } from "../../shared/PortalCard";
 import { ClipboardIcon, PlayIcon } from "@portal/components/icons";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
-import { useNotificationStore } from "../../../stores/notifications";
 import { userCanViewStatus } from "../../../utils/permissions";
 import { formatDateTime } from "../../../utils/admin";
+import { latencyBand } from "../../../utils/latency-thresholds";
 import { AdminSystemSection } from "./AdminSystemSection";
-import {
-  API_TEST_GAP_GET_MS,
-  API_TEST_GAP_MUTATION_MS,
-  buildApiCategories,
-  buildCleanupSteps,
-  captureContextFromResponse,
-  countStaleSystemTestArtifacts,
-  createInitialTestRunContext,
-  filterApiCategoriesForPermissions,
-  nextLogId,
-  prepareEndpointRequest,
-  readRetryAfterSeconds,
-  runEndpointTest,
-  STALE_ARTIFACT_PROBES,
-  SYSTEM_TEST_AUDIT_HEADER,
-  SYSTEM_TEST_HEADER,
-  SYSTEM_TEST_HEADER_VALUE,
-  truncateJson,
-  waitWithAbort,
-  type CategoryDef,
-  type DebugLogEntry,
-  type EndpointResult,
-  type TestRunContext,
-} from "./AdminApiTestEngine";
-import { ApiTestCategory, epKey } from "./AdminApiTestCategory";
+import { buildApiCategories, filterApiCategoriesForPermissions } from "./AdminApiTestEngine";
+import { ApiTestCategory } from "./AdminApiTestCategory";
 import { AdminApiDebugConsole } from "./AdminApiDebugConsole";
+import { useAdminApiTestRunner } from "./useAdminApiTestRunner";
 import "./AdminApiTest.css";
 
 type StatusData = {
@@ -89,315 +67,23 @@ export function AdminStatusTab({
     () => filterApiCategoriesForPermissions(apiCategories, user?.permissions),
     [apiCategories, user?.permissions],
   );
-  const setSuppressed = useNotificationStore((state) => state.setSuppressed);
   const isAdmin = userCanViewStatus(user);
   const loadErrorMessage = tc("loadError");
-  const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
-  const [runningSet, setRunningSet] = useState<Set<string>>(new Set());
-  const [resultMap, setResultMap] = useState<Map<string, EndpointResult>>(new Map());
-  const abortRef = useRef<AbortController | null>(null);
-  const contextRef = useRef<TestRunContext>(createInitialTestRunContext());
-  const runLogRef = useRef<DebugLogEntry[]>([]);
-
-  const pushLog = useCallback((entry: DebugLogEntry) => {
-    runLogRef.current = [...runLogRef.current, entry];
-    setDebugLogs((prev) => [...prev, entry]);
-  }, []);
-
-  const clearRunConsole = useCallback(() => {
-    runLogRef.current = [];
-    setDebugLogs([]);
-    if (typeof window !== "undefined" && window.console?.clear) {
-      window.console.clear();
-    }
-  }, []);
-
-  const runCategoryInternal = useCallback(async (category: CategoryDef, signal: AbortSignal) => {
-    const epKeys = category.endpoints.map((ep) => epKey(category.key, ep));
-    setRunningSet((prev) => {
-      const next = new Set(prev);
-      for (const k of epKeys) next.add(k);
-      return next;
-    });
-
-    for (const ep of category.endpoints) {
-      if (signal.aborted) break;
-      const key = epKey(category.key, ep);
-      const prepared = prepareEndpointRequest(ep, contextRef.current);
-
-      const requestGapMs = ep.method === "GET" ? API_TEST_GAP_GET_MS : API_TEST_GAP_MUTATION_MS;
-      await waitWithAbort(requestGapMs, signal);
-      if (signal.aborted) {
-        break;
-      }
-
-      setRunningSet((prev) => {
-        const next = new Set(prev);
-        next.add(key);
-        return next;
-      });
-
-      let result = await runEndpointTest(ep, prepared, signal);
-      if (result.status === 429) {
-        const retryAfterSeconds = readRetryAfterSeconds(result.parsedJson);
-        if (retryAfterSeconds !== null) {
-          await waitWithAbort((retryAfterSeconds + 1) * 1000, signal);
-          if (!signal.aborted) {
-            result = await runEndpointTest(ep, prepared, signal);
-          }
-        }
-      }
-
-      if (signal.aborted) break;
-      contextRef.current = captureContextFromResponse(contextRef.current, ep, result);
-
-      setResultMap((prev) => {
-        const next = new Map(prev);
-        next.set(key, result);
-        return next;
-      });
-
-      setRunningSet((prev) => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
-
-      pushLog({
-        id: nextLogId(),
-        category: category.label,
-        label: ep.label,
-        method: ep.method,
-        path: prepared.path,
-        status: result.status,
-        latencyMs: result.latencyMs,
-        error: result.error,
-        body: result.body,
-        ranAt: result.ranAt,
-        skipped: result.skipped,
-      });
-    }
-
-    setRunningSet((prev) => {
-      const next = new Set(prev);
-      for (const k of epKeys) next.delete(k);
-      return next;
-    });
-  }, [pushLog]);
-
-  const [runningAll, setRunningAll] = useState(false);
-
-  const runCleanup = useCallback(async (signal: AbortSignal) => {
-    const cleanupSteps = buildCleanupSteps(contextRef.current);
-
-    for (const step of cleanupSteps) {
-      if (signal.aborted) break;
-      await waitWithAbort(API_TEST_GAP_MUTATION_MS, signal);
-      if (signal.aborted) break;
-
-      const started = performance.now();
-      const ranAt = new Date().toISOString();
-      try {
-        const fetchOpts: RequestInit = {
-          method: step.method,
-          credentials: "include",
-          signal,
-          headers: {
-            "X-Requested-With": "XMLHttpRequest",
-            [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE,
-            [SYSTEM_TEST_AUDIT_HEADER]: "suppress",
-            ...(step.jsonBody !== undefined ? { "Content-Type": "application/json" } : {}),
-          },
-        };
-        if (step.jsonBody !== undefined) {
-          fetchOpts.body = JSON.stringify(step.jsonBody);
-        }
-        const response = await fetch(step.path, fetchOpts);
-        const latencyMs = Math.round(performance.now() - started);
-        let body = "";
-        const contentType = response.headers.get("content-type") ?? "";
-        if (contentType.includes("json")) {
-          const raw = await response.text();
-          if (raw) body = JSON.stringify(JSON.parse(raw), null, 2);
-        } else {
-          body = await response.text();
-        }
-        pushLog({
-          id: nextLogId(),
-          category: "Cleanup",
-          label: step.label,
-          method: step.method,
-          path: step.path,
-          status: response.status,
-          latencyMs,
-          error: response.ok ? null : `${response.status} ${response.statusText}`,
-          body: truncateJson(body),
-          ranAt,
-        });
-        if (response.ok && step.clearContext) {
-          contextRef.current = { ...contextRef.current, ...step.clearContext };
-        }
-      } catch (err) {
-        if (signal.aborted) break;
-        const latencyMs = Math.round(performance.now() - started);
-        pushLog({
-          id: nextLogId(),
-          category: "Cleanup",
-          label: step.label,
-          method: step.method,
-          path: step.path,
-          status: null,
-          latencyMs,
-          error: err instanceof Error ? err.message : "Unknown error",
-          body: "",
-          ranAt,
-        });
-      }
-    }
-  }, [pushLog]);
-
-  const runStaleArtifactScan = useCallback(async (signal: AbortSignal) => {
-    for (const probe of STALE_ARTIFACT_PROBES) {
-      if (signal.aborted) break;
-      const started = performance.now();
-      const ranAt = new Date().toISOString();
-      try {
-        const response = await fetch(probe.path, {
-          method: "GET",
-          credentials: "include",
-          signal,
-          headers: {
-            [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE,
-            [SYSTEM_TEST_AUDIT_HEADER]: "suppress",
-          },
-        });
-        const latencyMs = Math.round(performance.now() - started);
-        const raw = await response.text();
-        let parsed: unknown = null;
-        let body = raw;
-        if (raw && (response.headers.get("content-type") ?? "").includes("json")) {
-          parsed = JSON.parse(raw) as unknown;
-          body = JSON.stringify(parsed, null, 2);
-        }
-        const staleCount = response.ok ? countStaleSystemTestArtifacts(probe.label, parsed) : 0;
-        pushLog({
-          id: nextLogId(),
-          category: "Stale Data",
-          label: `Stale [systemtest] ${probe.label}`,
-          method: "GET",
-          path: probe.path,
-          status: response.status,
-          latencyMs,
-          error: response.ok && staleCount === 0 ? null : response.ok ? `${staleCount} stale artifact(s) need manual cleanup` : `${response.status} ${response.statusText}`,
-          body: response.ok
-            ? truncateJson(JSON.stringify({ stale_count: staleCount, manual_cleanup_required: staleCount > 0 }, null, 2))
-            : truncateJson(body),
-          ranAt,
-        });
-      } catch (err) {
-        if (signal.aborted) break;
-        const latencyMs = Math.round(performance.now() - started);
-        pushLog({
-          id: nextLogId(),
-          category: "Stale Data",
-          label: `Stale [systemtest] ${probe.label}`,
-          method: "GET",
-          path: probe.path,
-          status: null,
-          latencyMs,
-          error: err instanceof Error ? err.message : "Unknown error",
-          body: "",
-          ranAt,
-        });
-      }
-    }
-  }, [pushLog]);
-
-  const writeSystemTestAuditSummary = useCallback(async (logs: DebugLogEntry[], signal: AbortSignal) => {
-    const endpointLogs = logs.filter((entry) => entry.category !== "Cleanup" && entry.category !== "Stale Data");
-    const failed = endpointLogs.filter((entry) =>
-      entry.error !== null || entry.status === null || entry.status >= 400,
-    );
-    const payload = {
-      total: endpointLogs.length,
-      passed: endpointLogs.length - failed.length,
-      failed: failed.length,
-      errors: failed.map((entry) => ({
-        category: entry.category,
-        label: entry.label,
-        method: entry.method,
-        path: entry.path,
-        status: entry.status,
-        error: entry.error,
-      })),
-    };
-    await fetch("/api/admin/status/system-test-audit", {
-      method: "POST",
-      credentials: "include",
-      signal,
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-        [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE,
-        [SYSTEM_TEST_AUDIT_HEADER]: "summary",
-      },
-      body: JSON.stringify(payload),
-    });
-  }, []);
-
-  const runCategory = useCallback(async (category: CategoryDef) => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    clearRunConsole();
-    setSuppressed(true);
-    try {
-      await runCategoryInternal(category, controller.signal);
-      if (!controller.signal.aborted) {
-        await runCleanup(controller.signal);
-        await runStaleArtifactScan(controller.signal);
-      }
-    } finally {
-      setSuppressed(false);
-    }
-  }, [clearRunConsole, runCategoryInternal, runCleanup, runStaleArtifactScan, setSuppressed]);
-
-  const runAllCategories = useCallback(async () => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    clearRunConsole();
-    setResultMap(new Map());
-    contextRef.current = createInitialTestRunContext();
-    setRunningAll(true);
-    setSuppressed(true);
-    try {
-      for (const cat of visibleApiCategories) {
-        if (controller.signal.aborted) break;
-        await runCategoryInternal(cat, controller.signal);
-      }
-      if (!controller.signal.aborted) {
-        await runCleanup(controller.signal);
-        await runStaleArtifactScan(controller.signal);
-        await writeSystemTestAuditSummary(runLogRef.current, controller.signal);
-      }
-    } finally {
-      setRunningAll(false);
-      setSuppressed(false);
-    }
-  }, [clearRunConsole, runCategoryInternal, runCleanup, runStaleArtifactScan, setSuppressed, visibleApiCategories, writeSystemTestAuditSummary]);
-
-  const clearDebug = useCallback(() => {
-    runLogRef.current = [];
-    setDebugLogs([]);
-    setResultMap(new Map());
-    contextRef.current = createInitialTestRunContext();
-  }, []);
+  const {
+    debugLogs,
+    runningSet,
+    resultMap,
+    runningAll,
+    runCategory,
+    runAllCategories,
+    clearDebug,
+    stop,
+  } = useAdminApiTestRunner(visibleApiCategories);
 
   if (!isAdmin) {
     return (
       <Stack gap={12}>
-        <Alert color="yellow" title={t("adminOnly")} />
+        <Alert color="red" title={t("adminOnly")} />
       </Stack>
     );
   }
@@ -413,6 +99,7 @@ export function AdminStatusTab({
     else if (r.status !== null && r.status >= 200 && r.status < 400) passedEndpoints++;
     else failedEndpoints++;
   }
+  const isRunning = runningAll || runningSet.size > 0;
 
   return (
     <Stack gap={16}>
@@ -437,7 +124,7 @@ export function AdminStatusTab({
             <Group justify="space-between" mb={12}>
               <Text fw={600} size="sm">{t("status.healthLogs.title")}</Text>
               <Button
-                size="compact-xs"
+                h={44}
                 variant="default"
                 onClick={onCopyConfigSummary}
                 disabled={!canCopyConfigSummary}
@@ -465,10 +152,15 @@ export function AdminStatusTab({
                     {statusHealthLogs.map((row, index) => {
                       const latency = row.latencyMs ?? 0;
                       const barWidth = Math.min(100, (latency / 500) * 100);
-                      const barColor = latency < 200 ? "#10b981" : latency < 400 ? "#eab308" : "#ef4444";
+                      // 三段离散状态（好/警/差），按 task-8-brief.md Step 3.4 的要求
+                      // 切换预定义类，不拼接颜色字符串。200/400ms 阈值来自
+                      // utils/latency-thresholds.ts——与 AdminSystemSection.tsx 共用
+                      // 同一份定义，不再各自维护一份数值（task-8-addendum.md B 节，
+                      // Task 8 批 C 收敛）。
+                      const band = latencyBand(latency);
                       return (
                         <tr key={`${row.at}-${index}`}>
-                          <td style={{ color: "color-mix(in srgb, var(--color-text, #1A1815) 65%, transparent)" }}>
+                          <td className="health-log-time">
                             {formatDateTime(row.at)}
                           </td>
                           <td><span className={`health-log-dot health-log-dot--${row.db === "ok" ? "ok" : "error"}`} />{row.db}</td>
@@ -477,8 +169,8 @@ export function AdminStatusTab({
                           <td><span className={`health-log-dot health-log-dot--${row.crons === "ok" ? "ok" : "error"}`} />{row.crons}</td>
                           <td>
                             <span className="health-log-latency">
-                              <span className="health-log-latency-bar" style={{ width: `${barWidth}%`, minWidth: 4, maxWidth: 40, background: barColor }} />
-                              <span style={{ color: barColor, fontWeight: 600 }}>{row.latencyMs ?? "—"}ms</span>
+                              <span className={`health-log-latency-bar health-log-latency-bar--${band}`} style={{ width: `${barWidth}%`, minWidth: 4, maxWidth: 40 }} />
+                              <span className={`health-log-latency-value health-log-latency-value--${band}`}>{row.latencyMs ?? "—"}ms</span>
                             </span>
                           </td>
                           </tr>
@@ -506,32 +198,45 @@ export function AdminStatusTab({
                 <span className="api-console__stat">
                   <span className="api-console__stat-dot api-console__stat-dot--pass" />
                   <span className="api-console__stat-value">{passedEndpoints}</span>
-                  pass
+                  {t("status.api.pass")}
                 </span>
                 {failedEndpoints > 0 ? (
                   <span className="api-console__stat">
                     <span className="api-console__stat-dot api-console__stat-dot--fail" />
                     <span className="api-console__stat-value">{failedEndpoints}</span>
-                    fail
+                    {t("status.api.fail")}
                   </span>
                 ) : null}
               </div>
             ) : null}
           </div>
 
-          <ProgressButton
-            onPress={runAllCategories}
-            loadingLabel={t("status.api.runAll")}
-            successLabel={t("status.api.runAll")}
-            errorLabel={t("status.api.runAll")}
-            indicator="spinner"
-            disabled={runningAll}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <PlayIcon size={14} />
-              <span>{t("status.api.runAll")}</span>
-            </span>
-          </ProgressButton>
+          <div className="api-console__header-actions">
+            {isRunning ? (
+              <Button
+                h={44}
+                color="red"
+                variant="light"
+                onClick={stop}
+              >
+                {t("status.api.stop")}
+              </Button>
+            ) : null}
+            <ProgressButton
+              className="api-console__run-all"
+              onPress={runAllCategories}
+              loadingLabel={t("status.api.runAll")}
+              successLabel={t("status.api.runAll")}
+              errorLabel={t("status.api.runAll")}
+              indicator="spinner"
+              disabled={isRunning}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <PlayIcon size={14} />
+                <span>{t("status.api.runAll")}</span>
+              </span>
+            </ProgressButton>
+          </div>
         </div>
 
         <div className="api-console__progress-track">

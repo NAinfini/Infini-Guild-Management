@@ -77,8 +77,8 @@ export class GuildWarService {
     return this.history.getConcludedEventIds();
   }
 
-  getActive(eventId?: string) {
-    return this.active.getActive(eventId);
+  getActive(eventId?: string, canManage = false) {
+    return this.active.getActive(eventId, canManage);
   }
 
   saveTeams(actorId: string, payload: SaveTeamsInput, conditionalEtag?: string) {
@@ -118,7 +118,7 @@ export class GuildWarService {
     return this.exports.exportHistory(format, filters);
   }
 
-  listHistory(page: number, limit: number, filters: { dateFrom?: string; dateTo?: string }) {
+  listHistory(page: number, limit: number, filters: { dateFrom?: string; dateTo?: string; search?: string }) {
     return this.history.listHistory(page, limit, filters);
   }
 

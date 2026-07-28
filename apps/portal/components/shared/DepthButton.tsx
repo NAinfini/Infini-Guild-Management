@@ -17,13 +17,16 @@ export interface DepthButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEl
   iconOnly?: boolean;
 }
 
+// Semantic mapping: the primary action wears the site accent color, danger and
+// success keep red/green because those meanings are conventional, warning uses
+// orange for attention-needed states, and info uses blue for neutral notices.
 const variantToMantine: Record<ButtonVariant, { color: string; variant: string }> = {
-  primary: { color: "blue", variant: "filled" },
+  primary: { color: "portal-accent", variant: "filled" },
   secondary: { color: "gray", variant: "default" },
   danger: { color: "red", variant: "filled" },
   success: { color: "green", variant: "filled" },
-  warning: { color: "yellow", variant: "filled" },
-  info: { color: "cyan", variant: "filled" },
+  warning: { color: "orange", variant: "filled" },
+  info: { color: "blue", variant: "light" },
 };
 
 export const DepthButton = forwardRef<HTMLButtonElement, DepthButtonProps>(
@@ -81,7 +84,12 @@ export const DepthButton = forwardRef<HTMLButtonElement, DepthButtonProps>(
 
     if (!tooltipLabel) return btn;
     const tipProps = typeof tooltip === "string" ? { label: tooltip } : tooltip!;
-    return <Tooltip {...tipProps}>{btn}</Tooltip>;
+    const target = disabled ? (
+      <span data-disabled-tooltip-target style={{ display: "inline-flex" }}>
+        {btn}
+      </span>
+    ) : btn;
+    return <Tooltip {...tipProps}>{target}</Tooltip>;
   },
 );
 DepthButton.displayName = "DepthButton";

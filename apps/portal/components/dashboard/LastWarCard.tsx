@@ -34,9 +34,9 @@ type LastWarCardProps = {
 };
 
 const RESULT_COLOR: Record<string, string> = {
-  win: "var(--color-success, #22c55e)",
-  loss: "var(--color-danger, #ef4444)",
-  draw: "var(--color-warning, #f59e0b)",
+  win: "var(--status-success)",
+  loss: "var(--status-danger)",
+  draw: "var(--status-warning)",
 };
 
 const RESULT_LABEL_KEY: Record<string, string> = {
@@ -46,7 +46,7 @@ const RESULT_LABEL_KEY: Record<string, string> = {
 };
 
 function resultColor(result: string | null): string {
-  return (result && RESULT_COLOR[result]) ?? "color-mix(in srgb, var(--color-text, #1A1815) 50%, transparent)";
+  return (result && RESULT_COLOR[result]) ?? "var(--text-muted)";
 }
 
 function resultLabel(result: string | null, t: (key: string) => string): string {
@@ -187,7 +187,7 @@ export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isEx
 
           {/* MVPs */}
           {!isExternalView && mvp ? (
-            <Stack gap={6} pt={8} style={{ borderTop: "1px solid color-mix(in srgb, var(--color-text, #1A1815) 8%, transparent)" }}>
+            <Stack gap={6} className="war-mvp-section">
               <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: "0.08em", marginBottom: 2 }}>
                 {t("card.lastWar.mvps")}
               </Text>

@@ -5,7 +5,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminGameDataSection } from "./AdminGameDataSection";
-import { fetchGameData, fetchGameDataVersions, uploadGameData } from "@portal/services/GameDataService";
+import { fetchGameDataFull, fetchGameDataVersions, uploadGameData } from "@portal/services/GameDataService";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -17,7 +17,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@portal/services/GameDataService", () => ({
-  fetchGameData: vi.fn(),
+  fetchGameDataFull: vi.fn(),
   fetchGameDataVersions: vi.fn(),
   uploadGameData: vi.fn(),
   rollbackGameData: vi.fn(),
@@ -64,7 +64,7 @@ async function openJsonEditor(user: ReturnType<typeof userEvent.setup>) {
 describe("AdminGameDataSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(fetchGameData).mockResolvedValue(latestGameData);
+    vi.mocked(fetchGameDataFull).mockResolvedValue(latestGameData);
     vi.mocked(fetchGameDataVersions).mockResolvedValue([]);
     vi.mocked(uploadGameData).mockResolvedValue({ version: "2026-05-22T02:00:00.000Z" });
   });
@@ -108,5 +108,35 @@ describe("AdminGameDataSection", () => {
 
     expect(await screen.findByText(/Invalid JSON:/)).toBeInTheDocument();
     expect(uploadGameData).not.toHaveBeenCalled();
+  });
+
+  it("shows a retryable error instead of the empty upload state when game data fails to load", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchGameDataFull).mockRejectedValueOnce(new Error("offline"));
+    renderGameDataSection();
+
+    expect(await screen.findByText("loadError")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "gameData.upload" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "action.retry" }));
+
+    expect(await screen.findByText("gameData.editorTitle")).toBeInTheDocument();
+    expect(fetchGameDataFull).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows an independent retryable error when version history fails to load", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchGameDataVersions).mockRejectedValueOnce(new Error("offline"));
+    renderGameDataSection();
+
+    expect(await screen.findByText("gameData.editorTitle")).toBeInTheDocument();
+    expect(await screen.findByText("loadError")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "action.retry" }));
+
+    await waitFor(() => {
+      expect(fetchGameDataVersions).toHaveBeenCalledTimes(2);
+    });
   });
 });

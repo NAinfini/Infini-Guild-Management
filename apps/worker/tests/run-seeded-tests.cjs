@@ -17,7 +17,30 @@ function runVitest() {
 }
 
 function seedAndRun(retries) {
-  const req = http.request(SEED_ENDPOINT, { method: "POST" }, (res) => {
+  /*
+   * The /api/* mutation guard requires an allowed Origin plus the XHR header.
+   * Without them this POST came back 403 and, because the status was never
+   * checked, the suite ran unseeded and still reported success.
+   */
+  const options = {
+    method: "POST",
+    headers: {
+      Origin: "http://127.0.0.1:8787",
+      "X-Requested-With": "XMLHttpRequest",
+    },
+  };
+
+  const req = http.request(SEED_ENDPOINT, options, (res) => {
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        console.error(`Seeding failed: POST /api/dev/seed returned ${res.statusCode} ${body}`);
+        process.exit(1);
+      });
+      return;
+    }
     res.resume();
     runVitest();
   });

@@ -3,6 +3,7 @@ import { SearchService } from "../SearchService";
 
 function createDb(rowsBySelect: unknown[][] = []) {
   const limits: number[] = [];
+  const whereFilters: unknown[] = [];
   let selectIndex = 0;
   const db = {
     select: vi.fn(() => {
@@ -10,7 +11,10 @@ function createDb(rowsBySelect: unknown[][] = []) {
       const builder = {
         from: vi.fn(() => builder),
         leftJoin: vi.fn(() => builder),
-        where: vi.fn(() => builder),
+        where: vi.fn((filter: unknown) => {
+          whereFilters.push(filter);
+          return builder;
+        }),
         orderBy: vi.fn(() => builder),
         limit: vi.fn((limit: number) => {
           limits.push(limit);
@@ -20,7 +24,7 @@ function createDb(rowsBySelect: unknown[][] = []) {
       return builder;
     }),
   };
-  return { db, limits };
+  return { db, limits, whereFilters };
 }
 
 describe("SearchService", () => {
@@ -82,5 +86,25 @@ describe("SearchService", () => {
 
     expect(result).toEqual({ ok: true, data: { data: [] } });
     expect(limits).toEqual([8, 8, 8, 8, 8, 8]);
+  });
+
+  it("filters future-visible events out of public search", async () => {
+    function collectColumnNames(value: unknown): string[] {
+      if (!value || typeof value !== "object") return [];
+      const record = value as Record<string, unknown>;
+      const names = typeof record.name === "string" ? [record.name] : [];
+      const chunks = Array.isArray(record.queryChunks)
+        ? record.queryChunks.flatMap(collectColumnNames)
+        : [];
+      return [...names, ...chunks];
+    }
+
+    const { db, whereFilters } = createDb([[], [], [], [], [], []]);
+    const service = new SearchService(db as never);
+
+    await service.search({ query: "guild" });
+
+    expect(whereFilters).toHaveLength(6);
+    expect(collectColumnNames(whereFilters[1])).toContain("visible_at");
   });
 });

@@ -1,7 +1,7 @@
 import { ActionIcon, Badge, Group, HoverCard, Text, ThemeIcon } from "@mantine/core";
 import { useClipboard } from "@mantine/hooks";
 import { ChevronRightIcon, ClipboardIcon, TrashIcon } from "@portal/components/icons";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type DebugLogEntry } from "./AdminApiTestEngine";
 import "./AdminApiTest.css";
@@ -53,37 +53,52 @@ function formatTime(ranAt: string): string {
 
 function DebugRow({ entry }: { entry: DebugLogEntry }) {
   const [expanded, setExpanded] = useState(false);
+  const bodyId = useId();
   const hasBody = !!entry.body;
   const errorRow = isError(entry);
+  const rowContent = (
+    <>
+      <span className={`api-debug__row-dot ${isOptionalSkip(entry) ? "api-debug__row-dot--warn" : dotCls(entry.status)}`} />
+      <span className={`api-debug__row-method api-debug__row-method--${entry.method}`}>
+        {entry.method}
+      </span>
+      <span className="api-debug__row-path">{entry.path}</span>
+      <span className={`api-debug__row-status ${isOptionalSkip(entry) ? "api-debug__row-status--warn" : statusRowCls(entry.status)}`}>
+        {entry.status ?? (isOptionalSkip(entry) ? "N/A" : "ERR")}
+      </span>
+      <span className="api-debug__row-latency">{entry.latencyMs}ms</span>
+      <span className="api-debug__row-time">{formatTime(entry.ranAt)}</span>
+      {hasBody ? (
+        <span className={`api-debug__row-chevron ${expanded ? "api-debug__row-chevron--open" : ""}`}>
+          <ChevronRightIcon size={11} />
+        </span>
+      ) : <span style={{ width: 14 }} />}
+    </>
+  );
 
   return (
     <div className={`api-debug__row ${errorRow ? "api-debug__row--error" : ""}`}>
-      <div
-        className="api-debug__row-main"
-        onClick={hasBody ? () => setExpanded((p) => !p) : undefined}
-        style={hasBody ? undefined : { cursor: "default" }}
-      >
-        <span className={`api-debug__row-dot ${isOptionalSkip(entry) ? "api-debug__row-dot--warn" : dotCls(entry.status)}`} />
-        <span className={`api-debug__row-method api-debug__row-method--${entry.method}`}>
-          {entry.method}
-        </span>
-        <span className="api-debug__row-path">{entry.path}</span>
-        <span className={`api-debug__row-status ${isOptionalSkip(entry) ? "api-debug__row-status--warn" : statusRowCls(entry.status)}`}>
-          {entry.status ?? (isOptionalSkip(entry) ? "N/A" : "ERR")}
-        </span>
-        <span className="api-debug__row-latency">{entry.latencyMs}ms</span>
-        <span className="api-debug__row-time">{formatTime(entry.ranAt)}</span>
-        {hasBody ? (
-          <span className={`api-debug__row-chevron ${expanded ? "api-debug__row-chevron--open" : ""}`}>
-            <ChevronRightIcon size={11} />
-          </span>
-        ) : <span style={{ width: 14 }} />}
-      </div>
+      {hasBody ? (
+        <button
+          type="button"
+          className="api-debug__row-main"
+          aria-label={`${entry.method} ${entry.path}`}
+          aria-expanded={expanded}
+          aria-controls={bodyId}
+          onClick={() => setExpanded((previous) => !previous)}
+        >
+          {rowContent}
+        </button>
+      ) : (
+        <div className="api-debug__row-main api-debug__row-main--static">
+          {rowContent}
+        </div>
+      )}
       {entry.error && !expanded ? (
         <div className="api-debug__row-error">{entry.error}</div>
       ) : null}
       {expanded && entry.body ? (
-        <div className="api-debug__row-body">
+        <div id={bodyId} className="api-debug__row-body">
           <pre>{entry.body}</pre>
         </div>
       ) : null}
@@ -136,22 +151,25 @@ export function AdminApiDebugConsole({
           {logs.length > 0 ? (
             <div className="api-debug__filters">
               <button
+                type="button"
                 className={`api-debug__filter-btn ${filter === "all" ? "api-debug__filter-btn--active" : ""}`}
                 onClick={() => setFilter("all")}
               >
-                All
+                {t("status.api.filter.all")}
               </button>
               <button
+                type="button"
                 className={`api-debug__filter-btn ${filter === "errors" ? "api-debug__filter-btn--active" : ""}`}
                 onClick={() => setFilter("errors")}
               >
-                Errors{errorCount > 0 ? ` (${errorCount})` : ""}
+                {t("status.api.filter.errors")}{errorCount > 0 ? ` (${errorCount})` : ""}
               </button>
               <button
+                type="button"
                 className={`api-debug__filter-btn ${filter === "slow" ? "api-debug__filter-btn--active" : ""}`}
                 onClick={() => setFilter("slow")}
               >
-                Slow{slowCount > 0 ? ` (${slowCount})` : ""}
+                {t("status.api.filter.slow")}{slowCount > 0 ? ` (${slowCount})` : ""}
               </button>
             </div>
           ) : null}
@@ -161,7 +179,7 @@ export function AdminApiDebugConsole({
           <HoverCard width={220} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
             <HoverCard.Target>
               <ActionIcon
-                size="sm"
+                size={44}
                 variant="subtle"
                 onClick={copyAll}
                 disabled={logs.length === 0}
@@ -172,7 +190,7 @@ export function AdminApiDebugConsole({
             </HoverCard.Target>
             <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
               <Group gap={10} wrap="nowrap" align="flex-start">
-                <ThemeIcon variant="light" color="blue" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                   <ClipboardIcon size={16} />
                 </ThemeIcon>
                 <div style={{ minWidth: 0 }}>
@@ -185,7 +203,7 @@ export function AdminApiDebugConsole({
           <HoverCard width={220} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
             <HoverCard.Target>
               <ActionIcon
-                size="sm"
+                size={44}
                 variant="subtle"
                 color="red"
                 onClick={onClear}
@@ -213,7 +231,9 @@ export function AdminApiDebugConsole({
       <div className="api-debug__body" ref={bodyRef}>
         {filteredLogs.length === 0 ? (
           <div className="api-debug__empty">
-            {logs.length === 0 ? t("status.api.debugEmpty") : `No ${filter === "errors" ? "errors" : "slow requests"} found`}
+            {logs.length === 0
+              ? t("status.api.debugEmpty")
+              : t(filter === "errors" ? "status.api.noErrors" : "status.api.noSlow")}
           </div>
         ) : (
           filteredLogs.map((entry) => (

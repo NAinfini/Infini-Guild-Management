@@ -1,4 +1,4 @@
-﻿import { notifications } from "@mantine/notifications";
+import { notifications } from "@mantine/notifications";
 import { useEffect, useRef } from "react";
 import { portalToast } from "../overlays";
 

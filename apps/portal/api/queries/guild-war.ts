@@ -74,12 +74,14 @@ export function fetchGuildWarHistory(params: {
   limit?: number;
   date_from?: string;
   date_to?: string;
+  search?: string;
 }): Promise<PaginatedResponse<WarHistory>> {
   const query = new URLSearchParams();
   query.set("page", String(params.page ?? 1));
   query.set("limit", String(params.limit ?? LIMITS.pagination.guildWar));
   if (params.date_from) query.set("date_from", params.date_from);
   if (params.date_to) query.set("date_to", params.date_to);
+  if (params.search?.trim()) query.set("search", params.search.trim());
 
   return apiRequest<PaginatedResponse<WarHistory>>(`/api/guild-war/history?${query.toString()}`);
 }

@@ -3,9 +3,11 @@ import {
   createStorageItemSchema,
   createStorageSchema,
   createStorageTransactionSchema,
+  type StorageStockFilter,
+  type StorageBatchTransactionResult,
   updateStorageItemSchema,
 } from "@guild/shared";
-import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { storageCategories, storageItemImages, storageItems, storages } from "../db/schema";
@@ -22,6 +24,8 @@ import {
 } from "./StorageServicePayloads";
 import { getStorageTransactionPayload, listStorageTransactionPayloads } from "./StorageTransactionQueries";
 import { deleteStorageImage, uploadStorageImages } from "./StorageImageService";
+import { applyStorageBatchTransactions } from "./StorageBatchService";
+import { escapeLikePattern, likeEscaped } from "./helpers";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: PushHint };
@@ -34,6 +38,53 @@ export type StorageServiceDeps = {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+const STORAGE_QUANTITY_CONSTRAINT = "storage_items_quantity_nonnegative";
+
+function isStorageQuantityConstraintViolation(error: unknown): boolean {
+  return error instanceof Error && error.message.includes(STORAGE_QUANTITY_CONSTRAINT);
+}
+
+function isForeignKeyConstraintViolation(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("FOREIGN KEY constraint failed");
+}
+
+function getBatchChanges(result: { meta?: { changes?: number } } | undefined): number {
+  return Number(result?.meta?.changes ?? 0);
+}
+
+function getCommittedDelta(payload: unknown): number | null {
+  if (!payload || typeof payload !== "object" || !("quantity_delta" in payload)) return null;
+  const value = (payload as { quantity_delta?: unknown }).quantity_delta;
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
+}
+
+type StorageItemCursor = { name: string; id: string };
+const STORAGE_CURSOR_MAX_LENGTH = 512;
+
+function decodeStorageItemCursor(value: string): StorageItemCursor | null {
+  if (value.length === 0 || value.length > STORAGE_CURSOR_MAX_LENGTH || !/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1) return null;
+  try {
+    const base64 = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+    const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+    const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const cursor = parsed as Record<string, unknown>;
+    if (Object.keys(cursor).length !== 2 || typeof cursor.name !== "string" || typeof cursor.id !== "string") return null;
+    if (cursor.name.length === 0 || cursor.name.length > 100 || cursor.id.length === 0 || cursor.id.length > 128) return null;
+    return { name: cursor.name, id: cursor.id };
+  } catch {
+    return null;
+  }
+}
+
+function encodeStorageItemCursor(cursor: StorageItemCursor): string {
+  const json = JSON.stringify(cursor);
+  const bytes = new TextEncoder().encode(json);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 export class StorageService {
@@ -129,17 +180,38 @@ export class StorageService {
     return ok({ ok: true });
   }
 
-  async listItems(options: { storageId?: string; categoryId?: string | null; search?: string }): Promise<ServiceResult<{ data: unknown[] }>> {
+  async listItems(options: {
+    storageId?: string;
+    categoryId?: string | null;
+    search?: string;
+    stock: StorageStockFilter;
+    limit: number;
+    cursor?: string;
+  }): Promise<ServiceResult<{ data: unknown[]; next_cursor: string | null }>> {
+    const cursor = options.cursor ? decodeStorageItemCursor(options.cursor) : undefined;
+    if (options.cursor && !cursor) return err("VALIDATION_ERROR", "Invalid storage item cursor");
     const filters: SQL<unknown>[] = [];
     if (options.storageId) filters.push(eq(storageItems.storageId, options.storageId));
     if (options.categoryId) filters.push(eq(storageItems.categoryId, options.categoryId));
-    if (options.search) filters.push(sql`lower(${storageItems.name}) LIKE ${`%${options.search.toLowerCase()}%`}`);
-    const itemRows = await this.db.select().from(storageItems).where(and(...filters)).orderBy(asc(storageItems.name), asc(storageItems.id));
-    const ids = itemRows.map((item) => item.id);
+    const search = options.search?.trim().toLowerCase();
+    if (search) filters.push(likeEscaped(sql`lower(${storageItems.name})`, `%${escapeLikePattern(search)}%`));
+    if (options.stock === "available") filters.push(gt(storageItems.quantity, 0));
+    if (options.stock === "empty") filters.push(eq(storageItems.quantity, 0));
+    if (options.stock === "deposit") filters.push(eq(storageItems.allowMemberDeposit, true));
+    if (options.stock === "withdraw") filters.push(eq(storageItems.allowMemberWithdraw, true));
+    if (cursor) filters.push(or(gt(storageItems.name, cursor.name), and(eq(storageItems.name, cursor.name), gt(storageItems.id, cursor.id)))!);
+    const itemRows = await this.db.select().from(storageItems).where(and(...filters)).orderBy(asc(storageItems.name), asc(storageItems.id)).limit(options.limit + 1);
+    const hasMore = itemRows.length > options.limit;
+    const pageRows = hasMore ? itemRows.slice(0, options.limit) : itemRows;
+    const ids = pageRows.map((item) => item.id);
     const imageRows = ids.length > 0
       ? await this.db.select().from(storageItemImages).where(inArray(storageItemImages.itemId, ids)).orderBy(storageItemImages.createdAt, storageItemImages.id)
       : [];
-    return ok({ data: itemRows.map((item) => toItemPayload(item, imageRows.filter((image) => image.itemId === item.id))) });
+    const lastItem = pageRows.at(-1);
+    return ok({
+      data: pageRows.map((item) => toItemPayload(item, imageRows.filter((image) => image.itemId === item.id))),
+      next_cursor: hasMore && lastItem ? encodeStorageItemCursor({ name: lastItem.name, id: lastItem.id }) : null,
+    });
   }
 
   async getItem(itemId: string): Promise<ServiceResult<unknown>> {
@@ -216,18 +288,82 @@ export class StorageService {
         (parsed.data.type === "distribute" && item.allowMemberWithdraw);
       if (!memberAllowed) return err("FORBIDDEN", "This item does not allow member self-service for this operation");
     }
-    const delta =
-      parsed.data.type === "adjust"
-        ? (parsed.data.target_quantity ?? item.quantity) - item.quantity
-        : (parsed.data.type === "intake" ? 1 : -1) * (parsed.data.quantity ?? 0);
-    if (parsed.data.type === "adjust" && delta === 0) return err("VALIDATION_ERROR", "Target quantity is already current stock");
-    if (item.quantity + delta < 0) return err("VALIDATION_ERROR", `Insufficient stock (have ${item.quantity})`);
+
+    const requestedQuantity = parsed.data.quantity ?? 0;
+    const targetQuantity = parsed.data.target_quantity;
+    const delta = parsed.data.type === "intake" ? requestedQuantity : -requestedQuantity;
+    if (parsed.data.type === "adjust" && targetQuantity === item.quantity) {
+      return err("VALIDATION_ERROR", "Target quantity is already current stock");
+    }
+    if (parsed.data.type === "distribute" && item.quantity + delta < 0) {
+      return err("VALIDATION_ERROR", `Insufficient stock (have ${item.quantity})`);
+    }
+
     const txId = nanoid();
-    await this.deps.rawDb.batch([
-      this.deps.rawDb.prepare("UPDATE storage_items SET quantity = quantity + ?1, updated_at = ?2 WHERE id = ?3").bind(delta, nowIso(), itemId),
-      this.deps.rawDb.prepare("INSERT INTO storage_transactions (id, item_id, type, quantity_delta, recipient_user_id, note, actor_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
-        .bind(txId, itemId, parsed.data.type, delta, recipientUserId, parsed.data.note ?? null, sessionUser.id),
-    ]);
+    if (parsed.data.type === "adjust") {
+      const committedTarget = targetQuantity as number;
+      const results = await this.deps.rawDb.batch([
+        this.deps.rawDb.prepare(`
+          INSERT INTO storage_transactions
+            (id, item_id, type, quantity_delta, recipient_user_id, note, actor_id)
+          SELECT ?1, id, 'adjust', ?2 - quantity, ?3, ?4, ?5
+          FROM storage_items
+          WHERE id = ?6 AND quantity <> ?2
+        `).bind(
+          txId,
+          committedTarget,
+          recipientUserId,
+          parsed.data.note ?? null,
+          sessionUser.id,
+          itemId,
+        ),
+        this.deps.rawDb.prepare(`
+          UPDATE storage_items
+          SET quantity = ?1, updated_at = ?2
+          WHERE id = ?3 AND quantity <> ?1
+        `).bind(committedTarget, nowIso(), itemId),
+      ]);
+      const insertedRows = getBatchChanges(results[0]);
+      const updatedRows = getBatchChanges(results[1]);
+      if (insertedRows === 0 && updatedRows === 0) {
+        const currentItem = await this.getItemRow(itemId);
+        if (!currentItem) return err("NOT_FOUND", "Item not found");
+        if (currentItem.quantity === committedTarget) {
+          return err("VALIDATION_ERROR", "Target quantity is already current stock");
+        }
+        throw new Error("Storage adjustment changed during transaction");
+      }
+      if (insertedRows !== 1 || updatedRows !== 1) {
+        throw new Error("Storage adjustment transaction invariant failed");
+      }
+    } else {
+      try {
+        await this.deps.rawDb.batch([
+          this.deps.rawDb.prepare("UPDATE storage_items SET quantity = quantity + ?1, updated_at = ?2 WHERE id = ?3").bind(delta, nowIso(), itemId),
+          this.deps.rawDb.prepare("INSERT INTO storage_transactions (id, item_id, type, quantity_delta, recipient_user_id, note, actor_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
+            .bind(txId, itemId, parsed.data.type, delta, recipientUserId, parsed.data.note ?? null, sessionUser.id),
+        ]);
+      } catch (error) {
+        const isQuantityConflict = isStorageQuantityConstraintViolation(error);
+        if (!isQuantityConflict && !isForeignKeyConstraintViolation(error)) throw error;
+        const currentItem = await this.getItemRow(itemId);
+        if (!currentItem) return err("NOT_FOUND", "Item not found");
+        if (isQuantityConflict && parsed.data.type === "distribute" && currentItem.quantity < requestedQuantity) {
+          return err("CONFLICT", "Stock changed; refresh and retry", {
+            current_quantity: currentItem.quantity,
+            requested_quantity: requestedQuantity,
+          });
+        }
+        throw error;
+      }
+    }
+
+    const tx = await getStorageTransactionPayload(this.deps.rawDb, txId);
+    const committedDelta = getCommittedDelta(tx);
+    if (parsed.data.type === "adjust" && committedDelta === null) {
+      throw new Error("Storage adjustment ledger entry missing after commit");
+    }
+    const auditDelta = committedDelta ?? delta;
     await this.deps.writeAuditLog({
       entityType: "storage_transaction",
       action: parsed.data.type,
@@ -236,16 +372,18 @@ export class StorageService {
       diffTitle: item.name,
       detailText: JSON.stringify({
         item_id: itemId,
-        quantity_delta: delta,
+        quantity_delta: auditDelta,
         recipient_user_id: recipientUserId,
         note: parsed.data.note ?? null,
-        stock_before: item.quantity,
-        stock_after: item.quantity + delta,
+        ...(parsed.data.type === "adjust" ? { target_quantity: targetQuantity } : {}),
       }),
     });
     await this.deps.publishEntityChanged({ entityType: "storage", entityId: itemId, hint: "storage_updated" });
-    const tx = await getStorageTransactionPayload(this.deps.rawDb, txId);
-    return ok(tx ?? { id: txId, item_id: itemId, type: parsed.data.type, quantity_delta: delta });
+    return ok(tx ?? { id: txId, item_id: itemId, type: parsed.data.type, quantity_delta: auditDelta });
+  }
+
+  async applyBatchTransactions(sessionUser: SessionUser, body: unknown): Promise<ServiceResult<StorageBatchTransactionResult>> {
+    return applyStorageBatchTransactions(this.deps, sessionUser, body);
   }
 
   async listTransactions(options: { itemId?: string; recipientUserId?: string; page: number; limit: number }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {

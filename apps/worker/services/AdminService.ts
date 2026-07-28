@@ -4,19 +4,20 @@ import {
   BUILTIN_ROLES,
   adminRoleSchema,
   inviteLinkSchema,
-  inviteLinkStatsSchema,
   DEFAULT_SITE_ANALYTICS_SETTINGS,
   type Permission,
   type AdminRole,
 } from "@guild/shared";
+import { SYSTEM_TEST_USERNAME_PREFIX, isReservedSystemTestUsername } from "@guild/shared/config/system-test";
 import type { AuditAction } from "@guild/shared/constants/audit";
 import type { WriteAuditLogInput as AuditLogInput } from "./audit";
-import { and, desc, eq, gt, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { inviteLinks, rolePermissions, roles, sessions, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult, type ServiceErr } from "./result";
+import { escapeLikePattern, usernameEquals } from "./helpers";
+import { clearLoginFailures } from "./login-lockout";
 import type { MediaLike } from "./AdminAuditService";
-import { clearPermissionCache } from "./auth";
 import { SiteConfigService } from "./SiteConfigService";
 
 export type { MediaLike } from "./AdminAuditService";
@@ -26,6 +27,16 @@ type DrizzleDb = ReturnType<typeof drizzle>;
 export type AnalyticsSettings = {
   reference_duration_minutes: number;
   modifier_weights: Record<string, number>;
+};
+
+export type InviteVisibility = "active" | "expired" | "revoked";
+
+type ListInviteLinksOptions = {
+  cursor: number;
+  limit: number;
+  visibility: InviteVisibility;
+  search?: string;
+  searchCodes: boolean;
 };
 
 function emptyPermissionRecord(): Record<Permission, boolean> {
@@ -96,23 +107,100 @@ export class AdminService {
     this.deps = deps;
   }
 
-  async listInviteLinks(includeExpired: boolean, includeRevoked: boolean): Promise<ServiceResult<unknown[]>> {
+  async listInviteLinks(
+    options: ListInviteLinksOptions,
+  ): Promise<ServiceResult<{ data: unknown[]; next_cursor: string | null; total: number }>> {
     const nowIso = this.now().toISOString();
     const filters: SQL<unknown>[] = [];
-    if (!includeRevoked) filters.push(isNull(inviteLinks.revokedAt));
-    if (!includeExpired) filters.push(or(isNull(inviteLinks.expiresAt), gt(inviteLinks.expiresAt, nowIso))!);
-    const rows = await this.deps.db.select({ id: inviteLinks.id, code: inviteLinks.code, createdBy: inviteLinks.createdBy, maxUses: inviteLinks.maxUses, usedCount: inviteLinks.usedCount, expiresAt: inviteLinks.expiresAt, createdAt: inviteLinks.createdAt, revokedAt: inviteLinks.revokedAt }).from(inviteLinks).where(and(...filters)).orderBy(desc(inviteLinks.createdAt)).limit(100);
-    return ok(rows.map((r) => inviteLinkSchema.parse({ id: r.id, code: r.code, created_by: r.createdBy, max_uses: r.maxUses, used_count: r.usedCount, expires_at: r.expiresAt, created_at: r.createdAt, revoked_at: r.revokedAt })));
+
+    if (options.visibility === "revoked") {
+      filters.push(isNotNull(inviteLinks.revokedAt));
+    } else if (options.visibility === "expired") {
+      filters.push(
+        isNull(inviteLinks.revokedAt),
+        or(
+          and(isNotNull(inviteLinks.expiresAt), lte(inviteLinks.expiresAt, nowIso)),
+          gte(inviteLinks.usedCount, inviteLinks.maxUses),
+        )!,
+      );
+    } else {
+      filters.push(
+        isNull(inviteLinks.revokedAt),
+        or(isNull(inviteLinks.expiresAt), gt(inviteLinks.expiresAt, nowIso))!,
+        lt(inviteLinks.usedCount, inviteLinks.maxUses),
+      );
+    }
+
+    if (options.search) {
+      const pattern = `%${escapeLikePattern(options.search.toLowerCase())}%`;
+      const searchFilters: SQL<unknown>[] = [
+        sql`lower(${inviteLinks.createdAt}) LIKE ${pattern} ESCAPE '\\'`,
+        sql`lower(coalesce(${inviteLinks.expiresAt}, '')) LIKE ${pattern} ESCAPE '\\'`,
+      ];
+      if (options.searchCodes) {
+        searchFilters.unshift(sql`lower(${inviteLinks.code}) LIKE ${pattern} ESCAPE '\\'`);
+      }
+      filters.push(or(...searchFilters)!);
+    }
+
+    const whereClause = and(...filters);
+    const rows = await this.deps.db
+      .select({
+        id: inviteLinks.id,
+        code: inviteLinks.code,
+        createdBy: inviteLinks.createdBy,
+        maxUses: inviteLinks.maxUses,
+        usedCount: inviteLinks.usedCount,
+        expiresAt: inviteLinks.expiresAt,
+        createdAt: inviteLinks.createdAt,
+        revokedAt: inviteLinks.revokedAt,
+      })
+      .from(inviteLinks)
+      .where(whereClause)
+      .orderBy(desc(inviteLinks.createdAt), desc(inviteLinks.id))
+      .limit(options.limit + 1)
+      .offset(options.cursor);
+    const countRows = await this.deps.db
+      .select({ total: sql<number>`count(*)` })
+      .from(inviteLinks)
+      .where(whereClause);
+    const hasMore = rows.length > options.limit;
+    const pageRows = hasMore ? rows.slice(0, options.limit) : rows;
+
+    return ok({
+      data: pageRows.map((r) => inviteLinkSchema.parse({
+        id: r.id,
+        code: r.code,
+        created_by: r.createdBy,
+        max_uses: r.maxUses,
+        used_count: r.usedCount,
+        expires_at: r.expiresAt,
+        created_at: r.createdAt,
+        revoked_at: r.revokedAt,
+      })),
+      next_cursor: hasMore ? String(options.cursor + options.limit) : null,
+      total: Number(countRows[0]?.total ?? 0),
+    });
   }
 
-  async getInviteLinkStats(): Promise<ServiceResult<{ total: number; active: number; revoked: number; expired: number; data: unknown[] }>> {
+  async getInviteLinkStats(): Promise<ServiceResult<{ total: number; active: number; revoked: number; expired: number }>> {
     const nowIso = this.now().toISOString();
-    const rows = await this.deps.db.select({ id: inviteLinks.id, usedCount: inviteLinks.usedCount, maxUses: inviteLinks.maxUses, expiresAt: inviteLinks.expiresAt, revokedAt: inviteLinks.revokedAt }).from(inviteLinks).limit(100);
-    const stats = rows.map((r) => inviteLinkStatsSchema.parse({ id: r.id, used_count: r.usedCount, max_uses: r.maxUses, expires_at: r.expiresAt, revoked_at: r.revokedAt }));
-    const revoked = stats.filter((s) => s.revoked_at !== null).length;
-    const expired = stats.filter((s) => s.expires_at !== null && s.expires_at <= nowIso).length;
-    const active = stats.filter((s) => s.revoked_at === null && (s.expires_at === null || s.expires_at > nowIso) && s.used_count < s.max_uses).length;
-    return ok({ total: stats.length, active, revoked, expired, data: stats });
+    const rows = await this.deps.db
+      .select({
+        total: sql<number>`count(*)`,
+        active: sql<number>`coalesce(sum(case when ${inviteLinks.revokedAt} is null and (${inviteLinks.expiresAt} is null or ${inviteLinks.expiresAt} > ${nowIso}) and ${inviteLinks.usedCount} < ${inviteLinks.maxUses} then 1 else 0 end), 0)`,
+        revoked: sql<number>`coalesce(sum(case when ${inviteLinks.revokedAt} is not null then 1 else 0 end), 0)`,
+        expired: sql<number>`coalesce(sum(case when ${inviteLinks.revokedAt} is null and ((${inviteLinks.expiresAt} is not null and ${inviteLinks.expiresAt} <= ${nowIso}) or ${inviteLinks.usedCount} >= ${inviteLinks.maxUses}) then 1 else 0 end), 0)`,
+      })
+      .from(inviteLinks);
+    const stats = rows[0];
+
+    return ok({
+      total: Number(stats?.total ?? 0),
+      active: Number(stats?.active ?? 0),
+      revoked: Number(stats?.revoked ?? 0),
+      expired: Number(stats?.expired ?? 0),
+    });
   }
 
   async createInviteLink(actorId: string, maxUses: number, expiresAt: string | null): Promise<ServiceResult<unknown>> {
@@ -226,7 +314,11 @@ export class AdminService {
   }
 
   async createMember(actorId: string, username: string): Promise<ServiceResult<{ user_id: string; username: string; temporary_password: string }>> {
-    const existing = (await this.deps.db.select({ id: users.id, deletedAt: users.deletedAt }).from(users).where(eq(users.username, username)).limit(1))[0];
+    if (isReservedSystemTestUsername(username)) {
+      return err("VALIDATION_ERROR", `Usernames beginning with "${SYSTEM_TEST_USERNAME_PREFIX}" are reserved`);
+    }
+
+    const existing = (await this.deps.db.select({ id: users.id, deletedAt: users.deletedAt }).from(users).where(usernameEquals(username)).limit(1))[0];
     if (existing && existing.deletedAt === null) return err("CONFLICT", "Username already taken");
     const userId = this.deps.generateId();
     const temporaryPassword = this.deps.generateTemporaryPassword();
@@ -310,6 +402,25 @@ export class AdminService {
     return ok({ temporary_password: temporaryPassword });
   }
 
+  /**
+   * Clears the progressive login lockout for a user. The escape hatch for the
+   * one unavoidable downside of account-level lockout: anyone who knows a
+   * username can deliberately lock it out. Same permission and same level
+   * check as a password reset — clearing a lock is strictly weaker than
+   * changing the password, so it needs no separate permission.
+   */
+  async resetLoginLock(actorId: string, targetUserId: string): Promise<ServiceResult<{ ok: true }>> {
+    const actorRole = await this.getActorRoleLevel(actorId);
+    if (!actorRole) return err("FORBIDDEN", "Could not resolve actor role");
+    const target = (await this.deps.db.select({ id: users.id, deletedAt: users.deletedAt, username: users.username, role: users.role }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
+    if (!target || target.deletedAt !== null) return err("NOT_FOUND", "User not found");
+    const targetRoleLevel = (await this.deps.db.select({ level: roles.level }).from(roles).where(eq(roles.id, target.role)).limit(1))[0];
+    if (targetRoleLevel && targetRoleLevel.level >= actorRole.level) return err("FORBIDDEN", "Cannot clear the login lock for a user at or above your own level");
+    await clearLoginFailures(this.deps.db, target.username);
+    await this.deps.writeAuditLogDurable({ entityType: "user_auth", action: "reset_login_lock", actorId, entityId: targetUserId, diffTitle: target.username });
+    return ok({ ok: true });
+  }
+
   async listRoles(): Promise<ServiceResult<AdminRole[]>> {
     const roleRows = await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).orderBy(desc(roles.level), roles.name);
     const roleIds = roleRows.map((r) => r.id);
@@ -328,12 +439,17 @@ export class AdminService {
 
     const existing = (await this.deps.db.select({ id: roles.id }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (existing) return err("CONFLICT", "Role id already exists");
-    await this.deps.db.insert(roles).values({ id: roleId, name: input.name.trim(), level: input.level, color: input.color ?? null, isBuiltin: false });
+
     const permissionRecord = emptyPermissionRecord();
     for (const perm of PERMISSIONS) permissionRecord[perm] = Boolean(input.permissions?.[perm]);
     if (actorRole.roleId !== "admin") permissionRecord["admin.roles.manage"] = false;
+    // Validated before the INSERT so a rejected request cannot leave a role row
+    // behind with no permissions attached.
+    const escalated = await this.findEscalatedGrants(actorRole.roleId, permissionRecord);
+    if (escalated.length > 0) return err("FORBIDDEN", `Cannot grant permissions you do not hold: ${escalated.join(", ")}`);
+
+    await this.deps.db.insert(roles).values({ id: roleId, name: input.name.trim(), level: input.level, color: input.color ?? null, isBuiltin: false });
     await replaceRolePermissions(this.deps.rawDb, roleId, permissionRecord);
-    clearPermissionCache(roleId);
     await this.deps.writeAuditLogDurable({ entityType: "role", action: "create", actorId, entityId: roleId, diffTitle: input.name.trim(), detailText: JSON.stringify({ name: input.name.trim(), level: input.level, color: input.color ?? null, permissions: permissionRecord }) });
     const created = (await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).where(eq(roles.id, roleId)).limit(1))[0];
     if (!created) return err("SERVER_ERROR", "Failed to create role");
@@ -355,18 +471,30 @@ export class AdminService {
     if (!existing.isBuiltin && input.level !== undefined) {
       if (input.level >= actorRole.level) return err("VALIDATION_ERROR", `Role level must be below your own (${actorRole.level})`);
     }
+    // Permissions are resolved and validated before anything is written, so a
+    // rejected escalation attempt cannot leave the name/level/colour applied.
+    let nextPermissionRecord: Record<Permission, boolean> | null = null;
+    if (input.permissions) {
+      const currentPermissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+      const currentlyGranted = parsePermissionRecord(currentPermissionRows);
+      nextPermissionRecord = parsePermissionRecord(currentPermissionRows);
+      for (const perm of PERMISSIONS) if (Object.prototype.hasOwnProperty.call(input.permissions, perm)) nextPermissionRecord[perm] = Boolean(input.permissions[perm]);
+      if (actorRole.roleId !== "admin") nextPermissionRecord["admin.roles.manage"] = false;
+      // Only newly added grants are checked: permissions the role already had are
+      // left alone so a lower-level editor is not forced to strip them.
+      const addedGrants = emptyPermissionRecord();
+      for (const perm of PERMISSIONS) addedGrants[perm] = nextPermissionRecord[perm] && !currentlyGranted[perm];
+      const escalated = await this.findEscalatedGrants(actorRole.roleId, addedGrants);
+      if (escalated.length > 0) return err("FORBIDDEN", `Cannot grant permissions you do not hold: ${escalated.join(", ")}`);
+    }
+
     const roleUpdatePayload: { name?: string; level?: number; color?: string | null; updatedAt: string } = { updatedAt: this.now().toISOString() };
     if (input.name !== undefined) roleUpdatePayload.name = input.name.trim();
     if (input.level !== undefined) roleUpdatePayload.level = input.level;
     if (input.color !== undefined) roleUpdatePayload.color = input.color ?? null;
     if (Object.keys(roleUpdatePayload).length > 1) await this.deps.db.update(roles).set(roleUpdatePayload).where(eq(roles.id, roleId));
-    if (input.permissions) {
-      const currentPermissionRows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
-      const nextPermissionRecord = parsePermissionRecord(currentPermissionRows);
-      for (const perm of PERMISSIONS) if (Object.prototype.hasOwnProperty.call(input.permissions, perm)) nextPermissionRecord[perm] = Boolean(input.permissions[perm]);
-      if (actorRole.roleId !== "admin") nextPermissionRecord["admin.roles.manage"] = false;
+    if (nextPermissionRecord) {
       await replaceRolePermissions(this.deps.rawDb, roleId, nextPermissionRecord);
-      clearPermissionCache(roleId);
     }
     const [updatedRole] = await this.deps.db.select({ id: roles.id, name: roles.name, level: roles.level, color: roles.color, isBuiltin: roles.isBuiltin, createdAt: roles.createdAt, updatedAt: roles.updatedAt }).from(roles).where(eq(roles.id, roleId)).limit(1);
     if (!updatedRole) return err("SERVER_ERROR", "Failed to load updated role");
@@ -390,7 +518,6 @@ export class AdminService {
     const assignedCount = Number(assignedCountRow?.count ?? 0);
     if (assignedCount > 0) return err("CONFLICT", "Role is assigned to users", { assigned_user_count: assignedCount });
     await this.deps.db.delete(roles).where(eq(roles.id, roleId));
-    clearPermissionCache(roleId);
     await this.deps.writeAuditLogDurable({ entityType: "role", action: "delete", actorId, entityId: roleId, diffTitle: existing.name });
     return ok(undefined);
   }
@@ -472,6 +599,27 @@ export class AdminService {
   private async roleHasHighRiskPermissions(roleId: string): Promise<boolean> {
     const rows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
     return rows.some((r) => r.granted && (HIGH_RISK_PERMISSIONS as readonly string[]).includes(r.permission));
+  }
+
+  private async getGrantedPermissions(roleId: string): Promise<ReadonlySet<string>> {
+    const rows = await this.deps.db.select({ permission: rolePermissions.permission, granted: rolePermissions.granted }).from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+    return new Set(rows.filter((r) => r.granted).map((r) => r.permission));
+  }
+
+  /**
+   * A granter may never hand out a permission it does not hold itself.
+   * `admin.roles.manage` on its own would otherwise be enough to mint a
+   * lower-level role carrying capabilities the granter lacks and assign a
+   * second account to it. Returns the offending permissions, empty when fine.
+   * `admin` is exempt — it is the root role by definition.
+   */
+  private async findEscalatedGrants(
+    actorRoleId: string,
+    requested: Record<Permission, boolean>,
+  ): Promise<Permission[]> {
+    if (actorRoleId === "admin") return [];
+    const held = await this.getGrantedPermissions(actorRoleId);
+    return PERMISSIONS.filter((perm) => requested[perm] && !held.has(perm));
   }
 
   private now() {

@@ -1,4 +1,4 @@
-﻿type MentionInput = {
+type MentionInput = {
   username: string;
 };
 

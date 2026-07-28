@@ -7,7 +7,7 @@
 
 .my-profile-sortable-row--dragging {
   opacity: 0.7;
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
 }
 
 @media (max-width: 991px) {
@@ -15,4 +15,96 @@
     overflow-x: auto;
     flex-wrap: nowrap;
   }
+}
+
+/* ── Profile Preview Card ── (moved out of style={{}}, task-8 批 B) */
+
+.profile-preview-avatar {
+  border: 2px solid var(--border-subtle);
+}
+
+.profile-preview-stats-row {
+  background: var(--accent-tint);
+  border-radius: var(--radius-sm);
+  padding: 12px 8px;
+}
+
+.profile-preview-divider {
+  width: 1px;
+  height: 36px;
+  background: var(--border-subtle);
+}
+
+.profile-preview-stat-icon--image {
+  color: var(--accent-fill);
+}
+
+/* 旧品牌辅色（古铜色），随 task-9-addendum.md D 节迁到 L2 --brand-secondary。
+   同 EquipmentCalcModal.css 的 .ecm__stats__card--intent 一处。 */
+.profile-preview-stat-icon--video {
+  color: var(--brand-secondary);
+}
+
+/* ── Availability Grid Editor ── (moved out of style={{}}, task-8 批 B).
+   --mantine-color-body / --mantine-color-dimmed / --mantine-color-default-border
+   are Mantine's own dynamic vars, exempt from the token-resolution guard
+   (theme-tokens.test.ts RUNTIME_INJECTED_VARS), same as the file's existing
+   uses of --mantine-color-*. */
+
+.availability-grid__corner {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--mantine-color-body);
+}
+
+.availability-grid__hour-label {
+  font-size: 0.7rem;
+  color: var(--mantine-color-dimmed);
+  text-align: right;
+  vertical-align: top;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--mantine-color-body);
+  line-height: 1;
+}
+
+.availability-grid__cell {
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.05s;
+}
+
+/* Runtime-toggled active state (a slot is on/off): switches a class instead of
+   string-concatenating a colour, per task-8-brief.md Step 3.4. */
+.availability-grid__cell--active {
+  background: var(--accent-fill);
+}
+
+.availability-grid__cell--top {
+  border-top: 1px solid var(--mantine-color-default-border);
+  border-left: 1px solid var(--mantine-color-default-border);
+  border-right: 1px solid var(--mantine-color-default-border);
+}
+
+.availability-grid__cell--bottom {
+  border-left: 1px solid var(--mantine-color-default-border);
+  border-right: 1px solid var(--mantine-color-default-border);
+}
+
+.availability-grid__cell--bottom-edge {
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+/* ── Profile Media Tab ── (moved out of style={{}}, task-8 批 B) */
+
+.profile-media-avatar {
+  border: 2px solid var(--border-subtle);
+}
+
+.profile-media-chip-row {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-tint);
 }

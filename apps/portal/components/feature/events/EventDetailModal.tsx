@@ -1,6 +1,6 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
 import { Button, Grid, Group, Modal, Progress, Select, SimpleGrid, Stack, Text } from "@mantine/core";
-import { modals } from "@mantine/modals";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
@@ -17,6 +17,7 @@ import {
 } from "@portal/components/icons";
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { getParticipantActionDisabledReasonKey } from "./participant-action";
 import "./EventDetailModal.css";
 
 export type MemberEntry = { user: User; profile: MemberProfile };
@@ -81,6 +82,7 @@ export function EventDetailModal({
 }: EventDetailModalProps) {
   const { t, i18n } = useTranslation("events");
   const { t: tc } = useTranslation("common");
+  const confirm = useConfirmDialog();
   const mediaLabels = useMemo(() => buildMediaGalleryLabels(tc), [tc]);
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
   const [localHasVoted, setLocalHasVoted] = useState(false);
@@ -92,9 +94,17 @@ export function EventDetailModal({
   const raffleWinners = event?.raffle_winners ?? [];
   const raffleHasDrawn = raffleWinners.length > 0;
   const showMemberAction = Boolean(currentUserId && (isJoined ? onLeave : onJoin));
-  const memberActionDisabled = event
-    ? event.signup_locked || Boolean(event.archived_at) || hasEnded || (!isJoined && isFull)
-    : true;
+  const memberActionDisabledReasonKey = event
+    ? getParticipantActionDisabledReasonKey({
+        isArchived: Boolean(event.archived_at),
+        hasEnded,
+        signupLocked: event.signup_locked,
+        isFull,
+        isJoined,
+        pending: Boolean(joinPending || leavePending),
+      })
+    : null;
+  const memberActionDisabled = event === null || memberActionDisabledReasonKey !== null;
   const memberActionLabel = isJoined
     ? t("button.leave")
     : isFull
@@ -118,6 +128,51 @@ export function EventDetailModal({
     setSelectedOptionIds((current) =>
       current.includes(optionId) ? current.filter((id) => id !== optionId) : [...current, optionId],
     );
+  };
+
+  const handleDrawRaffle = async () => {
+    if (!event || !onDrawRaffle) {
+      return;
+    }
+    const eventId = event.id;
+    const confirmed = await confirm({
+      title: t("raffle.confirm.draw.title"),
+      description: (
+        <Text size="sm">
+          {t("raffle.confirm.draw.description", {
+            count: event.winner_count ?? 0,
+            pool: members.length,
+          })}
+        </Text>
+      ),
+      confirmLabel: t("raffle.detail.drawNow"),
+      cancelLabel: t("button.cancel"),
+      intent: "warning",
+    });
+    if (confirmed) {
+      onDrawRaffle(eventId);
+    }
+  };
+
+  const handleRemoveParticipant = async (userId: string, username: string) => {
+    if (!event) {
+      return;
+    }
+    const eventId = event.id;
+    const confirmed = await confirm({
+      title: t("detail.confirm.removeMember.title"),
+      description: (
+        <Text size="sm">
+          {t("detail.confirm.removeMember.description", { username })}
+        </Text>
+      ),
+      confirmLabel: t("detail.removeMember"),
+      cancelLabel: t("button.cancel"),
+      intent: "danger",
+    });
+    if (confirmed) {
+      onRemoveParticipant(eventId, userId);
+    }
   };
 
   const handlePollOptionKeyDown = (optionId: string, disabled: boolean, keyEvent: KeyboardEvent<HTMLDivElement>) => {
@@ -291,23 +346,7 @@ export function EventDetailModal({
                         loading={drawRafflePending}
                         disabled={event === null || Boolean(event.archived_at)}
                         leftSection={<GiftIcon size={14} />}
-                        onClick={() => {
-                          modals.openConfirmModal({
-                            title: t("raffle.confirm.draw.title"),
-                            children: (
-                              <Text size="sm">
-                                {t("raffle.confirm.draw.description", {
-                                  count: event.winner_count ?? 0,
-                                  pool: members.length,
-                                })}
-                              </Text>
-                            ),
-                            labels: { confirm: t("raffle.detail.drawNow"), cancel: t("button.cancel") },
-                            confirmProps: { color: "pink" },
-                            onConfirm: () => onDrawRaffle(event.id),
-                            centered: true,
-                          });
-                        }}
+                        onClick={() => void handleDrawRaffle()}
                       >
                         {t("raffle.detail.drawNow")}
                       </Button>
@@ -370,8 +409,9 @@ export function EventDetailModal({
                           }
                           onJoin?.(event.id);
                         }}
-                        disabled={memberActionDisabled || joinPending || leavePending}
+                        disabled={memberActionDisabled}
                         loading={joinPending || leavePending}
+                        tooltip={memberActionDisabledReasonKey ? t(memberActionDisabledReasonKey) : undefined}
                       >
                         {isJoined ? <UserMinusIcon size={14} style={{ marginRight: 4 }} /> : <UserPlusIcon size={14} style={{ marginRight: 4 }} />}
                         {memberActionLabel}
@@ -420,20 +460,7 @@ export function EventDetailModal({
                               <DepthButton
                                 type="danger"
                                 size="sm"
-                                onClick={() => {
-                                  modals.openConfirmModal({
-                                    title: t("detail.confirm.removeMember.title"),
-                                    children: (
-                                      <Text size="sm">
-                                        {t("detail.confirm.removeMember.description", { username: entry.user.username })}
-                                      </Text>
-                                    ),
-                                    labels: { confirm: t("detail.removeMember"), cancel: t("button.cancel") },
-                                    confirmProps: { color: "red" },
-                                    onConfirm: () => onRemoveParticipant(event.id, entry.user.id),
-                                    centered: true,
-                                  });
-                                }}
+                                onClick={() => void handleRemoveParticipant(entry.user.id, entry.user.username)}
                                 disabled={event === null}
                               >
                                 <UserMinusIcon size={14} style={{ marginRight: 4 }} />

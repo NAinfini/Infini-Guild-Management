@@ -14,6 +14,7 @@ describe("portal route access policy", () => {
       "profileRoute",
       "adminRoute",
       "storageRoute",
+      "storageManageRoute",
     ];
 
     for (const route of authenticatedRoutes) {
@@ -54,5 +55,18 @@ describe("portal route access policy", () => {
     expect(source).toContain("publicToolsRoute,");
     expect(source).toContain("loginRoute,");
     expect(source).toContain("registerRoute,");
+  });
+
+  it("guards storage structure management with the structure permission", () => {
+    const source = routerSource();
+    const manageRoute = source.slice(
+      source.indexOf("const storageManageRoute"),
+      source.indexOf("const wikiRoute"),
+    );
+
+    expect(manageRoute).toContain('path: "/storage/manage"');
+    expect(manageRoute).toContain('"admin.storage.structure"');
+    expect(manageRoute).toContain('"admin.storage.manage"');
+    expect(manageRoute).toContain('throw redirect({ to: "/storage" })');
   });
 });

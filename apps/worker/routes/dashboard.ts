@@ -11,16 +11,42 @@ import {
   warTeams,
 } from "../db/schema";
 import { parseStringArray } from "../services/helpers";
+import { eventPublicVisibilityFilter } from "../services/events/event-visibility";
 import { toEventPayload, type EventRow } from "../services/EventService";
 import { toWarHistoryPayload } from "../services/GuildWarService";
+import type { SessionUser } from "../services/auth";
 import { getRequestUser } from "../middleware/rbac";
 import { getDb } from "./_shared";
 import { getFeatureFlags } from "./service-factory";
 
 export const dashboardRoutes = new Hono();
 
-const UPCOMING_EVENT_LIMIT = 20;
+const UPCOMING_EVENT_GROUP_LIMIT = 5;
 const RECENT_WAR_LIMIT = 4;
+
+const DASHBOARD_EVENT_FIELDS = {
+  id: events.id,
+  type: events.type,
+  title: events.title,
+  description: events.description,
+  startAt: events.startAt,
+  endAt: events.endAt,
+  capacity: events.capacity,
+  pinned: events.pinned,
+  signupLocked: events.signupLocked,
+  visibleAt: events.visibleAt,
+  archivedAt: events.archivedAt,
+  autoArchive: events.autoArchive,
+  autoArchived: events.autoArchived,
+  createdBy: events.createdBy,
+  updatedBy: events.updatedBy,
+  attachments: events.attachments,
+  seriesId: events.seriesId,
+  instanceDate: events.instanceDate,
+  winnerCount: events.winnerCount,
+  createdAt: events.createdAt,
+  updatedAt: events.updatedAt,
+} as const;
 
 function weekWindow(now = new Date()): { start: string; end: string } {
   const end = new Date(now);
@@ -32,49 +58,111 @@ function initials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
-dashboardRoutes.get("/summary", async (c) => {
-  // Public dashboard read: guests can view site activity, but user-specific
-  // fields such as my_signup_event_ids stay empty without a session.
-  const viewer = await getRequestUser(c);
-  const features = await getFeatureFlags(c);
-  const db = getDb(c);
-  const window = weekWindow();
+type DashboardDb = ReturnType<typeof getDb>;
 
-  const [memberStatsRows, upcomingEventRows, recentWarRows, warStatsRows] = await Promise.all([
+async function loadMemberStats(db: DashboardDb) {
+  const rows = await db
+    .select({
+      activeMembers: sql<number>`sum(case when ${users.deletedAt} is null and ${users.isActive} = 1 then 1 else 0 end)`,
+      totalMembers: sql<number>`sum(case when ${users.deletedAt} is null then 1 else 0 end)`,
+    })
+    .from(users);
+  const stats = rows[0];
+
+  return {
+    active_member_count: Number(stats?.activeMembers ?? 0),
+    total_member_count: Number(stats?.totalMembers ?? 0),
+  };
+}
+
+async function loadUpcomingEvents(db: DashboardDb, viewer: SessionUser | null) {
+  const window = weekWindow();
+  const eventVisibilityFilter = viewer?.permissions.has("events.edit")
+    ? undefined
+    : eventPublicVisibilityFilter(window.start);
+  const upcomingEventFilter = and(
+    isNull(events.archivedAt),
+    gte(events.startAt, window.start),
+    lte(events.startAt, window.end),
+    eventVisibilityFilter,
+  );
+
+  const [
+    featuredEventRows,
+    upcomingEventRows,
+    upcomingEventCountRows,
+  ] = await Promise.all([
     db
-      .select({
-        activeMembers: sql<number>`sum(case when ${users.deletedAt} is null and ${users.isActive} = 1 then 1 else 0 end)`,
-        totalMembers: sql<number>`sum(case when ${users.deletedAt} is null then 1 else 0 end)`,
-      })
-      .from(users),
-    db
-      .select({
-        id: events.id,
-        type: events.type,
-        title: events.title,
-        description: events.description,
-        startAt: events.startAt,
-        endAt: events.endAt,
-        capacity: events.capacity,
-        pinned: events.pinned,
-        signupLocked: events.signupLocked,
-        visibleAt: events.visibleAt,
-        archivedAt: events.archivedAt,
-        autoArchive: events.autoArchive,
-        autoArchived: events.autoArchived,
-        createdBy: events.createdBy,
-        updatedBy: events.updatedBy,
-        attachments: events.attachments,
-        seriesId: events.seriesId,
-        instanceDate: events.instanceDate,
-        winnerCount: events.winnerCount,
-        createdAt: events.createdAt,
-        updatedAt: events.updatedAt,
-      })
+      .select(DASHBOARD_EVENT_FIELDS)
       .from(events)
-      .where(and(isNull(events.archivedAt), gte(events.startAt, window.start), lte(events.startAt, window.end)))
+      .where(and(upcomingEventFilter, eq(events.pinned, true)))
       .orderBy(asc(events.startAt), asc(events.id))
-      .limit(UPCOMING_EVENT_LIMIT),
+      .limit(UPCOMING_EVENT_GROUP_LIMIT),
+    db
+      .select(DASHBOARD_EVENT_FIELDS)
+      .from(events)
+      .where(and(upcomingEventFilter, eq(events.pinned, false)))
+      .orderBy(asc(events.startAt), asc(events.id))
+      .limit(UPCOMING_EVENT_GROUP_LIMIT),
+    db
+      .select({ total: sql<number>`count(*)` })
+      .from(events)
+      .where(upcomingEventFilter),
+  ]);
+
+  const dashboardEventRows = [...featuredEventRows, ...upcomingEventRows];
+  const eventIds = dashboardEventRows.map((row) => row.id);
+  const participantRows = eventIds.length > 0
+    ? await db
+        .select({
+          eventId: eventParticipants.eventId,
+          userId: users.id,
+          username: users.username,
+          role: users.role,
+          classes: memberProfiles.classes,
+          power: memberProfiles.power,
+          avatarKey: memberProfiles.avatarKey,
+        })
+        .from(eventParticipants)
+        .innerJoin(users, eq(users.id, eventParticipants.userId))
+        .leftJoin(memberProfiles, eq(memberProfiles.userId, users.id))
+        .where(and(inArray(eventParticipants.eventId, eventIds), isNull(users.deletedAt), eq(users.isActive, true)))
+        .orderBy(eventParticipants.joinedAt, users.username)
+    : [];
+
+  const participantsByEvent = new Map<string, unknown[]>();
+  const mySignupEventIds = new Set<string>();
+  for (const row of participantRows) {
+    if (viewer && row.userId === viewer.id) {
+      mySignupEventIds.add(row.eventId);
+    }
+    const list = participantsByEvent.get(row.eventId) ?? [];
+    list.push({
+      user_id: row.userId,
+      username: row.username,
+      role: row.role,
+      classes: parseStringArray(row.classes ?? "[]"),
+      power: Number(row.power ?? 0),
+      avatar_key: row.avatarKey ?? null,
+    });
+    participantsByEvent.set(row.eventId, list);
+  }
+
+  const toDashboardEvent = (row: (typeof dashboardEventRows)[number]) => ({
+    ...toEventPayload(row as EventRow),
+    participants: participantsByEvent.get(row.id) ?? [],
+  });
+
+  return {
+    active_events_count: Number(upcomingEventCountRows[0]?.total ?? 0),
+    featured_events: featuredEventRows.map(toDashboardEvent),
+    upcoming_events: upcomingEventRows.map(toDashboardEvent),
+    my_signup_event_ids: Array.from(mySignupEventIds),
+  };
+}
+
+async function loadWarStats(db: DashboardDb) {
+  const [recentWarRows, warStatsRows] = await Promise.all([
     db
       .select({
         id: warHistory.id,
@@ -103,59 +191,20 @@ dashboardRoutes.get("/summary", async (c) => {
       .where(isNotNull(warHistory.result)),
   ]);
 
-  const eventIds = upcomingEventRows.map((row) => row.id);
   const warIds = recentWarRows.map((row) => row.id);
-
-  const [participantRows, warMemberRows] = await Promise.all([
-    eventIds.length > 0
-      ? db
-          .select({
-            eventId: eventParticipants.eventId,
-            userId: users.id,
-            username: users.username,
-            role: users.role,
-            classes: memberProfiles.classes,
-            power: memberProfiles.power,
-            avatarKey: memberProfiles.avatarKey,
-          })
-          .from(eventParticipants)
-          .innerJoin(users, eq(users.id, eventParticipants.userId))
-          .leftJoin(memberProfiles, eq(memberProfiles.userId, users.id))
-          .where(and(inArray(eventParticipants.eventId, eventIds), isNull(users.deletedAt), eq(users.isActive, true)))
-          .orderBy(eventParticipants.joinedAt, users.username)
-      : Promise.resolve([]),
-    warIds.length > 0
-      ? db
-          .select({
-            warHistoryId: warTeams.warHistoryId,
-            userId: warTeamMembers.userId,
-            username: users.username,
-            stats: warTeamMembers.stats,
-          })
-          .from(warTeamMembers)
-          .innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId))
-          .innerJoin(users, eq(users.id, warTeamMembers.userId))
-          .where(inArray(warTeams.warHistoryId, warIds))
-      : Promise.resolve([]),
-  ]);
-
-  const participantsByEvent = new Map<string, unknown[]>();
-  const mySignupEventIds = new Set<string>();
-  for (const row of participantRows) {
-    if (viewer && row.userId === viewer.id) {
-      mySignupEventIds.add(row.eventId);
-    }
-    const list = participantsByEvent.get(row.eventId) ?? [];
-    list.push({
-      user_id: row.userId,
-      username: row.username,
-      role: row.role,
-      classes: parseStringArray(row.classes ?? "[]"),
-      power: Number(row.power ?? 0),
-      avatar_key: row.avatarKey ?? null,
-    });
-    participantsByEvent.set(row.eventId, list);
-  }
+  const warMemberRows = warIds.length > 0
+    ? await db
+        .select({
+          warHistoryId: warTeams.warHistoryId,
+          userId: warTeamMembers.userId,
+          username: users.username,
+          stats: warTeamMembers.stats,
+        })
+        .from(warTeamMembers)
+        .innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId))
+        .innerJoin(users, eq(users.id, warTeamMembers.userId))
+        .where(inArray(warTeams.warHistoryId, warIds))
+    : [];
 
   const mvpCategories = activeGame.war.mvpCategories;
   const warMembersByHistory = new Map<string, typeof warMemberRows>();
@@ -188,19 +237,46 @@ dashboardRoutes.get("/summary", async (c) => {
   const allWarWinRate = !warStats || Number(warStats.total) === 0
     ? 0
     : (Number(warStats.wins) / Number(warStats.total)) * 100;
-  const memberStats = memberStatsRows[0];
 
-  return c.json({
-    active_member_count: Number(memberStats?.activeMembers ?? 0),
-    total_member_count: Number(memberStats?.totalMembers ?? 0),
-    active_events_count: features.events ? upcomingEventRows.length : 0,
-    all_war_win_rate: features.guildWar ? allWarWinRate : 0,
-    upcoming_events: features.events ? upcomingEventRows.map((row) => ({
-      ...toEventPayload(row as EventRow),
-      participants: participantsByEvent.get(row.id) ?? [],
-    })) : [],
-    my_signup_event_ids: features.events ? Array.from(mySignupEventIds) : [],
-    recent_wars: features.guildWar ? recentWarRows.map(toWarHistoryPayload) : [],
-    recent_war_mvps: features.guildWar ? recentWarMvps : [],
-  });
+  return {
+    all_war_win_rate: allWarWinRate,
+    recent_wars: recentWarRows.map(toWarHistoryPayload),
+    recent_war_mvps: recentWarMvps,
+  };
+}
+
+dashboardRoutes.get("/members", async (c) => {
+  return c.json(await loadMemberStats(getDb(c)));
+});
+
+dashboardRoutes.get("/events", async (c) => {
+  const features = await getFeatureFlags(c);
+  if (!features.events) {
+    return c.json({
+      active_events_count: 0,
+      featured_events: [],
+      upcoming_events: [],
+      my_signup_event_ids: [],
+    });
+  }
+
+  // External preview must use the same public visibility rules as a guest,
+  // even when the current session belongs to an event editor.
+  const viewer = c.req.query("external_view") === "true"
+    ? null
+    : await getRequestUser(c);
+  return c.json(await loadUpcomingEvents(getDb(c), viewer));
+});
+
+dashboardRoutes.get("/wars", async (c) => {
+  const features = await getFeatureFlags(c);
+  if (!features.guildWar) {
+    return c.json({
+      all_war_win_rate: 0,
+      recent_wars: [],
+      recent_war_mvps: [],
+    });
+  }
+
+  return c.json(await loadWarStats(getDb(c)));
 });

@@ -300,15 +300,7 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
           >
             <thead>
               <tr>
-                <th
-                  style={{
-                    width: 52,
-                    position: "sticky",
-                    left: 0,
-                    zIndex: 2,
-                    background: "var(--mantine-color-body)",
-                  }}
-                />
+                <th className="availability-grid__corner" style={{ width: 52 }} />
                 {DAYS.map((day) => (
                   <th
                     key={day.key}
@@ -343,19 +335,8 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
                   <tr key={`h-${hourSlot}`}>
                     <td
                       rowSpan={2}
-                      style={{
-                        fontSize: "0.7rem",
-                        color: "var(--mantine-color-dimmed)",
-                        textAlign: "right",
-                        paddingRight: 6,
-                        verticalAlign: "top",
-                        position: "sticky",
-                        left: 0,
-                        zIndex: 1,
-                        background: "var(--mantine-color-body)",
-                        lineHeight: 1,
-                        paddingTop: 2,
-                      }}
+                      className="availability-grid__hour-label"
+                      style={{ paddingRight: 6, paddingTop: 2 }}
                     >
                       {hourIndex % 2 === 0 ? label : ""}
                     </td>
@@ -368,18 +349,8 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
                         }}
                         onPointerEnter={() => handlePointerEnter(day.key, hourSlot)}
                         onPointerUp={handlePointerUp}
-                        style={{
-                          width: `${100 / 7}%`,
-                          height: 14,
-                          background: grid[day.key][hourSlot]
-                            ? "var(--mantine-primary-color-filled, var(--color-primary, #D4A843))"
-                            : "transparent",
-                          borderTop: "1px solid var(--mantine-color-default-border)",
-                          borderLeft: "1px solid var(--mantine-color-default-border)",
-                          borderRight: "1px solid var(--mantine-color-default-border)",
-                          cursor: "pointer",
-                          transition: "background 0.05s",
-                        }}
+                        className={`availability-grid__cell availability-grid__cell--top${grid[day.key][hourSlot] ? " availability-grid__cell--active" : ""}`}
+                        style={{ width: `${100 / 7}%`, height: 14 }}
                       />
                     ))}
                   </tr>
@@ -393,20 +364,8 @@ export const AvailabilityGridEditor = forwardRef<HTMLDivElement, AvailabilityGri
                         }}
                         onPointerEnter={() => handlePointerEnter(day.key, hourSlot + 1)}
                         onPointerUp={handlePointerUp}
-                        style={{
-                          height: 14,
-                          background: grid[day.key][hourSlot + 1]
-                            ? "var(--mantine-primary-color-filled, var(--color-primary, #D4A843))"
-                            : "transparent",
-                          borderLeft: "1px solid var(--mantine-color-default-border)",
-                          borderRight: "1px solid var(--mantine-color-default-border)",
-                          borderBottom:
-                            hourIndex === HOUR_LABELS.length - 1
-                              ? "1px solid var(--mantine-color-default-border)"
-                              : "none",
-                          cursor: "pointer",
-                          transition: "background 0.05s",
-                        }}
+                        className={`availability-grid__cell availability-grid__cell--bottom${hourIndex === HOUR_LABELS.length - 1 ? " availability-grid__cell--bottom-edge" : ""}${grid[day.key][hourSlot + 1] ? " availability-grid__cell--active" : ""}`}
+                        style={{ height: 14 }}
                       />
                     ))}
                   </tr>

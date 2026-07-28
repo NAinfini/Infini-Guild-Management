@@ -9,7 +9,8 @@ import { nanoid } from "nanoid";
 import { announcements } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, likeEscaped } from "./helpers";
-import { replaceMediaRefs, deleteMediaRefs, extractRichTextMediaKeys } from "./media-references";
+import { buildReplaceMediaRefsStatements, replaceMediaRefs, deleteMediaRefs, extractAnnouncementImageNodeKeys } from "./media-references";
+import { verifyAnnouncementImageStagingToken } from "./announcement-image-staging";
 
 // --- Types ---
 
@@ -31,6 +32,7 @@ export type AnnouncementServiceDeps = {
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
   publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
   publishAnnouncementPublished: (input: AnnouncementPublishedInput) => Promise<void>;
+  signingSecret: string;
 };
 
 // --- Helpers ---
@@ -133,7 +135,7 @@ export class AnnouncementService {
     return ok(toPayload(row));
   }
 
-  async create(actorId: string, data: { title: string; body_json: string; pinned: boolean; status: AnnouncementStatus; publish_at?: string | null; expires_at?: string | null }): Promise<ServiceResult<unknown>> {
+  async create(actorId: string, data: { title: string; body_json: string; pinned: boolean; status: AnnouncementStatus; publish_at?: string | null; expires_at?: string | null; staging_token?: string }): Promise<ServiceResult<unknown>> {
     if (data.publish_at && data.expires_at) {
       const publishDate = new Date(data.publish_at);
       const expiryDate = new Date(data.expires_at);
@@ -142,12 +144,32 @@ export class AnnouncementService {
       }
     }
     const nowIso = new Date().toISOString();
-    const announcementId = nanoid();
-    await this.db.insert(announcements).values({ id: announcementId, title: data.title, bodyJson: data.body_json, pinned: data.pinned, status: data.status, publishAt: data.publish_at ?? null, expiresAt: data.expires_at ?? null, archivedAt: null, createdBy: actorId, updatedAt: nowIso });
+    const stagingPayload = data.staging_token
+      ? await verifyAnnouncementImageStagingToken(this.deps.signingSecret, data.staging_token, actorId)
+      : null;
+    if (data.staging_token && !stagingPayload) return err("FORBIDDEN", "Invalid, expired, or unauthorized staging token");
+    const announcementId = stagingPayload?.announcement_id ?? nanoid();
+    if (stagingPayload) {
+      if (await this.getById(announcementId)) return err("CONFLICT", "Announcement already exists");
+      const claimedKeys: string[] = [];
+      for (const key of extractAnnouncementImageNodeKeys(data.body_json, announcementId)) {
+        if (await this.deps.media.head(key)) claimedKeys.push(key);
+      }
+      await this.deps.rawDb.batch([
+        this.deps.rawDb.prepare(
+          "INSERT INTO announcements (id, title, body_json, pinned, status, publish_at, expires_at, archived_at, created_by, updated_by, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, NULL, ?9, ?9)",
+        ).bind(announcementId, data.title, data.body_json, data.pinned ? 1 : 0, data.status, data.publish_at ?? null, data.expires_at ?? null, actorId, nowIso),
+        ...buildReplaceMediaRefsStatements(this.deps.rawDb, "announcement", announcementId, claimedKeys),
+      ]);
+    } else {
+      await this.db.insert(announcements).values({ id: announcementId, title: data.title, bodyJson: data.body_json, pinned: data.pinned, status: data.status, publishAt: data.publish_at ?? null, expiresAt: data.expires_at ?? null, archivedAt: null, createdBy: actorId, updatedAt: nowIso });
+    }
 
     const created = await this.getById(announcementId);
     if (!created) return err("SERVER_ERROR", "Failed to create announcement");
-    await replaceMediaRefs(this.deps.rawDb, "announcement", announcementId, extractRichTextMediaKeys(created.bodyJson, "announcement", announcementId));
+    if (!stagingPayload) {
+      await replaceMediaRefs(this.deps.rawDb, "announcement", announcementId, extractAnnouncementImageNodeKeys(created.bodyJson, announcementId));
+    }
     await this.deps.writeAuditLog({ entityType: "announcement", action: "create", actorId, entityId: announcementId, diffTitle: created.title });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_created" });
     if (created.status === "published") {
@@ -188,7 +210,7 @@ export class AnnouncementService {
     if (!updated) return err("SERVER_ERROR", "Failed to load updated announcement");
 
     if (data.body_json !== undefined) {
-      await replaceMediaRefs(this.deps.rawDb, "announcement", announcementId, extractRichTextMediaKeys(updated.bodyJson, "announcement", announcementId));
+      await replaceMediaRefs(this.deps.rawDb, "announcement", announcementId, extractAnnouncementImageNodeKeys(updated.bodyJson, announcementId));
     }
     const announcementDiff = buildAnnouncementDiff(existing, data);
     await this.deps.writeAuditLog({ entityType: "announcement", action: "update", actorId, entityId: announcementId, diffTitle: updated.title, detailText: announcementDiff ? JSON.stringify(announcementDiff) : null });

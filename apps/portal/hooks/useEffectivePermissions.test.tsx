@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
     permissions: {
       "admin.users.view": true,
       "admin.siteConfig.manage": true,
+      "admin.roles.view": true,
     },
     is_active: true,
     deleted_at: null,
@@ -52,6 +53,10 @@ function createWrapper(viewingAs = "admin"): ({ children }: { children: ReactNod
 describe("useEffectivePermissions", () => {
   beforeEach(() => {
     mocks.fetchRoles.mockClear();
+    mocks.user.role = "admin";
+    mocks.user.permissions["admin.users.view"] = true;
+    mocks.user.permissions["admin.siteConfig.manage"] = true;
+    mocks.user.permissions["admin.roles.view"] = true;
   });
 
   it("uses session permissions for the active role while role configuration is loading", () => {
@@ -68,5 +73,18 @@ describe("useEffectivePermissions", () => {
 
     expect(result.current.isModerator).toBe(false);
     expect(result.current.canManage(["admin.users.view"])).toBe(false);
+  });
+
+  it("uses session permissions without requesting roles when the user cannot view roles", () => {
+    mocks.user.role = "member";
+    mocks.user.permissions["admin.users.view"] = false;
+    mocks.user.permissions["admin.siteConfig.manage"] = false;
+    mocks.user.permissions["admin.roles.view"] = false;
+
+    const { result } = renderHook(() => useEffectivePermissions(), { wrapper: createWrapper("member") });
+
+    expect(mocks.fetchRoles).not.toHaveBeenCalled();
+    expect(result.current.canManage(["admin.users.view"])).toBe(false);
+    expect(result.current.isModerator).toBe(false);
   });
 });

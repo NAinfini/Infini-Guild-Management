@@ -1,84 +1,40 @@
 @import "tailwindcss";
 
-/* ── Dark mode: class-based strategy ── */
-@custom-variant dark (&:where(.dark, .dark *));
+/* ── token 层：L1 色板 → L2 语义 → L3 标度 ──
+ *
+ * 本文件从此只做四件事：引入 token 层、把 token 桥接给 Tailwind 与 Mantine、
+ * 全局 reset、放 keyframes 与少量全局装饰规则。它自己不再落任何色值 ——
+ * 十六进制唯一的住处是 styles/tokens.css。 */
+@import "./styles/tokens.css";
+@import "./styles/semantic.css";
+@import "./styles/scale.css";
 
-/* ── Theme tokens ── */
+/* ── Dark mode variant ──
+ *
+ * 模式的唯一真相是 [data-theme]。Tailwind 的 dark: 前缀必须跟着同一个信号：
+ * 仓库里还有 5 处 dark: 工具类在用（ErrorBoundary.tsx、LampHeading.tsx、
+ * ShinyText.tsx、ImageGridEditor.tsx），删掉这个 variant 不会报错，Tailwind
+ * 只会静默不生成那些类 —— 那是静默降级，所以这里是改指向而不是删除。 */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ── Tailwind 桥接 ──
+ *
+ * 复审 M2：下面四个 --color-* 目前在仓库里零消费者（bg-primary /
+ * text-danger / border-primary 这类工具类实测一个都没有用到），Tailwind v4
+ * 的构建会把没被引用的 @theme 名字直接裁掉。留着不是为了现在用，是为了将来
+ * 一旦需要用这类工具类时，名字已经指向正确的语义 token，不必重新发明一遍
+ * 映射；真要新增数值也只做转发，不让 Tailwind 长成第二套色板。
+ * --font-sans 不在此列——它有真实消费者（preflight 的
+ * --default-font-family，已在构建产物 dist/assets/index-*.css 里核实过这条
+ * 链），不能删。
+ * 深浅模式由 [data-theme] 在 semantic.css 里切换，所以这些名字
+ * 在两个模式下自动指向不同的值，@theme 侧无需分模式。 */
 @theme {
-  --color-primary: #D4A843;
-  --color-secondary: #8B7355;
-  --color-accent: #C17F3E;
-  --color-success: #4ADE80;
-  --color-warning: #FBBF24;
-  --color-danger: #F87171;
-
-  --font-sans: "Inter", system-ui, sans-serif;
-}
-
-/* ── CSS custom properties for light / dark ── */
-:root {
-  --header-height: 64px;
-  --header-height-mobile: 56px;
-  --sidebar-width: 236px;
-  --sidebar-collapsed-width: 84px;
-  --bottom-nav-height: 64px;
-  --portal-scrollbar-size: 10px;
-  --z-base: 0;
-  --z-sticky: 10;
-  --z-dropdown: 100;
-  --z-modal: 200;
-  --z-toast: 300;
-
-  /* ── Design tokens: radius ── */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-pill: 999px;
-
-  /* ── Design tokens: shadow ── */
-  --shadow-xs: 0 1px 2px rgba(10, 10, 15, 0.06);
-  --shadow-sm: 0 1px 3px rgba(10, 10, 15, 0.08), 0 1px 2px rgba(10, 10, 15, 0.04);
-  --shadow-md: 0 4px 12px rgba(10, 10, 15, 0.10), 0 1px 3px rgba(10, 10, 15, 0.06);
-  --shadow-lg: 0 8px 24px rgba(10, 10, 15, 0.14), 0 2px 6px rgba(10, 10, 15, 0.06);
-  --shadow-primary-sm: 0 2px 8px color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent);
-  --shadow-primary-md: 0 4px 16px color-mix(in srgb, var(--color-primary, #D4A843) 22%, transparent);
-
-  /* ── Design tokens: spacing ── */
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 12px;
-  --space-lg: 16px;
-  --space-xl: 24px;
-  --space-2xl: 32px;
-
-  /* ── Design tokens: transition ── */
-  --transition-fast: 120ms ease;
-  --transition-normal: 160ms ease;
-  --transition-smooth: 180ms ease;
-
-  /* Semantic colors — light mode */
-  --color-text: #1A1815;
-  --color-text-muted: #6B665E;
-  --color-bg: #F8F6F3;
-  --color-surface: #FFFFFF;
-  --color-border: #E2DDD6;
-  --color-surface-elevated: #FFFFFF;
-  --color-primary-alpha: rgba(212,168,67,0.08);
-}
-
-.dark {
-  --color-text: #F0EDE8;
-  --color-text-muted: #8A857D;
-  --color-bg: #0A0A0F;
-  --color-surface: #141418;
-  --color-border: #2A2A32;
-  --color-surface-elevated: #1C1C22;
-  --color-primary-alpha: rgba(212,168,67,0.12);
-
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.20);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.24), 0 1px 2px rgba(0, 0, 0, 0.16);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.16);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.32), 0 2px 6px rgba(0, 0, 0, 0.16);
+  --color-primary: var(--accent-fill);
+  --color-success: var(--status-success);
+  --color-warning: var(--status-warning);
+  --color-danger: var(--status-danger);
+  --font-sans: var(--font-body);
 }
 
 /* ── Base resets ── */
@@ -88,17 +44,19 @@ html, body {
 }
 
 body {
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-sans);
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+  font-family: var(--font-body);
   scrollbar-width: thin;
-  scrollbar-color: var(--color-primary, #6b7280) transparent;
+  /* 滚动条用中性色。主色留给「可点、当前所在、需要注意」这三类语义，
+   * 装饰性 chrome 不参与 —— 否则每个页面都被主色描一遍边。 */
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 /* ── Scrollbar (Webkit) ── */
 body::-webkit-scrollbar {
-  width: var(--portal-scrollbar-size);
-  height: var(--portal-scrollbar-size);
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
 }
 
 body::-webkit-scrollbar-track {
@@ -106,28 +64,25 @@ body::-webkit-scrollbar-track {
 }
 
 body::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, var(--color-primary, #6b7280), color-mix(in srgb, var(--color-secondary, #8B7355) 60%, var(--color-primary, #6b7280)));
-  border-radius: 8px;
+  background: var(--border-strong);
+  border-radius: var(--radius-sm);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 body::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, var(--color-primary, #6b7280), var(--color-secondary, #8B7355));
+  background: var(--text-muted);
   background-clip: padding-box;
-  box-shadow: 0 0 8px color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent);
 }
 
 /* ── Focus ring ── */
 :focus-visible {
-  outline: 2px solid var(--color-primary, #D4A843);
+  outline: 2px solid var(--accent-fill);
   outline-offset: 2px;
 }
 
-/* ── Locale-specific font stacks ── */
-html[data-locale="zh"] {
-  --font-sans: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
-}
+/* 按语言切字体栈的规则已随 --font-body 迁到 styles/scale.css，
+ * 本文件不再重复定义 html[data-locale="zh"]。 */
 
 /* ── Effect animations ── */
 @keyframes float {
@@ -145,20 +100,16 @@ html[data-locale="zh"] {
   100% { background-position: -200% 0; }
 }
 
-/* ── ClickSpark animation ── */
-@keyframes clickSparkFly {
-  0% {
-    opacity: 1;
-    transform: translate(0, 0) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(var(--spark-x), var(--spark-y)) scale(0);
-  }
-}
-
-/* ── StarBorder — animated rotating gradient border ── */
+/* ── StarBorder — animated rotating gradient border ──
+ *
+ * 三个可调参数此前写成 var() 的第二参数当默认值。兜底值一律禁止，改为在根类上
+ * 显式声明默认值：子元素继承得到，调用方在元素 style 上写同名变量仍然覆盖得掉
+ * （内联声明压过类规则），行为与原来的兜底完全一致。 */
 .star-border {
+  --star-border-color: var(--accent-fill);
+  --star-border-speed: 6s;
+  --star-border-width: 1px;
+
   position: relative;
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -179,120 +130,206 @@ html[data-locale="zh"] {
   background: conic-gradient(
     from 0deg,
     transparent 0%,
-    var(--star-border-color, var(--color-primary, #D4A843)) 10%,
+    var(--star-border-color) 10%,
     transparent 20%,
     transparent 50%,
-    var(--star-border-color, var(--color-primary, #D4A843)) 60%,
+    var(--star-border-color) 60%,
     transparent 70%
   );
-  animation: starBorderSpin var(--star-border-speed, 6s) linear infinite;
+  animation: starBorderSpin var(--star-border-speed) linear infinite;
 }
 
 .star-border__inner {
   position: relative;
   z-index: 1;
-  margin: var(--star-border-width, 1px);
-  border-radius: calc(var(--radius-lg) - var(--star-border-width, 1px));
-  background: var(--color-surface, #141418);
+  margin: var(--star-border-width);
+  border-radius: calc(var(--radius-lg) - var(--star-border-width));
+  background: var(--surface-base);
 }
 
 @keyframes starBorderSpin {
   to { transform: rotate(360deg); }
 }
 
-/* ── Text selection styling ── */
+/* ── Text selection styling ──
+ *
+ * 原本浅色 30% / 深色 40% 两条。--accent-fill 在两个模式下是同一档，30% 的混色
+ * 在纸底与近黑底上都读得出选中范围，故合并为一条，深色那 10% 的加强取消。 */
 ::selection {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent);
-  color: var(--color-text, #1A1815);
-}
-
-.dark ::selection {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 40%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 30%, transparent);
+  color: var(--text-primary);
 }
 
 /* ── Shine sweep for interactive elements ── */
 @keyframes shineSweep {
-  0% { transform: translateX(-100%) skewX(-15deg); }
-  100% { transform: translateX(200%) skewX(-15deg); }
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
-/* ── Menu / Dropdown spacing ── */
-.infini-menu-dropdown {
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-.dark .infini-menu-dropdown {
-  background: color-mix(in srgb, var(--color-surface, #141418) 92%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
-}
-
-.infini-menu-item {
-  margin: 2px 0;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-/* ── Context menu spacing ── */
-.infini-context-menu-root {
-  padding: 6px !important;
+/* ── 菜单 · 唯一定义处 ──
+ *
+ * Mantine 侧的 Menu.styles 已在本任务 Step 2 删除。此前 dropdown 与 item
+ * 两边都写、靠感叹号优先级决出胜负，而 divider 与 label 只有 JS 侧写、
+ * CSS 里一条规则都没有。现在这里是四者共同的单一真相。
+ *
+ * 删掉 JS 侧内联样式（Mantine 的 `styles` prop 生成内联 style，本来会
+ * 无条件盖过任何 class）之后，真正要压过的对手换成了两个组件库自带、
+ * 同选择器特异性 (0,1,0) 却在本文件之后才插入 <head> 的默认样式表：
+ *   - Mantine 自身的 Menu / Popover / Paper 内建 CSS
+ *     （@mantine/core/styles.css，在 bootstrap.tsx 里 import；
+ *     bootstrap.tsx 由 main.tsx 动态 import，其自身的顶层 import 必然
+ *     晚于 main.tsx 顶部同步 import 的本文件执行/插入）；
+ *   - mantine-contextmenu 库自带的 .mantine-contextmenu* 基础样式
+ *     （同一动态 chunk）。
+ * 不含伪类的声明与它们打平特异性时，源码顺序更晚的对方会赢，因此用
+ * 「类名自我重复」（.foo.foo，specificity 0,2,0）取胜，不再依赖感叹号
+ * 优先级。
+ *
+ * 两个库在这一点上**不一样**，不要一概而论：
+ *   - @mantine/core：它的 :hover/:focus 与 data-mantine-color-scheme 分支
+ *     确实全部包在 :where() 里，贡献 0 特异性，所以它的规则最高只有
+ *     (0,1,0)，本块的 (0,2,0) 稳赢，无需叠层。
+ *   - mantine-contextmenu：**一条 :where() 都没有**。它的
+ *     [data-mantine-color-scheme=…] 前缀与 :hover:not([disabled]) 都实打实
+ *     计入特异性，最高到 (0,4,0)：
+ *       [data-…=dark] .mantine-contextmenu                        (0,2,0) border
+ *       [data-…=dark] .mantine-contextmenu-divider                (0,2,0) background
+ *       .mantine-contextmenu-item-button[disabled]                (0,2,0) color
+ *       [data-…=dark] .mantine-contextmenu-item-button[disabled]  (0,3,0) color
+ *       .mantine-contextmenu-item-button:hover:not([disabled])    (0,3,0) background
+ *       [data-…=dark] …-item-button:hover:not([disabled])         (0,4,0) background
+ *     凡是与这些属性竞争的声明，(0,2,0) 打平即输（库加载在后），必须单独
+ *     叠层写成三重甚至四重类 —— 见下面几条注明了压制对象的规则。
+ *
+ * .infini-context-menu-* 是 mantine-contextmenu（右键菜单，bootstrap.tsx）
+ * 的类，跟 Mantine <Menu> 不是同一组件。合并选择器**只共用基础声明**；
+ * 交互态各归各家：右键菜单的 hover / active 底色至今仍由库给出
+ * （上表末三行，(0,3,0)/(0,4,0)），不随主色变化、不在 token 体系内，
+ * 留待后续任务收编。
+ */
+.infini-menu-dropdown.infini-menu-dropdown,
+.infini-context-menu-root.infini-context-menu-root {
+  padding: var(--space-sm);
   min-width: 200px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
+  /* 半透明 + 背后模糊 = 毛玻璃。两者缺一不可：--surface-overlay 是不透明色，
+   * 不经 color-mix 稀释的话 backdrop-filter 没有任何可见效果。
+   * -webkit- 前缀为 Safari 所需。 */
+  background: color-mix(in srgb, var(--surface-overlay) 92%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
 }
 
-.dark .infini-context-menu-root {
-  background: color-mix(in srgb, var(--color-surface, #141418) 92%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
+.infini-menu-item.infini-menu-item,
+.infini-context-menu-item.infini-context-menu-item {
+  padding: var(--space-md) var(--space-lg);
+  margin-block: var(--space-xs);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-body);
+  font-weight: var(--fw-medium);
+  gap: var(--space-md);
+  color: var(--text-primary);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.infini-context-menu-item {
-  padding: 10px 14px !important;
-  border-radius: var(--radius-sm, 8px) !important;
-  font-size: 0.875rem !important;
-  font-weight: 500;
-  gap: 10px;
-  margin: 2px 0;
-  transition: background 120ms ease, color 120ms ease;
+/* :focus 与 :hover 必须一起给，否则键盘 Tab 到菜单项时落回库的弱底色，
+ * 鼠标用户与键盘用户拿到两种提示。Mantine 原规则就是 :where(:hover, :focus)。
+ * 特异性按上面那张表的同一套算法（三元组 a=ID / b=类·属性·伪类 / c=元素·伪元素，
+ * 伪类计 b 位）：:hover 与 :focus 各自都是 (0,1,0)，:is() 取参数里最高的那个
+ * 仍是 (0,1,0)，再加 .infini-menu-item 这个类 → 整体 (0,2,0)，与改成 :is() 之前
+ * 的 .infini-menu-item:hover 完全相同。
+ * 不影响下面 --active / --danger:is(:hover, :focus) 靠源码顺序取胜。 */
+.infini-menu-item:is(:hover, :focus) {
+  background: var(--accent-tint);
 }
 
-.infini-context-menu-divider {
-  margin: 6px 8px !important;
+.infini-menu-item--active.infini-menu-item--active {
+  background: var(--accent-tint);
+  color: var(--accent-text);
 }
 
-.infini-menu-item--label {
-  font-weight: 600;
-  font-size: 0.7rem;
-  text-transform: uppercase;
+.infini-menu-item--danger.infini-menu-item--danger {
+  color: var(--status-danger);
+}
+
+/* 与上面 .infini-menu-item 同因：只写 :hover 的话，键盘 Tab 到「删除 / 登出」
+ * 这类危险项拿到的是上面那条的主色 tint，鼠标悬停才是危险色 —— 同一元素两种
+ * 交互给出两种语义。特异性不变，仍是类 1 + 伪类 1 = (0,2,0)。 */
+.infini-menu-item--danger:is(:hover, :focus) {
+  background: color-mix(in srgb, var(--status-danger) 12%, var(--surface-overlay));
+}
+
+.infini-menu-divider.infini-menu-divider,
+.infini-context-menu-divider.infini-context-menu-divider {
+  /* 两个库画分隔线的方式不同，颜色只能各给各的：
+   * Mantine <Menu.Divider> 用 border-top，吃 border-color（这里给）；
+   * mantine-contextmenu 用一个 1px 高、靠 background 上色的实心块
+   * （.mantine-contextmenu-divider{background:…;height:1px}），不吃
+   * border-color，由下面的三重类规则单独给。
+   * 这里不要写 background —— Mantine 那条（.m_efdf90cb）是
+   * `border-top: 1px solid`，内容高 0 但边框盒高 1px，而 background-clip
+   * 默认 border-box，半透明背景会与同色半透明边框叠加，线条浓度翻倍。 */
+  margin: var(--space-sm);
+  border-color: var(--border-subtle);
+}
+
+/* 库的 [data-mantine-color-scheme="dark"] .mantine-contextmenu 是 (0,2,0)，
+ * 与自我重复写法打平而加载在后，会把边框抢回 --mantine-color-dark-4，
+ * 深色下右键菜单边框与旁边 Mantine <Menu> 对不上。故叠到 (0,3,0)。
+ * 只覆 border-color，宽度与线型仍由上面合并规则的 border 简写给出。 */
+.infini-context-menu-root.infini-context-menu-root.infini-context-menu-root {
+  border-color: var(--border-subtle);
+}
+
+/* mantine-contextmenu 在深色模式下用
+ * `[data-mantine-color-scheme="dark"] .mantine-contextmenu-divider` 再上一次色，
+ * 特异性 (0,2,0)，与本文件的自我重复写法打平；而它的样式表加载在我们之后
+ * （styles.css 是 sheet 1，库是 sheet 7），平手时后来者赢，深色模式下分隔线
+ * 会退回库里未纳入主题的 --mantine-color-dark-5。故这里再叠一层类到 (0,3,0)。
+ * 这是本仓库既定的「提高特异性而非依赖感叹号优先级」做法，只是多重复一次。 */
+.infini-context-menu-divider.infini-context-menu-divider.infini-context-menu-divider {
+  background: var(--border-subtle);
+}
+
+.infini-menu-label.infini-menu-label,
+.infini-menu-item--label.infini-menu-item--label {
+  padding: var(--space-sm) var(--space-lg) var(--space-xs);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
   letter-spacing: 0.04em;
-  color: var(--mantine-color-dimmed, #868e96);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* .infini-menu-item--label 单独用于右键菜单里模拟“分组标签”的禁用项
+ * （见 AdminUsersSection.tsx），真正的 Mantine Menu.Label 天然不可交互，
+ * 不需要这条。 */
+.infini-menu-item--label {
   pointer-events: none;
-  padding: 8px 14px 4px !important;
 }
 
-/* ── Menu item helpers ── */
-.infini-menu-item--danger {
-  color: var(--mantine-color-red-6, #e03131);
+/* 标签正是一个 disabled 的右键菜单项，要压过库的两条 [disabled] 着色：
+ *   .mantine-contextmenu-item-button[disabled]                    (0,2,0)
+ *   [data-…=dark] .mantine-contextmenu-item-button[disabled]      (0,3,0)
+ * 深色那条与三重类打平且加载在后，三重类不够，必须四重到 (0,4,0)。
+ * 不修的话浅色下标签是库的 #adb5bd，在 #FDFBF7 上只有约 2.0:1，不过 AA。 */
+.infini-menu-item--label.infini-menu-item--label.infini-menu-item--label.infini-menu-item--label {
+  color: var(--text-muted);
 }
 
-.infini-menu-item--danger:hover {
-  background: var(--mantine-color-red-0, #fff5f5);
+/* 右键菜单的可见文字在库的子元素里，它自带 font-size: var(--mantine-font-size-sm)，
+ * 显式声明挡住继承，父级的 font-size 穿不过去，故必须直接命中子元素。
+ * 我们 (0,2,0) > 库的 .mantine-contextmenu-item-button-title (0,1,0)。 */
+.infini-menu-item--label .mantine-contextmenu-item-button-title {
+  font-size: var(--text-meta);
 }
-
-.dark .infini-menu-item--danger:hover {
-  background: color-mix(in srgb, var(--mantine-color-red-9, #c92a2a) 20%, transparent);
-}
-
-.infini-menu-item--active {
-  background: var(--mantine-color-portal-gold-0, #FBF6EA);
-  color: var(--mantine-color-portal-gold-7, #9A7B26);
-}
-
-.dark .infini-menu-item--active {
-  background: color-mix(in srgb, var(--mantine-color-portal-gold-9, #604D17) 25%, transparent);
-  color: var(--mantine-color-portal-gold-4, #DCB94A);
-}
+/* ── 菜单 · 唯一定义处 结束 ──
+ * 起 / 止这对注释此前是 styles/theme-tokens.test.ts 切区块用的边界。Task 4 把
+ * 整个 styles.css 纳入 MIGRATED 之后，那两条窄断言（区块内 0 处感叹号优先级、
+ * 0 处裸 hex）已被覆盖全文件的 rule 2 / rule 3 取代并删除，这对标记现在只是
+ * 给读者看的区块边界，不再有测试依赖它。 */
 
 @keyframes spin {
   to { transform: rotate(360deg); }
@@ -304,7 +341,7 @@ html[data-locale="zh"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-xl, 24px);
+  padding: var(--space-xl);
 }
 
 .route-loading__card {
@@ -312,20 +349,20 @@ html[data-locale="zh"] {
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  border: 1px solid color-mix(in srgb, var(--color-primary, #D4A843) 16%, transparent);
-  border-radius: var(--radius-md, 12px);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-fill) 16%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
   box-shadow:
-    var(--shadow-sm, 0 1px 3px rgba(10, 10, 15, 0.08)),
-    0 0 24px color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
+    var(--shadow-sm),
+    0 0 24px color-mix(in srgb, var(--accent-fill) 8%, transparent);
   animation: contentFadeIn 0.2s ease both;
 }
 
 .route-loading__spinner {
   width: 28px;
   height: 28px;
-  border: 3px solid color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent);
-  border-top-color: var(--color-primary, #D4A843);
+  border: 3px solid color-mix(in srgb, var(--accent-fill) 20%, transparent);
+  border-top-color: var(--accent-fill);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -333,7 +370,85 @@ html[data-locale="zh"] {
 .route-loading__label {
   font-size: 13px;
   font-weight: 600;
-  color: color-mix(in srgb, var(--color-text, #1A1815) 72%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+
+/* ── router.tsx fallback screens ── (moved out of style={{}}, task-8 批 B) */
+
+/* main.tsx's total-bootstrap-failure fallback (the dynamic import("./bootstrap")
+   itself rejected, so ThemeProvider never mounted and never set [data-theme]
+   on <html>). semantic.css defines --surface-* / --status-* only under
+   [data-theme="light"/"dark"], so on THIS path these var()s never resolve —
+   not "may not". Keeping them as var() rather than carving bare hex into a
+   MIGRATED file is still the right call, but the old claim that the result is
+   "still legible" was wrong; see the OPEN DEFECT below for what actually
+   happens. */
+
+/* ── OPEN DEFECT（既存，非本次迁移引入；不属 S1 范围，已另立任务）──
+   这块兜底屏从来没有被任何人看见过。**三层原因叠加，缺一层修都不生效**：
+
+   1. 遮罩永不消失。index.html:22-27 的 #splash 是 position:fixed / inset:0 /
+      z-index:99999 / background:#0A0A0F 的不透明全屏层，**唯一的移除点是
+      bootstrap.tsx:81 的 dismissSplash()** —— 而它就住在加载失败的那个模块里。
+      public/splash.js:63 只暴露 __splashCleanup（取消 rAF 与 resize 监听），
+      不移除元素。main.tsx 的 catch 把内容渲染进 #root，整个被压在遮罩底下。
+   2. **#root 自带内联 opacity:0。** index.html:133 写死
+      style="opacity:0;position:fixed;inset:0"，唯一恢复点是 dismissSplash()
+      的 bootstrap.tsx:85-87 —— 同样住在失败的模块里。**所以只掀掉遮罩是不够的，
+      屏幕会变成全透明，而且下一个人更难怀疑到 opacity 头上。**
+   3. 就算前两层都解决，配色也不成立。index.html:18 的 html,body 硬编码
+      background:#0A0A0F，而本规则的 background 与 body 的 --surface-sunken
+      同样解不出 → 深底透出；color 同时失效退回默认黑字 → 约 1.05:1。
+
+   修法：**把 dismissSplash 的移除与 opacity 恢复逻辑一并提到 main.tsx**
+   （它一次做掉第 1、2 层）。只在 catch 里 remove 掉 #splash 是**不够的**。
+   第 3 层另需一组不依赖 [data-theme] 的安全配色。属功能修复，不属主题收敛。 */
+.main-bootstrap-error {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--status-danger) 6%, var(--surface-base));
+  color: var(--status-danger);
+  padding: 24px;
+  font-family: Inter, system-ui, sans-serif;
+  text-align: center;
+}
+
+/* 正文不能继承容器的危险色。浅色下 --status-danger 压在自身 6% 淡底上实测
+   4.18:1（深色 6.15:1），标题是 24px 粗体、按大字文本 3:1 过线，但这段 16px
+   正文要 4.5:1，不过。改用 --text-primary 后 15.32:1。
+   四个数字由仓库 theme-tokens.test.ts 同一套 WCAG 算法、色值取自 tokens.css，
+   color-mix 按逐通道线性插值后四舍五入到整数通道再算。
+   迁移前这里是 #7f1d1d 压 #fff7f7 的 9.49:1，所以这是一次真回归，不是本来就临界。
+
+   ⚠️ 但这块 UI 在它自己的触发场景下**根本看不见**，见下方 OPEN DEFECT。
+   本规则修的是「万一它能显示出来」时的可读性，不是一个能观察到的现象。 */
+.main-bootstrap-error p {
+  color: var(--text-primary);
+}
+
+.not-found-page__link {
+  color: var(--accent-text);
+}
+
+.route-error__headline {
+  font-size: 48px;
+  font-weight: 700;
+  color: var(--status-danger);
+}
+
+.route-error__reload-button {
+  margin-top: 8px;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent-fill);
+  /* Text sits on the accent fill itself, not the page background — needs the
+     on-fill ink token (dark in both modes), not --text-primary. */
+  color: var(--accent-on-fill);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 /* ── EmptyState ── */
@@ -354,31 +469,27 @@ html[data-locale="zh"] {
   width: 56px;
   height: 56px;
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent), color-mix(in srgb, var(--color-secondary, #8B7355) 8%, transparent));
-  animation: emptyIconFloat 3s ease-in-out infinite;
+  /* Neutral by default: an empty list is not an event worth spending the accent
+     colour or motion on. Only the three real status colours below stay saturated. */
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
-@keyframes emptyIconFloat {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
-
-.empty-state__icon--info { color: var(--color-primary, #D4A843); }
-.empty-state__icon--success { color: var(--color-success, #22c55e); }
-.empty-state__icon--error { color: var(--color-danger, #ef4444); }
-.empty-state__icon--warning { color: var(--color-warning, #f59e0b); }
+.empty-state__icon--info { color: var(--text-muted); }
+.empty-state__icon--success { color: var(--status-success); }
+.empty-state__icon--error { color: var(--status-danger); }
+.empty-state__icon--warning { color: var(--status-warning); }
 
 .empty-state__title {
   margin: 0;
   font-size: 1.125rem;
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--text-primary);
 }
 
 .empty-state__description {
   margin: var(--space-xs) 0 0;
   font-size: 0.875rem;
-  color: var(--color-text-muted);
+  color: var(--text-muted);
 }
 
 .empty-state__actions {
@@ -389,32 +500,52 @@ html[data-locale="zh"] {
 .floating-save-bar {
   position: sticky;
   bottom: 0;
-  z-index: var(--z-sticky, 10);
+  z-index: var(--z-sticky);
   padding: 12px 16px;
-  border-top: 1px solid var(--color-border, #E2DDD6);
+  border-top: 1px solid var(--border-subtle);
   border-radius: var(--radius-md) var(--radius-md) 0 0;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
   backdrop-filter: saturate(180%) blur(16px);
   -webkit-backdrop-filter: saturate(180%) blur(16px);
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+  /* 复审 N-1（原 I-1 的收口）：这是贴底浮条向上投的分隔阴影（negative Y
+     偏移），几何形状跟 semantic.css 的 --shadow-xs/sm/md/lg 都是正 Y（向下）
+     不是同一种形状，没有现成档位能直接复用而不改变投影方向，几何原样保留。
+     颜色用 semantic.css 新增的 L2 阴影墨 --shadow-ink（与四档标度阴影同一个
+     墨色），不用 --text-primary：--text-primary 深色模式下是浅色
+     （--palette-ink-warm），拿它当阴影底色会让这层投影在深色模式下从「暗投影」
+     反转成「浅色微光」；--shadow-ink 深色模式固定为 rgb(0 0 0)，4% 混合后与
+     本规则批 2 之前的原值 rgb(0 0 0 / 0.04) 逐比特相同，反转消失。
+     浅色模式下 --shadow-ink 是 rgb(10 10 15) 而非纯黑，所以浅色下由
+     rgb(0 0 0 / 0.04) 变成 rgb(10 10 15 / 0.04) —— 这是为了跟四档标度阴影
+     共用同一个墨色，4% 不透明度下两者肉眼不可分辨，故不列入目视清单。
+     下面 .floating-save-bar[data-dirty] 混的是 --status-warning（警告色
+     两模式都是暖色，不会反转），跟这里不是同一类情况，不再类比。 */
+  box-shadow: 0 -2px 8px color-mix(in srgb, var(--shadow-ink) 4%, transparent);
   transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
 }
 
 .floating-save-bar[data-dirty] {
-  border-color: color-mix(in srgb, var(--color-warning, #f59e0b) 40%, transparent);
-  box-shadow: 0 -2px 12px color-mix(in srgb, var(--color-warning, #f59e0b) 10%, transparent);
+  border-color: color-mix(in srgb, var(--status-warning) 40%, transparent);
+  box-shadow: 0 -2px 12px color-mix(in srgb, var(--status-warning) 10%, transparent);
 }
 
-/* ── Skeleton shimmer enhancement ── */
-.mantine-Skeleton-root::after {
+/* ── Skeleton shimmer enhancement ──
+ *
+ * 压制对象是 Mantine 的两条骨架屏规则：
+ *   .m_18320242:where([data-animate])::after                                (0,1,1) animation
+ *   :where([data-…=light]) .m_18320242:where([data-visible])::after         (0,1,1) background-color
+ * :where() 贡献 0 特异性，两条都只有 (0,1,1)，与 .mantine-Skeleton-root::after
+ * 打平，而它们注入 <head> 在本文件之后，平手时后来者赢 —— 这正是这三条声明
+ * 当初挂感叹号优先级的原因。改用本仓库既定的类名自我重复抬到 (0,2,1)。 */
+.mantine-Skeleton-root.mantine-Skeleton-root::after {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent) 50%,
+    color-mix(in srgb, var(--accent-fill) 6%, transparent) 50%,
     transparent 100%
-  ) !important;
-  animation: shimmer 1.8s ease-in-out infinite !important;
-  background-size: 200% 100% !important;
+  );
+  animation: shimmer 1.8s ease-in-out infinite;
+  background-size: 200% 100%;
 }
 
 /* ── Suspense content fade-in ── */
@@ -430,6 +561,9 @@ html[data-locale="zh"] {
 
 @media (prefers-reduced-motion: reduce) {
   .mantine-Skeleton-root::after {
+    /* 保留感叹号优先级：无障碍覆盖本来就该压过一切，这里要压的是上面为了赢过
+     * Mantine 而抬到 (0,2,1) 的那条微光动画。去掉等于让「减少动态效果」对骨架屏
+     * 失效。 */
     animation: none !important;
   }
 
@@ -471,7 +605,6 @@ html[data-locale="zh"] {
 /* ── Button hover glow (filled variant) ── */
 .mantine-Button-root[data-variant="filled"] {
   position: relative;
-  overflow: hidden;
   transition:
     box-shadow 0.2s ease,
     transform 0.15s ease,
@@ -481,17 +614,21 @@ html[data-locale="zh"] {
 .mantine-Button-root[data-variant="filled"]::after {
   content: "";
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 40%;
-  height: 100%;
+  inset: 0;
+  border-radius: inherit;
+  /* mode/accent-neutral literal: this is the diagonal shine sweep over a filled
+     button's own fill colour (see the "colour-neutral now" note a few rules
+     below) — a fixed white glint reads correctly over any accent or theme, the
+     same way a light source doesn't change colour with the surface it's
+     glinting off. */
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(255, 255, 255, 0.15),
+    rgb(255 255 255 / 0.15),
     transparent
   );
-  transform: translateX(-100%) skewX(-15deg);
+  background-position: 200% 0;
+  background-size: 250% 100%;
   pointer-events: none;
 }
 
@@ -499,22 +636,19 @@ html[data-locale="zh"] {
   animation: shineSweep 0.6s ease-out;
 }
 
+/*
+ * The hover glow was hard-coded to gold, so a red delete button and a green
+ * confirm button both bloomed gold. Depth is colour-neutral now; the button's
+ * own fill is what carries the meaning.
+ */
 .mantine-Button-root[data-variant="filled"]:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow:
-    0 4px 16px color-mix(in srgb, var(--mantine-color-portal-gold-6, #B8922F) 35%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--mantine-color-portal-gold-6, #B8922F) 20%, transparent);
-}
-
-.dark .mantine-Button-root[data-variant="filled"]:hover:not(:disabled) {
-  box-shadow:
-    0 6px 24px color-mix(in srgb, var(--mantine-color-portal-gold-6, #B8922F) 40%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--mantine-color-portal-gold-6, #B8922F) 25%, transparent);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 .mantine-Button-root[data-variant="filled"]:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
-  box-shadow: 0 1px 4px color-mix(in srgb, var(--mantine-color-portal-gold-6, #B8922F) 20%, transparent);
+  transform: translateY(0);
+  box-shadow: var(--shadow-xs);
 }
 
 /* ── Button hover glow (light/subtle) ── */
@@ -543,24 +677,23 @@ html[data-locale="zh"] {
   transform: translateY(0) scale(0.97);
 }
 
-/* ── Input focus glow ── */
+/* ── Input focus glow ──
+ *
+ * border-color 不需要感叹号优先级：要压过的是 Mantine 的 .m_8fb7ebe7
+ * （`border: … solid var(--input-bd)` 简写，(0,1,0)），本条带伪类是 (0,2,0)，
+ * 靠特异性稳赢。深色模式原本另有一条更强的辉光（18% / 10%），与本条只差数值，
+ * 已随 .dark 变体一并删除，两个模式统一用这一档。 */
 .mantine-Input-input:focus-within {
-  border-color: var(--color-primary, #D4A843) !important;
+  border-color: var(--accent-fill);
   box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent),
-    0 0 16px color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent);
-}
-
-.dark .mantine-Input-input:focus-within {
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--color-primary, #D4A843) 18%, transparent),
-    0 0 20px color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
+    0 0 0 3px color-mix(in srgb, var(--accent-fill) 12%, transparent),
+    0 0 16px color-mix(in srgb, var(--accent-fill) 6%, transparent);
 }
 
 /* ── Badge pulse for "New" / live indicators ── */
 @keyframes badgePulse {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary, #D4A843) 30%, transparent); }
-  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary, #D4A843) 0%, transparent); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-fill) 30%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-fill) 0%, transparent); }
 }
 
 .mantine-Badge-root[data-pulse] {
@@ -588,18 +721,329 @@ html[data-locale="zh"] {
   animation: statusGlow 2s ease-in-out infinite;
 }
 
+/* ── Mantine bridge · control sizing and hit areas ──
+ *
+ * Mantine declares these variables on hashed root classes loaded after this file.
+ * Repeating the stable semantic class raises specificity without a priority flag.
+ * Text controls use the three L3 heights; ActionIcon keeps a denser three-step
+ * visual scale and receives the same 44px transparent hit area as raw controls. */
+.mantine-Button-root.mantine-Button-root {
+  --button-height-xs: var(--control-height-compact);
+  --button-height-sm: var(--control-height-regular);
+  --button-height-md: var(--control-height-regular);
+  --button-height-lg: var(--control-height-large);
+  --button-height-xl: var(--control-height-large);
+  --button-height-compact-xs: var(--control-height-compact);
+  --button-height-compact-sm: var(--control-height-compact);
+  --button-height-compact-md: var(--control-height-compact);
+  --button-height-compact-lg: var(--control-height-regular);
+  --button-height-compact-xl: var(--control-height-large);
+  overflow: visible;
+}
+
+.mantine-Input-wrapper.mantine-Input-wrapper {
+  --input-height-xs: var(--control-height-regular);
+  --input-height-sm: var(--control-height-regular);
+  --input-height-md: var(--control-height-regular);
+  --input-height-lg: var(--control-height-large);
+  --input-height-xl: var(--control-height-large);
+}
+
+.mantine-ActionIcon-root.mantine-ActionIcon-root {
+  --ai-size-xs: var(--control-icon-size-compact);
+  --ai-size-sm: var(--control-icon-size-compact);
+  --ai-size-md: var(--control-icon-size-regular);
+  --ai-size-lg: var(--control-icon-size-regular);
+  --ai-size-xl: var(--control-icon-size-large);
+  --ai-size-input-xs: var(--control-height-compact);
+  --ai-size-input-sm: var(--control-height-regular);
+  --ai-size-input-md: var(--control-height-regular);
+  --ai-size-input-lg: var(--control-height-large);
+  --ai-size-input-xl: var(--control-height-large);
+  overflow: visible;
+}
+
+.mantine-Tabs-tab {
+  min-height: var(--control-height-regular);
+}
+
+.mantine-Checkbox-root,
+input[type="file"] {
+  min-height: var(--control-height-regular);
+}
+
+.mantine-Checkbox-label {
+  position: relative;
+}
+
+.mantine-Checkbox-label::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(0px - var(--checkbox-size) - var(--mantine-spacing-sm) - var(--space-xs));
+  width: calc(100% + var(--checkbox-size) + var(--mantine-spacing-sm) + var(--space-xs));
+  height: var(--control-hit-area);
+  background: transparent;
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+
+.mantine-Checkbox-label[data-disabled]::before {
+  pointer-events: none;
+}
+
+.mantine-Button-inner {
+  position: relative;
+}
+
+.mantine-Button-inner::before,
+:is(
+  button:not(
+    .mantine-Button-root,
+    .mantine-Tabs-tab,
+    .ecm__activity-btn,
+    .admin-roles-sidebar-item
+  ),
+  a:not(.app-nav-item),
+  [role="button"]:not(
+    .mantine-Button-root,
+    .mantine-Tabs-tab,
+    .ecm__activity-btn,
+    .admin-roles-sidebar-item,
+    .app-nav-item
+  ),
+  [role="tab"]:not(.mantine-Tabs-tab)
+)::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(var(--control-hit-area), 100%);
+  height: max(var(--control-hit-area), 100%);
+  background: transparent;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+:is(
+  button:not(
+    .mantine-Button-root,
+    .mantine-Tabs-tab,
+    .ecm__activity-btn,
+    .admin-roles-sidebar-item
+  ),
+  a:not(.app-nav-item),
+  [role="button"]:not(
+    .mantine-Button-root,
+    .mantine-Tabs-tab,
+    .ecm__activity-btn,
+    .admin-roles-sidebar-item,
+    .app-nav-item
+  ),
+  [role="tab"]:not(.mantine-Tabs-tab)
+) {
+  position: relative;
+  overflow: visible;
+}
+
+.mantine-Button-root:is(:disabled, [data-disabled], [data-loading]) .mantine-Button-inner::before,
+:is(button:disabled, [aria-disabled="true"], [data-disabled])::before {
+  pointer-events: none;
+}
+
+/* These two controls already use ::before for their active marker. Give them a
+ * real 44px box instead of replacing that semantic indicator. */
+.ecm__activity-btn,
+.admin-roles-sidebar-item {
+  min-width: var(--control-hit-area);
+  min-height: var(--control-hit-area);
+}
+
+/* Compact icons expand to a 44px hit area. Preserve a Group's larger authored
+ * gap, but raise smaller gaps so adjacent transparent hit areas only meet. */
+.mantine-Group-root:has(
+  > .mantine-ActionIcon-root + .mantine-ActionIcon-root
+) {
+  gap: max(var(--group-gap), var(--control-icon-size-compact));
+}
+
+/* This mixed ActionIcon/Slider group is not covered by the sibling rule. */
+.roster-audio-popover.roster-audio-popover {
+  gap: var(--control-icon-size-compact);
+}
+
+/* ── Mantine 桥接 · dimmed 文字 ──
+ *
+ * Mantine 在两个模式下各定义一次 --mantine-color-dimmed，选择器是
+ * `:root[data-mantine-color-scheme=…]`，特异性 (0,2,0)，且注入 <head> 在本文件
+ * 之后；打平会输，故这里用 :root 加属性自我重复抬到 (0,3,0)。
+ * --text-muted 自己随 [data-theme] 切换，一条规则覆盖两个模式。 */
+:root[data-theme][data-theme] {
+  --mantine-color-dimmed: var(--text-muted);
+}
+
+/* ── Mantine 桥接 · light variant 的文字对比度（浅色模式） ──
+ *
+ * light variant 在 12% alpha 填充上放 shade-6 文字，在暖色纸底上只有约 2.9:1。
+ * 下面把每个色阶的文字档钉到「仍能在自己的 light 填充上过 4.5:1 的最深一档」：
+ * gray / pink / grape / violet / indigo / blue / cyan 七个色阶库里恰好有对应
+ * 档位，直接引用库变量；红 / 青 / 绿 / 黄绿 / 黄 / 橙 六个比库里最深的 shade 9
+ * 还深，库里没有对应档位，值落在 L1 的 --palette-mantine-*-text。
+ *
+ * 三条 portal-gold / portal-copper / portal-bronze 的同类覆盖已删除：Task 2 把
+ * createTheme 的色阶收敛成唯一一条 portal-accent，那三条色阶不复存在，Mantine
+ * 也就不再生成、更不会读取它们对应的 -light-color 变量。
+ *
+ * 特异性：Mantine 自己那条 `:root[data-mantine-color-scheme="light"]` 是 (0,2,0)
+ * 且注入在本文件之后，打平会赢，所以这里保持原先的 (0,3,0)，只是把第三个部件
+ * 从旧的 :not() 换成属性自我重复 —— 形状与原来一致，一眼能看出是同一处覆盖。 */
+:root[data-theme="light"][data-theme="light"] {
+  /* portal-accent 是 primaryColor，仓库里约 100 处 variant="light" 默认吃它，
+   * 却是这份覆盖里唯一漏掉的色阶 —— Task 2 把三条金/铜/古铜色阶换成它时只改了
+   * 库色阶那 13 行。Mantine 浅色下两档都取色阶第 6 格（= --accent-600）：
+   *   -light-color  淡色填充上的文字 → 三个主色 × 三层表面共 9 种组合 3.04~4.03，全不过
+   *   -text         subtle / transparent / <Text c> 的文字 → 3.38~4.57，仅 1 种勉强过
+   * 换成 --accent-text（浅色模式 = 700 档）后分别是 4.81~6.11 与 5.35~6.93，全过。
+   * 深色模式不在本块内，Mantine 那边取的是第 3 / 第 4 格，7.65 以上，不需要覆盖。
+   * 守卫见 theme-tokens.test.ts 的「Mantine light variant 的文字色」一组。 */
+  --mantine-color-portal-accent-light-color: var(--accent-text);
+  --mantine-color-portal-accent-text: var(--accent-text);
+
+  --mantine-color-gray-light-color: var(--mantine-color-gray-7);
+  --mantine-color-red-light-color: var(--palette-mantine-red-text);
+  --mantine-color-pink-light-color: var(--mantine-color-pink-8);
+  --mantine-color-grape-light-color: var(--mantine-color-grape-8);
+  --mantine-color-violet-light-color: var(--mantine-color-violet-7);
+  --mantine-color-indigo-light-color: var(--mantine-color-indigo-8);
+  --mantine-color-blue-light-color: var(--mantine-color-blue-9);
+  --mantine-color-cyan-light-color: var(--mantine-color-cyan-9);
+  --mantine-color-teal-light-color: var(--palette-mantine-teal-text);
+  --mantine-color-green-light-color: var(--palette-mantine-green-text);
+  --mantine-color-lime-light-color: var(--palette-mantine-lime-text);
+  --mantine-color-yellow-light-color: var(--palette-mantine-yellow-text);
+  --mantine-color-orange-light-color: var(--palette-mantine-orange-text);
+
+  /* Mantine paints filled controls with shade 6 in light mode, where the label
+   * lands at 3.3–3.6:1 (white on gray, white on blue). Dark mode's default
+   * primaryShade is already 8, so it never needed this override.
+   *
+   * portal-accent used to be missing from this list (C2): with the native
+   * shade-6 read, its light-mode filled button landed on --accent-600 and
+   * white-on-fill measured teal 3.92 / indigo 4.44 / violet 4.57 — the first
+   * two fail AA. Matched to the same shade-8/9 technique the 13 library ramps
+   * below already use, filled -> --accent-700 and filled-hover -> --accent-900,
+   * measuring 6.20 / 6.52 / 6.93 — same as dark mode's untouched native
+   * behaviour (filled = ramp[8], hover = ramp[9]). Guard:
+   * theme-tokens.test.ts "Mantine filled 对比度".
+   *
+   * Pinning the 13 library ramps below to shade 8/9 does not clear AA for all
+   * of them: gray 11.51 / red 4.51 / pink 5.66 / grape 5.82 / violet 6.30 /
+   * indigo 5.67 / blue 5.02 pass; cyan 4.35 / teal 3.95 / green 3.45 /
+   * lime 2.93 / yellow 2.48 / orange 3.58 do not — shade 9 is as deep as the
+   * library goes for those six, so this is a known, pre-existing gap (not
+   * introduced here) pending a design decision on whether to add darker
+   * steps. Pinned values live in theme-tokens.test.ts's "Mantine filled 对比度"
+   * group; any drift in either direction fails the test. */
+  --mantine-color-portal-accent-filled: var(--accent-700);
+  --mantine-color-portal-accent-filled-hover: var(--accent-900);
+  --mantine-color-gray-filled: var(--mantine-color-gray-8);
+  --mantine-color-gray-filled-hover: var(--mantine-color-gray-9);
+  --mantine-color-red-filled: var(--mantine-color-red-8);
+  --mantine-color-red-filled-hover: var(--mantine-color-red-9);
+  --mantine-color-pink-filled: var(--mantine-color-pink-8);
+  --mantine-color-pink-filled-hover: var(--mantine-color-pink-9);
+  --mantine-color-grape-filled: var(--mantine-color-grape-8);
+  --mantine-color-grape-filled-hover: var(--mantine-color-grape-9);
+  --mantine-color-violet-filled: var(--mantine-color-violet-8);
+  --mantine-color-violet-filled-hover: var(--mantine-color-violet-9);
+  --mantine-color-indigo-filled: var(--mantine-color-indigo-8);
+  --mantine-color-indigo-filled-hover: var(--mantine-color-indigo-9);
+  --mantine-color-blue-filled: var(--mantine-color-blue-8);
+  --mantine-color-blue-filled-hover: var(--mantine-color-blue-9);
+  --mantine-color-cyan-filled: var(--mantine-color-cyan-8);
+  --mantine-color-cyan-filled-hover: var(--mantine-color-cyan-9);
+  --mantine-color-teal-filled: var(--mantine-color-teal-8);
+  --mantine-color-teal-filled-hover: var(--mantine-color-teal-9);
+  --mantine-color-green-filled: var(--mantine-color-green-8);
+  --mantine-color-green-filled-hover: var(--mantine-color-green-9);
+  --mantine-color-lime-filled: var(--mantine-color-lime-8);
+  --mantine-color-lime-filled-hover: var(--mantine-color-lime-9);
+  --mantine-color-yellow-filled: var(--mantine-color-yellow-8);
+  --mantine-color-yellow-filled-hover: var(--mantine-color-yellow-9);
+  --mantine-color-orange-filled: var(--mantine-color-orange-8);
+  --mantine-color-orange-filled-hover: var(--mantine-color-orange-9);
+}
+
+/* ── Native date inputs ──
+ *
+ * Date filters are Mantine TextInputs with type="date", so the frame is themed
+ * but the picker button is drawn by the browser: a black glyph that disappears
+ * on the dark surface and ignores the palette on the light one. This tints it to
+ * the theme and gives the whole control the same affordance as the buttons next
+ * to it. Applies to every date filter (gallery, audit log, war history, absence).
+ */
+input[type="date"] {
+  cursor: pointer;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.65;
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--accent-fill) 20%, transparent);
+}
+
+/* filter 不是颜色属性，token 承担不了这个差异，所以这条按模式分支保留，
+ * 只把信号换成 [data-theme]。 */
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
+
+/* ── Glass surface (see components/effects/GlassEffect.tsx) ──
+ *
+ * 三个可调参数原先写成 var() 的第二参数当默认值。兜底值一律禁止，改为显式声明，
+ * 但**必须包在 :where() 里**：兜底机制是无条件让位于任何真实声明的，而一条普通的
+ * .glass-effect 规则只有 (0,1,0) —— 消费方 AuthPages.css 的 .login-page__card
+ * 同样是 (0,1,0)，两者打平就只能靠 chunk 注入顺序决胜，那不是「默认值」而是赌博。
+ * :where() 把特异性归 0，任何消费方的类覆盖都自然赢，语义才真正等同于原来的兜底。
+ * 元素内联变量（GlassEffect 传 prop 时写的那种）本来就压过一切，不受影响。 */
+:where(.glass-effect) {
+  --glass-blur: 12px;
+  --glass-opacity: 10%;
+  --glass-border-opacity: 20%;
+}
+
+.glass-effect {
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  background: color-mix(in srgb, var(--surface-base) var(--glass-opacity), transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-base) var(--glass-border-opacity), transparent);
+}
+
 /* ── Tooltip entrance (glassmorphism style) ── */
+/* mode-independent literal: same glass shadow + top-edge sheen pair as
+   .login-page__card in AuthPages.css (outer dark shadow to ground the glass
+   panel, inset white sliver to catch a top highlight) — both values are fixed
+   on purpose, not themed colours, same rationale as that precedent. */
 .mantine-Tooltip-tooltip {
   animation: tooltipIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 4px 16px rgb(0 0 0 / 0.12),
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
 
-.dark .mantine-Tooltip-tooltip {
-  border: 1px solid color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
+/* 基础规则根本没有 border，深色模式是额外加一条边而不是换个颜色，token 承担
+ * 不了「有 / 无」这个差异，所以按模式分支保留，信号换成 [data-theme]。 */
+[data-theme="dark"] .mantine-Tooltip-tooltip {
+  border: 1px solid color-mix(in srgb, var(--accent-fill) 12%, transparent);
 }
 
 @keyframes tooltipIn {
@@ -613,19 +1057,21 @@ html[data-locale="zh"] {
   }
 }
 
-/* ── Modal entrance enhancement ── */
-.mantine-Modal-content {
-  animation: modalSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both !important;
+/* ── Modal entrance enhancement ──
+ *
+ * 压制对象：Mantine 的 Paper 基类 `.m_1b7284a3 { box-shadow: var(--paper-shadow) }`
+ * 是 (0,1,0)，与 .mantine-Modal-content 打平且注入在本文件之后，平手时后来者赢
+ * —— 这是 box-shadow 当初挂感叹号优先级的原因，改用类名自我重复抬到 (0,2,0)。
+ * animation 本来就不需要抬：CSS 动画在层叠里压过普通声明，连内联样式都压得过。
+ * 深色模式原本另有一条更重的阴影与一圈外辉光，与本条只差数值，已随 .dark 变体
+ * 一并删除。下面的外层投影 `0 24px 48px rgb(0 0 0 / 0.2)` 与模式无关：弹窗要在
+ * 任意背景上都压出同等强度的浮起效果，理由同 .mantine-Tooltip-tooltip 与
+ * AuthPages.css 的 .login-page__card。 */
+.mantine-Modal-content.mantine-Modal-content {
+  animation: modalSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
   box-shadow:
-    0 24px 48px rgba(0, 0, 0, 0.2),
-    0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent) !important;
-}
-
-.dark .mantine-Modal-content {
-  box-shadow:
-    0 24px 48px rgba(0, 0, 0, 0.4),
-    0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent),
-    0 0 60px color-mix(in srgb, var(--color-primary, #D4A843) 4%, transparent) !important;
+    0 24px 48px rgb(0 0 0 / 0.2),
+    0 0 0 1px color-mix(in srgb, var(--accent-fill) 6%, transparent);
 }
 
 .mantine-Modal-overlay {
@@ -660,37 +1106,53 @@ html[data-locale="zh"] {
   }
 }
 
-/* ── Tabs pill style ── */
+/* Mantine's xs badge is 9px, which is below the legible floor for the CJK glyphs
+ * these badges mostly carry (class names, role tags). The component writes
+ * `--badge-fz: var(--badge-fz-xs)` as an inline style, so the size token is what
+ * has to change — setting --badge-fz here would lose to the inline declaration. */
+.mantine-Badge-root[data-size="xs"] {
+  --badge-fz-xs: 10px;
+}
+
+/* ── Tabs pill style ──
+ *
+ * Tabs and the sidebar were both saying "you are here" in the accent colour, on
+ * screen at the same time. The sidebar keeps the accent; tabs express the active
+ * state with a raised pill and full-strength bold text instead.
+ *
+ * 深色模式原本单独把选中底色换成「10% 文字色混透明」并去掉那圈 1px 描边。
+ * --surface-raised 与 --border-subtle 本身就随模式切换，抬起感与边缘在两个模式
+ * 下都成立，故删掉 .dark 变体，模式差异交给 token。 */
 .mantine-Tabs-list {
   gap: 4px;
-  border-bottom: 1px solid var(--color-border, #E2DDD6);
-  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--space-sm);
 }
 
 .mantine-Tabs-tab {
   font-weight: 500;
-  color: var(--color-text-secondary, #6b7280);
+  font-size: var(--text-body);
+  color: var(--text-muted);
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .mantine-Tabs-tab:hover:not([data-active]) {
-  background: color-mix(in srgb, var(--color-text, #000) 5%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  color: var(--text-primary);
 }
 
 .mantine-Tabs-tab[data-active] {
-  font-weight: 600;
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
-  color: var(--color-primary, #D4A843);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent);
-}
-
-.dark .mantine-Tabs-tab[data-active] {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 16%, transparent);
+  font-weight: var(--fw-medium);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--border-subtle);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .mantine-Button-root,
   .mantine-ActionIcon-root {
+    /* 保留感叹号优先级：无障碍覆盖本来就该压过一切。去掉后按钮的位移与辉光过渡
+     * 仍会跑，「减少动态效果」形同虚设。 */
     transition: none !important;
   }
   .mantine-Button-root[data-variant="filled"]::after {
@@ -702,12 +1164,14 @@ html[data-locale="zh"] {
   .status-dot--online {
     animation: none;
   }
+  .star-border__track::before {
+    animation: none;
+  }
   .mantine-Tooltip-tooltip,
   .mantine-Modal-content,
   .mantine-Notification-root {
+    /* 保留感叹号优先级：Modal 那条入场动画已抬到 (0,2,0)，本条 (0,1,0) 靠特异性
+     * 压不住；而且无障碍覆盖本来就是它的正当用法。 */
     animation: none !important;
-  }
-  .star-border__track::before {
-    animation: none;
   }
 }

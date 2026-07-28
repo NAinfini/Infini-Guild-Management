@@ -19,9 +19,16 @@ type GalleryGridProps = {
   emptyTitle: string;
   emptyDescription?: string;
   errorTitle: string;
-  disableResetFilters: boolean;
+  errorDescription: string;
+  retryLabel: string;
+  retryPending: boolean;
+  hasActiveFilters: boolean;
+  canUpload: boolean;
   resetFiltersLabel: string;
+  addMediaLabel: string;
+  onRetry: () => void;
   onResetFilters: () => void;
+  onAddMedia: () => void;
   onToggleSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onOpenLightbox: (id: string) => void;
@@ -41,9 +48,16 @@ export function GalleryGrid({
   emptyTitle,
   emptyDescription,
   errorTitle,
-  disableResetFilters,
+  errorDescription,
+  retryLabel,
+  retryPending,
+  hasActiveFilters,
+  canUpload,
   resetFiltersLabel,
+  addMediaLabel,
+  onRetry,
   onResetFilters,
+  onAddMedia,
   onToggleSelect,
   onDelete,
   onOpenLightbox,
@@ -52,11 +66,22 @@ export function GalleryGrid({
   actionDeleteLabel,
 }: GalleryGridProps) {
   const { t } = useTranslation("gallery");
+  const getOpenLabel = (item: GalleryItem) => {
+    const name = item.caption ?? item.id;
+    if (isExternalView) {
+      return t(item.type === "image" ? "aria.openImage" : "aria.openVideo", { name });
+    }
+    return t(item.type === "image" ? "aria.openImageBy" : "aria.openVideoBy", {
+      name,
+      uploader: item.uploaded_by_name ?? item.uploaded_by,
+    });
+  };
+
   if (isLoading && rows.length === 0) {
     return (
-      <div className="gallery-masonry" role="grid" aria-label={t("aria.galleryLoading")}>
+      <div className="gallery-masonry" role="list" aria-label={t("aria.galleryLoading")}>
         {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="gallery-masonry__item">
+          <div key={i} role="listitem" className="gallery-masonry__item">
             <PortalCard interactive={false}>
               <div className="gallery-card__inner">
                 <Skeleton height={200} radius={8} />
@@ -76,7 +101,16 @@ export function GalleryGrid({
     return (
       <PortalCard interactive={false}>
         <div style={{ padding: "1.2rem" }}>
-          <EmptyState title={errorTitle} />
+          <EmptyState
+            status="error"
+            title={errorTitle}
+            description={errorDescription}
+            actions={
+              <Button onClick={onRetry} loading={retryPending}>
+                {retryLabel}
+              </Button>
+            }
+          />
         </div>
       </PortalCard>
     );
@@ -90,9 +124,13 @@ export function GalleryGrid({
             title={emptyTitle}
             description={emptyDescription}
             actions={
-              <Button onClick={onResetFilters} disabled={disableResetFilters}>
-                {resetFiltersLabel}
-              </Button>
+              hasActiveFilters ? (
+                <Button onClick={onResetFilters}>
+                  {resetFiltersLabel}
+                </Button>
+              ) : canUpload ? (
+                <Button onClick={onAddMedia}>{addMediaLabel}</Button>
+              ) : undefined
             }
           />
         </div>
@@ -100,13 +138,17 @@ export function GalleryGrid({
     );
   }
 
+  /*
+   * list/listitem, not grid/gridcell: role="grid" requires role="row"
+   * children, and a masonry wall has no column semantics to navigate.
+   */
   return (
-    <div className="gallery-masonry" role="grid" aria-label={t("aria.galleryItems")}>
+    <div className="gallery-masonry" role="list" aria-label={t("aria.galleryItems")}>
       {rows.map((item, index) => (
         <RevealOnScroll key={item.id} delayMs={Math.min(index, 18) * 18}>
           <div
             className="gallery-masonry__item gallery-masonry__item--animated"
-            role="gridcell"
+            role="listitem"
             style={{ "--stagger-index": index } as CSSProperties}
           >
             <PortalCard className="gallery-card" interactive={false}>
@@ -114,7 +156,7 @@ export function GalleryGrid({
                 type="button"
                 onClick={() => onOpenLightbox(item.id)}
                 className="gallery-preview-button"
-                aria-label={t(item.type === "image" ? "aria.openImage" : "aria.openVideo", { name: item.caption ?? item.id })}
+                aria-label={getOpenLabel(item)}
               >
                 <div className="gallery-preview-media">
                   {item.type === "image" ? (
@@ -142,12 +184,14 @@ export function GalleryGrid({
                 </div>
                 {canModerate ? (
                   <Group gap={6} wrap="nowrap" className="gallery-card__actions">
-                    <Checkbox
-                      size="xs"
-                      checked={selectedIds.includes(item.id)}
-                      onChange={() => onToggleSelect(item.id)}
-                      aria-label={t("aria.selectItem", { id: item.id })}
-                    />
+                    <label className="gallery-card__select-target">
+                      <Checkbox
+                        size="xs"
+                        checked={selectedIds.includes(item.id)}
+                        onChange={() => onToggleSelect(item.id)}
+                        aria-label={t("aria.selectItem", { id: item.id })}
+                      />
+                    </label>
                     <DepthButton type="danger" size="sm" iconOnly before={<TrashIcon size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); onDelete(item.id); }} loading={deletePending} tooltip={{ label: actionDeleteLabel, withArrow: true }} />
                   </Group>
                 ) : null}

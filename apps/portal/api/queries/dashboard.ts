@@ -1,7 +1,7 @@
 import type { Event, WarHistory } from "@guild/shared";
 import { apiRequest } from "../client";
 
-export type DashboardSummaryParticipant = {
+export type DashboardParticipant = {
   user_id: string;
   username: string;
   role: string;
@@ -10,11 +10,11 @@ export type DashboardSummaryParticipant = {
   avatar_key: string | null;
 };
 
-export type DashboardSummaryEvent = Event & {
-  participants: DashboardSummaryParticipant[];
+export type DashboardEvent = Event & {
+  participants: DashboardParticipant[];
 };
 
-export type DashboardSummaryWarMvp = {
+export type DashboardWarMvp = {
   category: string;
   label: string;
   name: string;
@@ -22,17 +22,33 @@ export type DashboardSummaryWarMvp = {
   value: number;
 };
 
-export type DashboardSummaryResponse = {
+export type DashboardMemberStatsResponse = {
   active_member_count: number;
   total_member_count: number;
-  active_events_count: number;
-  all_war_win_rate: number;
-  upcoming_events: DashboardSummaryEvent[];
-  my_signup_event_ids: string[];
-  recent_wars: WarHistory[];
-  recent_war_mvps: Array<DashboardSummaryWarMvp[] | null>;
 };
 
-export function fetchDashboardSummary(): Promise<DashboardSummaryResponse> {
-  return apiRequest<DashboardSummaryResponse>("/api/dashboard/summary");
+export type DashboardEventsResponse = {
+  active_events_count: number;
+  featured_events: DashboardEvent[];
+  upcoming_events: DashboardEvent[];
+  my_signup_event_ids: string[];
+};
+
+export type DashboardWarsResponse = {
+  all_war_win_rate: number;
+  recent_wars: WarHistory[];
+  recent_war_mvps: Array<DashboardWarMvp[] | null>;
+};
+
+export function fetchDashboardMemberStats(): Promise<DashboardMemberStatsResponse> {
+  return apiRequest<DashboardMemberStatsResponse>("/api/dashboard/members");
+}
+
+export function fetchDashboardEvents(options?: { externalView?: boolean }): Promise<DashboardEventsResponse> {
+  const suffix = options?.externalView ? "?external_view=true" : "";
+  return apiRequest<DashboardEventsResponse>(`/api/dashboard/events${suffix}`);
+}
+
+export function fetchDashboardWars(): Promise<DashboardWarsResponse> {
+  return apiRequest<DashboardWarsResponse>("/api/dashboard/wars");
 }

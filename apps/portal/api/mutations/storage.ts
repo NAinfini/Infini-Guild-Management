@@ -1,21 +1,24 @@
 import {
   createStorageCategorySchema,
   createStorageItemSchema,
+  createStorageBatchTransactionSchema,
   createStorageSchema,
   createStorageTransactionSchema,
   updateStorageItemSchema,
   type CreateStorageCategoryPayload,
+  type CreateStorageBatchTransactionPayload,
   type CreateStorageItemPayload,
   type CreateStoragePayload,
   type CreateStorageTransactionPayload,
   type Storage,
+  type StorageBatchTransactionResult,
   type StorageCategory,
   type StorageItem,
   type StorageTransaction,
   type UpdateStorageItemPayload,
 } from "@guild/shared";
 import { apiRequest } from "../client";
-import { convertImageToWebP } from "../../utils/media-convert";
+import { convertFilesForUpload } from "@guild/shared/utils/media";
 
 export function createStorage(payload: CreateStoragePayload): Promise<Storage> {
   return apiRequest<Storage>("/api/storage/storages", { method: "POST", bodyJson: createStorageSchema.parse(payload) });
@@ -54,7 +57,7 @@ export function deleteStorageItem(id: string): Promise<{ ok: true }> {
 }
 
 export async function uploadStorageItemImages(itemId: string, files: File[]): Promise<Array<{ id: string; r2_key: string }>> {
-  const converted = await Promise.all(files.map(convertImageToWebP));
+  const converted = await convertFilesForUpload(files);
   const formData = new FormData();
   for (const file of converted) {
     formData.append("files", file);
@@ -68,4 +71,13 @@ export function deleteStorageItemImage(itemId: string, imageId: string): Promise
 
 export function createStorageTransaction(itemId: string, payload: CreateStorageTransactionPayload): Promise<StorageTransaction> {
   return apiRequest<StorageTransaction>(`/api/storage/items/${itemId}/transactions`, { method: "POST", bodyJson: createStorageTransactionSchema.parse(payload) });
+}
+
+export function createStorageBatchTransaction(
+  payload: CreateStorageBatchTransactionPayload,
+): Promise<StorageBatchTransactionResult> {
+  return apiRequest<StorageBatchTransactionResult>("/api/storage/transactions/batch", {
+    method: "POST",
+    bodyJson: createStorageBatchTransactionSchema.parse(payload),
+  });
 }

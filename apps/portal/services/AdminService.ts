@@ -9,6 +9,7 @@ export {
   deactivateAdminUser,
   deleteAdminInviteLink,
   reactivateAdminUser,
+  resetAdminUserLoginLock,
   resetAdminUserPassword,
   revokeAdminInviteLink,
   updateAdminUserRole,
@@ -45,7 +46,9 @@ export type {
   AdminAuditArchiveDownloadFile,
   AdminAuditArchiveDownloadResponse,
   AdminAuditExportParams,
+  AdminInviteLinksResponse,
   AdminStatus,
+  InviteVisibility,
   InviteLinkStatsSummary,
 } from "../api/queries/admin";
 export { fetchRoles } from "../api/queries/roles";

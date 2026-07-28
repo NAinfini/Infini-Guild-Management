@@ -3,11 +3,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
-  Alert,
   Anchor,
-  Button,
   Checkbox,
-  Group,
   Stack,
   Text,
   TextInput,
@@ -20,8 +17,8 @@ import {
 
 } from "@portal/components/effects";
 import { DepthButton } from "@portal/components/shared/DepthButton";
-import { ArrowLeftIcon, EyeIcon, EyeOffIcon, KeyboardIcon } from "@portal/components/icons";
-import { useState } from "react";
+import { AlertTriangleIcon, ArrowLeftIcon, EyeIcon, EyeOffIcon, InfoCircleIcon, KeyboardIcon } from "@portal/components/icons";
+import { useState, type ReactNode } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -80,6 +77,18 @@ function parseValidationFieldErrors(details: unknown): FieldErrorMap {
   return mapped;
 }
 
+type LoginNoticeTone = "info" | "warning" | "error";
+
+function LoginNotice({ tone, children }: { tone: LoginNoticeTone; children: ReactNode }) {
+  const Icon = tone === "info" ? InfoCircleIcon : AlertTriangleIcon;
+  return (
+    <div className={`login-page__notice login-page__notice--${tone}`} role="status">
+      <Icon size={16} className="login-page__notice-icon" />
+      <span>{children}</span>
+    </div>
+  );
+}
+
 export function LoginPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
@@ -107,8 +116,6 @@ export function LoginPage() {
   const [apiFieldErrors, setApiFieldErrors] = useState<Partial<Record<keyof LoginFormValues, string>>>({});
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
   const [showPassword, showPasswordHandlers] = useDisclosure(false);
-  const [inviteCodeInput, setInviteCodeInput] = useState<string | null>(null);
-  const [inviteCodeError, setInviteCodeError] = useState<string | null>(null);
 
   const usernameValue = watch("username");
   const passwordValue = watch("password");
@@ -178,10 +185,14 @@ export function LoginPage() {
           </Text>
         </div>
 
-        <GlassEffect className="login-page__card" blur={16} opacity={0.1} borderOpacity={0.15}>
-          {search.reason === "expired" ? <Alert color="yellow" title={t("sessionExpired")} /> : null}
-          {search.reason === "required" ? <Alert color="blue" title={t("loginRequired")} /> : null}
-          {submitError ? <Alert color="red" title={submitError} /> : null}
+        <GlassEffect className="login-page__card">
+          {search.reason === "expired" ? (
+            <LoginNotice tone="warning">{t("sessionExpired")}</LoginNotice>
+          ) : null}
+          {search.reason === "required" ? (
+            <LoginNotice tone="info">{t("loginRequired")}</LoginNotice>
+          ) : null}
+          {submitError ? <LoginNotice tone="error">{submitError}</LoginNotice> : null}
 
           <form onSubmit={handleSubmit(onSubmit)}>
             <Stack gap={20}>
@@ -247,52 +258,12 @@ export function LoginPage() {
               </div>
 
               <div style={{ textAlign: "center" }}>
-                {inviteCodeInput === null ? (
-                  <Text size="sm" c="dimmed">
-                    {t("button.haveInviteCode")}{" "}
-                    <Anchor underline="hover" onClick={() => setInviteCodeInput("")}>
-                      {t("button.registerHere")}
-                    </Anchor>
-                  </Text>
-                ) : (
-                  <Group gap={6} justify="center">
-                    <TextInput
-                      size="xs"
-                      placeholder={t("field.inviteCode")}
-                      value={inviteCodeInput}
-                      error={inviteCodeError}
-                      onChange={(event) => {
-                        setInviteCodeInput(event.currentTarget.value);
-                        setInviteCodeError(null);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          if (inviteCodeInput.trim()) {
-                            void navigate({ to: "/register/$inviteCode", params: { inviteCode: inviteCodeInput.trim() } });
-                          } else {
-                            setInviteCodeError(t("validation.inviteCodeRequired"));
-                          }
-                        }
-                      }}
-                      style={{ width: 160 }}
-                      autoFocus
-                    />
-                    <Button
-                      size="xs"
-                      variant="default"
-                      onClick={() => {
-                        if (inviteCodeInput.trim()) {
-                          void navigate({ to: "/register/$inviteCode", params: { inviteCode: inviteCodeInput.trim() } });
-                        } else {
-                          setInviteCodeError(t("validation.inviteCodeRequired"));
-                        }
-                      }}
-                    >
-                      {t("button.go")}
-                    </Button>
-                  </Group>
-                )}
+                <Text size="sm" c="dimmed">
+                  {t("button.haveInviteCode")}{" "}
+                  <Anchor underline="hover" onClick={() => void navigate({ to: "/register" })}>
+                    {t("button.registerHere")}
+                  </Anchor>
+                </Text>
               </div>
             </Stack>
           </form>

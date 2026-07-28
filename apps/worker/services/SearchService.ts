@@ -11,6 +11,7 @@ import {
   wikiArticles,
 } from "../db/schema";
 import { escapeLikePattern } from "./helpers";
+import { eventPublicVisibilityFilter } from "./events/event-visibility";
 import { ok, type ServiceResult } from "./result";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
@@ -76,7 +77,11 @@ export class SearchService {
       this.db
         .select({ id: events.id, title: events.title, type: events.type, startAt: events.startAt })
         .from(events)
-        .where(and(isNull(events.archivedAt), or(sql`lower(${events.title}) LIKE ${pattern} ESCAPE '\\'`, sql`lower(${events.description}) LIKE ${pattern} ESCAPE '\\'`)!))
+        .where(and(
+          isNull(events.archivedAt),
+          eventPublicVisibilityFilter(new Date().toISOString()),
+          or(sql`lower(${events.title}) LIKE ${pattern} ESCAPE '\\'`, sql`lower(${events.description}) LIKE ${pattern} ESCAPE '\\'`)!,
+        ))
         .orderBy(events.startAt, events.id)
         .limit(perTypeLimit),
       this.db

@@ -35,6 +35,7 @@ type UpcomingEventsCardProps = {
   featuredRows: DashboardUpcomingEventRow[];
   rows: DashboardUpcomingEventRow[];
   onOpenEvent: (event: Pick<Event, "id" | "title">) => void;
+  onViewAll: () => void;
 };
 
 export const UpcomingEventsCard = memo(function UpcomingEventsCard({
@@ -42,6 +43,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
   featuredRows,
   rows,
   onOpenEvent,
+  onViewAll,
 }: UpcomingEventsCardProps) {
   const { t, i18n } = useTranslation("dashboard");
   const safeUpcomingCount = Math.max(0, upcomingEventsCount);
@@ -49,17 +51,26 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
 
   return (
     <PortalCard className="dashboard-card" interactive={false}>
-      {cardHeading(t("card.upcomingEvents.title"), <CalendarEventOutlined size={18} />)}
+      {/* The count used to sit under the heading as its own xl line, repeating what
+          the list below already shows. It rides along with the heading now. */}
+      <Group gap={8} align="center" wrap="nowrap" justify="space-between">
+        {cardHeading(t("card.upcomingEvents.title"), <CalendarEventOutlined size={18} />)}
         {safeUpcomingCount > 0 ? (
-          <Text size="xl" fw={700} mt={8}>
-            <NumberTicker value={safeUpcomingCount} /> {t("card.upcomingEvents.unit")}
-          </Text>
+          <Group gap={6} wrap="nowrap">
+            <Badge size="sm" variant="light" color="gray" style={{ flexShrink: 0 }}>
+              <NumberTicker value={safeUpcomingCount} /> {t("card.upcomingEvents.unit")}
+            </Badge>
+            <Button size="xs" variant="subtle" onClick={onViewAll}>
+              {t("card.upcomingEvents.viewAll", { count: safeUpcomingCount })}
+            </Button>
+          </Group>
         ) : null}
+      </Group>
         {!hasAnyRows ? (
           <EmptyState title={t("empty")} />
         ) : (
           <Stack gap={8} mt={12}>
-            {[...featuredRows, ...rows].slice(0, 5).map((item) => {
+            {[...featuredRows, ...rows].map((item) => {
               const signedUpCount = item.members.length;
               const capacity = item.item.capacity ?? 0;
               const percentage = capacity > 0 ? Math.round((signedUpCount / capacity) * 100) : 0;
@@ -68,31 +79,21 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
               const day = startDate.getDate();
 
               return (
-                <div
-                  key={item.item.id}
-                  style={{
-                    padding: "14px",
-                    background: "color-mix(in srgb, var(--color-surface, #fff) 97%, var(--color-text, #1A1815))",
-                    borderRadius: "12px",
-                    border: "1px solid color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent)",
-                    transition: "border-color 160ms ease, box-shadow 160ms ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--color-primary, #D4A843) 24%, transparent)";
-                    e.currentTarget.style.boxShadow = "0 2px 8px color-mix(in srgb, var(--color-primary, #D4A843) 6%, transparent)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--color-text, #1A1815) 6%, transparent)";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                >
+                <div key={item.item.id} className="upcoming-event-row">
                   <Group gap={12} wrap="nowrap" align="center">
                     <Stack gap={0} align="center" style={{ minWidth: 50 }}>
                       <Text size="xs" c="dimmed" fw={600}>{month}</Text>
                       <Text size="xl" fw={700}>{day}</Text>
                     </Stack>
                     <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-                      <Text fw={600} size="sm" truncate>{item.item.title}</Text>
+                      <Text
+                        fw={600}
+                        size="sm"
+                        lineClamp={2}
+                        className="upcoming-event-row__title"
+                      >
+                        {item.item.title}
+                      </Text>
                       {item.item.description ? (
                         <Text size="xs" c="dimmed" lineClamp={1}>
                           {item.item.description}
@@ -110,13 +111,15 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         </Group>
                       </Group>
                     </Stack>
-                      <Group gap={4}>
-                        {item.members.slice(0, 10).map((member) => (
-                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={48} />
+                      {/* Ten 48px avatars ate the row and truncated the event title to
+                          "Weekly Missio…". Six smaller ones leave the title readable. */}
+                      <Group gap={4} wrap="nowrap" className="upcoming-event-row__avatars" style={{ flexShrink: 0 }}>
+                        {item.members.slice(0, 6).map((member) => (
+                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={36} />
                         ))}
-                      {item.members.length > 10 ? (
+                      {item.members.length > 6 ? (
                         <Text size="xs" c="dimmed" fw={600}>
-                          +{item.members.length - 10}
+                          +{item.members.length - 6}
                         </Text>
                       ) : null}
                     </Group>
@@ -125,7 +128,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         size={36}
                         thickness={4}
                         roundCaps
-                        sections={[{ value: percentage, color: "var(--color-primary, #D4A843)" }]}
+                        sections={[{ value: percentage, color: "var(--accent-fill)" }]}
                       />
                       <Text size="10px" ta="center" fw={600} c="dimmed">
                         {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}

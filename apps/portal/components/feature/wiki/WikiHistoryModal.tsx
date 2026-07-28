@@ -1,9 +1,9 @@
 import type { WikiArticle, WikiRevisionListItem } from "@guild/shared";
 import { Badge, Group, Loader, Modal, ScrollArea, SegmentedControl, Stack, Text, UnstyledButton } from "@mantine/core";
-import { modals } from "@mantine/modals";
 import { format } from "date-fns";
 import { useTranslation } from "react-i18next";
 import { useWikiHistory, type WikiHistoryDiffBlock } from "../../../hooks/useWikiHistory";
+import { useConfirmDialog } from "../../shared/ConfirmDialog";
 import { DepthButton } from "../../shared/DepthButton";
 import { EmptyState } from "../../shared/EmptyState";
 
@@ -66,31 +66,24 @@ type WikiHistoryModalProps = {
 export function WikiHistoryModal({ opened, onClose, article }: WikiHistoryModalProps) {
   const { t } = useTranslation("wiki");
   const history = useWikiHistory({ article, opened, onClose });
+  const confirm = useConfirmDialog();
 
-  const handleRestore = (revision: number) => {
-    modals.openConfirmModal({
+  const handleRestore = async (revision: number) => {
+    const accepted = await confirm({
       title: t("history.confirmRestore.title"),
-      children: <Text size="sm">{t("history.confirmRestore.description", { revision })}</Text>,
-      centered: true,
-      confirmProps: { color: "red" },
-      labels: {
-        cancel: t("common:action.cancel"),
-        confirm: t("history.restore"),
-      },
-      onConfirm: () => history.restore(revision),
+      description: <Text size="sm">{t("history.confirmRestore.description", { revision })}</Text>,
+      cancelLabel: t("common:action.cancel"),
+      confirmLabel: t("history.restore"),
+      intent: "danger",
     });
+    if (accepted) history.restore(revision);
   };
 
   const renderRevisionRow = (revision: WikiRevisionListItem) => (
     <UnstyledButton
       key={revision.id}
       onClick={() => history.setSelectedRevision(revision.revision)}
-      style={{
-        padding: "0.5rem 0.65rem",
-        borderRadius: 8,
-        backgroundColor: revision.revision === history.selectedRevision ? "var(--mantine-color-blue-light)" : undefined,
-        width: "100%",
-      }}
+      className={`wiki-history-revision-row${revision.revision === history.selectedRevision ? " wiki-history-revision-row--selected" : ""}`}
     >
       <Group gap={8} wrap="nowrap" justify="space-between">
         <Stack gap={2} style={{ minWidth: 0 }}>

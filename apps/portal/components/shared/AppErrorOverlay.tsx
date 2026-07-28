@@ -1,4 +1,4 @@
-﻿import { notifications } from "@mantine/notifications";
+import { notifications } from "@mantine/notifications";
 import i18n from "i18next";
 import { useEffect } from "react";
 

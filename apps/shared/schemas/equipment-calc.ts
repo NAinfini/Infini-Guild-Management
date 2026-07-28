@@ -84,7 +84,7 @@ const skillEntrySchema = z.object({
   force: z.string(),
 });
 
-const classRotationConfigSchema = z.object({
+export const classRotationConfigSchema = z.object({
   rotation: z.array(rotationEntrySchema).min(1, "At least one rotation entry is required"),
   skillDatabase: z.record(z.string(), skillEntrySchema).refine(
     (skills) => Object.keys(skills).length > 0,
@@ -146,6 +146,16 @@ export const gameDataSchema = z.object({
   transmutationPools: z.record(z.string(), z.array(z.string())).optional(),
 });
 
+/**
+ * Game data without `rotations`, which is ~58% of the payload and is only ever
+ * needed one class at a time. `GET /api/game-data` serves this shape and
+ * `GET /api/game-data/rotations/:classId` serves the missing piece on demand.
+ * The stored row is still one complete document — this is a response split.
+ */
+export const gameDataBaseSchema = gameDataSchema.omit({ rotations: true });
+
 export type EquipmentInput = z.infer<typeof equipmentSchema>;
 export type LoadoutInput = z.infer<typeof loadoutSchema>;
 export type GameDataInput = z.infer<typeof gameDataSchema>;
+export type GameDataBaseInput = z.infer<typeof gameDataBaseSchema>;
+export type ClassRotationConfigInput = z.infer<typeof classRotationConfigSchema>;

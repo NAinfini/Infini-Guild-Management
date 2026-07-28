@@ -1,4 +1,4 @@
-﻿import type { User } from "@guild/shared";
+import type { User } from "@guild/shared";
 import { Avatar, Button, Group, Text, UnstyledButton } from "@mantine/core";
 import { UserIcon } from "@portal/components/icons";
 import { InfiniMenu } from "@portal/components/shared/InfiniMenu";

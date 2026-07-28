@@ -1,4 +1,5 @@
 import type { MemberBadge } from "@guild/shared";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import type { AdminBadgesController, BadgeForm } from "@portal/hooks/useAdminBadgesController";
 import {
@@ -13,7 +14,6 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { modals } from "@mantine/modals";
 import { PencilIcon, PlusIcon, TrashIcon, UserCheckIcon, XIcon } from "@portal/components/icons";
 import DOMPurify from "dompurify";
 import { useMemo } from "react";
@@ -79,7 +79,7 @@ function BadgeFormFields({
                 key={c}
                 type="button"
                 className={`admin-badge-swatch${form.color === c ? " admin-badge-swatch--active" : ""}`}
-                style={{ background: c }}
+                style={{ "--swatch-color": c } as React.CSSProperties}
                 aria-label={t("badges.aria.selectColor", { color: c, defaultValue: "Select badge color {{color}}" })}
                 title={c}
                 onClick={() => setForm((f) => ({ ...f, color: c }))}
@@ -110,6 +110,8 @@ function BadgeFormFields({
 
 export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionProps) {
   const { t } = useTranslation("admin");
+  const { t: tc } = useTranslation("common");
+  const confirm = useConfirmDialog();
   const {
     selectedBadgeId,
     editingBadgeId,
@@ -127,6 +129,10 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
     assignedUserIds,
     badgesLoading,
     assignmentsLoading,
+    badgesError,
+    assignmentsError,
+    retryBadges,
+    retryAssignments,
     createPending,
     updatePending,
     assignPending,
@@ -145,14 +151,15 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
     unassignBadge,
   } = controller;
 
-  const handleDelete = (badge: MemberBadge) => {
-    modals.openConfirmModal({
+  const handleDelete = async (badge: MemberBadge) => {
+    const accepted = await confirm({
       title: t("badges.confirmDelete.title"),
-      children: <Text size="sm">{t("badges.confirmDelete.description", { name: badge.name })}</Text>,
-      confirmProps: { color: "red" },
-      labels: { confirm: t("badges.action.delete"), cancel: t("badges.action.cancel") },
-      onConfirm: () => deleteBadge(badge.id),
+      description: <Text size="sm">{t("badges.confirmDelete.description", { name: badge.name })}</Text>,
+      confirmLabel: t("badges.action.delete"),
+      cancelLabel: t("badges.action.cancel"),
+      intent: "danger",
     });
+    if (accepted) deleteBadge(badge.id);
   };
 
   const filteredUsers = useMemo(() => {
@@ -177,8 +184,25 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
             <Stack gap={6}>
               {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={40} radius="md" />)}
             </Stack>
+          ) : badgesError ? (
+            <EmptyState
+              status="error"
+              title={tc("loadError")}
+              actions={(
+                <DepthButton type="secondary" size="sm" onClick={retryBadges}>
+                  {tc("action.retry")}
+                </DepthButton>
+              )}
+            />
           ) : badges.length === 0 && !isCreating ? (
-            <EmptyState title={t("badges.empty")} />
+            <EmptyState
+              title={t("badges.empty")}
+              actions={(
+                <DepthButton type="primary" size="sm" onClick={startCreate}>
+                  {t("badges.action.create")}
+                </DepthButton>
+              )}
+            />
           ) : (
             <Stack gap={4}>
               {badges.map((badge) => (
@@ -238,13 +262,13 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
               </Group>
               <Group gap={6}>
                 <Tooltip label={t("badges.action.manageMembership")}>
-                  <ActionIcon variant="subtle" aria-label={t("badges.action.manageMembership")} onClick={openAssignModal}><UserCheckIcon size={16} /></ActionIcon>
+                  <ActionIcon size={44} variant="subtle" aria-label={t("badges.action.manageMembership")} onClick={openAssignModal}><UserCheckIcon size={16} /></ActionIcon>
                 </Tooltip>
                 <Tooltip label={t("badges.editTitle")}>
-                  <ActionIcon variant="subtle" aria-label={t("badges.editTitle")} onClick={() => startEdit(selectedBadge)}><PencilIcon size={16} /></ActionIcon>
+                  <ActionIcon size={44} variant="subtle" aria-label={t("badges.editTitle")} onClick={() => startEdit(selectedBadge)}><PencilIcon size={16} /></ActionIcon>
                 </Tooltip>
                 <Tooltip label={t("badges.action.delete")}>
-                  <ActionIcon variant="subtle" color="red" aria-label={t("badges.action.delete")} onClick={() => handleDelete(selectedBadge)}><TrashIcon size={16} /></ActionIcon>
+                  <ActionIcon size={44} variant="subtle" color="red" aria-label={t("badges.action.delete")} onClick={() => handleDelete(selectedBadge)}><TrashIcon size={16} /></ActionIcon>
                 </Tooltip>
               </Group>
             </Group>
@@ -253,6 +277,16 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
 
             {assignmentsLoading ? (
               <Stack gap={6}>{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={32} />)}</Stack>
+            ) : assignmentsError ? (
+              <EmptyState
+                status="error"
+                title={tc("loadError")}
+                actions={(
+                  <DepthButton type="secondary" size="sm" onClick={retryAssignments}>
+                    {tc("action.retry")}
+                  </DepthButton>
+                )}
+              />
             ) : assignments.length === 0 ? (
               <Text size="sm" c="dimmed">{t("badges.noMembers")}</Text>
             ) : (
@@ -264,7 +298,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
                       <ActionIcon
                         variant="subtle"
                         color="red"
-                        size="sm"
+                        size={44}
                         aria-label={t("badges.action.unassign")}
                         onClick={() => unassignBadge(selectedBadge.id, [a.user_id])}
                         loading={unassignPending}

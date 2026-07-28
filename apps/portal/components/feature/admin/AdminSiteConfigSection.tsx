@@ -7,24 +7,19 @@ import {
   MAX_CONFIGURABLE_MEDIA_FILE_BYTES,
   type AdminSiteConfigResponse,
   type FeatureFlags,
-  type OnboardingChecklistItem,
-  type UpdateOnboardingConfigPayload,
   type UpdateSiteConfigPayload,
 } from "@guild/shared";
-import { ActionIcon, Badge, Button, FileButton, Group, HoverCard, NumberInput, SimpleGrid, Stack, Switch, Text, TextInput, ThemeIcon, UnstyledButton } from "@mantine/core";
-import { BookTextIcon, CloudIcon, GalleryThumbnailsIcon, InfoCircleIcon, PlusIcon, SaveIcon, SettingsIcon, TrashIcon, UploadIcon, WarehouseIcon } from "@portal/components/icons";
-import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Badge, Button, FileButton, Group, HoverCard, NumberInput, SimpleGrid, Stack, Switch, Text, TextInput, ThemeIcon, UnstyledButton } from "@mantine/core";
+import { BookTextIcon, CloudIcon, GalleryThumbnailsIcon, InfoCircleIcon, SaveIcon, SettingsIcon, UploadIcon, WarehouseIcon } from "@portal/components/icons";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 type AdminSiteConfigSectionProps = {
   data: AdminSiteConfigResponse | null;
   loading: boolean;
   saving: boolean;
-  onboardingSaving: boolean;
   logoUploading: boolean;
   onSaveSite: (payload: UpdateSiteConfigPayload) => void;
-  onSaveOnboarding: (payload: UpdateOnboardingConfigPayload) => void;
   onUploadLogo: (file: File) => void;
 };
 
@@ -45,8 +40,8 @@ type SiteConfigInfoProps = {
 const FEATURE_KEYS: Array<keyof FeatureFlags> = ["announcements", "events", "guildWar", "gallery", "wiki", "tools", "equipmentCalc", "storage"];
 
 const FEATURE_INFO_META: Record<keyof FeatureFlags, { icon: ReactNode; color: string }> = {
-  announcements: { icon: <BookTextIcon size={16} />, color: "yellow" },
-  events: { icon: <SettingsIcon size={16} />, color: "blue" },
+  announcements: { icon: <BookTextIcon size={16} />, color: "blue" },
+  events: { icon: <SettingsIcon size={16} />, color: "grape" },
   guildWar: { icon: <SettingsIcon size={16} />, color: "orange" },
   gallery: { icon: <GalleryThumbnailsIcon size={16} />, color: "teal" },
   wiki: { icon: <BookTextIcon size={16} />, color: "violet" },
@@ -63,16 +58,7 @@ function formatMb(bytes: number) {
   return Math.round(bytes / 1024 / 1024);
 }
 
-function createChecklistItem(): OnboardingChecklistItem {
-  return {
-    id: crypto.randomUUID(),
-    label: "",
-    description: null,
-    required: true,
-  };
-}
-
-function SiteConfigInfo({ title, description, icon, color = "blue", badge }: SiteConfigInfoProps) {
+function SiteConfigInfo({ title, description, icon, color = "gray", badge }: SiteConfigInfoProps) {
   return (
     <HoverCard width={320} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
       <HoverCard.Target>
@@ -102,20 +88,13 @@ export function AdminSiteConfigSection({
   data,
   loading,
   saving,
-  onboardingSaving,
   logoUploading,
   onSaveSite,
-  onSaveOnboarding,
   onUploadLogo,
 }: AdminSiteConfigSectionProps) {
   const { t } = useTranslation("admin");
   const [siteName, setSiteName] = useState("");
   const [siteLogoUrl, setSiteLogoUrl] = useState("");
-  const [onboardingTitle, setOnboardingTitle] = useState("");
-  const [onboardingBody, setOnboardingBody] = useState("");
-  const [onboardingEnabled, setOnboardingEnabled] = useState(false);
-  const [requireAck, setRequireAck] = useState(true);
-  const [checklist, setChecklist] = useState<OnboardingChecklistItem[]>([]);
   const [features, setFeatures] = useState<FeatureFlags>({ ...DEFAULT_FEATURE_FLAGS });
   const [mediaPolicy, setMediaPolicy] = useState<AdminSiteConfigResponse["site"]["media_policy"]>(DEFAULT_SITE_MEDIA_POLICY);
   const [storagePolicy, setStoragePolicy] = useState<AdminSiteConfigResponse["site"]["storage_policy"]>(DEFAULT_SITE_STORAGE_POLICY);
@@ -125,21 +104,11 @@ export function AdminSiteConfigSection({
     if (!data) return;
     setSiteName(data.site.site_name);
     setSiteLogoUrl(data.site.site_logo_url);
-    setOnboardingTitle(data.onboarding.title);
-    setOnboardingBody(data.onboarding.body_json);
-    setOnboardingEnabled(data.onboarding.enabled ?? data.onboarding.published_at !== null);
-    setRequireAck(data.onboarding.require_ack);
-    setChecklist(data.onboarding.checklist);
     setFeatures(data.site.features ?? DEFAULT_FEATURE_FLAGS);
     setMediaPolicy(data.site.media_policy ?? DEFAULT_SITE_MEDIA_POLICY);
     setStoragePolicy(data.site.storage_policy ?? DEFAULT_SITE_STORAGE_POLICY);
     setAbsencePolicy(data.site.absence_policy ?? DEFAULT_SITE_ABSENCE_POLICY);
   }, [data]);
-
-  const validChecklist = useMemo(
-    () => checklist.filter((item) => item.label.trim()),
-    [checklist],
-  );
 
   const enabledFeatureCount = FEATURE_KEYS.filter((key) => features[key]).length;
 
@@ -159,11 +128,6 @@ export function AdminSiteConfigSection({
       title: t("siteConfig.policy.limits"),
       icon: <CloudIcon size={18} />,
     },
-    {
-      id: "onboarding",
-      title: t("siteConfig.onboarding.title"),
-      icon: <BookTextIcon size={18} />,
-    },
   ];
 
   if (loading) {
@@ -180,23 +144,13 @@ export function AdminSiteConfigSection({
     });
   };
 
-  const handleSaveOnboarding = () => {
-    onSaveOnboarding({
-      title: onboardingTitle,
-      body_json: onboardingBody,
-      checklist: validChecklist,
-      enabled: onboardingEnabled,
-      require_ack: requireAck,
-    });
-  };
-
   return (
     <div className="site-config-workspace">
       <aside className="site-config-rail" aria-label={t("siteConfig.navLabel")}>
         <div className="site-config-rail__header">
           <Text size="xs" c="dimmed">{t("siteConfig.navEyebrow")}</Text>
           <Text size="lg" fw={800}>{t("tab.siteConfig")}</Text>
-          <Text size="xs" c="dimmed">{t("siteConfig.summary.compact", { enabled: enabledFeatureCount, total: FEATURE_KEYS.length, count: validChecklist.length })}</Text>
+          <Text size="xs" c="dimmed">{t("siteConfig.summary.compact", { enabled: enabledFeatureCount, total: FEATURE_KEYS.length })}</Text>
         </div>
 
         <nav className="site-config-rail__nav">
@@ -223,7 +177,7 @@ export function AdminSiteConfigSection({
                   title={t("siteConfig.branding.title")}
                   description={t("siteConfig.branding.description")}
                   icon={<GalleryThumbnailsIcon size={16} />}
-                  color="yellow"
+                  color="gray"
                 />
               </div>
             </div>
@@ -245,7 +199,7 @@ export function AdminSiteConfigSection({
                       title={t("siteConfig.field.siteLogo")}
                       description={t("siteConfig.field.siteLogoDescription")}
                       icon={<UploadIcon size={16} />}
-                      color="yellow"
+                      color="gray"
                     />
                   </div>
                   <FileButton onChange={(file) => { if (file) onUploadLogo(file); }} accept="image/jpeg,image/png,image/gif,image/webp,image/avif">
@@ -268,7 +222,7 @@ export function AdminSiteConfigSection({
                   title={t("siteConfig.policy.features")}
                   description={t("siteConfig.policy.featuresDescription")}
                   icon={<SettingsIcon size={16} />}
-                  color="blue"
+                  color="gray"
                 />
               </div>
               <Text size="xs" fw={700} c="dimmed">{t("siteConfig.summary.features", { enabled: enabledFeatureCount, total: FEATURE_KEYS.length })}</Text>
@@ -308,7 +262,7 @@ export function AdminSiteConfigSection({
                 title={t("siteConfig.policy.limits")}
                 description={t("siteConfig.policy.limitsDescription")}
                 icon={<CloudIcon size={16} />}
-                color="blue"
+                color="gray"
               />
             </div>
           </div>
@@ -400,112 +354,6 @@ export function AdminSiteConfigSection({
                   }))}
                 />
               </SimpleGrid>
-            </Stack>
-          </div>
-        </section>
-
-        <section id="site-config-onboarding" className="site-config-card site-config-card--onboarding">
-          <div className="site-config-card__header">
-            <div className="site-config-title-row">
-              <Text fw={800}>{t("siteConfig.onboarding.title")}</Text>
-              <SiteConfigInfo
-                title={t("siteConfig.onboarding.title")}
-                description={t("siteConfig.onboarding.description")}
-                icon={<BookTextIcon size={16} />}
-                color="teal"
-              />
-            </div>
-            <Text size="xs" fw={700} c="dimmed">{t("siteConfig.summary.onboarding", { count: validChecklist.length })}</Text>
-            <Button
-              size="compact-sm"
-              variant="light"
-              loading={onboardingSaving}
-              leftSection={<SaveIcon size={14} />}
-              onClick={handleSaveOnboarding}
-            >
-              {t("siteConfig.action.saveOnboarding")}
-            </Button>
-          </div>
-
-          <div className="site-config-onboarding-layout">
-            <div className="site-config-onboarding-topline">
-              <TextInput size="sm" label={t("siteConfig.field.onboardingTitle")} value={onboardingTitle} onChange={(event) => setOnboardingTitle(event.currentTarget.value)} />
-              <div className="site-config-onboarding-controls">
-                <div className="site-config-ack-card">
-                  <Group gap={8} justify="space-between" wrap="nowrap">
-                    <Switch checked={onboardingEnabled} onChange={(event) => setOnboardingEnabled(event.currentTarget.checked)} label={t("siteConfig.field.onboardingEnabled")} />
-                    <SiteConfigInfo
-                      title={t("siteConfig.field.onboardingEnabled")}
-                      description={t("siteConfig.field.onboardingEnabledDescription")}
-                      icon={<BookTextIcon size={16} />}
-                      color="teal"
-                    />
-                  </Group>
-                </div>
-                <div className="site-config-ack-card">
-                  <Group gap={8} justify="space-between" wrap="nowrap">
-                    <Switch checked={requireAck} onChange={(event) => setRequireAck(event.currentTarget.checked)} label={t("siteConfig.field.requireAck")} />
-                    <SiteConfigInfo
-                      title={t("siteConfig.field.requireAck")}
-                      description={t("siteConfig.field.requireAckDescription")}
-                      icon={<BookTextIcon size={16} />}
-                      color="yellow"
-                    />
-                  </Group>
-                </div>
-              </div>
-            </div>
-
-            <Stack gap={8} className="site-config-rules-editor">
-              <Text size="sm" fw={700}>{t("siteConfig.field.rulesBody")}</Text>
-              <TipTapEditor value={onboardingBody} onChange={setOnboardingBody} placeholder={t("siteConfig.placeholder.rulesBody")} />
-            </Stack>
-
-            <Stack gap={12} className="site-config-checklist-panel">
-              <Group justify="space-between" align="center">
-                <Text size="sm" fw={700}>{t("siteConfig.field.checklist")}</Text>
-                <Button size="compact-sm" variant="light" leftSection={<PlusIcon size={14} />} onClick={() => setChecklist((current) => [...current, createChecklistItem()])}>
-                  {t("siteConfig.action.addChecklistItem")}
-                </Button>
-              </Group>
-              <Stack gap={10} className="site-config-checklist-list">
-                {checklist.length === 0 ? (
-                  <div className="site-config-empty-checklist">
-                    <Text size="sm" c="dimmed">{t("siteConfig.field.checklistEmpty")}</Text>
-                  </div>
-                ) : null}
-                {checklist.map((item, index) => (
-                  <div key={item.id} className="site-config-checklist-row">
-                    <div className="site-config-checklist-row__fields">
-                      <TextInput
-                        size="sm"
-                        label={t("siteConfig.field.checklistLabel")}
-                        value={item.label}
-                        onChange={(event) => setChecklist((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, label: event.currentTarget.value } : row))}
-                      />
-                      <TextInput
-                        size="sm"
-                        label={t("siteConfig.field.checklistDescription")}
-                        value={item.description ?? ""}
-                        onChange={(event) => setChecklist((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, description: event.currentTarget.value || null } : row))}
-                      />
-                    </div>
-                    <div className="site-config-checklist-row__actions">
-                      <Switch
-                        checked={item.required}
-                        onChange={(event) => {
-                          const checked = event.currentTarget.checked;
-                          setChecklist((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, required: checked } : row));
-                        }}
-                        label={t("siteConfig.field.required")}
-                      />
-                      <ActionIcon color="red" variant="subtle" aria-label={t("siteConfig.action.deleteChecklistItem")} onClick={() => setChecklist((current) => current.filter((_, rowIndex) => rowIndex !== index))}>
-                        <TrashIcon size={16} />
-                      </ActionIcon>
-                    </div>
-                  </div>
-                ))}
-              </Stack>
             </Stack>
           </div>
         </section>

@@ -2,6 +2,7 @@ import type { Bindings } from "../index";
 import { logger } from "../utils/logger";
 import {
   extractAttachmentKeys,
+  extractAnnouncementImageNodeKeys,
   extractRichTextMediaKeys,
   findUnreferencedKeys,
   replaceMediaRefs,
@@ -94,7 +95,7 @@ async function runBackfill(db: D1Database): Promise<void> {
   // announcements: rich-text body_json
   const announcementRows = await db.prepare("SELECT id, body_json FROM announcements").all<{ id: string; body_json: string | null }>();
   for (const row of announcementRows.results ?? []) {
-    const keys = extractRichTextMediaKeys(row.body_json, "announcement", row.id);
+    const keys = extractAnnouncementImageNodeKeys(row.body_json, row.id);
     if (keys.length > 0) {
       await replaceMediaRefs(db, "announcement", row.id, keys);
       totalRefs += keys.length;

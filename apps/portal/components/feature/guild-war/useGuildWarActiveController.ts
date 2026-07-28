@@ -1,18 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GuildWarActiveResponse } from "@guild/shared";
+import { useTranslation } from "react-i18next";
+import { useConfirmDialog } from "../../shared/ConfirmDialog";
 import { useBeforeUnloadPrompt } from "../../../hooks/useBeforeUnloadPrompt";
 import type { GuildWarService } from "../../../services/GuildWarService";
-
-export type UndoMove = {
-  eventId: string;
-  moves: Array<{
-    userId: string;
-    from: string;
-    to: string;
-  }>;
-  etag?: string;
-  expiresAt: number;
-};
+import { notifySuccess } from "../../../utils/notifications";
 
 type UseGuildWarActiveControllerParams = {
   selectedEventId: string | undefined;
@@ -21,27 +13,17 @@ type UseGuildWarActiveControllerParams = {
   showError: (error: unknown, fallbackMessage: string) => void;
 };
 
-export function useGuildWarActiveController({ selectedEventId, activeData, guildWarService, showError }: UseGuildWarActiveControllerParams) {
+export function useGuildWarActiveController({
+  selectedEventId,
+  activeData,
+  guildWarService,
+  showError,
+}: UseGuildWarActiveControllerParams) {
+  const { t } = useTranslation("guild-war");
+  const confirm = useConfirmDialog();
   const [selectedDragUserIds, setSelectedDragUserIds] = useState<string[]>([]);
   const [selectionAnchorUserId, setSelectionAnchorUserId] = useState<string | null>(null);
   const [activeDragItemId, setActiveDragItemId] = useState<string | null>(null);
-  const [undoMove, setUndoMove] = useState<UndoMove | null>(null);
-  const [undoRemainingSec, setUndoRemainingSec] = useState(0);
-  const commitTimeoutRef = useRef<number | null>(null);
-
-  const clearCommitTimeout = useCallback(() => {
-    if (commitTimeoutRef.current !== null) {
-      window.clearTimeout(commitTimeoutRef.current);
-      commitTimeoutRef.current = null;
-    }
-  }, []);
-
-  const wrappedSetUndoMove = useCallback((value: UndoMove | null) => {
-    if (!value) {
-      clearCommitTimeout();
-    }
-    setUndoMove(value);
-  }, [clearCommitTimeout]);
   const [teamDraftNames, setTeamDraftNames] = useState<Record<string, string>>({});
   const [teamDraftNotes, setTeamDraftNotes] = useState<Record<string, string>>({});
   const [teamDraftLocks, setTeamDraftLocks] = useState<Record<string, boolean>>({});
@@ -59,22 +41,6 @@ export function useGuildWarActiveController({ selectedEventId, activeData, guild
     setTeamDraftLocks({});
     setTeamOrder([]);
   }, [selectedEventId]);
-
-  useEffect(() => {
-    if (!undoMove) {
-      setUndoRemainingSec(0);
-      return;
-    }
-
-    const update = () => {
-      const nextSeconds = Math.max(0, Math.ceil((undoMove.expiresAt - Date.now()) / 1000));
-      setUndoRemainingSec(nextSeconds);
-    };
-
-    update();
-    const timer = window.setInterval(update, 250);
-    return () => window.clearInterval(timer);
-  }, [undoMove]);
 
   const moveTeamOrder = useCallback((teamId: string, direction: "up" | "down") => {
     setTeamOrder((current) => {
@@ -123,9 +89,10 @@ export function useGuildWarActiveController({ selectedEventId, activeData, guild
   useBeforeUnloadPrompt(isTeamsDirty);
 
   const [saveTeamsPending, setSaveTeamsPending] = useState(false);
+  const saveTeamsInFlightRef = useRef(false);
 
   const handleSaveTeams = useCallback(async () => {
-    if (!selectedEventId || !isTeamsDirty) return;
+    if (!selectedEventId || !isTeamsDirty || saveTeamsInFlightRef.current) return false;
 
     // Build ordered teams from current draft state
     const orderedTeamIds = teamOrder.length > 0 ? teamOrder : serverTeams.map((t) => t.id);
@@ -134,6 +101,7 @@ export function useGuildWarActiveController({ selectedEventId, activeData, guild
       .map((id) => teamById.get(id))
       .filter((t): t is GuildWarActiveResponse["teams"][number] => Boolean(t));
 
+    saveTeamsInFlightRef.current = true;
     setSaveTeamsPending(true);
     try {
       await guildWarService.persistTeamSnapshot({
@@ -143,13 +111,43 @@ export function useGuildWarActiveController({ selectedEventId, activeData, guild
         teamDraftNames,
         teamDraftNotes,
         teamDraftLocks,
+        etag: activeData?.etag ?? undefined,
       });
+      notifySuccess(t("message.teamsSaved"));
+      return true;
     } catch (error) {
-      showError(error, "Failed to save team setup");
+      showError(error, t("message.teamsSaveFailed"));
+      return false;
     } finally {
+      saveTeamsInFlightRef.current = false;
       setSaveTeamsPending(false);
     }
-  }, [guildWarService, isTeamsDirty, selectedEventId, serverPool, serverTeams, showError, teamDraftLocks, teamDraftNames, teamDraftNotes, teamOrder]);
+  }, [
+    activeData?.etag,
+    guildWarService,
+    isTeamsDirty,
+    selectedEventId,
+    serverPool,
+    serverTeams,
+    showError,
+    t,
+    teamDraftLocks,
+    teamDraftNames,
+    teamDraftNotes,
+    teamOrder,
+  ]);
+
+  const confirmDiscardTeamsChanges = useCallback(async () => {
+    if (!isTeamsDirty) return true;
+    if (saveTeamsInFlightRef.current) return false;
+    return confirm({
+      title: t("active.unsavedSwitchTitle"),
+      description: t("active.unsavedSwitchDescription"),
+      confirmLabel: t("active.discardChanges"),
+      cancelLabel: t("common:action.cancel"),
+      intent: "warning",
+    });
+  }, [confirm, isTeamsDirty, t]);
 
   return {
     selectedDragUserIds,
@@ -158,10 +156,6 @@ export function useGuildWarActiveController({ selectedEventId, activeData, guild
     setSelectionAnchorUserId,
     activeDragItemId,
     setActiveDragItemId,
-    undoMove,
-    setUndoMove: wrappedSetUndoMove,
-    commitTimeoutRef,
-    undoRemainingSec,
     teamDraftNames,
     setTeamDraftNames,
     teamDraftNotes,
@@ -180,5 +174,6 @@ export function useGuildWarActiveController({ selectedEventId, activeData, guild
     isTeamsDirty,
     saveTeamsPending,
     handleSaveTeams,
+    confirmDiscardTeamsChanges,
   };
 }

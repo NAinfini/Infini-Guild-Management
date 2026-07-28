@@ -1,4 +1,5 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { LIMITS } from "@guild/shared/config/limits";
 import {
   fetchAdminAuditArchiveMonths,
   fetchAdminAuditLog,
@@ -12,10 +13,12 @@ import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { getAdminCapabilities } from "../../utils/permissions";
 import { fetchAdminSiteConfig } from "../../services/SiteConfigService";
 import type { AdminCapabilities } from "../../utils/permissions";
+import type { InviteVisibility } from "../../services/AdminService";
 
 type UseAdminDataOptions = {
   isModerator: boolean;
   userRole: string;
+  activeTab: string;
   effectivePermissions?: AdminCapabilities;
   auditPage: number;
   auditSearch: string;
@@ -23,12 +26,15 @@ type UseAdminDataOptions = {
   auditDateTo: string;
   auditEntityType: string;
   auditActorId: string;
+  inviteVisibility: InviteVisibility;
+  inviteSearch: string;
 };
 
 export function useAdminData(options: UseAdminDataOptions) {
   const {
     isModerator,
     userRole,
+    activeTab,
     effectivePermissions,
     auditPage,
     auditSearch,
@@ -36,6 +42,8 @@ export function useAdminData(options: UseAdminDataOptions) {
     auditDateTo,
     auditEntityType,
     auditActorId,
+    inviteVisibility,
+    inviteSearch,
   } = options;
 
   const rolesQuery = useQuery({
@@ -48,29 +56,35 @@ export function useAdminData(options: UseAdminDataOptions) {
   const roles = rolesQuery.data ?? [];
   const rolePermissions = getAdminCapabilities(roles, userRole);
   const permissions = rolesQuery.isSuccess ? rolePermissions : effectivePermissions ?? rolePermissions;
+  const needsUsers =
+    activeTab === "member" || activeTab === "audit" || activeTab === "badges";
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
     queryFn: () => fetchAllUsersListWithOptions(),
-    enabled: permissions.canViewUsers,
+    enabled: permissions.canViewUsers && needsUsers,
     staleTime: 10 * 60_000,
   });
 
-  const inviteLinksQuery = useQuery({
-    queryKey: queryKeys.admin.inviteLinks(),
-    queryFn: () =>
+  const inviteLinksQuery = useInfiniteQuery({
+    queryKey: queryKeys.admin.inviteLinks(inviteVisibility, inviteSearch),
+    queryFn: ({ pageParam }) =>
       fetchAdminInviteLinks({
-        include_expired: true,
-        include_revoked: true,
+        cursor: pageParam,
+        limit: LIMITS.pagination.admin,
+        visibility: inviteVisibility,
+        search: inviteSearch || undefined,
       }),
-    enabled: permissions.canViewInvites,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    initialPageParam: undefined as string | undefined,
+    enabled: permissions.canViewInvites && activeTab === "invite",
     staleTime: 5 * 60_000,
   });
 
   const inviteStatsQuery = useQuery({
     queryKey: queryKeys.admin.inviteStats(),
     queryFn: fetchAdminInviteStats,
-    enabled: permissions.canViewInvites,
+    enabled: permissions.canViewInvites && activeTab === "invite",
     staleTime: 5 * 60_000,
   });
 
@@ -86,7 +100,7 @@ export function useAdminData(options: UseAdminDataOptions) {
         entity_type: auditEntityType || undefined,
         actor_id: auditActorId || undefined,
       }),
-    enabled: permissions.canViewAudit,
+    enabled: permissions.canViewAudit && activeTab === "audit",
     placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
   });
@@ -94,21 +108,21 @@ export function useAdminData(options: UseAdminDataOptions) {
   const auditMonthsQuery = useQuery({
     queryKey: queryKeys.admin.auditMonths(),
     queryFn: fetchAdminAuditArchiveMonths,
-    enabled: permissions.canExportAudit,
+    enabled: permissions.canExportAudit && activeTab === "audit",
     staleTime: 10 * 60_000,
   });
 
   const statusQuery = useQuery({
     queryKey: queryKeys.admin.status(),
     queryFn: fetchAdminStatus,
-    enabled: permissions.canViewStatus,
+    enabled: permissions.canViewStatus && activeTab === "status",
     staleTime: 5 * 60_000,
   });
 
   const siteConfigQuery = useQuery({
     queryKey: queryKeys.siteConfig.admin(),
     queryFn: fetchAdminSiteConfig,
-    enabled: permissions.canManageSiteConfig,
+    enabled: permissions.canManageSiteConfig && activeTab === "siteConfig",
     staleTime: 5 * 60_000,
   });
 

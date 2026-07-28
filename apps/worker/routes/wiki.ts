@@ -66,12 +66,21 @@ wikiRoutes.delete("/categories/:id", async (c) => {
 
 wikiRoutes.get("/articles", async (c) => {
   const query = c.req.query();
+  const categoryIds = [...new Set(
+    (c.req.queries("category_id") ?? [])
+      .flatMap((value) => value.split(","))
+      .map((value) => value.trim())
+      .filter(Boolean),
+  )];
+  if (categoryIds.length > 100) {
+    return buildError(c, "VALIDATION_ERROR", "Maximum 100 category_id values");
+  }
   const page = parsePage(query.page, 1);
   const limit = Math.min(100, parsePage(query.limit, 20));
   const result = await getService(c).listArticles({
     page,
     limit,
-    categoryId: query.category_id,
+    categoryIds,
     archived: parseBoolean(query.archived),
     pinned: parseBoolean(query.pinned),
     search: (query.search ?? "").trim() || undefined,

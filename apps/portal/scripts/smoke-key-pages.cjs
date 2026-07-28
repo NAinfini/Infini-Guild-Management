@@ -4,6 +4,15 @@ const WORKER_BASE = "http://127.0.0.1:8787";
 const RETRY_COUNT = 60;
 const RETRY_DELAY_MS = 1000;
 
+/*
+ * Every /api/* mutation is behind an Origin + XHR-header guard, so a bare POST
+ * from a script is rejected with 403 before it reaches the route.
+ */
+const MUTATION_HEADERS = {
+  Origin: WORKER_BASE,
+  "X-Requested-With": "XMLHttpRequest",
+};
+
 const PAGE_ROUTES = [
   "/",
   "/events",
@@ -19,9 +28,9 @@ const PAGE_ROUTES = [
 ];
 
 const STATIC_PAGE_API_CHECKS = [
-  { page: "Dashboard", path: "/api/users?limit=20" },
-  { page: "Dashboard", path: "/api/events?limit=5" },
-  { page: "Dashboard", path: "/api/guild-war/active" },
+  { page: "Dashboard", path: "/api/dashboard/members" },
+  { page: "Dashboard", path: "/api/dashboard/events" },
+  { page: "Dashboard", path: "/api/dashboard/wars" },
   { page: "Roster", path: "/api/users?limit=20&external_view=true" },
   { page: "Announcements", path: "/api/announcements?page=1&limit=10" },
   { page: "Announcements", path: "/api/announcements?page=1&limit=10&status=archived" },
@@ -30,7 +39,7 @@ const STATIC_PAGE_API_CHECKS = [
   { page: "Gallery", path: "/api/gallery?limit=20" },
   { page: "Wiki", path: "/api/wiki/categories" },
   { page: "Wiki", path: "/api/wiki/articles?page=1&limit=10" },
-  { page: "Admin", path: "/api/admin/invite-links?include_expired=true&include_revoked=true" },
+  { page: "Admin", path: "/api/admin/invite-links?visibility=active&limit=50" },
   { page: "Admin", path: "/api/admin/invite-links/stats" },
   { page: "Admin", path: "/api/admin/audit-log?page=1&limit=20" },
   { page: "Admin", path: "/api/admin/roles" },
@@ -68,7 +77,7 @@ async function waitForServices() {
 }
 
 async function seedDatabase() {
-  const response = await fetch(`${WORKER_BASE}/api/dev/reseed`, { method: "POST" });
+  const response = await fetch(`${WORKER_BASE}/api/dev/reseed`, { method: "POST", headers: MUTATION_HEADERS });
   if (!response.ok) {
     throw new Error(`seed failed with ${response.status}`);
   }
@@ -77,7 +86,7 @@ async function seedDatabase() {
 async function login(username, password) {
   const response = await fetch(`${WORKER_BASE}/api/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...MUTATION_HEADERS, "Content-Type": "application/json" },
     body: JSON.stringify({
       username,
       password,

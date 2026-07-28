@@ -8,20 +8,80 @@
   flex-direction: column;
 }
 
-.page-layout__actions-bar {
+.page-layout__header {
   padding: var(--page-padding-y) var(--page-padding-x) 0;
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.page-layout__breadcrumbs {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  line-height: var(--lh-normal);
+}
+
+.page-layout__heading-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-xl);
+  min-width: 0;
+}
+
+.page-layout__heading {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+.page-layout__icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: var(--radius-sm);
+  color: var(--accent-text);
+  background: var(--accent-tint);
+}
+
+.page-layout__heading-copy {
+  min-width: 0;
+}
+
+.page-layout__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-page);
+  font-weight: var(--fw-strong);
+  line-height: var(--lh-tight);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.page-layout__subtitle {
+  max-width: 70ch;
+  margin-top: var(--space-xs);
+  color: var(--text-muted);
+  font-size: var(--text-body);
+  line-height: var(--lh-normal);
+}
+
+.page-layout__primary-action {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: var(--space-sm);
+  flex: 0 0 auto;
 }
 
 .page-layout__content {
-  padding: 6px var(--page-padding-x) var(--page-padding-y);
+  padding: var(--space-sm) var(--page-padding-x) var(--page-padding-y);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-xl);
   flex: 1;
   min-height: 0;
 }
@@ -42,60 +102,64 @@
   }
 }
 
+@media (max-width: 767px) {
+  .page-layout__heading-row {
+    flex-wrap: wrap;
+    gap: var(--space-md);
+  }
+
+  .page-layout__icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .page-layout__primary-action {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
 .page-layout__section {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-lg);
 }
 
+/*
+ * The section heading used to carry an animated tri-colour underline that grew
+ * on hover. It was gold used as decoration, on a permanent loop, next to every
+ * other gold thing on the page. Size and weight say "section" on their own.
+ */
 .page-layout__section-title {
   margin: 0;
-  position: relative;
-  display: inline-block;
-}
-
-.page-layout__section-title::after {
-  content: "";
-  display: block;
-  width: 32px;
-  height: 2px;
-  margin-top: 4px;
-  border-radius: 1px;
-  background: linear-gradient(90deg, var(--color-primary, #D4A843), var(--color-secondary, #8B7355), var(--color-accent, #C17F3E));
-  background-size: 200% 100%;
-  opacity: 0.6;
-  transition: width 0.3s ease, opacity 0.3s ease;
-  animation: sectionUnderlineShimmer 4s ease-in-out infinite;
-}
-
-@keyframes sectionUnderlineShimmer {
-  0%, 100% { background-position: 0% center; }
-  50% { background-position: 200% center; }
-}
-
-.page-layout__section:hover .page-layout__section-title::after {
-  width: 56px;
-  opacity: 1;
+  font-size: var(--text-section);
+  font-weight: var(--fw-strong);
+  line-height: var(--lh-tight);
 }
 
 .page-layout__grid {
   display: grid;
-  grid-template-columns: repeat(var(--page-layout-cols-xs, 1), minmax(0, 1fr));
-  gap: var(--page-layout-grid-gap, 12px);
+  grid-template-columns: repeat(var(--page-layout-cols-xs), minmax(0, 1fr));
+  gap: var(--page-layout-grid-gap);
   min-width: 0;
 }
 
+/*
+ * Raised level: fill + one hairline. The resting shadow is gone — with the new
+ * paper ground the fill already separates the card, and border+shadow+tint was
+ * three treatments doing one job. Shadow returns on hover, where it means
+ * "this lifts", which is the only thing a shadow should ever mean here.
+ */
 .page-layout__card,
 .portal-card {
   --spotlight-x: -999px;
   --spotlight-y: -999px;
   position: relative;
   overflow: hidden;
-  color: var(--color-text);
-  border: 1px solid color-mix(in srgb, var(--color-border, #E2DDD6) 80%, transparent);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  background: var(--color-surface, #ffffff);
-  box-shadow: var(--shadow-sm);
+  background: var(--surface-base);
   animation: portalCardIn 0.3s ease both;
 }
 
@@ -104,30 +168,13 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/*
+ * The gold spotlight follow and the gold shine sweep are gone. Between them,
+ * the nav, the tabs, the section rules and the buttons, gold was on screen in
+ * six places at once and stopped meaning anything. Hover is now depth only.
+ */
 .portal-card__spotlight {
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  background: radial-gradient(
-    360px circle at var(--spotlight-x) var(--spotlight-y),
-    color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent),
-    transparent 65%
-  );
-}
-
-.dark .portal-card__spotlight {
-  background: radial-gradient(
-    360px circle at var(--spotlight-x) var(--spotlight-y),
-    color-mix(in srgb, var(--color-primary, #D4A843) 16%, transparent),
-    transparent 65%
-  );
-}
-
-.portal-card--interactive:hover .portal-card__spotlight {
-  opacity: 1;
+  display: none;
 }
 
 .portal-card__inner {
@@ -137,31 +184,9 @@
 
 .portal-card--interactive {
   transition:
-    box-shadow 0.25s ease,
+    box-shadow 0.2s ease,
     transform 0.2s ease,
-    border-color 0.25s ease;
-}
-
-.portal-card--interactive::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 30%;
-  height: 100%;
-  z-index: 2;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--color-primary, #D4A843) 5%, transparent),
-    transparent
-  );
-  transform: translateX(-100%) skewX(-15deg);
-  pointer-events: none;
-}
-
-.portal-card--interactive:hover::after {
-  animation: shineSweep 0.7s ease-out;
+    border-color 0.2s ease;
 }
 
 .portal-card--clickable {
@@ -169,30 +194,14 @@
 }
 
 .portal-card--interactive:hover {
-  box-shadow:
-    var(--shadow-md),
-    0 0 24px color-mix(in srgb, var(--color-primary, #D4A843) 10%, transparent);
-  transform: translateY(-3px);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 35%, transparent);
-}
-
-.dark .portal-card {
-  background: color-mix(in srgb, var(--color-surface, #141418) 95%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
-}
-
-.dark .portal-card--interactive:hover {
-  box-shadow:
-    var(--shadow-md),
-    0 0 32px color-mix(in srgb, var(--color-primary, #D4A843) 14%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 45%, transparent);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
 }
 
 .portal-card--interactive:active {
-  transform: translateY(0) scale(0.99);
-  box-shadow: var(--shadow-sm);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 40%, transparent);
+  transform: translateY(0);
+  box-shadow: var(--shadow-xs);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -203,18 +212,6 @@
 
   .portal-card--interactive {
     transition: none;
-  }
-
-  .portal-card__spotlight {
-    display: none;
-  }
-
-  .portal-card--interactive::after {
-    display: none;
-  }
-
-  .page-layout__section-title::after {
-    animation: none;
   }
 }
 
@@ -228,20 +225,14 @@
 .page-layout__card.infini-card-hover:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 20%, transparent);
+  border-color: var(--border-strong);
 }
 
+/* A divider is a divider, not a four-stop gradient. */
 .page-layout__divider {
   height: 1px;
   width: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--color-primary, #D4A843) 15%, transparent) 30%,
-    color-mix(in srgb, var(--color-border, #E2DDD6) 40%, transparent) 50%,
-    color-mix(in srgb, var(--color-secondary, #8B7355) 12%, transparent) 70%,
-    transparent
-  );
+  background: var(--border-subtle);
 }
 
 @media (min-width: 768px) {
@@ -251,13 +242,13 @@
   }
 
   .page-layout__grid {
-    grid-template-columns: repeat(var(--page-layout-cols-sm, var(--page-layout-cols-xs, 1)), minmax(0, 1fr));
+    grid-template-columns: repeat(var(--page-layout-cols-sm), minmax(0, 1fr));
   }
 }
 
 @media (min-width: 992px) {
   .page-layout__grid {
-    grid-template-columns: repeat(var(--page-layout-cols-md, var(--page-layout-cols-sm, 1)), minmax(0, 1fr));
+    grid-template-columns: repeat(var(--page-layout-cols-md), minmax(0, 1fr));
   }
 }
 
@@ -268,12 +259,12 @@
   }
 
   .page-layout__grid {
-    grid-template-columns: repeat(var(--page-layout-cols-lg, var(--page-layout-cols-md, 1)), minmax(0, 1fr));
+    grid-template-columns: repeat(var(--page-layout-cols-lg), minmax(0, 1fr));
   }
 }
 
 @media (min-width: 1440px) {
   .page-layout__grid {
-    grid-template-columns: repeat(var(--page-layout-cols-xl, var(--page-layout-cols-lg, 1)), minmax(0, 1fr));
+    grid-template-columns: repeat(var(--page-layout-cols-xl), minmax(0, 1fr));
   }
 }

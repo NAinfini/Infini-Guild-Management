@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import type { SQL } from "drizzle-orm";
+import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import { WikiService } from "../WikiService";
 
 // Minimal D1Database mock that captures batch/run calls.
@@ -78,6 +80,37 @@ function createCrudDb(articleRow: Record<string, unknown>) {
 }
 
 describe("WikiService", () => {
+  describe("listArticles", () => {
+    it("filters the database by every selected category before pagination", async () => {
+      const whereMock = vi.fn()
+        .mockReturnValueOnce({
+          orderBy: vi.fn(() => ({
+            limit: vi.fn(() => ({
+              offset: vi.fn().mockResolvedValue([BASE_ARTICLE_ROW]),
+            })),
+          })),
+        })
+        .mockResolvedValueOnce([{ count: 1 }]);
+      const db = {
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({ where: whereMock })),
+        })),
+      };
+      const service = new WikiService(db as never, createDeps());
+
+      await service.listArticles({
+        page: 1,
+        limit: 50,
+        categoryIds: ["cat1", "cat2"],
+      });
+
+      const whereSql = whereMock.mock.calls[0]?.[0] as SQL;
+      const query = new SQLiteSyncDialect().sqlToQuery(whereSql);
+      expect(query.sql).toMatch(/category_id"? in \(\?, \?\)/i);
+      expect(query.params).toEqual(["cat1", "cat2"]);
+    });
+  });
+
   describe("createArticle", () => {
     it("calls replaceMediaRefs after successful article create", async () => {
       const { batchMock, rawDb } = createRawDb();

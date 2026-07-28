@@ -1,17 +1,19 @@
 import type { Event } from "@guild/shared";
 import { Grid, Skeleton, Stack } from "@mantine/core";
 import { LayoutGridIcon } from "@portal/components/icons";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { differenceInHours } from "date-fns";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useExternalView } from "../../hooks/useExternalView";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import {
   dashboardQueryKeys,
-  fetchDashboardSummary,
-  type DashboardSummaryEvent,
+  fetchDashboardEvents,
+  fetchDashboardMemberStats,
+  fetchDashboardWars,
+  type DashboardEvent,
 } from "../../services/DashboardService";
 import { useAuthStore } from "../../stores/auth";
 import { useSiteConfigStore } from "../../stores/site-config";
@@ -28,70 +30,31 @@ import { MySignupsCard } from "../dashboard/MySignupsCard";
 import { UpcomingEventsCard } from "../dashboard/UpcomingEventsCard";
 import "./DashboardPage.css";
 
-let _dashboardNow: Date | null = null;
-let _dashboardNowBucket = -1;
 export const DASHBOARD_EVENTS_REFETCH_INTERVAL_MS = 60_000;
 
-function getDashboardNow(): Date {
-  const bucket = Math.floor(Date.now() / (5 * 60_000));
-  if (!_dashboardNow || bucket !== _dashboardNowBucket) {
-    const d = new Date();
-    d.setMinutes(Math.floor(d.getMinutes() / 5) * 5, 0, 0);
-    _dashboardNow = d;
-    _dashboardNowBucket = bucket;
-  }
-  return _dashboardNow;
+export function roundDashboardNow(value = new Date()): Date {
+  const rounded = new Date(value);
+  rounded.setMinutes(Math.floor(rounded.getMinutes() / 5) * 5, 0, 0);
+  return rounded;
 }
 
-export function buildDashboardUpcomingEventsQueryParams(now: Date) {
-  const end = new Date(now);
-  end.setUTCDate(end.getUTCDate() + 7);
-
-  return {
-    page: 1,
-    limit: 20,
-    archived: false,
-    start_after: now.toISOString(),
-    start_before: end.toISOString(),
-  };
-}
-
-function participantToDashboardMember(participant: DashboardSummaryEvent["participants"][number]): DashboardMember {
+export function participantToDashboardMember(participant: DashboardEvent["participants"][number]): DashboardMember {
   return {
     user: {
       id: participant.user_id,
       username: participant.username,
-      role: participant.role,
-      permissions: {} as DashboardMember["user"]["permissions"],
-      is_active: true,
-      deleted_at: null,
-      created_at: "",
-      updated_at: "",
     },
     profile: {
-      id: participant.user_id,
-      user_id: participant.user_id,
       power: participant.power,
-      classes: participant.classes as DashboardMember["profile"]["classes"],
-      title_html: null,
-      bio: null,
+      classes: participant.classes,
       avatar_key: participant.avatar_key,
-      images: [],
-      audio_key: null,
-      video_urls: [],
-      availability: null,
-      vacation_start: null,
-      vacation_end: null,
-      notes: null,
-      created_at: "",
-      updated_at: "",
     },
   };
 }
 
 function buildUpcomingEventRow(
-  item: DashboardSummaryEvent,
-  source: DashboardSummaryEvent[],
+  item: DashboardEvent,
+  source: DashboardEvent[],
   now: Date,
   currentUserId: string | undefined,
 ): DashboardUpcomingEventRow {
@@ -136,49 +99,71 @@ export function DashboardPage() {
   const eventsEnabled = useSiteConfigStore((state) => state.features.events);
   const guildWarEnabled = useSiteConfigStore((state) => state.features.guildWar);
   const isExternalView = useExternalView();
-  const now = useMemo(() => getDashboardNow(), []);
 
-  const summaryQuery = useQuery({
-    queryKey: dashboardQueryKeys.summary(),
-    queryFn: fetchDashboardSummary,
+  const memberStatsQuery = useQuery({
+    queryKey: dashboardQueryKeys.members(),
+    queryFn: fetchDashboardMemberStats,
     staleTime: DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
-    placeholderData: keepPreviousData,
+  });
+  const eventsQuery = useQuery({
+    queryKey: dashboardQueryKeys.events(user?.id ?? "guest", isExternalView),
+    queryFn: () => fetchDashboardEvents({ externalView: isExternalView }),
+    enabled: eventsEnabled,
+    staleTime: DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
+    refetchInterval: DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
+  });
+  const warsQuery = useQuery({
+    queryKey: dashboardQueryKeys.wars(),
+    queryFn: fetchDashboardWars,
+    enabled: guildWarEnabled,
+    staleTime: DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
   });
 
-  const summary = summaryQuery.data;
-  const upcomingEvents = summary?.upcoming_events ?? [];
-  const recentWars = summary?.recent_wars ?? [];
+  const now = useMemo(() => roundDashboardNow(), [eventsQuery.dataUpdatedAt]);
+  const featuredEvents = eventsQuery.data?.featured_events ?? [];
+  const upcomingEvents = eventsQuery.data?.upcoming_events ?? [];
+  const dashboardEvents = useMemo(
+    () => [...featuredEvents, ...upcomingEvents],
+    [featuredEvents, upcomingEvents],
+  );
+  const recentWars = warsQuery.data?.recent_wars ?? [];
 
   const mySignupEvents = useMemo(() => {
-    const mySignupIds = new Set(summary?.my_signup_event_ids ?? []);
-    return upcomingEvents
+    const mySignupIds = new Set(eventsQuery.data?.my_signup_event_ids ?? []);
+    return dashboardEvents
       .filter((event) => mySignupIds.has(event.id))
       .map((event) => ({ event, participantCount: event.participants.length }));
-  }, [summary?.my_signup_event_ids, upcomingEvents]);
+  }, [dashboardEvents, eventsQuery.data?.my_signup_event_ids]);
 
   const recentWarMvps = useMemo<DashboardLastWarMvp[]>(() => {
-    return (summary?.recent_war_mvps ?? []).map((warMvp) =>
+    return (warsQuery.data?.recent_war_mvps ?? []).map((warMvp) =>
       warMvp?.map((entry) => ({
         ...entry,
         label: t(`card.lastWar.mvp.${entry.category}`),
       })) ?? null,
     );
-  }, [summary?.recent_war_mvps, t]);
+  }, [t, warsQuery.data?.recent_war_mvps]);
 
-  const orderedUpcomingEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
+  const featuredEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
     return orderDashboardUpcomingRows(
-      upcomingEvents.map((item) => buildUpcomingEventRow(item, upcomingEvents, now, user?.id)),
-    ).slice(0, 5);
-  }, [now, upcomingEvents, user?.id]);
+      featuredEvents.map((item) => buildUpcomingEventRow(item, dashboardEvents, now, user?.id)),
+    );
+  }, [dashboardEvents, featuredEvents, now, user?.id]);
 
-  const featuredEventRows = useMemo(
-    () => orderedUpcomingEventRows.filter((row) => row.item.pinned),
-    [orderedUpcomingEventRows],
-  );
+  const upcomingEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
+    return orderDashboardUpcomingRows(
+      upcomingEvents.map((item) => buildUpcomingEventRow(item, dashboardEvents, now, user?.id)),
+    );
+  }, [dashboardEvents, now, upcomingEvents, user?.id]);
 
-  const upcomingEventRows = useMemo(
-    () => orderedUpcomingEventRows.filter((row) => !row.item.pinned),
-    [orderedUpcomingEventRows],
+  const openAllEvents = useCallback(
+    () => {
+      void navigate({
+        to: "/events",
+        search: { view: "cards" },
+      });
+    },
+    [navigate],
   );
 
   const openEventDetail = (event: Pick<Event, "id" | "title">) => {
@@ -188,7 +173,10 @@ export function DashboardPage() {
     });
   };
 
-  useLoadWarningToast(summaryQuery.isError, t("common:loadErrorRetry"));
+  useLoadWarningToast(
+    memberStatsQuery.isError || eventsQuery.isError || warsQuery.isError,
+    t("common:loadErrorRetry"),
+  );
 
   return (
     <PageLayout
@@ -201,17 +189,18 @@ export function DashboardPage() {
         {eventsEnabled ? <Grid.Col span={{ base: 12, xl: "auto" }}>
           <Stack gap={16}>
             {!isExternalView && (
-              <Skeleton visible={summaryQuery.isLoading} radius={8}>
+              <Skeleton visible={eventsQuery.isLoading} radius={8}>
                 <MySignupsCard mySignupEvents={mySignupEvents} now={now} onOpenEvent={openEventDetail} />
               </Skeleton>
             )}
 
-            <Skeleton visible={summaryQuery.isLoading} radius={8}>
+            <Skeleton visible={eventsQuery.isLoading} radius={8}>
               <UpcomingEventsCard
-                upcomingEventsCount={upcomingEvents.length}
+                upcomingEventsCount={eventsQuery.data?.active_events_count ?? 0}
                 featuredRows={featuredEventRows}
                 rows={upcomingEventRows}
                 onOpenEvent={openEventDetail}
+                onViewAll={openAllEvents}
               />
             </Skeleton>
           </Stack>
@@ -219,16 +208,17 @@ export function DashboardPage() {
 
         <Grid.Col span={{ base: 12, xl: eventsEnabled ? (isExternalView ? 6 : 4) : 12 }}>
           <Stack gap={16}>
-            <Skeleton visible={summaryQuery.isLoading} radius={8}>
-              <ActiveMembersCard
-                activeMemberCount={summary?.active_member_count ?? 0}
-                totalMembersCount={summary?.total_member_count ?? 0}
-                allWarWinRate={summary?.all_war_win_rate ?? 0}
-                activeEventsCount={summary?.active_events_count ?? 0}
-              />
-            </Skeleton>
+            <ActiveMembersCard
+              activeMemberCount={memberStatsQuery.data?.active_member_count ?? 0}
+              totalMembersCount={memberStatsQuery.data?.total_member_count ?? 0}
+              allWarWinRate={warsQuery.data?.all_war_win_rate ?? 0}
+              activeEventsCount={eventsQuery.data?.active_events_count ?? 0}
+              memberStatsLoading={memberStatsQuery.isLoading}
+              eventsLoading={eventsQuery.isLoading}
+              warsLoading={warsQuery.isLoading}
+            />
 
-            {guildWarEnabled ? <Skeleton visible={summaryQuery.isLoading} radius={8}>
+            {guildWarEnabled ? <Skeleton visible={warsQuery.isLoading} radius={8}>
               <LastWarCard
                 recentWars={recentWars}
                 warMvps={recentWarMvps}

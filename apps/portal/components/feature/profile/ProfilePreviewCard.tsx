@@ -3,10 +3,7 @@ import { Avatar, Badge, Group, Spoiler, Stack, Text } from "@mantine/core";
 import { PhotoIcon, VideoIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { resolveProfileMediaUrl } from "../../../utils/media";
-import { CLASS_COLOR_GROUP } from "@guild/shared/constants/classes";
-import { activeGame } from "@guild/shared/games";
-
-const CLASS_BADGE_COLOR: Record<string, string> = activeGame.classColorMapping;
+import { resolveClassDisplayColor } from "@guild/shared/constants/classes";
 
 type ProfilePreviewCardProps = {
   username: string;
@@ -42,9 +39,10 @@ export function ProfilePreviewCard({
           <Avatar
             size={56}
             radius="xl"
-            color="blue"
+            color="portal-accent"
             src={avatarKey ? resolveProfileMediaUrl(avatarKey) : undefined}
-            style={{ flexShrink: 0, border: "2px solid var(--color-border, #E2DDD6)" }}
+            style={{ flexShrink: 0 }}
+            className="profile-preview-avatar"
           >
             {initials}
           </Avatar>
@@ -59,7 +57,9 @@ export function ProfilePreviewCard({
                 {activeNowEstimate}
               </Badge>
               {primaryClass && primaryClass !== "-" ? (
-                <Badge size="xs" variant="light" color={CLASS_BADGE_COLOR[(CLASS_COLOR_GROUP as Record<string, string>)[primaryClass] ?? ""] ?? "yellow"}>{primaryClass}</Badge>
+                <Badge size="xs" variant="light" color={resolveClassDisplayColor(primaryClass)}>
+                  {primaryClass}
+                </Badge>
               ) : null}
             </Group>
           </Stack>
@@ -67,28 +67,24 @@ export function ProfilePreviewCard({
 
         {/* Power + media stats row */}
         <Group gap={0} align="center" justify="center" mt={16} mb={bio ? 12 : 0}
-          style={{
-            background: "var(--color-primary-alpha, rgba(212,168,67,0.08))",
-            borderRadius: "var(--radius-sm, 8px)",
-            padding: "12px 8px",
-          }}
+          className="profile-preview-stats-row"
         >
           <Stack gap={2} align="center" style={{ flex: 1 }}>
             <Text fw={700} size="sm">{powerLabel}</Text>
             <Text c="dimmed" size="xs" lh={1}>{t("preview.power")}</Text>
           </Stack>
-          <div style={{ width: 1, height: 36, background: "var(--color-border, #E2DDD6)" }} />
+          <div className="profile-preview-divider" />
           <Stack gap={2} align="center" style={{ flex: 1 }}>
             <Group gap={4} align="center" wrap="nowrap">
-              <PhotoIcon size={14} style={{ color: "var(--color-primary, #D4A843)" }} />
+              <PhotoIcon size={14} className="profile-preview-stat-icon--image" />
               <Text fw={700} size="sm">{imageCount}</Text>
             </Group>
             <Text c="dimmed" size="xs" lh={1}>{t("preview.images")}</Text>
           </Stack>
-          <div style={{ width: 1, height: 36, background: "var(--color-border, #E2DDD6)" }} />
+          <div className="profile-preview-divider" />
           <Stack gap={2} align="center" style={{ flex: 1 }}>
             <Group gap={4} align="center" wrap="nowrap">
-              <VideoIcon size={14} style={{ color: "var(--color-secondary, #8B7355)" }} />
+              <VideoIcon size={14} className="profile-preview-stat-icon--video" />
               <Text fw={700} size="sm">{videoCount}</Text>
             </Group>
             <Text c="dimmed" size="xs" lh={1}>{t("preview.videos")}</Text>

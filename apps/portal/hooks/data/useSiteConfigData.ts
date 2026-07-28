@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "../../api/query-keys";
-import { fetchAdminSiteConfig, fetchMemberOnboarding } from "../../services/SiteConfigService";
+import { fetchAdminSiteConfig } from "../../services/SiteConfigService";
 
 export function useAdminSiteConfigData(enabled: boolean) {
   const adminSiteConfigQuery = useQuery({
@@ -11,15 +11,4 @@ export function useAdminSiteConfigData(enabled: boolean) {
   });
 
   return { adminSiteConfigQuery };
-}
-
-export function useMemberOnboardingData(enabled: boolean) {
-  const onboardingQuery = useQuery({
-    queryKey: queryKeys.onboarding.me(),
-    queryFn: fetchMemberOnboarding,
-    enabled,
-    staleTime: 5 * 60_000,
-  });
-
-  return { onboardingQuery };
 }

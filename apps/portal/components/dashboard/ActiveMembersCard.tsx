@@ -1,6 +1,6 @@
 import { NumberTicker } from "@portal/components/effects";
 import { PortalCard } from "../shared/PortalCard";
-import { Group, RingProgress, Stack, Text } from "@mantine/core";
+import { Group, RingProgress, Skeleton, Stack, Text } from "@mantine/core";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,6 +12,9 @@ type ActiveMembersCardProps = {
   totalMembersCount: number;
   allWarWinRate: number;
   activeEventsCount: number;
+  memberStatsLoading: boolean;
+  eventsLoading: boolean;
+  warsLoading: boolean;
 };
 
 function renderRing(
@@ -37,6 +40,9 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
   totalMembersCount,
   allWarWinRate,
   activeEventsCount,
+  memberStatsLoading,
+  eventsLoading,
+  warsLoading,
 }: ActiveMembersCardProps) {
   const { t } = useTranslation("dashboard");
   const safeActiveMemberCount = Math.max(0, activeMemberCount);
@@ -51,45 +57,51 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
     <PortalCard className="dashboard-card" interactive={false}>
       {cardHeading(t("card.activeMembers.title"), <TeamOutlined size={18} />)}
       <Group gap={10} mt={12} align="flex-start" justify="space-between" w="100%">
-        <Stack gap={8} align="center" style={{ flex: "1 1 0", minWidth: 0 }}>
-          {renderRing(
-            activeMemberPercent,
-            <span className="dashboard-stats-circle-center">
-              <span className="dashboard-stats-circle-value">
-                <NumberTicker value={safeActiveMemberCount} />
-                <span className="dashboard-stats-circle-subvalue">/{safeTotalMembersCount}</span>
-              </span>
-            </span>,
-            "blue",
-          )}
-          <Text className="dashboard-stats-circle-label">{t("card.activeMembers.activeRatio")}</Text>
-        </Stack>
+        <Skeleton visible={memberStatsLoading} radius="md" style={{ flex: "1 1 0", minWidth: 0 }}>
+          <Stack gap={8} align="center">
+            {renderRing(
+              activeMemberPercent,
+              <span className="dashboard-stats-circle-center">
+                <span className="dashboard-stats-circle-value">
+                  <NumberTicker value={safeActiveMemberCount} />
+                  <span className="dashboard-stats-circle-subvalue">/{safeTotalMembersCount}</span>
+                </span>
+              </span>,
+              "portal-accent",
+            )}
+            <Text className="dashboard-stats-circle-label">{t("card.activeMembers.activeRatio")}</Text>
+          </Stack>
+        </Skeleton>
 
-        <Stack gap={8} align="center" style={{ flex: "1 1 0", minWidth: 0 }}>
-          {renderRing(
-            upcomingEventsPercent,
-            <span className="dashboard-stats-circle-center">
-              <span className="dashboard-stats-circle-value">
-                <NumberTicker value={safeActiveEventsCount} />
-              </span>
-            </span>,
-            "green",
-          )}
-          <Text className="dashboard-stats-circle-label">{t("card.activeMembers.upcomingEvents")}</Text>
-        </Stack>
+        <Skeleton visible={eventsLoading} radius="md" style={{ flex: "1 1 0", minWidth: 0 }}>
+          <Stack gap={8} align="center">
+            {renderRing(
+              upcomingEventsPercent,
+              <span className="dashboard-stats-circle-center">
+                <span className="dashboard-stats-circle-value">
+                  <NumberTicker value={safeActiveEventsCount} />
+                </span>
+              </span>,
+              "blue",
+            )}
+            <Text className="dashboard-stats-circle-label">{t("card.activeMembers.upcomingEvents")}</Text>
+          </Stack>
+        </Skeleton>
 
-        <Stack gap={8} align="center" style={{ flex: "1 1 0", minWidth: 0 }}>
-          {renderRing(
-            safeWinRate,
-            <span className="dashboard-stats-circle-center">
-              <span className="dashboard-stats-circle-value">
-                <NumberTicker value={safeWinRate} decimals={1} suffix="%" />
-              </span>
-            </span>,
-            "yellow",
-          )}
-          <Text className="dashboard-stats-circle-label">{t("card.activeMembers.winRate")}</Text>
-        </Stack>
+        <Skeleton visible={warsLoading} radius="md" style={{ flex: "1 1 0", minWidth: 0 }}>
+          <Stack gap={8} align="center">
+            {renderRing(
+              safeWinRate,
+              <span className="dashboard-stats-circle-center">
+                <span className="dashboard-stats-circle-value">
+                  <NumberTicker value={safeWinRate} decimals={1} suffix="%" />
+                </span>
+              </span>,
+              "green",
+            )}
+            <Text className="dashboard-stats-circle-label">{t("card.activeMembers.winRate")}</Text>
+          </Stack>
+        </Skeleton>
       </Group>
     </PortalCard>
   );

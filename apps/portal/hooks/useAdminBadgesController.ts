@@ -197,6 +197,14 @@ export function useAdminBadgesController(enabled: boolean) {
     assignedUserIds,
     badgesLoading: badgesQuery.isLoading,
     assignmentsLoading: assignmentsQuery.isLoading,
+    badgesError: badgesQuery.isError,
+    assignmentsError: assignmentsQuery.isError,
+    retryBadges: () => {
+      void badgesQuery.refetch();
+    },
+    retryAssignments: () => {
+      void assignmentsQuery.refetch();
+    },
     createPending: createMutation.isPending,
     updatePending: updateMutation.isPending,
     deletePending: deleteMutation.isPending,

@@ -22,9 +22,11 @@ describe("App shell accessibility structure", () => {
   it("uses one app main landmark with a page h1", () => {
     const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
     const appHeader = readPortalFile("apps/portal/components/layout/AppHeader.tsx");
+    const pageLayout = readPortalFile("apps/portal/components/layout/PageLayout.tsx");
 
     expect(appShell).toContain('<MantineAppShell.Main id="main-content"');
     expect(appShell).not.toContain('<main id="main-content"');
-    expect(appHeader).toContain("<Title order={1}");
+    expect(appHeader).not.toContain("<Title order={1}");
+    expect(pageLayout).toContain("<Title order={1}");
   });
 });

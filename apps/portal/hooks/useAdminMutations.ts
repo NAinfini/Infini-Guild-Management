@@ -1,4 +1,4 @@
-import { modals } from "@mantine/modals";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createElement, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -16,6 +16,7 @@ import {
   deactivateAdminUser,
   deleteAdminInviteLink,
   reactivateAdminUser,
+  resetAdminUserLoginLock,
   resetAdminUserPassword,
   revokeAdminInviteLink,
   updateAdminUserRole,
@@ -27,8 +28,6 @@ import {
 import { queryKeys } from "../api/query-keys";
 import { copyPlainText } from "../utils/copy";
 import { auditExportDatePart, downloadFileBlob, toIsoOrUndefined } from "../utils/admin";
-import type { InviteState } from "./useAdminInviteController";
-
 type AuditFilterState = {
   search: string;
   dateFrom: string;
@@ -38,7 +37,6 @@ type AuditFilterState = {
 };
 
 type UseAdminMutationsParams = {
-  invite: InviteState;
   auditFilter: AuditFilterState;
   batchSelectionLimit: number;
   showError: (error: unknown, fallbackMessage: string) => void;
@@ -46,13 +44,13 @@ type UseAdminMutationsParams = {
 };
 
 export function useAdminMutations({
-  invite,
   auditFilter,
   batchSelectionLimit,
   showError,
   resolveUsername,
 }: UseAdminMutationsParams) {
   const { t } = useTranslation("admin");
+  const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [batchProgress, setBatchProgress] = useState(0);
@@ -62,7 +60,7 @@ export function useAdminMutations({
   };
 
   const invalidateInviteData = async () => {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.admin.inviteLinks() });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.admin.inviteLinksAll() });
     await queryClient.invalidateQueries({ queryKey: queryKeys.admin.inviteStats() });
   };
 
@@ -101,6 +99,14 @@ export function useAdminMutations({
       notifySuccess(t("message.passwordResetCopied"));
     },
     onError: (error) => showError(error, t("message.passwordResetFailed")),
+  });
+
+  const resetLoginLockMutation = useMutation({
+    mutationFn: (userId: string) => resetAdminUserLoginLock(userId),
+    onSuccess: () => {
+      notifySuccess(t("message.loginLockCleared"));
+    },
+    onError: (error) => showError(error, t("message.loginLockClearFailed")),
   });
 
   const createMemberMutation = useMutation({
@@ -170,10 +176,10 @@ export function useAdminMutations({
   });
 
   const createInviteMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: ({ maxUses, expiresAt }: { maxUses: number; expiresAt: string }) =>
       createAdminInviteLink({
-        max_uses: invite.maxUses,
-        expires_at: toIsoOrUndefined(invite.expiresAt),
+        max_uses: maxUses,
+        expires_at: toIsoOrUndefined(expiresAt),
       }),
     onSuccess: async () => {
       notifySuccess(t("message.inviteCreated"));
@@ -343,18 +349,12 @@ export function useAdminMutations({
           createElement("span", { style: { fontSize: "0.875rem", color: "var(--mantine-color-dimmed)", wordBreak: "break-word" as const } }, names.join("、")),
         )
       : null;
-    return new Promise<boolean>((resolve) => {
-      modals.openConfirmModal({
-        title: t("confirm.batchActionTitle"),
-        children: createElement("div", null, message, nameList),
-        labels: { confirm: t("common:action.save"), cancel: t("common:action.cancel") },
-        confirmProps: { color: "yellow" },
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
-        closeOnConfirm: true,
-        closeOnCancel: true,
-        centered: true,
-      });
+    return confirm({
+      title: t("confirm.batchActionTitle"),
+      description: createElement("div", null, message, nameList),
+      confirmLabel: t("common:action.save"),
+      cancelLabel: t("common:action.cancel"),
+      intent: "warning",
     });
   };
 
@@ -448,6 +448,7 @@ export function useAdminMutations({
     deactivateMutation,
     reactivateMutation,
     resetPasswordMutation,
+    resetLoginLockMutation,
     createMemberMutation,
     batchRoleMutation,
     batchDeleteMutation,

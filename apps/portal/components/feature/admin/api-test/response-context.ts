@@ -246,10 +246,20 @@ export function captureContextFromResponse(
     return next;
   }
 
+  if (endpoint.path === "/api/announcements/images/stage" && endpoint.method === "POST") {
+    next.announcementStagingToken = readString(payload.staging_token) ?? next.announcementStagingToken;
+    const firstKey = Array.isArray(payload.keys)
+      ? payload.keys.find((item): item is string => typeof item === "string")
+      : null;
+    next.announcementImageKey = firstKey ?? next.announcementImageKey;
+    return next;
+  }
+
   if (endpoint.path === "/api/announcements" && endpoint.method === "POST") {
     const id = readString(payload.id);
     next.announcementId = id ?? next.announcementId;
     next.createdAnnouncementId = id ?? next.createdAnnouncementId;
+    next.announcementStagingToken = null;
     return next;
   }
 
@@ -296,10 +306,15 @@ export function captureContextFromResponse(
       const firstTeam = payload.teams.find((item): item is Record<string, unknown> => isRecord(item));
       if (firstTeam) {
         next.warTeamId = readString(firstTeam.id) ?? next.warTeamId;
-        if (Array.isArray(firstTeam.members)) {
-          const firstMember = firstTeam.members.find((item): item is Record<string, unknown> => isRecord(item));
-          next.warMemberUserId = readString(firstMember?.user_id) ?? next.warMemberUserId;
-        }
+        /*
+         * The live board's first member is a real guild member, and
+         * warMemberUserId is the target of the move / role-tag / conclude
+         * mutations below. Those may only ever act on the disposable test
+         * member, so this response is never allowed to seed it. Staying null
+         * until a disposable member exists makes those endpoints skip, which
+         * is the safe outcome.
+         */
+        next.warMemberUserId = disposableMemberId(next) ?? next.warMemberUserId;
       }
     }
     return next;
@@ -329,6 +344,15 @@ export function captureContextFromResponse(
     next.warHistoryId = id ?? next.warHistoryId;
     next.warEventId = readString(payload.event_id) ?? next.warEventId;
     next.createdWarHistoryId = id ?? next.createdWarHistoryId;
+    return next;
+  }
+
+  if (endpoint.path === "/api/game-data") {
+    const base = isRecord(payload.data) ? payload.data : null;
+    const firstClass = Array.isArray(base?.classes)
+      ? base.classes.find((item): item is string => typeof item === "string")
+      : null;
+    next.gameDataClassId = firstClass ?? next.gameDataClassId;
     return next;
   }
 
@@ -372,8 +396,8 @@ export function captureContextFromResponse(
   }
 
   if (endpoint.path === "/api/admin/invite-links") {
-    if (Array.isArray(payload)) {
-      const firstInvite = payload.find((item): item is Record<string, unknown> => isRecord(item));
+    if (endpoint.method === "GET") {
+      const firstInvite = firstArrayItem(payload.data);
       next.registerInviteCode = readString(firstInvite?.code) ?? next.registerInviteCode;
     } else {
       if (endpoint.method === "POST") {

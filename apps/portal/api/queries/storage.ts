@@ -1,4 +1,11 @@
-import type { PaginatedResponse, Storage, StorageItem, StorageTransaction } from "@guild/shared";
+import type {
+  CursorResponse,
+  PaginatedResponse,
+  Storage,
+  StorageItem,
+  StorageStockFilter,
+  StorageTransaction,
+} from "@guild/shared";
 import { apiRequest } from "../client";
 
 export function fetchStorageTree(): Promise<{ data: Storage[] }> {
@@ -9,13 +16,19 @@ export function fetchStorageItems(params: {
   storageId?: string;
   categoryId?: string | null;
   search?: string;
-}): Promise<{ data: StorageItem[] }> {
+  stock: StorageStockFilter;
+  cursor?: string;
+  limit: number;
+}): Promise<CursorResponse<StorageItem>> {
   const query = new URLSearchParams();
   if (params.storageId) query.set("storage_id", params.storageId);
   if (params.categoryId) query.set("category_id", params.categoryId);
   if (params.search) query.set("search", params.search);
+  query.set("stock", params.stock);
+  query.set("limit", String(params.limit));
+  if (params.cursor) query.set("cursor", params.cursor);
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
-  return apiRequest<{ data: StorageItem[] }>(`/api/storage/items${suffix}`);
+  return apiRequest<CursorResponse<StorageItem>>(`/api/storage/items${suffix}`);
 }
 
 export function fetchStorageItem(id: string): Promise<StorageItem> {

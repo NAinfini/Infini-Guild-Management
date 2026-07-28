@@ -2,8 +2,8 @@
 
 .settings-section {
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--color-border, #E2DDD6) 80%, transparent);
-  background: var(--color-surface, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
+  background: var(--surface-base);
   padding: 24px;
   box-shadow: var(--shadow-sm);
 }
@@ -23,8 +23,8 @@
   gap: 4px;
   padding: 14px 18px;
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--color-border, #E2DDD6) 80%, transparent);
-  background: var(--color-surface, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
+  background: var(--surface-base);
   transition:
     border-color var(--transition-normal),
     background var(--transition-normal),
@@ -32,20 +32,20 @@
 }
 
 .settings-option-card:hover {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 35%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 4%, var(--color-surface, #ffffff));
+  border-color: color-mix(in srgb, var(--accent-fill) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 4%, var(--surface-base));
 }
 
 .settings-option-card--active {
   border-width: 2px;
-  border-color: var(--color-primary, #D4A843);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 6%, var(--color-surface, #ffffff));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
+  border-color: var(--accent-fill);
+  background: color-mix(in srgb, var(--accent-fill) 6%, var(--surface-base));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-fill) 12%, transparent);
 }
 
 .settings-option-card--active:hover {
-  border-color: var(--color-primary, #D4A843);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 8%, var(--color-surface, #ffffff));
+  border-color: var(--accent-fill);
+  background: color-mix(in srgb, var(--accent-fill) 8%, var(--surface-base));
 }
 
 /* ── Option card with icon (theme & locale) ── */
@@ -64,13 +64,13 @@
   display: grid;
   place-items: center;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 8%, var(--color-surface, #ffffff));
-  color: var(--color-primary, #D4A843);
+  background: color-mix(in srgb, var(--accent-fill) 8%, var(--surface-base));
+  color: var(--accent-text);
   transition: background var(--transition-normal);
 }
 
 .settings-option-card--active .settings-option-card__icon {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 16%, var(--color-surface, #ffffff));
+  background: color-mix(in srgb, var(--accent-fill) 16%, var(--surface-base));
 }
 
 .settings-option-card__content {
@@ -80,40 +80,24 @@
   min-width: 0;
 }
 
-/* ── Switch row (fancy effects, notification sound) ── */
+/* ── Accent swatch (主色选择器) ──
+ *
+ * 每块显示的是「那个选项的颜色」，所以四条 modifier 各自吃固定的
+ * --accent-swatch-*（semantic.css 里与模式、与当前 accent 都无关的四个 L2 名），
+ * 而不是会跟着 [data-accent] 变的 --accent-fill。上面 __icon 那层的
+ * accent 底色仍然跟随当前主色，只作衬底。 */
 
-.settings-switch-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 12px 0;
+.settings-accent-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--shadow-ink) 18%, transparent);
 }
 
-.settings-switch-row + .settings-switch-row {
-  border-top: 1px solid color-mix(in srgb, var(--color-border, #E2DDD6) 60%, transparent);
-}
-
-.settings-switch-row__content {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-/* ── Backup & Reset section ── */
-
-.settings-backup-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.settings-reset-zone {
-  margin-top: 8px;
-  padding-top: 16px;
-  border-top: 1px solid color-mix(in srgb, var(--color-border, #E2DDD6) 60%, transparent);
-}
+.settings-accent-swatch--teal { background: var(--accent-swatch-teal); }
+.settings-accent-swatch--indigo { background: var(--accent-swatch-indigo); }
+.settings-accent-swatch--violet { background: var(--accent-swatch-violet); }
+.settings-accent-swatch--orange { background: var(--accent-swatch-orange); }
 
 /* ── Responsive ── */
 

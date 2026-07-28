@@ -12,33 +12,26 @@
 }
 
 .admin-badges-sidebar {
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
-  border-radius: var(--radius-lg, 8px);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-radius: var(--radius-lg);
   padding: 12px;
-  background: var(--color-surface, #ffffff);
-}
-
-.dark .admin-badges-sidebar {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
+  background: var(--surface-base);
 }
 
 .admin-badges-detail {
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 10%, transparent);
-  border-radius: var(--radius-lg, 8px);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-radius: var(--radius-lg);
   padding: 16px;
-  background: var(--color-surface, #ffffff);
-}
-
-.dark .admin-badges-detail {
-  border-color: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
+  background: var(--surface-base);
 }
 
 .admin-badge-item {
   display: block;
   width: 100%;
+  min-height: 44px;
   padding: 8px 10px;
   border: none;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -48,33 +41,37 @@
 }
 
 .admin-badge-item:hover {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 8%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 8%, transparent);
 }
 
 .admin-badge-item--active {
-  background: color-mix(in srgb, var(--color-primary, #D4A843) 12%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 12%, transparent);
 }
 
 .admin-badge-assignment-row {
   padding: 6px 8px;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   transition: background 120ms ease;
 }
 
 .admin-badge-assignment-row:hover {
-  background: color-mix(in srgb, var(--color-text, #1A1815) 4%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
 }
 
 .admin-badge-pill {
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
-  border-radius: var(--radius-pill, 9999px);
+  border-radius: var(--radius-pill);
   font-size: 12px;
   line-height: 1.4;
-  background: color-mix(in srgb, var(--badge-color, var(--color-primary, #D4A843)) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--badge-color, var(--color-primary, #D4A843)) 30%, transparent);
-  color: var(--badge-color, var(--color-primary, #D4A843));
+  /* --badge-color 运行期由 AdminBadgesSection.tsx:194/231 的内联 style 无条件
+   * 写入（同 MemberCard.css 的理由，schema 保证非空），rule 1 不允许兜底。 */
+  background: color-mix(in srgb, var(--badge-color) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--badge-color) 30%, transparent);
+  /* Same reasoning as .member-card__badge: --badge-color is arbitrary admin input
+   * and is unreadable on its own 14% tint until pulled toward the page text. */
+  color: color-mix(in srgb, var(--badge-color) 50%, var(--text-primary));
   flex-shrink: 0;
   max-width: 160px;
   overflow: hidden;
@@ -93,33 +90,35 @@
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  border-radius: var(--radius-sm, 4px);
-  background: color-mix(in srgb, var(--color-text, #1A1815) 3%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 
 .admin-badge-preview__pill {
   display: inline-flex;
   align-items: center;
   padding: 4px 12px;
-  border-radius: var(--radius-pill, 9999px);
+  border-radius: var(--radius-pill);
   font-size: 14px;
   line-height: 1.4;
-  background: color-mix(in srgb, var(--badge-color, var(--color-primary, #D4A843)) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--badge-color, var(--color-primary, #D4A843)) 30%, transparent);
-  color: var(--badge-color, var(--color-primary, #D4A843));
+  /* --badge-color 运行期由 AdminBadgesSection.tsx:102 的内联 style 无条件写入
+   * （表单编辑中的 form.color，同上理由）。 */
+  background: color-mix(in srgb, var(--badge-color) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--badge-color) 30%, transparent);
+  color: var(--badge-color);
 }
 
 .admin-badge-color-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
 }
 
 .admin-badge-color-picker {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border: none;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   padding: 0;
   cursor: pointer;
   background: none;
@@ -131,8 +130,8 @@
 }
 
 .admin-badge-color-picker::-webkit-color-swatch {
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 16%, transparent);
-  border-radius: var(--radius-sm, 4px);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 16%, transparent);
+  border-radius: var(--radius-sm);
 }
 
 .admin-badge-swatches {
@@ -142,23 +141,39 @@
 }
 
 .admin-badge-swatch {
-  width: 24px;
-  height: 24px;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
   border-radius: 50%;
-  border: 2px solid transparent;
+  border: 0;
   cursor: pointer;
   padding: 0;
-  transition: border-color 120ms ease, transform 120ms ease;
+  background: transparent;
 }
 
-.admin-badge-swatch:hover {
+.admin-badge-swatch::after {
+  width: 24px;
+  height: 24px;
+  content: "";
+  border: 2px solid transparent;
+  border-radius: 50%;
+  transition: border-color 120ms ease, transform 120ms ease;
+  /* --swatch-color：复用 tiptap-editor.css 同名 channel（同一种「遍历 class-1
+     色板常量给按钮上色」场景），值来自这里的 COLOR_PRESETS（class-1 数据），
+     由 AdminBadgesSection.tsx 无条件内联写入。 */
+  background: var(--swatch-color);
+}
+
+.admin-badge-swatch:hover::after {
   transform: scale(1.15);
 }
 
-.admin-badge-swatch--active {
-  border-color: var(--color-text, #1A1815);
-}
-
-.dark .admin-badge-swatch--active {
-  border-color: #fff;
+/*
+ * .admin-badge-swatch--active 原来在 .dark 下把边框换成字面 #fff；--text-primary
+ * 在深色模式已经解析成 --palette-ink-warm（#F0EDE8，暖白），和字面纯白视觉上
+ * 无法区分，故 token 化后 .dark 覆盖是纯重复，整块删除（附录 E 节「只差颜色」）。
+ */
+.admin-badge-swatch--active::after {
+  border-color: var(--text-primary);
 }

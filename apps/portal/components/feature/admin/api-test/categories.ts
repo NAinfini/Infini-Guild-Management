@@ -1,9 +1,24 @@
 import { type CategoryDef, type EndpointDef, type StaleArtifactProbe, isRecord } from "./types";
 
+/*
+ * These probes exist to catch fixtures a run failed to delete — the operator
+ * closing the tab mid-run, a worker restart. A leaked fixture is therefore
+ * always *live*, never archived and never deactivated, so none of these paths
+ * may narrow by state:
+ *   - Users:  UserService.buildUsersWhereFilters matches `search` against the
+ *             username alone, and the disposable user is named `systemtest_<ts>`
+ *             with no brackets — `[systemtest]` matched nothing. `active=false`
+ *             then excluded the live leftover that is the whole point of this
+ *             probe. (Soft-deleted rows stay invisible here by design: the query
+ *             always ANDs isNull(deletedAt), and a soft-deleted fixture is one
+ *             teardown already handled.)
+ *   - Events / Announcements: `archived=true` compiles to isNotNull(archivedAt),
+ *             so it excluded every unarchived leftover.
+ */
 export const STALE_ARTIFACT_PROBES: StaleArtifactProbe[] = [
-  { label: "Users", path: "/api/users?search=%5Bsystemtest%5D&active=false&limit=20" },
-  { label: "Events", path: "/api/events?search=%5Bsystemtest%5D&archived=true&limit=20" },
-  { label: "Announcements", path: "/api/announcements?search=%5Bsystemtest%5D&archived=true&limit=20" },
+  { label: "Users", path: "/api/users?search=systemtest_&limit=20" },
+  { label: "Events", path: "/api/events?search=%5Bsystemtest%5D&limit=20" },
+  { label: "Announcements", path: "/api/announcements?search=%5Bsystemtest%5D&limit=20" },
   { label: "Gallery", path: "/api/gallery?search=%5Bsystemtest%5D&limit=20" },
   { label: "Wiki", path: "/api/wiki/articles?search=%5Bsystemtest%5D&page=1&limit=20" },
   { label: "Storage", path: "/api/storage" },
@@ -11,17 +26,22 @@ export const STALE_ARTIFACT_PROBES: StaleArtifactProbe[] = [
   { label: "Badges", path: "/api/badges" },
 ];
 
-export function countStaleSystemTestArtifacts(label: string, payload: unknown): number {
-  const marker = "[systemtest]";
-  const containsMarker = (value: unknown): boolean => JSON.stringify(value).toLowerCase().includes(marker);
+export function countStaleSystemTestArtifacts(payload: unknown): number {
+  /*
+   * Two markers, because the fixtures carry two naming schemes: content rows are
+   * titled "[systemtest] …", but the disposable users are `systemtest_<ts>` with
+   * no brackets. Matching only the bracketed form left the Users probe unable to
+   * report a leaked test account.
+   */
+  const containsMarker = (value: unknown): boolean => {
+    const json = JSON.stringify(value).toLowerCase();
+    return json.includes("[systemtest]") || json.includes("systemtest_");
+  };
   if (isRecord(payload) && Array.isArray(payload.data)) {
     return payload.data.filter(containsMarker).length;
   }
   if (Array.isArray(payload)) {
     return payload.filter(containsMarker).length;
-  }
-  if (label === "Users" && isRecord(payload) && Array.isArray(payload.data)) {
-    return payload.data.filter(containsMarker).length;
   }
   return containsMarker(payload) ? 1 : 0;
 }
@@ -34,13 +54,16 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       endpoints: [
         { label: t("status.api.ep.healthCheck"), method: "GET", path: "/api/health" },
         { label: t("status.api.ep.siteConfig"), method: "GET", path: "/api/site-config" },
-        { label: t("status.api.ep.memberOnboarding"), method: "GET", path: "/api/onboarding" },
         { label: t("status.api.ep.adminStatus"), method: "GET", path: "/api/admin/status" },
         { label: t("status.api.ep.analyticsSettings"), method: "GET", path: "/api/admin/analytics-settings" },
         { label: t("status.api.ep.updateAnalyticsSettings"), method: "PATCH", path: "/api/admin/analytics-settings" },
-        { label: t("status.api.ep.dashboardSummary"), method: "GET", path: "/api/dashboard/summary" },
+        { label: t("status.api.ep.dashboardMembers"), method: "GET", path: "/api/dashboard/members" },
+        { label: t("status.api.ep.dashboardEvents"), method: "GET", path: "/api/dashboard/events" },
+        { label: t("status.api.ep.dashboardWars"), method: "GET", path: "/api/dashboard/wars" },
         { label: t("status.api.ep.globalSearch"), method: "GET", path: "/api/search?q=systemtest&limit=5" },
         { label: t("status.api.ep.gameData"), method: "GET", path: "/api/game-data" },
+        // Must follow /api/game-data — it supplies the class id.
+        { label: t("status.api.ep.gameDataRotation"), method: "GET", path: "/api/game-data/rotations/:classId" },
       ],
     },
     {
@@ -111,6 +134,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       label: t("status.api.cat.announcements"),
       endpoints: [
         { label: t("status.api.ep.listAnnouncements"), method: "GET", path: "/api/announcements?page=1&limit=5" },
+        { label: t("status.api.ep.stageAnnouncementImages"), method: "POST", path: "/api/announcements/images/stage" },
         { label: t("status.api.ep.createAnnouncement"), method: "POST", path: "/api/announcements" },
         { label: t("status.api.ep.getAnnouncement"), method: "GET", path: "/api/announcements/:id" },
         { label: t("status.api.ep.updateAnnouncement"), method: "PATCH", path: "/api/announcements/:id" },
@@ -195,6 +219,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.storageTransactionIntake"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=intake" },
         { label: t("status.api.ep.storageTransactionDistribute"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=distribute" },
         { label: t("status.api.ep.storageTransactionAdjust"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=adjust" },
+        { label: t("status.api.ep.storageTransactionBatch"), method: "POST", path: "/api/storage/transactions/batch" },
         { label: t("status.api.ep.listStorageTransactions"), method: "GET", path: "/api/storage/transactions?page=1&limit=5" },
         { label: t("status.api.ep.deleteStorageItem"), method: "DELETE", path: "/api/storage/items/:id" },
         { label: t("status.api.ep.deleteStorageCategory"), method: "DELETE", path: "/api/storage/storages/:storageId/categories/:id" },
@@ -242,6 +267,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       label: t("status.api.cat.adminGameData"),
       endpoints: [
         { label: t("status.api.ep.gameDataVersions"), method: "GET", path: "/api/game-data/versions" },
+        { label: t("status.api.ep.gameDataFull"), method: "GET", path: "/api/game-data/full" },
       ],
     },
     {
@@ -253,6 +279,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.deactivateUser"), method: "PATCH", path: "/api/admin/users/:id/deactivate" },
         { label: t("status.api.ep.reactivateUser"), method: "PATCH", path: "/api/admin/users/:id/reactivate" },
         { label: t("status.api.ep.resetPassword"), method: "POST", path: "/api/admin/users/:id/reset-password" },
+        { label: t("status.api.ep.resetLoginLock"), method: "POST", path: "/api/admin/users/:id/reset-login-lock" },
         { label: t("status.api.ep.batchRoleChange"), method: "PATCH", path: "/api/admin/users/batch/role" },
         { label: t("status.api.ep.batchDeactivate"), method: "PATCH", path: "/api/admin/users/batch/deactivate" },
         { label: t("status.api.ep.batchReactivate"), method: "PATCH", path: "/api/admin/users/batch/reactivate" },
@@ -341,13 +368,13 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
   if (endpoint.path.startsWith("/api/admin/audit-log") || endpoint.path.startsWith("/api/admin/audit-archive")) {
     return endpoint.path.includes("export") || endpoint.path.includes("download") ? requiresAll("admin.audit.export") : requiresAll("admin.audit.view");
   }
-  if (endpoint.path.startsWith("/api/game-data/versions")) return requiresAll("admin.gameData.manage");
+  if (endpoint.path.startsWith("/api/game-data/versions") || endpoint.path.startsWith("/api/game-data/full")) return requiresAll("admin.gameData.manage");
   if (endpoint.path.startsWith("/api/wiki/articles") && endpoint.path.includes("/revisions")) return requiresAll("wiki.articles.edit");
   if (endpoint.path.startsWith("/api/admin/users")) {
     if (endpoint.path.includes("role")) return requiresAll("admin.users.edit", "admin.users.role", "admin.users.delete");
     if (endpoint.path.includes("deactivate") || endpoint.path.includes("reactivate")) return requiresAll("admin.users.edit", "admin.users.activate", "admin.users.delete");
     if (endpoint.path.includes("delete")) return requiresAll("admin.users.edit", "admin.users.delete");
-    if (endpoint.path.includes("reset-password")) return requiresAll("admin.users.edit", "admin.users.password", "admin.users.delete");
+    if (endpoint.path.includes("reset-password") || endpoint.path.includes("reset-login-lock")) return requiresAll("admin.users.edit", "admin.users.password", "admin.users.delete");
     return requiresAll("admin.users.edit", "admin.users.delete");
   }
   if (endpoint.path.startsWith("/api/admin/roles")) {

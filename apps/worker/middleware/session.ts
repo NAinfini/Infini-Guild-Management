@@ -1,4 +1,4 @@
-﻿import type { Context, Next } from "hono";
+import type { Context, Next } from "hono";
 import { resolveSession } from "../services/auth";
 
 export async function sessionMiddleware(c: Context, next: Next): Promise<void> {

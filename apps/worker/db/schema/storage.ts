@@ -2,13 +2,12 @@
 // Tables: storages, storage_categories, storage_items, storage_item_images, storage_transactions
 // Dependencies: auth.users
 //
-// Invariant: storage_items.quantity changes ONLY via an atomic
-// "UPDATE quantity + INSERT storage_transactions" D1 batch, so the ledger
-// reconciles: SUM(quantity_delta) per item === current quantity.
+// Invariant: every stock mutation and its storage_transactions insert share
+// one atomic D1 batch, so SUM(quantity_delta) per item === current quantity.
 // recipient_user_id is SET NULL (not cascade) so deleting a user keeps the
 // ledger row. No sort_order columns — ordering is a frontend concern.
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
 import { nowUtc } from "./shared";
 
@@ -47,9 +46,11 @@ export const storageItems = sqliteTable(
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
-  (table) => ({
-    idxStorageCategory: index("idx_storage_items_storage_category").on(table.storageId, table.categoryId),
-  }),
+  (table) => [
+    index("idx_storage_items_storage_name_id").on(table.storageId, table.name, table.id),
+    index("idx_storage_items_storage_category_name_id").on(table.storageId, table.categoryId, table.name, table.id),
+    check("storage_items_quantity_nonnegative", sql`${table.quantity} >= 0`),
+  ],
 );
 
 export const storageItemImages = sqliteTable(

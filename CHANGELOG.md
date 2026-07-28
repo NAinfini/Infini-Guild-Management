@@ -33,7 +33,6 @@ This project follows the structure of [Keep a Changelog](https://keepachangelog.
 - Equipment calculator work in progress: shared schemas and calculator code, game data API, admin game-data UI, Tools page launcher, local store, worker search, and translations.
 - Beginner-friendly local setup, deployment preflight, production deployment command, and first-administrator bootstrap tooling.
 - English and Chinese self-hosting guides plus public-repository security and support templates.
-- A maintainer checklist for repository visibility, GitHub security settings, and clean-clone acceptance testing.
 
 ### Changed
 

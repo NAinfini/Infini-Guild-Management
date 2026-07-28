@@ -6,6 +6,8 @@ type ButtonState = "idle" | "loading" | "success" | "error";
 export interface ProgressButtonProps {
   children: ReactNode;
   className?: string;
+  /** Required when `children` is an icon only — otherwise the button has no accessible name. */
+  ariaLabel?: string;
   disabled?: boolean;
   onPress?: () => Promise<void>;
   onClick?: () => void;
@@ -20,6 +22,7 @@ export interface ProgressButtonProps {
 export function ProgressButton({
   children,
   className,
+  ariaLabel,
   disabled,
   onPress,
   onClick,
@@ -58,14 +61,16 @@ export function ProgressButton({
   return (
     <button
       type="button"
+      aria-label={ariaLabel}
       disabled={disabled || isLoading}
       onClick={() => void handleClick()}
       className={cn(
+        // The -500 shades put white labels at 2.3–3.7:1; the darker steps clear 4.5.
         "relative inline-flex items-center justify-center overflow-hidden rounded-md px-4 py-2 text-sm font-medium",
-        "bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed",
+        "bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed",
         "transition-colors",
-        state === "success" && "bg-green-500 hover:bg-green-600",
-        state === "error" && "bg-red-500 hover:bg-red-600",
+        state === "success" && "bg-green-700 hover:bg-green-800",
+        state === "error" && "bg-red-600 hover:bg-red-700",
         className,
       )}
     >

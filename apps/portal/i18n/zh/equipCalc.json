@@ -158,6 +158,9 @@
     "importError": "导入数据无效",
     "exportSuccess": "数据已复制到剪贴板"
   },
+  "errors": {
+    "rotationBody": "无法加载「{{className}}」的循环数据，缺少它就无法计算毕业度与 DPS。"
+  },
   "importModal": {
     "title": "导入数据",
     "description": "在此粘贴导出的计算器 JSON。",

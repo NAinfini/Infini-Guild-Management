@@ -1,4 +1,4 @@
-﻿const ERROR_CODES = [
+const ERROR_CODES = [
   "VALIDATION_ERROR",
   "UNAUTHORIZED",
   "FORBIDDEN",

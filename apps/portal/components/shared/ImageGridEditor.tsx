@@ -75,7 +75,7 @@ function DraggableImageCell({
     objectFit: "cover",
     borderRadius,
     display: "block",
-    border: "1px solid var(--color-border, #E2DDD6)",
+    border: "1px solid var(--border-subtle)",
     pointerEvents: "none",
     userSelect: "none",
   };
@@ -84,14 +84,14 @@ function DraggableImageCell({
     width: imageSize,
     height: imageSize,
     borderRadius,
-    border: "1px dashed var(--color-border, #E2DDD6)",
+    border: "1px dashed var(--border-subtle)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     padding: 4,
     textAlign: "center",
     fontSize: Math.max(9, imageSize * 0.12),
-    color: "var(--color-text-muted, #6B665E)",
+    color: "var(--text-muted)",
     userSelect: "none",
     wordBreak: "break-all",
     overflow: "hidden",
@@ -229,8 +229,13 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
       ...styleProp,
     };
 
+    /*
+     * role="group", not role="list": Reorder.Group already renders a real <ul>
+     * of <li>s, so declaring the wrapper a list gave it a <ul> and the upload
+     * <label> as children, neither of which may sit inside a list.
+     */
     return (
-      <div ref={ref} className={className} style={containerStyle} aria-label={ariaLabel} role="list" aria-live="polite" {...rest}>
+      <div ref={ref} className={className} style={containerStyle} aria-label={ariaLabel} role="group" aria-live="polite" {...rest}>
         <Reorder.Group
           axis="x"
           values={items}
@@ -256,7 +261,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
         {canUpload ? (
           <label
             htmlFor={inputId}
-            className="flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-amber-500 transition-colors text-gray-400"
+            className="flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-amber-500 transition-colors text-gray-600 dark:text-gray-300"
             style={{ width: imageSize, height: imageSize, borderRadius, fontSize: Math.max(10, imageSize * 0.14) }}
           >
             {uploadLabel ?? (

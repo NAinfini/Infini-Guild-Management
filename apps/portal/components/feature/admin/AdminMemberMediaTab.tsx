@@ -2,8 +2,8 @@ import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import type { ImageGridEditorItem } from "@portal/types/media";
 import { PortalCard } from "../../shared/PortalCard";
 import { Avatar, Button, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
-import { modals } from "@mantine/modals";
 import { PlusIcon, TrashIcon, UploadIcon, UserIcon } from "@portal/components/icons";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { useTranslation } from "react-i18next";
 import type { UseMediaUploadState } from "../../../hooks/useMediaUpload";
 import type { UsersListResponse } from "../../../services/UserService";
@@ -70,6 +70,41 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
     onDeleteAvatar,
   } = props;
   const { t } = useTranslation(["admin", "common"]);
+  const confirm = useConfirmDialog();
+
+  const handleDeleteAvatar = async () => {
+    const confirmed = await confirm({
+      title: t("confirm.deleteAvatar.title"),
+      description: (
+        <Text size="sm">
+          {t("confirm.deleteAvatar.description", { username: member.user.username })}
+        </Text>
+      ),
+      confirmLabel: t("media.removeAvatar"),
+      cancelLabel: t("common:cancel"),
+      intent: "danger",
+    });
+    if (confirmed) {
+      onDeleteAvatar();
+    }
+  };
+
+  const handleDeleteAudio = async () => {
+    const confirmed = await confirm({
+      title: t("confirm.deleteAudio.title"),
+      description: (
+        <Text size="sm">
+          {t("confirm.deleteAudio.description", { username: member.user.username })}
+        </Text>
+      ),
+      confirmLabel: t("media.removeAudio"),
+      cancelLabel: t("common:cancel"),
+      intent: "danger",
+    });
+    if (confirmed) {
+      onDeleteAudio();
+    }
+  };
 
   return (
     <Stack gap={16}>
@@ -105,15 +140,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                     size="compact-xs"
                     leftSection={<TrashIcon size={14} />}
                     loading={avatarDeletePending}
-                    onClick={() =>
-                      modals.openConfirmModal({
-                        title: t("confirm.deleteAvatar.title"),
-                        children: <Text size="sm">{t("confirm.deleteAvatar.description", { username: member.user.username })}</Text>,
-                        labels: { confirm: t("media.removeAvatar"), cancel: t("common:cancel") },
-                        confirmProps: { color: "red" },
-                        onConfirm: onDeleteAvatar,
-                      })
-                    }
+                    onClick={() => void handleDeleteAvatar()}
                   >
                     {t("media.removeAvatar")}
                   </Button>
@@ -248,15 +275,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                   size="sm"
                   w="fit-content"
                   leftSection={<TrashIcon size={14} />}
-                  onClick={() =>
-                    modals.openConfirmModal({
-                      title: t("confirm.deleteAudio.title"),
-                      children: <Text size="sm">{t("confirm.deleteAudio.description", { username: member.user.username })}</Text>,
-                      labels: { confirm: t("media.removeAudio"), cancel: t("common:cancel") },
-                      confirmProps: { color: "red" },
-                      onConfirm: onDeleteAudio,
-                    })
-                  }
+                  onClick={() => void handleDeleteAudio()}
                   loading={deleteAudioPending}
                   aria-label={t("media.aria.removeAudio")}
                 >

@@ -88,7 +88,12 @@ export const DepthToggle = forwardRef<HTMLButtonElement, DepthToggleProps>(
 
     if (!tooltipLabel) return inner;
     const tipProps = typeof tooltip === "string" ? { label: tooltip } : tooltip!;
-    return <Tooltip {...tipProps}>{inner}</Tooltip>;
+    const target = disabled ? (
+      <span data-disabled-tooltip-target style={{ display: "inline-flex" }}>
+        {inner}
+      </span>
+    ) : inner;
+    return <Tooltip {...tipProps}>{target}</Tooltip>;
   },
 );
 DepthToggle.displayName = "DepthToggle";

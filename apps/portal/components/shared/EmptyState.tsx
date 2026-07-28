@@ -35,7 +35,12 @@ export const EmptyState = memo(function EmptyState({
       <div className={`empty-state__icon empty-state__icon--${status}`}>
         {statusIcon[status]}
       </div>
-      <h3 className="empty-state__title">{title}</h3>
+      {/*
+        * Not a heading: the panel this sits in has no <h2>, so an <h3> skipped a
+        * level in the document outline. The text is already announced through the
+        * aria-live region above, so it needs no place in the heading tree.
+        */}
+      <div className="empty-state__title">{title}</div>
       {desc && <p className="empty-state__description">{desc}</p>}
       {act && <div className="empty-state__actions">{act}</div>}
     </div>

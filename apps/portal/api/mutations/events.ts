@@ -1,7 +1,7 @@
 import { type Event, type EventParticipant, type EventRaffleWinner, type RecurringTemplate, createEventSchema, createTemplateSchema, eventParticipantsBatchSchema, pollVoteSchema, updateEventSchema, updateTemplateSchema } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
-import { convertImageToWebP } from "../../utils/media-convert";
+import { convertFilesForUpload } from "@guild/shared/utils/media";
 
 export type CreateEventPayload = z.input<typeof createEventSchema>;
 export type UpdateEventPayload = z.input<typeof updateEventSchema>;
@@ -36,7 +36,7 @@ export async function createEvent(payload: CreateEventPayload, files?: File[]): 
       bodyJson,
     });
   }
-  const converted = await Promise.all(files.map(convertImageToWebP));
+  const converted = await convertFilesForUpload(files);
   const formData = new FormData();
   formData.append("data", JSON.stringify(bodyJson));
   for (const file of converted) {
@@ -69,7 +69,7 @@ export function deleteEvent(eventId: string): Promise<{ ok: true }> {
 }
 
 export async function uploadEventImages(eventId: string, files: File[]): Promise<{ keys: string[]; attachments: string[] }> {
-  const converted = await Promise.all(files.map(convertImageToWebP));
+  const converted = await convertFilesForUpload(files);
   const formData = new FormData();
   for (const file of converted) {
     formData.append("files", file);

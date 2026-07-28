@@ -77,13 +77,9 @@ vi.mock("../services/SearchService", () => ({
 
 const siteConfigServiceMethods = vi.hoisted(() => ({
   getPublicConfig: vi.fn().mockResolvedValue({ ok: true, data: { site_name: "Guild", site_logo_url: "/logo.webp" } }),
-  getAdminConfig: vi.fn().mockResolvedValue({ ok: true, data: { site: {}, onboarding: {} } }),
-  updateAdminConfig: vi.fn().mockResolvedValue({ ok: true, data: { site: {}, onboarding: {} } }),
-  uploadSiteLogo: vi.fn().mockResolvedValue({ ok: true, data: { site: {}, onboarding: {} } }),
-  updateOnboardingConfig: vi.fn().mockResolvedValue({ ok: true, data: { site: {}, onboarding: {} } }),
-  getMemberOnboarding: vi.fn().mockResolvedValue({ ok: true, data: { config: {}, state: {}, is_complete: false } }),
-  updateMemberProgress: vi.fn().mockResolvedValue({ ok: true, data: { config: {}, state: {}, is_complete: false } }),
-  acknowledgeOnboarding: vi.fn().mockResolvedValue({ ok: true, data: { config: {}, state: {}, is_complete: true } }),
+  getAdminConfig: vi.fn().mockResolvedValue({ ok: true, data: { site: {} } }),
+  updateAdminConfig: vi.fn().mockResolvedValue({ ok: true, data: { site: {} } }),
+  uploadSiteLogo: vi.fn().mockResolvedValue({ ok: true, data: { site: {} } }),
 }));
 
 vi.mock("../services/SiteConfigService", () => ({
@@ -124,6 +120,16 @@ beforeEach(() => {
 });
 
 describe("announcement and wiki permission mapping", () => {
+  it("uses announcements.create for image staging", async () => {
+    const { announcementsRoutes } = await import("./announcements");
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
+
+    const result = await announcementsRoutes.request("/images/stage", { method: "POST" });
+
+    expect(result.status).toBe(401);
+    expect(mocks.requirePermission).toHaveBeenCalledWith(expect.anything(), "announcements.create");
+  });
+
   it("uses announcements.archive for announcement archive route", async () => {
     const { announcementsRoutes } = await import("./announcements");
     mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
@@ -161,6 +167,17 @@ describe("announcement and wiki permission mapping", () => {
 });
 
 describe("gallery permission mapping", () => {
+  it("rejects staged announcement files whose bytes do not match the declared image type", async () => {
+    const { announcementsRoutes } = await import("./announcements");
+    mocks.requirePermission.mockResolvedValueOnce({ id: "u-1", permissions: new Set(["announcements.create"]) });
+    const form = new FormData();
+    form.append("files", new File(["<html>not an image</html>"], "fake.png", { type: "image/png" }));
+
+    const result = await announcementsRoutes.request("/images/stage", { method: "POST", body: form }, { DB: createPolicyDb(), MEDIA: {} });
+
+    expect(result.status).toBe(400);
+  });
+
   it("rejects files whose bytes do not match the declared image type", async () => {
     const { galleryRoutes } = await import("./gallery");
     mocks.requirePermission.mockResolvedValueOnce({ id: "u-1", permissions: new Set(["gallery.upload"]) });
@@ -229,6 +246,44 @@ describe("guild-war permission mapping", () => {
     const result = await guildWarRoutes.request(path, init, { DB: {}, MEDIA: {} });
 
     expect(result.status).toBe(200);
+    if (path === "/active") {
+      expect(guildWarServiceMethods.getActive).toHaveBeenCalledWith(undefined, false);
+    }
+  });
+
+  it("passes active-board preview permission for guild-war managers", async () => {
+    const { guildWarRoutes } = await import("./guild-war");
+    mocks.getRequestUser.mockResolvedValueOnce({
+      id: "mod-1",
+      role: "moderator",
+      permissions: new Set(["guildwar.teams.edit"]),
+    });
+
+    const result = await guildWarRoutes.request(
+      "/active?event_id=event-1",
+      { method: "GET" },
+      { DB: {}, MEDIA: {} },
+    );
+
+    expect(result.status).toBe(200);
+    expect(guildWarServiceMethods.getActive).toHaveBeenCalledWith("event-1", true);
+  });
+
+  it("passes history search to the server-side list query", async () => {
+    const { guildWarRoutes } = await import("./guild-war");
+
+    const result = await guildWarRoutes.request(
+      "/history?page=2&limit=25&search=Dragon%20100%25",
+      { method: "GET" },
+      { DB: {}, MEDIA: {} },
+    );
+
+    expect(result.status).toBe(200);
+    expect(guildWarServiceMethods.listHistory).toHaveBeenCalledWith(2, 25, {
+      dateFrom: undefined,
+      dateTo: undefined,
+      search: "Dragon 100%",
+    });
   });
 });
 
@@ -264,7 +319,7 @@ describe("search route visibility", () => {
   });
 });
 
-describe("site config and onboarding permission mapping", () => {
+describe("site config permission mapping", () => {
   it("allows public site config without a session", async () => {
     const { siteConfigRoutes } = await import("./site-config");
 
@@ -344,15 +399,5 @@ describe("site config and onboarding permission mapping", () => {
 
     expect(uploadResult.status).toBe(401);
     expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage", { freshPermissions: true });
-  });
-
-  it("requires a session for member onboarding progress", async () => {
-    const { onboardingRoutes } = await import("./site-config");
-    mocks.getRequestUser.mockResolvedValueOnce(null);
-
-    const result = await onboardingRoutes.request("/", { method: "GET" }, { DB: {} });
-
-    expect(result.status).toBe(401);
-    expect(siteConfigServiceMethods.getMemberOnboarding).not.toHaveBeenCalled();
   });
 });

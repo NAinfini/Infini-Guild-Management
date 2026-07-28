@@ -115,7 +115,7 @@ export function NotificationPopover({
                             {t("notification.type.announcement")}
                           </Badge>
                         ) : item.type === "event_created" ? (
-                          <Badge variant="light" color="orange">
+                          <Badge variant="light" color="grape">
                             {t("notification.type.eventReminder")}
                           </Badge>
                         ) : item.type === "wiki_created" ? (

@@ -23,6 +23,7 @@ import {
   revokeAdminInviteLink,
   deleteAdminInviteLink,
   createAdminInviteLink,
+  fetchAdminInviteLinks,
 } from "../AdminService";
 
 describe("AdminService mutations", () => {
@@ -128,6 +129,30 @@ describe("AdminService mutations", () => {
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/invite-links");
     expect(init.method).toBe("POST");
+  });
+
+  it("fetchAdminInviteLinks sends cursor, visibility, and search filters", async () => {
+    const response = {
+      data: [],
+      next_cursor: "50",
+      total: 75,
+    };
+    mockFetch.mockResolvedValueOnce(mockJsonResponse(response));
+
+    const result = await fetchAdminInviteLinks({
+      cursor: "0",
+      limit: 50,
+      visibility: "expired",
+      search: "2026-07",
+    });
+
+    const [url] = mockFetch.mock.calls[0]!;
+    expect(url).toContain("/api/admin/invite-links?");
+    expect(url).toContain("cursor=0");
+    expect(url).toContain("limit=50");
+    expect(url).toContain("visibility=expired");
+    expect(url).toContain("search=2026-07");
+    expect(result).toEqual(response);
   });
 
   it("revokeAdminInviteLink sends DELETE", async () => {

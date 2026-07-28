@@ -13,7 +13,7 @@
 
 [English](./README.md) | [中文](./README.zh.md)
 
-[安装指南](./SETUP.zh.md) · [公开发布检查表](./OPEN_SOURCE_CHECKLIST.md) · [安全政策](./SECURITY.md)
+[安装指南](./SETUP.zh.md) · [贡献指南](./CONTRIBUTING.md) · [安全政策](./SECURITY.md)
 
 </div>
 

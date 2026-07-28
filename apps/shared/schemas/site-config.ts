@@ -3,8 +3,6 @@ import { featureFlagsSchema } from "../config/features";
 import { LIMITS, MAX_CONFIGURABLE_MEDIA_FILE_BYTES } from "../config/limits";
 import { activeGame } from "../games";
 
-const richTextJsonSchema = z.string().min(1);
-
 export const siteMediaPolicySchema = z.object({
   max_file_size_bytes: z.object({
     site_logo: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES)
@@ -73,13 +71,6 @@ export const DEFAULT_SITE_ANALYTICS_SETTINGS = siteAnalyticsSettingsSchema.parse
   modifier_weights: { ...activeGame.war.modifierWeights },
 });
 
-export const onboardingChecklistItemSchema = z.object({
-  id: z.string().min(1).max(80).regex(/^[a-zA-Z0-9_-]+$/),
-  label: z.string().trim().min(1).max(160),
-  description: z.string().trim().max(500).nullable().optional(),
-  required: z.boolean().default(true),
-});
-
 export const siteConfigSchema = z.object({
   site_name: z.string(),
   site_logo_url: z.string(),
@@ -116,52 +107,10 @@ export const updateSiteConfigSchema = z.object({
   message: "At least one site config field is required",
 });
 
-export const onboardingConfigSchema = z.object({
-  title: z.string(),
-  body_json: richTextJsonSchema,
-  checklist: z.array(onboardingChecklistItemSchema),
-  enabled: z.boolean(),
-  require_ack: z.boolean(),
-  published_at: z.string().nullable(),
-  updated_by: z.string().nullable(),
-  created_at: z.string().nullable().optional(),
-  updated_at: z.string().nullable().optional(),
-});
-
-export const updateOnboardingConfigSchema = z.object({
-  title: z.string().trim().min(1).max(160).optional(),
-  body_json: richTextJsonSchema.optional(),
-  checklist: z.array(onboardingChecklistItemSchema).max(50).optional(),
-  enabled: z.boolean().optional(),
-  require_ack: z.boolean().optional(),
-}).refine((value) => Object.keys(value).length > 0, {
-  message: "At least one onboarding field is required",
-});
-
-export const memberOnboardingStateSchema = z.object({
-  user_id: z.string(),
-  completed_item_ids: z.array(z.string()),
-  acknowledged_at: z.string().nullable(),
-  created_at: z.string().nullable().optional(),
-  updated_at: z.string().nullable().optional(),
-});
-
-export const memberOnboardingResponseSchema = z.object({
-  config: onboardingConfigSchema,
-  state: memberOnboardingStateSchema,
-  is_complete: z.boolean(),
-});
-
-export const updateMemberOnboardingSchema = z.object({
-  completed_item_ids: z.array(z.string()).max(100),
-});
-
 export const adminSiteConfigResponseSchema = z.object({
   site: siteConfigSchema.omit({ analytics_settings: true }),
-  onboarding: onboardingConfigSchema,
 });
 
-export type OnboardingChecklistItem = z.infer<typeof onboardingChecklistItemSchema>;
 export type SiteConfig = z.infer<typeof siteConfigSchema>;
 export type PublicSiteConfig = z.infer<typeof publicSiteConfigSchema>;
 export type UpdateSiteConfigPayload = z.input<typeof updateSiteConfigSchema>;
@@ -169,9 +118,4 @@ export type SiteMediaPolicy = z.infer<typeof siteMediaPolicySchema>;
 export type SiteStoragePolicy = z.infer<typeof siteStoragePolicySchema>;
 export type SiteAbsencePolicy = z.infer<typeof siteAbsencePolicySchema>;
 export type SiteAnalyticsSettings = z.infer<typeof siteAnalyticsSettingsSchema>;
-export type OnboardingConfig = z.infer<typeof onboardingConfigSchema>;
-export type UpdateOnboardingConfigPayload = z.input<typeof updateOnboardingConfigSchema>;
-export type MemberOnboardingState = z.infer<typeof memberOnboardingStateSchema>;
-export type MemberOnboardingResponse = z.infer<typeof memberOnboardingResponseSchema>;
-export type UpdateMemberOnboardingPayload = z.input<typeof updateMemberOnboardingSchema>;
 export type AdminSiteConfigResponse = z.infer<typeof adminSiteConfigResponseSchema>;

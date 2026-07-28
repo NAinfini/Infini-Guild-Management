@@ -5,6 +5,7 @@ import { CalendarEventIcon } from "@portal/components/icons";
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { UserCheckOutlined } from "../../utils/icons";
+import { EmptyState } from "../shared/EmptyState";
 import { cardHeading, eventTypeTagColor, formatDateTime, type DashboardMySignupEvent } from "./shared";
 
 type MySignupsCardProps = {
@@ -50,6 +51,11 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
   return (
     <PortalCard className="dashboard-card" interactive={false}>
       {cardHeading(t("card.mySignups.title"), <UserCheckOutlined size={18} />)}
+      {/* With no signups the strip was eight identical boxes of "—" taking a full
+          card of vertical space and saying nothing. */}
+      {mySignupEvents.length === 0 ? (
+        <EmptyState title={t("card.mySignups.empty")} />
+      ) : (
       <div className="signup-boxes">
         {days.map((day) => {
           const today = isToday(day.date);
@@ -66,7 +72,7 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
                   <span className="signup-box-empty">—</span>
                 ) : (
                   day.events.map((item) => {
-                    const color = `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--color-primary, #D4A843))`;
+                    const color = `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--accent-fill))`;
 
                     return (
                       <HoverCard key={item.event.id} width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
@@ -76,7 +82,10 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
                             className="signup-box-event"
                             onClick={() => onOpenEvent(item.event)}
                           >
-                            <span className="signup-box-event-dot" style={{ background: color }} />
+                            <span
+                              className="signup-box-event-dot"
+                              style={{ "--signup-dot-color": color } as React.CSSProperties}
+                            />
                             <span className="signup-box-event-title">{item.event.title}</span>
                             <span className="signup-box-event-time">{formatTime(item.event.start_at)}</span>
                           </button>
@@ -109,6 +118,7 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
           );
         })}
       </div>
+      )}
     </PortalCard>
   );
 });

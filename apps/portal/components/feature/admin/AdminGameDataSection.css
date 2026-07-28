@@ -27,8 +27,8 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+  background: var(--status-success);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--status-success) 40%, transparent);
   vertical-align: middle;
   margin-right: 6px;
 }
@@ -62,9 +62,9 @@
   border-left: 3px solid var(--gd-border);
 }
 
-.admin-game-data__meta-item:nth-child(1) { border-left-color: var(--mantine-primary-color-filled, #D4A843); }
-.admin-game-data__meta-item:nth-child(2) { border-left-color: #22c55e; }
-.admin-game-data__meta-item:nth-child(3) { border-left-color: #f59e0b; }
+.admin-game-data__meta-item:nth-child(1) { border-left-color: var(--accent-fill); }
+.admin-game-data__meta-item:nth-child(2) { border-left-color: var(--status-success); }
+.admin-game-data__meta-item:nth-child(3) { border-left-color: var(--status-warning); }
 
 .admin-game-data__meta-item p {
   overflow: hidden;
@@ -134,7 +134,15 @@
   font-size: 13px;
   line-height: 1.6;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--mantine-color-dark-7, #1a1b1e) 4%, var(--mantine-color-body)) !important;
+  /* 感叹号优先级已去掉：去掉后核对过，Mantine 的 Textarea 输入框基础规则落在单个
+   * 哈希类 .m_8fb7ebe7 上（node_modules/@mantine/core/styles.css，
+   * background-color: var(--input-bg)），特异性同为 (0,1,0)。本组件 CSS 在 Vite
+   * 模块图里排在 @mantine/core 的全局样式之后加载，源码顺序稳赢，没有被压过，
+   * 不需要抬特异性。 */
+  background: color-mix(in srgb, var(--mantine-color-dark-7) 4%, var(--mantine-color-body));
+  /* 与模式无关的字面黑：文本域内凹阴影的黑色晕影，不对应替换表任何一行
+   * （原写法不经过 var(--color-*) 包裹）。本字面量已登记在 theme-tokens.test.ts
+   * 的 LITERAL_COLOUR_EXEMPTIONS["apps/portal/components/feature/admin/AdminGameDataSection.css"]。 */
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
 }
 
@@ -177,13 +185,23 @@
   border-radius: 0 8px 8px 0;
 }
 
-/* Active version row - accent highlight */
-.admin-game-data__active-row td:first-child {
-  border-left: 3px solid var(--mantine-primary-color-filled, #D4A843) !important;
+/* Active version row - accent highlight
+ * 感叹号优先级已去掉，两条都核对过确认真的被压过：
+ * - 下面的 tr 背景规则要压过 .admin-game-data__versions-table tbody tr:hover
+ *   （本文件上方，特异性 (0,2,2)：1 类 + :hover 1 伪类 + tbody/tr 2 元素）；原选择器
+ *   .admin-game-data__active-row 只有 (0,1,0)，稳输。用祖先类自我重复把
+ *   .admin-game-data__versions-table 算两次抬到 (0,3,2)，稳赢，不依赖源码顺序。
+ * - td:first-child 那条要压过 .admin-game-data__versions-table tbody td:first-child
+ *   （本文件上方，特异性 (0,2,2)：1 类 + :first-child 1 伪类 + tbody/td 2 元素）；
+ *   原选择器 .admin-game-data__active-row td:first-child 只有 (0,2,1)，稳输。
+ *   补回 tbody/tr 祖先上下文后天然到 (0,3,3)，无需再自我重复。
+ */
+.admin-game-data__versions-table tbody tr.admin-game-data__active-row td:first-child {
+  border-left: 3px solid var(--accent-fill);
 }
 
-.admin-game-data__active-row {
-  background: color-mix(in srgb, var(--mantine-primary-color-filled, #D4A843) 4%, var(--gd-muted)) !important;
+.admin-game-data__versions-table.admin-game-data__versions-table tbody tr.admin-game-data__active-row {
+  background: color-mix(in srgb, var(--accent-fill) 4%, var(--gd-muted));
 }
 
 /* Rollback button - ghost style, visible on hover */

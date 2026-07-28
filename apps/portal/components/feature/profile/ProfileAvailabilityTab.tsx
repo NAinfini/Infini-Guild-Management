@@ -1,4 +1,3 @@
-import { FloatingSaveBar } from "../../shared/FloatingSaveBar";
 import { Stack } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { AvailabilityGridEditor } from "@portal/components/shared/AvailabilityGridEditor";
@@ -8,18 +7,12 @@ type ProfileAvailabilityTabProps = {
   userId: string | undefined;
   availabilityData: Record<string, unknown> | null;
   onAvailabilityChange: (value: Record<string, unknown>) => void;
-  onSaveAvailability: () => void;
-  savePending: boolean;
-  isDirty: boolean;
 };
 
 export function ProfileAvailabilityTab({
   userId,
   availabilityData,
   onAvailabilityChange,
-  onSaveAvailability,
-  savePending,
-  isDirty,
 }: ProfileAvailabilityTabProps) {
   const { t } = useTranslation("profile");
   return (
@@ -43,7 +36,6 @@ export function ProfileAvailabilityTab({
         }}
       />
       <AbsenceManagerCard userId={userId} />
-      <FloatingSaveBar isDirty={isDirty} saving={savePending} onSave={onSaveAvailability} />
     </Stack>
   );
 }

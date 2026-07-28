@@ -1,5 +1,5 @@
 import { Button, Card, Drawer, Group, SegmentedControl, Skeleton, Stack, Text, TextInput, VisuallyHidden } from "@mantine/core";
-import { modals } from "@mantine/modals";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { DepthButton } from "@portal/components/shared/DepthButton";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import { buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
@@ -39,25 +39,33 @@ export function WikiPage() {
   const { t } = useTranslation("wiki");
   const { t: te } = useTranslation("editor");
   const editorLabels = useMemo(() => buildTipTapEditorLabels(te), [te]);
+  const confirm = useConfirmDialog();
 
   const controller = useWikiPageController();
+  const hasActiveFilters = Boolean(
+    controller.search.trim()
+    || controller.pinnedOnly
+    || controller.archivedMode !== "active"
+    || controller.selectedCategoryIds.length > 0,
+  );
+  const resetFilters = () => {
+    controller.setSearch("");
+    controller.setPinnedOnly(false);
+    controller.setArchivedMode("active");
+    controller.handleCategoryFilterChange([]);
+  };
 
-  const handleDeleteArticle = () => {
+  const handleDeleteArticle = async () => {
     if (!controller.selectedArticle) return;
-    modals.openConfirmModal({
+    const accepted = await confirm({
       title: t("confirm.deleteArticle.title"),
-      children: <Text size="sm">{t("confirm.deleteArticle.description", { title: controller.selectedArticle.title })}</Text>,
-      centered: true,
-      confirmProps: { color: "red" },
-      labels: {
-        cancel: t("common:action.cancel"),
-        confirm: t("common:action.delete"),
-      },
-      onConfirm: () => {
-        controller.setSkipAutoSelectOnceTrue();
-        controller.articleEditor.deleteArticle(controller.selectedArticle!.id);
-      },
+      description: <Text size="sm">{t("confirm.deleteArticle.description", { title: controller.selectedArticle.title })}</Text>,
+      cancelLabel: t("common:action.cancel"),
+      confirmLabel: t("common:action.delete"),
+      intent: "danger",
     });
+    if (!accepted || !controller.selectedArticle) return;
+    controller.articleEditor.deleteArticle(controller.selectedArticle.id);
   };
 
   useLoadWarningToast(
@@ -201,7 +209,7 @@ export function WikiPage() {
                   {t("articleEditor.lastUpdatedBy", { user: controller.selectedArticle.updated_by_username ?? controller.selectedArticle.created_by.slice(0, 8), date: formatDateTime(controller.selectedArticle.updated_at) })}
                 </Text>
                 {controller.selectedArticle.archived_at ? (
-                  <Text c="yellow" size="sm">
+                  <Text c="gray" size="sm">
                     {t("articleEditor.archivedAt", { date: formatDateTime(controller.selectedArticle.archived_at) })}
                   </Text>
                 ) : null}
@@ -217,7 +225,7 @@ export function WikiPage() {
     <PageLayout title={t("title")} subtitle={t("subtitle")}>
       <PageLayout.Section>
         <FilterToolbar
-          active={Boolean(controller.search.trim()) || controller.pinnedOnly || controller.archivedMode !== "active"}
+          active={hasActiveFilters}
           primary={
               <TextInput
                 placeholder={t("filter.search")}
@@ -263,14 +271,18 @@ export function WikiPage() {
           >
             <WikiArticleListCard
               title={t("articles.title")}
-              canEdit={controller.canEdit}
+              canCreateArticle={controller.canCreateArticle}
+              canManageCategories={controller.canManageCategories}
               createLabel={t("articleEditor.create")}
               onCreateArticle={controller.handleStartCreateArticle}
               onOpenCategoryEditor={controller.handleOpenCategoryEditor}
               categoryOptions={controller.categoryOptions}
               selectedCategoryIds={controller.selectedCategoryIds}
               onCategoryFilterChange={controller.handleCategoryFilterChange}
-              isLoading={controller.articlesQuery.isLoading && controller.articlesPage === 1}
+              hasActiveFilters={hasActiveFilters}
+              resetFiltersLabel={t("action.resetFilters")}
+              onResetFilters={resetFilters}
+              isLoading={controller.articlesQuery.isLoading}
               isError={controller.articlesQuery.isError}
               warningMessage={t("common:loadError")}
               articles={controller.articles}
@@ -278,8 +290,8 @@ export function WikiPage() {
               emptyTitle={t("empty")}
               onSelectArticle={controller.handleSelectArticle}
               hasMore={controller.articlesHasMore}
-              isLoadingMore={controller.articlesQuery.isFetching && controller.articlesPage > 1}
-              onLoadMore={() => controller.setArticlesPage((p) => p + 1)}
+              isLoadingMore={controller.articlesLoadingMore}
+              onLoadMore={controller.loadMoreArticles}
             />
           </Stack>
         ) : null}

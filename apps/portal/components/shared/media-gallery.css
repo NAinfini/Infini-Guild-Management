@@ -10,7 +10,7 @@
   overflow: hidden;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 88%, var(--color-text, #1A1815) 6%);
+  background: color-mix(in srgb, var(--surface-base) 88%, var(--text-primary) 6%);
 }
 
 .infini-media-gallery-slide img {
@@ -34,11 +34,23 @@
   gap: 8px;
 }
 
+/* 与模式无关的字面黑：原生 <video> 容器的信箱底色，视频播放器背景传统上恒为
+ * 黑色（不管站点是浅色还是深色主题）。本字面量已登记在 theme-tokens.test.ts 的
+ * LITERAL_COLOUR_EXEMPTIONS["apps/portal/components/shared/media-gallery.css"]。 */
 .infini-media-gallery-native-video {
   width: 100%;
   height: calc(100% - 72px);
   border-radius: 8px;
-  background: #000000;
+  background: rgb(0 0 0);
+}
+
+/* MediaGallery.tsx's embedded-video iframe, moved out of style={{}}
+   (task-8 批 B). */
+.infini-media-gallery-video-embed {
+  width: 100%;
+  height: calc(100% - 40px);
+  border: none;
+  border-radius: 8px;
 }
 
 .infini-media-gallery-video-controls {
@@ -63,17 +75,17 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 15%, transparent);
-  background: var(--color-surface, #ffffff);
-  color: color-mix(in srgb, var(--color-text, #1A1815) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 15%, transparent);
+  background: var(--surface-base);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   cursor: pointer;
   padding: 0;
   transition: background 0.15s, border-color 0.15s;
 }
 
 .infini-media-gallery-toggle-thumb:hover {
-  background: color-mix(in srgb, var(--color-text, #1A1815) 6%, var(--color-surface, #ffffff));
-  border-color: color-mix(in srgb, var(--color-text, #1A1815) 28%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 6%, var(--surface-base));
+  border-color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .infini-media-gallery-thumbnails {
@@ -87,9 +99,9 @@
   width: 64px;
   height: 64px;
   border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--color-text, #1A1815) 15%, transparent);
-  background: color-mix(in srgb, var(--color-surface, #ffffff) 92%, transparent);
-  color: color-mix(in srgb, var(--color-text, #1A1815) 58%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 15%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   padding: 0;
   cursor: pointer;
   overflow: hidden;
@@ -102,17 +114,18 @@
 }
 
 .infini-media-gallery-thumb-active {
-  border-color: var(--color-primary, #D4A843);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #D4A843) 40%, transparent);
+  border-color: var(--accent-fill);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-fill) 40%, transparent);
 }
 
+/* 同上：视频缩略图占位背景，与模式无关的字面黑，已一并登记在同一张豁免表里。 */
 .infini-media-gallery-thumb-video {
   position: relative;
   width: 100%;
   height: 100%;
   display: grid;
   place-items: center;
-  background: #000;
+  background: rgb(0 0 0);
 }
 
 .infini-media-gallery-thumb-video img,
@@ -126,13 +139,18 @@
   position: absolute;
   bottom: 3px;
   right: 3px;
-  color: #fff;
+  /* 播放图标叠在缩略图（照片/视频帧）之上，底色不可控，固定用 Mantine 自带的
+   * 白而不是会分模式变化的语义 token（同 EventCardsView.css 的 raffle 徽章、
+   * 本批 EventDetailModal.css 的 poll-choice-indicator 先例）。下面这条投影
+   * 同理固定：给白色图标描一圈暗晕，保证它压在任意亮度的缩略图上都看得清，
+   * 不随 [data-theme] 变化。 */
+  color: var(--mantine-color-white);
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
   pointer-events: none;
 }
 
 .infini-media-gallery-thumb-play-only {
-  color: color-mix(in srgb, var(--color-text, #1A1815) 45%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 @media (max-width: 767px) {

@@ -1,4 +1,5 @@
 import { PERMISSIONS, type AdminRole, type Permission } from "@guild/shared";
+import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
 import { DepthToggle } from "@portal/components/shared/DepthToggle";
 import {
   ActionIcon,
@@ -17,7 +18,6 @@ import {
   ThemeIcon,
   UnstyledButton,
 } from "@mantine/core";
-import { modals } from "@mantine/modals";
 import {
   AlertTriangleIcon,
   ArchiveIcon,
@@ -143,21 +143,21 @@ type PermMeta = { icon: ReactNode; color: string; danger?: boolean };
 const PERM_ICON_SIZE = 16;
 
 const PERM_META: Record<string, PermMeta> = {
-  "admin.users.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.users.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.users.edit":      { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
   "admin.users.role":      { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "violet" },
   "admin.users.activate":  { icon: <UserCheckIcon size={PERM_ICON_SIZE} />,          color: "orange" },
   "admin.users.delete":    { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
   "admin.users.password":  { icon: <LockIcon size={PERM_ICON_SIZE} />,               color: "orange", danger: true },
-  "admin.invite.view":     { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.invite.view":     { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.invite.manage":   { icon: <PlusIcon size={PERM_ICON_SIZE} />,               color: "teal" },
-  "admin.audit.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.audit.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.audit.export":    { icon: <ArchiveIcon size={PERM_ICON_SIZE} />,            color: "grape" },
-  "admin.status.view":     { icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "blue" },
-  "admin.roles.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.status.view":     { icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "gray" },
+  "admin.roles.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.roles.manage":    { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "red", danger: true },
   "admin.siteConfig.manage": { icon: <SettingsIcon size={PERM_ICON_SIZE} />,         color: "teal" },
-  "admin.analytics.view":  { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "blue" },
+  "admin.analytics.view":  { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.analytics.manage":{ icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "teal" },
   "guildwar.teams.edit":   { icon: <SwordsIcon size={PERM_ICON_SIZE} />,             color: "orange" },
   "guildwar.history.edit": { icon: <SwordsIcon size={PERM_ICON_SIZE} />,             color: "orange" },
@@ -256,6 +256,7 @@ export function AdminRolesSection({
 }: AdminRolesSectionProps) {
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
+  const confirm = useConfirmDialog();
   const user = useAuthStore((state) => state.user);
   const isAdmin = userCanManageRoles(user);
   const loadErrorMessage = tc("loadError");
@@ -278,7 +279,7 @@ export function AdminRolesSection({
   if (!isAdmin) {
     return (
       <Stack gap={12}>
-        <Alert color="yellow" title={t("adminOnly")} />
+        <Alert color="red" title={t("adminOnly")} />
       </Stack>
     );
   }
@@ -299,21 +300,12 @@ export function AdminRolesSection({
   };
 
   const handleDeleteRole = async (role: AdminRole) => {
-    const confirmed = await new Promise<boolean>((resolve) => {
-      modals.openConfirmModal({
-        title: t("roles.confirmDeleteTitle"),
-        children: t("roles.confirmDeleteDescription", { name: role.name }),
-        confirmProps: { color: "red" },
-        labels: {
-          confirm: t("roles.delete"),
-          cancel: t("roles.cancel"),
-        },
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
-        closeOnCancel: true,
-        closeOnConfirm: true,
-        centered: true,
-      });
+    const confirmed = await confirm({
+      title: t("roles.confirmDeleteTitle"),
+      description: t("roles.confirmDeleteDescription", { name: role.name }),
+      confirmLabel: t("roles.delete"),
+      cancelLabel: t("roles.cancel"),
+      intent: "danger",
     });
 
     if (!confirmed) {
@@ -358,7 +350,7 @@ export function AdminRolesSection({
   return (
     <Stack gap={12}>
       {rolesLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {rolesError ? <Alert color="yellow" title={loadErrorMessage} /> : null}
+      {rolesError ? <Alert color="red" title={loadErrorMessage} /> : null}
 
       {!rolesLoading && !rolesError ? (
         <div className="admin-roles-layout">
@@ -370,7 +362,7 @@ export function AdminRolesSection({
                 <ActionIcon
                   size="sm"
                   variant="filled"
-                  color="blue"
+                  color="portal-accent"
                   onClick={() => { void handleCreateRole(); }}
                   loading={createRolePending}
                   aria-label={t("roles.create")}
@@ -406,10 +398,10 @@ export function AdminRolesSection({
                         </Group>
                         <Group gap={4} wrap="nowrap">
                           {dirty ? (
-                            <Badge size="xs" variant="light" color="yellow">*</Badge>
+                            <Badge size="xs" variant="light" color="orange">*</Badge>
                           ) : null}
                           {role.is_builtin ? (
-                            <Badge size="xs" variant="light" color="blue">{t("roles.builtin")}</Badge>
+                            <Badge size="xs" variant="light" color="gray">{t("roles.builtin")}</Badge>
                           ) : (
                             <ActionIcon
                               size="xs"
@@ -465,6 +457,7 @@ export function AdminRolesSection({
                         size="sm"
                         format="hex"
                         label={t("roles.field.color")}
+                        eyeDropperButtonProps={{ "aria-label": t("roles.field.colorPicker") }}
                         value={selectedDraft.color}
                         onChange={(value) => updateDraftField(selectedRole.id, "color", value)}
                         style={{ flex: 1, minWidth: 120, maxWidth: 160 }}
@@ -491,7 +484,7 @@ export function AdminRolesSection({
                         </ActionIcon>
                       ) : null}
                       <ActionIcon
-                        color="blue"
+                        color="portal-accent"
                         variant="filled"
                         size="lg"
                         onClick={() => {
@@ -541,9 +534,9 @@ export function AdminRolesSection({
                                 disabled={isReadOnly}
                                 before={
                                   isGranted ? (
-                                    <CheckIcon size={14} style={{ color: "#22c55e" }} />
+                                    <CheckIcon size={14} className="admin-roles-perm-icon--granted" />
                                   ) : (
-                                    <XIcon size={14} style={{ color: "#ef4444" }} />
+                                    <XIcon size={14} className="admin-roles-perm-icon--denied" />
                                   )
                                 }
                               >
