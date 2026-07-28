@@ -3,7 +3,9 @@ import { shouldApplyEtag } from "./etag";
 
 describe("ETag middleware selection", () => {
   it("skips heavy aggregate and bulk JSON endpoints", () => {
-    expect(shouldApplyEtag("/api/dashboard/summary", null)).toBe(false);
+    expect(shouldApplyEtag("/api/dashboard/members", null)).toBe(false);
+    expect(shouldApplyEtag("/api/dashboard/events", null)).toBe(false);
+    expect(shouldApplyEtag("/api/dashboard/wars", null)).toBe(false);
     expect(shouldApplyEtag("/api/search", null)).toBe(false);
     expect(shouldApplyEtag("/api/events/batch-details", null)).toBe(false);
     expect(shouldApplyEtag("/api/guild-war/history/batch", null)).toBe(false);

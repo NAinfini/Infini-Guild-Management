@@ -57,7 +57,9 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.adminStatus"), method: "GET", path: "/api/admin/status" },
         { label: t("status.api.ep.analyticsSettings"), method: "GET", path: "/api/admin/analytics-settings" },
         { label: t("status.api.ep.updateAnalyticsSettings"), method: "PATCH", path: "/api/admin/analytics-settings" },
-        { label: t("status.api.ep.dashboardSummary"), method: "GET", path: "/api/dashboard/summary" },
+        { label: t("status.api.ep.dashboardMembers"), method: "GET", path: "/api/dashboard/members" },
+        { label: t("status.api.ep.dashboardEvents"), method: "GET", path: "/api/dashboard/events" },
+        { label: t("status.api.ep.dashboardWars"), method: "GET", path: "/api/dashboard/wars" },
         { label: t("status.api.ep.globalSearch"), method: "GET", path: "/api/search?q=systemtest&limit=5" },
         { label: t("status.api.ep.gameData"), method: "GET", path: "/api/game-data" },
         // Must follow /api/game-data — it supplies the class id.

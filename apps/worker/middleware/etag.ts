@@ -6,7 +6,7 @@ const SKIP_PATH_PREFIXES = [
   "/api/gallery",
   "/api/admin/audit",
   "/api/search",
-  "/api/dashboard/summary",
+  "/api/dashboard",
 ];
 const SKIP_PATH_SUFFIXES = [
   "/batch",

@@ -776,7 +776,9 @@ describe("AdminApiTestEngine request preparation", () => {
       "GET /api/auth/verify-invite/:code",
       "POST /api/auth/register/:inviteCode",
       "GET /api/auth/me",
-      "GET /api/dashboard/summary",
+      "GET /api/dashboard/members",
+      "GET /api/dashboard/events",
+      "GET /api/dashboard/wars",
       "GET /api/search?q=systemtest&limit=5",
       "GET /api/users?page=1&limit=5",
       "GET /api/users/stats",
@@ -1246,7 +1248,11 @@ describe("AdminApiTestEngine request preparation", () => {
     const endpointKeys = buildApiCategories((key) => key)
       .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
 
-    expect(endpointKeys).toContain("GET /api/dashboard/summary");
+    expect(endpointKeys).toEqual(expect.arrayContaining([
+      "GET /api/dashboard/members",
+      "GET /api/dashboard/events",
+      "GET /api/dashboard/wars",
+    ]));
     expect(endpointKeys).toContain("GET /api/search?q=systemtest&limit=5");
     expect(endpointKeys).toContain("GET /api/guild-war/concluded-event-ids");
   });
@@ -1260,7 +1266,9 @@ describe("AdminApiTestEngine request preparation", () => {
       "GET /api/site-config",
       "GET /api/admin/status",
       "GET /api/admin/analytics-settings",
-      "GET /api/dashboard/summary",
+      "GET /api/dashboard/members",
+      "GET /api/dashboard/events",
+      "GET /api/dashboard/wars",
       "GET /api/search?q=systemtest&limit=5",
       "GET /api/admin/error-log?page=1&limit=5",
     ]));

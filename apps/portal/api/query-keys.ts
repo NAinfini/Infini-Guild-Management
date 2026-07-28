@@ -67,8 +67,9 @@ export const queryKeys = {
   },
   dashboard: {
     all: ["dashboard"] as const,
-    summary: () => [...queryKeys.dashboard.all, "summary"] as const,
-    upcomingEvents: (nowIso: string) => [...queryKeys.dashboard.all, "upcoming-events", nowIso] as const,
+    members: () => [...queryKeys.dashboard.all, "members"] as const,
+    events: (viewerKey: string, externalView: boolean) =>
+      [...queryKeys.dashboard.all, "events", viewerKey, externalView] as const,
     wars: () => [...queryKeys.dashboard.all, "wars"] as const,
     lastWarDetail: (warId: string) => [...queryKeys.dashboard.all, "last-war-detail", warId] as const,
     upcomingEventDetails: (eventIdsKey: string) =>

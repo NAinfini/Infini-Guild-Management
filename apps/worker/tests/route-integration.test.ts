@@ -540,9 +540,24 @@ describe("Guest read API access", () => {
     expect(res.status).toBe(200);
   });
 
-  it("returns dashboard summary without authentication", async () => {
+  it("returns dashboard member stats without authentication", async () => {
     mocks.getCookie.mockReturnValue(undefined);
+    const select = vi.fn(() => ({
+      from: vi.fn().mockResolvedValue([{ activeMembers: 1, totalMembers: 2 }]),
+    }));
+    mocks.drizzle.mockReturnValueOnce({ select });
 
+    const res = await appRequest("/api/dashboard/members");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      active_member_count: 1,
+      total_member_count: 2,
+    });
+  });
+
+  it("returns dashboard events without authentication", async () => {
+    mocks.getCookie.mockReturnValue(undefined);
     const eventRow = (id: string, pinned: boolean) => ({
       id,
       type: "social",
@@ -570,22 +585,13 @@ describe("Guest read API access", () => {
     const select = vi.fn(() => {
       selectCall += 1;
       if (selectCall === 1) {
-        return { from: vi.fn().mockResolvedValue([{ activeMembers: 1, totalMembers: 1 }]) };
-      }
-      if (selectCall === 2) {
         return { from: vi.fn(() => ({ where: vi.fn(() => ({ orderBy: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([eventRow("featured", true)]) })) })) })) };
       }
-      if (selectCall === 3) {
+      if (selectCall === 2) {
         return { from: vi.fn(() => ({ where: vi.fn(() => ({ orderBy: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([eventRow("regular", false)]) })) })) })) };
       }
-      if (selectCall === 4) {
+      if (selectCall === 3) {
         return { from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ total: 8 }]) })) };
-      }
-      if (selectCall === 5) {
-        return { from: vi.fn(() => ({ orderBy: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })) })) };
-      }
-      if (selectCall === 6) {
-        return { from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ total: 0, wins: 0 }]) })) };
       }
       return {
         from: vi.fn(() => ({
@@ -601,21 +607,41 @@ describe("Guest read API access", () => {
     });
     mocks.drizzle.mockReturnValueOnce({ select });
 
-    const res = await appRequest("/api/dashboard/summary");
+    const res = await appRequest("/api/dashboard/events");
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      active_member_count: number;
       active_events_count: number;
       featured_events: Array<{ id: string }>;
       upcoming_events: Array<{ id: string }>;
       my_signup_event_ids: string[];
     };
-    expect(body.active_member_count).toBe(1);
     expect(body.active_events_count).toBe(8);
     expect(body.featured_events.map((event) => event.id)).toEqual(["featured"]);
     expect(body.upcoming_events.map((event) => event.id)).toEqual(["regular"]);
     expect(body.my_signup_event_ids).toEqual([]);
+  });
+
+  it("returns dashboard war stats without authentication", async () => {
+    mocks.getCookie.mockReturnValue(undefined);
+    let selectCall = 0;
+    const select = vi.fn(() => {
+      selectCall += 1;
+      if (selectCall === 1) {
+        return { from: vi.fn(() => ({ orderBy: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })) })) };
+      }
+      return { from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ total: 0, wins: 0 }]) })) };
+    });
+    mocks.drizzle.mockReturnValueOnce({ select });
+
+    const res = await appRequest("/api/dashboard/wars");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      all_war_win_rate: 0,
+      recent_wars: [],
+      recent_war_mvps: [],
+    });
   });
 });
 

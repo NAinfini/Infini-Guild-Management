@@ -28,9 +28,9 @@ const PAGE_ROUTES = [
 ];
 
 const STATIC_PAGE_API_CHECKS = [
-  { page: "Dashboard", path: "/api/users?limit=20" },
-  { page: "Dashboard", path: "/api/events?limit=5" },
-  { page: "Dashboard", path: "/api/guild-war/active" },
+  { page: "Dashboard", path: "/api/dashboard/members" },
+  { page: "Dashboard", path: "/api/dashboard/events" },
+  { page: "Dashboard", path: "/api/dashboard/wars" },
   { page: "Roster", path: "/api/users?limit=20&external_view=true" },
   { page: "Announcements", path: "/api/announcements?page=1&limit=10" },
   { page: "Announcements", path: "/api/announcements?page=1&limit=10&status=archived" },
