@@ -1,8 +1,7 @@
 import type { Event } from "@guild/shared";
 import { activeGame } from "@guild/shared/games";
 import { NumberTicker } from "@portal/components/effects";
-import { PortalCard } from "../shared/PortalCard";
-import { Badge, Button, Group, RingProgress, Stack, Text } from "@mantine/core";
+import { Badge, Button, Group, Paper, RingProgress, Stack, Text } from "@mantine/core";
 import { MemberRoleAvatar } from "../shared/MemberRoleAvatar";
 import { ArrowRightIcon, CalendarEventIcon, ClockIcon, FriendsIcon, SwordsIcon, TargetArrowIcon } from "@portal/components/icons";
 import { memo } from "react";
@@ -50,7 +49,8 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
   const hasAnyRows = featuredRows.length > 0 || rows.length > 0;
 
   return (
-    <PortalCard className="dashboard-card" interactive={false}>
+    <Paper withBorder radius="md" className="dashboard-card">
+      <div>
       {/* The count used to sit under the heading as its own xl line, repeating what
           the list below already shows. It rides along with the heading now. */}
       <Group gap={8} align="center" wrap="nowrap" justify="space-between">
@@ -128,7 +128,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         size={36}
                         thickness={4}
                         roundCaps
-                        sections={[{ value: percentage, color: "var(--accent-fill)" }]}
+                        sections={[{ value: percentage, color: "var(--domain-event)" }]}
                       />
                       <Text size="10px" ta="center" fw={600} c="dimmed">
                         {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}
@@ -149,6 +149,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
             })}
           </Stack>
         )}
-    </PortalCard>
+      </div>
+    </Paper>
   );
 });

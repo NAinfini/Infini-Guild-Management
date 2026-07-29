@@ -1,4 +1,3 @@
-import { SwordsIcon } from "@portal/components/icons";
 import {
   KeyboardSensor,
   PointerSensor,
@@ -8,7 +7,9 @@ import {
 import { buildEChartsTheme } from "../../theme/echarts";
 import { useTheme } from "../../providers/ThemeProvider";
 import { useSearch } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Tabs } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -26,7 +27,6 @@ import { queryKeys } from "../../api/query-keys";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { useGuildWarStore } from "../../stores/guildWar";
 import { PageLayout } from "../layout/PageLayout";
-import { PageTabPanel, PageTabs } from "../layout/PageTabs";
 import { useGuildWarActiveController } from "../feature/guild-war/useGuildWarActiveController";
 import { GuildWarActiveTab } from "./guild-war/GuildWarActiveTab";
 import { GuildWarHistoryTabWrapper } from "./guild-war/GuildWarHistoryTabWrapper";
@@ -39,6 +39,7 @@ export function GuildWarPage() {
     tab?: "active" | "history" | "analytics";
     warName?: string;
   };
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { theme: currentTheme } = useTheme();
 
@@ -116,15 +117,15 @@ export function GuildWarPage() {
     setHistoryPage(1);
   }, [guildWarSearch.warName, setHistoryPage]);
 
-  const initialTabKey = useMemo(() => {
+  const activeTab = useMemo(() => {
     if (guildWarSearch.tab) {
       return guildWarSearch.tab;
     }
     if (guildWarSearch.warName) {
       return "history";
     }
-    return undefined;
-  }, [guildWarSearch.tab, guildWarSearch.warName]);
+    return isExternalView ? "history" : "active";
+  }, [guildWarSearch.tab, guildWarSearch.warName, isExternalView]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -242,31 +243,29 @@ export function GuildWarPage() {
   );
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<SwordsIcon size={22} />} className="guild-war-page">
-      <PageTabs
+    <PageLayout className="guild-war-page">
+      <Tabs
+        value={activeTab}
         keepMounted={false}
-        defaultValue={initialTabKey ?? (isExternalView ? "history" : "active")}
-        tabs={[
-          ...(!isExternalView
-            ? [
-                {
-                  value: "active" as const,
-                  label: t("tab.active"),
-                },
-              ]
-            : []),
-          {
-            value: "history" as const,
-            label: t("tab.history"),
-          },
-          {
-            value: "analytics" as const,
-            label: t("tab.analytics"),
-          },
-        ]}
+        className="guild-war-page__tabs"
+        onChange={(nextTab) => {
+          if (!nextTab) return;
+          const tab = nextTab as "active" | "history" | "analytics";
+          void navigate({
+            to: "/guild-war",
+            search: (previous) => ({ ...previous, tab: tab === "active" ? undefined : tab }),
+            replace: true,
+            viewTransition: false,
+          });
+        }}
       >
+        <Tabs.List>
+          {!isExternalView ? <Tabs.Tab value="active">{t("tab.active")}</Tabs.Tab> : null}
+          <Tabs.Tab value="history">{t("tab.history")}</Tabs.Tab>
+          <Tabs.Tab value="analytics">{t("tab.analytics")}</Tabs.Tab>
+        </Tabs.List>
         {!isExternalView ? (
-          <PageTabPanel value="active" pt="sm">
+          <Tabs.Panel value="active" pt="md">
             <GuildWarActiveTab
               selectedEventId={selectedEventId}
               setSelectedEventId={setSelectedEventId}
@@ -281,10 +280,10 @@ export function GuildWarPage() {
               concludeWarDisabled={concludeWarDisabled}
               concludeWarDisabledReason={concludeWarDisabledReason}
             />
-          </PageTabPanel>
+          </Tabs.Panel>
         ) : null}
 
-        <PageTabPanel value="history" pt="sm">
+        <Tabs.Panel value="history" pt="md">
           <GuildWarHistoryTabWrapper
             canManageActive={canManageActive}
             historyViewMode={historyViewMode}
@@ -311,9 +310,9 @@ export function GuildWarPage() {
             chartPalette={chartPalette}
             initialSearch={guildWarSearch.warName}
           />
-        </PageTabPanel>
+        </Tabs.Panel>
 
-        <PageTabPanel value="analytics" pt="sm">
+        <Tabs.Panel value="analytics" pt="md">
           <GuildWarAnalyticsTabWrapper
             historyQuery={historyQuery}
             chartPalette={chartPalette}
@@ -322,8 +321,8 @@ export function GuildWarPage() {
             chartThemeConfig={chartThemeConfig}
             canManageWeights={isModerator}
           />
-        </PageTabPanel>
-      </PageTabs>
+        </Tabs.Panel>
+      </Tabs>
     </PageLayout>
   );
 }

@@ -3,18 +3,16 @@ import { useNotificationStore } from "../../../stores/notifications";
 import {
   API_TEST_GAP_GET_MS,
   API_TEST_GAP_MUTATION_MS,
-  buildCleanupSteps,
   captureContextFromResponse,
-  countStaleSystemTestArtifacts,
   createInitialTestRunContext,
   nextLogId,
   prepareEndpointRequest,
   readRetryAfterSeconds,
   runEndpointTest,
-  STALE_ARTIFACT_PROBES,
   SYSTEM_TEST_AUDIT_HEADER,
   SYSTEM_TEST_HEADER,
   SYSTEM_TEST_HEADER_VALUE,
+  SYSTEM_TEST_RUN_ID_HEADER,
   truncateJson,
   waitWithAbort,
   type CategoryDef,
@@ -30,6 +28,7 @@ import { epKey } from "./AdminApiTestCategory";
  * if the worker stops responding mid-cleanup.
  */
 const TEARDOWN_TIMEOUT_MS = 120_000;
+const TEARDOWN_RETRY_MS = 250;
 
 export function useAdminApiTestRunner(visibleApiCategories: CategoryDef[]) {
   const setSuppressed = useNotificationStore((state) => state.setSuppressed);
@@ -80,13 +79,15 @@ export function useAdminApiTestRunner(visibleApiCategories: CategoryDef[]) {
         return next;
       });
 
-      let result = await runEndpointTest(ep, prepared, signal);
+      const runId = contextRef.current.runId;
+      if (!runId) throw new Error("System-test run was not initialized");
+      let result = await runEndpointTest(ep, prepared, runId, signal);
       if (result.status === 429) {
         const retryAfterSeconds = readRetryAfterSeconds(result.parsedJson);
         if (retryAfterSeconds !== null) {
           await waitWithAbort((retryAfterSeconds + 1) * 1000, signal);
           if (!signal.aborted) {
-            result = await runEndpointTest(ep, prepared, signal);
+            result = await runEndpointTest(ep, prepared, runId, signal);
           }
         }
       }
@@ -131,145 +132,37 @@ export function useAdminApiTestRunner(visibleApiCategories: CategoryDef[]) {
   const [runningAll, setRunningAll] = useState(false);
 
   const runCleanup = useCallback(async (signal: AbortSignal) => {
-    const cleanupSteps = buildCleanupSteps(contextRef.current);
-    let failed = 0;
-
-    for (const step of cleanupSteps) {
-      /*
-       * Note this signal is the teardown's own, never the test run's — see
-       * runTeardown. Aborting a run must not abort the deletion of what that
-       * run already wrote to the database.
-       */
-      if (signal.aborted) break;
-      await waitWithAbort(API_TEST_GAP_MUTATION_MS, signal);
-      if (signal.aborted) break;
-
-      const started = performance.now();
-      const ranAt = new Date().toISOString();
-      try {
-        const fetchOpts: RequestInit = {
-          method: step.method,
-          credentials: "include",
-          signal,
-          headers: {
-            "X-Requested-With": "XMLHttpRequest",
-            [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE,
-            [SYSTEM_TEST_AUDIT_HEADER]: "suppress",
-            ...(step.jsonBody !== undefined ? { "Content-Type": "application/json" } : {}),
-          },
-        };
-        if (step.jsonBody !== undefined) {
-          fetchOpts.body = JSON.stringify(step.jsonBody);
-        }
-        const response = await fetch(step.path, fetchOpts);
-        const latencyMs = Math.round(performance.now() - started);
-        let body = "";
-        const contentType = response.headers.get("content-type") ?? "";
-        if (contentType.includes("json")) {
-          const raw = await response.text();
-          if (raw) body = JSON.stringify(JSON.parse(raw), null, 2);
-        } else {
-          body = await response.text();
-        }
-        pushLog({
-          id: nextLogId(),
-          category: "Cleanup",
-          label: step.label,
-          method: step.method,
-          path: step.path,
-          status: response.status,
-          latencyMs,
-          error: response.ok ? null : `${response.status} ${response.statusText}`,
-          body: truncateJson(body),
-          ranAt,
+    const runId = contextRef.current.runId;
+    if (!runId) return { attempted: 0, failed: 1 };
+    const started = performance.now();
+    const ranAt = new Date().toISOString();
+    try {
+      while (!signal.aborted) {
+        const response = await fetch(`/api/admin/status/system-test-runs/${encodeURIComponent(runId)}/cleanup`, {
+          method: "POST", credentials: "include", signal,
+          headers: { "X-Requested-With": "XMLHttpRequest", [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE, [SYSTEM_TEST_RUN_ID_HEADER]: runId },
         });
-        if (response.ok && step.clearContext) {
-          contextRef.current = { ...contextRef.current, ...step.clearContext };
+        const body = await response.text();
+        let cleanupStatus: unknown;
+        try {
+          cleanupStatus = (JSON.parse(body) as { status?: unknown }).status;
+        } catch {
+          cleanupStatus = undefined;
         }
-        if (!response.ok) {
-          failed += 1;
+        if (
+          response.status === 409
+          && (cleanupStatus === "running" || cleanupStatus === "cleaning")
+        ) {
+          await waitWithAbort(TEARDOWN_RETRY_MS, signal);
+          continue;
         }
-      } catch (err) {
-        if (signal.aborted) break;
-        const latencyMs = Math.round(performance.now() - started);
-        pushLog({
-          id: nextLogId(),
-          category: "Cleanup",
-          label: step.label,
-          method: step.method,
-          path: step.path,
-          status: null,
-          latencyMs,
-          error: err instanceof Error ? err.message : "Unknown error",
-          body: "",
-          ranAt,
-        });
-        failed += 1;
+        pushLog({ id: nextLogId(), category: "Cleanup", label: "Server run cleanup", method: "POST", path: "system-test run registry", status: response.status, latencyMs: Math.round(performance.now() - started), error: response.ok ? null : `${response.status} ${response.statusText}`, body: truncateJson(body), ranAt });
+        return { attempted: 1, failed: response.ok ? 0 : 1 };
       }
-    }
-
-    /*
-     * A failed DELETE used to be one red row among ~200 log lines. Rows left
-     * behind in a production database deserve their own verdict, so report the
-     * count instead of making the operator go find it.
-     */
-    return { attempted: cleanupSteps.length, failed };
-  }, [pushLog]);
-
-  const runStaleArtifactScan = useCallback(async (signal: AbortSignal) => {
-    for (const probe of STALE_ARTIFACT_PROBES) {
-      if (signal.aborted) break;
-      const started = performance.now();
-      const ranAt = new Date().toISOString();
-      try {
-        const response = await fetch(probe.path, {
-          method: "GET",
-          credentials: "include",
-          signal,
-          headers: {
-            [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE,
-            [SYSTEM_TEST_AUDIT_HEADER]: "suppress",
-          },
-        });
-        const latencyMs = Math.round(performance.now() - started);
-        const raw = await response.text();
-        let parsed: unknown = null;
-        let body = raw;
-        if (raw && (response.headers.get("content-type") ?? "").includes("json")) {
-          parsed = JSON.parse(raw) as unknown;
-          body = JSON.stringify(parsed, null, 2);
-        }
-        const staleCount = response.ok ? countStaleSystemTestArtifacts(parsed) : 0;
-        pushLog({
-          id: nextLogId(),
-          category: "Stale Data",
-          label: `Stale [systemtest] ${probe.label}`,
-          method: "GET",
-          path: probe.path,
-          status: response.status,
-          latencyMs,
-          error: response.ok && staleCount === 0 ? null : response.ok ? `${staleCount} stale artifact(s) need manual cleanup` : `${response.status} ${response.statusText}`,
-          body: response.ok
-            ? truncateJson(JSON.stringify({ stale_count: staleCount, manual_cleanup_required: staleCount > 0 }, null, 2))
-            : truncateJson(body),
-          ranAt,
-        });
-      } catch (err) {
-        if (signal.aborted) break;
-        const latencyMs = Math.round(performance.now() - started);
-        pushLog({
-          id: nextLogId(),
-          category: "Stale Data",
-          label: `Stale [systemtest] ${probe.label}`,
-          method: "GET",
-          path: probe.path,
-          status: null,
-          latencyMs,
-          error: err instanceof Error ? err.message : "Unknown error",
-          body: "",
-          ranAt,
-        });
-      }
+      throw new Error("System-test cleanup timed out");
+    } catch (error) {
+      pushLog({ id: nextLogId(), category: "Cleanup", label: "Server run cleanup", method: "POST", path: "system-test run registry", status: null, latencyMs: Math.round(performance.now() - started), error: error instanceof Error ? error.message : "Unknown error", body: "", ranAt });
+      return { attempted: 1, failed: 1 };
     }
   }, [pushLog]);
 
@@ -279,13 +172,12 @@ export function useAdminApiTestRunner(visibleApiCategories: CategoryDef[]) {
    * us deleting the rows that run already wrote to the production database. Only
    * the hard timeout below can cancel it.
    */
-  const runTeardown = useCallback(async () => {
+  const runTeardown = useCallback(async (): Promise<boolean> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TEARDOWN_TIMEOUT_MS);
     const ranAt = new Date().toISOString();
     try {
       const outcome = await runCleanup(controller.signal);
-      await runStaleArtifactScan(controller.signal);
       const incomplete = outcome.failed > 0 || controller.signal.aborted;
       const verdict = incomplete
         ? "TEARDOWN INCOMPLETE — test rows may remain in the database"
@@ -311,10 +203,60 @@ export function useAdminApiTestRunner(visibleApiCategories: CategoryDef[]) {
         body: JSON.stringify({ attempted: outcome.attempted, failed: outcome.failed }, null, 2),
         ranAt,
       });
+      return !incomplete;
     } finally {
       clearTimeout(timer);
     }
-  }, [pushLog, runCleanup, runStaleArtifactScan]);
+  }, [pushLog, runCleanup]);
+
+  const finalizeServerRun = useCallback(async (): Promise<boolean> => {
+    const runId = contextRef.current.runId;
+    if (!runId) return false;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TEARDOWN_TIMEOUT_MS);
+    const started = performance.now();
+    const ranAt = new Date().toISOString();
+    try {
+      let status: number | null = null;
+      let body = "";
+      let errorMessage: string | null = null;
+      for (let attempt = 1; attempt <= 3 && !controller.signal.aborted; attempt += 1) {
+        try {
+          const response = await fetch(
+            `/api/admin/status/system-test-runs/${encodeURIComponent(runId)}/finalize`,
+            {
+              method: "POST",
+              credentials: "include",
+              signal: controller.signal,
+              headers: { "X-Requested-With": "XMLHttpRequest" },
+            },
+          );
+          status = response.status;
+          body = await response.text();
+          errorMessage = response.ok ? null : `${response.status} ${response.statusText}`;
+          if (response.ok) break;
+        } catch (error) {
+          errorMessage = error instanceof Error ? error.message : "Unknown error";
+        }
+        if (attempt < 3) await waitWithAbort(TEARDOWN_RETRY_MS, controller.signal);
+      }
+      pushLog({
+        id: nextLogId(),
+        category: "Cleanup",
+        label: "Server run finalize",
+        method: "POST",
+        path: "system-test run registry finalize",
+        status,
+        latencyMs: Math.round(performance.now() - started),
+        error: errorMessage,
+        body: truncateJson(body),
+        ranAt,
+      });
+      return errorMessage === null && status !== null && status >= 200 && status < 300;
+    } finally {
+      clearTimeout(timer);
+    }
+  }, [pushLog]);
 
   /*
    * Aborts the in-flight run and waits for its teardown to finish before the
@@ -332,8 +274,10 @@ export function useAdminApiTestRunner(visibleApiCategories: CategoryDef[]) {
     return controller;
   }, []);
 
-  const writeSystemTestAuditSummary = useCallback(async (logs: DebugLogEntry[], signal: AbortSignal) => {
-    const endpointLogs = logs.filter((entry) => entry.category !== "Cleanup" && entry.category !== "Stale Data");
+  const writeSystemTestAuditSummary = useCallback(async (logs: DebugLogEntry[], signal: AbortSignal): Promise<boolean> => {
+    const runId = contextRef.current.runId;
+    if (!runId) return false;
+    const endpointLogs = logs.filter((entry) => entry.category !== "Cleanup");
     const failed = endpointLogs.filter((entry) =>
       entry.error !== null || entry.status === null || entry.status >= 400,
     );
@@ -350,7 +294,7 @@ export function useAdminApiTestRunner(visibleApiCategories: CategoryDef[]) {
         error: entry.error,
       })),
     };
-    await fetch("/api/admin/status/system-test-audit", {
+    const response = await fetch("/api/admin/status/system-test-audit", {
       method: "POST",
       credentials: "include",
       signal,
@@ -359,35 +303,52 @@ export function useAdminApiTestRunner(visibleApiCategories: CategoryDef[]) {
         "X-Requested-With": "XMLHttpRequest",
         [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE,
         [SYSTEM_TEST_AUDIT_HEADER]: "summary",
+        [SYSTEM_TEST_RUN_ID_HEADER]: runId,
       },
       body: JSON.stringify(payload),
     });
+    return response.ok;
+  }, []);
+
+  const createServerRun = useCallback(async (signal: AbortSignal): Promise<{ runId: string; fixtureId: string }> => {
+    const response = await fetch("/api/admin/status/system-test-runs", { method: "POST", credentials: "include", signal, headers: { "X-Requested-With": "XMLHttpRequest" } });
+    const body = await response.json() as { run_id?: unknown; fixture_id?: unknown };
+    if (!response.ok || typeof body.run_id !== "string" || typeof body.fixture_id !== "string") {
+      throw new Error("Could not create system-test run");
+    }
+    return { runId: body.run_id, fixtureId: body.fixture_id };
   }, []);
 
   const runCategory = useCallback(async (category: CategoryDef) => {
     const controller = await beginRun();
     clearRunConsole();
     setResultMap(new Map());
-    contextRef.current = createInitialTestRunContext();
+    const serverRun = await createServerRun(controller.signal);
+    contextRef.current = { ...createInitialTestRunContext(), ...serverRun };
     setSuppressed(true);
     // Teardown lives in `finally`: an aborted run still has rows to delete.
     const run = (async () => {
       try {
         await runCategoryInternal(category, controller.signal);
       } finally {
-        await runTeardown();
-        setSuppressed(false);
+        try {
+          const cleaned = await runTeardown();
+          if (cleaned) await finalizeServerRun();
+        } finally {
+          setSuppressed(false);
+        }
       }
     })();
     inFlightRef.current = run;
     await run;
-  }, [beginRun, clearRunConsole, runCategoryInternal, runTeardown, setSuppressed]);
+  }, [beginRun, clearRunConsole, createServerRun, finalizeServerRun, runCategoryInternal, runTeardown, setSuppressed]);
 
   const runAllCategories = useCallback(async () => {
     const controller = await beginRun();
     clearRunConsole();
     setResultMap(new Map());
-    contextRef.current = createInitialTestRunContext();
+    const serverRun = await createServerRun(controller.signal);
+    contextRef.current = { ...createInitialTestRunContext(), ...serverRun };
     setRunningAll(true);
     setSuppressed(true);
     const run = (async () => {
@@ -397,22 +358,33 @@ export function useAdminApiTestRunner(visibleApiCategories: CategoryDef[]) {
           await runCategoryInternal(cat, controller.signal);
         }
       } finally {
-        await runTeardown();
-        // Summary is written after teardown so it reflects the cleanup outcome.
-        const summaryController = new AbortController();
-        const summaryTimer = setTimeout(() => summaryController.abort(), TEARDOWN_TIMEOUT_MS);
         try {
-          await writeSystemTestAuditSummary(runLogRef.current, summaryController.signal);
+          const cleaned = await runTeardown();
+          if (cleaned) {
+            // Summary finalization atomically writes one normal audit summary
+            // and removes the private run UUID. If it fails, delete the empty
+            // completed run without a summary instead.
+            const summaryController = new AbortController();
+            const summaryTimer = setTimeout(() => summaryController.abort(), TEARDOWN_TIMEOUT_MS);
+            let summarized = false;
+            try {
+              summarized = await writeSystemTestAuditSummary(runLogRef.current, summaryController.signal);
+            } catch {
+              summarized = false;
+            } finally {
+              clearTimeout(summaryTimer);
+            }
+            if (!summarized) await finalizeServerRun();
+          }
         } finally {
-          clearTimeout(summaryTimer);
+          setRunningAll(false);
+          setSuppressed(false);
         }
-        setRunningAll(false);
-        setSuppressed(false);
       }
     })();
     inFlightRef.current = run;
     await run;
-  }, [beginRun, clearRunConsole, runCategoryInternal, runTeardown, setSuppressed, visibleApiCategories, writeSystemTestAuditSummary]);
+  }, [beginRun, clearRunConsole, createServerRun, finalizeServerRun, runCategoryInternal, runTeardown, setSuppressed, visibleApiCategories, writeSystemTestAuditSummary]);
 
   const clearDebug = useCallback(() => {
     runLogRef.current = [];

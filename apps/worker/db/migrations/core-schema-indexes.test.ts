@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { BUILTIN_ROLES, PERMISSIONS } from "@guild/shared";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
-import { storageItems, warHistory } from "../schema";
+import { inviteLinks, storageItems, systemTestArtifacts, systemTestRuns, warHistory } from "../schema";
 
 const schemaSql = readFileSync("apps/worker/db/migrations/0000_core_schema.sql", "utf8");
 
@@ -39,6 +39,18 @@ describe("core schema guild-war invariants", () => {
   });
 });
 
+describe("core schema invite pagination", () => {
+  it("keeps the created-at and id keyset index in Drizzle and baseline SQL", () => {
+    const createdIndex = getTableConfig(inviteLinks).indexes
+      .find((index) => index.config.name === "idx_invite_links_created");
+
+    expect(createdIndex?.config.columns.map((column) => ("name" in column ? column.name : null)))
+      .toEqual(["created_at", "id"]);
+    expect(schemaSql).toContain("CREATE INDEX IF NOT EXISTS idx_invite_links_created");
+    expect(schemaSql).toContain("ON invite_links(created_at, id);");
+  });
+});
+
 describe("core schema storage invariants", () => {
   it("keeps storage quantity nonnegative in Drizzle and the baseline SQL", () => {
     const drizzleChecks = getTableConfig(storageItems).checks.map((constraint) => constraint.name);
@@ -68,6 +80,26 @@ describe("core schema role baseline data", () => {
         expect(schemaSql).toContain(`('${role}', '${permission}',`);
       }
     }
+  });
+});
+
+describe("core schema system-test registry", () => {
+  it("keeps run and exact-artifact cleanup indexes in Drizzle and baseline SQL", () => {
+    expect(getTableConfig(systemTestRuns).indexes.map((index) => index.config.name)).toContain("idx_system_test_runs_cleanup_lookup");
+    expect(getTableConfig(systemTestArtifacts).indexes.map((index) => index.config.name)).toContain("idx_system_test_artifacts_run_type");
+    expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS system_test_runs");
+    expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS system_test_artifacts");
+    const runChecks = getTableConfig(systemTestRuns).checks.map((constraint) => constraint.name);
+    expect(runChecks).toContain("system_test_runs_status_valid");
+    expect(runChecks).toContain("system_test_runs_active_requests_nonnegative");
+    expect(schemaSql).toContain(
+      "CONSTRAINT system_test_runs_status_valid CHECK (status IN ('running', 'cleaning', 'cleanup_failed', 'completed', 'manual_review'))",
+    );
+    expect(schemaSql).toContain(
+      "CONSTRAINT system_test_runs_active_requests_nonnegative CHECK (active_requests >= 0)",
+    );
+    expect(schemaSql).toContain("CREATE INDEX IF NOT EXISTS idx_system_test_runs_cleanup_lookup");
+    expect(schemaSql).toContain("CREATE INDEX IF NOT EXISTS idx_system_test_artifacts_run_type");
   });
 });
 

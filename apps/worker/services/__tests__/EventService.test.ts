@@ -55,7 +55,10 @@ describe("worker EventService", () => {
       update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
       delete: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
     };
-    const media = { put: vi.fn().mockResolvedValue(undefined) };
+    const media = {
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
     const getEventById = vi
       .fn()
       .mockResolvedValue(
@@ -114,6 +117,43 @@ describe("worker EventService", () => {
     expect(rawDb.batch).toHaveBeenCalled();
   });
 
+  it("removes the event UUID and inline media when event creation fails", async () => {
+    const failure = new Error("event insert failed");
+    const db = {
+      insert: vi.fn(() => ({ values: vi.fn().mockRejectedValue(failure) })),
+    };
+    const media = {
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+    const rawDb = makeRawDb();
+    const service = new EventService(db as never, rawDb as never, media as never, {
+      getEventById: vi.fn(),
+      getUsername: vi.fn().mockResolvedValue(null),
+      writeAuditLog: vi.fn().mockResolvedValue(undefined),
+      publishEntityChanged: vi.fn().mockResolvedValue(undefined),
+      createId: () => "evt-create-failure",
+      createImageKey: () => "events/evt-create-failure/images/new.png",
+    }, stubTemplateDeps);
+
+    await expect(service.createEvent(
+      "mod-1",
+      {
+        type: "social",
+        title: "Guild Run",
+        start_at: "2026-03-20T19:00:00.000Z",
+        attachments: [],
+      },
+      [new File(["image"], "new.png", { type: "image/png" })],
+    )).rejects.toBe(failure);
+
+    expect(media.delete).toHaveBeenCalledWith("events/evt-create-failure/images/new.png");
+    expect(rawDb.prepare).toHaveBeenCalledWith("DELETE FROM events WHERE id = ?1");
+    expect(rawDb.prepare).toHaveBeenCalledWith(
+      "DELETE FROM audit_log WHERE entity_type = ?1 AND entity_id = ?2",
+    );
+  });
+
   it("updates event auto-archive settings", async () => {
     const updateSet = vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) }));
     const db = {
@@ -168,7 +208,10 @@ describe("worker EventService", () => {
       update: vi.fn(() => ({ set: updateSet })),
       delete: vi.fn(),
     };
-    const media = { put: vi.fn().mockResolvedValue(undefined) };
+    const media = {
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
     const writeAuditLog = vi.fn().mockResolvedValue(undefined);
     const rawDb = makeRawDb();
     const service = new EventService(db as never, rawDb as never, media as never, {
@@ -200,6 +243,70 @@ describe("worker EventService", () => {
         action: "upload_images",
       }),
     );
+  });
+
+  it("removes uploaded event media and restores attachments when the update fails", async () => {
+    const failure = new Error("event update failed");
+    const updateWhere = vi.fn().mockRejectedValue(failure);
+    const db = {
+      update: vi.fn(() => ({ set: vi.fn(() => ({ where: updateWhere })) })),
+    };
+    const media = {
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+    const rawDb = makeRawDb();
+    const service = new EventService(db as never, rawDb as never, media as never, {
+      getEventById: vi.fn(),
+      getUsername: vi.fn().mockResolvedValue(null),
+      writeAuditLog: vi.fn().mockResolvedValue(undefined),
+      publishEntityChanged: vi.fn().mockResolvedValue(undefined),
+      createImageKey: () => "events/evt-1/images/new.png",
+    }, stubTemplateDeps);
+
+    await expect(service.uploadEventImages(
+      "mod-1",
+      "evt-1",
+      createEventRow({ attachments: JSON.stringify(["events/existing.png"]) }),
+      [new File(["image"], "new.png", { type: "image/png" })],
+    )).rejects.toBe(failure);
+
+    expect(media.delete).toHaveBeenCalledWith("events/evt-1/images/new.png");
+    expect(rawDb.prepare).toHaveBeenCalledWith(
+      "UPDATE events SET attachments = ?1, updated_at = ?2 WHERE id = ?3",
+    );
+  });
+
+  it("removes all attempted event media keys when a later R2 write fails", async () => {
+    const failure = new Error("second R2 upload failed");
+    const media = {
+      put: vi.fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(failure),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+    let keyIndex = 0;
+    const service = new EventService({} as never, makeRawDb() as never, media as never, {
+      getEventById: vi.fn(),
+      getUsername: vi.fn().mockResolvedValue(null),
+      writeAuditLog: vi.fn().mockResolvedValue(undefined),
+      publishEntityChanged: vi.fn().mockResolvedValue(undefined),
+      createImageKey: () => `events/evt-1/images/${++keyIndex}.png`,
+    }, stubTemplateDeps);
+
+    await expect(service.uploadEventImages(
+      "mod-1",
+      "evt-1",
+      createEventRow(),
+      [
+        new File(["one"], "one.png", { type: "image/png" }),
+        new File(["two"], "two.png", { type: "image/png" }),
+      ],
+    )).rejects.toBe(failure);
+
+    expect(media.delete).toHaveBeenCalledTimes(2);
+    expect(media.delete).toHaveBeenNthCalledWith(1, "events/evt-1/images/1.png");
+    expect(media.delete).toHaveBeenNthCalledWith(2, "events/evt-1/images/2.png");
   });
 
   it("adds multiple participants through one batched service operation", async () => {

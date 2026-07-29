@@ -3,6 +3,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@portal/api/query-keys";
+import { SectionHeader } from "@portal/components/shared/SectionHeader";
 import { fetchGameData, fetchGameDataRotation } from "@portal/services/GameDataService";
 import { useEquipmentCalcStore, useActiveLoadout } from "@portal/stores/equipmentCalcStore";
 import type { GameData, EquippedSlot } from "@guild/shared/calculator/types";
@@ -334,9 +335,7 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
             <div className="ecm__main">
               <div className="ecm__workspace">
                 <section className="ecm__workspace__board">
-                  <div className="ecm__section-header">
-                    <Text size="xs" fw={700} c="dimmed" tt="uppercase">{t("workspace.equipment")}</Text>
-                  </div>
+                  <SectionHeader className="ecm__section-header" title={t("workspace.equipment")} />
                   <div className="ecm__paperdoll">
                     <div className="ecm__paperdoll-row">
                       {(["weapon1", "weapon2", "head", "chest"] as EquippedSlot[]).map((slot) => {
@@ -374,9 +373,7 @@ export function EquipmentCalcModal({ opened, onClose }: EquipmentCalcModalProps)
                 </section>
 
                 <aside className="ecm__workspace__insights">
-                  <div className="ecm__section-header">
-                    <Text size="xs" fw={700} c="dimmed" tt="uppercase">{t("workspace.statsOverview")}</Text>
-                  </div>
+                  <SectionHeader className="ecm__section-header" title={t("workspace.statsOverview")} />
                   {rotationError ? (
                     <Alert color="red" title={loadErrorTitle}>{rotationErrorBody}</Alert>
                   ) : (

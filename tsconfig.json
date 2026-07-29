@@ -30,8 +30,7 @@
       "@hookform/resolvers/*": ["./node_modules/@hookform/resolvers/*"],
       "zod": ["./node_modules/zod"],
       "dompurify": ["./node_modules/dompurify"],
-      "lowlight": ["./node_modules/lowlight"],
-      "cmdk": ["./node_modules/cmdk"]
+      "lowlight": ["./node_modules/lowlight"]
     },
     "noEmit": true
   },

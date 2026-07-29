@@ -3,6 +3,7 @@
   "subtitle": "系统管理",
   "forbidden": "你需要 moderator 权限才能访问该页面。",
   "adminOnly": "该区域仅 admin 可用。",
+  "navigation.section": "管理区域",
   "tab.member": "成员管理",
   "tab.invite": "邀请链接",
   "tab.audit": "审计日志",

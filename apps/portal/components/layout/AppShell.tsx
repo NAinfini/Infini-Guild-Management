@@ -1,15 +1,13 @@
 import { type PushMessage } from "@guild/shared";
 import type { PushEntityType } from "@guild/shared/constants/push-hints";
-import { ScrollProgress } from "@portal/components/effects";
 import { Alert, AppShell as MantineAppShell } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import i18n from "i18next";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { canAccessAdmin, userCanAccessAdmin } from "../../utils/permissions";
-import { PageHeaderContext } from "../../context/PageHeaderContext";
 import { ViewingAsProvider } from "../../context/ViewingAsContext";
 import { useNotificationPresentation } from "../../hooks/useNotificationPresentation";
 import { useNotificationSync } from "../../hooks/useNotificationSync";
@@ -26,32 +24,18 @@ import { OverlayRegistrar } from "../shared/OverlayRegistrar";
 import { BottomNav } from "./BottomNav";
 import {
   AppSidebar,
-  NAV_ITEMS,
   SIDEBAR_WIDTH,
   SIDEBAR_COLLAPSED_WIDTH,
   MOBILE_BREAKPOINT_PX,
   HEADER_COMPACT_BREAKPOINT_PX,
 } from "./AppSidebar";
-import type { NavItem } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
+import {
+  findPortalRoute,
+  PORTAL_ROUTES,
+  type PortalRouteMetadata,
+} from "./route-metadata";
 import "./AppShell.css";
-
-function isPathActive(pathname: string, target: string): boolean {
-  if (target === "/") {
-    return pathname === "/";
-  }
-
-  return pathname === target || pathname.startsWith(`${target}/`);
-}
-
-function isWikiPath(pathname: string): boolean {
-  return pathname === "/wiki" || pathname.startsWith("/wiki/");
-}
-
-const HEADER_TITLE_OVERRIDES: Record<string, string> = {
-  "/profile": "nav.profile",
-  "/settings": "nav.settings",
-};
 
 const ENTITY_QUERY_KEYS = {
   announcement: [queryKeys.announcements.all],
@@ -63,28 +47,6 @@ const ENTITY_QUERY_KEYS = {
   member_profile: [queryKeys.users.all, queryKeys.myProfile.all],
   member_badge: [],
 } satisfies Record<PushEntityType, readonly (readonly string[])[]>;
-
-function AnimatedOutlet({ pathname, enabled }: { pathname: string; enabled: boolean }) {
-  const [animKey, setAnimKey] = useState(0);
-  const prevPathRef = useRef(pathname);
-
-  const useFallbackAnim = enabled;
-
-  useEffect(() => {
-    if (pathname !== prevPathRef.current) {
-      prevPathRef.current = pathname;
-      if (useFallbackAnim) {
-        setAnimKey((k) => k + 1);
-      }
-    }
-  }, [pathname, useFallbackAnim]);
-
-  return (
-    <div key={useFallbackAnim ? animKey : 0} className={useFallbackAnim ? "app-route-slide-in" : undefined}>
-      <Outlet />
-    </div>
-  );
-}
 
 function normalizeViewingAs(role: string | null, isExternalView: boolean): string {
   if (isExternalView) {
@@ -129,19 +91,15 @@ export function AppShell() {
   const { markFeatureAsRead, markPushAsRead, markAllPushAsRead, clearPushHistory } = useNotificationStore.getState();
   const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [permissionBanner, setPermissionBanner] = useState<string | null>(null);
-  const [headerActions, setHeaderActions] = useState<ReactNode>(null);
   const [viewingAs, setViewingAs] = useState<string>(() =>
     normalizeViewingAs(user?.role ?? null, isExternalView),
   );
-  const previousPathnameRef = useRef(pathname);
   const scrollContainerRef = useRef<HTMLElement>(null);
-  const isWikiInternalNavigation = isWikiPath(previousPathnameRef.current) && isWikiPath(pathname);
-  const shouldAnimateRoute = !hideNavigation && true && !isWikiInternalNavigation;
-  const pageHeaderContextValue = useMemo(() => ({ setActions: setHeaderActions }), []);
 
   useEffect(() => {
     void i18n.changeLanguage(locale);
     document.documentElement.dataset.locale = locale;
+    document.documentElement.lang = locale;
   }, [locale]);
 
   useEffect(() => {
@@ -149,11 +107,6 @@ export function AppShell() {
   }, [isExternalView, user?.role]);
 
   useEffect(() => {
-    const previousPathname = previousPathnameRef.current;
-    previousPathnameRef.current = pathname;
-    if (pathname !== "/" || previousPathname === "/") {
-      return;
-    }
     const frameId = window.requestAnimationFrame(() => {
       if (scrollContainerRef.current) {
         scrollContainerRef.current.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -264,7 +217,7 @@ export function AppShell() {
 
   const visibleNavItems = useMemo(
     () =>
-      NAV_ITEMS.filter((item) => {
+      PORTAL_ROUTES.filter((item) => {
         if (item.featureFlag && !features[item.featureFlag]) {
           return false;
         }
@@ -287,11 +240,14 @@ export function AppShell() {
   );
 
   const mobileMainItems = useMemo(
-    () => visibleNavItems.filter((item) => ["/", "/events", "/guild-war", "/roster"].includes(item.to)),
+    () =>
+      visibleNavItems
+        .filter((item) => item.mobilePrimary)
+        .sort((left, right) => (left.mobilePrimary ?? 0) - (right.mobilePrimary ?? 0)),
     [visibleNavItems],
   );
   const mobileMoreItems = useMemo(
-    () => visibleNavItems.filter((item) => !["/", "/events", "/guild-war", "/roster"].includes(item.to)),
+    () => visibleNavItems.filter((item) => !item.mobilePrimary),
     [visibleNavItems],
   );
 
@@ -304,7 +260,7 @@ export function AppShell() {
   );
 
   const navHasNew = useCallback(
-    (item: NavItem) =>
+    (item: PortalRouteMetadata) =>
       item.feature === "announcements"
         ? notificationState.announcements
         : item.feature === "members"
@@ -361,21 +317,12 @@ export function AppShell() {
     [markFeatureAsRead, markPushAsRead, navigate],
   );
 
-  const { selectedNavKey, activePageTitle } = useMemo(() => {
-    const matches = visibleNavItems
-      .filter((item) => isPathActive(pathname, item.to))
-      .sort((left, right) => right.to.length - left.to.length);
-    const active = matches[0];
-    const overrideKey = HEADER_TITLE_OVERRIDES[pathname];
-    return {
-      selectedNavKey: active?.to ?? "",
-      activePageTitle: t(overrideKey ?? active?.labelKey ?? "nav.dashboard"),
-    };
-  }, [pathname, t, visibleNavItems]);
+  const activeRoute = useMemo(() => findPortalRoute(pathname), [pathname]);
+  const selectedNavKey = activeRoute.to;
+  const activePageTitle = t(activeRoute.labelKey);
 
   if (hideNavigation) {
     return (
-      <PageHeaderContext.Provider value={pageHeaderContextValue}>
       <ViewingAsProvider value={viewingAs}>
         <div className="app-login-layout">
           <main className="app-login-content">
@@ -385,22 +332,19 @@ export function AppShell() {
           </main>
         </div>
       </ViewingAsProvider>
-      </PageHeaderContext.Provider>
     );
   }
 
   return (
-    <PageHeaderContext.Provider value={pageHeaderContextValue}>
     <ViewingAsProvider value={viewingAs}>
       <a href="#main-content" className="app-skip-link">{t("nav.skipToContent", "Skip to content")}</a>
       <MantineAppShell
         className="app-shell-root"
         layout="alt"
-        header={{ height: isMobile ? 56 : 64 }}
+        header={{ height: 48 }}
         navbar={!isMobile ? { width: sidebarWidth, breakpoint: MOBILE_BREAKPOINT_PX } : undefined}
         padding={0}
       >
-        <ScrollProgress thicknessPx={3} zIndex={1000} container={scrollContainerRef} />
         <OverlayRegistrar />
         <AppErrorOverlay />
 
@@ -430,7 +374,6 @@ export function AppShell() {
           isMobile={isMobile}
           isHeaderCompact={isHeaderCompact}
           activePageTitle={activePageTitle}
-          headerActions={headerActions}
           user={user}
           pushHasUnread={pushHasUnread}
           notificationAnnouncementsHasNew={notificationFeatures.announcements.hasNew}
@@ -467,8 +410,8 @@ export function AppShell() {
                 {permissionBanner}
               </Alert>
             ) : null}
-            <div className="app-route-container">
-              <AnimatedOutlet pathname={pathname} enabled={shouldAnimateRoute} />
+            <div className="app-route-container" data-content-width={activeRoute.contentWidth}>
+              <Outlet />
             </div>
           </div>
         </MantineAppShell.Main>
@@ -493,6 +436,5 @@ export function AppShell() {
         ) : null}
       </MantineAppShell>
     </ViewingAsProvider>
-    </PageHeaderContext.Provider>
   );
 }

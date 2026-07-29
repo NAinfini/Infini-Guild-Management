@@ -1,11 +1,11 @@
-import { ActionIcon, Badge, Button, Group, HoverCard, NumberInput, Select, Skeleton, Stack, Text, TextInput, ThemeIcon, Alert } from "@mantine/core";
+import { ActionIcon, Badge, Button, Group, HoverCard, NumberInput, Paper, Select, Skeleton, Stack, Text, TextInput, ThemeIcon, Alert } from "@mantine/core";
 import { CalendarOffIcon } from "@portal/components/icons";
-import { InfiniTable, useReactTable } from "@portal/components/shared/InfiniTable";
+import { useReactTable } from "@tanstack/react-table";
+import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
 import { useTranslation } from "react-i18next";
 import { resolveResultTagColor } from "@portal/utils/guild-war";
 import type { HistorySummaryRow } from "@portal/types/guild-war";
 import { EmptyState } from "../../shared/EmptyState";
-import { PortalCard } from "../../shared/PortalCard";
 
 type WarHistoryTableProps = {
   historyDateFrom: string;
@@ -122,8 +122,8 @@ export function WarHistoryTable({
       {historyError ? <Alert color="red">{loadErrorMessage}</Alert> : null}
 
       {!historyLoading && !historyError ? (
-        <PortalCard interactive={false} className="war-history-list-card">
-          <div style={{ padding: "1.2rem" }}>
+        <Paper withBorder radius="md" p="var(--card-padding)" className="war-history-list-card">
+          <div>
             <Stack gap={8}>
               <Group justify="space-between">
                 <Group gap={8}>
@@ -146,7 +146,7 @@ export function WarHistoryTable({
               </Group>
               <div className="war-history-list-table-wrap">
                 {filteredHistoryRows.length > 0 ? (
-                  <InfiniTable
+                  <DataTableAdapter
                     table={summaryTable}
                     virtualize
                     maxHeight="65vh"
@@ -236,7 +236,7 @@ export function WarHistoryTable({
               ) : null}
             </Stack>
           </div>
-        </PortalCard>
+        </Paper>
       ) : null}
     </>
   );

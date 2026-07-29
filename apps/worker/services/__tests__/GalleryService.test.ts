@@ -54,6 +54,31 @@ describe("GalleryService", () => {
     expect(batchCall).toBeDefined();
   });
 
+  it("removes the R2 object and attempted UUID when the gallery row insert fails", async () => {
+    const failure = new Error("gallery insert failed");
+    const db = {
+      insert: vi.fn(() => ({ values: vi.fn().mockRejectedValue(failure) })),
+    };
+    const deps = createDeps();
+    const media = {
+      put: vi.fn().mockResolvedValue({}),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = new GalleryService(db as never, { ...deps, media: media as unknown as R2Bucket });
+
+    await expect(service.uploadImages(
+      "actor-1",
+      [{ data: new ArrayBuffer(1), contentType: "image/png", name: "img.png" }],
+      [null],
+    )).rejects.toBe(failure);
+
+    expect(media.delete).toHaveBeenCalledTimes(1);
+    expect(deps.rawDb.prepare).toHaveBeenCalledWith("DELETE FROM gallery_items WHERE id = ?1");
+    expect(deps.rawDb.prepare).toHaveBeenCalledWith(
+      "DELETE FROM media_references WHERE entity_type = ?1 AND entity_id = ?2",
+    );
+  });
+
   it("removes media references after deleting an image item", async () => {
     const { db } = createDeleteDb({ id: "item-1", type: "image", url: "gallery/images/item-1", caption: null, uploadedBy: "u-1" });
     const deps = createDeps();

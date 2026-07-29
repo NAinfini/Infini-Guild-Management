@@ -70,7 +70,10 @@ function createDeps(firstRow: unknown = TX_ROW) {
     rawDb,
     deps: {
       rawDb: rawDb as never,
-      media: { put: vi.fn().mockResolvedValue({}) } as never,
+      media: {
+        put: vi.fn().mockResolvedValue({}),
+        delete: vi.fn().mockResolvedValue(undefined),
+      } as never,
       writeAuditLog: vi.fn().mockResolvedValue(undefined),
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),
       getStoragePolicy: vi.fn().mockResolvedValue({ images_per_item: 5 }),
@@ -544,6 +547,31 @@ describe("StorageService.applyBatchTransactions", () => {
     expect(deps.publishEntityChanged).toHaveBeenCalledTimes(1);
   });
 
+  it("registers the idempotency marker audit in the same system-test batch", async () => {
+    const { deps, rawDb } = createBatchDeps([[batchRow("item-1", 2)]]);
+    const systemTestDeps = { ...deps, systemTestRunId: "run-1" };
+    const service = new StorageService({} as never, systemTestDeps);
+
+    const result = await service.applyBatchTransactions(manager(), {
+      idempotency_key: "batch-key-123456",
+      type: "intake",
+      entries: [{ item_id: "item-1", quantity: 2 }],
+    });
+
+    expect(result).toMatchObject({ ok: true, data: { replayed: false } });
+    const batch = rawDb.batch.mock.calls[0]?.[0] as Array<{ sql: string; binds: unknown[] }>;
+    expect(batch).toHaveLength(4);
+    expect(batch[0]?.sql).toContain("INSERT INTO audit_log");
+    expect(batch[1]?.sql).toContain("INSERT INTO system_test_artifacts");
+    expect(batch[1]?.binds).toEqual([
+      "run-1",
+      expect.stringMatching(/^storage-batch-/),
+    ]);
+    expect(batch[1]?.sql).toContain("SELECT id FROM system_test_runs");
+    expect(batch[2]?.sql).toContain("UPDATE storage_items");
+    expect(batch[3]?.sql).toContain("INSERT INTO storage_transactions");
+  });
+
   it("replays the stored response without a second batch", async () => {
     const request = {
       idempotency_key: "batch-key-123456",
@@ -759,5 +787,29 @@ describe("StorageService.uploadImages", () => {
     ]);
 
     expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+  });
+
+  it("removes every attempted R2 key and image UUID when a later upload fails", async () => {
+    const failure = new Error("second R2 upload failed");
+    const { deps, rawDb } = createDeps();
+    const put = vi.fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(failure);
+    const deleteObject = vi.fn().mockResolvedValue(undefined);
+    deps.media = { put, delete: deleteObject } as never;
+    const insertValues = vi.fn().mockResolvedValue(undefined);
+    const service = new StorageService({
+      select: selectQueue([[ITEM], []]),
+      insert: vi.fn(() => ({ values: insertValues })),
+    } as never, deps);
+
+    await expect(service.uploadImages(manager().id, "item-1", [
+      { data: new ArrayBuffer(1), contentType: "image/png", name: "one.png" },
+      { data: new ArrayBuffer(1), contentType: "image/png", name: "two.png" },
+    ])).rejects.toBe(failure);
+
+    expect(deleteObject).toHaveBeenCalledTimes(2);
+    expect(rawDb.prepare).toHaveBeenCalledWith("DELETE FROM storage_item_images WHERE id = ?1");
+    expect(rawDb.batch).toHaveBeenCalled();
   });
 });

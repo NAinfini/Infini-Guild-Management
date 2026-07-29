@@ -1,10 +1,9 @@
 import type { WikiArticle, WikiRevisionListItem } from "@guild/shared";
-import { Badge, Group, Loader, Modal, ScrollArea, SegmentedControl, Stack, Text, UnstyledButton } from "@mantine/core";
+import { Badge, Button, Group, Loader, Modal, ScrollArea, SegmentedControl, Stack, Text, UnstyledButton } from "@mantine/core";
 import { format } from "date-fns";
 import { useTranslation } from "react-i18next";
 import { useWikiHistory, type WikiHistoryDiffBlock } from "../../../hooks/useWikiHistory";
-import { useConfirmDialog } from "../../shared/ConfirmDialog";
-import { DepthButton } from "../../shared/DepthButton";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { EmptyState } from "../../shared/EmptyState";
 
 const CONTEXT_PREVIEW_LINES = 2;
@@ -136,14 +135,14 @@ export function WikiHistoryModal({ opened, onClose, article }: WikiHistoryModalP
                 size="xs"
               />
               {history.selectedRevision !== null ? (
-                <DepthButton
-                  type="secondary"
+                <Button
+                  variant="default"
                   size="sm"
                   disabled={history.isIdenticalToCurrent || history.isRestoring}
                   onClick={() => handleRestore(history.selectedRevision!)}
                 >
                   {history.isRestoring ? t("history.restoring") : t("history.restore")}
-                </DepthButton>
+                </Button>
               ) : null}
             </Group>
 

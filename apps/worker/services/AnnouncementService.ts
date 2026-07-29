@@ -10,6 +10,7 @@ import { announcements } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, likeEscaped } from "./helpers";
 import { buildReplaceMediaRefsStatements, replaceMediaRefs, deleteMediaRefs, extractAnnouncementImageNodeKeys } from "./media-references";
+import { rethrowAfterUploadFailure } from "./media-upload-compensation";
 import { verifyAnnouncementImageStagingToken } from "./announcement-image-staging";
 
 // --- Types ---
@@ -205,7 +206,16 @@ export class AnnouncementService {
     if (data.expires_at !== undefined) patch.expiresAt = data.expires_at;
     if (data.archived_at !== undefined) patch.archivedAt = data.archived_at;
 
-    await this.db.update(announcements).set(patch).where(eq(announcements.id, announcementId));
+    const updateWhere = conditionalEtag
+      ? and(eq(announcements.id, announcementId), eq(announcements.updatedAt, existing.updatedAt))
+      : eq(announcements.id, announcementId);
+    const updateQuery = this.db.update(announcements).set(patch).where(updateWhere);
+    if (conditionalEtag) {
+      const updatedRows = await updateQuery.returning({ id: announcements.id });
+      if (updatedRows.length === 0) return err("CONFLICT", "Announcement has been modified by another user");
+    } else {
+      await updateQuery;
+    }
     const updated = await this.getById(announcementId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated announcement");
 
@@ -245,15 +255,23 @@ export class AnnouncementService {
     const existing = await this.getById(announcementId);
     if (!existing) return err("NOT_FOUND", "Announcement not found");
     const keys: string[] = [];
-    for (const file of files) {
-      // No media_references entry here: keys are added when the body_json referencing
-      // them is saved (replaceMediaRefs). Unsaved uploads are orphans caught by the
-      // media-orphan-cleanup cron's 48 h grace period.
-      const key = `announcement/${announcementId}/images/${Date.now()}_${nanoid()}`;
-      await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
-      keys.push(key);
+    try {
+      for (const file of files) {
+        // No media_references entry here: keys are added when the body_json referencing
+        // them is saved (replaceMediaRefs). Unsaved uploads are orphans caught by the
+        // media-orphan-cleanup cron's 48 h grace period.
+        const key = `announcement/${announcementId}/images/${Date.now()}_${nanoid()}`;
+        keys.push(key);
+        await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
+      }
+      await this.deps.writeAuditLog({ entityType: "announcement", action: "upload_images", actorId, entityId: announcementId, diffTitle: existing.title ?? null, detailText: JSON.stringify({ keys }) });
+    } catch (error) {
+      await rethrowAfterUploadFailure(
+        error,
+        (key) => this.deps.media.delete(key),
+        keys,
+      );
     }
-    await this.deps.writeAuditLog({ entityType: "announcement", action: "upload_images", actorId, entityId: announcementId, diffTitle: existing.title ?? null, detailText: JSON.stringify({ keys }) });
     return ok({ keys });
   }
 }

@@ -1,5 +1,5 @@
 .event-detail-modal__content {
-  border-radius: 14px;
+  border-radius: var(--radius-overlay);
   overflow: hidden;
 }
 
@@ -25,7 +25,7 @@
 .event-detail-modal__meta-card,
 .event-detail-modal__section {
   border: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
-  border-radius: 10px;
+  border-radius: var(--radius-surface);
   background: color-mix(in srgb, var(--surface-base) 88%, transparent);
 }
 
@@ -43,11 +43,11 @@
 }
 
 .event-detail-modal__meta-card--type svg {
-  color: var(--accent-text);
+  color: var(--brand-text);
 }
 
 .event-detail-modal__meta-card--time svg {
-  color: var(--accent-text);
+  color: var(--brand-text);
 }
 
 .event-detail-modal__section {
@@ -71,19 +71,14 @@
   flex-shrink: 0;
   padding: 4px 10px;
   border: 1px solid color-mix(in srgb, var(--mantine-color-teal-7) 18%, transparent);
-  border-radius: 999px;
+  border-radius: var(--shape-pill);
   color: var(--mantine-color-teal-8);
   background: color-mix(in srgb, var(--mantine-color-teal-0) 72%, var(--surface-base));
   font-variant-numeric: tabular-nums;
 }
 
-.event-detail-modal__section--members {
-  border-color: color-mix(in srgb, var(--mantine-color-green-6) 24%, transparent);
-  background: color-mix(in srgb, var(--mantine-color-green-0) 56%, var(--surface-base));
-}
-
 .event-detail-modal__section--members > .mantine-Group-root:first-child svg {
-  color: var(--mantine-color-green-7);
+  color: var(--brand-text);
 }
 
 .event-detail-modal__poll-result-board {
@@ -97,7 +92,7 @@
   min-width: 0;
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  border-radius: 10px;
+  border-radius: var(--radius-surface);
   background: color-mix(in srgb, var(--surface-base) 92%, transparent);
   cursor: pointer;
   outline: none;
@@ -160,7 +155,7 @@
   height: 22px;
   flex-shrink: 0;
   border: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
-  border-radius: 999px;
+  border-radius: var(--shape-pill);
   /* 选中态背景固定吃 var(--mantine-color-teal-6)（不随 [data-theme] 变化），压在
    * 它上面的勾选图标也该保持不变，用 Mantine 自带的白而不是会分模式变化的
    * --accent-on-fill（同 EventCardsView.css 的 raffle 徽章文字先例）。 */
@@ -217,7 +212,7 @@
   min-height: 32px;
   padding: 2px 9px 2px 4px;
   border: 1px solid color-mix(in srgb, var(--text-primary) 7%, transparent);
-  border-radius: 999px;
+  border-radius: var(--shape-pill);
   background: color-mix(in srgb, var(--surface-base) 88%, transparent);
 }
 
@@ -232,7 +227,7 @@
   align-items: center;
   min-height: 32px;
   padding: 0 11px;
-  border-radius: 999px;
+  border-radius: var(--shape-pill);
   background: color-mix(in srgb, var(--text-primary) 7%, transparent);
 }
 
@@ -265,7 +260,7 @@
 .event-detail-modal__member-row {
   padding: 9px 10px;
   border: 1px solid color-mix(in srgb, var(--text-primary) 7%, transparent);
-  border-radius: 9px;
+  border-radius: var(--radius-surface);
   background: color-mix(in srgb, var(--surface-base) 78%, transparent);
 }
 
@@ -275,41 +270,9 @@
 }
 
 /*
- * 下面四条 [data-theme="dark"] 覆盖处理的是同一个机制：这个文件里凡是压着
- * var(--mantine-color-teal-*) / var(--mantine-color-green-*) 的规则，色值定义
- * 在 Mantine 的 :root 里，只按色相分档，不随 [data-theme] 重新解析 —— teal-0 /
- * green-0 永远是近白，深色模式不会自动把它们换成近黑。这跟 --surface-base /
- * --text-primary 这类会跟着 [data-theme] 走的 token 不一样：同一条规则里混用
- * 了「会变」和「不会变」两种色阶，就必须分模式各写一份，不能整块删掉了事——
- * 这正是 Task 7 在 .event-detail-modal__section--poll/--members 与
- * .poll-total 三处犯下的错（深色模式底色回落到浅色近白阶，正文对比度只剩
- * 1.21–1.86:1，见 task-7-report.md C1）。--poll-result-row--selected 这一条
- * 当初是三处里唯一被正确保留的，现在把同一个判断补齐到另外三处，而不是只
- * 保留这一处。
- *
- * 四处深色覆盖都用「同名 Mantine 深阶（-9/-6/-3）替换浅色阶（-0/-7/-8），
- * 混合权重照抄浅色模式原有的百分比」的写法：权重数字不变，只换方向对应的
- * 色阶。**这不等于视觉「浓淡」与浅色模式对称**——teal-0（L=0.905）距浅色表面
- * （L=0.945）只有 ΔL 0.040，teal-9（L=0.166）距深色表面（L=0.008）却有
- * ΔL 0.158，约 4 倍：同一个 28% 权重在深色模式产生的感知步长是浅色模式的
- * 约 4 倍。实测行亮度阶梯（默认/悬停/选中）：浅色 0.9448/0.9420/0.9366，
- * 深色 0.0091/0.0257/0.0207。两个后果：(1) 浅色模式的悬停反馈几乎不存在
- * （ΔL 仅 0.0028）；(2)「悬停一个已选中的行」两个模式含义相反——浅色
- * 44%→28% 是变淡，深色 22%→28% 是变浓。这里保留权重不变是刻意的（不越界
- * 重设计百分比），浅色悬停反馈过弱是已登记的既存缺陷，留给后续任务，这次
- * 只更正上面这套「对称」的说法。逐处仍验算过 WCAG 对比度（数值见
- * task-7-report.md 修复轮次 1）：
- *   - 两处分区背景（teal-9/green-9 58%/56% 混 --surface-base）：正文
- *     7.39–7.85:1，远过 4.5:1。
- *   - poll-total 背景（teal-9 72% 混 --surface-base）+ 文字：teal-8 在这个
- *     新底色上只有 1.89:1（两者都偏暗，几乎融在一起），换成更亮的 teal-3
- *     后是 4.82:1，过 4.5:1。
- *   - 两处分区图标：teal-7 / green-7 在新底色上分别是 2.94:1 / 3.14:1，
- *     不过非文字 UI 的 3:1 门槛；各自换深一档更亮的 teal-6 / green-6 后是
- *     3.59:1 / 3.65:1，过。
- *   - 三处边框色（:58/:73/:81）混的是 transparent 而不是某个会变的表面
- *     token，翻译成任何模式下都是同一个固定 Mantine 色阶的低透明度描边，
- *     深浅两模式本来就一致，不受这次修复影响，未改动。
+ * Mantine 的 teal 色阶不会随站点主题反转。投票区保留轻量领域色，因此深色
+ * 模式要显式换到深阶背景和亮阶前景；成员管理区不是状态提示，始终继承中性
+ * section 表面，不需要对应的主题覆盖。
  */
 [data-theme="dark"] .event-detail-modal__section--poll {
   background: color-mix(in srgb, var(--mantine-color-teal-9) 58%, var(--surface-base));
@@ -322,14 +285,6 @@
 [data-theme="dark"] .event-detail-modal__poll-total {
   background: color-mix(in srgb, var(--mantine-color-teal-9) 72%, var(--surface-base));
   color: var(--mantine-color-teal-3);
-}
-
-[data-theme="dark"] .event-detail-modal__section--members {
-  background: color-mix(in srgb, var(--mantine-color-green-9) 56%, var(--surface-base));
-}
-
-[data-theme="dark"] .event-detail-modal__section--members > .mantine-Group-root:first-child svg {
-  color: var(--mantine-color-green-6);
 }
 
 /*

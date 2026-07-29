@@ -1,5 +1,5 @@
 import { EVENT_TYPES, type Event } from "@guild/shared";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useCallback, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";

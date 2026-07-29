@@ -3,10 +3,10 @@
 .api-console {
   display: flex;
   flex-direction: column;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   /* --surface-base 混入一点 --text-primary，深浅两模式各自往「更深/更浅一点」
-     偏，不需要额外的 .dark 分支（task-7-addendum.md E 节）。 */
+     偏，不需要额外的 .dark 分支（the token-layer contract E 节）。 */
   background: color-mix(in srgb, var(--surface-base) 97%, var(--text-primary));
   overflow: hidden;
 }
@@ -28,7 +28,7 @@
    单个哈希类上（如 .m_8fb7ebe7 { ... }），没有嵌套选择器，特异性顶多
    (0,1,0)，(0,1,1) 稳赢，不必靠源码顺序或感叹号优先级。12px 恰好落在
    --space-md / --text-meta 上，直接替换；5px、6px 不在标度上，保留字面量，
-   不强行吸附（task-7-addendum.md L 节）。 */
+   不强行吸附（the token-layer contract L 节）。 */
 .api-console__header button {
   padding: 5px var(--space-md);
   font-size: var(--text-meta);
@@ -83,9 +83,8 @@
   flex-shrink: 0;
 }
 
-/* 0x44 = 68/255 ≈ 26.67%，四舍五入取整；0x55 同理见下方 status-dot。 */
-.api-console__stat-dot--pass { background: var(--status-success); box-shadow: 0 0 4px color-mix(in srgb, var(--status-success) 27%, transparent); }
-.api-console__stat-dot--fail { background: var(--status-danger); box-shadow: 0 0 4px color-mix(in srgb, var(--status-danger) 27%, transparent); }
+.api-console__stat-dot--pass { background: var(--status-success); }
+.api-console__stat-dot--fail { background: var(--status-danger); }
 
 /* ── Global Progress Track ── */
 
@@ -98,20 +97,12 @@
 
 .api-console__progress-fill {
   height: 100%;
-  transition: width 400ms cubic-bezier(0.4, 0, 0.2, 1);
-  background: linear-gradient(90deg, var(--accent-fill), var(--status-success));
+  background: var(--status-success);
 }
 
 /* 「进行中」态用蓝色，语义上是 info（进度尚未有结论），不是 success/warning/danger 三态之一。 */
 .api-console__progress-fill--running {
-  background: linear-gradient(90deg, var(--accent-fill), var(--status-info));
-  animation: apiProgressShimmer 1.5s ease-in-out infinite;
-}
-
-@keyframes apiProgressShimmer {
-  0% { opacity: 1; }
-  50% { opacity: 0.5; }
-  100% { opacity: 1; }
+  background: var(--status-info);
 }
 
 /* ── Category Accordion ── */
@@ -145,7 +136,7 @@
 }
 
 .api-cat__accent--running {
-  background: var(--accent-fill);
+  background: var(--brand-fill);
   animation: accentPulse 1.2s ease-in-out infinite;
 }
 
@@ -168,7 +159,7 @@
 }
 
 .api-cat__row:hover {
-  background: color-mix(in srgb, var(--accent-fill) 3%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 3%, transparent);
 }
 
 .api-cat__toggle {
@@ -200,7 +191,7 @@
 
 .api-cat__chevron--open {
   transform: rotate(90deg);
-  color: var(--accent-text);
+  color: var(--brand-text);
 }
 
 .api-cat__icon {
@@ -211,13 +202,13 @@
   height: 28px;
   border-radius: 6px;
   flex-shrink: 0;
-  background: color-mix(in srgb, var(--accent-fill) 8%, transparent);
-  color: var(--accent-text);
+  background: color-mix(in srgb, var(--brand-fill) 8%, transparent);
+  color: var(--brand-text);
   transition: background 200ms ease;
 }
 
 .api-cat__row:hover .api-cat__icon {
-  background: color-mix(in srgb, var(--accent-fill) 14%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 14%, transparent);
 }
 
 .api-cat__name {
@@ -263,10 +254,9 @@
   flex-shrink: 0;
 }
 
-/* 0x55 = 85/255 ≈ 33.33%，四舍五入取整。 */
-.api-cat__status-dot--pass { background: var(--status-success); box-shadow: 0 0 5px color-mix(in srgb, var(--status-success) 33%, transparent); }
-.api-cat__status-dot--fail { background: var(--status-danger); box-shadow: 0 0 5px color-mix(in srgb, var(--status-danger) 33%, transparent); }
-.api-cat__status-dot--partial { background: var(--status-warning); box-shadow: 0 0 5px color-mix(in srgb, var(--status-warning) 33%, transparent); }
+.api-cat__status-dot--pass { background: var(--status-success); }
+.api-cat__status-dot--fail { background: var(--status-danger); }
+.api-cat__status-dot--partial { background: var(--status-warning); }
 
 .api-cat__spacer {
   flex: 1;
@@ -287,7 +277,7 @@
   min-width: 44px;
   padding: 0;
   font-size: 11px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-control);
   line-height: 1;
 }
 
@@ -302,17 +292,17 @@
 
 .api-cat__progress-fill {
   height: 100%;
-  transition: width 400ms cubic-bezier(0.4, 0, 0.2, 1), background 400ms ease;
+  transition: background 400ms ease;
 }
 
 /* 三态穷举（pass/fail/pending），来自 AdminApiTestCategory.tsx 的
-   progressState()（task-8-addendum.md B 节类 2，Task 8 批 C 收敛）。
+   progressState()（the inline-style migration contract B 节类 2，Task 8 批 C 收敛）。
    RingProgress 的 color prop 另行用字面 var() 字符串消费同一状态，两处共用
    同一组 token，不再各自维护一份颜色，也不再需要运行期注入的 channel 变量。
    这三条是本文件里唯一给 .api-cat__progress-fill 设 background 的规则。 */
 .api-cat__progress-fill--pass { background: var(--status-success); }
 .api-cat__progress-fill--fail { background: var(--status-danger); }
-.api-cat__progress-fill--pending { background: var(--accent-fill); }
+.api-cat__progress-fill--pending { background: var(--brand-fill); }
 
 /* ── Endpoint List (expanded) ── */
 
@@ -342,7 +332,7 @@
 }
 
 .api-ep:hover {
-  background: color-mix(in srgb, var(--accent-fill) 3%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 3%, transparent);
 }
 
 .api-ep__method {
@@ -360,7 +350,7 @@
 
 /* --status-warning 本身分模式取深/亮两档（浅色 deep、深色 bright），
    PATCH 的文字色不再需要 .dark 分支单独抬亮。 */
-.api-ep__method--GET { background: color-mix(in srgb, var(--accent-fill) 10%, transparent); color: var(--accent-text); }
+.api-ep__method--GET { background: color-mix(in srgb, var(--brand-fill) 10%, transparent); color: var(--brand-text); }
 .api-ep__method--POST { background: color-mix(in srgb, var(--status-success) 10%, transparent); color: var(--status-success); }
 .api-ep__method--PATCH { background: color-mix(in srgb, var(--status-warning) 12%, transparent); color: var(--status-warning); }
 .api-ep__method--DELETE { background: color-mix(in srgb, var(--status-danger) 10%, transparent); color: var(--status-danger); }
@@ -411,8 +401,8 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 1.5px solid color-mix(in srgb, var(--accent-fill) 25%, transparent);
-  border-top-color: var(--accent-fill);
+  border: 1.5px solid color-mix(in srgb, var(--brand-fill) 25%, transparent);
+  border-top-color: var(--brand-fill);
   animation: epSpin 0.6s linear infinite;
   flex-shrink: 0;
 }
@@ -424,7 +414,7 @@
 /* ── Debug Console ── */
 
 .api-debug {
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   background: color-mix(in srgb, var(--surface-base) 97%, var(--text-primary));
   overflow: hidden;
@@ -532,7 +522,7 @@
 }
 
 .api-debug__row-main:hover {
-  background: color-mix(in srgb, var(--accent-fill) 3%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 3%, transparent);
 }
 
 .api-debug__row-main--static {
@@ -562,7 +552,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.api-debug__row-method--GET { background: color-mix(in srgb, var(--accent-fill) 10%, transparent); color: var(--accent-text); }
+.api-debug__row-method--GET { background: color-mix(in srgb, var(--brand-fill) 10%, transparent); color: var(--brand-text); }
 .api-debug__row-method--POST { background: color-mix(in srgb, var(--status-success) 10%, transparent); color: var(--status-success); }
 .api-debug__row-method--PATCH { background: color-mix(in srgb, var(--status-warning) 12%, transparent); color: var(--status-warning); }
 .api-debug__row-method--DELETE { background: color-mix(in srgb, var(--status-danger) 10%, transparent); color: var(--status-danger); }
@@ -708,7 +698,7 @@
   }
   .api-ep__running {
     animation: none;
-    border-color: var(--accent-fill);
+    border-color: var(--brand-fill);
   }
   .api-cat__accent,
   .api-cat__progress-fill,

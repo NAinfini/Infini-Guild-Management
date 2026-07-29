@@ -1,13 +1,21 @@
 .member-card {
+  --member-card-radius: 16px;
   width: 100%;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--member-card-radius);
   background: var(--surface-base);
   color: inherit;
   text-align: left;
   cursor: pointer;
   box-shadow: none;
-  transition: transform var(--transition-smooth), box-shadow var(--transition-smooth), border-color var(--transition-smooth);
+  /*
+   * transform 刻意不在过渡列表里。倾斜与缩放由 MemberCard.tsx 的 useSpring
+   * 逐帧写内联 transform；只要这里还声明 transition: transform，每一帧的新值
+   * 都会再起一段 CSS 过渡，等于在弹簧外面又套一层缓动 —— 既多一层每帧的
+   * 合成开销，手感上也变成「跟不上光标」的拖沓。box-shadow 与 border-color
+   * 是纯 CSS 的悬停态，一次切换，留着。
+   */
+  transition: box-shadow var(--transition-smooth), border-color var(--transition-smooth);
 }
 
 /*
@@ -63,7 +71,10 @@
   position: relative;
   overflow: hidden;
   transform-origin: center center;
-  will-change: transform, box-shadow;
+  /* box-shadow 不是可合成属性，把它列进 will-change 只会让浏览器为每张卡
+   * 常驻一层「随时会重绘」的准备，17 张卡就是 17 层。transform 才是逐帧动的
+   * 那个。 */
+  will-change: transform;
   height: 100%;
 }
 
@@ -141,14 +152,14 @@
   position: relative;
   width: 100%; height: auto;
   aspect-ratio: 1 / 1;
-  margin-inline: auto; border-radius: var(--radius-lg); overflow: hidden;
+  margin-inline: auto; border-radius: var(--member-card-radius); overflow: hidden;
   border: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--surface-base) 88%, var(--text-primary) 12%);
   pointer-events: none;
 }
 
 .member-card__avatar,
-.member-card__avatar-fallback { width: 100%; height: 100%; object-fit: cover; pointer-events: none; border-radius: var(--radius-lg); }
+.member-card__avatar-fallback { width: 100%; height: 100%; object-fit: cover; pointer-events: none; border-radius: var(--member-card-radius); }
 
 .member-card__avatar { object-position: top center; }
 
@@ -186,7 +197,7 @@
 
 .member-card__pill {
   display: inline-flex; align-items: center; gap: 3px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--shape-pill);
   padding: 2px 7px; font-size: 12px; line-height: 1.4;
   font-weight: 600;
 }
@@ -222,7 +233,7 @@
   display: inline-flex;
   align-items: center;
   padding: 1px 6px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--shape-pill);
   font-size: 11px;
   line-height: 1.4;
   /* --badge-color 是管理员自选的任意色号，运行期由 MemberCard.tsx:24 的内联
@@ -289,7 +300,7 @@
   border: 2px solid var(--surface-base);
   /* 与模式无关的字面黑：这圈投影是给下面任意色号的 --role-color 描一圈固定
      轮廓，理由同上面 --role-color 本身注释——数据色，不随 [data-theme] 变化，
-     换成 --shadow-sm 会让投影强度随主题波动，反而跟框住的固定数据色不一致。 */
+     换成 --edge-top 会让投影强度随主题波动，反而跟框住的固定数据色不一致。 */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   background: var(--role-color);
 }

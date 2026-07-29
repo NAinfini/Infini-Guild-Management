@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { FloatingSaveBar } from "../shared/FloatingSaveBar";
+import { UnsavedChangesAffix } from "../shared/UnsavedChangesAffix";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -31,9 +31,9 @@ describe("MyProfilePage save flow", () => {
       "utf8",
     );
 
-    expect(pageSource.match(/<FloatingSaveBar/g)).toHaveLength(1);
-    expect(profileTabSource).not.toContain("<FloatingSaveBar");
-    expect(availabilityTabSource).not.toContain("<FloatingSaveBar");
+    expect(pageSource.match(/<UnsavedChangesAffix/g)).toHaveLength(1);
+    expect(profileTabSource).not.toContain("<UnsavedChangesAffix");
+    expect(availabilityTabSource).not.toContain("<UnsavedChangesAffix");
     expect(pageSource).toContain("profileQuery.isError && !profileQuery.data");
     expect(pageSource).toContain("profileQuery.refetch()");
     expect(pageSource).not.toContain("fieldBioPlaceholder");
@@ -51,7 +51,7 @@ describe("MyProfilePage save flow", () => {
     const onSave = vi.fn();
     const { rerender } = render(
       <MantineProvider>
-        <FloatingSaveBar isDirty={false} saving={false} onSave={onSave} />
+        <UnsavedChangesAffix isDirty={false} saving={false} onSave={onSave} />
       </MantineProvider>,
     );
 
@@ -59,7 +59,7 @@ describe("MyProfilePage save flow", () => {
 
     rerender(
       <MantineProvider>
-        <FloatingSaveBar isDirty saving={false} onSave={onSave} />
+        <UnsavedChangesAffix isDirty saving={false} onSave={onSave} />
       </MantineProvider>,
     );
 

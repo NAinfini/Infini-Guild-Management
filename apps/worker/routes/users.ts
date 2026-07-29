@@ -1,7 +1,7 @@
 import { deleteProfileImagesSchema, type Role } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { createPasswordHash, destroySession, verifyPassword } from "../services/auth";
+import { clearSessionCookie, createPasswordHash, destroySession, verifyPassword } from "../services/auth";
 import { deleteMediaObject, storeProfileAudio, storeProfileImage } from "../services/media";
 import { UserService } from "../services/UserService";
 import { BadgeService } from "../services/BadgeService";
@@ -21,6 +21,7 @@ function getUserService(c: Context) {
     verifyPassword,
     createPasswordHash,
     destroySession: () => destroySession(c),
+    clearSessionCookie: () => clearSessionCookie(c),
   });
 }
 

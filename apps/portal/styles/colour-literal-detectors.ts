@@ -73,7 +73,7 @@ export const CSS_NAMED_COLOURS: string[] = [
  * 逐个字面关键字色的检测，两端都设了边界。左边界排除字母/数字/下划线/双引号/
  * 单引号/句点/连字符：双引号、单引号是因为 `[data-accent="teal"]` /
  * `[data-accent='teal']` / `content: 'red'` 这类字符串字面量里的颜色词不是
- * 颜色（task-9-addendum.md E 节 + 复审 M-1 都实测过，本项目三个 accent 名恰好
+ * 颜色（the semantic-colour contract E 节 + 复审 M-1 都实测过，本项目三个 accent 名恰好
  * 是 teal/indigo/violet，单引号写法是最可能真实撞上的一种）；句点是因为
  * `.gold { }` / `&.plum` 这类类选择器名不是颜色。右边界同理排除
  * `--palette-teal-500` 这类自定义属性名的一部分，并额外排除 `(`：
@@ -88,7 +88,7 @@ export function keywordColourHits(withoutComments: string): string[] {
 /**
  * 逐个字面 rgb()/rgba()/hsl()/hsla()/oklch()/oklab()/lab()/lch()/hwb()/color()
  * 调用。加 `i` 标志：CSS 函数名大小写不敏感（`RGBA(0,0,0,.5)` 是合法 CSS，
- * 复审 I-4 用这个输入验证过旧版没有 `i` 标志时会漏检，见 task-9-report.md 的
+ * 复审 I-4 用这个输入验证过旧版没有 `i` 标志时会漏检，见 the semantic-colour audit 的
  * 变异证明）。`color` 用 `(?!-mix)` 负向断言排除 `color-mix(`——后者是本仓库
  * 大量在用的「颜色 + 透明度」合成写法，不该被这条规则当成新引入的字面颜色。
  *

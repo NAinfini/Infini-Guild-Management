@@ -108,8 +108,9 @@ describe("AdminStatusTab", () => {
 
     expect(runCategoryBlock).toContain("setResultMap(new Map())");
     expect(runCategoryBlock).toContain(
-      "contextRef.current = createInitialTestRunContext()",
+      "contextRef.current = { ...createInitialTestRunContext(), ...serverRun }",
     );
+    expect(runCategoryBlock).toContain("finalizeServerRun");
   });
 
   it("renders the API test console for authorized admins in production builds", () => {

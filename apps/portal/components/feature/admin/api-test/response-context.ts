@@ -396,15 +396,10 @@ export function captureContextFromResponse(
   }
 
   if (endpoint.path === "/api/admin/invite-links") {
-    if (endpoint.method === "GET") {
-      const firstInvite = firstArrayItem(payload.data);
-      next.registerInviteCode = readString(firstInvite?.code) ?? next.registerInviteCode;
-    } else {
-      if (endpoint.method === "POST") {
-        const id = readString(payload.id);
-        next.inviteLinkId = id ?? next.inviteLinkId;
-        next.createdInviteLinkId = id ?? next.createdInviteLinkId;
-      }
+    if (endpoint.method === "POST") {
+      const id = readString(payload.id);
+      next.inviteLinkId = id ?? next.inviteLinkId;
+      next.createdInviteLinkId = id ?? next.createdInviteLinkId;
       next.registerInviteCode = readString(payload.code) ?? next.registerInviteCode;
     }
     return next;

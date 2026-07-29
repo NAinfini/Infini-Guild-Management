@@ -1,5 +1,4 @@
-import { RingProgress } from "@mantine/core";
-import { ProgressButton } from "@portal/components/effects";
+import { ActionIcon, RingProgress } from "@mantine/core";
 import {
   AlertTriangleIcon,
   BoltIcon,
@@ -94,11 +93,11 @@ function progressState(allPassed: boolean, hasFail: boolean): ProgressState {
  */
 // 导出（而不只是模块内 const）是因为 AdminApiTestCategory.test.ts 里的守卫
 // 断言要拿它跟 AdminApiTest.css 的 .api-cat__progress-fill--* 逐值比对，
-// 防止两份同义 token 表悄悄漂移（final-review.md M3）。
+// 防止两份同义 token 表悄悄漂移（the final colour review M3）。
 export const PROGRESS_STATE_COLOR_VAR: Record<ProgressState, string> = {
   fail: "var(--status-danger)",
   pass: "var(--status-success)",
-  pending: "var(--accent-fill)",
+  pending: "var(--brand-fill)",
 };
 
 function EndpointRow({
@@ -232,14 +231,17 @@ export function ApiTestCategory({
 
         <div className="api-cat__actions">
           {catRunning ? <span className="api-ep__running" /> : null}
-          <ProgressButton
+          <ActionIcon
             className="api-cat__run-button"
-            ariaLabel={category.label}
-            onPress={() => onRunCategory(category)}
+            aria-label={category.label}
+            onClick={() => { void onRunCategory(category); }}
             disabled={catRunning}
+            loading={catRunning}
+            variant="light"
+            size={44}
           >
             <PlayIcon size={11} />
-          </ProgressButton>
+          </ActionIcon>
         </div>
       </div>
 

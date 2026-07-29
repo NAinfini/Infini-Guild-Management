@@ -7,7 +7,7 @@ import { activeGame } from "@guild/shared/games";
  * 走另一条路径：weekly_mission / social 两类读的是 `--accent-fill` /
  * `--accent-fill-hover`（主题强调色），不读这张表；guild_war/poll/raffle/other
  * 也各自钉死在具体 token 上。两条路径目前故意不同源，是否收敛由后续视觉决策
- * 裁定（final-review.md I2）。
+ * 裁定（the final colour review I2）。
  *
  * 这张表此前在 EventCardsView / EventMonthView / dashboard/shared 里各推导了一份，
  * 三处的兜底值在改色时分叉成了 gray / gray / lime。收敛到这里，兜底只有一个取值。

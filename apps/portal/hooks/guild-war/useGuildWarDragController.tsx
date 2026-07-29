@@ -11,7 +11,7 @@ import {
   type SetStateAction,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useConfirmDialog } from "../../components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import type { UsersListResponse } from "../../services/UserService";
 import { GuildWarService, guildWarQueryKeys, moveGuildWarMember } from "../../services/GuildWarService";
 import { copyPlainText } from "../../utils/copy";
@@ -240,6 +240,51 @@ export function useGuildWarDragController({
     },
     [activeData?.etag, applyMove, selectedEventId],
   );
+
+  const handleMoveSelectedTo = useCallback(async (targetContainer: string) => {
+    if (!canManageActive || !selectedEventId || selectedDragUserIds.length === 0) return false;
+    if (lockedTeamIds.has(targetContainer)) {
+      notifyWarning(t("message.targetTeamLocked"));
+      return false;
+    }
+
+    const moves = selectedDragUserIds.flatMap((userId) => {
+      const from = memberContainerMap.get(`member:${userId}`);
+      if (!from || from === targetContainer) return [];
+      return [{ userId, from, to: targetContainer }];
+    });
+    if (moves.length === 0) return false;
+
+    if (targetContainer === "remove") {
+      const confirmed = await confirm({
+        title: t("active.removeConfirm.title"),
+        description: moves.length === 1
+          ? t("active.removeConfirm.descSingle", {
+              username: resolveUsername(moves[0]?.userId ?? ""),
+            })
+          : t("active.removeConfirm.descMulti", { count: moves.length }),
+        confirmLabel: t("active.removeConfirm.confirm"),
+        cancelLabel: t("common:action.cancel"),
+        intent: "danger",
+      });
+      if (!confirmed) return false;
+    }
+
+    handleBatchMove(moves);
+    setSelectedDragUserIds([]);
+    return true;
+  }, [
+    canManageActive,
+    confirm,
+    handleBatchMove,
+    lockedTeamIds,
+    memberContainerMap,
+    resolveUsername,
+    selectedDragUserIds,
+    selectedEventId,
+    setSelectedDragUserIds,
+    t,
+  ]);
 
   const handleCopyTeamMentions = (containerId: string) => {
     const column = dragColumns.find((c) => c.containerId === containerId);
@@ -574,6 +619,7 @@ export function useGuildWarDragController({
     handleTeamSelectAll,
     handleTeamClear,
     handleTeamDuplicate,
+    handleMoveSelectedTo,
     handleTeamSwap,
     handleAddTeam,
     handleDeleteTeam,

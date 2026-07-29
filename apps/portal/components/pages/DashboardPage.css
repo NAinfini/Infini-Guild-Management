@@ -15,7 +15,7 @@
  * 它在浅色模式下算出 #131110，比正文 --text-primary（#1A1815）还深 ——
  * 名为 dimmed 却更抢眼，语义是反的。即便它当年匹配得上也是错的。 */
 
-/* ── Dashboard card padding (PortalCard has no built-in padding) ── */
+/* ── Dashboard card padding ── */
 .dashboard-card > div:last-child {
   padding: 20px;
 }
@@ -40,7 +40,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent-text);
+  color: var(--brand-text);
   opacity: 0.85;
 }
 
@@ -92,7 +92,7 @@
   gap: 4px;
   padding: 8px 6px;
   border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   background: color-mix(in srgb, var(--surface-base) 96%, transparent);
   min-width: 0;
   transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
@@ -103,15 +103,9 @@
 }
 
 .signup-box--today {
-  border-color: color-mix(in srgb, var(--accent-fill) 40%, transparent);
-  background: color-mix(in srgb, var(--accent-fill) 5%, var(--surface-base));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-fill) 12%, transparent);
-  animation: todayBoxPulse 3s ease-in-out infinite;
-}
-
-@keyframes todayBoxPulse {
-  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-fill) 12%, transparent); }
-  50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-fill) 20%, transparent), 0 0 12px color-mix(in srgb, var(--accent-fill) 8%, transparent); }
+  border-color: color-mix(in srgb, var(--brand-fill) 40%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 5%, var(--surface-base));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-fill) 12%, transparent);
 }
 
 .signup-box--yesterday {
@@ -137,7 +131,7 @@
 }
 
 .signup-box--today .signup-box-label {
-  color: var(--accent-text);
+  color: var(--brand-text);
 }
 
 .signup-box-date {
@@ -170,7 +164,7 @@
   width: 100%;
   padding: 3px 4px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -179,7 +173,7 @@
 }
 
 .signup-box-event:hover {
-  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 10%, transparent);
 }
 
 .signup-box-event-dot {
@@ -345,7 +339,7 @@
   align-items: center;
   gap: 5px;
   padding: 4px 10px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -381,7 +375,7 @@
 }
 
 .war-vs-bar-team--us {
-  color: var(--accent-text);
+  color: var(--domain-war);
   text-align: right;
 }
 
@@ -453,23 +447,22 @@
   flex: 1;
   display: flex;
   height: 8px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   overflow: hidden;
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .war-compare-bar-fill {
   height: 100%;
-  transition: width 500ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .war-compare-bar-fill--own {
-  background: color-mix(in srgb, var(--accent-fill) 60%, var(--surface-base));
+  background: color-mix(in srgb, var(--domain-war) 60%, var(--surface-base));
   border-radius: 4px 0 0 4px;
 }
 
 .war-compare-bar-fill--own.war-compare-bar-fill--winning {
-  background: var(--accent-fill);
+  background: var(--domain-war);
 }
 
 .war-compare-bar-fill--enemy {
@@ -491,10 +484,10 @@
   border-top: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
-.war-mvp-section-header {
-  letter-spacing: 0.08em;
-  margin-bottom: 2px;
-}
+/* 这行小标题已改用共享的 <SectionHeader className="section-header--flush">，
+   原来的 .war-mvp-section-header 随之删除（它其实一直是死规则：TSX 里写的是
+   内联 style，从没挂过这个类）。--flush 的理由见 SectionHeader.css：
+   .war-mvp-section 本身是 gap:6px 的 flex 列，不需要标题再自带下边距。 */
 
 .war-mvp-chips {
   display: flex;
@@ -553,7 +546,7 @@
 /* ── War History Row Highlight Animation ── */
 
 @keyframes war-history-highlight {
-  0% { background-color: color-mix(in srgb, var(--accent-fill) 25%, transparent); }
+  0% { background-color: color-mix(in srgb, var(--brand-fill) 25%, transparent); }
   100% { background-color: transparent; }
 }
 
@@ -574,7 +567,7 @@
 
 .upcoming-event-row:hover {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--edge-top);
 }
 
 .upcoming-event-row__title {

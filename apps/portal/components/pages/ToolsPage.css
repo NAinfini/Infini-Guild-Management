@@ -44,7 +44,7 @@
   place-items: center;
   font-size: 28px;
   line-height: 1;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   /* Neutral tile: three gold squares on a page of three cards made the icons
      shout louder than the tool names they belong to. */
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
@@ -114,7 +114,7 @@ a.tool-card__btn {
 .sandbox__topbar {
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   background: color-mix(in srgb, var(--text-primary) 2%, transparent);
 }
 
@@ -132,7 +132,7 @@ a.tool-card__btn {
   min-width: 0;
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   background: color-mix(in srgb, var(--surface-base) 74%, transparent);
 }
 
@@ -200,7 +200,7 @@ a.tool-card__btn {
   align-items: center;
   gap: 4px;
   padding: 2px 8px 2px 4px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--shape-pill);
   cursor: pointer;
   font-size: 11px;
   color: color-mix(in srgb, var(--text-primary) 70%, transparent);
@@ -240,7 +240,7 @@ a.tool-card__btn {
   align-items: center;
   gap: 6px;
   padding: 6px 14px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
@@ -256,15 +256,15 @@ a.tool-card__btn {
 }
 
 .sandbox__typo-btn:hover {
-  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
-  border-color: color-mix(in srgb, var(--accent-fill) 25%, transparent);
-  color: var(--accent-text);
+  background: color-mix(in srgb, var(--brand-fill) 10%, transparent);
+  border-color: color-mix(in srgb, var(--brand-fill) 25%, transparent);
+  color: var(--brand-text);
 }
 
 .sandbox__typo-btn--active {
-  background: color-mix(in srgb, var(--accent-fill) 14%, transparent);
-  border-color: color-mix(in srgb, var(--accent-fill) 35%, transparent);
-  color: var(--accent-text);
+  background: color-mix(in srgb, var(--brand-fill) 14%, transparent);
+  border-color: color-mix(in srgb, var(--brand-fill) 35%, transparent);
+  color: var(--brand-text);
 }
 
 .sandbox__slider-row {
@@ -306,7 +306,7 @@ a.tool-card__btn {
 }
 
 .sandbox__preview-card {
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
@@ -339,7 +339,7 @@ a.tool-card__btn {
 .sandbox__code-block {
   position: relative;
   padding: 12px 40px 12px 14px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
   border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   overflow-x: auto;
@@ -367,7 +367,7 @@ a.tool-card__btn {
   height: var(--control-icon-size-compact);
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--text-primary) 16%, transparent);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: transparent;
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   cursor: pointer;
@@ -375,8 +375,8 @@ a.tool-card__btn {
 }
 
 .sandbox__copy-icon-btn:hover {
-  background: color-mix(in srgb, var(--accent-fill) 12%, transparent);
-  color: var(--accent-text);
+  background: color-mix(in srgb, var(--brand-fill) 12%, transparent);
+  color: var(--brand-text);
 }
 
 @media (max-width: 900px) {
@@ -420,19 +420,19 @@ a.tool-card__btn {
   gap: 8px;
   align-self: center;
   padding: 8px 32px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
-  color: var(--accent-on-fill);
-  background: var(--accent-fill);
+  color: var(--brand-on-fill);
+  background: var(--brand-fill);
   transition: background 150ms ease, transform 100ms ease, box-shadow 150ms ease;
 }
 
 .dice__roll-btn:hover:not(:disabled) {
   /* State signal comes from shadow, not a darkened fill: dimming the fill drags
      --accent-on-fill (calibrated for accent-500 only) below AA. See theme-tokens.test.ts. */
-  box-shadow: var(--shadow-accent-md);
+  box-shadow: var(--shadow-overlay);
 }
 
 .dice__roll-btn:active:not(:disabled) {
@@ -469,7 +469,7 @@ a.tool-card__btn {
   align-items: center;
   gap: 12px;
   padding: 20px 16px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   background: color-mix(in srgb, var(--text-primary) 3%, transparent);
   border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
@@ -498,20 +498,20 @@ a.tool-card__btn {
   place-items: center;
   width: 52px;
   height: 52px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   font-size: 20px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--accent-text);
+  color: var(--brand-text);
   background: var(--surface-base);
-  border: 2px solid color-mix(in srgb, var(--accent-fill) 30%, transparent);
-  box-shadow: var(--shadow-sm);
+  border: 2px solid color-mix(in srgb, var(--brand-fill) 30%, transparent);
+  box-shadow: var(--edge-top);
   transition: transform 200ms ease, border-color 200ms ease;
 }
 
 .dice__die--spinning {
   animation: dice-die-bounce 120ms ease-in-out infinite alternate;
-  border-color: color-mix(in srgb, var(--accent-fill) 50%, transparent);
+  border-color: color-mix(in srgb, var(--brand-fill) 50%, transparent);
 }
 
 @keyframes dice-die-bounce {
@@ -544,7 +544,7 @@ a.tool-card__btn {
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 12px;
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
@@ -566,13 +566,13 @@ a.tool-card__btn {
 
 .dice__history-item {
   padding: 6px 10px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--text-primary) 3%, transparent);
   animation: dice-history-in 200ms ease-out;
 }
 
 .dice__history-item:first-child {
-  background: color-mix(in srgb, var(--accent-fill) 8%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 8%, transparent);
 }
 
 @keyframes dice-history-in {

@@ -161,7 +161,7 @@ apps/
 | `components/layout/PageLayout.tsx` | Page-level layout wrapper |
 | `components/layout/UserProfileDropdown.tsx` | User profile dropdown menu |
 | `components/layout/ViewingAsSelector.tsx` | Admin "view as" role selector |
-| `components/shared/` | Reusable components — AppErrorOverlay, EmptyState, FilterToolbar, MemberCard, OverlayRegistrar, ProfileModal |
+| `components/shared/` | Reusable behavior/domain components — AppErrorOverlay, DataTableAdapter, DataTablePagination, EmptyState, MediaGallery, MemberCard, OverlayRegistrar, ProfileModal, SectionHeader, UnsavedChangesAffix |
 | `components/feature/` | Feature-specific components across 7 domains (admin, announcements, events, gallery, guild-war, profile, wiki) |
 | `components/dashboard/` | Dashboard card components (ActiveMembersCard, LastWarCard, MySignupsCard, UpcomingEventsCard) |
 | **services/** | |
@@ -216,23 +216,11 @@ apps/
 | `i18n/en/` | English translations (14 namespace files) |
 | `i18n/zh/` | Chinese translations (14 namespace files) |
 
-### docs/Planning/ — Feature Specs
+### docs/plans/ — Active Implementation Plan
 
-| File | Feature |
+| File | Purpose |
 |------|---------|
-| `Global.md` | Project-wide rules, architecture, stack, DB constraints |
-| `dashboard.md` | Dashboard layout and cards |
-| `auth.md` | Authentication flow |
-| `events.md` | Event management |
-| `announcements.md` | Announcement lifecycle |
-| `guild-war.md` | War history and team composition |
-| `roster.md` | Member roster |
-| `wiki.md` | Wiki system |
-| `gallery.md` | Media gallery |
-| `my-profile.md` | User profile |
-| `admin-console.md` | Admin panel |
-| `settings.md` | User settings |
-| `tools.md` | Utility tools |
+| `2026-07-29-portal-ui-architecture.md` | Authoritative portal UI architecture, responsive behavior, implementation phases, and release criteria |
 
 ## Database Schema
 
@@ -249,6 +237,7 @@ Drizzle schema is modular — each domain is a separate file in `apps/worker/db/
 | `wiki.ts` | `wiki_categories`, `wiki_articles` | Wiki |
 | `gallery.ts` | `gallery_items` | Gallery |
 | `audit.ts` | `audit_log` | Audit Log |
+| `system-test.ts` | `system_test_runs`, `system_test_artifacts` | Admin system-test registry |
 
 SQL migrations are in `apps/worker/db/migrations/`. The core schema is `0000_core_schema.sql`.
 

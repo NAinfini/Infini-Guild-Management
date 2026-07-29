@@ -1,8 +1,5 @@
 import type { Announcement } from "@guild/shared";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { DepthToggle } from "@portal/components/shared/DepthToggle";
-import { PortalCard } from "../../shared/PortalCard";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import {
   ActionIcon,
   Alert,
@@ -12,10 +9,12 @@ import {
   Divider,
   Group,
   Menu,
+  Paper,
   Skeleton,
   Stack,
   Text,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { format } from "date-fns";
@@ -160,8 +159,8 @@ export function AnnouncementDetailCard({
   };
 
   return (
-    <PortalCard className="announcements-detail-card" interactive={false}>
-      <div style={{ padding: "1.2rem" }}>
+    <Paper withBorder className="announcements-detail-card">
+      <div style={{ padding: "var(--card-padding)" }}>
         <Stack gap={12}>
           {/* ── Header ── */}
           <Group justify="space-between" align="center">
@@ -173,7 +172,7 @@ export function AnnouncementDetailCard({
                   <Button.Group>
                     <Button
                       size="sm"
-                      color="portal-accent"
+                      color="portal-brand"
                       onClick={() => validateAndFinish("none")}
                       disabled={savePending}
                       leftSection={<SendIcon size={14} />}
@@ -184,7 +183,7 @@ export function AnnouncementDetailCard({
                       <Menu.Target>
                         <Button
                           size="sm"
-                          color="portal-accent"
+                          color="portal-brand"
                           disabled={savePending}
                           px={8}
                         >
@@ -207,24 +206,24 @@ export function AnnouncementDetailCard({
                       </Menu.Dropdown>
                     </Menu>
                   </Button.Group>
-                  <DepthButton
+                  <Button
                     onClick={handleCloseEditor}
-                    type="secondary"
+                    variant="default"
                     size="sm"
-                    before={<XIcon size={14} />}
+                    leftSection={<XIcon size={14} />}
                   >
                     {t("action.cancel")}
-                  </DepthButton>
+                  </Button>
                 </Group>
               ) : (
-                <DepthButton
+                <Button
                   onClick={editingHandlers.open}
-                  type="secondary"
+                  variant="default"
                   size="sm"
-                  before={<PencilOutlined size={14} />}
+                  leftSection={<PencilOutlined size={14} />}
                 >
                   {t("action.edit")}
-                </DepthButton>
+                </Button>
               )
             ) : null}
           </Group>
@@ -304,29 +303,31 @@ export function AnnouncementDetailCard({
                 <Stack gap={16}>
                   {/* Pin | Archive | Delete */}
                   <Group gap={8} wrap="nowrap">
-                    <DepthToggle
-                        pressed={pinned}
-                        onToggle={onPinnedChange}
-                        type="primary"
-                        iconOnly
+                    <Tooltip label={pinned ? t("action.unpin") : t("action.pin")} withArrow>
+                      <ActionIcon
+                        aria-pressed={pinned}
+                        onClick={() => onPinnedChange(!pinned)}
+                        color="portal-brand"
+                        variant={pinned ? "light" : "default"}
                         size="sm"
                         aria-label={pinned ? t("action.unpin") : t("action.pin")}
-                        tooltip={{ label: pinned ? t("action.unpin") : t("action.pin"), withArrow: true }}
                       >
                         <PinIcon size={16} />
-                      </DepthToggle>
+                      </ActionIcon>
+                    </Tooltip>
                     {!isCreateMode ? (
-                      <DepthToggle
-                        pressed={archived}
-                        onToggle={onArchivedChange}
-                        type="primary"
-                        iconOnly
-                        size="sm"
-                        aria-label={t("action.archive")}
-                        tooltip={{ label: t("action.archive"), withArrow: true }}
-                      >
-                        <ArchiveIcon size={16} />
-                      </DepthToggle>
+                      <Tooltip label={t("action.archive")} withArrow>
+                        <ActionIcon
+                          aria-pressed={archived}
+                          onClick={() => onArchivedChange(!archived)}
+                          color="portal-brand"
+                          variant={archived ? "light" : "default"}
+                          size="sm"
+                          aria-label={t("action.archive")}
+                        >
+                          <ArchiveIcon size={16} />
+                        </ActionIcon>
+                      </Tooltip>
                     ) : null}
                     {!isCreateMode ? (
                         <ActionIcon
@@ -375,6 +376,6 @@ export function AnnouncementDetailCard({
         </Stack>
       </div>
 
-    </PortalCard>
+    </Paper>
   );
 }

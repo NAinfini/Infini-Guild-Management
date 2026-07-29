@@ -19,6 +19,7 @@
   "field.updatedAt": "Updated At",
   "action.create": "Create",
   "action.newAnnouncement": "New Announcement",
+  "action.backToList": "Back to announcements",
   "action.createAnnouncement": "Create announcement",
   "action.resetFilters": "Reset filters",
   "action.save": "Save",

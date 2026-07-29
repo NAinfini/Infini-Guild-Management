@@ -1,9 +1,9 @@
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { ActionIcon, Group, HoverCard, SegmentedControl, Select, Text, TextInput, ThemeIcon } from "@mantine/core";
+import { ActionIcon, Box, Button, Collapse, Flex, Group, HoverCard, Paper, SegmentedControl, Select, Stack, Text, TextInput, ThemeIcon } from "@mantine/core";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { CalendarOffIcon } from "@portal/components/icons";
+import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
-import { useConfirmDialog } from "../../shared/ConfirmDialog";
-import { FilterToolbar } from "../../shared/FilterToolbar";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 
 type GalleryFiltersCardProps = {
   typeFilter: "image" | "video" | undefined;
@@ -52,6 +52,8 @@ export function GalleryFiltersCard({
 }: GalleryFiltersCardProps) {
   const { t } = useTranslation("gallery");
   const confirm = useConfirmDialog();
+  const isMobile = useMediaQuery("(max-width: 47.99em)");
+  const [filtersOpen, { toggle: toggleFilters }] = useDisclosure(false);
 
   const handleBulkDeleteConfirm = async () => {
     const confirmed = await confirm({
@@ -66,20 +68,15 @@ export function GalleryFiltersCard({
     }
   };
 
-  const hasActiveFilters = Boolean(typeFilter) || Boolean(dateFrom) || Boolean(dateTo) || Boolean(search.trim());
-
-  return (
-    <FilterToolbar
-      active={hasActiveFilters}
-      primary={
+  const primary = (
         <TextInput
           value={search}
           onChange={(event) => onSearchChange(event.currentTarget.value)}
           placeholder={t("filter.searchPlaceholder")}
           aria-label={t("aria.searchCaption")}
         />
-      }
-      filters={
+  );
+  const filters = (
         <>
           <Select
             clearable
@@ -136,28 +133,62 @@ export function GalleryFiltersCard({
             </HoverCard>
           </Group>
         </>
-      }
-      actions={
+  );
+  const actions = (
         (canModerate || canUpload) ? (
           <Group gap={8} wrap="wrap">
             {canModerate ? (
-              <DepthButton
+              <Button
                 onClick={() => { void handleBulkDeleteConfirm(); }}
-                type="danger"
+                color="red"
                 size="sm"
                 disabled={selectedCount === 0 || bulkDeletePending}
               >
                 {bulkDeleteLabel}
-              </DepthButton>
+              </Button>
             ) : null}
             {canUpload ? (
-              <DepthButton onClick={onAddMedia} type="primary" size="sm">
+              <Button onClick={onAddMedia} size="sm">
                 {addMediaLabel}
-              </DepthButton>
+              </Button>
             ) : null}
           </Group>
         ) : null
-      }
-    />
+  );
+
+  return (
+    <Paper withBorder radius="md" p="sm">
+      {isMobile ? (
+        <Stack gap={0}>
+          <Group gap="xs" wrap="nowrap" align="center">
+            <Box style={{ flex: 1, minWidth: 0 }}>{primary}</Box>
+            <ActionIcon
+              variant={filtersOpen ? "filled" : "default"}
+              size="lg"
+              onClick={toggleFilters}
+              aria-label={t("common:filter.toggle")}
+            >
+              <IconAdjustmentsHorizontal size={18} />
+            </ActionIcon>
+          </Group>
+          <Collapse in={filtersOpen}>
+            <Stack gap="sm" pt="sm">
+              <Group gap="xs" wrap="wrap">
+                {filters}
+              </Group>
+              {actions}
+            </Stack>
+          </Collapse>
+        </Stack>
+      ) : (
+        <Flex gap="sm" align="center" wrap="wrap">
+          <Box style={{ flex: "1 1 240px", minWidth: 220 }}>{primary}</Box>
+          <Group gap="xs" wrap="wrap">
+            {filters}
+          </Group>
+          {actions ? <Box style={{ marginLeft: "auto" }}>{actions}</Box> : null}
+        </Flex>
+      )}
+    </Paper>
   );
 }

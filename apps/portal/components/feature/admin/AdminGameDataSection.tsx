@@ -5,6 +5,7 @@ import {
   Alert,
   Badge,
   Box,
+  Button,
   Collapse,
   Divider,
   Group,
@@ -14,8 +15,7 @@ import {
   Text,
   Textarea,
 } from "@mantine/core";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
-import { DepthButton } from "@portal/components/shared/DepthButton";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { EmptyState } from "../../shared/EmptyState";
 import { ArrowDownIcon, UploadIcon, RefreshCwIcon, ChevronDownIcon } from "@portal/components/icons";
 import {
@@ -188,15 +188,15 @@ export function AdminGameDataSection() {
         status="error"
         title={tc("loadError")}
         actions={(
-          <DepthButton
-            type="secondary"
+          <Button
+            variant="default"
             onClick={() => {
               void gameDataQuery.refetch();
             }}
             loading={gameDataQuery.isFetching}
           >
             {tc("action.retry")}
-          </DepthButton>
+          </Button>
         )}
       />
     );
@@ -207,14 +207,13 @@ export function AdminGameDataSection() {
       <Stack gap={16}>
         <EmptyState title={t("gameData.empty")} />
         <Group>
-          <DepthButton
-            type="primary"
+          <Button
             onClick={() => fileInputRef.current?.click()}
             loading={uploadMutation.isPending}
+            leftSection={<UploadIcon size={16} />}
           >
-            <UploadIcon size={16} />
             {t("gameData.upload")}
-          </DepthButton>
+          </Button>
         </Group>
         <input
           ref={fileInputRef}
@@ -255,18 +254,16 @@ export function AdminGameDataSection() {
               </Group>
             </Stack>
             <Group gap={8} className="admin-game-data__actions">
-              <DepthButton type="secondary" onClick={handleDownload}>
-                <ArrowDownIcon size={16} />
+              <Button variant="default" onClick={handleDownload} leftSection={<ArrowDownIcon size={16} />}>
                 {t("gameData.download")}
-              </DepthButton>
-              <DepthButton
-                type="primary"
+              </Button>
+              <Button
                 onClick={() => fileInputRef.current?.click()}
                 loading={uploadMutation.isPending}
+                leftSection={<UploadIcon size={16} />}
               >
-                <UploadIcon size={16} />
                 {t("gameData.upload")}
-              </DepthButton>
+              </Button>
             </Group>
           </Group>
 
@@ -338,20 +335,19 @@ export function AdminGameDataSection() {
               <Divider />
               <Stack gap={12} className="admin-game-data__editor-body">
                 <Group justify="flex-end" gap={8}>
-                  <DepthButton type="secondary" size="sm" onClick={handleFormatJson}>
+                  <Button variant="default" size="sm" onClick={handleFormatJson}>
                     {t("gameData.formatJson")}
-                  </DepthButton>
-                  <DepthButton type="secondary" size="sm" onClick={handleResetJson}>
+                  </Button>
+                  <Button variant="default" size="sm" onClick={handleResetJson}>
                     {t("gameData.resetJson")}
-                  </DepthButton>
-                  <DepthButton
-                    type="primary"
+                  </Button>
+                  <Button
                     size="sm"
                     onClick={handleSaveJson}
                     loading={uploadMutation.isPending}
                   >
                     {t("gameData.saveJson")}
-                  </DepthButton>
+                  </Button>
                 </Group>
                 <Textarea
                   aria-label={t("gameData.editorLabel")}
@@ -380,8 +376,8 @@ export function AdminGameDataSection() {
             status="error"
             title={tc("loadError")}
             actions={(
-              <DepthButton
-                type="secondary"
+              <Button
+                variant="default"
                 size="sm"
                 onClick={() => {
                   void versionsQuery.refetch();
@@ -389,7 +385,7 @@ export function AdminGameDataSection() {
                 loading={versionsQuery.isFetching}
               >
                 {tc("action.retry")}
-              </DepthButton>
+              </Button>
             )}
           />
         ) : recentVersions.length === 0 ? (
@@ -426,16 +422,17 @@ export function AdminGameDataSection() {
                     </Table.Td>
                     <Table.Td>
                       {v.version !== version ? (
-                        <DepthButton
-                          type="warning"
+                        <Button
+                          color="orange"
+                          variant="light"
                           size="sm"
                           className="admin-game-data__rollback-btn"
                           onClick={() => handleRollback(v.id)}
                           loading={rollbackMutation.isPending}
+                          leftSection={<RefreshCwIcon size={14} />}
                         >
-                          <RefreshCwIcon size={14} />
                           {t("gameData.rollback")}
-                        </DepthButton>
+                        </Button>
                       ) : null}
                     </Table.Td>
                   </Table.Tr>

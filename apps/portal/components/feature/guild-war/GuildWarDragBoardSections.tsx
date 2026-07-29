@@ -5,6 +5,7 @@ import {
   Card,
   Group,
   HoverCard,
+  Paper,
   Stack,
   Text,
   TextInput,
@@ -30,7 +31,6 @@ import type {
   ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { PortalCard } from "../../shared/PortalCard";
 
 export type DragMemberItem = {
   itemId: string;
@@ -257,8 +257,9 @@ export function DroppableMemberColumn({
   };
 
   return (
-    <PortalCard
-      interactive={false}
+    <Paper
+      withBorder
+      radius="md"
       className={`guild-war-column-card${isOver ? " guild-war-column-card--over" : ""}${isDragActive && !isOver ? " guild-war-column-card--drag-active" : ""}`}
       style={{ overflow: "visible" }}
     >
@@ -429,7 +430,7 @@ export function DroppableMemberColumn({
           ))}
         </div>
       </div>
-    </PortalCard>
+    </Paper>
   );
 }
 
@@ -542,6 +543,7 @@ export function GuildWarDragOverlayCard({ activeDragItem }: GuildWarDragOverlayC
 }
 
 type GuildWarDragBoardLayoutProps = {
+  view?: "all" | "pool" | "teams";
   poolColumn?: DragMemberColumn;
   teamColumns: DragMemberColumn[];
   canDrag: boolean;
@@ -567,6 +569,7 @@ type GuildWarDragBoardLayoutProps = {
 };
 
 export function GuildWarDragBoardLayout({
+  view = "all",
   poolColumn,
   teamColumns,
   canDrag,
@@ -592,7 +595,7 @@ export function GuildWarDragBoardLayout({
 }: GuildWarDragBoardLayoutProps) {
   return (
     <div className={`guild-war-dnd-split ${disabled ? "guild-war-dnd-split--disabled" : ""}`}>
-      <div className="guild-war-dnd-pool">
+      {view !== "teams" ? <div className="guild-war-dnd-pool">
         <div className="guild-war-column-card-wrap">
           {poolColumn ? (
             <DroppableMemberColumn
@@ -611,9 +614,9 @@ export function GuildWarDragBoardLayout({
           ) : null}
           <TrashDropZone visible={Boolean(activeDragItem)} />
         </div>
-      </div>
+      </div> : null}
 
-      <div className="guild-war-dnd-teams-wrap">
+      {view !== "pool" ? <div className="guild-war-dnd-teams-wrap">
         <Stack gap={12} className="guild-war-dnd-teams">
           {teamColumns.map((column) => (
             <DroppableMemberColumn
@@ -639,7 +642,7 @@ export function GuildWarDragBoardLayout({
             />
           ))}
         </Stack>
-      </div>
+      </div> : null}
     </div>
   );
 }

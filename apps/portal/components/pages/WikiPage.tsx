@@ -1,10 +1,6 @@
-import { Button, Card, Drawer, Group, SegmentedControl, Skeleton, Stack, Text, TextInput, VisuallyHidden } from "@mantine/core";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { DepthToggle } from "@portal/components/shared/DepthToggle";
+import { ActionIcon, Button, Card, Drawer, Group, Paper, SegmentedControl, Skeleton, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
-import { PortalCard } from "../shared/PortalCard";
-import { FilterToolbar } from "../shared/FilterToolbar";
 import { ClockIcon, PencilIcon, PinIcon } from "@portal/components/icons";
 import { Suspense, lazy, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -149,8 +145,7 @@ export function WikiPage() {
           {t("backToList")}
         </Button>
       ) : null}
-      <PortalCard className="wiki-article-reader-card" interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+      <Paper withBorder className="wiki-article-reader-card" p="lg">
           <Stack gap={12}>
             {(controller.detailQuery.isLoading || (controller.detailQuery.isFetching && !controller.detailQuery.data)) && controller.selectedSlug ? (
               <Stack gap={12} style={{ padding: "1rem 0" }}>
@@ -173,18 +168,16 @@ export function WikiPage() {
                   </Text>
                   {controller.canEdit ? (
                     <Group gap={6}>
-                      <DepthButton type="secondary" size="sm" onClick={controller.openHistory} tooltip={{ label: t("history.button"), withArrow: true }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                      <Tooltip label={t("history.button")} withArrow>
+                        <ActionIcon variant="default" size="sm" onClick={controller.openHistory} aria-label={t("history.button")}>
                           <ClockIcon size={16} />
-                        </span>
-                        <VisuallyHidden>{t("history.button")}</VisuallyHidden>
-                      </DepthButton>
-                      <DepthButton type="secondary" size="sm" onClick={controller.handleOpenArticleEditor} tooltip={{ label: t("editor.editWiki"), withArrow: true }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label={t("editor.editWiki")} withArrow>
+                        <ActionIcon variant="default" size="sm" onClick={controller.handleOpenArticleEditor} aria-label={t("editor.editWiki")}>
                           <PencilIcon size={16} />
-                        </span>
-                        <VisuallyHidden>{t("editor.editWiki")}</VisuallyHidden>
-                      </DepthButton>
+                        </ActionIcon>
+                      </Tooltip>
                     </Group>
                   ) : null}
                 </Group>
@@ -216,26 +209,22 @@ export function WikiPage() {
               </>
             )}
           </Stack>
-        </div>
-      </PortalCard>
+      </Paper>
     </Stack>
   );
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")}>
+    <PageLayout>
       <PageLayout.Section>
-        <FilterToolbar
-          active={hasActiveFilters}
-          primary={
-              <TextInput
-                placeholder={t("filter.search")}
-                aria-label={t("filter.searchAria")}
-                value={controller.search}
-                onChange={(event) => controller.setSearch(event.currentTarget.value)}
-              />
-          }
-          filters={
-            <>
+        <Paper withBorder p="sm" className="wiki-page-toolbar">
+          <Group gap="sm" align="center" wrap="wrap">
+            <TextInput
+              className="wiki-page-toolbar__search"
+              placeholder={t("filter.search")}
+              aria-label={t("filter.searchAria")}
+              value={controller.search}
+              onChange={(event) => controller.setSearch(event.currentTarget.value)}
+            />
               <SegmentedControl
                 value={controller.archivedMode}
                 onChange={(value) => controller.setArchivedMode(value as "active" | "archived" | "all")}
@@ -246,20 +235,25 @@ export function WikiPage() {
                 ]}
                 aria-label={t("filter.status")}
               />
-              <DepthToggle
-                  pressed={controller.pinnedOnly}
-                  onToggle={() => controller.setPinnedOnly((value) => !value)}
-                  type="secondary"
-                  size="sm"
-                  iconOnly
+              <Tooltip label={controller.pinnedOnly ? t("filter.showAll") : t("filter.showPinned")} withArrow>
+                <ActionIcon
+                  variant={controller.pinnedOnly ? "filled" : "default"}
+                  color={controller.pinnedOnly ? "portal-brand" : "gray"}
+                  size="lg"
+                  aria-pressed={controller.pinnedOnly}
                   aria-label={controller.pinnedOnly ? t("filter.showAll") : t("filter.showPinned")}
-                  tooltip={{ label: controller.pinnedOnly ? t("filter.showAll") : t("filter.showPinned"), withArrow: true }}
+                  onClick={() => controller.setPinnedOnly((value) => !value)}
                 >
                   <PinIcon size={16} />
-                </DepthToggle>
-            </>
-          }
-        />
+                </ActionIcon>
+              </Tooltip>
+            {hasActiveFilters ? (
+              <Button variant="subtle" size="compact-sm" onClick={resetFilters}>
+                {t("action.resetFilters")}
+              </Button>
+            ) : null}
+          </Group>
+        </Paper>
       </PageLayout.Section>
 
       <div className={`wiki-page-grid ${controller.isMobile ? "wiki-page-grid--mobile" : ""}`}>

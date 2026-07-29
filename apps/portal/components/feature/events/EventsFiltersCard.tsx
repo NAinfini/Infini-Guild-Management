@@ -1,11 +1,10 @@
 import { EVENT_TYPES } from "@guild/shared";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { DepthToggle } from "@portal/components/shared/DepthToggle";
-import { Group, SegmentedControl, Select, TextInput } from "@mantine/core";
+import { ActionIcon, Box, Button, Collapse, Flex, Group, Paper, SegmentedControl, Select, Stack, TextInput, Tooltip } from "@mantine/core";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { LockIcon, PinIcon, SearchIcon } from "@portal/components/icons";
+import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { type EventStatusFilter, type EventTypeFilter, type EventWorkbenchViewMode } from "../../../utils/event-navigation";
-import { FilterToolbar } from "../../shared/FilterToolbar";
 
 function isEventTypeFilter(value: string): value is EventTypeFilter {
   return EVENT_TYPES.includes(value as EventTypeFilter);
@@ -45,14 +44,9 @@ export function EventsFiltersCard({
   onCreateEvent,
 }: EventsFiltersCardProps) {
   const { t } = useTranslation("events");
-  const hasActiveFilters = Boolean(searchQuery.trim()) || Boolean(eventType) || eventStatus !== "active" || pinnedOnly || lockedOnly;
-
-  return (
-    <FilterToolbar
-      className="events-filter-card"
-      contentClassName="events-filter-controls"
-      active={hasActiveFilters}
-      primary={
+  const isMobile = useMediaQuery("(max-width: 47.99em)");
+  const [filtersOpen, { toggle: toggleFilters }] = useDisclosure(false);
+  const primary = (
         <TextInput
           placeholder={t("filter.search")}
           value={searchQuery}
@@ -61,8 +55,8 @@ export function EventsFiltersCard({
           className="events-filter-search"
           aria-label={t("filter.search")}
         />
-      }
-      filters={
+  );
+  const filters = (
         <>
           <SegmentedControl
             value={eventStatus}
@@ -85,32 +79,34 @@ export function EventsFiltersCard({
           className="events-filter-type"
         />
         <Group gap={6} wrap="nowrap" className="events-filter-toggles">
-        <DepthToggle
-          pressed={pinnedOnly}
-          onToggle={onPinnedOnlyChange}
-          type="secondary"
+        <Tooltip label={t("filter.pinned")}>
+        <ActionIcon
+          aria-pressed={pinnedOnly}
+          onClick={() => onPinnedOnlyChange(!pinnedOnly)}
+          color="portal-brand"
+          variant={pinnedOnly ? "light" : "default"}
           size="sm"
-          iconOnly
           aria-label={t("filter.pinned")}
-          tooltip={t("filter.pinned")}
         >
           <PinIcon size={16} />
-        </DepthToggle>
-        <DepthToggle
-          pressed={lockedOnly}
-          onToggle={onLockedOnlyChange}
-          type="secondary"
+        </ActionIcon>
+        </Tooltip>
+        <Tooltip label={t("filter.locked")}>
+        <ActionIcon
+          aria-pressed={lockedOnly}
+          onClick={() => onLockedOnlyChange(!lockedOnly)}
+          color="portal-brand"
+          variant={lockedOnly ? "light" : "default"}
           size="sm"
-          iconOnly
           aria-label={t("filter.locked")}
-          tooltip={t("filter.locked")}
         >
           <LockIcon size={16} />
-        </DepthToggle>
+        </ActionIcon>
+        </Tooltip>
         </Group>
         </>
-      }
-      viewControls={
+  );
+  const viewControls = (
         <SegmentedControl
           value={viewMode}
           onChange={(value) => onViewModeChange(value as EventWorkbenchViewMode)}
@@ -120,14 +116,50 @@ export function EventsFiltersCard({
           ]}
           className="events-filter-view"
         />
-      }
-      actions={
+  );
+  const actions = (
         canManage && onCreateEvent ? (
-          <DepthButton onClick={onCreateEvent} type="primary" size="sm">
+          <Button onClick={onCreateEvent} size="sm">
             {t("button.create")}
-          </DepthButton>
+          </Button>
         ) : null
-      }
-    />
+  );
+
+  return (
+    <Paper withBorder radius="md" p="sm">
+      {isMobile ? (
+        <Stack gap={0}>
+          <Group gap="xs" wrap="nowrap" align="center">
+            <Box style={{ flex: 1, minWidth: 0 }}>{primary}</Box>
+            <ActionIcon
+              variant={filtersOpen ? "filled" : "default"}
+              size="lg"
+              onClick={toggleFilters}
+              aria-label={t("common:filter.toggle")}
+            >
+              <IconAdjustmentsHorizontal size={18} />
+            </ActionIcon>
+          </Group>
+          <Collapse in={filtersOpen}>
+            <Stack gap="sm" pt="sm">
+              <Group gap="xs" wrap="wrap">
+                {filters}
+              </Group>
+              {viewControls}
+              {actions}
+            </Stack>
+          </Collapse>
+        </Stack>
+      ) : (
+        <Flex gap="sm" align="center" wrap="wrap">
+          <Box style={{ flex: "1 1 240px", minWidth: 220 }}>{primary}</Box>
+          <Group gap="xs" wrap="wrap">
+            {filters}
+          </Group>
+          {viewControls}
+          {actions ? <Box style={{ marginLeft: "auto" }}>{actions}</Box> : null}
+        </Flex>
+      )}
+    </Paper>
   );
 }

@@ -6,9 +6,14 @@ export const REFERRER_POLICY_VALUE = "strict-origin-when-cross-origin";
 export const X_CONTENT_TYPE_VALUE = "nosniff";
 export const PERMISSIONS_POLICY_VALUE = "camera=(), microphone=(), geolocation=()";
 
-export function buildSpaHtmlCsp(selfHost: string): string {
-  // The splash animation lives in /splash.js (portal public dir), so no
-  // inline <script> exists in index.html and script-src stays 'self'-only.
+function buildWebSocketSource(requestUrl: string | URL): string {
+  const url = new URL(requestUrl);
+  const protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${url.host}`;
+}
+
+export function buildSpaHtmlCsp(requestUrl: string | URL): string {
+  // The static splash uses inline CSS only, so script-src stays 'self'-only.
   // style-src keeps 'unsafe-inline': Mantine injects inline styles at runtime.
   const frameSrc = `frame-src ${EMBED_FRAME_SOURCES.join(" ")}`;
   return [
@@ -17,7 +22,7 @@ export function buildSpaHtmlCsp(selfHost: string): string {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob:",
-    `connect-src 'self' wss://${selfHost}`,
+    `connect-src 'self' ${buildWebSocketSource(requestUrl)}`,
     "font-src 'self' data:",
     "worker-src 'self' blob:",
     "object-src 'none'",
@@ -28,8 +33,7 @@ export function buildSpaHtmlCsp(selfHost: string): string {
 
 export async function securityHeadersMiddleware(c: Context, next: Next): Promise<void> {
   await next();
-  const selfHost = new URL(c.req.url).host;
-  const connectSrc = `connect-src 'self' wss://${selfHost}`;
+  const connectSrc = `connect-src 'self' ${buildWebSocketSource(c.req.url)}`;
   const frameSrc = `frame-src ${EMBED_FRAME_SOURCES.join(" ")}`;
   c.header("X-Content-Type-Options", X_CONTENT_TYPE_VALUE);
   c.header("X-Frame-Options", "DENY");

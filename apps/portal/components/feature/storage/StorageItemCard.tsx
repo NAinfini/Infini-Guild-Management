@@ -1,9 +1,8 @@
 import type { StorageCategory, StorageItem } from "@guild/shared";
-import { ActionIcon, Badge, Button, Group, Image, Text } from "@mantine/core";
+import { ActionIcon, Badge, Button, Group, Image, Paper, Text } from "@mantine/core";
 import { ArrowDownIcon, ArrowUpIcon, PencilIcon, PhotoOffIcon } from "@portal/components/icons";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { PortalCard } from "../../shared/PortalCard";
 
 type StorageItemCardProps = {
   item: StorageItem;
@@ -49,7 +48,8 @@ export function StorageItemCard({
   const setBatchQuantity = (quantity: number) => batch?.onChange(quantity);
 
   return (
-    <PortalCard className="storage-item-card" interactive={false}>
+    <Paper withBorder radius="md" className="storage-item-card">
+      <div className="storage-item-card__inner">
       {/*
         * Image on demand: an item without a picture gets no thumbnail slot at all
         * rather than an empty placeholder box. A broken URL still shows the
@@ -134,6 +134,7 @@ export function StorageItemCard({
           ) : null}
         </Group>
       </div>
-    </PortalCard>
+      </div>
+    </Paper>
   );
 }

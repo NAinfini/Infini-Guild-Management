@@ -17,8 +17,8 @@ const ACCOUNT = {
 
 /**
  * Mock DB for the two reads `login` performs before it can fail: the lockout
- * row, then the account row. Writes (insert/update/delete) are accepted and
- * discarded — the ladder arithmetic is covered in login-lockout.test.ts.
+ * row, then the account row. Writes are accepted and discarded — the ladder
+ * arithmetic and atomic SQL shape are covered in login-lockout.test.ts.
  */
 function createMockDb(lockRow: { failCount: number; lockedUntil: string | null } | null, account: typeof ACCOUNT | null) {
   const select = vi.fn()
@@ -30,8 +30,16 @@ function createMockDb(lockRow: { failCount: number; lockedUntil: string | null }
     });
   return {
     select,
-    insert: () => ({ values: () => ({ onConflictDoUpdate: () => ({ returning: () => Promise.resolve([{ failCount: 4 }]) }) }) }),
-    update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
+    insert: () => ({
+      values: () => ({
+        onConflictDoUpdate: () => ({
+          returning: () => Promise.resolve([{
+            failCount: 4,
+            lockedUntil: "2026-07-25T00:00:30.000Z",
+          }]),
+        }),
+      }),
+    }),
     delete: () => ({ where: () => Promise.resolve() }),
   } as never;
 }
@@ -42,7 +50,7 @@ function createDeps() {
     createPasswordHash: vi.fn(),
     verifyPassword: vi.fn().mockResolvedValue(false),
     createSession: vi.fn().mockResolvedValue(undefined),
-    destroySession: vi.fn().mockResolvedValue(undefined),
+    destroySessionById: vi.fn().mockResolvedValue(undefined),
     enforceSessionLimit: vi.fn().mockResolvedValue(undefined),
     writeAuditLog: vi.fn().mockResolvedValue(undefined),
     now: () => NOW,

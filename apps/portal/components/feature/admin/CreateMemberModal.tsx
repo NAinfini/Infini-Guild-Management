@@ -1,5 +1,5 @@
-import { DepthButton } from "@portal/components/shared/DepthButton";
 import {
+  Button,
   CopyButton,
   Group,
   Modal,
@@ -95,22 +95,23 @@ export function CreateMemberModal({
               />
               <CopyButton value={result.temporary_password}>
                 {({ copied, copy }) => (
-                  <DepthButton
+                  <Button
                     onClick={copy}
-                    type={copied ? "success" : "secondary"}
+                    color={copied ? "green" : undefined}
+                    variant={copied ? "light" : "default"}
                     size="sm"
-                    before={copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
+                    leftSection={copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
                   >
                     {copied ? t("member.create.copied") : t("member.create.copy")}
-                  </DepthButton>
+                  </Button>
                 )}
               </CopyButton>
             </Group>
           </div>
           <Group justify="flex-end">
-            <DepthButton onClick={handleClose} type="primary" size="sm">
+            <Button onClick={handleClose} size="sm">
               {t("member.create.done")}
-            </DepthButton>
+            </Button>
           </Group>
         </Stack>
       ) : (
@@ -132,19 +133,18 @@ export function CreateMemberModal({
             autosize
           />
           <Group justify="flex-end" mt={8}>
-            <DepthButton onClick={handleClose} type="secondary" size="sm">
+            <Button onClick={handleClose} variant="default" size="sm">
               {t("member.create.cancel")}
-            </DepthButton>
-            <DepthButton
+            </Button>
+            <Button
               onClick={() => { void handleCreate(); }}
-              type="primary"
               size="sm"
-              before={<UserPlusIcon size={16} />}
+              leftSection={<UserPlusIcon size={16} />}
               disabled={!username.trim() || creating}
               loading={creating}
             >
               {t("member.create.submit")}
-            </DepthButton>
+            </Button>
           </Group>
         </Stack>
       )}

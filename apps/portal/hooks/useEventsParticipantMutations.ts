@@ -1,5 +1,5 @@
 import type { User } from "@guild/shared";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback } from "react";

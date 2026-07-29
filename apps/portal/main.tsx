@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { dismissSplash } from "./splash";
 import "./styles.css";
 
 const rootElement = document.getElementById("root");
@@ -14,6 +15,8 @@ void import("./bootstrap")
   })
   .catch((error) => {
     console.error("Failed to bootstrap portal app", error);
+    document.documentElement.dataset.theme ||= "dark";
+    dismissSplash();
     root.render(
       <div role="alert" className="main-bootstrap-error">
         <div>

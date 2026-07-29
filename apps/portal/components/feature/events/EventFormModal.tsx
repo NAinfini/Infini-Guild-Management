@@ -13,7 +13,6 @@ import {
   ActionIcon,
 } from "@mantine/core";
 import { XIcon, PlusIcon, SaveIcon } from "@portal/components/icons";
-import { DepthButton } from "@portal/components/shared/DepthButton";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
@@ -290,12 +289,12 @@ export function EventFormModal({
 
         {/* ── Actions ── */}
         <Group justify="flex-end" mt={4}>
-          <DepthButton type="secondary" onClick={onCancel} before={<XIcon size={16} />}>
+          <Button variant="default" onClick={onCancel} leftSection={<XIcon size={16} />}>
             {t("button.cancel")}
-          </DepthButton>
-          <DepthButton type="primary" onClick={onSave} loading={confirmLoading} disabled={isSaveDisabled} before={mode === "create" ? <PlusIcon size={16} /> : <SaveIcon size={16} />}>
+          </Button>
+          <Button onClick={onSave} loading={confirmLoading} disabled={isSaveDisabled} leftSection={mode === "create" ? <PlusIcon size={16} /> : <SaveIcon size={16} />}>
             {mode === "create" ? t("button.create") : t("button.save")}
-          </DepthButton>
+          </Button>
         </Group>
       </Stack>
     </Modal>

@@ -1,13 +1,11 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
+import { ModalsProvider } from "@mantine/modals";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import {
-  ConfirmDialogProvider,
-} from "@portal/components/shared/ConfirmDialog";
 import {
   EMPTY_BADGE_FORM,
   type AdminBadgesController,
@@ -80,9 +78,9 @@ function createController(
 function renderBadges(controller: AdminBadgesController) {
   render(
     <MantineProvider>
-      <ConfirmDialogProvider>
+      <ModalsProvider>
         <AdminBadgesSection userRows={[]} controller={controller} />
-      </ConfirmDialogProvider>
+      </ModalsProvider>
     </MantineProvider>,
   );
 }

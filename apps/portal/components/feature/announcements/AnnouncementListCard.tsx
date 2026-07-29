@@ -1,8 +1,6 @@
 import type { Announcement } from "@guild/shared";
 import { PushpinOutlined } from "@portal/utils/icons";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { PortalCard } from "../../shared/PortalCard";
-import { Alert, Badge, Button, Group, Indicator, Skeleton, Stack, Text, ThemeIcon, Tooltip, VisuallyHidden } from "@mantine/core";
+import { Alert, Badge, Button, Group, Indicator, Paper, Skeleton, Stack, Text, ThemeIcon, Tooltip, VisuallyHidden } from "@mantine/core";
 import { ArchiveIcon, CalendarTimeIcon, CircleCheckIcon, FileTextIcon, PlusIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -68,20 +66,19 @@ export function AnnouncementListCard({
 }: AnnouncementListCardProps) {
   const { t } = useTranslation("announcements");
   return (
-    <PortalCard className="announcements-list-card" interactive={false}>
-      <div style={{ padding: "1.2rem" }}>
+    <Paper withBorder radius="md" p="var(--card-padding)" className="announcements-list-card">
+      <div>
         <Stack gap={8}>
           <Group justify="space-between" align="center">
             <Text fw={600}>{title}</Text>
             {canCreate && onCreate ? (
-              <DepthButton
+              <Button
                 onClick={() => onCreate()}
-                type="primary"
                 size="sm"
-                before={<PlusIcon size={16} />}
+                leftSection={<PlusIcon size={16} />}
               >
                 {t("action.newAnnouncement")}
-              </DepthButton>
+              </Button>
             ) : null}
           </Group>
           {isLoading ? (
@@ -182,6 +179,6 @@ export function AnnouncementListCard({
           ) : null}
         </Stack>
       </div>
-    </PortalCard>
+    </Paper>
   );
 }

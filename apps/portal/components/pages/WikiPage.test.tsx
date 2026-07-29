@@ -30,7 +30,7 @@ vi.mock("@tanstack/react-router", () => ({
   useSearch: () => routeSearchMock,
 }));
 
-vi.mock("@portal/components/shared/ConfirmDialog", () => ({
+vi.mock("@portal/hooks/useConfirmDialog", () => ({
   useConfirmDialog: () => confirmMock,
 }));
 

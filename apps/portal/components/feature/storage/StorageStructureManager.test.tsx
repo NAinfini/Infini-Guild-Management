@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
 import type { Storage } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StorageStructureManager } from "./StorageStructureManager";
+
+const responsive = vi.hoisted(() => ({ mobile: false }));
+
+vi.mock("@mantine/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@mantine/hooks")>();
+  return {
+    ...actual,
+    useMediaQuery: () => responsive.mobile,
+  };
+});
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -37,6 +47,10 @@ const labels = {
   saveCategory: "action.saveCategory",
   deleteCategory: "action.deleteCategory",
   noCategories: "empty.noCategories",
+  selectStructure: "manageStorage.selectStructure",
+  changeSelection: "manageStorage.changeSelection",
+  stepSelect: "manageStorage.stepSelect",
+  stepEdit: "manageStorage.stepEdit",
 };
 
 const callbacks = {
@@ -70,6 +84,7 @@ describe("StorageStructureManager create drafts", () => {
     for (const callback of Object.values(callbacks)) {
       callback.mockReset();
     }
+    responsive.mobile = false;
   });
 
   it("keeps a new storage local until the user explicitly saves it", async () => {
@@ -126,5 +141,25 @@ describe("StorageStructureManager create drafts", () => {
       { name: "Consumables" },
       expect.any(Function),
     );
+  });
+
+  it("uses a select then edit flow on mobile", async () => {
+    responsive.mobile = true;
+    const user = userEvent.setup();
+    renderModal();
+
+    expect(screen.getByText(labels.stepSelect)).toBeInTheDocument();
+    expect(screen.getByText(labels.stepEdit)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: labels.changeSelection }));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Materials" }));
+    expect(callbacks.onSelectCategory).toHaveBeenCalledWith(storage.id, "category-1");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 });

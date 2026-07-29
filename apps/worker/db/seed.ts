@@ -41,29 +41,32 @@ import seedGameData from "@guild/shared/calculator/seed-data.json";
 import type { Bindings } from "../index";
 import { createPasswordHash } from "../services/auth";
 
-const ALL_TABLES = [
+export const SEED_CLEAR_TABLES = [
+  "system_test_artifacts",
+  "media_references",
   "storage_transactions",
   "storage_item_images",
   "storage_items",
   "storage_categories",
   "storages",
+  "wiki_revisions",
+  "wiki_articles",
+  "wiki_categories",
+  "event_poll_votes",
+  "event_poll_options",
+  "event_polls",
+  "event_raffle_winners",
+  "event_participants",
+  "war_team_members",
+  "war_pool_members",
+  "war_teams",
+  "war_history",
+  "recurring_templates",
+  "events",
   "game_data",
   "audit_log",
   "error_log",
   "gallery_items",
-  "wiki_articles",
-  "wiki_categories",
-  "war_pool_members",
-  "war_team_members",
-  "war_teams",
-  "war_history",
-  "recurring_templates",
-  "event_raffle_winners",
-  "event_poll_votes",
-  "event_poll_options",
-  "event_polls",
-  "event_participants",
-  "events",
   "invite_links",
   "announcements",
   "member_badge_assignments",
@@ -74,21 +77,18 @@ const ALL_TABLES = [
   "member_onboarding_state",
   "onboarding_config",
   "site_config",
+  "system_test_runs",
   "sessions",
-  "role_permissions",
-  "roles",
+  "login_failures",
   "user_auth_password",
   "users",
+  "role_permissions",
+  "roles",
 ] as const;
 
 export async function clearAllData(env: Bindings): Promise<void> {
-  const db = drizzle(env.DB);
-  for (const table of ALL_TABLES) {
-    try {
-      await db.run(sql.raw(`DELETE FROM ${table}`));
-    } catch {
-      // Table may not exist in a fresh or partially-migrated database
-    }
+  for (const table of SEED_CLEAR_TABLES) {
+    await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
 }
 
@@ -180,10 +180,12 @@ async function batchInsert<T extends Record<string, unknown>>(
   table: Parameters<ReturnType<typeof drizzle>["insert"]>[0],
   rows: T[],
   chunkSize = 10,
+  options: { ignoreConflicts?: boolean } = {},
 ): Promise<void> {
   for (let i = 0; i < rows.length; i += chunkSize) {
     const chunk = rows.slice(i, i + chunkSize);
-    await (db.insert(table) as any).values(chunk);
+    const query = (db.insert(table) as any).values(chunk);
+    await (options.ignoreConflicts ? query.onConflictDoNothing() : query);
   }
 }
 
@@ -210,7 +212,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     { id: "moderator", name: "Moderator", level: 500, color: "#756047", isBuiltin: true },
     { id: "member", name: "Member", level: 100, color: "gray", isBuiltin: true },
   ];
-  await batchInsert(db, roles, roleRows, 3);
+  await batchInsert(db, roles, roleRows, 3, { ignoreConflicts: true });
 
   const rolePermissionRows: Array<typeof rolePermissions.$inferInsert> = [];
   for (const permission of PERMISSIONS) {
@@ -218,7 +220,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     rolePermissionRows.push({ roleId: "moderator", permission, granted: MODERATOR_GRANTED_PERMISSIONS.has(permission) });
     rolePermissionRows.push({ roleId: "member", permission, granted: MEMBER_GRANTED_PERMISSIONS.has(permission) });
   }
-  await batchInsert(db, rolePermissions, rolePermissionRows, 15);
+  await batchInsert(db, rolePermissions, rolePermissionRows, 15, { ignoreConflicts: true });
 
   // ════════════════════════════════════════════
   // ── Users ──
@@ -303,7 +305,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
         distance: 0.15,
       },
     }),
-  });
+  }).onConflictDoNothing();
   const passwords = new Map<string, string>([
     [adminId, "admin123"],
     ...moderatorIds.map((id, index) => [id, `moderator${index + 1}23`] as const),

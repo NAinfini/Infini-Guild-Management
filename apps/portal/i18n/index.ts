@@ -2,6 +2,7 @@ import i18n, { type Resource } from "i18next";
 import { initReactI18next } from "react-i18next";
 
 const localeModules = import.meta.glob<Record<string, unknown>>("./*/*.json");
+const SUPPORTED_LOCALES = ["en", "zh"] as const;
 
 async function loadLocaleResources(lang: string): Promise<Record<string, object>> {
   const resources: Record<string, object> = {};
@@ -20,19 +21,17 @@ async function loadLocaleResources(lang: string): Promise<Record<string, object>
 }
 
 async function initI18n(): Promise<void> {
-  const locale = localStorage.getItem("locale") ?? (navigator.language.startsWith("zh") ? "zh" : "en");
+  const storedLocale = localStorage.getItem("locale");
+  const locale = storedLocale === "en" || storedLocale === "zh"
+    ? storedLocale
+    : navigator.language.startsWith("zh") ? "zh" : "en";
   const fallbackLng = "en";
 
-  const [localeResources, fallbackResources] = await Promise.all([
-    loadLocaleResources(locale),
-    locale !== fallbackLng ? loadLocaleResources(fallbackLng) : Promise.resolve({}),
-  ]);
-
-  const namespaces = Object.keys(localeResources);
-  const resources: Resource = {
-    [locale]: localeResources,
-    ...(locale !== fallbackLng ? { [fallbackLng]: fallbackResources } : {}),
-  };
+  const localeEntries = await Promise.all(
+    SUPPORTED_LOCALES.map(async (lang) => [lang, await loadLocaleResources(lang)] as const),
+  );
+  const resources = Object.fromEntries(localeEntries) as Resource;
+  const namespaces = [...new Set(localeEntries.flatMap(([, entries]) => Object.keys(entries)))];
 
   await i18n.use(initReactI18next).init({
     lng: locale,
@@ -42,6 +41,9 @@ async function initI18n(): Promise<void> {
     resources,
     interpolation: { escapeValue: false },
   });
+
+  document.documentElement.lang = locale;
+  document.documentElement.dataset.locale = locale;
 }
 
 export const i18nReady = initI18n();

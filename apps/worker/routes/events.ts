@@ -23,6 +23,7 @@ import {
 import { isEventPubliclyVisible } from "../services/events/event-visibility";
 import { buildError, collectFiles, getDb, parseBoolean, parseJsonBody, parsePage, requireSessionUser, serveR2Object } from "./_shared";
 import { commonDeps, getMediaPolicy } from "./service-factory";
+import { getSystemTestRunId } from "../services/SystemTestService";
 
 export const eventsRoutes = new Hono();
 
@@ -41,6 +42,7 @@ function getEventService(c: Context) {
     getTemplateById: (templateId: string) => svc.getTemplateById(templateId),
     materializeRecurringSeries: (templateId: string) => materializeRecurringSeries(c, templateId),
     writeAuditLog: deps.writeAuditLog,
+    systemTestRunId: getSystemTestRunId(c),
   };
   const svc: EventService = new EventService(db as never, (c.env as Bindings).DB as never, (c.env as Bindings).MEDIA as never, deps, templateDeps);
   return svc;
@@ -64,7 +66,10 @@ async function parseCreateEventRequest(c: Context): Promise<{ body: unknown; fil
 }
 
 async function materializeRecurringSeries(c: Context, templateId: string): Promise<void> {
-  await runEventInstanceGenerationCron(c.env as Bindings, { templateId });
+  await runEventInstanceGenerationCron(c.env as Bindings, {
+    templateId,
+    systemTestRunId: getSystemTestRunId(c) ?? undefined,
+  });
 }
 
 // --- Routes ---

@@ -115,7 +115,7 @@ async function derivePasswordHash(password: string, saltBytes: Uint8Array): Prom
   return new Uint8Array(bits);
 }
 
-function clearSessionCookie(c: Context): void {
+export function clearSessionCookie(c: Context): void {
   deleteCookie(c, SESSION_COOKIE_NAME, {
     path: "/",
     httpOnly: true,
@@ -334,13 +334,19 @@ export async function isSessionStillValid(db: D1Database, sessionId: string, now
   return Boolean(row.isActive) && row.deletedAt === null;
 }
 
-export async function destroySession(c: Context, sessionId?: string): Promise<void> {
-  const rawToken = sessionId ?? getCookie(c, SESSION_COOKIE_NAME);
+export async function destroySession(c: Context): Promise<void> {
+  const rawToken = getCookie(c, SESSION_COOKIE_NAME);
   if (rawToken) {
     const db = getDb(c);
     const hashed = await hashSessionToken(rawToken);
     await db.delete(sessions).where(eq(sessions.id, hashed));
   }
+  clearSessionCookie(c);
+}
+
+export async function destroySessionById(c: Context, sessionId: string): Promise<void> {
+  const db = getDb(c);
+  await db.delete(sessions).where(eq(sessions.id, sessionId));
   clearSessionCookie(c);
 }
 

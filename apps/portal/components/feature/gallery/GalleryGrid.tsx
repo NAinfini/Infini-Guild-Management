@@ -1,9 +1,5 @@
-import { RevealOnScroll } from "@portal/components/effects";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { PortalCard } from "../../shared/PortalCard";
-import { Button, Checkbox, Group, Skeleton, Stack, Text } from "@mantine/core";
+import { ActionIcon, Button, Checkbox, Group, Paper, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
 import { TrashIcon, PlayIcon } from "@portal/components/icons";
-import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
 import type { GalleryItem } from "./shared";
@@ -82,15 +78,17 @@ export function GalleryGrid({
       <div className="gallery-masonry" role="list" aria-label={t("aria.galleryLoading")}>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} role="listitem" className="gallery-masonry__item">
-            <PortalCard interactive={false}>
-              <div className="gallery-card__inner">
-                <Skeleton height={200} radius={8} />
-                <Stack gap={4} mt={8}>
-                  <Skeleton height={12} width="70%" />
-                  <Skeleton height={10} width="40%" />
-                </Stack>
+            <Paper withBorder radius="md">
+              <div>
+                <div className="gallery-card__inner">
+                  <Skeleton height={200} radius={8} />
+                  <Stack gap={4} mt={8}>
+                    <Skeleton height={12} width="70%" />
+                    <Skeleton height={10} width="40%" />
+                  </Stack>
+                </div>
               </div>
-            </PortalCard>
+            </Paper>
           </div>
         ))}
       </div>
@@ -99,8 +97,8 @@ export function GalleryGrid({
 
   if (isError && rows.length === 0) {
     return (
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+      <Paper withBorder radius="md" p="var(--card-padding)">
+        <div>
           <EmptyState
             status="error"
             title={errorTitle}
@@ -112,14 +110,14 @@ export function GalleryGrid({
             }
           />
         </div>
-      </PortalCard>
+      </Paper>
     );
   }
 
   if (rows.length === 0) {
     return (
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+      <Paper withBorder radius="md" p="var(--card-padding)">
+        <div>
           <EmptyState
             title={emptyTitle}
             description={emptyDescription}
@@ -134,7 +132,7 @@ export function GalleryGrid({
             }
           />
         </div>
-      </PortalCard>
+      </Paper>
     );
   }
 
@@ -144,15 +142,11 @@ export function GalleryGrid({
    */
   return (
     <div className="gallery-masonry" role="list" aria-label={t("aria.galleryItems")}>
-      {rows.map((item, index) => (
-        <RevealOnScroll key={item.id} delayMs={Math.min(index, 18) * 18}>
-          <div
-            className="gallery-masonry__item gallery-masonry__item--animated"
-            role="listitem"
-            style={{ "--stagger-index": index } as CSSProperties}
-          >
-            <PortalCard className="gallery-card" interactive={false}>
-              <button
+      {rows.map((item) => (
+          <div key={item.id} className="gallery-masonry__item" role="listitem">
+            <Paper withBorder radius="md" className="gallery-card">
+              <div>
+                <button
                 type="button"
                 onClick={() => onOpenLightbox(item.id)}
                 className="gallery-preview-button"
@@ -192,13 +186,27 @@ export function GalleryGrid({
                         aria-label={t("aria.selectItem", { id: item.id })}
                       />
                     </label>
-                    <DepthButton type="danger" size="sm" iconOnly before={<TrashIcon size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); onDelete(item.id); }} loading={deletePending} tooltip={{ label: actionDeleteLabel, withArrow: true }} />
+                    <Tooltip label={actionDeleteLabel} withArrow>
+                      <ActionIcon
+                        color="red"
+                        variant="filled"
+                        size="sm"
+                        aria-label={actionDeleteLabel}
+                        onClick={(e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          onDelete(item.id);
+                        }}
+                        loading={deletePending}
+                      >
+                        <TrashIcon size={14} />
+                      </ActionIcon>
+                    </Tooltip>
                   </Group>
                 ) : null}
+                </div>
               </div>
-            </PortalCard>
+            </Paper>
           </div>
-        </RevealOnScroll>
       ))}
     </div>
   );

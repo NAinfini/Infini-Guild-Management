@@ -1,6 +1,5 @@
 import type { MemberProfile, User } from "@guild/shared";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { Group, Modal, Stack, Text } from "@mantine/core";
+import { Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { PencilIcon } from "@portal/components/icons";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -111,14 +110,14 @@ export function ProfileModal({
           <Group gap={12} wrap="nowrap" justify="space-between" style={{ flex: 1 }}>
             <span>{t("profile.modalTitle", { name: user.username })}</span>
             {canEdit && onEdit ? (
-              <DepthButton
+              <Button
                 onClick={onEdit}
-                type="secondary"
+                variant="default"
                 size="sm"
-                before={<PencilIcon size={14} />}
+                leftSection={<PencilIcon size={14} />}
               >
                 {editLabel || t("profile.editProfile")}
-              </DepthButton>
+              </Button>
             ) : null}
           </Group>
         ) : undefined

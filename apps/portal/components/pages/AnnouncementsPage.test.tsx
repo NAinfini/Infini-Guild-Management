@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AnnouncementsPage } from "./AnnouncementsPage";
@@ -13,9 +13,22 @@ const controller = vi.hoisted(() => ({
   canCreate: true,
   resetFilters: vi.fn(),
   handleCreateByStatus: vi.fn(),
-  listQuery: { isError: false },
-  detailQuery: { isError: false },
+  handleCloseEditor: vi.fn(),
+  setSelectedId: vi.fn(async () => true),
+  selectedId: "announcement-1" as string | null,
+  rows: [],
+  listQuery: { isError: false, isLoading: false },
+  detailQuery: { isError: false, isLoading: false },
 }));
+const responsive = vi.hoisted(() => ({ mobile: false }));
+
+vi.mock("@mantine/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@mantine/hooks")>();
+  return {
+    ...actual,
+    useMediaQuery: () => responsive.mobile,
+  };
+});
 
 vi.mock("../../hooks/useAnnouncementsController", () => ({
   useAnnouncementsController: () => controller,
@@ -34,11 +47,22 @@ vi.mock("../feature/announcements/AnnouncementFiltersCard", () => ({
 }));
 
 vi.mock("../feature/announcements/AnnouncementListCard", () => ({
-  AnnouncementListCard: ({ emptyText }: { emptyText: ReactNode }) => emptyText,
+  AnnouncementListCard: ({
+    emptyText,
+    onSelect,
+  }: {
+    emptyText: ReactNode;
+    onSelect: (id: string) => void;
+  }) => (
+    <div data-testid="announcement-list">
+      {emptyText}
+      <button type="button" onClick={() => onSelect("announcement-2")}>open announcement</button>
+    </div>
+  ),
 }));
 
 vi.mock("../feature/announcements/AnnouncementDetailCard", () => ({
-  AnnouncementDetailCard: () => null,
+  AnnouncementDetailCard: () => <div data-testid="announcement-detail" />,
 }));
 
 vi.mock("../layout/PageLayout", () => ({
@@ -68,6 +92,10 @@ describe("AnnouncementsPage empty state", () => {
     controller.canCreate = true;
     controller.resetFilters.mockReset();
     controller.handleCreateByStatus.mockReset();
+    controller.handleCloseEditor.mockReset();
+    controller.setSelectedId.mockReset();
+    controller.setSelectedId.mockResolvedValue(true);
+    responsive.mobile = false;
   });
 
   it("offers creation when the resource is globally empty", () => {
@@ -107,5 +135,27 @@ describe("AnnouncementsPage empty state", () => {
     expect(within(emptyState as HTMLElement).queryByRole("button", {
       name: "action.newAnnouncement",
     })).not.toBeInTheDocument();
+  });
+
+  it("uses a list-first mobile flow and opens one detail task at a time", async () => {
+    responsive.mobile = true;
+    renderPage();
+
+    expect(screen.getByTestId("announcement-list")).toBeInTheDocument();
+    expect(screen.queryByTestId("announcement-detail")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "open announcement" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("announcement-detail")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("announcement-list")).not.toBeInTheDocument();
+    expect(controller.setSelectedId).toHaveBeenCalledWith("announcement-2");
+
+    fireEvent.click(screen.getByRole("button", { name: "action.backToList" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("announcement-list")).toBeInTheDocument();
+    });
+    expect(controller.handleCloseEditor).toHaveBeenCalledOnce();
   });
 });

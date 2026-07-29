@@ -26,7 +26,8 @@ import {
   type RaffleWinnerRow,
 } from "./EventPollRaffleService";
 import { eventPublicVisibilityFilter, isEventPubliclyVisible } from "./event-visibility";
-import { replaceMediaRefs, deleteMediaRefs, extractAttachmentKeys } from "../media-references";
+import { buildReplaceMediaRefsStatements, replaceMediaRefs, deleteMediaRefs, extractAttachmentKeys } from "../media-references";
+import { rethrowAfterUploadFailure } from "../media-upload-compensation";
 
 export { toParticipantPayload, type EventParticipantRow } from "./EventParticipantService";
 export { toRaffleWinnerPayload, type RaffleWinnerRow } from "./EventPollRaffleService";
@@ -47,6 +48,7 @@ export type RawDbLike = {
 
 export type MediaLike = {
   put: (key: string, value: ArrayBuffer, options: { httpMetadata: { contentType: string } }) => Promise<unknown> | unknown;
+  delete: (key: string) => Promise<unknown> | unknown;
 };
 
 export type EventRow = {
@@ -194,72 +196,95 @@ export class EventCrudService {
     if (pollErr) return pollErr;
     const raffleErr = this.pollRaffle.validateRaffleEventInput(data);
     if (raffleErr) return raffleErr;
+    if ((data.attachments?.length ?? 0) + files.length > MAX_EVENT_ATTACHMENTS) {
+      return err("VALIDATION_ERROR", `Max ${MAX_EVENT_ATTACHMENTS} attachments per event`);
+    }
 
     const eventId = this.deps.createId?.() ?? nanoid();
     const imageResult = await this.storeImages(eventId, files, 0);
     if ("ok" in imageResult && !imageResult.ok) return imageResult;
     const uploadedAttachments = imageResult as string[];
     const attachments = [...(data.attachments ?? []), ...uploadedAttachments];
-    if (attachments.length > MAX_EVENT_ATTACHMENTS) {
-      return err("VALIDATION_ERROR", `Max ${MAX_EVENT_ATTACHMENTS} attachments per event`);
-    }
 
     const now = this.now();
+    try {
+      await this.db.insert(events).values({
+        id: eventId,
+        type: data.type,
+        title: data.title.trim(),
+        description: data.description?.trim() || null,
+        startAt: data.start_at,
+        endAt: data.end_at ?? null,
+        capacity: data.type === "poll" ? null : data.capacity ?? null,
+        winnerCount: data.type === "raffle" ? data.winner_count ?? null : null,
+        pinned: false,
+        signupLocked: false,
+        autoArchive: data.auto_archive ?? false,
+        autoArchived: false,
+        archivedAt: null,
+        createdBy: actorId,
+        attachments: JSON.stringify(attachments),
+        seriesId: null,
+        instanceDate: null,
+        createdAt: now,
+        updatedAt: now,
+      });
 
-    await this.db.insert(events).values({
-      id: eventId,
-      type: data.type,
-      title: data.title.trim(),
-      description: data.description?.trim() || null,
-      startAt: data.start_at,
-      endAt: data.end_at ?? null,
-      capacity: data.type === "poll" ? null : data.capacity ?? null,
-      winnerCount: data.type === "raffle" ? data.winner_count ?? null : null,
-      pinned: false,
-      signupLocked: false,
-      autoArchive: data.auto_archive ?? false,
-      autoArchived: false,
-      archivedAt: null,
-      createdBy: actorId,
-      attachments: JSON.stringify(attachments),
-      seriesId: null,
-      instanceDate: null,
-      createdAt: now,
-      updatedAt: now,
-    });
+      if (data.type === "poll" && data.poll) {
+        await this.pollRaffle.createPoll(eventId, data.poll);
+      }
 
-    if (data.type === "poll" && data.poll) {
-      await this.pollRaffle.createPoll(eventId, data.poll);
+      const created = await this.deps.getEventById(eventId);
+      if (!created) {
+        throw new Error("Failed to load created event");
+      }
+
+      await replaceMediaRefs(this.rawDb as unknown as D1Database, "event", eventId, extractAttachmentKeys(created.attachments));
+
+      await this.deps.writeAuditLog({
+        entityType: "event",
+        action: "create",
+        actorId,
+        entityId: eventId,
+        diffTitle: created.title,
+        detailText: JSON.stringify({
+          type: created.type,
+          start_at: created.startAt,
+          end_at: created.endAt,
+        }),
+      });
+
+      await this.deps.publishEntityChanged({
+        entityType: "event",
+        entityId: eventId,
+        hint: "event_created",
+        displayName: created.title,
+      });
+
+      return ok(created);
+    } catch (error) {
+      return rethrowAfterUploadFailure(
+        error,
+        (key) => Promise.resolve(this.media.delete(key)),
+        uploadedAttachments,
+        async () => {
+          await this.rawDb.batch([
+            this.rawDb.prepare("UPDATE war_history SET event_id = NULL, updated_at = ?1 WHERE event_id = ?2").bind(now, eventId),
+            this.rawDb.prepare("DELETE FROM event_raffle_winners WHERE event_id = ?1").bind(eventId),
+            this.rawDb.prepare("DELETE FROM event_poll_votes WHERE event_id = ?1").bind(eventId),
+            this.rawDb.prepare("DELETE FROM event_poll_options WHERE event_id = ?1").bind(eventId),
+            this.rawDb.prepare("DELETE FROM event_polls WHERE event_id = ?1").bind(eventId),
+            this.rawDb.prepare("DELETE FROM event_participants WHERE event_id = ?1").bind(eventId),
+            this.rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id IN (SELECT id FROM war_teams WHERE event_id = ?1)").bind(eventId),
+            this.rawDb.prepare("DELETE FROM war_teams WHERE event_id = ?1").bind(eventId),
+            this.rawDb.prepare("DELETE FROM war_pool_members WHERE event_id = ?1").bind(eventId),
+            this.rawDb.prepare("DELETE FROM media_references WHERE entity_type = ?1 AND entity_id = ?2").bind("event", eventId),
+            this.rawDb.prepare("DELETE FROM audit_log WHERE entity_type = ?1 AND entity_id = ?2").bind("event", eventId),
+            this.rawDb.prepare("DELETE FROM events WHERE id = ?1").bind(eventId),
+          ]);
+        },
+      );
     }
-
-    const created = await this.deps.getEventById(eventId);
-    if (!created) {
-      throw new Error("Failed to load created event");
-    }
-
-    await replaceMediaRefs(this.rawDb as unknown as D1Database, "event", eventId, extractAttachmentKeys(created.attachments));
-
-    await this.deps.writeAuditLog({
-      entityType: "event",
-      action: "create",
-      actorId,
-      entityId: eventId,
-      diffTitle: created.title,
-      detailText: JSON.stringify({
-        type: created.type,
-        start_at: created.startAt,
-        end_at: created.endAt,
-      }),
-    });
-
-    await this.deps.publishEntityChanged({
-      entityType: "event",
-      entityId: eventId,
-      hint: "event_created",
-      displayName: created.title,
-    });
-
-    return ok(created);
   }
 
   async updateEvent(actorId: string, eventId: string, existing: EventRow, data: UpdateEventInput): Promise<ServiceResult<EventRow>> {
@@ -376,24 +401,40 @@ export class EventCrudService {
     const keys = imageResult as string[];
     const attachments = [...existingAttachments, ...keys].slice(0, MAX_EVENT_ATTACHMENTS);
 
-    await this.db
-      .update(events)
-      .set({
-        attachments: JSON.stringify(attachments),
-        updatedAt: this.now(),
-      })
-      .where(eq(events.id, eventId));
+    try {
+      await this.db
+        .update(events)
+        .set({
+          attachments: JSON.stringify(attachments),
+          updatedAt: this.now(),
+        })
+        .where(eq(events.id, eventId));
 
-    await replaceMediaRefs(this.rawDb as unknown as D1Database, "event", eventId, attachments);
+      await replaceMediaRefs(this.rawDb as unknown as D1Database, "event", eventId, attachments);
 
-    await this.deps.writeAuditLog({
-      entityType: "event",
-      action: "upload_images",
-      actorId,
-      entityId: eventId,
-      diffTitle: existing.title,
-      detailText: JSON.stringify({ keys }),
-    });
+      await this.deps.writeAuditLog({
+        entityType: "event",
+        action: "upload_images",
+        actorId,
+        entityId: eventId,
+        diffTitle: existing.title,
+        detailText: JSON.stringify({ keys }),
+      });
+    } catch (error) {
+      const rawDb = this.rawDb as unknown as D1Database;
+      await rethrowAfterUploadFailure(
+        error,
+        (key) => Promise.resolve(this.media.delete(key)),
+        keys,
+        async () => {
+          await rawDb.batch([
+            rawDb.prepare("UPDATE events SET attachments = ?1, updated_at = ?2 WHERE id = ?3")
+              .bind(existing.attachments, existing.updatedAt, eventId),
+            ...buildReplaceMediaRefsStatements(rawDb, "event", eventId, existingAttachments),
+          ]);
+        },
+      );
+    }
 
     return ok({ keys, attachments });
   }
@@ -446,7 +487,6 @@ export class EventCrudService {
 
     const mediaPolicy = await (this.deps.getMediaPolicy?.() ?? Promise.resolve(DEFAULT_SITE_MEDIA_POLICY));
     const maxEventImageBytes = mediaPolicy.max_file_size_bytes.event_image;
-    const keys: string[] = [];
     for (const file of files) {
       if (!file.type.startsWith("image/")) {
         return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
@@ -454,15 +494,27 @@ export class EventCrudService {
       if (file.size > maxEventImageBytes) {
         return err("VALIDATION_ERROR", `File too large: ${file.name}`);
       }
-      const key = this.deps.createImageKey?.(eventId) ?? `events/${eventId}/images/${Date.now()}_${nanoid()}`;
-      await this.media.put(key, await file.arrayBuffer(), {
-        httpMetadata: {
-          contentType: file.type || "application/octet-stream",
-        },
-      });
-      keys.push(key);
     }
-    return keys;
+
+    const keys: string[] = [];
+    try {
+      for (const file of files) {
+        const key = this.deps.createImageKey?.(eventId) ?? `events/${eventId}/images/${Date.now()}_${nanoid()}`;
+        keys.push(key);
+        await this.media.put(key, await file.arrayBuffer(), {
+          httpMetadata: {
+            contentType: file.type || "application/octet-stream",
+          },
+        });
+      }
+      return keys;
+    } catch (error) {
+      return rethrowAfterUploadFailure(
+        error,
+        (key) => Promise.resolve(this.media.delete(key)),
+        keys,
+      );
+    }
   }
 
   private now() {

@@ -5,6 +5,7 @@ import {
   Button,
   Divider,
   Group,
+  Paper,
   SegmentedControl,
   Select,
   Stack,
@@ -14,7 +15,6 @@ import {
 import { TrashIcon, XIcon } from "@portal/components/icons";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { PortalCard } from "../../shared/PortalCard";
 
 export type StorageBatchDirection = "intake" | "distribute";
 
@@ -91,8 +91,9 @@ export function StorageBatchPanel({
       aria-label={t("batch.title")}
       tabIndex={-1}
     >
-      <PortalCard interactive={false} className="storage-batch-panel__card">
-        <Stack gap="md">
+      <Paper withBorder radius="md" className="storage-batch-panel__card">
+        <div className="storage-batch-panel__inner">
+          <Stack gap="md">
           <Group justify="space-between" align="flex-start" wrap="nowrap">
             <div>
               <Text fw={800}>{t("batch.title")}</Text>
@@ -202,8 +203,9 @@ export function StorageBatchPanel({
               {t("action.submitBatch", { count: selectedEntries.length })}
             </Button>
           </Group>
-        </Stack>
-      </PortalCard>
+          </Stack>
+        </div>
+      </Paper>
     </aside>
   );
 }

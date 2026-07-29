@@ -33,22 +33,22 @@
   --status-info: var(--palette-info-deep);
   --status-on-fill: var(--palette-neutral-0);
 
+  --brand-tint: var(--palette-teal-50);
+  --brand-text: var(--palette-teal-700);
+  --domain-war: var(--palette-violet-700);
+  --domain-event: var(--palette-info-deep);
+  --domain-ops: var(--palette-neutral-700);
+  --domain-community: var(--palette-orange-700);
+
   /* accent 的文字档：浅色模式用 700 */
   --accent-text: var(--accent-700);
   /* accent 填充上的文字：浅色模式在 500 填充上放 900 墨 */
   --accent-on-fill: var(--accent-900);
 
-  /* 阴影墨色：与模式无关的字面黑/近黑，不是可主题化的语义色（设计如此）。
-   * --shadow-ink 与下面四档标度阴影同一个墨色，供组件层的一次性（非标度）投影
-   * 通过 color-mix 复用（复审 N-1，见 AppShell.css .app-sider、
-   * styles.css .floating-save-bar）。全部已登记进 theme-tokens.test.ts 的
-   * LITERAL_COLOUR_EXEMPTIONS["apps/portal/styles/semantic.css"]（复审 I-3 /
-   * N-3 收口）。 */
-  --shadow-ink: rgb(10 10 15);
-  --shadow-xs: 0 1px 2px rgb(10 10 15 / 0.06);
-  --shadow-sm: 0 1px 3px rgb(10 10 15 / 0.08), 0 1px 2px rgb(10 10 15 / 0.04);
-  --shadow-md: 0 4px 12px rgb(10 10 15 / 0.10), 0 1px 3px rgb(10 10 15 / 0.06);
-  --shadow-lg: 0 8px 24px rgb(10 10 15 / 0.14), 0 2px 6px rgb(10 10 15 / 0.06);
+  --edge-top:
+    inset 0 1px 0 rgb(255 255 255 / 0.90),
+    0 1px 2px rgb(10 10 15 / 0.06);
+  --shadow-overlay: 0 16px 40px rgb(10 10 15 / 0.18);
 }
 
 /* ── 模式：深色 ── */
@@ -71,16 +71,21 @@
   --status-info: var(--palette-info-bright);
   --status-on-fill: var(--palette-neutral-950);
 
+  --brand-tint: color-mix(in srgb, var(--palette-teal-500) 14%, var(--surface-raised));
+  --brand-text: var(--palette-teal-500);
+  --domain-war: var(--palette-violet-500);
+  --domain-event: var(--palette-info-bright);
+  --domain-ops: var(--palette-neutral-200);
+  --domain-community: var(--palette-orange-500);
+
   /* accent 的文字档：深色模式用 500 */
   --accent-text: var(--accent-500);
   --accent-on-fill: var(--accent-900);
 
-  /* 阴影墨色：同上，深色模式的另一套数值（复审 N-1 / N-3 收口）。 */
-  --shadow-ink: rgb(0 0 0);
-  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.20);
-  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.24), 0 1px 2px rgb(0 0 0 / 0.16);
-  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.28), 0 1px 3px rgb(0 0 0 / 0.16);
-  --shadow-lg: 0 8px 24px rgb(0 0 0 / 0.32), 0 2px 6px rgb(0 0 0 / 0.16);
+  --edge-top:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    0 1px 2px rgb(0 0 0 / 0.20);
+  --shadow-overlay: 0 18px 44px rgb(0 0 0 / 0.42);
 }
 
 /* ── 主色：青瓷 ── */
@@ -129,6 +134,12 @@
 
 /* ── 与模式无关的 accent 派生 ── */
 :root {
+  --brand-fill: var(--palette-teal-500);
+  --brand-fill-hover: var(--palette-teal-600);
+  --brand-border: var(--palette-teal-300);
+  --brand-on-fill: var(--palette-teal-900);
+  --brand-on-fill-hover: var(--palette-ink-black);
+
   --accent-fill: var(--accent-500);
   --accent-fill-hover: var(--accent-600);
   --accent-border: var(--accent-300);
@@ -139,20 +150,9 @@
    * --accent-fill-hover 上」这一种场景使用。 */
   --accent-on-fill-hover: var(--palette-ink-black);
 
-  /* 迁自 styles.css 旧名转发块的 --shadow-primary-sm/-md（task-9-addendum.md D 节）。
-   * 这是「accent 强调光晕」，跟上面 [data-theme] 分支里的 --shadow-xs/sm/md/lg
-   * 不是同一档：那四档是中性色（rgb(10 10 15 / …) / rgb(0 0 0 / …)）标度阴影，
-   * 不随 accent 变化；这两个必须混 --accent-fill，用在悬浮态 / 品牌标记上，
-   * 让阴影本身带出「这跟主色相关」的信号，两者不可互相替代。
-   * 数值原样保留自转发块，只改了挂靠的名字。
-   * 消费者：AppShell.css（app-brand-mark、app-header-icon-btn:hover）、
-   * ToolsPage.css（dice__roll-btn:hover）。 */
-  --shadow-accent-sm: 0 2px 8px color-mix(in srgb, var(--accent-fill) 15%, transparent);
-  --shadow-accent-md: 0 4px 16px color-mix(in srgb, var(--accent-fill) 22%, transparent);
-
   /* ── 旧品牌辅色（与模式、与 accent 选择都无关）──
    *
-   * 迁自 styles.css 旧名转发块的 --color-secondary（task-9-addendum.md D 节）。
+   * 迁自 styles.css 旧名转发块的 --color-secondary（the semantic-colour contract D 节）。
    * tokens.css 的 --palette-bronze-warm 本身没有语义、不随 [data-theme] 或
    * [data-accent] 变化，只是历史遗留的第二品牌色，用来把某一类目跟当前选中的
    * accent 区分开（不是「危险 / 警告」这类状态色，纯粹是另一条视觉分类线）。

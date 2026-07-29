@@ -18,7 +18,12 @@ import "./MemberCard.css";
 const TILT_SPRING = { stiffness: 100, damping: 30, mass: 2 } as const;
 /** 光标推到卡片边缘时的最大倾角（度）。 */
 const TILT_AMPLITUDE = 14;
-const HOVER_SCALE = 1.1;
+/*
+ * 1.1 在 200~235px 宽的卡上等于向外顶出 20 多像素，而网格间距只有 8px，
+ * 抬起来的卡会整个压住左右邻居。1.04 只越界约 5px，卡还是「抬起来了」，
+ * 但不再吃掉邻居。
+ */
+const HOVER_SCALE = 1.04;
 /*
  * 高光相对倾斜的反向行程系数。乘出来约 ±18px，正好在 .member-card__spec
  * 那圈 -30% 的余量之内；再大就会把渐变的软边平移出卡面，露出一条硬边。
@@ -134,7 +139,7 @@ export const MemberCard = memo(function MemberCard({
   const prefersReducedMotion = useReducedMotion();
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (prefersReducedMotion) return;
+    if (prefersReducedMotion || event.pointerType !== "mouse") return;
     const rect = event.currentTarget.getBoundingClientRect();
     /* 归一化到 [-1, 1]：卡片中心是 0，边缘是 ±1。 */
     const ratioX = (event.clientX - rect.left - rect.width / 2) / (rect.width / 2);
@@ -146,8 +151,8 @@ export const MemberCard = memo(function MemberCard({
     specularY.set(ratioY * -TILT_AMPLITUDE * SPECULAR_TRAVEL);
   };
 
-  const handlePointerEnter = () => {
-    if (prefersReducedMotion) return;
+  const handlePointerEnter = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (prefersReducedMotion || event.pointerType !== "mouse") return;
     scale.set(HOVER_SCALE);
   };
 
@@ -180,8 +185,6 @@ export const MemberCard = memo(function MemberCard({
   return (
     <div
       className="member-card__frame"
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
       onPointerMove={handlePointerMove}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
@@ -190,7 +193,8 @@ export const MemberCard = memo(function MemberCard({
       <motion.button
         type="button"
         className={`member-card member-card--full${selected ? " member-card--selected" : ""}`}
-        tabIndex={-1}
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
         aria-label={t("a11y.openProfile", { name: user.username })}
         style={{ rotateX, rotateY, scale }}
       >

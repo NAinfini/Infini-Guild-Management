@@ -125,10 +125,5 @@
   "account.validation.usernameMinLength": "用户名至少需要 3 个字符。",
   "account.validation.usernameMaxLength": "用户名最多 50 个字符。",
   "account.validation.usernamePattern": "用户名只能包含字母、数字和下划线。",
-  "account.aria.currentPassword": "当前密码",
-  "account.aria.newPassword": "新密码",
-  "account.aria.confirmNewPassword": "确认新密码",
-  "account.aria.currentPasswordUsername": "修改用户名时的当前密码",
-  "account.aria.newUsername": "新用户名",
   "aria.selectClass": "选择职业"
 }

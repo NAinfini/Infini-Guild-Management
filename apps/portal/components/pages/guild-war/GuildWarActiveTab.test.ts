@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { resolveGuildWarAbsenceWindow } from "./GuildWarActiveTab";
 
 describe("resolveGuildWarAbsenceWindow", () => {
@@ -12,5 +14,23 @@ describe("resolveGuildWarAbsenceWindow", () => {
       from: "2026-08-14",
       to: "2026-08-14",
     });
+  });
+
+  it("keeps a complete non-drag mobile assignment flow", () => {
+    const board = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/guild-war/GuildWarDragBoard.tsx"),
+      "utf8",
+    );
+    const activeTab = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/guild-war/GuildWarActiveTab.tsx"),
+      "utf8",
+    );
+
+    expect(board).toContain('value: "pool"');
+    expect(board).toContain('value: "teams"');
+    expect(board).toContain('value: "status"');
+    expect(board).toContain("onMoveSelected(mobileTarget)");
+    expect(board).toContain("onRemoveSelected");
+    expect(activeTab).toContain('handleMoveSelectedTo("remove")');
   });
 });

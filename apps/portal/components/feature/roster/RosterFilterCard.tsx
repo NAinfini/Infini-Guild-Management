@@ -1,11 +1,10 @@
 import { CLASS_NAMES } from "@guild/shared";
-import { DepthToggle } from "@portal/components/shared/DepthToggle";
-import { PortalCard } from "../../shared/PortalCard";
 import {
   ActionIcon,
   Collapse,
   Group,
   MultiSelect,
+  Paper,
   Select,
   Slider,
   Text,
@@ -57,21 +56,22 @@ export function RosterFilterCard({
 
   const audioControl = (
     <Group gap={8} align="center" wrap="nowrap" className="roster-audio-popover">
-      <DepthToggle
-        pressed={audioMuted}
-        onToggle={(nextPressed) => {
+      <ActionIcon
+        aria-pressed={audioMuted}
+        variant={audioMuted ? "light" : "default"}
+        color={audioMuted ? "red" : "gray"}
+        onClick={() => {
+          const nextPressed = !audioMuted;
           if (nextPressed && isAudioPlaying()) {
             stopAudio();
           }
           onAudioMutedChange(nextPressed);
         }}
-        type="secondary"
         size="sm"
-        iconOnly
         aria-label={audioMuted ? t("audio.aria.unmute") : t("audio.aria.mute")}
       >
         {audioMuted ? <VolumeMutedOutlined size={18} /> : <VolumeOutlined size={18} />}
-      </DepthToggle>
+      </ActionIcon>
       <div className="roster-volume-control">
         <Text size="xs" c="dimmed" className="roster-volume-label">{t("audio.volume")}</Text>
         <Slider min={0} max={100} value={audioVolume} onChange={onAudioVolumeChange} aria-label={t("audio.aria.volumeSlider")} />
@@ -88,7 +88,7 @@ export function RosterFilterCard({
   ];
 
   return (
-    <PortalCard className="roster-filter-card" interactive={false}>
+    <Paper withBorder className="roster-filter-card">
       <div className="roster-filter-padding">
         {isMobile ? (
           <>
@@ -166,6 +166,6 @@ export function RosterFilterCard({
           </Group>
         )}
       </div>
-    </PortalCard>
+    </Paper>
   );
 }

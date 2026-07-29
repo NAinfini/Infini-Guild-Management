@@ -1,13 +1,8 @@
 .event-card {
   overflow: visible;
   position: relative;
-  border-color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
-}
-
-.event-card > .portal-card__spotlight {
-  overflow: hidden;
-  border-radius: inherit;
+  border-radius: var(--radius-surface);
+  transition: border-color 160ms ease, background 160ms ease;
 }
 
 /*
@@ -31,40 +26,33 @@
      这个覆盖关系今天成立，但 CSS 侧类名硬编码、配置侧数据驱动，两者原本无
      守卫绑定——现在由 event-colors.test.ts 里的一条断言把两边钉在一起：
      往游戏配置加一个事件类型且这里漏加对应规则会直接测红，而不是让
-     --event-card-accent 静默解析不出来（final-review.md I3）。 */
-  background: linear-gradient(to right, var(--event-card-accent) 0 4px, transparent 4px);
-}
-
-/*
- * `.portal-card--interactive::after` parks its gold shine one full card-width to
- * the left and relies on the card clipping it until the hover sweep runs. With
- * `overflow: visible` that band simply sits beside every card, so the effect is
- * dropped here instead of bleeding gold onto the page.
- */
-.event-card.portal-card--interactive::after {
-  content: none;
+     --event-card-accent 静默解析不出来（the final colour review I3）。 */
+  width: 4px;
+  right: auto;
+  background: var(--event-card-accent);
+  border-radius: var(--radius-surface) 0 0 var(--radius-surface);
 }
 
 /* 竖条取色策略：weekly_mission 与下面的 social 两类刻意吃 --accent-fill /
    --accent-fill-hover（主题强调色），不吃 utils/event-colors.ts 为徽章/标签
    派生的游戏配置色（yan-yun.ts 现在把这两类配成 cyan / grape）。这是本次
    改版引入的有意视觉分歧：同一张卡上竖条与徽章可能不同色，是否统一由后续
-   视觉决策裁定，见 event-colors.ts 顶部注释（final-review.md I2）。 */
+   视觉决策裁定，见 event-colors.ts 顶部注释（the final colour review I2）。 */
 .event-card:has(.event-card__header--weekly_mission) {
-  --event-card-accent: var(--accent-fill);
+  --event-card-accent: var(--domain-event);
 }
 
 .event-card:has(.event-card__header--guild_war) {
-  --event-card-accent: var(--status-danger);
+  --event-card-accent: var(--domain-war);
 }
 
 /* --color-secondary（古铜色）是本次改版要消灭的暖金配色，装饰性用途收敛到
    「更深一档主色」= --accent-fill-hover，与 weekly_mission 的
-   --accent-fill 区分开，保留分类可辨识度（task-7-addendum.md 前序约定段，
+   --accent-fill 区分开，保留分类可辨识度（the token-layer contract 前序约定段，
    不用 --accent-600）。竖条取色刻意跟主题色而非游戏配置色的说明见上方
-   weekly_mission 规则前的注释（final-review.md I2）。 */
+   weekly_mission 规则前的注释（the final colour review I2）。 */
 .event-card:has(.event-card__header--social) {
-  --event-card-accent: var(--accent-fill-hover);
+  --event-card-accent: var(--domain-community);
 }
 
 /* poll/raffle 此前是裸 hex，且不对应替换表里任何一个语义角色（不是
@@ -74,7 +62,7 @@
    "teal"、raffle 就是 "pink"；下方 .event-card__raffle-winners-badge 的
    徽章底色本来就在用 --mantine-color-pink-5，这里改用同一套 Mantine 色阶
    变量以保持分类色与该文件既有写法一致，而不是新造一个 token
-   （task-7-addendum.md H 节）。 */
+   （the token-layer contract H 节）。 */
 .event-card:has(.event-card__header--poll) {
   --event-card-accent: var(--mantine-color-teal-5);
 }
@@ -88,21 +76,13 @@
 }
 
 .event-card:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--accent-fill) 26%, transparent);
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-color: color-mix(in srgb, var(--brand-fill) 26%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 3%, var(--surface-raised));
 }
 
 .event-card--focused {
-  box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--accent-fill) 52%, transparent),
-    0 12px 28px color-mix(in srgb, var(--accent-fill) 14%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-fill) 52%, transparent);
 }
-
-/* .event-card 本身在浅色模式下没有另设 background，靠 PageLayout.css 里
-   `.portal-card { background: var(--surface-base); }` 提供表面色，
-   --surface-base 已经分模式解析到正确的深色值。这条 .dark 规则叠加的 92%
-   不透明度混色是重复表面处理，整块删除（task-7-addendum.md E 节：只差颜色）。 */
 
 .event-card__header {
   display: flex;
@@ -111,6 +91,7 @@
   gap: 10px;
   padding: 11px 14px 9px 18px;
   border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 7%, transparent);
+  border-radius: calc(var(--radius-surface) - 1px) calc(var(--radius-surface) - 1px) 0 0;
   background: color-mix(in srgb, var(--surface-base) 72%, transparent);
 }
 
@@ -238,7 +219,7 @@
    --mantine-color-* vars are exempt from the "every var must resolve"
    guard (theme-tokens.test.ts RUNTIME_INJECTED_VARS). */
 .event-card__status-icon--pinned {
-  color: var(--mantine-color-portal-accent-6);
+  color: var(--mantine-color-portal-brand-6);
 }
 
 .event-card__status-icon--locked {
@@ -304,7 +285,7 @@
   background: var(--mantine-color-pink-5);
   /* 徽章底色固定吃 --mantine-color-pink-5，不随 [data-theme] 变化，压在
      它上面的文字也保持不变，直接用 Mantine 自带的 --mantine-color-white，
-     不必新造字面白色（task-7-addendum.md I 节）。 */
+     不必新造字面白色（the token-layer contract I 节）。 */
   color: var(--mantine-color-white);
   font-size: 11px;
   font-weight: 600;
@@ -312,7 +293,7 @@
   white-space: nowrap;
   /* 与模式无关的字面黑：这枚徽章整体（底色/文字）已按上面的注释固定为不随
      [data-theme] 变化的外观，投影延续同一条设计决定，保持固定，不改用会
-     分模式变化的 --shadow-sm——否则一个固定配色的徽章会带一圈会变化的阴影，
+     分模式变化的 --edge-top——否则一个固定配色的徽章会带一圈会变化的阴影，
      视觉上反而不一致。 */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   z-index: 1;

@@ -77,9 +77,16 @@ async function waitForServices() {
 }
 
 async function seedDatabase() {
-  const response = await fetch(`${WORKER_BASE}/api/dev/reseed`, { method: "POST", headers: MUTATION_HEADERS });
-  if (!response.ok) {
-    throw new Error(`seed failed with ${response.status}`);
+  const seedResponse = await fetch(`${WORKER_BASE}/api/dev/seed`, { method: "POST", headers: MUTATION_HEADERS });
+  if (!seedResponse.ok) {
+    throw new Error(`initial seed failed with ${seedResponse.status}`);
+  }
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const response = await fetch(`${WORKER_BASE}/api/dev/reseed`, { method: "POST", headers: MUTATION_HEADERS });
+    if (!response.ok) {
+      throw new Error(`seed attempt ${attempt} failed with ${response.status}`);
+    }
   }
 }
 
@@ -119,6 +126,10 @@ async function assertForbidden(path, cookie, label) {
   }
 }
 
+function hasPortalRoot(html) {
+  return /<div\b(?=[^>]*\bid\s*=\s*(?:"root"|'root'|root)(?=\s|\/?>))[^>]*>/i.test(html);
+}
+
 async function checkPageRoutes() {
   for (const route of PAGE_ROUTES) {
     const response = await fetch(`${PORTAL_BASE}${route}`);
@@ -126,7 +137,7 @@ async function checkPageRoutes() {
       throw new Error(`page route ${route} returned ${response.status}`);
     }
     const html = await response.text();
-    if (!html.includes('<div id="root">')) {
+    if (!hasPortalRoot(html)) {
       throw new Error(`page route ${route} missing root container`);
     }
   }
@@ -215,6 +226,28 @@ async function checkMemberAdminAccessDenied(cookie) {
   }
 }
 
+async function checkLogoutInvalidatesSession(cookie) {
+  const logoutResponse = await fetch(`${WORKER_BASE}/api/auth/logout`, {
+    method: "POST",
+    headers: {
+      ...MUTATION_HEADERS,
+      Cookie: cookie,
+    },
+  });
+  if (!logoutResponse.ok) {
+    throw new Error(`logout failed with ${logoutResponse.status}`);
+  }
+
+  const sessionResponse = await fetch(`${WORKER_BASE}/api/auth/me`, {
+    headers: {
+      Cookie: cookie,
+    },
+  });
+  if (sessionResponse.status !== 401) {
+    throw new Error(`logged-out session remained valid with status ${sessionResponse.status}`);
+  }
+}
+
 async function main() {
   await waitForServices();
   await seedDatabase();
@@ -223,10 +256,15 @@ async function main() {
   await checkPageRoutes();
   await checkPageApis(adminCookie);
   await checkMemberAdminAccessDenied(memberCookie);
-  console.log("Smoke check passed for portal routes, seeded APIs, and member denial on admin APIs");
+  await checkLogoutInvalidatesSession(memberCookie);
+  console.log("Smoke check passed for portal routes, seeded APIs, member denial on admin APIs, and logout invalidation");
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+module.exports = { hasPortalRoot };
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}

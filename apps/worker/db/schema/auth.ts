@@ -80,7 +80,7 @@ export const inviteLinks = sqliteTable(
     revokedAt: text("revoked_at"),
   },
   (table) => ({
-    idxCreatedAt: index("idx_invite_links_created").on(table.createdAt),
+    idxCreatedAt: index("idx_invite_links_created").on(table.createdAt, table.id),
     idxStatus: index("idx_invite_links_status").on(table.revokedAt, table.expiresAt, table.createdAt),
   }),
 );

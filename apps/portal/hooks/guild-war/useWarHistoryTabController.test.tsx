@@ -3,7 +3,7 @@ import { MantineProvider } from "@mantine/core";
 import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { InfiniTable } from "@portal/components/shared/InfiniTable";
+import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
 import type { HistoryDetailData, HistorySummaryRow } from "../../types/guild-war";
 import {
   toDraftMetricValue,
@@ -177,7 +177,7 @@ describe("history metric editing", () => {
 
     render(
       <MantineProvider>
-        <InfiniTable table={result.current.detailTable} />
+        <DataTableAdapter table={result.current.detailTable} />
       </MantineProvider>,
     );
 

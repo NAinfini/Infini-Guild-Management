@@ -2,10 +2,8 @@ import { registerSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { BubbleBackground, GlassEffect, GradientText, LampHeading, MagneticElement } from "@portal/components/effects";
-import { DepthButton } from "@portal/components/shared/DepthButton";
 import { ArrowLeftIcon, EyeIcon, EyeOffIcon, KeyboardIcon } from "@portal/components/icons";
-import { Alert, Anchor, Loader, Stack, Text, TextInput } from "@mantine/core";
+import { Alert, Anchor, Button, Loader, Paper, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -183,33 +181,20 @@ export function RegisterPage() {
 
   return (
     <div className="login-page">
-      <div className="login-page__bg" />
-      <BubbleBackground
-        count={24}
-        minSize={4}
-        maxSize={40}
-        speed={0.6}
-        className="login-page__bubbles"
-      />
-
       <div className="login-page__content">
-        <div className="login-page__heading">
-          <LampHeading coneWidth={320} coneHeight={140} animated>
-            <div className="login-page__brand">
-              {siteLogoUrl ? (
-                <img src={siteLogoUrl} alt="" aria-hidden className="login-page__brand-logo" />
-              ) : null}
-              <GradientText animated duration={4} className="login-page__brand-text">
-                {siteName}
-              </GradientText>
-            </div>
-          </LampHeading>
+        <header className="login-page__heading">
+          <div className="login-page__brand">
+            {siteLogoUrl ? (
+              <img src={siteLogoUrl} alt="" aria-hidden className="login-page__brand-logo" />
+            ) : null}
+            <Title order={1} className="login-page__brand-text">{siteName}</Title>
+          </div>
           <Text c="dimmed" size="sm" ta="center" className="login-page__subtitle">
             {t("register.brand.subtitle")}
           </Text>
-        </div>
+        </header>
 
-        <GlassEffect className="login-page__card">
+        <Paper withBorder shadow="sm" radius="md" className="login-page__card">
           {inviteCode.length === 0 ? (
             <Stack gap={20}>
               <Text c="dimmed" size="sm">
@@ -234,7 +219,7 @@ export function RegisterPage() {
                   autoFocus
                 />
               </div>
-              <DepthButton onClick={submitInviteCode}>{t("button.continue")}</DepthButton>
+              <Button onClick={submitInviteCode}>{t("button.continue")}</Button>
               <div className="login-page__back-link">
                 <Anchor
                   underline="hover"
@@ -248,7 +233,7 @@ export function RegisterPage() {
             </Stack>
           ) : inviteQuery.isLoading ? (
             <Stack align="center" py="xl">
-              <Loader color="var(--accent-fill)" />
+              <Loader color="var(--brand-fill)" />
             </Stack>
           ) : !inviteQuery.data?.valid ? (
             <Stack align="center" gap="md">
@@ -366,11 +351,11 @@ export function RegisterPage() {
                     </div>
                   </div>
 
-                  <DepthButton htmlType="submit" disabled={registerMutation.isPending}>
+                  <Button type="submit" loading={registerMutation.isPending}>
                     {t("button.register")}
-                  </DepthButton>
+                  </Button>
 
-                  <MagneticElement strength={0.3} className="login-page__back-link">
+                  <div className="login-page__back-link">
                     <Anchor
                       underline="hover"
                       onClick={() => void navigate({ to: "/login" })}
@@ -379,12 +364,12 @@ export function RegisterPage() {
                       <ArrowLeftIcon size={14} />
                       {t("button.backToLogin")}
                     </Anchor>
-                  </MagneticElement>
+                  </div>
                 </Stack>
               </form>
             </>
           )}
-        </GlassEffect>
+        </Paper>
       </div>
     </div>
   );

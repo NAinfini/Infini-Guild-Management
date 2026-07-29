@@ -2,7 +2,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-q
 import { format } from "date-fns";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import { useTranslation } from "react-i18next";
 import {

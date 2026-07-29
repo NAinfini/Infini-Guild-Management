@@ -1,7 +1,5 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { Button, Group, SimpleGrid } from "@mantine/core";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { PortalCard } from "../../shared/PortalCard";
+import { Button, Group, Paper, SimpleGrid } from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type EventTypeFilter } from "../../../utils/event-navigation";
@@ -98,8 +96,9 @@ export function EventCardsView({
 
   if (events.length === 0) {
     return (
-      <PortalCard interactive={false}>
-        <EmptyState
+      <Paper withBorder radius="md" p="md">
+        <div>
+          <EmptyState
           title={cardsEmptyDescription}
           actions={
             <Group gap={8}>
@@ -107,14 +106,15 @@ export function EventCardsView({
                 {t("card.resetFilters")}
               </Button>
               {canManage ? (
-                <DepthButton type="primary" onClick={onCreateEvent}>
+                <Button onClick={onCreateEvent}>
                   {t("button.create")}
-                </DepthButton>
+                </Button>
               ) : null}
             </Group>
           }
-        />
-      </PortalCard>
+          />
+        </div>
+      </Paper>
     );
   }
 

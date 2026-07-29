@@ -1,11 +1,10 @@
 import { Suspense, lazy, useEffect, useState, type FocusEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
-import { Button, Skeleton } from "@mantine/core";
+import { Button, Paper, Skeleton, Stack } from "@mantine/core";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useRosterPageController } from "../../hooks/useRosterPageController";
 import { resolveProfileMediaUrl } from "../../utils/media";
-import { PortalCard } from "../shared/PortalCard";
 import { PageLayout } from "../layout/PageLayout";
 import { EmptyState } from "../shared/EmptyState";
 import { RosterFilterCard } from "../feature/roster/RosterFilterCard";
@@ -61,7 +60,8 @@ export function RosterPage() {
   };
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} className="roster-page">
+    <PageLayout className="roster-page">
+      <Stack gap={16}>
       <RosterFilterCard
         search={controller.search}
         onSearchChange={controller.setSearch}
@@ -81,7 +81,7 @@ export function RosterPage() {
       {controller.usersQuery.isLoading ? (
         <Skeleton height={200} radius={8} />
       ) : sortedRows.length === 0 ? (
-        <PortalCard className="roster-empty-card" interactive={false}>
+        <Paper className="roster-empty-card" withBorder p="lg">
           <EmptyState
             title={debouncedSearch || classFilter.length > 0 ? t("empty.filtered") : t("empty.default")}
             actions={
@@ -94,7 +94,7 @@ export function RosterPage() {
               </Button>
             }
           />
-        </PortalCard>
+        </Paper>
       ) : null}
 
       {sortedRows.length > 0 ? (
@@ -117,6 +117,7 @@ export function RosterPage() {
           <Button variant="default" onClick={() => setVisibleCount((count) => count + 20)}>{t("action.loadMore")}</Button>
         </div>
       ) : null}
+      </Stack>
 
       <Suspense fallback={null}>
         <LazyProfileModal

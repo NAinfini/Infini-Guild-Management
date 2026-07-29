@@ -1,6 +1,5 @@
 import { NumberTicker } from "@portal/components/effects";
-import { PortalCard } from "../shared/PortalCard";
-import { Group, RingProgress, Skeleton, Stack, Text } from "@mantine/core";
+import { Group, Paper, RingProgress, Skeleton, Stack, Text } from "@mantine/core";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
@@ -54,9 +53,10 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
   const upcomingEventsPercent = Math.min(100, safeActiveEventsCount * 10);
 
   return (
-    <PortalCard className="dashboard-card" interactive={false}>
-      {cardHeading(t("card.activeMembers.title"), <TeamOutlined size={18} />)}
-      <Group gap={10} mt={12} align="flex-start" justify="space-between" w="100%">
+    <Paper withBorder radius="md" className="dashboard-card">
+      <div>
+        {cardHeading(t("card.activeMembers.title"), <TeamOutlined size={18} />)}
+        <Group gap={10} mt={12} align="flex-start" justify="space-between" w="100%">
         <Skeleton visible={memberStatsLoading} radius="md" style={{ flex: "1 1 0", minWidth: 0 }}>
           <Stack gap={8} align="center">
             {renderRing(
@@ -67,7 +67,7 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
                   <span className="dashboard-stats-circle-subvalue">/{safeTotalMembersCount}</span>
                 </span>
               </span>,
-              "portal-accent",
+              "var(--domain-community)",
             )}
             <Text className="dashboard-stats-circle-label">{t("card.activeMembers.activeRatio")}</Text>
           </Stack>
@@ -82,7 +82,7 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
                   <NumberTicker value={safeActiveEventsCount} />
                 </span>
               </span>,
-              "blue",
+              "var(--domain-event)",
             )}
             <Text className="dashboard-stats-circle-label">{t("card.activeMembers.upcomingEvents")}</Text>
           </Stack>
@@ -97,12 +97,13 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
                   <NumberTicker value={safeWinRate} decimals={1} suffix="%" />
                 </span>
               </span>,
-              "green",
+              "var(--domain-war)",
             )}
             <Text className="dashboard-stats-circle-label">{t("card.activeMembers.winRate")}</Text>
           </Stack>
         </Skeleton>
-      </Group>
-    </PortalCard>
+        </Group>
+      </div>
+    </Paper>
   );
 });

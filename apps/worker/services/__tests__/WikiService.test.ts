@@ -150,6 +150,29 @@ describe("WikiService", () => {
   });
 
   describe("updateArticle", () => {
+    it("returns conflict without side effects when the conditional update loses the write race", async () => {
+      const { batchMock, rawDb } = createRawDb();
+      const { db, mocks } = createCrudDb(BASE_ARTICLE_ROW);
+      const returning = vi.fn().mockResolvedValue([]);
+      const where = vi.fn(() => ({ returning }));
+      mocks.updateMock.mockReturnValue({ set: vi.fn(() => ({ where })) });
+      const deps = createDeps(rawDb);
+      const service = new WikiService(db as never, deps);
+
+      const result = await service.updateArticle(
+        "u1",
+        "art1",
+        { body_json: '{"content":[{"type":"text","text":"new"}]}' },
+        '"wiki-art1-2024-01-01T00:00:00.000Z"',
+      );
+
+      expect(result).toEqual({ ok: false, code: "CONFLICT", message: "Article has been modified by another user" });
+      expect(returning).toHaveBeenCalledOnce();
+      expect(batchMock).not.toHaveBeenCalled();
+      expect(deps.writeAuditLog).not.toHaveBeenCalled();
+      expect(deps.publishEntityChanged).not.toHaveBeenCalled();
+    });
+
     it("calls replaceMediaRefs after update when body_json is provided", async () => {
       const { batchMock, rawDb } = createRawDb();
       const { db } = createCrudDb(BASE_ARTICLE_ROW);
@@ -226,6 +249,28 @@ describe("WikiService", () => {
       // deleteMediaRefs calls prepare(...).bind(...).run()
       expect(prepareMock).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM media_references"));
       expect(runMock).toHaveBeenCalled();
+    });
+  });
+
+  describe("uploadArticleImages", () => {
+    it("removes all attempted image keys when a later R2 upload fails", async () => {
+      const failure = new Error("second R2 upload failed");
+      const { db } = createCrudDb(BASE_ARTICLE_ROW);
+      const deps = createDeps();
+      const put = vi.fn()
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(failure);
+      const deleteObject = vi.fn().mockResolvedValue(undefined);
+      deps.media = { put, delete: deleteObject } as unknown as R2Bucket;
+      const service = new WikiService(db as never, deps);
+
+      await expect(service.uploadArticleImages("u1", "art1", [
+        { data: new ArrayBuffer(1), contentType: "image/png" },
+        { data: new ArrayBuffer(1), contentType: "image/png" },
+      ])).rejects.toBe(failure);
+
+      expect(deleteObject).toHaveBeenCalledTimes(2);
+      expect(deps.writeAuditLog).not.toHaveBeenCalled();
     });
   });
 

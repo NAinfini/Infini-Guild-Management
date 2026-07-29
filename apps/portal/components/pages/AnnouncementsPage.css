@@ -4,11 +4,6 @@
 
 .announcements-page-grid {
   width: 100%;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: 260px minmax(0, 1fr);
-  align-items: start;
-  min-height: calc(100vh - 240px);
 }
 
 .announcements-list-card,
@@ -16,12 +11,6 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  min-height: 750px;
-}
-
-.announcements-list-card > div,
-.announcements-detail-card > div {
-  height: 100%;
 }
 
 .announcements-list-row {
@@ -36,7 +25,7 @@
   cursor: pointer;
   text-align: left;
   background: transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid transparent;
   padding-inline: 10px;
   padding-block: 8px;
@@ -45,12 +34,12 @@
 
 .announcement-item:hover {
   border-color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  background: color-mix(in srgb, var(--accent-fill) 6%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 6%, transparent);
 }
 
 .announcement-item--active {
-  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
-  border-color: color-mix(in srgb, var(--accent-fill) 28%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 10%, transparent);
+  border-color: color-mix(in srgb, var(--brand-fill) 28%, transparent);
 }
 
 .announcement-item-title {
@@ -106,7 +95,7 @@
 
 .announcement-editor-sidebar {
   padding: 12px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
   background: color-mix(in srgb, var(--surface-base) 96%, var(--text-primary) 4%);
 }
@@ -126,7 +115,7 @@
 
 .create-announcement-sidebar {
   padding: 12px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
   background: color-mix(in srgb, var(--surface-base) 96%, var(--text-primary) 4%);
 }
@@ -134,18 +123,12 @@
 /* ── Responsive ── */
 
 @media (max-width: 767px) {
+  .announcements-mobile-flow {
+    min-width: 0;
+  }
+
   .announcements-filter-search {
     width: 100%;
-  }
-
-  .announcements-page-grid {
-    grid-template-columns: minmax(0, 1fr);
-    min-height: auto;
-  }
-
-  .announcements-list-card,
-  .announcements-detail-card {
-    min-height: auto;
   }
 
   .announcement-editor-layout,

@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
+import { ModalsProvider } from "@mantine/modals";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { ConfirmDialogProvider } from "@portal/components/shared/ConfirmDialog";
 import { EventDetailModal } from "./EventDetailModal";
 
 vi.mock("react-i18next", () => ({
@@ -39,6 +39,23 @@ vi.mock("@portal/components/shared/MemberRoleAvatar", () => ({
 }));
 
 describe("EventDetailModal", () => {
+  it("keeps the member workspace neutral instead of treating it as a success state", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/events/EventDetailModal.css"),
+      "utf8",
+    );
+
+    expect(css).not.toMatch(
+      /\.event-detail-modal__section--members\s*\{[^}]*mantine-color-green/s,
+    );
+    expect(css).not.toMatch(
+      /\[data-theme="dark"\]\s+\.event-detail-modal__section--members\s*\{/,
+    );
+    expect(css).toMatch(
+      /\.event-detail-modal__section--members[^}]*svg\s*\{[^}]*color:\s*var\(--brand-text\)/s,
+    );
+  });
+
   it("does not show a fallback title while the detail modal is closing", () => {
     const source = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/events/EventDetailModal.tsx"), "utf8");
 
@@ -175,6 +192,50 @@ describe("EventDetailModal", () => {
     expect(await screen.findByText("button.disabled.archived")).toBeInTheDocument();
   });
 
+  it.each([
+    ["ended", { end_at: "2000-01-01T00:00:00.000Z", signup_locked: false }],
+    ["signup-locked", { end_at: "2099-12-31T23:59:59.000Z", signup_locked: true }],
+  ])("disables leaving an %s event in the detail modal", (_state, eventOverrides) => {
+    const member = {
+      user: { id: "user-1", username: "member-1" },
+      profile: {
+        user_id: "user-1",
+        classes: ["mage"],
+        power: 1000,
+        avatar_key: null,
+        title_html: null,
+      },
+    };
+
+    render(
+      <MantineProvider>
+        <EventDetailModal
+          event={{
+            id: "event-1",
+            title: "Member event",
+            type: "social",
+            start_at: "2099-12-31T22:00:00.000Z",
+            description: null,
+            capacity: 10,
+            archived_at: null,
+            attachments: [],
+            ...eventOverrides,
+          } as never}
+          members={[member] as never}
+          allUsers={[member] as never}
+          canManage={false}
+          currentUserId="user-1"
+          onClose={() => {}}
+          onLeave={() => {}}
+          onAddParticipant={() => {}}
+          onRemoveParticipant={() => {}}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "button.leave" })).toBeDisabled();
+  });
+
   it("lets users vote in poll detail and still shows voter breakdown", async () => {
     const user = userEvent.setup();
     const onVotePoll = vi.fn();
@@ -279,13 +340,13 @@ describe("EventDetailModal", () => {
     expect(screen.queryByRole("button", { name: /poll\.update/i })).not.toBeInTheDocument();
   });
 
-  it("confirms member removal inside the existing event modal", async () => {
+  it("confirms member removal through the Mantine modal manager", async () => {
     const user = userEvent.setup();
     const onRemoveParticipant = vi.fn();
 
     render(
       <MantineProvider>
-        <ConfirmDialogProvider>
+        <ModalsProvider>
           <EventDetailModal
             event={{
               id: "event-1",
@@ -309,15 +370,17 @@ describe("EventDetailModal", () => {
             onAddParticipant={() => {}}
             onRemoveParticipant={onRemoveParticipant}
           />
-        </ConfirmDialogProvider>
+        </ModalsProvider>
       </MantineProvider>,
     );
 
     const originDialog = screen.getByRole("dialog", { name: "Guild social" });
-    await user.click(within(originDialog).getByRole("button", { name: "detail.removeMember" }));
+    const removeButton = within(originDialog).getByRole("button", { name: "detail.removeMember" });
+    expect(removeButton).toHaveAttribute("data-variant", "light");
+    await user.click(removeButton);
 
-    expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    const confirmation = within(originDialog).getByRole("alertdialog", {
+    expect(screen.getAllByRole("dialog")).toHaveLength(2);
+    const confirmation = await screen.findByRole("dialog", {
       name: "detail.confirm.removeMember.title",
     });
     expect(onRemoveParticipant).not.toHaveBeenCalled();
@@ -326,7 +389,7 @@ describe("EventDetailModal", () => {
     expect(onRemoveParticipant).not.toHaveBeenCalled();
 
     await user.click(within(originDialog).getByRole("button", { name: "detail.removeMember" }));
-    const acceptedConfirmation = within(originDialog).getByRole("alertdialog", {
+    const acceptedConfirmation = await screen.findByRole("dialog", {
       name: "detail.confirm.removeMember.title",
     });
     await user.click(within(acceptedConfirmation).getByRole("button", {

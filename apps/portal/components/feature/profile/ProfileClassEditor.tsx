@@ -15,9 +15,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { resolveClassDisplayColor } from "@guild/shared/constants/classes";
-import { Badge, Group, Select, Stack, Text } from "@mantine/core";
+import { ActionIcon, Badge, Button, Group, Select, Stack, Text, Tooltip } from "@mantine/core";
 import { PlusIcon, TrashIcon } from "@portal/components/icons";
-import { DepthButton } from "@portal/components/shared/DepthButton";
+import { SectionHeader } from "@portal/components/shared/SectionHeader";
 import { IconGripVertical } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 
@@ -65,28 +65,33 @@ function SortableClassRow({
       }}
       className={`my-profile-sortable-row ${isDragging ? "my-profile-sortable-row--dragging" : ""}`.trim()}
     >
-      <DepthButton
-        ref={setActivatorNodeRef}
-        {...attributes}
-        {...listeners}
-        size="sm"
-        type="secondary"
-        iconOnly
-        before={<IconGripVertical size={18} />}
-        tooltip={{ label: t("classRow.aria.drag", { value }), withArrow: true }}
-        style={{ cursor: isDragging ? "grabbing" : "grab" }}
-      />
+      <Tooltip label={t("classRow.aria.drag", { value })} withArrow>
+        <ActionIcon
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          size="sm"
+          variant="default"
+          aria-label={t("classRow.aria.drag", { value })}
+          style={{ cursor: isDragging ? "grabbing" : "grab" }}
+        >
+          <IconGripVertical size={18} />
+        </ActionIcon>
+      </Tooltip>
       <Badge color={resolveClassDisplayColor(value, isPrimary ? "yellow" : "gray")}>
         {value}
       </Badge>
-      <DepthButton
-        size="sm"
-        type="danger"
-        iconOnly
-        before={<TrashIcon size={16} />}
-        onClick={onRemove}
-        tooltip={{ label: t("classRow.remove"), withArrow: true }}
-      />
+      <Tooltip label={t("classRow.remove")} withArrow>
+        <ActionIcon
+          size="sm"
+          color="red"
+          variant="filled"
+          aria-label={t("classRow.remove")}
+          onClick={onRemove}
+        >
+          <TrashIcon size={16} />
+        </ActionIcon>
+      </Tooltip>
       <Text c="dimmed" size="sm" style={{ fontSize: 12 }}>
         #{index + 1}
       </Text>
@@ -111,9 +116,7 @@ export function ProfileClassEditor({
 
   return (
     <>
-      <Text fw={700} size="sm" c="dimmed" tt="uppercase" lts={0.5} mb={10}>
-        {t("section.classes")}
-      </Text>
+      <SectionHeader title={t("section.classes")} />
       <Group gap={8} wrap="nowrap">
         <Select
           searchable
@@ -125,9 +128,9 @@ export function ProfileClassEditor({
           onChange={(value) => onClassDraftChange(value ?? "")}
           onSearchChange={onClassDraftChange}
         />
-        <DepthButton type="primary" onClick={onAddClass} before={<PlusIcon size={16} />}>
+        <Button onClick={onAddClass} leftSection={<PlusIcon size={16} />}>
           {t("action.add")}
-        </DepthButton>
+        </Button>
       </Group>
       {classList.length > 0 ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onClassDragEnd}>

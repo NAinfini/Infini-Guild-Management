@@ -1,8 +1,8 @@
-import { AnimatePresence, motion, Reorder, useDragControls } from "motion/react";
+import { ActionIcon, Button } from "@mantine/core";
+import { AnimatePresence, Reorder, useDragControls } from "motion/react";
 import {
   forwardRef,
   useCallback,
-  useId,
   useRef,
   useState,
   type CSSProperties,
@@ -137,19 +137,21 @@ function DraggableImageCell({
       )}
 
       {onDelete && !disabled ? (
-        <motion.button
+        <ActionIcon
           type="button"
           aria-label={`Delete ${item.alt ?? item.id}`}
-          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center z-10 hover:bg-red-600"
+          color="red"
+          variant="filled"
+          radius="xl"
+          size={20}
+          style={{ position: "absolute", top: -6, right: -6, zIndex: 10 }}
           onClick={(e) => {
             e.stopPropagation();
             onDelete(item);
           }}
-          whileHover={motionAllowed ? { scale: 1.15 } : undefined}
-          whileTap={motionAllowed ? { scale: 0.9 } : undefined}
         >
           ×
-        </motion.button>
+        </ActionIcon>
       ) : null}
     </Reorder.Item>
   );
@@ -185,7 +187,6 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
   ) {
     const motionAllowed = useMotionAllowed();
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const inputId = useId();
 
     if (loading) return <>{loadingContent}</>;
     if (error) return <>{errorContent}</>;
@@ -226,6 +227,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
       flexWrap: "wrap",
       gap,
       alignItems: "flex-start",
+      justifyContent: items.length === 0 ? "center" : "flex-start",
       ...styleProp,
     };
 
@@ -259,28 +261,44 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
         </Reorder.Group>
 
         {canUpload ? (
-          <label
-            htmlFor={inputId}
-            className="flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-amber-500 transition-colors text-gray-600 dark:text-gray-300"
-            style={{ width: imageSize, height: imageSize, borderRadius, fontSize: Math.max(10, imageSize * 0.14) }}
-          >
-            {uploadLabel ?? (
-              <>
-                <span style={{ fontSize: Math.max(18, imageSize * 0.3), lineHeight: 1 }}>+</span>
-                <span>{items.length}/{maxImages}</span>
-              </>
-            )}
+          <>
+            <Button
+              type="button"
+              variant="default"
+              color="gray"
+              aria-label={typeof uploadLabel === "string" ? uploadLabel : "Add images"}
+              onClick={() => fileInputRef.current?.click()}
+              w={imageSize}
+              h={imageSize}
+              p={4}
+              radius={borderRadius}
+              style={{ borderStyle: "dashed", fontSize: Math.max(10, imageSize * 0.14) }}
+              styles={{
+                inner: { height: "100%" },
+                label: {
+                  flexDirection: "column",
+                  whiteSpace: "normal",
+                  lineHeight: 1.2,
+                },
+              }}
+            >
+              {uploadLabel ?? (
+                <>
+                  <span style={{ fontSize: Math.max(18, imageSize * 0.3), lineHeight: 1 }}>+</span>
+                  <span>{items.length}/{maxImages}</span>
+                </>
+              )}
+            </Button>
             <input
               ref={fileInputRef}
-              id={inputId}
               type="file"
               multiple
               accept={accept}
               onChange={handleFileChange}
-              className="hidden"
+              hidden
               disabled={disabled}
             />
-          </label>
+          </>
         ) : null}
       </div>
     );

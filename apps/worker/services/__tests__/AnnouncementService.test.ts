@@ -177,6 +177,30 @@ describe("AnnouncementService", () => {
     expect(batchMock).toHaveBeenCalled();
   });
 
+  it("returns conflict without side effects when the conditional update loses the write race", async () => {
+    const { batchMock, rawDb } = createRawDb();
+    const { db, mocks } = createCrudDb(BASE_ANNOUNCEMENT_ROW);
+    const returning = vi.fn().mockResolvedValue([]);
+    const where = vi.fn(() => ({ returning }));
+    mocks.updateMock.mockReturnValue({ set: vi.fn(() => ({ where })) });
+    const deps = createDeps(rawDb);
+    const service = new AnnouncementService(db as never, deps);
+
+    const result = await service.update(
+      "u1",
+      "ann1",
+      { body_json: '{"content":[{"type":"text","text":"new"}]}' },
+      '"announcement-ann1-2024-01-01T00:00:00.000Z"',
+    );
+
+    expect(result).toEqual({ ok: false, code: "CONFLICT", message: "Announcement has been modified by another user" });
+    expect(returning).toHaveBeenCalledOnce();
+    expect(batchMock).not.toHaveBeenCalled();
+    expect(deps.writeAuditLog).not.toHaveBeenCalled();
+    expect(deps.publishEntityChanged).not.toHaveBeenCalled();
+    expect(deps.publishAnnouncementPublished).not.toHaveBeenCalled();
+  });
+
   it("does NOT call replaceMediaRefs after update when body_json is absent", async () => {
     const { batchMock, rawDb } = createRawDb();
     const { db } = createCrudDb(BASE_ANNOUNCEMENT_ROW);
@@ -199,5 +223,25 @@ describe("AnnouncementService", () => {
     // deleteMediaRefs calls prepare(...).bind(...).run()
     expect(prepareMock).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM media_references"));
     expect(runMock).toHaveBeenCalled();
+  });
+
+  it("removes all attempted image keys when a later R2 upload fails", async () => {
+    const failure = new Error("second R2 upload failed");
+    const { db } = createCrudDb(BASE_ANNOUNCEMENT_ROW);
+    const deps = createDeps();
+    const put = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(failure);
+    const deleteObject = vi.fn().mockResolvedValue(undefined);
+    deps.media = { put, delete: deleteObject } as unknown as R2Bucket;
+    const service = new AnnouncementService(db as never, deps);
+
+    await expect(service.uploadImages("u1", "ann1", [
+      { data: new ArrayBuffer(1), contentType: "image/png" },
+      { data: new ArrayBuffer(1), contentType: "image/png" },
+    ])).rejects.toBe(failure);
+
+    expect(deleteObject).toHaveBeenCalledTimes(2);
+    expect(deps.writeAuditLog).not.toHaveBeenCalled();
   });
 });

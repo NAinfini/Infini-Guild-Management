@@ -13,7 +13,7 @@ describe("event colours", () => {
    * Object.fromEntries 造的，Object.keys() 必然等于那些 id ——唯一能让它
    * 变红的情况是配置里出现重复 id（Object.fromEntries 会静默丢弃前一个）。
    * 改成诚实命名，真正有价值的 CSS↔配置一致性断言见下面那条
-   * （final-review.md M4，回应 I3）。 */
+   * （the final colour review M4，回应 I3）。 */
   it("has no duplicate event type ids in the game config", () => {
     const ids = activeGame.eventTypes.map((et) => et.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -28,7 +28,7 @@ describe("event colours", () => {
     expect(claimed).not.toContain(UNKNOWN_EVENT_TYPE_COLOR);
   });
 
-  /* final-review.md I3：EventCardsView.css 里 --event-card-accent 兜底是
+  /* the final colour review I3：EventCardsView.css 里 --event-card-accent 兜底是
    * 死代码的结论，前提是六条 :has() 规则覆盖了 EVENT_TYPE_COLORS 的全部
    * 分支 ∪ {other}。CSS 侧类名硬编码、配置侧数据驱动，两者原本没有守卫
    * 绑定：往 yan-yun.ts 加一个事件类型，getTypeGradientClass 会产出

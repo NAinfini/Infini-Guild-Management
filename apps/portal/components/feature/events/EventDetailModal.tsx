@@ -1,7 +1,6 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { Button, Grid, Group, Modal, Progress, Select, SimpleGrid, Stack, Text } from "@mantine/core";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
-import { DepthButton } from "@portal/components/shared/DepthButton";
+import { Button, Grid, Group, Modal, Progress, Select, SimpleGrid, Stack, Text, Tooltip } from "@mantine/core";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
 import { resolveEventMediaUrl } from "@portal/utils/media";
@@ -88,7 +87,7 @@ export function EventDetailModal({
   const [localHasVoted, setLocalHasVoted] = useState(false);
   const isJoined = currentUserId ? members.some((entry) => entry.user.id === currentUserId) : false;
   const isFull = event?.capacity != null ? members.length >= event.capacity : false;
-  const hasEnded = Boolean(event?.end_at && new Date(event.end_at) < new Date());
+  const hasEnded = Boolean(event?.end_at && new Date(event.end_at) <= new Date());
   const isPoll = event?.type === "poll";
   const isRaffle = event?.type === "raffle";
   const raffleWinners = event?.raffle_winners ?? [];
@@ -399,23 +398,29 @@ export function EventDetailModal({
                       </Text>
                     </Group>
                     {showMemberAction ? (
-                      <DepthButton
-                        type={isJoined ? "danger" : "success"}
-                        size="sm"
-                        onClick={() => {
-                          if (isJoined) {
-                            onLeave?.(event.id);
-                            return;
-                          }
-                          onJoin?.(event.id);
-                        }}
-                        disabled={memberActionDisabled}
-                        loading={joinPending || leavePending}
-                        tooltip={memberActionDisabledReasonKey ? t(memberActionDisabledReasonKey) : undefined}
+                      <Tooltip
+                        label={memberActionDisabledReasonKey ? t(memberActionDisabledReasonKey) : ""}
+                        disabled={!memberActionDisabledReasonKey}
                       >
-                        {isJoined ? <UserMinusIcon size={14} style={{ marginRight: 4 }} /> : <UserPlusIcon size={14} style={{ marginRight: 4 }} />}
-                        {memberActionLabel}
-                      </DepthButton>
+                        <span data-disabled-tooltip-target style={{ display: "inline-flex" }}>
+                          <Button
+                            color={isJoined ? "red" : undefined}
+                            size="sm"
+                            leftSection={isJoined ? <UserMinusIcon size={14} /> : <UserPlusIcon size={14} />}
+                            onClick={() => {
+                              if (isJoined) {
+                                onLeave?.(event.id);
+                                return;
+                              }
+                              onJoin?.(event.id);
+                            }}
+                            disabled={memberActionDisabled}
+                            loading={joinPending || leavePending}
+                          >
+                            {memberActionLabel}
+                          </Button>
+                        </span>
+                      </Tooltip>
                     ) : null}
                   </Group>
 
@@ -457,15 +462,16 @@ export function EventDetailModal({
                               </Group>
                             </div>
                             {canManage ? (
-                              <DepthButton
-                                type="danger"
+                              <Button
+                                color="red"
+                                variant="light"
                                 size="sm"
+                                leftSection={<UserMinusIcon size={14} />}
                                 onClick={() => void handleRemoveParticipant(entry.user.id, entry.user.username)}
                                 disabled={event === null}
                               >
-                                <UserMinusIcon size={14} style={{ marginRight: 4 }} />
                                 {t("detail.removeMember")}
-                              </DepthButton>
+                              </Button>
                             ) : null}
                           </Group>
                         ))}

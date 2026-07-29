@@ -1,5 +1,5 @@
 import { type Announcement, type PaginatedResponse } from "@guild/shared";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/tiptap-meta";
 import {
   useInfiniteQuery,
@@ -433,7 +433,7 @@ export function useAnnouncementsController() {
         intent: "danger",
       });
       if (!confirmed) {
-        return;
+        return false;
       }
     }
     if (id !== null) {
@@ -442,6 +442,7 @@ export function useAnnouncementsController() {
     setAnnouncementSelection(
       id === null ? { kind: "none" } : { kind: "selected", id },
     );
+    return true;
   }, [confirm, isDirty, isCreatingHandlers, setAnnouncementSelection, t]);
 
   const resetFilters = useCallback(() => {

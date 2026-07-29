@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GuildWarActiveResponse } from "@guild/shared";
 import { useTranslation } from "react-i18next";
-import { useConfirmDialog } from "../../shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useBeforeUnloadPrompt } from "../../../hooks/useBeforeUnloadPrompt";
 import type { GuildWarService } from "../../../services/GuildWarService";
 import { notifySuccess } from "../../../utils/notifications";

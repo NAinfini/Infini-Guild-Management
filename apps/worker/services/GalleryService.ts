@@ -8,6 +8,7 @@ import { galleryItems, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern } from "./helpers";
 import { replaceMediaRefs, deleteMediaRefs, deleteMediaRefsBulk } from "./media-references";
+import { rethrowAfterUploadFailure } from "./media-upload-compensation";
 
 // --- Types ---
 
@@ -94,20 +95,37 @@ export class GalleryService {
 
   async uploadImages(actorId: string, files: Array<{ data: ArrayBuffer; contentType: string; name: string }>, captions: Array<string | null>): Promise<ServiceResult<unknown[]>> {
     const created: GalleryRow[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (!file) continue;
-      const caption = captions[i] ?? null;
-      const itemId = nanoid();
-      const key = `gallery/images/${actorId}/${Date.now()}_${itemId}`;
-      const putResult = await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
-      if (!putResult) return err("SERVER_ERROR", "Failed to upload media file");
-      await this.db.insert(galleryItems).values({ id: itemId, type: "image", url: key, caption, uploadedBy: actorId });
-      await replaceMediaRefs(this.deps.rawDb, "gallery_item", itemId, [key]);
-      created.push({ id: itemId, type: "image", url: key, caption, uploadedBy: actorId, uploadedByName: null, createdAt: new Date().toISOString() });
+    const attempted: Array<{ itemId: string; key: string }> = [];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!file) continue;
+        const caption = captions[i] ?? null;
+        const itemId = nanoid();
+        const key = `gallery/images/${actorId}/${Date.now()}_${itemId}`;
+        attempted.push({ itemId, key });
+        const putResult = await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
+        if (!putResult) throw new Error("Failed to upload media file");
+        await this.db.insert(galleryItems).values({ id: itemId, type: "image", url: key, caption, uploadedBy: actorId });
+        await replaceMediaRefs(this.deps.rawDb, "gallery_item", itemId, [key]);
+        created.push({ id: itemId, type: "image", url: key, caption, uploadedBy: actorId, uploadedByName: null, createdAt: new Date().toISOString() });
+      }
+      await this.deps.writeAuditLog({ entityType: "gallery_item", action: "upload_images", actorId, entityId: "batch", diffTitle: `${created.length} items`, detailText: JSON.stringify({ count: created.length, captioned_count: created.filter((item) => Boolean(item.caption)).length }) });
+      await this.deps.publishEntityChanged({ entityType: "gallery", entityId: "batch", hint: "images_uploaded" });
+    } catch (error) {
+      await rethrowAfterUploadFailure(
+        error,
+        (key) => this.deps.media.delete(key),
+        attempted.map((item) => item.key),
+        async () => {
+          if (attempted.length === 0) return;
+          await this.deps.rawDb.batch(attempted.flatMap(({ itemId }) => [
+            this.deps.rawDb.prepare("DELETE FROM media_references WHERE entity_type = ?1 AND entity_id = ?2").bind("gallery_item", itemId),
+            this.deps.rawDb.prepare("DELETE FROM gallery_items WHERE id = ?1").bind(itemId),
+          ]));
+        },
+      );
     }
-    await this.deps.writeAuditLog({ entityType: "gallery_item", action: "upload_images", actorId, entityId: "batch", diffTitle: `${created.length} items`, detailText: JSON.stringify({ count: created.length, captioned_count: created.filter((item) => Boolean(item.caption)).length }) });
-    await this.deps.publishEntityChanged({ entityType: "gallery", entityId: "batch", hint: "images_uploaded" });
     return ok(created.map(toGalleryPayload));
   }
 

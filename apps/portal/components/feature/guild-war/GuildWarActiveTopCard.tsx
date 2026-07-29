@@ -1,8 +1,6 @@
-import { ActionIcon, Badge, Button, Group, Select, Stack, Text, TextInput, Tooltip } from "@mantine/core";
-import { PortalCard } from "../../shared/PortalCard";
+import { ActionIcon, Badge, Button, Group, Paper, Select, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { ChevronLeftIcon, ChevronRightIcon, FlagIcon, PlusIcon, SaveIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
-import { DepthButton } from "../../shared/DepthButton";
 
 type GuildWarActiveTopCardProps = {
   selectedEventId: string | undefined;
@@ -51,8 +49,8 @@ export function GuildWarActiveTopCard({
 }: GuildWarActiveTopCardProps) {
   const { t } = useTranslation("guild-war");
   return (
-    <PortalCard interactive={false} className="guild-war-active-top-card">
-      <div style={{ padding: "1.2rem" }}>
+    <Paper withBorder radius="md" p="var(--card-padding)" className="guild-war-active-top-card">
+      <div>
         <Stack gap={12}>
           <Group gap={10} wrap="wrap" align="center">
             <TextInput
@@ -89,17 +87,19 @@ export function GuildWarActiveTopCard({
                     {t("active.unsaved")}
                   </Badge>
                 ) : null}
-                <DepthButton
-                  type="primary"
-                  size="xs"
-                  before={<SaveIcon size={16} />}
-                  onClick={onSaveTeams}
-                  loading={saveTeamsPending}
-                  disabled={!teamsDirty || saveTeamsPending}
-                  tooltip={!teamsDirty ? t("active.noUnsavedChanges") : undefined}
-                >
-                  {t("active.saveTeams")}
-                </DepthButton>
+                <Tooltip label={t("active.noUnsavedChanges")} disabled={teamsDirty}>
+                  <span data-disabled-tooltip-target style={{ display: "inline-flex" }}>
+                    <Button
+                      size="xs"
+                      leftSection={<SaveIcon size={16} />}
+                      onClick={onSaveTeams}
+                      loading={saveTeamsPending}
+                      disabled={!teamsDirty || saveTeamsPending}
+                    >
+                      {t("active.saveTeams")}
+                    </Button>
+                  </span>
+                </Tooltip>
               </Group>
             ) : null}
             {canManage && onAddTeam ? (
@@ -119,21 +119,21 @@ export function GuildWarActiveTopCard({
                 withArrow
               >
                 <span>
-                  <DepthButton
-                    type="danger"
+                  <Button
+                    color="red"
                     size="xs"
-                    before={<FlagIcon size={16} />}
+                    leftSection={<FlagIcon size={16} />}
                     onClick={onConcludeWar}
                     disabled={concludeWarDisabled}
                   >
                     {concludeWarLabel ?? t("active.concludeWar")}
-                  </DepthButton>
+                  </Button>
                 </span>
               </Tooltip>
             ) : null}
           </Group>
         </Stack>
       </div>
-    </PortalCard>
+    </Paper>
   );
 }

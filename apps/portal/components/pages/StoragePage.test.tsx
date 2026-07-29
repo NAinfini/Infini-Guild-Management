@@ -36,6 +36,7 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a>,
+  useNavigate: () => vi.fn(),
   useSearch: () => storageState.search,
 }));
 
@@ -87,28 +88,6 @@ vi.mock("../../hooks/useStorageMutations", () => ({
 vi.mock("../../stores/auth", () => ({
   useAuthStore: (selector: (state: { user: { id: string; username: string } }) => unknown) =>
     selector({ user: { id: "user-1", username: "Member" } }),
-}));
-
-vi.mock("../layout/PageTabs", () => ({
-  PageTabs: ({
-    tabs,
-    onChange,
-    children,
-  }: {
-    tabs: Array<{ value: string; label: ReactNode }>;
-    onChange?: (value: string) => void;
-    children: ReactNode;
-  }) => (
-    <div>
-      {tabs.map((tab) => (
-        <button key={tab.value} type="button" onClick={() => onChange?.(tab.value)}>
-          {tab.label}
-        </button>
-      ))}
-      {children}
-    </div>
-  ),
-  PageTabPanel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
 vi.mock("../feature/storage/StorageItemCard", () => ({

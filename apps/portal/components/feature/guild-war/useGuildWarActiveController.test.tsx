@@ -15,7 +15,7 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("../../shared/ConfirmDialog", () => ({
+vi.mock("@portal/hooks/useConfirmDialog", () => ({
   useConfirmDialog: () => mocks.confirm,
 }));
 

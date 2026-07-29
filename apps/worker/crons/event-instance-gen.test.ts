@@ -64,7 +64,11 @@ describe("event instance generation horizon", () => {
     };
     drizzleMock.mockReturnValue(db);
 
-    await runEventInstanceGenerationCron({ DB: {} } as never);
+    await runEventInstanceGenerationCron({
+      DB: {
+        prepare: () => ({ bind: () => ({ first: async () => ({ id: "tpl-1" }) }) }),
+      },
+    } as never);
 
     expect(insertedValues.length).toBeGreaterThan(0);
     expect(insertedValues).toContainEqual(expect.objectContaining({
@@ -101,6 +105,7 @@ describe("event instance generation horizon", () => {
         sql,
         bindings,
         run: vi.fn().mockResolvedValue({ meta: { changes: 1 } }),
+        first: vi.fn().mockResolvedValue({ id: "tpl-3" }),
       })),
     }));
     const rawBatch = vi.fn().mockResolvedValue([]);
@@ -124,6 +129,67 @@ describe("event instance generation horizon", () => {
     const batchArgs = ((rawBatch as ReturnType<typeof vi.fn>).mock.calls[0] as [unknown[]])[0];
     // batch has at least 2 statements: DELETE + INSERT for media_references
     expect(batchArgs.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("registers every materialized event id with the active system-test run", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-04T09:30:00.000Z"));
+    const insertedValues: Array<{ id?: string }> = [];
+    const templates = [{
+      id: "tpl-system-test",
+      type: "social",
+      title: "System Test Run",
+      description: null,
+      startTime: "10:00",
+      durationMinutes: 60,
+      capacity: null,
+      createdBy: "admin-1",
+      recurrenceRule: JSON.stringify({ frequency: "daily", interval: 1, endAfter: 1 }),
+      attachments: "[]",
+      lastGeneratedDate: null,
+      generationCount: 0,
+      visibilityOffsetMinutes: 60,
+      autoArchive: false,
+      createdAt: "2026-05-03T10:00:00.000Z",
+    }];
+    const db = {
+      select: vi.fn(() => ({ from: vi.fn(() => ({ where: vi.fn().mockResolvedValue(templates) })) })),
+      insert: vi.fn(() => ({
+        values: vi.fn((values: { id?: string }) => {
+          insertedValues.push(values);
+          return { onConflictDoNothing: vi.fn().mockReturnValue({}) };
+        }),
+      })),
+      update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
+      batch: vi.fn().mockImplementation((statements: unknown[]) =>
+        Promise.resolve(statements.map(() => ({ meta: { changes: 1 } }))),
+      ),
+    };
+    drizzleMock.mockReturnValue(db);
+    const prepared: Array<{ sql: string; bindings: unknown[] }> = [];
+    const rawDb = {
+      prepare: (sql: string) => ({
+        bind: (...bindings: unknown[]) => {
+          const statement = { sql, bindings };
+          prepared.push(statement);
+          return { ...statement, first: async () => ({ id: "tpl-system-test" }) };
+        },
+      }),
+      batch: async (statements: unknown[]) => statements.map(() => ({ meta: { changes: 1 } })),
+    };
+
+    await runEventInstanceGenerationCron(
+      { DB: rawDb } as never,
+      { templateId: "tpl-system-test", systemTestRunId: "run-1" } as never,
+    );
+
+    const createdIds = insertedValues.map((value) => value.id).filter((id): id is string => typeof id === "string");
+    expect(createdIds).not.toHaveLength(0);
+    expect(prepared.some((statement) =>
+      statement.sql.includes("INSERT INTO system_test_artifacts")
+      && statement.bindings[0] === "run-1"
+      && createdIds.includes(statement.bindings[2] as string)
+    )).toBe(true);
   });
 
   it("delays instance creation until now >= start - offset", async () => {

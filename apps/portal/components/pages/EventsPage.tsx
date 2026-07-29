@@ -1,6 +1,5 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
 import type { ImageGridEditorItem } from "@portal/types/media";
-import { CalendarEventIcon } from "@portal/components/icons";
 import { useClipboard } from "@mantine/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -11,7 +10,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { Card, Skeleton, Stack } from "@mantine/core";
+import { Card, Skeleton, Stack, Tabs } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { notifySuccess, notifyWarning } from "../../utils/notifications";
 import {
@@ -30,7 +29,6 @@ import { sanitizeEventsRouteSearch, type EventWorkbenchViewMode, type EventsRout
 import { useEventsEditorController } from "../feature/events/useEventsEditorController";
 import { useRecurringTemplatesController } from "../feature/events/useRecurringTemplatesController";
 import { PageLayout } from "../layout/PageLayout";
-import { PageTabPanel, PageTabs } from "../layout/PageTabs";
 import { EventDetailModal } from "../feature/events/EventDetailModal";
 import "./EventsPage.css";
 
@@ -96,6 +94,20 @@ export function EventsPage() {
       viewTransition: false,
     });
   }, [navigate]);
+
+  const setActiveTab = useCallback((value: string | null) => {
+    const tab = value === "recurring" && canManage ? "recurring" : "events";
+    void navigate({
+      to: "/events",
+      search: (prev) => sanitizeEventsRouteSearch({
+        ...(prev as EventsRouteSearch),
+        tab: tab === "events" ? undefined : tab,
+      }),
+      replace: true,
+      resetScroll: false,
+      viewTransition: false,
+    });
+  }, [canManage, navigate]);
 
   const attachmentService = useAttachmentService();
   const attachmentSnapshot = useMemo(() => buildAttachmentSnapshot(attachmentItems), [attachmentItems]);
@@ -245,16 +257,14 @@ export function EventsPage() {
   useLoadWarningToast(hasLoadError, t("common:loadErrorRetry"));
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<CalendarEventIcon size={22} />} className="events-page">
-      <PageTabs
-        keepMounted={false}
-        defaultValue="events"
-        tabs={[
-          { value: "events", label: t("tab.events") },
-          ...(canManage ? [{ value: "recurring" as const, label: t("recurring.tab") }] : []),
-        ]}
-      >
-        <PageTabPanel value="events" pt="sm">
+    <PageLayout className="events-page">
+      <Tabs value={activeTab} onChange={setActiveTab} keepMounted={false} variant="default">
+        <Tabs.List>
+          <Tabs.Tab value="events">{t("tab.events")}</Tabs.Tab>
+          {canManage ? <Tabs.Tab value="recurring">{t("recurring.tab")}</Tabs.Tab> : null}
+        </Tabs.List>
+
+        <Tabs.Panel value="events" pt="sm">
           <Stack gap={12}>
             <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={36} radius={8} /></Stack></Card>}>
               <LazyEventsFiltersCard
@@ -332,10 +342,10 @@ export function EventsPage() {
               )}
             </Suspense>
           </Stack>
-        </PageTabPanel>
+        </Tabs.Panel>
 
         {canManage ? (
-          <PageTabPanel value="recurring" pt="sm">
+          <Tabs.Panel value="recurring" pt="sm">
             <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
               <LazyRecurringTemplatesTab
                 canManage={canManage}
@@ -349,9 +359,9 @@ export function EventsPage() {
                 onDeleteTemplate={recurringTemplatesController.deleteRecurringTemplate}
               />
             </Suspense>
-          </PageTabPanel>
+          </Tabs.Panel>
         ) : null}
-      </PageTabs>
+      </Tabs>
 
       {editorOpen ? (
         <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={120} radius={8} /></Stack></Card>}>

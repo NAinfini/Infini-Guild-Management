@@ -1,8 +1,17 @@
 import type { WikiArticle, WikiCategory } from "@guild/shared";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { DepthToggle } from "@portal/components/shared/DepthToggle";
-import { PortalCard } from "../../shared/PortalCard";
-import { ActionIcon, Alert, Group, Select, Skeleton, Stack, Text, TextInput } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Group,
+  Paper,
+  Select,
+  Skeleton,
+  Stack,
+  Text,
+  TextInput,
+  Tooltip,
+} from "@mantine/core";
 import { ArchiveIcon, PinIcon, PlusIcon, SaveIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -96,20 +105,20 @@ export function WikiArticleEditorCard({
     : false;
   if (!selectedArticle && !(canEdit && isCreatingArticle)) {
     return (
-      <PortalCard className="wiki-article-editor-card" interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+      <Paper withBorder className="wiki-article-editor-card">
+        <div style={{ padding: "var(--card-padding)" }}>
           <Stack gap={10}>
             <Text fw={600}>{t("articleEditor.title")}</Text>
             <EmptyState title={emptyTitle} />
           </Stack>
         </div>
-      </PortalCard>
+      </Paper>
     );
   }
 
   return (
-    <PortalCard className="wiki-article-editor-card" interactive={false}>
-      <div style={{ padding: "1.2rem" }}>
+    <Paper withBorder className="wiki-article-editor-card">
+      <div style={{ padding: "var(--card-padding)" }}>
         <Stack gap={12}>
           <Group justify="space-between" align="start">
             <Text fw={600}>{t("articleEditor.title")}</Text>
@@ -117,30 +126,32 @@ export function WikiArticleEditorCard({
               <Group gap={8} wrap="wrap">
                 {selectedArticle ? (
                   <>
-                    <DepthToggle
-                        pressed={pinnedPressed}
-                        onToggle={() => onTogglePinnedIntent()}
-                        type="primary"
+                    <Tooltip label={pinLabel} withArrow>
+                      <ActionIcon
+                        aria-pressed={pinnedPressed}
+                        onClick={onTogglePinnedIntent}
+                        color="portal-brand"
+                        variant={pinnedPressed ? "light" : "default"}
                         size="sm"
-                        iconOnly
                         disabled={isSaving}
                         aria-label={pinLabel}
-                        tooltip={{ label: pinLabel, withArrow: true }}
                       >
                         <PinIcon size={16} />
-                      </DepthToggle>
-                    <DepthToggle
-                      pressed={selectedArticle?.archived_at ? archiveIntent !== "unarchive" : archiveIntent === "archive"}
-                      onToggle={onToggleArchiveIntent}
-                      type="primary"
-                      iconOnly
-                      size="sm"
-                      disabled={isSaving}
-                      aria-label={archiveLabel}
-                      tooltip={{ label: archiveLabel, withArrow: true }}
-                    >
-                      <ArchiveIcon size={16} />
-                    </DepthToggle>
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip label={archiveLabel} withArrow>
+                      <ActionIcon
+                        aria-pressed={selectedArticle?.archived_at ? archiveIntent !== "unarchive" : archiveIntent === "archive"}
+                        onClick={() => onToggleArchiveIntent()}
+                        color="portal-brand"
+                        variant={(selectedArticle?.archived_at ? archiveIntent !== "unarchive" : archiveIntent === "archive") ? "light" : "default"}
+                        size="sm"
+                        disabled={isSaving}
+                        aria-label={archiveLabel}
+                      >
+                        <ArchiveIcon size={16} />
+                      </ActionIcon>
+                    </Tooltip>
                     <ActionIcon
                       color="red"
                       variant="filled"
@@ -151,10 +162,9 @@ export function WikiArticleEditorCard({
                     >
                       <TrashIcon size={16} />
                     </ActionIcon>
-                    <DepthButton
-                      type="primary"
+                    <Button
                       size="sm"
-                      before={<SaveIcon size={16} />}
+                      leftSection={<SaveIcon size={16} />}
                       onClick={() => {
                         if (!articleTitle.trim()) {
                           notifyError(t("validation.titleRequired"));
@@ -165,29 +175,28 @@ export function WikiArticleEditorCard({
                       disabled={isSaving}
                     >
                       {t("articleEditor.save")}
-                    </DepthButton>
+                    </Button>
                   </>
                 ) : null}
                 {canEdit && isCreatingArticle ? (
-                  <DepthButton
-                    type="primary"
+                  <Button
                     size="sm"
-                    before={<PlusIcon size={16} />}
+                    leftSection={<PlusIcon size={16} />}
                     onClick={onCreateArticle}
                     disabled={!canCreateArticle || isCreating}
                   >
                     {t("articleEditor.create")}
-                  </DepthButton>
+                  </Button>
                 ) : null}
-                <DepthButton
-                  type="secondary"
+                <Button
+                  variant="default"
                   size="sm"
-                  before={<XIcon size={16} />}
+                  leftSection={<XIcon size={16} />}
                   onClick={onExitEditor}
                   disabled={isSaving}
                 >
                   {t("editor.exit")}
-                </DepthButton>
+                </Button>
               </Group>
             ) : null}
           </Group>
@@ -259,6 +268,6 @@ export function WikiArticleEditorCard({
           ) : null}
         </Stack>
       </div>
-    </PortalCard>
+    </Paper>
   );
 }

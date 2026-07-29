@@ -437,7 +437,7 @@ CREATE INDEX IF NOT EXISTS idx_gallery_items_type_created
 
 -- invite_links
 CREATE INDEX IF NOT EXISTS idx_invite_links_created
-  ON invite_links(created_at);
+  ON invite_links(created_at, id);
 CREATE INDEX IF NOT EXISTS idx_invite_links_status
   ON invite_links(revoked_at, expires_at, created_at);
 
@@ -695,6 +695,37 @@ CREATE TABLE IF NOT EXISTS media_references (
 
 CREATE INDEX IF NOT EXISTS idx_media_references_key ON media_references(media_key);
 CREATE INDEX IF NOT EXISTS idx_media_references_entity ON media_references(entity_type, entity_id);
+
+-- ===== ADMIN SYSTEM-TEST RUN REGISTRY =====
+-- Test cleanup is driven exclusively by these exact run-owned locators; it
+-- deliberately never searches production content by text marker or timestamp.
+CREATE TABLE IF NOT EXISTS system_test_runs (
+  id TEXT PRIMARY KEY NOT NULL,
+  actor_id TEXT NOT NULL REFERENCES users(id),
+  status TEXT NOT NULL DEFAULT 'running',
+  active_requests INTEGER NOT NULL DEFAULT 0,
+  cleanup_attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  completed_at TEXT,
+  CONSTRAINT system_test_runs_status_valid CHECK (status IN ('running', 'cleaning', 'cleanup_failed', 'completed', 'manual_review')),
+  CONSTRAINT system_test_runs_active_requests_nonnegative CHECK (active_requests >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_system_test_runs_cleanup_lookup
+  ON system_test_runs(status, updated_at, id);
+
+CREATE TABLE IF NOT EXISTS system_test_artifacts (
+  run_id TEXT NOT NULL REFERENCES system_test_runs(id) ON DELETE CASCADE,
+  artifact_type TEXT NOT NULL,
+  artifact_key TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  PRIMARY KEY (run_id, artifact_type, artifact_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_system_test_artifacts_run_type
+  ON system_test_artifacts(run_id, artifact_type);
 
 
 -- ===== WIKI REVISIONS (per-save content snapshots) =====

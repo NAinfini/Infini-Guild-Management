@@ -1,7 +1,7 @@
 import { Button, Skeleton, Stack } from "@mantine/core";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "@portal/components/icons";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useTranslation } from "react-i18next";
 import { useStorageTree } from "../../hooks/useStorage";
 import { useStorageMutations } from "../../hooks/useStorageMutations";
@@ -53,8 +53,6 @@ export function StorageManagePage() {
 
   return (
     <PageLayout
-      title={t("manageStorage.title")}
-      subtitle={t("manageStorage.subtitle")}
       className="storage-page storage-manage-page"
       actions={(
         <Button
@@ -68,12 +66,11 @@ export function StorageManagePage() {
         </Button>
       )}
     >
-      <Stack gap="md">
+      <Stack gap="lg">
         {treeQuery.isLoading ? (
           <Skeleton height={420} radius="md" className="storage-loading" />
         ) : (
-          <PageLayout.Section className="storage-management-section">
-            <StorageStructureManager
+          <StorageStructureManager
               storages={storages}
               selectedStorage={selectedStorage}
               selectedCategoryId={selectedCategoryId}
@@ -139,8 +136,7 @@ export function StorageManagePage() {
                   );
                 });
               }}
-            />
-          </PageLayout.Section>
+          />
         )}
       </Stack>
     </PageLayout>

@@ -1,7 +1,6 @@
-import { PortalCard } from "../shared/PortalCard";
-import { Alert, Text, Title } from "@mantine/core";
+import { Alert, Paper, SimpleGrid, Stack, Text, Title, UnstyledButton } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { DiceFiveFilledIcon, SwordsIcon, WrenchIcon } from "@portal/components/icons";
+import { DiceFiveFilledIcon, SwordsIcon } from "@portal/components/icons";
 import { DiceRollerModal } from "@portal/components/feature/tools/DiceRollerModal";
 import { TitleSandboxModal } from "@portal/components/feature/tools/TitleSandboxModal";
 import { useTranslation } from "react-i18next";
@@ -59,7 +58,7 @@ export function ToolsPage() {
       description: t("dice.description"),
       onOpen: diceHandlers.open,
     },
-    // Equipment calculator — in-house tool (see docs/plans/2026-05-21-equipment-calculator-design.md)
+    // Equipment calculator — in-house tool enabled by the active game configuration.
     ...(equipCalcEnabled
       ? [{
           key: "equipCalc",
@@ -74,21 +73,16 @@ export function ToolsPage() {
   ];
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<WrenchIcon size={22} />}>
+    <PageLayout>
+      <Stack gap={16}>
       {isExternalView ? (
         <Alert color="gray" title={t("sandbox.readOnlyHint")} />
       ) : null}
 
-      {/* 5 columns squeezed each card to ~200px, which wrapped every title; 3 gives
-          the title one line and leaves the meta row readable. */}
-      <PageLayout.Grid cols={{ xs: 1, sm: 2, md: 3 }} gap={16}>
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing={{ base: 12, md: 16 }}>
         {toolCards.map((tool) => (
-          <PortalCard
-            key={tool.key}
-            className="tool-card"
-          >
-            <button
-              type="button"
+          <Paper key={tool.key} withBorder className="tool-card">
+            <UnstyledButton
               className="tool-card__btn"
               onClick={() => {
                 if (isExternalView) return;
@@ -113,10 +107,11 @@ export function ToolsPage() {
               <div className="tool-card__icon-wrap">
                 <div className="tool-card__icon">{tool.icon}</div>
               </div>
-            </button>
-          </PortalCard>
+            </UnstyledButton>
+          </Paper>
         ))}
-      </PageLayout.Grid>
+      </SimpleGrid>
+      </Stack>
 
       <TitleSandboxModal opened={sandboxOpened} onClose={sandboxHandlers.close} />
 

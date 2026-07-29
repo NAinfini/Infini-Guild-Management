@@ -13,11 +13,65 @@ function createDeps() {
     verifyPassword: vi.fn(),
     createPasswordHash: vi.fn(),
     destroySession: vi.fn(),
+    clearSessionCookie: vi.fn(),
     getMediaPolicy: vi.fn().mockResolvedValue(DEFAULT_SITE_MEDIA_POLICY),
   };
 }
 
+function createProfileUploadSelect(profile: Record<string, unknown>) {
+  return vi
+    .fn()
+    .mockReturnValueOnce({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn().mockResolvedValue([{ role: "member", deletedAt: null, username: "Alpha" }]),
+        })),
+      })),
+    })
+    .mockReturnValueOnce({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn().mockResolvedValue([{
+            userId: "u-1",
+            images: "[]",
+            avatarKey: null,
+            audioKey: null,
+            updatedAt: "2026-03-08T12:00:00.000Z",
+            ...profile,
+          }]),
+        })),
+      })),
+    });
+}
+
 describe("UserService", () => {
+  it("updates the password and revokes all sessions in one D1 batch", async () => {
+    const passwordUpdate = { query: "password-update" };
+    const sessionDelete = { query: "session-delete" };
+    const batch = vi.fn().mockResolvedValue([]);
+    const update = vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(() => passwordUpdate) })) }));
+    const remove = vi.fn(() => ({ where: vi.fn(() => sessionDelete) }));
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ passwordHash: "old-hash", salt: "old-salt" }]) })) })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ username: "Alpha" }]) })) })) });
+    const deps = createDeps();
+    deps.verifyPassword.mockResolvedValue(true);
+    deps.createPasswordHash.mockResolvedValue({ passwordHash: "new-hash", salt: "new-salt" });
+    const service = new UserService({ select, update, delete: remove, batch } as never, deps);
+
+    const result = await service.changePassword(
+      { id: "u-1", role: "member", permissions: new Set() } as never,
+      "u-1",
+      { currentPassword: "password123", newPassword: "new-password123", confirmNewPassword: "new-password123" },
+    );
+
+    expect(result).toEqual({ ok: true, data: { ok: true } });
+    expect(batch).toHaveBeenCalledWith([passwordUpdate, sessionDelete]);
+    expect(deps.clearSessionCookie).toHaveBeenCalledOnce();
+    expect(deps.destroySession).not.toHaveBeenCalled();
+  });
+
   it("returns user stats from aggregate counts instead of full user rows", async () => {
     const from = vi.fn().mockResolvedValue([{ activeMembers: 2, totalMembers: 3 }]);
     const select = vi.fn(() => ({ from }));
@@ -219,6 +273,90 @@ describe("UserService", () => {
       code: "VALIDATION_ERROR",
       message: "File bytes do not match declared type: image/png",
     });
+  });
+
+  it("removes earlier profile uploads when a later file fails validation", async () => {
+    const deps = createDeps();
+    deps.storeProfileImage
+      .mockResolvedValueOnce("members/u-1/images/one.png")
+      .mockRejectedValueOnce(new Error("File bytes do not match declared type: image/png"));
+    deps.deleteMediaObject.mockResolvedValue(undefined);
+    const service = new UserService({
+      select: createProfileUploadSelect({}),
+    } as never, deps);
+
+    const result = await service.uploadProfileImages(
+      { id: "u-1", role: "member", permissions: new Set() },
+      "u-1",
+      [
+        new File([new Uint8Array([1])], "one.png", { type: "image/png" }),
+        new File([new Uint8Array([2])], "two.png", { type: "image/png" }),
+      ],
+    );
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+    expect(deps.deleteMediaObject).toHaveBeenCalledWith("members/u-1/images/one.png");
+  });
+
+  it("removes profile image keys and restores the profile when its update fails", async () => {
+    const failure = new Error("profile update failed");
+    const updateWhere = vi.fn()
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValue(undefined);
+    const deps = createDeps();
+    deps.storeProfileImage.mockResolvedValue("members/u-1/images/new.png");
+    deps.deleteMediaObject.mockResolvedValue(undefined);
+    const service = new UserService({
+      select: createProfileUploadSelect({ images: JSON.stringify(["members/u-1/images/existing.png"]) }),
+      update: vi.fn(() => ({ set: vi.fn(() => ({ where: updateWhere })) })),
+    } as never, deps);
+
+    await expect(service.uploadProfileImages(
+      { id: "u-1", role: "member", permissions: new Set() },
+      "u-1",
+      [new File([new Uint8Array([1])], "new.png", { type: "image/png" })],
+    )).rejects.toBe(failure);
+
+    expect(deps.deleteMediaObject).toHaveBeenCalledWith("members/u-1/images/new.png");
+    expect(updateWhere).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    {
+      label: "avatar",
+      method: "uploadAvatar" as const,
+      store: "storeProfileImage" as const,
+      key: "members/u-1/images/avatar.png",
+      file: new File([new Uint8Array([1])], "avatar.png", { type: "image/png" }),
+    },
+    {
+      label: "audio",
+      method: "uploadProfileAudio" as const,
+      store: "storeProfileAudio" as const,
+      key: "members/u-1/audio/profile.wav",
+      file: new File([new Uint8Array([1])], "profile.wav", { type: "audio/wav" }),
+    },
+  ])("removes a newly stored $label when its profile update fails", async ({ method, store, key, file }) => {
+    const failure = new Error(`${method} update failed`);
+    const updateWhere = vi.fn()
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValue(undefined);
+    const deps = createDeps();
+    deps[store].mockResolvedValue(key);
+    deps.deleteMediaObject.mockResolvedValue(undefined);
+    const service = new UserService({
+      select: createProfileUploadSelect({}),
+      update: vi.fn(() => ({ set: vi.fn(() => ({ where: updateWhere })) })),
+    } as never, deps);
+
+    await expect(service[method](
+      { id: "u-1", role: "member", permissions: new Set() },
+      "u-1",
+      file,
+    )).rejects.toBe(failure);
+
+    expect(deps.deleteMediaObject).toHaveBeenCalledWith(key);
+    expect(updateWhere).toHaveBeenCalledTimes(2);
   });
 
   it("rejects profile images over the configured media policy before storage", async () => {

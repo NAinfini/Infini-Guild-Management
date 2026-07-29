@@ -1,7 +1,7 @@
 import type { WarHistory } from "@guild/shared";
 import { NumberTicker } from "@portal/components/effects";
-import { PortalCard } from "../shared/PortalCard";
-import { ActionIcon, Avatar, Stack, Text } from "@mantine/core";
+import { SectionHeader } from "../shared/SectionHeader";
+import { ActionIcon, Avatar, Paper, Stack, Text } from "@mantine/core";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -88,8 +88,9 @@ export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isEx
   const hasNext = index < total - 1;
 
   return (
-    <PortalCard className="dashboard-card" interactive={false}>
-      <div className="war-card-header">
+    <Paper withBorder radius="md" className="dashboard-card">
+      <div>
+        <div className="war-card-header">
         {cardHeading(t("card.lastWar.title"), <SwordsOutlined size={18} />)}
         {total > 1 ? (
           <div className="war-nav">
@@ -114,9 +115,9 @@ export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isEx
             </ActionIcon>
           </div>
         ) : null}
-      </div>
+        </div>
 
-      {war ? (
+        {war ? (
         <div className="war-body">
           {/* War name row: name + time on left, result + share on right */}
           <div className="war-info-row">
@@ -188,9 +189,7 @@ export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isEx
           {/* MVPs */}
           {!isExternalView && mvp ? (
             <Stack gap={6} className="war-mvp-section">
-              <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: "0.08em", marginBottom: 2 }}>
-                {t("card.lastWar.mvps")}
-              </Text>
+              <SectionHeader title={t("card.lastWar.mvps")} className="section-header--flush" />
               <Stack gap={6}>
                 {mvp.map((entry) => (
                   <MvpChip key={entry.category} entry={entry} icon={MVP_ICON_MAP[entry.category] ?? <FlameIcon size={12} />} />
@@ -199,9 +198,10 @@ export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isEx
             </Stack>
           ) : null}
         </div>
-      ) : (
-        <EmptyState title={t("empty")} />
-      )}
-    </PortalCard>
+        ) : (
+          <EmptyState title={t("empty")} />
+        )}
+      </div>
+    </Paper>
   );
 });

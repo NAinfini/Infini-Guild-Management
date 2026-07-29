@@ -1,9 +1,9 @@
 import type { CreateStorageTransactionPayload, StorageItem } from "@guild/shared";
-import { Button, Skeleton, Stack } from "@mantine/core";
+import { Button, Group, Paper, Select, Skeleton, Stack } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { PlusIcon, SettingsIcon } from "@portal/components/icons";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../../api/query-keys";
@@ -23,7 +23,6 @@ import { StorageItemDetailModal } from "../feature/storage/StorageItemDetailModa
 import { StorageItemEditorModal } from "../feature/storage/StorageItemEditorModal";
 import { StorageTransactionModal } from "../feature/storage/StorageTransactionModal";
 import { PageLayout } from "../layout/PageLayout";
-import { PageTabPanel, PageTabs } from "../layout/PageTabs";
 import { EmptyState } from "../shared/EmptyState";
 import "./StoragePage.css";
 
@@ -63,6 +62,7 @@ export function StoragePage() {
   const treeQuery = useStorageTree();
   const storages = treeQuery.data?.data ?? [];
   const { storageId } = useSearch({ strict: false }) as { storageId?: string };
+  const navigate = useNavigate();
   const activeStorage = storages.find((storage) => storage.id === storageId) ?? storages[0] ?? null;
   const inventoryProbeQuery = useStorageItems({
     storageId: activeStorage?.id,
@@ -179,8 +179,6 @@ export function StoragePage() {
 
   return (
     <PageLayout
-      title={t("title")}
-      subtitle={t("subtitle")}
       className="storage-page"
       actions={canManageStructure ? (
         <Button
@@ -208,25 +206,31 @@ export function StoragePage() {
             ) : undefined}
           />
         ) : null}
-        {!treeQuery.isLoading && storages.length > 0 ? (
-          <PageTabs
-            defaultValue={storages[0]!.id}
-            searchKey="storageId"
-            keepMounted={false}
-            className="storage-tabs"
-            listClassName="storage-tabs__list"
-            tabs={storages.map((storage) => ({ value: storage.id, label: storage.name }))}
-            listWrapper={(list) => (
-              <PageLayout.Section className="storage-tabs-section">{list}</PageLayout.Section>
-            )}
-          >
-            {storages.map((storage) => (
-              <PageTabPanel key={storage.id} value={storage.id} pt="md" className="storage-tabs__panel">
-                {activeStorage?.id === storage.id ? (
-                  <div className={`storage-inventory-layout ${activeBatchDraft ? "storage-inventory-layout--batch" : ""}`}>
-                    <StorageInventoryPanel
-                      key={storage.id}
-                      storage={storage}
+        {!treeQuery.isLoading && activeStorage ? (
+          <Stack gap="md">
+            <Paper withBorder p="sm" className="storage-page__selector">
+              <Group justify="space-between" align="end" wrap="wrap">
+                <Select
+                  label={t("field.storage")}
+                  className="storage-page__selector-control"
+                  data={storages.map((storage) => ({ value: storage.id, label: storage.name }))}
+                  value={activeStorage.id}
+                  onChange={(nextStorageId) => {
+                    if (!nextStorageId || nextStorageId === activeStorage.id) return;
+                    void navigate({
+                      to: "/storage",
+                      search: { storageId: nextStorageId },
+                      replace: true,
+                      viewTransition: false,
+                    });
+                  }}
+                />
+              </Group>
+            </Paper>
+            <div className={`storage-inventory-layout ${activeBatchDraft ? "storage-inventory-layout--batch" : ""}`}>
+              <StorageInventoryPanel
+                      key={activeStorage.id}
+                      storage={activeStorage}
                       canManageItems={canManageItems}
                       canManageStock={canManageStock}
                       hasAnyItems={inventoryProbeQuery.items.length > 0}
@@ -243,7 +247,7 @@ export function StoragePage() {
                           : user?.id ?? null;
                         setBatchDrafts((current) => ({
                           ...current,
-                          [storage.id]: createBatchDraft(defaultRecipientId),
+                          [activeStorage.id]: createBatchDraft(defaultRecipientId),
                         }));
                       }}
                       onBatchQuantityChange={(item, quantity) => {
@@ -266,9 +270,9 @@ export function StoragePage() {
                         if (!item) setManualItemSearch("");
                         setActiveModal({ type: "transaction", item, mode });
                       }}
-                    />
-                    {activeBatchDraft ? (
-                      <StorageBatchPanel
+              />
+              {activeBatchDraft ? (
+                <StorageBatchPanel
                         draft={activeBatchDraft}
                         users={usersQuery.data?.data ?? []}
                         currentUsername={user?.username}
@@ -295,13 +299,10 @@ export function StoragePage() {
                         onClear={() => { void handleClearBatch(); }}
                         onClose={() => { void handleCloseBatch(); }}
                         onSubmit={handleSubmitBatch}
-                      />
-                    ) : null}
-                  </div>
-                ) : null}
-              </PageTabPanel>
-            ))}
-          </PageTabs>
+                />
+              ) : null}
+            </div>
+          </Stack>
         ) : null}
       </Stack>
 

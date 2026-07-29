@@ -1,6 +1,7 @@
 import {
   Alert,
   Badge,
+  Button,
   Group,
   Modal,
   SegmentedControl,
@@ -12,7 +13,8 @@ import {
 } from "@mantine/core";
 import { CrownOutlined, ShieldOutlined, SwordsOutlined, TargetOutlined } from "@portal/utils/icons";
 import { resolveResultTagColor } from "@portal/utils/guild-war";
-import { InfiniTable, useReactTable } from "@portal/components/shared/InfiniTable";
+import { useReactTable } from "@tanstack/react-table";
+import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
 import ReactEChartsCore from "echarts-for-react/esm/core";
 import { BarChart, LineChart } from "echarts/charts";
 import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
@@ -20,7 +22,7 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useTranslation } from "react-i18next";
 import { useEffect, type ReactNode } from "react";
-import { DepthButton } from "@portal/components/shared/DepthButton";
+import { SectionHeader } from "@portal/components/shared/SectionHeader";
 import { CompareBar } from "../../shared/CompareBar";
 import type { EChartsThemeConfig } from "../../../theme/echarts";
 import type {
@@ -178,7 +180,7 @@ export function WarHistoryDetail({
             <div className="whd-split">
               {historyMvp ? (
                 <div className="whd-mvp">
-                  <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={8}>{t("history.mvpHighlights")}</Text>
+                  <SectionHeader title={t("history.mvpHighlights")} />
                   <div className="whd-mvp__grid">
                     <MvpEntry icon={<TargetOutlined size={13} />} label={t("analytics.metric.damage")} value={historyMvp.damage} />
                     <MvpEntry icon={<ShieldOutlined size={13} />} label={t("analytics.metric.healing")} value={historyMvp.healing} />
@@ -190,7 +192,7 @@ export function WarHistoryDetail({
 
               {historyDetail.teams.length > 0 ? (
                 <div className="whd-teams">
-                  <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={8}>{t("history.teamSnapshot")}</Text>
+                  <SectionHeader title={t("history.teamSnapshot")} />
                   <Stack gap={6}>
                     {historyDetail.teams.map((team) => (
                       <div key={team.id} className="whd-team-row">
@@ -242,12 +244,12 @@ export function WarHistoryDetail({
                   </Text>
                 ) : null}
                 <div className="war-history-detail-table-wrap">
-                  <InfiniTable table={detailTable} />
+                  <DataTableAdapter table={detailTable} />
                 </div>
               </>
             ) : (
               <div className="whd-chart-wrap">
-                <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={8}>{t("history.chartTitle", { metric: getMetricLabel(historyChartMetric) })}</Text>
+                <SectionHeader title={t("history.chartTitle", { metric: getMetricLabel(historyChartMetric) })} />
                 <ReactEChartsCore
                   echarts={echarts}
                   theme={chartThemeName}
@@ -280,19 +282,18 @@ export function WarHistoryDetail({
             {/* Actions footer */}
             <Group justify="flex-end" gap={8} className="whd-actions">
               {canManage ? (
-                <DepthButton
-                  type="danger"
+                <Button
+                  color="red"
                   size="xs"
                   onClick={onDeleteHistory}
                   loading={deleteHistoryPending}
                   disabled={historyDetailLoading}
                 >
                   {t("common:action.delete")}
-                </DepthButton>
+                </Button>
               ) : null}
               {canManage ? (
-                <DepthButton
-                  type="primary"
+                <Button
                   size="xs"
                   onClick={onSaveMemberStats}
                   loading={saveMemberStatsPending}
@@ -300,14 +301,14 @@ export function WarHistoryDetail({
                   className={hasUnsavedMemberChanges ? "war-history-save-button--ready" : undefined}
                 >
                   {t("history.saveChanges")}
-                </DepthButton>
+                </Button>
               ) : null}
-              <DepthButton type="secondary" size="xs" onClick={() => onExport("csv")} loading={exportPending} disabled={historyRows.length === 0}>
+              <Button variant="default" size="xs" onClick={() => onExport("csv")} loading={exportPending} disabled={historyRows.length === 0}>
                 {exportCsvLabel}
-              </DepthButton>
-              <DepthButton type="secondary" size="xs" onClick={() => onExport("json")} loading={exportPending} disabled={historyRows.length === 0}>
+              </Button>
+              <Button variant="default" size="xs" onClick={() => onExport("json")} loading={exportPending} disabled={historyRows.length === 0}>
                 {exportJsonLabel}
-              </DepthButton>
+              </Button>
             </Group>
           </Stack>
         ) : null}

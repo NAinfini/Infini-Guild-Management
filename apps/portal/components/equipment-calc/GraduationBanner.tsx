@@ -18,7 +18,7 @@ function rateLevel(rate: number | null): "high" | "mid" | "low" | "pending" {
 /*
  * RingProgress 的 color prop 只吃字面字符串，不认 className（见
  * AdminApiTestCategory.tsx 里对 Mantine 源码的核实）。四档本身仍是穷举的
- * level 判定，只是把颜色字面量从 hex 换成 token 字符串（task-8-addendum.md
+ * level 判定，只是把颜色字面量从 hex 换成 token 字符串（the inline-style migration contract
  * B 节类 2）。这条例外的 CSS 侧登记见 EquipmentCalcModal.css 里
  * .ecm__grad-banner__rate--* 旁的注释。
  * pending 曾经用 --mantine-color-dimmed。这不是回归修复——本仓库

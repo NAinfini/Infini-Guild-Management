@@ -28,7 +28,6 @@
   height: 8px;
   border-radius: 50%;
   background: var(--status-success);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--status-success) 40%, transparent);
   vertical-align: middle;
   margin-right: 6px;
 }
@@ -62,7 +61,7 @@
   border-left: 3px solid var(--gd-border);
 }
 
-.admin-game-data__meta-item:nth-child(1) { border-left-color: var(--accent-fill); }
+.admin-game-data__meta-item:nth-child(1) { border-left-color: var(--brand-fill); }
 .admin-game-data__meta-item:nth-child(2) { border-left-color: var(--status-success); }
 .admin-game-data__meta-item:nth-child(3) { border-left-color: var(--status-warning); }
 
@@ -197,11 +196,11 @@
  *   补回 tbody/tr 祖先上下文后天然到 (0,3,3)，无需再自我重复。
  */
 .admin-game-data__versions-table tbody tr.admin-game-data__active-row td:first-child {
-  border-left: 3px solid var(--accent-fill);
+  border-left: 3px solid var(--brand-fill);
 }
 
 .admin-game-data__versions-table.admin-game-data__versions-table tbody tr.admin-game-data__active-row {
-  background: color-mix(in srgb, var(--accent-fill) 4%, var(--gd-muted));
+  background: color-mix(in srgb, var(--brand-fill) 4%, var(--gd-muted));
 }
 
 /* Rollback button - ghost style, visible on hover */

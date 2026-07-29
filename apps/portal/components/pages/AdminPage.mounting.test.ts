@@ -9,8 +9,12 @@ describe("AdminPage tab mounting", () => {
       "utf8",
     );
 
-    expect(source).toMatch(
-      /<PageTabs\s+defaultValue="member"\s+tabs=\{tabs\}\s+keepMounted=\{false\}>/,
-    );
+    expect(source).toContain("<Tabs");
+    expect(source).toContain("keepMounted={false}");
+    expect(source).toContain('<Tabs.Panel value="member"');
+    expect(source).toContain('className="admin-page__mobile-domain-select"');
+    expect(source).toContain('orientation="vertical"');
+    expect(source).not.toContain('orientation={isMobile ? "horizontal"');
+    expect(source).not.toContain("PageTabs");
   });
 });

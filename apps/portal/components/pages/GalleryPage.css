@@ -2,7 +2,7 @@
   min-width: 260px;
   min-height: 92px;
   border: 1px dashed color-mix(in srgb, var(--text-primary) 22%, transparent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   background: color-mix(in srgb, var(--surface-base) 92%, transparent);
   display: grid;
   place-items: center;
@@ -28,16 +28,10 @@
 .gallery-masonry { column-count: 2; column-gap: 12px; }
 .gallery-masonry__item { break-inside: avoid; margin-bottom: 12px; }
 
-.gallery-masonry__item--animated {
-  opacity: 0;
-  animation: gallery-fade-slide-up 260ms ease forwards;
-  animation-delay: calc(min(var(--stagger-index), 24) * 60ms);
-}
-
 /* ── Gallery card ── */
 .gallery-card .gallery-preview-button {
   display: block; width: 100%; padding: 0;
-  border: none; background: transparent; cursor: zoom-in; border-radius: var(--radius-md) var(--radius-md) 0 0;
+  border: none; background: transparent; cursor: zoom-in; border-radius: var(--radius-surface) var(--radius-surface) 0 0;
   overflow: hidden;
 }
 
@@ -86,10 +80,9 @@
    same reasoning as the lightbox controls below. */
 .gallery-preview-uploader {
   position: absolute; top: 8px; left: 8px; z-index: 1;
-  max-width: calc(100% - 16px); border-radius: var(--radius-pill); padding: 2px 8px;
+  max-width: calc(100% - 16px); border-radius: var(--shape-pill); padding: 2px 8px;
   font-size: 12px; line-height: 1.4; color: rgb(255 255 255);
   background: color-mix(in srgb, black 58%, transparent);
-  backdrop-filter: blur(4px);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   opacity: 0;
   transition: opacity 200ms ease;
@@ -157,7 +150,6 @@
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(8px);
   color: rgba(255, 255, 255, 0.8);
   cursor: pointer;
   display: flex;
@@ -183,7 +175,6 @@
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(8px);
   color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   display: flex;
@@ -272,7 +263,7 @@
 }
 
 .gallery-object-placeholder {
-  width: 100%; min-height: 140px; border-radius: var(--radius-sm);
+  width: 100%; min-height: 140px; border-radius: var(--radius-control);
   border: 1px dashed color-mix(in srgb, var(--text-primary) 22%, transparent);
   background: color-mix(in srgb, var(--surface-base) 92%, transparent);
   display: grid; gap: 8px; place-items: center; padding: 12px; text-align: center;
@@ -292,7 +283,7 @@
   .gallery-card__select-target {
     width: 44px;
     height: 44px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-control);
     display: grid;
     place-items: center;
     cursor: pointer;
@@ -310,17 +301,11 @@
 }
 @media (min-width: 992px) { .gallery-masonry { column-count: 4; } }
 @media (min-width: 1200px) { .gallery-masonry { column-count: 5; } }
-@keyframes gallery-fade-slide-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 @keyframes gallery-lb-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .gallery-masonry__item--animated { opacity: 1; animation: none; }
   .gallery-lb-overlay { animation: none; }
 }

@@ -12,6 +12,7 @@ import {
 } from "@mantine/core";
 import { FlagIcon } from "@portal/components/icons";
 import { MetricGridInput } from "@portal/components/shared/MetricGridInput";
+import { SectionHeader } from "@portal/components/shared/SectionHeader";
 import { activeGame } from "@guild/shared/games";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -148,9 +149,7 @@ export function ConcludeWarModal({
     >
       <Stack gap={16}>
         {/* Section 1: War-level info */}
-        <Text size="sm" fw={600} tt="uppercase" c="dimmed">
-          {t("conclude.section.warInfo")}
-        </Text>
+        <SectionHeader title={t("conclude.section.warInfo")} className="section-header--flush" />
         <Group gap={10} wrap="wrap" grow>
           <TextInput
             label={t("conclude.field.enemyName")}
@@ -222,9 +221,7 @@ export function ConcludeWarModal({
         {/* Section 2: Member stats table */}
         {members.length > 0 ? (
           <>
-            <Text size="sm" fw={600} tt="uppercase" c="dimmed">
-              {t("conclude.section.memberStats")}
-            </Text>
+            <SectionHeader title={t("conclude.section.memberStats")} className="section-header--flush" />
             <Text size="xs" c="dimmed">
               {t("conclude.keyboardHint")}
             </Text>

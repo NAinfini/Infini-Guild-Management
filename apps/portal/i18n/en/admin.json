@@ -3,6 +3,7 @@
   "subtitle": "Administration",
   "forbidden": "You need moderator role to access this page.",
   "adminOnly": "This section is admin-only.",
+  "navigation.section": "Admin area",
   "tab.member": "Member Mgmt",
   "tab.invite": "Invite Links",
   "tab.audit": "Audit Log",

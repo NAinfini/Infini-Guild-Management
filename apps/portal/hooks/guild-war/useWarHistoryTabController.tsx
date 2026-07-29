@@ -3,13 +3,14 @@ import { useDisclosure } from "@mantine/hooks";
 import { activeGame } from "@guild/shared/games";
 import { CircleCheckIcon, AlertTriangleIcon } from "@portal/components/icons";
 import { MetricGridInput } from "@portal/components/shared/MetricGridInput";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import {
+  type ColumnDef,
+  type SortingState,
   getCoreRowModel,
   getSortedRowModel,
   useReactTable,
-} from "@portal/components/shared/InfiniTable";
-import type { ColumnDef, SortingState } from "@portal/components/shared/InfiniTable";
+} from "@tanstack/react-table";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {

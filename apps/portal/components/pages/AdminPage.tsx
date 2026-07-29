@@ -1,16 +1,18 @@
-import { SettingsIcon } from "@portal/components/icons";
 import {
   Alert,
   Card,
   Group,
+  Select,
   Skeleton,
   Stack,
+  Tabs,
 } from "@mantine/core";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useMediaQuery } from "@mantine/hooks";
 import { Suspense, lazy } from "react";
 import { useTranslation } from "react-i18next";
 import { useAdminPageController } from "../../hooks/useAdminPageController";
 import { PageLayout } from "../layout/PageLayout";
-import { PageTabPanel, PageTabs } from "../layout/PageTabs";
 import { ErrorBoundary } from "@portal/components/effects";
 import "./AdminPage.css";
 
@@ -50,6 +52,9 @@ const LazyCreateMemberModal = lazy(() =>
 
 export function AdminPage() {
   const { t } = useTranslation("admin");
+  const isMobile = useMediaQuery("(max-width: 47.99em)");
+  const navigate = useNavigate();
+  const search = useSearch({ strict: false }) as { tab?: string };
   const {
     auditFilter,
     auditLogQuery,
@@ -152,13 +157,46 @@ export function AdminPage() {
     { value: "gameData", label: t("tab.gameData"), visible: tabAccess.gameData },
     { value: "status", label: t("tab.status"), visible: tabAccess.status },
   ].filter((tab) => tab.visible);
+  const activeTab = tabs.some((tab) => tab.value === search.tab) ? search.tab! : (tabs[0]?.value ?? "member");
+  const setActiveTab = (nextTab: string | null) => {
+    if (!nextTab) return;
+    const tab = nextTab as "member" | "invite" | "audit" | "roles" | "siteConfig" | "badges" | "gameData" | "status";
+    void navigate({
+      to: "/admin",
+      search: (previous) => ({ ...previous, tab: tab === "member" ? undefined : tab }),
+      replace: true,
+      viewTransition: false,
+    });
+  };
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<SettingsIcon size={22} />} className="admin-page">
-        <PageTabs defaultValue="member" tabs={tabs} keepMounted={false}>
+    <PageLayout className="admin-page">
+        {isMobile ? (
+          <Select
+            className="admin-page__mobile-domain-select"
+            label={t("navigation.section")}
+            data={tabs}
+            value={activeTab}
+            onChange={setActiveTab}
+            allowDeselect={false}
+            searchable={tabs.length > 6}
+          />
+        ) : null}
+        <Tabs
+          value={activeTab}
+          keepMounted={false}
+          orientation="vertical"
+          className="admin-page__workspace"
+          onChange={setActiveTab}
+        >
+          {!isMobile ? (
+            <Tabs.List className="admin-page__domain-nav">
+              {tabs.map((tab) => <Tabs.Tab key={tab.value} value={tab.value}>{tab.label}</Tabs.Tab>)}
+            </Tabs.List>
+          ) : null}
 
         {tabAccess.member ? (
-        <PageTabPanel value="member" pt="sm">
+        <Tabs.Panel value="member" className="admin-page__panel">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminUsersSection
@@ -207,11 +245,11 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </PageTabPanel>
+        </Tabs.Panel>
         ) : null}
 
         {tabAccess.invite ? (
-        <PageTabPanel value="invite" pt="sm">
+        <Tabs.Panel value="invite" className="admin-page__panel">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminInviteSection
@@ -244,11 +282,11 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </PageTabPanel>
+        </Tabs.Panel>
         ) : null}
 
         {tabAccess.audit ? (
-        <PageTabPanel value="audit" pt="sm">
+        <Tabs.Panel value="audit" className="admin-page__panel">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminAuditSection
@@ -277,11 +315,11 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </PageTabPanel>
+        </Tabs.Panel>
         ) : null}
 
         {tabAccess.roles ? (
-        <PageTabPanel value="roles" pt="sm">
+        <Tabs.Panel value="roles" className="admin-page__panel">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminRolesSection
@@ -297,11 +335,11 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </PageTabPanel>
+        </Tabs.Panel>
         ) : null}
 
         {tabAccess.siteConfig ? (
-          <PageTabPanel value="siteConfig" pt="sm">
+          <Tabs.Panel value="siteConfig" className="admin-page__panel">
             <ErrorBoundary>
             <Suspense fallback={suspenseFallback}>
               <LazyAdminSiteConfigSection
@@ -314,11 +352,11 @@ export function AdminPage() {
               />
             </Suspense>
             </ErrorBoundary>
-          </PageTabPanel>
+          </Tabs.Panel>
         ) : null}
 
         {tabAccess.badges ? (
-          <PageTabPanel value="badges" pt="sm">
+          <Tabs.Panel value="badges" className="admin-page__panel">
             <ErrorBoundary>
             <Suspense fallback={suspenseFallback}>
               <LazyAdminBadgesSection
@@ -327,21 +365,21 @@ export function AdminPage() {
               />
             </Suspense>
             </ErrorBoundary>
-          </PageTabPanel>
+          </Tabs.Panel>
         ) : null}
 
         {tabAccess.gameData ? (
-          <PageTabPanel value="gameData" pt="sm">
+          <Tabs.Panel value="gameData" className="admin-page__panel">
             <ErrorBoundary>
             <Suspense fallback={suspenseFallback}>
               <LazyAdminGameDataSection />
             </Suspense>
             </ErrorBoundary>
-          </PageTabPanel>
+          </Tabs.Panel>
         ) : null}
 
         {tabAccess.status ? (
-        <PageTabPanel value="status" pt="sm">
+        <Tabs.Panel value="status" className="admin-page__panel">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminStatusTab
@@ -355,9 +393,9 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </PageTabPanel>
+        </Tabs.Panel>
         ) : null}
-      </PageTabs>
+      </Tabs>
       <Suspense fallback={null}>
         <LazyAdminMemberDetailModal
           open={Boolean(selectedMemberDetail)}

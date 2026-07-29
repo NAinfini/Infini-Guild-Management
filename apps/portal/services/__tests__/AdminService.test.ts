@@ -132,15 +132,16 @@ describe("AdminService mutations", () => {
   });
 
   it("fetchAdminInviteLinks sends cursor, visibility, and search filters", async () => {
+    const cursor = "eyJjcmVhdGVkX2F0IjoiMjAyNi0wNS0xOFQwMDowMDowMC4wMDBaIiwiaWQiOiJpbnZpdGUtNTAifQ";
     const response = {
       data: [],
-      next_cursor: "50",
+      next_cursor: cursor,
       total: 75,
     };
     mockFetch.mockResolvedValueOnce(mockJsonResponse(response));
 
     const result = await fetchAdminInviteLinks({
-      cursor: "0",
+      cursor,
       limit: 50,
       visibility: "expired",
       search: "2026-07",
@@ -148,7 +149,7 @@ describe("AdminService mutations", () => {
 
     const [url] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/invite-links?");
-    expect(url).toContain("cursor=0");
+    expect(url).toContain(`cursor=${cursor}`);
     expect(url).toContain("limit=50");
     expect(url).toContain("visibility=expired");
     expect(url).toContain("search=2026-07");

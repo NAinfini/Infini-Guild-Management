@@ -32,6 +32,7 @@ type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: 
 export type StorageServiceDeps = {
   media: R2Bucket;
   rawDb: D1Database;
+  systemTestRunId?: string | null;
   writeAuditLog: (input: WriteAuditLogInput) => Promise<void>;
   publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
 };

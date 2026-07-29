@@ -1,9 +1,8 @@
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import type { ImageGridEditorItem } from "@portal/types/media";
-import { PortalCard } from "../../shared/PortalCard";
-import { Avatar, Button, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
+import { Avatar, Button, FileButton, Group, Paper, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { PlusIcon, TrashIcon, UploadIcon, UserIcon } from "@portal/components/icons";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useTranslation } from "react-i18next";
 import type { UseMediaUploadState } from "../../../hooks/useMediaUpload";
 import type { UsersListResponse } from "../../../services/UserService";
@@ -108,8 +107,8 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
 
   return (
     <Stack gap={16}>
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+      <Paper withBorder radius="md">
+        <div style={{ padding: "var(--card-padding)" }}>
           <Text fw={600} size="sm" mb={12}>{t("media.avatar")}</Text>
           <Group gap={16} align="center">
             <Avatar size={72} radius="xl" src={member.profile.avatar_key ? resolveProfileMediaUrl(member.profile.avatar_key) : undefined}>
@@ -149,10 +148,10 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             ) : null}
           </Group>
         </div>
-      </PortalCard>
+      </Paper>
 
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+      <Paper withBorder radius="md">
+        <div style={{ padding: "var(--card-padding)" }}>
           <Text fw={600} size="sm" mb={12}>{t("media.images")}</Text>
           {imageItems.length === 0 && !isModerator ? (
             <Text c="dimmed" size="sm">{t("media.noImages")}</Text>
@@ -194,10 +193,10 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             </Stack>
           )}
         </div>
-      </PortalCard>
+      </Paper>
 
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+      <Paper withBorder radius="md">
+        <div style={{ padding: "var(--card-padding)" }}>
           <Text fw={600} size="sm" mb={12}>{t("media.videos")}</Text>
           <Stack gap={8}>
             {videoUrls.map((url, index) => (
@@ -258,10 +257,10 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             ) : null}
           </Stack>
         </div>
-      </PortalCard>
+      </Paper>
 
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+      <Paper withBorder radius="md">
+        <div style={{ padding: "var(--card-padding)" }}>
           <Text fw={600} size="sm" mb={12}>{t("media.audio")}</Text>
           {member.profile.audio_key ? (
             <Stack gap={6}>
@@ -327,7 +326,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             </Stack>
           ) : null}
         </div>
-      </PortalCard>
+      </Paper>
     </Stack>
   );
 }

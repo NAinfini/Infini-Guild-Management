@@ -1,7 +1,5 @@
 import type { WikiArticle } from "@guild/shared";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { PortalCard } from "../../shared/PortalCard";
-import { Alert, Button, Group, HoverCard, MultiSelect, Skeleton, Stack, Text, ThemeIcon, VisuallyHidden } from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, HoverCard, MultiSelect, Paper, Skeleton, Stack, Text, ThemeIcon, Tooltip } from "@mantine/core";
 import { ArchiveIcon, PencilIcon, PinIcon, PlusIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -66,28 +64,26 @@ export function WikiArticleListCard({
   const { t } = useTranslation("wiki");
 
   return (
-    <PortalCard className="wiki-article-list-card" interactive={false}>
-      <div style={{ padding: "1.2rem" }}>
+    <Paper withBorder radius="md" p="var(--card-padding)" className="wiki-article-list-card">
+      <div>
         <Stack gap={10}>
           <Group justify="space-between">
             <Text fw={600}>{title}</Text>
             {canCreateArticle || canManageCategories ? (
               <Group gap={6}>
                 {canCreateArticle ? (
-                  <DepthButton type="primary" size="sm" onClick={onCreateArticle} tooltip={{ label: createLabel, withArrow: true }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  <Tooltip label={createLabel} withArrow>
+                    <ActionIcon size="sm" onClick={onCreateArticle} aria-label={t("articleEditor.create")}>
                       <PlusIcon size={16} />
-                    </span>
-                    <VisuallyHidden>{createLabel}</VisuallyHidden>
-                  </DepthButton>
+                    </ActionIcon>
+                  </Tooltip>
                 ) : null}
                 {canManageCategories ? (
-                  <DepthButton type="secondary" size="sm" onClick={onOpenCategoryEditor} tooltip={{ label: t("editor.editCategories"), withArrow: true }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                  <Tooltip label={t("editor.editCategories")} withArrow>
+                    <ActionIcon size="sm" variant="default" onClick={onOpenCategoryEditor} aria-label={t("editor.editCategories")}>
                       <PencilIcon size={16} />
-                    </span>
-                    <VisuallyHidden>{t("editor.editCategories")}</VisuallyHidden>
-                  </DepthButton>
+                    </ActionIcon>
+                  </Tooltip>
                 ) : null}
               </Group>
             ) : null}
@@ -144,13 +140,13 @@ export function WikiArticleListCard({
                       {item.pinned ? (
                         <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                           <HoverCard.Target>
-                            <ThemeIcon variant="transparent" color="portal-accent" size="sm" style={{ cursor: "default" }} data-animate-icon-trigger>
+                            <ThemeIcon variant="transparent" color="portal-brand" size="sm" style={{ cursor: "default" }} data-animate-icon-trigger>
                               <PinIcon size={14} aria-hidden />
                             </ThemeIcon>
                           </HoverCard.Target>
                           <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                             <Group gap={10} wrap="nowrap" align="flex-start">
-                              <ThemeIcon variant="light" color="portal-accent" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                              <ThemeIcon variant="light" color="portal-brand" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
                                 <PinIcon size={16} />
                               </ThemeIcon>
                               <div style={{ minWidth: 0 }}>
@@ -204,6 +200,6 @@ export function WikiArticleListCard({
           ) : null}
         </Stack>
       </div>
-    </PortalCard>
+    </Paper>
   );
 }

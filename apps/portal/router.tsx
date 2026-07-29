@@ -16,6 +16,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { userCanAccessAdmin } from "./utils/permissions";
+import { Button, Paper, Stack, Text, Title } from "@mantine/core";
 import { NavigationProgress, nprogress } from "@mantine/nprogress";
 import { Suspense, lazy, useEffect, type ReactNode } from "react";
 import { z } from "zod";
@@ -23,6 +24,7 @@ import { useTranslation } from "react-i18next";
 import { apiRequest } from "./api/client";
 import { fetchEventDetail } from "./api/queries/events";
 import { AppShell } from "./components/layout/AppShell";
+import { resolveRouteSession } from "./router-session";
 import { useAuthStore } from "./stores/auth";
 import { useSiteConfigStore } from "./stores/site-config";
 import { buildEventWorkbenchSearch, EVENTS_ROUTE_SEARCH_SCHEMA, sanitizeEventsRouteSearch } from "./utils/event-navigation";
@@ -250,20 +252,18 @@ const queryClient = new QueryClient({
 });
 
 async function ensureSession(): Promise<AuthSessionResponse | null> {
-  const store = useAuthStore.getState();
-  if (store.user && store.profile) {
-    return { user: store.user, profile: store.profile };
-  }
-
-  try {
-    const response = await apiRequest<AuthSessionResponse>("/api/auth/me");
-    useAuthStore.getState().setSession(response.user, response.profile);
-    return response;
-  } catch {
-    useAuthStore.getState().clearSession();
-    queryClient.clear();
-    return null;
-  }
+  return resolveRouteSession({
+    getCachedSession: () => {
+      const store = useAuthStore.getState();
+      return store.user && store.profile
+        ? { user: store.user, profile: store.profile }
+        : null;
+    },
+    requestSession: () => apiRequest<AuthSessionResponse>("/api/auth/me"),
+    setSession: (user, profile) => useAuthStore.getState().setSession(user, profile),
+    clearSession: () => useAuthStore.getState().clearSession(),
+    clearQueryCache: () => queryClient.clear(),
+  });
 }
 
 function NotFoundPage(): ReactNode {
@@ -274,30 +274,34 @@ function NotFoundPage(): ReactNode {
   }, [t]);
 
   return (
-    <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
-      <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.5 }}>404</span>
-      <span style={{ fontSize: 16, fontWeight: 600 }}>{t("notFound.title")}</span>
-      <a href="/" className="not-found-page__link" style={{ fontSize: 14 }}>{t("notFound.backHome")}</a>
-    </div>
+    <Stack mih="60vh" align="center" justify="center" p="lg">
+      <Paper withBorder radius="lg" p="xl" maw={480} w="100%">
+        <Stack align="center" gap="md">
+          <Text fz={48} fw={700} c="dimmed" lh={1}>404</Text>
+          <Title order={2} ta="center">{t("notFound.title")}</Title>
+          <Button component="a" href="/" variant="default">
+            {t("notFound.backHome")}
+          </Button>
+        </Stack>
+      </Paper>
+    </Stack>
   );
 }
 
 function RouteErrorFallback(): ReactNode {
   const { t } = useTranslation("common");
   return (
-    <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
-      {/* This is the headline of the error screen, not decoration — the old 0.15
-          opacity rendered it at 1.3:1. */}
-      <span className="route-error__headline">{t("errors.somethingWentWrong")}</span>
-      <span style={{ fontSize: 16, fontWeight: 600 }}>{t("errors.generic")}</span>
-      <button
-        type="button"
-        onClick={() => window.location.reload()}
-        className="route-error__reload-button"
-      >
-        {t("action.reloadPage")}
-      </button>
-    </div>
+    <Stack mih="60vh" align="center" justify="center" p="lg">
+      <Paper withBorder radius="lg" p="xl" maw={480} w="100%">
+        <Stack align="center" gap="md">
+          <Title order={2} ta="center">{t("errors.somethingWentWrong")}</Title>
+          <Text c="dimmed" ta="center">{t("errors.generic")}</Text>
+          <Button onClick={() => window.location.reload()}>
+            {t("action.reloadPage")}
+          </Button>
+        </Stack>
+      </Paper>
+    </Stack>
   );
 }
 

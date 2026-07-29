@@ -1,6 +1,5 @@
 import type { Event } from "@guild/shared";
-import { Grid, Skeleton, Stack } from "@mantine/core";
-import { LayoutGridIcon } from "@portal/components/icons";
+import { Button, Grid, Skeleton, Stack } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { differenceInHours } from "date-fns";
@@ -19,6 +18,7 @@ import { useAuthStore } from "../../stores/auth";
 import { useSiteConfigStore } from "../../stores/site-config";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import { PageLayout } from "../layout/PageLayout";
+import { EmptyState } from "../shared/EmptyState";
 import {
   type DashboardLastWarMvp,
   type DashboardMember,
@@ -173,19 +173,42 @@ export function DashboardPage() {
     });
   };
 
+  const memberStatsInitialError = memberStatsQuery.isError && !memberStatsQuery.data;
+  const eventsInitialError = eventsEnabled && eventsQuery.isError && !eventsQuery.data;
+  const warsInitialError = guildWarEnabled && warsQuery.isError && !warsQuery.data;
+  const hasInitialLoadError = memberStatsInitialError || eventsInitialError || warsInitialError;
+  const hasRefreshError =
+    (memberStatsQuery.isError && Boolean(memberStatsQuery.data))
+    || (eventsQuery.isError && Boolean(eventsQuery.data))
+    || (warsQuery.isError && Boolean(warsQuery.data));
+
   useLoadWarningToast(
-    memberStatsQuery.isError || eventsQuery.isError || warsQuery.isError,
+    hasRefreshError,
     t("common:loadErrorRetry"),
   );
 
   return (
-    <PageLayout
-      title={t("title")}
-      subtitle={t("welcome", { name: user?.username ?? t("welcomeFallback") })}
-      icon={<LayoutGridIcon size={22} />}
-      className="dashboard-page"
-    >
-      <Grid gutter={16} align="flex-start">
+    <PageLayout className="dashboard-page">
+      {hasInitialLoadError ? (
+        <EmptyState
+          status="error"
+          title={t("common:loadError")}
+          description={t("common:errors.connectionIssue")}
+          actions={(
+            <Button
+              loading={memberStatsQuery.isFetching || eventsQuery.isFetching || warsQuery.isFetching}
+              onClick={() => {
+                if (memberStatsInitialError) void memberStatsQuery.refetch();
+                if (eventsInitialError) void eventsQuery.refetch();
+                if (warsInitialError) void warsQuery.refetch();
+              }}
+            >
+              {t("common:action.retry")}
+            </Button>
+          )}
+        />
+      ) : (
+        <Grid gutter={{ base: 12, md: 16 }} align="flex-start">
         {eventsEnabled ? <Grid.Col span={{ base: 12, xl: "auto" }}>
           <Stack gap={16}>
             {!isExternalView && (
@@ -233,7 +256,8 @@ export function DashboardPage() {
             </Skeleton> : null}
           </Stack>
         </Grid.Col>
-      </Grid>
+        </Grid>
+      )}
     </PageLayout>
   );
 }

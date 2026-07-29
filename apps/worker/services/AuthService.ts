@@ -29,7 +29,7 @@ export type AuthServiceDeps = {
   createPasswordHash: (password: string) => Promise<{ passwordHash: string; salt: string }>;
   verifyPassword: (password: string, salt: string, hash: string) => Promise<boolean>;
   createSession: (userId: string, opts?: { stayLoggedIn?: boolean }) => Promise<void>;
-  destroySession: (sessionId?: string) => Promise<void>;
+  destroySessionById: (sessionId: string) => Promise<void>;
   enforceSessionLimit: (userId: string) => Promise<void>;
   publishEntityChanged?: (input: { entityType: PushEntityType; entityId: string; hint: PushHint; displayName?: string }) => Promise<void>;
   writeAuditLog: (input: { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null }) => Promise<void>;
@@ -192,7 +192,7 @@ export class AuthService {
   }
 
   async logout(sessionId: string): Promise<ServiceResult<{ ok: true }>> {
-    await this.deps.destroySession(sessionId);
+    await this.deps.destroySessionById(sessionId);
     return ok({ ok: true });
   }
 
@@ -212,7 +212,7 @@ export class AuthService {
     return ok({ valid: Boolean(row) });
   }
 
-  async register(inviteCode: string, username: string, password: string): Promise<ServiceResult<{ user: unknown }>> {
+  async register(inviteCode: string, username: string, password: string): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
     if (isReservedSystemTestUsername(username)) {
       return err("VALIDATION_ERROR", `Usernames beginning with "${SYSTEM_TEST_USERNAME_PREFIX}" are reserved`);
     }
@@ -245,18 +245,20 @@ export class AuthService {
 
     const createdUser = (await this.db.select(USER_COLS).from(users).where(eq(users.id, userId)).limit(1))[0];
     if (!createdUser) return err("SERVER_ERROR", "Failed to load created user");
+    const createdProfile = await this.getProfileByUserId(userId);
+    if (!createdProfile) return err("SERVER_ERROR", "Failed to load created member profile");
     await this.deps.createSession(userId);
     await this.deps.writeAuditLog({ entityType: "user", action: "register", actorId: userId, entityId: userId, diffTitle: username, detailText: JSON.stringify({ invite_id: redeemedInvite.id }) });
     await this.deps.publishEntityChanged?.({ entityType: "member_profile", entityId: userId, hint: "member_joined", displayName: createdUser.username });
     const extra = await this.resolveUserPermissions("member");
-    return ok({ user: toUserPayload(createdUser, extra) });
+    return ok({ user: toUserPayload(createdUser, extra), profile: toProfilePayload(createdProfile) });
   }
 
   async getMe(userId: string, sessionId: string): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
     const currentUser = (await this.db.select(USER_COLS).from(users).where(eq(users.id, userId)).limit(1))[0];
     if (!currentUser || !currentUser.isActive || currentUser.deletedAt !== null) {
       logger.warn("Session invalid: user inactive or deleted", { userId });
-      await this.deps.destroySession(sessionId);
+      await this.deps.destroySessionById(sessionId);
       return err("UNAUTHORIZED", "Authentication required");
     }
     const profile = await this.ensureProfile(currentUser.id);

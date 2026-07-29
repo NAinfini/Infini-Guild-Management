@@ -2,13 +2,29 @@ import type { RecurringTemplate } from "@guild/shared";
 import { EVENT_TYPES } from "@guild/shared";
 import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
 import { tzOffsetToAnchorIso, buildFormState, computeNextLifecyclePreview, formatLifecycleDate, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
-import { PortalCard } from "@portal/components/shared/PortalCard";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, UsersIcon } from "@portal/components/icons";
-import { Badge, Group, HoverCard, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
-import { useCallback, useState } from "react";
-import { useDisclosure } from "@mantine/hooks";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
+import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, SearchIcon, UsersIcon } from "@portal/components/icons";
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Button,
+  Collapse,
+  Flex,
+  Group,
+  HoverCard,
+  Paper,
+  SegmentedControl,
+  Select,
+  Skeleton,
+  Stack,
+  Text,
+  TextInput,
+  ThemeIcon,
+} from "@mantine/core";
+import { useCallback, useMemo, useState } from "react";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
+import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import {
   RecurringTemplateFormModal,
@@ -16,6 +32,7 @@ import {
 } from "./RecurringTemplateFormModal";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
+type TemplateStatusFilter = "all" | "active" | "paused";
 
 function buildRecurrenceSummary(
   t: (key: string, opts?: Record<string, unknown>) => string,
@@ -71,10 +88,36 @@ export function RecurringTemplatesTab({
 }: RecurringTemplatesTabProps) {
   const { t, i18n } = useTranslation("events");
   const confirm = useConfirmDialog();
+  const isMobile = useMediaQuery("(max-width: 47.99em)");
 
   const [formOpen, formHandlers] = useDisclosure(false);
+  const [filtersOpen, filterHandlers] = useDisclosure(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editingTemplate, setEditingTemplate] = useState<RecurringTemplate | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<TemplateStatusFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+
+  const filteredTemplates = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLocaleLowerCase(i18n.language);
+
+    return templates.filter((template) => {
+      if (statusFilter === "active" && template.paused) return false;
+      if (statusFilter === "paused" && !template.paused) return false;
+      if (typeFilter && template.type !== typeFilter) return false;
+      if (!normalizedSearch) return true;
+
+      return [template.title, template.description ?? ""]
+        .some((value) => value.toLocaleLowerCase(i18n.language).includes(normalizedSearch));
+    });
+  }, [i18n.language, searchQuery, statusFilter, templates, typeFilter]);
+
+  const hasActiveFilters = searchQuery.trim().length > 0 || statusFilter !== "all" || typeFilter !== null;
+  const resetFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("all");
+    setTypeFilter(null);
+  };
 
   const handleCreate = useCallback(() => {
     setFormMode("create");
@@ -132,42 +175,129 @@ export function RecurringTemplatesTab({
     );
   }
 
+  const searchControl = (
+    <TextInput
+      value={searchQuery}
+      onChange={(event) => setSearchQuery(event.currentTarget.value)}
+      placeholder={t("recurring.filter.search")}
+      aria-label={t("recurring.filter.search")}
+      leftSection={<SearchIcon size={16} />}
+      className="recurring-template-filter-search"
+    />
+  );
+  const filterControls = (
+    <>
+      <SegmentedControl
+        value={statusFilter}
+        onChange={(value) => setStatusFilter(value as TemplateStatusFilter)}
+        data={[
+          { value: "all", label: t("recurring.filter.all") },
+          { value: "active", label: t("recurring.status.active") },
+          { value: "paused", label: t("recurring.status.paused") },
+        ]}
+        aria-label={t("recurring.filter.status")}
+        className="recurring-template-filter-status"
+      />
+      <Select
+        clearable
+        value={typeFilter}
+        onChange={setTypeFilter}
+        placeholder={t("recurring.filter.type")}
+        aria-label={t("recurring.filter.type")}
+        data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
+        className="recurring-template-filter-type"
+      />
+    </>
+  );
+
   return (
     <>
       <Stack gap={12}>
-        {canManage && templates.length > 0 ? (
-          <Group justify="flex-end">
-            <DepthButton type="primary" size="sm" onClick={handleCreate}>
-              {t("recurring.create")}
-            </DepthButton>
-          </Group>
+        {templates.length > 0 ? (
+          <Paper withBorder radius="md" p="sm">
+            {isMobile ? (
+              <Stack gap="sm">
+                <Group gap="xs" wrap="nowrap" align="center">
+                  <Box style={{ flex: 1, minWidth: 0 }}>{searchControl}</Box>
+                  <ActionIcon
+                    variant={filtersOpen ? "filled" : "default"}
+                    size="lg"
+                    onClick={filterHandlers.toggle}
+                    aria-label={t("common:filter.toggle")}
+                  >
+                    <IconAdjustmentsHorizontal size={18} />
+                  </ActionIcon>
+                </Group>
+                <Collapse in={filtersOpen}>
+                  <Stack gap="sm">
+                    {filterControls}
+                  </Stack>
+                </Collapse>
+                {canManage ? (
+                  <Button size="sm" fullWidth onClick={handleCreate}>
+                    {t("recurring.create")}
+                  </Button>
+                ) : null}
+              </Stack>
+            ) : (
+              <Flex gap="sm" align="center" wrap="wrap">
+                <Box style={{ flex: "1 1 240px", minWidth: 220 }}>{searchControl}</Box>
+                <Group gap="xs" wrap="wrap">
+                  {filterControls}
+                </Group>
+                {canManage ? (
+                  <Box style={{ marginLeft: "auto" }}>
+                    <Button size="sm" onClick={handleCreate}>
+                      {t("recurring.create")}
+                    </Button>
+                  </Box>
+                ) : null}
+              </Flex>
+            )}
+          </Paper>
         ) : null}
         {templates.length === 0 ? (
-          <PortalCard interactive={false}>
-            <Stack align="center" gap={8} py={40} px={16}>
+          <Paper withBorder radius="md">
+            <div>
+              <Stack align="center" gap={8} py={40} px={16}>
               <CalendarRepeatIcon size={40} style={{ opacity: 0.3 }} />
               <Text c="dimmed" size="sm">{t("recurring.empty")}</Text>
               {canManage ? (
-                <DepthButton type="primary" size="sm" onClick={handleCreate}>
+                <Button size="sm" onClick={handleCreate}>
                   {t("recurring.create")}
-                </DepthButton>
+                </Button>
+              ) : null}
+              </Stack>
+            </div>
+          </Paper>
+        ) : filteredTemplates.length === 0 ? (
+          <Paper withBorder radius="md">
+            <Stack align="center" gap={8} py={40} px={16}>
+              <CalendarRepeatIcon size={40} style={{ opacity: 0.3 }} />
+              <Text c="dimmed" size="sm">{t("recurring.emptyFiltered")}</Text>
+              {hasActiveFilters ? (
+                <Button size="sm" variant="default" onClick={resetFilters}>
+                  {t("recurring.filter.reset")}
+                </Button>
               ) : null}
             </Stack>
-          </PortalCard>
+          </Paper>
         ) : (
-          templates.map((template) => {
+          filteredTemplates.map((template) => {
             const isPaused = template.paused;
             const typeDef = EVENT_TYPES.find((et) => et === template.type);
             const time = template.start_time ? utcTimeToLocalTime(template.start_time) : "--:--";
             const lifecycle = isPaused ? null : computeNextLifecyclePreview(buildFormState(template), template, "edit");
             const lang = i18n.language;
             return (
-              <PortalCard
+              <Paper
                 key={template.id}
-                interactive={canManage}
+                withBorder
+                radius="md"
                 /* Dimming the whole row dragged every label to ~2.3:1. The
                    "paused" badge already says it, so the row stays readable. */
                 onClick={canManage ? () => handleEdit(template) : undefined}
+                style={{ cursor: canManage ? "pointer" : undefined }}
               >
                 <div style={{ padding: "12px 16px" }}>
                   <Group justify="space-between" align="center" wrap="nowrap">
@@ -281,7 +411,7 @@ export function RecurringTemplatesTab({
                     </Group>
                   </Group>
                 </div>
-              </PortalCard>
+              </Paper>
             );
           })
         )}

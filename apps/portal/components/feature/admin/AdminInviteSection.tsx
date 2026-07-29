@@ -1,15 +1,13 @@
 import type { InviteLink } from "@guild/shared";
-import { Alert, Badge, Group, HoverCard, Loader, Modal, NumberInput, SegmentedControl, Skeleton, Stack, Text, TextInput, ThemeIcon } from "@mantine/core";
-import { PortalCard } from "../../shared/PortalCard";
+import { ActionIcon, Alert, Badge, Button, Group, HoverCard, Loader, Modal, NumberInput, Paper, SegmentedControl, Skeleton, Stack, Text, TextInput, ThemeIcon, Tooltip } from "@mantine/core";
 import { AlertTriangleIcon, BanIcon, CircleCheckIcon, CircleXIcon, CopyIcon, InfoCircleIcon, PlusIcon, TrashIcon } from "@portal/components/icons";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
-import { DepthButton } from "@portal/components/shared/DepthButton";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import {
-  InfiniTable,
+  type ColumnDef,
   getCoreRowModel,
   useReactTable,
-} from "@portal/components/shared/InfiniTable";
-import type { ColumnDef } from "@portal/components/shared/InfiniTable";
+} from "@tanstack/react-table";
+import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
 import { useCallback, useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
@@ -217,27 +215,44 @@ export function AdminInviteSection({
           const inactiveReason = t(`invite.tooltip.${resolveInviteStatus(row.original)}`);
           return (
             <Group gap={8}>
-              <DepthButton
-                size="sm"
-                type="info"
-                before={<CopyIcon size={16} />}
-                onClick={() => handleCopyInviteLink(row.original)}
-                disabled={inactive}
-                tooltip={inactive ? { label: inactiveReason, withArrow: true } : undefined}
-              >
-                {t("invite.copy")}
-              </DepthButton>
-              <DepthButton
-                size="sm"
-                type="warning"
-                iconOnly
-                before={<BanIcon size={16} />}
-                disabled={inactive}
-                onClick={() => handleRevokeInvite(row.original)}
-                aria-label={t("invite.revoke")}
-                tooltip={{ label: inactive ? inactiveReason : t("invite.revoke"), withArrow: true }}
-              />
-              <DepthButton size="sm" type="danger" iconOnly before={<TrashIcon size={16} />} onClick={() => handleDeleteInvite(row.original)} tooltip={{ label: t("invite.delete"), withArrow: true }} />
+              <Tooltip label={inactiveReason} withArrow disabled={!inactive}>
+                <span data-disabled-tooltip-target={inactive || undefined}>
+                  <Button
+                    size="sm"
+                    variant="light"
+                    leftSection={<CopyIcon size={16} />}
+                    onClick={() => handleCopyInviteLink(row.original)}
+                    disabled={inactive}
+                  >
+                    {t("invite.copy")}
+                  </Button>
+                </span>
+              </Tooltip>
+              <Tooltip label={inactive ? inactiveReason : t("invite.revoke")} withArrow>
+                <span data-disabled-tooltip-target={inactive || undefined}>
+                  <ActionIcon
+                    size="lg"
+                    color="orange"
+                    variant="light"
+                    disabled={inactive}
+                    onClick={() => handleRevokeInvite(row.original)}
+                    aria-label={t("invite.revoke")}
+                  >
+                    <BanIcon size={16} />
+                  </ActionIcon>
+                </span>
+              </Tooltip>
+              <Tooltip label={t("invite.delete")} withArrow>
+                <ActionIcon
+                  size="lg"
+                  color="red"
+                  variant="light"
+                  onClick={() => handleDeleteInvite(row.original)}
+                  aria-label={t("invite.delete")}
+                >
+                  <TrashIcon size={16} />
+                </ActionIcon>
+              </Tooltip>
             </Group>
           );
         },
@@ -266,7 +281,7 @@ export function AdminInviteSection({
   return (
     <Stack gap={12}>
       {/* Toolbar card: segment + stats + search + create button */}
-      <PortalCard interactive={false}>
+      <Paper withBorder radius="md">
         <div className="admin-invite-card-content">
           <Group wrap="wrap" gap={8} justify="space-between">
             <Group wrap="wrap" gap={8}>
@@ -305,22 +320,22 @@ export function AdminInviteSection({
                 style={{ width: 220 }}
               />
               {isAdmin ? (
-                <DepthButton size="sm" type="primary" before={<PlusIcon size={16} />} onClick={handleOpenCreateModal}>
+                <Button size="sm" leftSection={<PlusIcon size={16} />} onClick={handleOpenCreateModal}>
                   {t("invite.create")}
-                </DepthButton>
+                </Button>
               ) : null}
             </Group>
           </Group>
         </div>
-      </PortalCard>
+      </Paper>
 
       {/* Table */}
       {inviteLinksLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
       {inviteLinksError ? <Alert color="red" title={loadErrorMessage} /> : null}
       {!inviteLinksLoading && !inviteLinksError ? (
-        <PortalCard interactive={false}>
+        <Paper withBorder radius="md">
           <div className="admin-invite-card-content admin-invite-table-content">
-            <InfiniTable table={table} />
+            <DataTableAdapter table={table} />
             <Group justify="space-between" align="center" mt="md">
               <Text size="sm" c="dimmed">
                 {t("invite.loadedCount", {
@@ -329,19 +344,19 @@ export function AdminInviteSection({
                 })}
               </Text>
               {hasMoreInvites ? (
-                <DepthButton
+                <Button
                   size="sm"
-                  type="secondary"
+                  variant="default"
                   loading={loadingMoreInvites}
                   disabled={loadingMoreInvites}
                   onClick={onLoadMoreInvites}
                 >
                   {t("invite.loadMore")}
-                </DepthButton>
+                </Button>
               ) : null}
             </Group>
           </div>
-        </PortalCard>
+        </Paper>
       ) : null}
 
       {/* Create Invite Modal */}
@@ -371,16 +386,15 @@ export function AdminInviteSection({
               aria-label={t("invite.aria.expiresAt")}
             />
           </Stack>
-          <DepthButton
-            type="primary"
-            before={<PlusIcon size={16} />}
+          <Button
+            leftSection={<PlusIcon size={16} />}
             loading={createInvitePending}
             disabled={createInvitePending}
             onClick={handleCreateInvite}
             style={{ width: "100%" }}
           >
             {t("invite.create")}
-          </DepthButton>
+          </Button>
         </Stack>
       </Modal>
     </Stack>

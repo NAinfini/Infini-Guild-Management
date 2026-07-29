@@ -6,7 +6,7 @@ import { LATENCY_BAND_COLOR_VAR } from "./AdminSystemSection";
 const repoRoot = process.cwd();
 const CSS_PATH = resolve(repoRoot, "apps/portal/components/feature/admin/AdminSystemSection.css");
 
-/* final-review.md A-1/M-1（M3）：LATENCY_BAND_COLOR_VAR（本文件）在
+/* the final colour review A-1/M-1（M3）：LATENCY_BAND_COLOR_VAR（本文件）在
  * AdminSystemSection.css 里有两处同义投影——.health-log-latency-bar--*
  * 的 background 与 .health-log-latency-value--* 的 color——外加延迟环的
  * RingProgress color prop 直接吃这个常量的字面 var() 字符串。三处共用

@@ -6,7 +6,7 @@ import { LIMITS } from "@guild/shared/config/limits";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { createPasswordHash, createSession, destroySession, enforceSessionLimit, resolveSession, verifyPassword } from "../services/auth";
+import { createPasswordHash, createSession, destroySessionById, enforceSessionLimit, resolveSession, verifyPassword } from "../services/auth";
 import { AuthService } from "../services/AuthService";
 import { createRateLimitMiddleware } from "../middleware/rate-limit";
 import { buildError, getDb, handleResult, parseJsonBody } from "./_shared";
@@ -34,7 +34,7 @@ function getService(c: Context): AuthService {
     createPasswordHash,
     verifyPassword,
     createSession: async (userId, opts) => { await createSession(c, userId, opts); },
-    destroySession: (sessionId) => destroySession(c, sessionId),
+    destroySessionById: (sessionId) => destroySessionById(c, sessionId),
     enforceSessionLimit: (userId) => enforceSessionLimit(c, userId),
     ...commonDeps(c),
   });

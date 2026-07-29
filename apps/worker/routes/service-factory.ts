@@ -18,6 +18,7 @@ import { logger } from "../utils/logger";
 import { writeAuditLog, type WriteAuditLogInput } from "../services/audit";
 import { publishEntityChanged, publishAnnouncementPublished } from "../services/push";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
+import { getSystemTestRunId } from "../services/SystemTestService";
 
 type PolicyColumn = "absence_policy_json" | "feature_flags_json" | "media_policy_json" | "storage_policy_json";
 type SitePolicyRow = Record<PolicyColumn, string | null>;
@@ -117,6 +118,7 @@ export function withMedia(c: Context) {
     ...commonDeps(c),
     media: (c.env as Bindings).MEDIA,
     rawDb: (c.env as Bindings).DB,
+    systemTestRunId: getSystemTestRunId(c),
     getMediaPolicy: () => getMediaPolicy(c),
     getStoragePolicy: () => getStoragePolicy(c),
   };

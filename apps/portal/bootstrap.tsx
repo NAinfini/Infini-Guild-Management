@@ -3,14 +3,13 @@ import "@mantine/notifications/styles.css";
 import "@mantine/carousel/styles.css";
 import "@mantine/dropzone/styles.css";
 import "@mantine/nprogress/styles.css";
-import { ContextMenuProvider } from "mantine-contextmenu";
-import "mantine-contextmenu/styles.css";
 import React, { StrictMode } from "react";
 import type { Root } from "react-dom/client";
 import { DEFAULT_FEATURE_FLAGS, type FeatureFlags } from "@guild/shared/config/features";
 import { i18nReady } from "./i18n";
 import { ErrorBoundary } from "./components/effects/ErrorBoundary";
 import { PortalThemeProvider } from "./providers/ThemeProvider";
+import { dismissSplash } from "./splash";
 import { AppRouter } from "./router";
 import { useSiteConfigStore } from "./stores/site-config";
 
@@ -74,21 +73,6 @@ async function loadSiteConfig(): Promise<void> {
   }
 }
 
-function dismissSplash(): void {
-  const splash = document.getElementById("splash");
-  const rootEl = document.getElementById("root");
-  if (splash) {
-    splash.remove();
-    (window as unknown as { __splashCleanup?: () => void }).__splashCleanup?.();
-  }
-  if (rootEl) {
-    rootEl.style.opacity = "1";
-    rootEl.style.position = "";
-    rootEl.style.inset = "";
-  }
-  document.documentElement.classList.add("splash-done");
-}
-
 export async function mountApp(root: Root): Promise<void> {
   await i18nReady;
   try {
@@ -100,18 +84,7 @@ export async function mountApp(root: Root): Promise<void> {
     <StrictMode>
       <ErrorBoundary>
         <PortalThemeProvider>
-          <ContextMenuProvider
-            borderRadius="md"
-            classNames={{
-              root: "infini-context-menu-root",
-              item: "infini-context-menu-item",
-              divider: "infini-context-menu-divider",
-            }}
-            shadow="md"
-            submenuDelay={160}
-          >
-            <AppRouter />
-          </ContextMenuProvider>
+          <AppRouter />
         </PortalThemeProvider>
       </ErrorBoundary>
     </StrictMode>,

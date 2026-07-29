@@ -1,0 +1,18 @@
+.modalBody {
+  padding-top: var(--space-md);
+}
+
+.searchInput.searchInput:focus {
+  border-color: var(--border-strong);
+  box-shadow: none;
+}
+
+.searchInput.searchInput:focus-visible {
+  border-color: var(--brand-fill);
+  box-shadow: inset 0 0 0 1px var(--brand-fill);
+}
+
+.searchInput.searchInput[data-silent-autofocus]:focus-visible {
+  border-color: var(--border-strong);
+  box-shadow: none;
+}

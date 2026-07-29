@@ -125,10 +125,5 @@
   "account.validation.usernameMinLength": "Username must be at least 3 characters.",
   "account.validation.usernameMaxLength": "Username must be at most 50 characters.",
   "account.validation.usernamePattern": "Username may only contain letters, numbers, and underscores.",
-  "account.aria.currentPassword": "Current password",
-  "account.aria.newPassword": "New password",
-  "account.aria.confirmNewPassword": "Confirm new password",
-  "account.aria.currentPasswordUsername": "Current password for username change",
-  "account.aria.newUsername": "New username",
   "aria.selectClass": "Select class"
 }

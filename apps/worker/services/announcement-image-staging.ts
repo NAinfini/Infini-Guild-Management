@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { logger } from "../utils/logger";
+import { rethrowAfterUploadFailure } from "./media-upload-compensation";
 import { err, ok, type ServiceResult } from "./result";
 
 const STAGING_TOKEN_TTL_SECONDS = 24 * 60 * 60;
@@ -95,16 +95,15 @@ export class AnnouncementImageStagingService {
     try {
       for (const file of files) {
         const key = `announcement/${stagingId}/images/${Date.now()}_${nanoid()}`;
-        await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType } });
         keys.push(key);
+        await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType } });
       }
     } catch (error) {
-      await Promise.all(keys.map(async (key) => {
-        try { await this.deps.media.delete(key); } catch (cleanupError) {
-          logger.error("Failed to clean up staged announcement image", { key, reason: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) });
-        }
-      }));
-      throw error;
+      await rethrowAfterUploadFailure(
+        error,
+        (key) => this.deps.media.delete(key),
+        keys,
+      );
     }
     return ok({ staging_id: stagingId, staging_token: stagingToken, expires_at: new Date(expiresAt * 1000).toISOString(), keys });
   }

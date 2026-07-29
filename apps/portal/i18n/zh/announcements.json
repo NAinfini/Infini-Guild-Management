@@ -19,6 +19,7 @@
   "field.updatedAt": "更新时间",
   "action.create": "新建",
   "action.newAnnouncement": "新建公告",
+  "action.backToList": "返回公告列表",
   "action.createAnnouncement": "创建公告",
   "action.resetFilters": "重置筛选",
   "action.save": "保存",

@@ -288,6 +288,17 @@ export function GuildWarActiveTab({
           onDraftNameChange={canManageActive ? guildWarDrag.handleDraftNameChange : undefined}
           disabled={!selectedEventId}
           absentUserIds={absentUserIds}
+          onMoveSelected={canManageActive ? (targetContainerId) => {
+            void guildWarDrag.handleMoveSelectedTo(targetContainerId);
+          } : undefined}
+          onRemoveSelected={canManageActive ? () => {
+            void guildWarDrag.handleMoveSelectedTo("remove");
+          } : undefined}
+          teamsDirty={activeController.isTeamsDirty}
+          saveTeamsPending={activeController.saveTeamsPending}
+          onSaveTeams={canManageActive && selectedEventId ? () => {
+            void activeController.handleSaveTeams();
+          } : undefined}
         />
       </Suspense>
 

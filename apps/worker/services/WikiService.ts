@@ -13,6 +13,7 @@ import { wikiArticles, wikiCategories, wikiRevisions } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, likeEscaped } from "./helpers";
 import { replaceMediaRefs, deleteMediaRefs, extractRichTextMediaKeys } from "./media-references";
+import { rethrowAfterUploadFailure } from "./media-upload-compensation";
 
 // --- Types ---
 
@@ -326,7 +327,16 @@ export class WikiService {
     if (data.sort_order !== undefined) patch.sortOrder = data.sort_order;
     if (data.pinned !== undefined) patch.pinned = data.pinned;
     if (data.archived_at !== undefined) patch.archivedAt = data.archived_at;
-    await this.db.update(wikiArticles).set(patch).where(eq(wikiArticles.id, articleId));
+    const updateWhere = conditionalEtag
+      ? and(eq(wikiArticles.id, articleId), eq(wikiArticles.updatedAt, existing.updatedAt))
+      : eq(wikiArticles.id, articleId);
+    const updateQuery = this.db.update(wikiArticles).set(patch).where(updateWhere);
+    if (conditionalEtag) {
+      const updatedRows = await updateQuery.returning({ id: wikiArticles.id });
+      if (updatedRows.length === 0) return err("CONFLICT", "Article has been modified by another user");
+    } else {
+      await updateQuery;
+    }
     const updated = await this.getArticleById(articleId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated wiki article");
     const contentChanged = (data.title !== undefined && data.title !== existing.title) || (data.body_json !== undefined && data.body_json !== existing.bodyJson);
@@ -404,15 +414,23 @@ export class WikiService {
     const existing = await this.getArticleById(articleId);
     if (!existing) return err("NOT_FOUND", "Wiki article not found");
     const keys: string[] = [];
-    for (const file of files) {
-      // No media_references entry here: keys are added when the body_json referencing
-      // them is saved (replaceMediaRefs). Unsaved uploads are orphans caught by the
-      // media-orphan-cleanup cron's 48 h grace period.
-      const key = `wiki/${articleId}/images/${Date.now()}_${nanoid()}`;
-      await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
-      keys.push(key);
+    try {
+      for (const file of files) {
+        // No media_references entry here: keys are added when the body_json referencing
+        // them is saved (replaceMediaRefs). Unsaved uploads are orphans caught by the
+        // media-orphan-cleanup cron's 48 h grace period.
+        const key = `wiki/${articleId}/images/${Date.now()}_${nanoid()}`;
+        keys.push(key);
+        await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
+      }
+      await this.deps.writeAuditLog({ entityType: "wiki_article", action: "upload_images", actorId, entityId: articleId, diffTitle: existing.title ?? null, detailText: JSON.stringify({ keys }) });
+    } catch (error) {
+      await rethrowAfterUploadFailure(
+        error,
+        (key) => this.deps.media.delete(key),
+        keys,
+      );
     }
-    await this.deps.writeAuditLog({ entityType: "wiki_article", action: "upload_images", actorId, entityId: articleId, diffTitle: existing.title ?? null, detailText: JSON.stringify({ keys }) });
     return ok({ keys });
   }
 }

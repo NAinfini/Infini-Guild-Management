@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AuthService } from "../AuthService";
 
-function createMockDb(usernameExists = false, createdUser?: Record<string, unknown>) {
+function createMockDb(usernameExists = false, createdUser?: Record<string, unknown>, createdProfile?: Record<string, unknown>) {
   const select = vi
     .fn()
     .mockReturnValueOnce({
@@ -16,6 +16,28 @@ function createMockDb(usernameExists = false, createdUser?: Record<string, unkno
       .mockReturnValueOnce({
         from: vi.fn(() => ({
           where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([createdUser]) })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([createdProfile ?? {
+            id: "profile-1",
+            userId: "user-1",
+            power: 0,
+            classes: "[]",
+            titleHtml: null,
+            bio: null,
+            avatarKey: null,
+            images: "[]",
+            audioKey: null,
+            videoUrls: "[]",
+            availability: null,
+            vacationStart: null,
+            vacationEnd: null,
+            notes: null,
+            createdAt: "2026-05-18T00:00:00.000Z",
+            updatedAt: "2026-05-18T00:00:00.000Z",
+          }]) })),
         })),
       })
       .mockReturnValueOnce({
@@ -41,7 +63,7 @@ function createMockDeps(inviteId: string | null) {
     createPasswordHash: vi.fn().mockResolvedValue({ passwordHash: "hash", salt: "salt" }),
     verifyPassword: vi.fn(),
     createSession: vi.fn().mockResolvedValue(undefined),
-    destroySession: vi.fn().mockResolvedValue(undefined),
+    destroySessionById: vi.fn().mockResolvedValue(undefined),
     writeAuditLog: vi.fn().mockResolvedValue(undefined),
     enforceSessionLimit: vi.fn().mockResolvedValue(undefined),
   };
@@ -81,6 +103,29 @@ describe("AuthService.register invite redemption", () => {
       detailText: JSON.stringify({ invite_id: "invite-id-1" }),
     }));
     expect(JSON.stringify(deps.writeAuditLog.mock.calls)).not.toContain("SECRET-INVITE-CODE");
+  });
+
+  it("returns the created profile with the user in the registration response", async () => {
+    const deps = createMockDeps("invite-id-1");
+    const service = new AuthService(createMockDb(false, {
+      id: "user-1",
+      username: "newuser",
+      role: "member",
+      isActive: true,
+      deletedAt: null,
+      createdAt: "2026-05-18T00:00:00.000Z",
+      updatedAt: "2026-05-18T00:00:00.000Z",
+    }), deps);
+
+    const result = await service.register("VALID-CODE", "newuser", "password123");
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        user: { id: "user-1", username: "newuser" },
+        profile: { id: "profile-1", user_id: "user-1", power: 0 },
+      },
+    });
   });
 });
 

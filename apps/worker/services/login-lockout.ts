@@ -35,12 +35,6 @@ export type LockoutState = {
   failCount: number;
 };
 
-function lockSecondsFor(failCount: number): number {
-  if (failCount <= FREE_ATTEMPTS) return 0;
-  const index = Math.min(failCount - FREE_ATTEMPTS - 1, LOCK_STEPS_SECONDS.length - 1);
-  return LOCK_STEPS_SECONDS[index]!;
-}
-
 /**
  * Current lock state for an attempted username. Returns null when not locked.
  * Called before the password is checked, so a locked account never spends CPU
@@ -71,27 +65,49 @@ export async function readLockout(db: DrizzleDb, username: string, now: Date): P
  */
 export async function recordLoginFailure(db: DrizzleDb, username: string, now: Date): Promise<LockoutState> {
   const nowIso = now.toISOString();
+  const nextFailCount = sql<number>`${loginFailures.failCount} + 1`;
+  const lockDeadlines = LOCK_STEPS_SECONDS.map((seconds) =>
+    new Date(now.getTime() + seconds * 1000).toISOString()
+  );
+  const candidateLockedUntil = sql<string | null>`CASE
+    WHEN ${nextFailCount} <= ${FREE_ATTEMPTS} THEN NULL
+    WHEN ${nextFailCount} = ${FREE_ATTEMPTS + 1} THEN ${lockDeadlines[0]}
+    WHEN ${nextFailCount} = ${FREE_ATTEMPTS + 2} THEN ${lockDeadlines[1]}
+    WHEN ${nextFailCount} = ${FREE_ATTEMPTS + 3} THEN ${lockDeadlines[2]}
+    WHEN ${nextFailCount} = ${FREE_ATTEMPTS + 4} THEN ${lockDeadlines[3]}
+    WHEN ${nextFailCount} = ${FREE_ATTEMPTS + 5} THEN ${lockDeadlines[4]}
+    ELSE ${lockDeadlines[5]}
+  END`;
   const [row] = await db
     .insert(loginFailures)
     .values({ username, failCount: 1, lockedUntil: null, lastFailedAt: nowIso })
     .onConflictDoUpdate({
       target: loginFailures.username,
       set: {
-        failCount: sql`${loginFailures.failCount} + 1`,
+        failCount: nextFailCount,
+        lockedUntil: sql`CASE
+          WHEN ${nextFailCount} <= ${FREE_ATTEMPTS} THEN ${loginFailures.lockedUntil}
+          WHEN ${loginFailures.lockedUntil} IS NULL
+            OR ${loginFailures.lockedUntil} < ${candidateLockedUntil}
+            THEN ${candidateLockedUntil}
+          ELSE ${loginFailures.lockedUntil}
+        END`,
         lastFailedAt: nowIso,
       },
     })
-    .returning({ failCount: loginFailures.failCount });
+    .returning({
+      failCount: loginFailures.failCount,
+      lockedUntil: loginFailures.lockedUntil,
+    });
 
   const failCount = row?.failCount ?? 1;
-  const lockSeconds = lockSecondsFor(failCount);
-  if (lockSeconds > 0) {
-    const lockedUntil = new Date(now.getTime() + lockSeconds * 1000).toISOString();
-    await db.update(loginFailures).set({ lockedUntil }).where(eq(loginFailures.username, username));
-  }
+  const lockedUntilMs = row?.lockedUntil ? Date.parse(row.lockedUntil) : Number.NaN;
+  const retryAfterSeconds = Number.isFinite(lockedUntilMs)
+    ? Math.max(0, Math.ceil((lockedUntilMs - now.getTime()) / 1000))
+    : 0;
 
   await pruneStaleLoginFailures(db, now);
-  return { retryAfterSeconds: lockSeconds, failCount };
+  return { retryAfterSeconds, failCount };
 }
 
 /** Clears the ladder. Called on a successful password check and by admin reset. */

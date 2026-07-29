@@ -67,7 +67,7 @@ export function EquipmentCard({ equipment, gameData, isEquipped, onClick }: Equi
             <Badge size="xs" color="violet" variant="light">{t("pool.purple")}</Badge>
           )}
           {isEquipped && (
-            <Badge size="xs" color="portal-accent" variant="filled">{t("pool.equipped")}</Badge>
+            <Badge size="xs" color="portal-brand" variant="filled">{t("pool.equipped")}</Badge>
           )}
         </div>
       </div>

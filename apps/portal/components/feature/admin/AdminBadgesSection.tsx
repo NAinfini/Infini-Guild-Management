@@ -1,9 +1,9 @@
 import type { MemberBadge } from "@guild/shared";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
-import { DepthButton } from "@portal/components/shared/DepthButton";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import type { AdminBadgesController, BadgeForm } from "@portal/hooks/useAdminBadgesController";
 import {
   ActionIcon,
+  Button,
   Checkbox,
   Group,
   Modal,
@@ -175,9 +175,9 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
         <Stack gap={8}>
           <Group justify="space-between">
             <Text fw={600}>{t("badges.title")}</Text>
-            <DepthButton type="primary" size="sm" onClick={startCreate} aria-label={t("badges.action.create")}>
+            <Button size="sm" onClick={startCreate} aria-label={t("badges.action.create")}>
               <PlusIcon size={16} />
-            </DepthButton>
+            </Button>
           </Group>
 
           {badgesLoading ? (
@@ -189,18 +189,18 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
               status="error"
               title={tc("loadError")}
               actions={(
-                <DepthButton type="secondary" size="sm" onClick={retryBadges}>
+                <Button variant="default" size="sm" onClick={retryBadges}>
                   {tc("action.retry")}
-                </DepthButton>
+                </Button>
               )}
             />
           ) : badges.length === 0 && !isCreating ? (
             <EmptyState
               title={t("badges.empty")}
               actions={(
-                <DepthButton type="primary" size="sm" onClick={startCreate}>
+                <Button size="sm" onClick={startCreate}>
                   {t("badges.action.create")}
-                </DepthButton>
+                </Button>
               )}
             />
           ) : (
@@ -233,8 +233,8 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
             <Text fw={600}>{t("badges.createTitle")}</Text>
             <BadgeFormFields form={form} setForm={setForm} />
             <Group gap={8}>
-              <DepthButton type="primary" onClick={createBadge} disabled={!formValid} loading={createPending}>{t("badges.action.create")}</DepthButton>
-              <DepthButton type="secondary" onClick={cancelEdit}>{t("badges.action.cancel")}</DepthButton>
+              <Button onClick={createBadge} disabled={!formValid} loading={createPending}>{t("badges.action.create")}</Button>
+              <Button variant="default" onClick={cancelEdit}>{t("badges.action.cancel")}</Button>
             </Group>
           </Stack>
         ) : editingBadgeId && selectedBadge ? (
@@ -242,8 +242,8 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
             <Text fw={600}>{t("badges.editTitle")}</Text>
             <BadgeFormFields form={form} setForm={setForm} />
             <Group gap={8}>
-              <DepthButton type="primary" onClick={() => updateBadge(editingBadgeId)} disabled={!formValid} loading={updatePending}>{t("badges.action.save")}</DepthButton>
-              <DepthButton type="secondary" onClick={cancelEdit}>{t("badges.action.cancel")}</DepthButton>
+              <Button onClick={() => updateBadge(editingBadgeId)} disabled={!formValid} loading={updatePending}>{t("badges.action.save")}</Button>
+              <Button variant="default" onClick={cancelEdit}>{t("badges.action.cancel")}</Button>
             </Group>
           </Stack>
         ) : selectedBadge ? (
@@ -282,9 +282,9 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
                 status="error"
                 title={tc("loadError")}
                 actions={(
-                  <DepthButton type="secondary" size="sm" onClick={retryAssignments}>
+                  <Button variant="default" size="sm" onClick={retryAssignments}>
                     {tc("action.retry")}
-                  </DepthButton>
+                  </Button>
                 )}
               />
             ) : assignments.length === 0 ? (
@@ -336,8 +336,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
             </Stack>
           </ScrollArea.Autosize>
           <Group justify="flex-end">
-            <DepthButton
-              type="primary"
+            <Button
               disabled={pendingAssignIds.length === 0 || !selectedBadgeId}
               loading={assignPending}
               onClick={() => {
@@ -345,7 +344,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
               }}
             >
               {t("badges.action.assign")} ({pendingAssignIds.length})
-            </DepthButton>
+            </Button>
           </Group>
         </Stack>
       </Modal>

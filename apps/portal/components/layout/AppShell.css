@@ -1,25 +1,27 @@
+.app-shell-root {
+  --shell-page-padding: 12px;
+  --shell-content-gap: 12px;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--surface-base);
+}
+
 .app-skip-link {
   position: fixed;
   top: -100%;
-  left: 16px;
+  left: var(--space-lg);
   z-index: 10000;
-  padding: 8px 16px;
-  border-radius: var(--radius-sm);
-  background: var(--accent-fill);
-  color: var(--accent-on-fill);
-  font-size: 14px;
-  font-weight: 600;
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-surface);
+  background: var(--brand-fill);
+  color: var(--brand-on-fill);
+  font-size: var(--text-body);
+  font-weight: var(--fw-medium);
   text-decoration: none;
-  transition: top var(--transition-normal);
 }
 
 .app-skip-link:focus {
-  top: 12px;
-}
-
-.app-shell-root {
-  height: 100vh;
-  height: 100dvh;
+  top: var(--space-md);
 }
 
 .app-login-layout,
@@ -27,101 +29,45 @@
 .app-login-panel {
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .app-sider {
-  border-right: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  background: var(--surface-base);
-  /* 复审 N-1（原 I-1 的收口）：这是侧栏右边缘的横向投影（1px 0 8px），几何形状
-     跟 semantic.css 里 --shadow-xs/sm/md/lg 那种纵向标度阴影不是同一种形状，
-     没有现成的横向档可复用，几何原样保留。颜色用 semantic.css 新增的 L2 阴影
-     墨 --shadow-ink（与四档标度阴影同一个墨色），不用 --text-primary：
-     --text-primary 深色模式下是浅色（--palette-ink-warm），拿它当阴影底色会
-     让这层投影在深色模式下从「暗投影」反转成「浅色微光」；--shadow-ink 深色
-     模式固定为 rgb(0 0 0)，3% 混合后与本规则批 2 之前的原值
-     rgba(0, 0, 0, 0.03) 逐比特相同，反转消失。
-     浅色模式下 --shadow-ink 是 rgb(10 10 15) 而非纯黑，所以浅色下由
-     rgba(0, 0, 0, 0.03) 变成 rgba(10, 10, 15, 0.03) —— 这是为了跟同块的四档
-     标度阴影共用同一个墨色，3% 不透明度下两者肉眼不可分辨，故不列入目视清单。 */
-  box-shadow: 1px 0 8px color-mix(in srgb, var(--shadow-ink) 3%, transparent);
   overflow: hidden;
-  transition: width var(--transition-normal);
   display: flex;
   flex-direction: column;
-}
-
-.app-sider::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: -1px;
-  bottom: 0;
-  width: 1px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent-fill) 30%, transparent) 0%,
-    color-mix(in srgb, var(--accent-fill) 20%, transparent) 40%,
-    color-mix(in srgb, var(--accent-fill) 15%, transparent) 70%,
-    transparent 100%
-  );
-  pointer-events: none;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--surface-base);
 }
 
 .app-brand {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 72px;
-  padding: 14px 14px 10px;
+  min-height: 64px;
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .app-brand-main {
-  display: flex;
-  align-items: center;
-  gap: 10px;
   min-width: 0;
+  flex: 1;
 }
 
 .app-brand-mark {
-  position: relative;
   width: 40px;
   height: 40px;
-  border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--accent-fill) 24%, transparent);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-fill) 14%, var(--surface-base)), color-mix(in srgb, var(--accent-fill) 10%, var(--surface-base)));
-  color: var(--accent-text);
+  flex: 0 0 40px;
+  overflow: hidden;
   display: grid;
   place-items: center;
-  font-size: 18px;
-  flex: 0 0 auto;
-  overflow: hidden;
-  box-shadow: var(--shadow-accent-sm);
-  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  border: 1px solid color-mix(in srgb, var(--accent-fill) 30%, var(--border-subtle));
+  border-radius: var(--radius-surface);
+  background: var(--accent-tint);
+  color: var(--accent-text);
+  font-size: var(--text-h3);
+  font-weight: var(--fw-strong);
 }
 
-.app-brand-mark::after {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  border-radius: inherit;
-  box-shadow:
-    0 2px 20px color-mix(in srgb, var(--accent-fill) 30%, transparent),
-    inset 0 0 16px color-mix(in srgb, var(--accent-fill) 8%, transparent);
-  pointer-events: none;
-  animation: brandBreathe 4s ease-in-out infinite;
-}
-
-@keyframes brandBreathe {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
-}
-
-.app-brand-mark:hover {
-  box-shadow:
-    0 0 20px color-mix(in srgb, var(--accent-fill) 35%, transparent),
-    0 0 40px color-mix(in srgb, var(--accent-fill) 15%, transparent);
-  border-color: color-mix(in srgb, var(--accent-fill) 55%, transparent);
+.app-brand-mark--button {
+  padding: 0;
 }
 
 .app-brand-logo {
@@ -130,294 +76,217 @@
   object-fit: contain;
 }
 
-.app-brand-expand-overlay {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--accent-fill) 90%, var(--surface-base));
-  color: var(--accent-on-fill);
-  opacity: 0;
-  transition: opacity var(--transition-normal);
-  cursor: pointer;
-  font-size: 14px;
-  border-radius: var(--radius-md);
-}
-
-.app-brand-mark--has-expand {
-  cursor: pointer;
-}
-
-.app-brand-mark--has-expand:hover .app-brand-expand-overlay {
-  opacity: 1;
-}
-
-.app-brand-title-wrap {
+.app-brand-title {
   min-width: 0;
   overflow: hidden;
-}
-
-.app-brand-title {
   margin: 0;
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  line-height: var(--lh-tight);
   text-overflow: ellipsis;
-}
-
-.app-sider-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .app-sider-control-btn {
-  width: var(--control-height-compact);
-  height: var(--control-height-compact);
-  border-radius: var(--radius-sm);
-  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
-  background: color-mix(in srgb, var(--surface-base) 84%, transparent);
-  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
-}
-
-.app-sider-control-btn:hover {
-  border-color: color-mix(in srgb, var(--accent-fill) 40%, transparent);
-  background: color-mix(in srgb, var(--accent-fill) 10%, var(--surface-base));
-  color: var(--text-primary);
-}
-
-.app-viewing-as {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
-  border-top: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
-  flex-shrink: 0;
-}
-
-.app-viewing-as--compact {
-  padding: 8px;
-  align-items: center;
-}
-
-.app-viewing-as-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  flex: 0 0 auto;
+  color: var(--text-secondary);
 }
 
 .app-sider-menu {
+  min-height: 0;
   flex: 1;
 }
 
+.app-nav-groups {
+  padding: var(--space-md);
+}
+
+.app-nav-group {
+  min-width: 0;
+}
+
 .app-nav-section-label {
-  display: inline-block;
-  margin-bottom: 2px;
-  padding-left: 8px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  display: block;
+  padding: 0 var(--space-sm) var(--space-sm);
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-medium);
+  line-height: 1.35;
+}
+
+.app-nav-group-divider {
+  margin-bottom: var(--space-lg);
 }
 
 .app-nav-item {
   position: relative;
   width: 100%;
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  color: color-mix(in srgb, var(--text-primary) 78%, transparent);
+  min-height: var(--control-height-regular);
+  border-radius: var(--radius-surface);
+  color: var(--text-secondary);
   font-size: var(--text-body);
-  overflow: hidden;
-  transition:
-    background var(--transition-normal),
-    color var(--transition-normal);
+  text-align: left;
 }
 
-/* The gold shine sweep that fired on every nav hover is gone with the rest of
- * the decorative gold. */
-
 .app-nav-item:hover {
-  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 70%, transparent);
   color: var(--text-primary);
 }
 
-/*
- * "You are here" is the one job gold keeps in the chrome (tabs gave theirs up).
- * It only takes one device to say it, so the active item is now a neutral
- * raised fill with full-strength bold text and a single solid gold bar. The
- * gold text, the outer glow, the inner glow, the gradient bar with two more
- * glows and the icon drop-shadow were five signals for one state.
- */
-.app-nav-item--active {
-  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+.app-nav-item[data-active] {
+  background: var(--surface-raised);
   color: var(--text-primary);
   font-weight: var(--fw-medium);
 }
 
-.app-nav-item--active::before {
+.app-nav-item[data-active]::before {
   content: "";
   position: absolute;
+  top: var(--space-sm);
+  bottom: var(--space-sm);
   left: 0;
-  top: 6px;
-  bottom: 6px;
   width: 3px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--shape-pill);
   background: var(--accent-fill);
-  animation: navIndicatorIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-@keyframes navIndicatorIn {
-  from {
-    opacity: 0;
-    transform: scaleY(0.3);
-  }
-  to {
-    opacity: 1;
-    transform: scaleY(1);
-  }
 }
 
 .app-nav-icon {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   display: inline-grid;
   place-items: center;
-  transition: transform 0.2s ease;
-}
-
-.app-nav-item:hover .app-nav-icon {
-  transform: scale(1.12);
-}
-
-.app-nav-label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-weight: 600;
 }
 
 .app-sider--collapsed .app-brand {
-  padding-inline: 8px;
+  justify-content: center;
+}
+
+.app-sider--collapsed .app-nav-groups {
+  padding-inline: var(--space-md);
+}
+
+.app-sider--collapsed .app-nav-item {
+  display: flex;
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.app-sider--collapsed .app-nav-item .mantine-NavLink-section {
+  margin-inline: 0;
+}
+
+.app-sider--collapsed .app-nav-item[data-active]::before {
+  top: var(--space-md);
+  bottom: var(--space-md);
+}
+
+.app-viewing-as {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.app-viewing-as--compact {
+  align-items: center;
+  padding-inline: var(--space-sm);
+}
+
+.app-viewing-as-label {
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-medium);
 }
 
 .app-header {
-  position: relative;
   height: var(--header-height);
-  background: color-mix(in srgb, var(--surface-base) 97%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  box-shadow: var(--shadow-sm);
+  padding-inline: var(--shell-page-padding);
   display: grid;
-  /* 中间列用 auto 而非 1.8fr：页面不提供 headerActions 时它是空的，若给 fr 权重
-     会按比例分走空间（768px 下白拿 44.8px），而第三列是 auto、不收缩，短缺全部
-     由标题列独吞。改成 auto 后空列占 0，标题列拿走全部余量。 */
-  grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  padding-inline: 20px;
+  gap: var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-base);
 }
 
-/*
- * The header used to carry a permanently animating tri-colour hairline under
- * the plain border it already had — two separators for one edge, one of them
- * moving. The border-bottom above is the separator.
- */
-
-.app-header__left {
+.app-header__page-title {
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-h2);
+  font-weight: var(--fw-strong);
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.app-header__center {
-  min-width: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+[data-locale="en"] .app-header__page-title,
+[data-locale="en"] .app-brand-mark {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
 }
 
 .app-header__right {
-  display: flex;
-  align-items: center;
+  min-width: 0;
   justify-content: flex-end;
-  gap: 8px;
-}
-
-.app-header-tools {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 .app-header-icon-btn {
-  width: var(--control-height-regular);
-  height: var(--control-height-regular);
-  border-radius: var(--radius-pill);
-  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
-  background: color-mix(in srgb, var(--surface-base) 90%, transparent);
-  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
-  transition:
-    color var(--transition-normal),
-    border-color var(--transition-normal),
-    background var(--transition-normal),
-    box-shadow var(--transition-normal),
-    transform var(--transition-normal);
+  color: var(--text-secondary);
 }
 
 .app-header-icon-btn:hover {
-  color: var(--accent-text);
-  border-color: color-mix(in srgb, var(--accent-fill) 30%, transparent);
-  background: color-mix(in srgb, var(--accent-fill) 8%, var(--surface-base));
-  box-shadow: var(--shadow-accent-sm);
-  transform: translateY(-1px);
+  background: var(--brand-tint);
+  color: var(--brand-text);
 }
 
-.app-header-icon-btn:active {
-  transform: translateY(0) scale(0.95);
+.app-menu-item--active {
+  background: var(--brand-tint);
+  color: var(--brand-text);
+  font-weight: var(--fw-medium);
 }
 
 .app-header-notifications-popover {
   padding: 0;
-  overflow: visible;
 }
 
 .app-header-notifications-overlay {
   width: min(420px, calc(100vw - 32px));
   max-height: min(520px, calc(100vh - 120px));
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 10px;
+  overflow: auto;
+  padding: var(--space-md);
 }
 
 .app-header-notifications-head {
+  margin-bottom: var(--space-sm);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: var(--space-sm);
 }
 
 .app-header-notification-action {
-  padding-inline: 6px;
+  padding-inline: var(--space-xs);
 }
 
 .app-header-notifications-list {
-  margin-top: 6px;
+  margin-top: var(--space-sm);
 }
 
 .app-header-notification-item {
   width: 100%;
+  padding: var(--space-sm);
+  border-radius: var(--radius-surface);
   text-align: left;
-  border-radius: var(--radius-md);
-  padding: 8px;
 }
 
+.app-header-notification-item:hover,
 .app-header-notification-item--unread {
-  background: color-mix(in srgb, var(--accent-fill) 8%, transparent);
-}
-
-.app-header-notification-item:hover {
-  background: color-mix(in srgb, var(--accent-fill) 8%, transparent);
+  background: var(--brand-tint);
 }
 
 .app-header-notification-row {
@@ -425,7 +294,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-sm);
 }
 
 .app-header-notification-row .mantine-Stack-root {
@@ -437,111 +306,88 @@
 }
 
 .app-header-notification-time {
-  font-size: 12px;
   white-space: nowrap;
-}
-
-/* Shell-level route context; the content-level PageLayout title is the h1. */
-.app-header__page-title {
-  display: inline-block;
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--text-body);
-  font-weight: var(--fw-medium);
-  line-height: var(--lh-tight);
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--text-primary);
+  font-size: var(--text-meta);
 }
 
 .app-profile-trigger {
-  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--surface-base) 86%, transparent);
-  padding: 4px 10px 4px 4px;
   min-height: 40px;
+  padding: 3px var(--space-sm) 3px 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--shape-pill);
+  background: var(--surface-raised);
+  color: var(--text-primary);
   cursor: pointer;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .app-profile-trigger:hover {
-  border-color: color-mix(in srgb, var(--accent-fill) 42%, transparent);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-fill) 10%, transparent);
-}
-
-.app-profile-trigger--compact {
-  min-height: 40px;
+  border-color: var(--border-strong);
 }
 
 .app-profile-avatar {
-  background: linear-gradient(135deg, var(--accent-fill), var(--accent-fill-hover));
-  font-weight: 700;
-  font-size: 14px;
+  background: var(--accent-fill);
+  font-size: var(--text-body);
+  font-weight: var(--fw-strong);
 }
 
 .app-profile-avatar .mantine-Avatar-placeholder {
-  /* 头像底是 --accent-fill(500) → --accent-fill-hover(600) 的斜向渐变（见 :470），
-   * 首字母压在渐变深端时 --accent-on-fill（900 墨）只有 3.16–3.50，不过 AA
-   * （task-7 修复轮次 2 修复 D2）。换成 --accent-on-fill-hover（跨 accent 共用的
-   * 纯黑墨），它在渐变浅端（500）也远超 AA，两端都安全。 */
-  color: var(--accent-on-fill-hover);
   background: transparent;
+  color: var(--accent-on-fill);
 }
 
 .app-profile-meta {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0;
-  min-width: 0;
   text-align: left;
 }
 
 .app-profile-name {
   max-width: 140px;
-  white-space: nowrap;
   overflow: hidden;
+  color: var(--text-primary);
   text-overflow: ellipsis;
-  color: color-mix(in srgb, var(--text-primary) 75%, transparent);
+  white-space: nowrap;
 }
 
 .app-profile-role {
-  font-size: 11px;
+  font-size: var(--text-micro);
   text-transform: capitalize;
 }
 
 .app-profile-chevron {
-  font-size: 12px;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  color: var(--text-muted);
+  font-size: var(--text-meta);
 }
 
 .app-content.app-content {
-  overflow-y: auto;
+  position: relative;
+  isolation: isolate;
+  height: 100vh;
+  height: 100dvh;
   min-height: 0;
+  overflow-y: auto;
   box-sizing: border-box;
-  /* --app-shell-header-offset is injected at runtime by Mantine's AppShell
-   * (node_modules/@mantine/core/esm/components/AppShell/AppShellMediaStyles/assign-header-variables/assign-header-variables.mjs)
-   * whenever a primitive header height is used, which this shell does. No
-   * fallback: if Mantine ever stops injecting it, this height must break
-   * loudly instead of silently collapsing to the unoffset viewport height. */
-  height: calc(100vh - var(--app-shell-header-offset));
-  height: calc(100dvh - var(--app-shell-header-offset));
-  padding-top: 8px;
-  background: var(--surface-sunken);
+  background: var(--surface-base);
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
 
-[data-theme="dark"] .app-content.app-content {
-  background:
-    radial-gradient(ellipse 100% 80% at 5% 5%, color-mix(in srgb, var(--accent-fill) 8%, transparent), transparent 55%),
-    radial-gradient(ellipse 80% 60% at 95% 85%, color-mix(in srgb, var(--accent-fill) 7%, transparent), transparent 55%),
-    radial-gradient(ellipse 70% 50% at 50% 50%, color-mix(in srgb, var(--accent-fill) 3%, transparent), transparent 65%),
-    radial-gradient(ellipse 60% 40% at 80% 20%, color-mix(in srgb, var(--accent-fill) 4%, transparent), transparent 50%),
-    radial-gradient(ellipse 50% 50% at 20% 80%, color-mix(in srgb, var(--accent-fill) 3%, transparent), transparent 50%),
-    var(--surface-sunken);
+.app-content::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("/textures/forged-grain.png");
+  background-repeat: repeat;
+  background-size: 128px 128px;
+  opacity: 0.03;
+}
+
+[data-theme="light"] .app-content::before {
+  opacity: 0.02;
 }
 
 .app-content::-webkit-scrollbar {
@@ -553,206 +399,148 @@
 }
 
 .app-content::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: var(--radius-sm);
   border: 2px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--border-strong);
   background-clip: padding-box;
-}
-
-.app-content::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-  background-clip: padding-box;
-}
-
-.app-content-mobile {
-  padding-bottom: calc(var(--bottom-nav-height) + 20px + env(safe-area-inset-bottom));
 }
 
 .app-main {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  flex: 1;
-  min-height: 0;
+  position: relative;
+  z-index: 1;
   width: 100%;
   min-width: 0;
+  min-height: 100%;
+  padding-top: var(--shell-content-gap);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
   box-sizing: border-box;
 }
 
 .app-banner {
-  margin-bottom: 0;
+  margin-inline: var(--shell-page-padding);
 }
 
-/* Dark mode: ensure alert banners don't use light-mode pastel backgrounds */
 [data-theme="dark"] .app-banner[data-variant="light"] {
-  background: color-mix(in srgb, var(--surface-base) 85%, var(--alert-color));
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-raised) 85%, var(--alert-color));
   color: var(--text-primary);
-  border-color: color-mix(in srgb, var(--border-subtle) 60%, transparent);
 }
 
 .app-route-container {
-  min-width: 0;
   width: 100%;
+  min-width: 0;
+  flex: 1;
 }
 
-@keyframes route-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(min(40vw, 400px));
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.app-route-slide-in {
-  animation: route-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+.app-content-mobile {
+  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
 .app-bottom-nav {
   position: fixed;
-  left: 0;
   right: 0;
   bottom: 0;
-  z-index: var(--z-sticky);
-  border-top: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
-  background: color-mix(in srgb, var(--surface-base) 94%, transparent);
-  backdrop-filter: blur(16px);
-  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
-}
-
-.app-bottom-nav::before {
-  content: "";
-  position: absolute;
-  top: -1px;
   left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--accent-fill) 25%, transparent) 30%,
-    color-mix(in srgb, var(--accent-fill) 20%, transparent) 60%,
-    transparent
-  );
+  z-index: var(--z-sticky);
+  min-height: var(--bottom-nav-height);
+  padding: var(--space-xs) var(--space-sm) calc(var(--space-xs) + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-overlay);
 }
 
 .bottom-nav-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
+  gap: var(--space-xs);
 }
 
-.bottom-nav-link {
-  min-height: 52px;
-  padding: 6px 4px 4px;
-  border-radius: var(--radius-md);
+.bottom-nav-link,
+.bottom-nav-more-button {
+  position: relative;
+  min-width: 0;
+  min-height: 56px;
+  padding: var(--space-xs);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  color: color-mix(in srgb, var(--text-primary) 68%, transparent);
+  gap: 3px;
+  border-radius: var(--radius-surface);
+  color: var(--text-muted);
   text-decoration: none;
-  position: relative;
-  transition: color var(--transition-normal), background var(--transition-normal);
 }
 
-.bottom-nav-link:hover {
-  background: color-mix(in srgb, var(--accent-fill) 8%, transparent);
+.bottom-nav-link:hover,
+.bottom-nav-more-button:hover {
+  background: var(--brand-tint);
   color: var(--text-primary);
 }
 
-.bottom-nav-link--active {
-  color: var(--accent-text);
+.bottom-nav-link--active,
+.bottom-nav-more-button--active {
+  color: var(--brand-text);
 }
 
-.bottom-nav-icon {
+.bottom-nav-icon,
+.bottom-nav-more-icon {
   font-size: 20px;
   line-height: 1;
 }
 
 .bottom-nav-label {
   max-width: 100%;
-  white-space: nowrap;
   overflow: hidden;
+  font-size: var(--text-micro);
+  font-weight: var(--fw-medium);
+  line-height: 1.35;
   text-overflow: ellipsis;
-  font-size: 11px;
-  /* 不显式声明时行高继承自祖先、恰好等于 11px 字号，字形盒比行盒高 2px，
-     被上面的 overflow: hidden 纵向切掉。 */
-  line-height: 1.3;
-  font-weight: 600;
+  white-space: nowrap;
 }
 
 .bottom-nav-indicator {
-  width: 16px;
-  height: 3px;
-  border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, var(--accent-fill), var(--accent-fill));
-  opacity: 0;
-  transform: scaleX(0.5);
-  transition: opacity var(--transition-normal), transform var(--transition-normal);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--accent-fill) 40%, transparent);
+  width: 18px;
+  height: 2px;
+  border-radius: var(--shape-pill);
+  background: transparent;
 }
 
-.bottom-nav-link--active .bottom-nav-indicator {
-  opacity: 1;
-  transform: scaleX(1);
+.bottom-nav-link--active .bottom-nav-indicator,
+.bottom-nav-more-button--active .bottom-nav-indicator {
+  background: var(--brand-fill);
 }
 
-.bottom-nav-link--active .bottom-nav-icon {
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent-fill) 35%, transparent));
+@media (min-width: 768px) {
+  .app-shell-root {
+    --shell-page-padding: 16px;
+    --shell-content-gap: 16px;
+  }
 }
 
-.bottom-nav-more-button {
-  min-height: 52px;
-  border-radius: var(--radius-md);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
-
-.bottom-nav-more-icon {
-  font-size: 20px;
-  line-height: 1;
-}
-
-/* ── CmdKSearch ── (moved out of style={{}}, task-8 批 B) */
-
-.cmdk-search-input {
-  width: 100%;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 20%, transparent);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-top: 4px;
-  margin-bottom: 12px;
+@media (min-width: 1200px) {
+  .app-shell-root {
+    --shell-page-padding: 24px;
+  }
 }
 
 @media (max-width: 767px) {
   .app-header {
     height: var(--header-height-mobile);
-    grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .app-header__center {
-    display: none;
+  .app-header__page-title {
+    font-size: var(--text-h3);
   }
 
   .app-header__right {
-    gap: 6px;
-  }
-
-  .app-header-tools {
-    gap: 6px;
+    gap: var(--space-xs);
   }
 
   .app-header-notifications-overlay {
     width: min(340px, calc(100vw - 24px));
     max-height: min(420px, calc(100vh - 100px));
-    padding: 8px;
+    padding: var(--space-sm);
   }
 
   .app-profile-meta,
@@ -761,15 +549,14 @@
   }
 
   .app-profile-trigger {
-    padding-right: 4px;
+    padding-right: 3px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-brand-mark::after {
-    animation: none;
-  }
-  .app-nav-item--active::before {
-    animation: none;
+  .app-shell-root *,
+  .app-shell-root *::before,
+  .app-shell-root *::after {
+    scroll-behavior: auto;
   }
 }

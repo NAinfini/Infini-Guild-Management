@@ -1,6 +1,6 @@
 import type { Event, User } from "@guild/shared";
 import type { ImageGridEditorItem } from "@portal/types/media";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";

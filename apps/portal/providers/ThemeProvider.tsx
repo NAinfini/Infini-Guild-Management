@@ -1,34 +1,50 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from "react";
 import {
   ActionIcon,
+  Alert,
   Badge,
   Button,
   Card,
+  Checkbox,
   createTheme,
+  Drawer,
+  Input,
   MantineProvider,
   Menu,
   Modal,
+  MultiSelect,
   Notification,
   NumberInput,
+  Pagination,
+  Paper,
+  PasswordInput,
+  Popover,
+  SegmentedControl,
   Select,
   Skeleton,
+  Switch,
+  Table,
   Tabs,
   TextInput,
   Textarea,
+  Tooltip,
 } from "@mantine/core";
+import { useReducedMotion } from "@mantine/hooks";
 import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
-import { ConfirmDialogProvider } from "../components/shared/ConfirmDialog";
 import i18n from "../i18n";
 import { usePreferencesStore } from "../stores/preferences";
+import classes from "./ThemeProvider.module.css";
+
+const inputClassNames = {
+  wrapper: classes.inputWrapper,
+  input: classes.input,
+};
 
 const portalTheme = createTheme({
-  primaryColor: "portal-accent",
-  /*
-   * autoContrast 已移除。它按填充色的相对亮度猜文字色，阈值 0.3 是
-   * 为金色（0.31）手调的魔数 —— 换主色就得重调。现在填充上的文字色
-   * 由 --accent-on-fill 显式给出，每个主色每个模式各算一次。
-   */
+  primaryColor: "portal-brand",
+  autoContrast: true,
+  luminanceThreshold: 0.3,
   fontFamily: "var(--font-body)",
   fontFamilyMonospace: "var(--font-code)",
 
@@ -45,21 +61,21 @@ const portalTheme = createTheme({
     },
   },
 
-  defaultRadius: "md",
+  defaultRadius: "sm",
   radius: {
-    xs: "var(--radius-xs)",
-    sm: "var(--radius-sm)",
-    md: "var(--radius-md)",
-    lg: "var(--radius-lg)",
-    xl: "var(--radius-xl)",
+    xs: "var(--radius-control)",
+    sm: "var(--radius-control)",
+    md: "var(--radius-control)",
+    lg: "var(--radius-surface)",
+    xl: "var(--radius-overlay)",
   },
 
   shadows: {
-    xs: "var(--shadow-xs)",
-    sm: "var(--shadow-sm)",
-    md: "var(--shadow-md)",
-    lg: "var(--shadow-lg)",
-    xl: "var(--shadow-lg)",
+    xs: "var(--edge-top)",
+    sm: "var(--edge-top)",
+    md: "var(--shadow-overlay)",
+    lg: "var(--shadow-overlay)",
+    xl: "var(--shadow-overlay)",
   },
 
   spacing: {
@@ -71,45 +87,123 @@ const portalTheme = createTheme({
   },
 
   colors: {
-    /*
-     * Mantine 的色阶要求正好 10 档。这里每一档都指向 --accent-*，
-     * 于是切换 [data-accent] 会同时换掉 Mantine 组件与手写 CSS 的颜色，
-     * 不存在「Mantine 那半边还是旧色」的状态。
-     * 7 档色板铺到 10 格：装饰档复用，文字档与墨档各占一格。
-     */
-    "portal-accent": [
-      "var(--accent-50)",
-      "var(--accent-100)",
-      "var(--accent-300)",
-      "var(--accent-300)",
-      "var(--accent-500)",
-      "var(--accent-500)",
-      "var(--accent-600)",
-      "var(--accent-700)",
-      "var(--accent-700)",
-      "var(--accent-900)",
+    "portal-brand": [
+      "var(--brand-tint)",
+      "var(--brand-tint)",
+      "var(--brand-border)",
+      "var(--brand-border)",
+      "var(--brand-fill)",
+      "var(--brand-fill)",
+      "var(--brand-fill-hover)",
+      "var(--brand-text)",
+      "var(--brand-text)",
+      "var(--brand-on-fill)",
     ],
   },
 
   components: {
-    Button: Button.extend({ defaultProps: { radius: "md" } }),
-    ActionIcon: ActionIcon.extend({ defaultProps: { radius: "md" } }),
-    TextInput: TextInput.extend({ defaultProps: { radius: "md" } }),
-    Textarea: Textarea.extend({ defaultProps: { radius: "md" } }),
-    NumberInput: NumberInput.extend({ defaultProps: { radius: "md" } }),
-    Select: Select.extend({ defaultProps: { radius: "md" } }),
-    Card: Card.extend({ defaultProps: { radius: "md", shadow: "sm" } }),
-    Badge: Badge.extend({ defaultProps: { radius: "sm" } }),
-    Skeleton: Skeleton.extend({ defaultProps: { radius: "md" } }),
-    Tabs: Tabs.extend({ defaultProps: { radius: "md", variant: "pills" } }),
-    Menu: Menu.extend({
-      defaultProps: { radius: "md", shadow: "lg" },
-      classNames: {
-        dropdown: "infini-menu-dropdown",
-        item: "infini-menu-item",
-        divider: "infini-menu-divider",
-        label: "infini-menu-label",
+    Button: Button.extend({
+      defaultProps: {
+        radius: "sm",
+        classNames: { root: classes.buttonRoot },
       },
+      vars: (_theme, props) => {
+        const usesBrand = props.color === undefined || props.color === "portal-brand";
+        const usesFilledVariant = props.variant === undefined || props.variant === "filled";
+        return {
+          root: usesBrand && usesFilledVariant
+            ? {
+              "--button-color": "var(--brand-on-fill)",
+              "--portal-button-hover-color": "var(--brand-on-fill-hover)",
+            }
+            : {},
+        };
+      },
+    }),
+    ActionIcon: ActionIcon.extend({
+      defaultProps: {
+        radius: "sm",
+        classNames: { root: classes.actionIconRoot },
+      },
+    }),
+    Input: Input.extend({ classNames: inputClassNames }),
+    TextInput: TextInput.extend({ defaultProps: { radius: "sm", classNames: inputClassNames } }),
+    Textarea: Textarea.extend({ defaultProps: { radius: "sm", classNames: inputClassNames } }),
+    NumberInput: NumberInput.extend({ defaultProps: { radius: "sm", classNames: inputClassNames } }),
+    Select: Select.extend({ defaultProps: { radius: "sm", classNames: inputClassNames } }),
+    MultiSelect: MultiSelect.extend({ defaultProps: { radius: "sm", classNames: inputClassNames } }),
+    PasswordInput: PasswordInput.extend({ defaultProps: { radius: "sm", classNames: inputClassNames } }),
+    Paper: Paper.extend({
+      defaultProps: { radius: "lg", classNames: { root: classes.paperRoot } },
+    }),
+    Card: Card.extend({
+      defaultProps: {
+        radius: "lg",
+        shadow: undefined,
+        withBorder: true,
+        padding: "md",
+        classNames: { root: classes.cardRoot },
+      },
+    }),
+    Badge: Badge.extend({
+      defaultProps: { radius: "xl", classNames: { root: classes.badgeRoot } },
+    }),
+    Skeleton: Skeleton.extend({
+      defaultProps: { radius: "md", animate: false, classNames: { root: classes.skeletonRoot } },
+    }),
+    Tabs: Tabs.extend({
+      defaultProps: {
+        radius: 0,
+        variant: "default",
+        classNames: {
+          list: classes.tabsList,
+          tab: classes.tabsTab,
+        },
+      },
+    }),
+    Menu: Menu.extend({
+      defaultProps: {
+        radius: "sm",
+        shadow: "md",
+        classNames: {
+          dropdown: classes.overlaySurface,
+          item: classes.menuItem,
+          label: classes.menuLabel,
+          divider: classes.menuDivider,
+        },
+      },
+    }),
+    Popover: Popover.extend({
+      defaultProps: {
+        radius: "xl",
+        shadow: "md",
+        classNames: { dropdown: classes.overlaySurface },
+      },
+    }),
+    Tooltip: Tooltip.extend({
+      defaultProps: {
+        radius: "sm",
+        classNames: { tooltip: classes.tooltip },
+      },
+    }),
+    Table: Table.extend({
+      classNames: {
+        table: classes.table,
+        th: classes.tableHeaderCell,
+        tr: classes.tableRow,
+      },
+    }),
+    Pagination: Pagination.extend({
+      defaultProps: {
+        radius: "sm",
+        classNames: { control: classes.paginationControl },
+      },
+    }),
+    Checkbox: Checkbox.extend({ defaultProps: { radius: "sm" } }),
+    Switch: Switch.extend({ defaultProps: { radius: "xl" } }),
+    SegmentedControl: SegmentedControl.extend({ defaultProps: { radius: "sm" } }),
+    Alert: Alert.extend({
+      defaultProps: { radius: "lg", classNames: { root: classes.alertRoot } },
     }),
   },
 });
@@ -143,6 +237,7 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
   const setTheme = usePreferencesStore((s) => s.setThemeMode);
   const accent = usePreferencesStore((s) => s.accent);
   const setAccent = usePreferencesStore((s) => s.setAccent);
+  const reduceMotion = useReducedMotion();
 
   const toggleTheme = useCallback(() => {
     setTheme(theme === "dark" ? "light" : "dark");
@@ -176,24 +271,48 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
       ...portalTheme.components,
       Modal: Modal.extend({
         defaultProps: {
-          radius: "lg",
+          radius: "xl",
           centered: true,
-          transitionProps: { duration: 0 },
+          transitionProps: { duration: reduceMotion ? 0 : 180, transition: "fade-up" },
           closeButtonProps: { "aria-label": i18n.t("common:action.close") },
+          classNames: {
+            overlay: classes.modalOverlay,
+            content: classes.modalContent,
+            header: classes.modalHeader,
+            title: classes.modalTitle,
+            close: classes.modalClose,
+          },
+        },
+      }),
+      Drawer: Drawer.extend({
+        defaultProps: {
+          transitionProps: { duration: reduceMotion ? 0 : 180 },
+          closeButtonProps: { "aria-label": i18n.t("common:action.close") },
+          classNames: {
+            overlay: classes.modalOverlay,
+            content: classes.drawerContent,
+            header: classes.modalHeader,
+            title: classes.modalTitle,
+            close: classes.modalClose,
+          },
         },
       }),
       Notification: Notification.extend({
-        defaultProps: { closeButtonProps: { "aria-label": i18n.t("common:action.close") } },
+        defaultProps: {
+          radius: "lg",
+          closeButtonProps: { "aria-label": i18n.t("common:action.close") },
+          classNames: { root: classes.notificationRoot },
+        },
       }),
     },
-  }), []);
+  }), [reduceMotion]);
 
   return (
     <ThemeContext.Provider value={contextValue}>
       <MantineProvider theme={mantineTheme} forceColorScheme={theme}>
         <Notifications position="top-right" />
         <ModalsProvider>
-          <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
+          {children}
         </ModalsProvider>
       </MantineProvider>
     </ThemeContext.Provider>

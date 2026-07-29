@@ -14,6 +14,10 @@ export type CategoryDef = {
 };
 
 export type TestRunContext = {
+  /** Server-issued UID; every request and cleanup operation is bound to it. */
+  runId: string | null;
+  /** Independent public fixture label; never grants access to the cleanup run. */
+  fixtureId: string | null;
   meId: string | null;
   meUsername: string | null;
   registerInviteCode: string | null;
@@ -113,21 +117,10 @@ export type DebugLogEntry = {
   skipped?: boolean;
 };
 
-export type CleanupStep = {
-  label: string;
-  method: EndpointDef["method"];
-  path: string;
-  jsonBody?: unknown;
-  clearContext?: Partial<TestRunContext>;
-};
-
-export type StaleArtifactProbe = {
-  label: string;
-  path: string;
-};
-
 export function createInitialTestRunContext(): TestRunContext {
   return {
+    runId: null,
+    fixtureId: null,
     meId: null,
     meUsername: null,
     registerInviteCode: null,

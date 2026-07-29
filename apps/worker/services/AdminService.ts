@@ -32,12 +32,68 @@ export type AnalyticsSettings = {
 export type InviteVisibility = "active" | "expired" | "revoked";
 
 type ListInviteLinksOptions = {
-  cursor: number;
+  cursor?: string;
   limit: number;
   visibility: InviteVisibility;
   search?: string;
   searchCodes: boolean;
 };
+
+type InviteCursor = {
+  created_at: string;
+  id: string;
+};
+
+const INVITE_CURSOR_MAX_LENGTH = 512;
+
+function decodeInviteCursor(value: string): InviteCursor | null {
+  if (
+    value.length === 0
+    || value.length > INVITE_CURSOR_MAX_LENGTH
+    || !/^[A-Za-z0-9_-]+$/u.test(value)
+    || value.length % 4 === 1
+  ) {
+    return null;
+  }
+  try {
+    const base64 = value
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(Math.ceil(value.length / 4) * 4, "=");
+    const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+    const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const cursor = parsed as Record<string, unknown>;
+    if (
+      Object.keys(cursor).length !== 2
+      || typeof cursor.created_at !== "string"
+      || typeof cursor.id !== "string"
+      || cursor.created_at.length === 0
+      || cursor.created_at.length > 64
+      || cursor.id.length === 0
+      || cursor.id.length > 128
+    ) {
+      return null;
+    }
+    const timestamp = Date.parse(cursor.created_at);
+    if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString() !== cursor.created_at) {
+      return null;
+    }
+    return { created_at: cursor.created_at, id: cursor.id };
+  } catch {
+    return null;
+  }
+}
+
+function encodeInviteCursor(cursor: InviteCursor): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(cursor));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/u, "");
+}
 
 function emptyPermissionRecord(): Record<Permission, boolean> {
   return Object.fromEntries(PERMISSIONS.map((p) => [p, false])) as Record<Permission, boolean>;
@@ -111,12 +167,14 @@ export class AdminService {
     options: ListInviteLinksOptions,
   ): Promise<ServiceResult<{ data: unknown[]; next_cursor: string | null; total: number }>> {
     const nowIso = this.now().toISOString();
-    const filters: SQL<unknown>[] = [];
+    const cursor = options.cursor ? decodeInviteCursor(options.cursor) : undefined;
+    if (options.cursor && !cursor) return err("VALIDATION_ERROR", "Invalid invite cursor");
+    const baseFilters: SQL<unknown>[] = [];
 
     if (options.visibility === "revoked") {
-      filters.push(isNotNull(inviteLinks.revokedAt));
+      baseFilters.push(isNotNull(inviteLinks.revokedAt));
     } else if (options.visibility === "expired") {
-      filters.push(
+      baseFilters.push(
         isNull(inviteLinks.revokedAt),
         or(
           and(isNotNull(inviteLinks.expiresAt), lte(inviteLinks.expiresAt, nowIso)),
@@ -124,7 +182,7 @@ export class AdminService {
         )!,
       );
     } else {
-      filters.push(
+      baseFilters.push(
         isNull(inviteLinks.revokedAt),
         or(isNull(inviteLinks.expiresAt), gt(inviteLinks.expiresAt, nowIso))!,
         lt(inviteLinks.usedCount, inviteLinks.maxUses),
@@ -140,10 +198,22 @@ export class AdminService {
       if (options.searchCodes) {
         searchFilters.unshift(sql`lower(${inviteLinks.code}) LIKE ${pattern} ESCAPE '\\'`);
       }
-      filters.push(or(...searchFilters)!);
+      baseFilters.push(or(...searchFilters)!);
     }
 
-    const whereClause = and(...filters);
+    const baseWhereClause = and(...baseFilters);
+    const listWhereClause = cursor
+      ? and(
+          baseWhereClause,
+          or(
+            lt(inviteLinks.createdAt, cursor.created_at),
+            and(
+              eq(inviteLinks.createdAt, cursor.created_at),
+              lt(inviteLinks.id, cursor.id),
+            ),
+          ),
+        )
+      : baseWhereClause;
     const rows = await this.deps.db
       .select({
         id: inviteLinks.id,
@@ -156,16 +226,16 @@ export class AdminService {
         revokedAt: inviteLinks.revokedAt,
       })
       .from(inviteLinks)
-      .where(whereClause)
+      .where(listWhereClause)
       .orderBy(desc(inviteLinks.createdAt), desc(inviteLinks.id))
-      .limit(options.limit + 1)
-      .offset(options.cursor);
+      .limit(options.limit + 1);
     const countRows = await this.deps.db
       .select({ total: sql<number>`count(*)` })
       .from(inviteLinks)
-      .where(whereClause);
+      .where(baseWhereClause);
     const hasMore = rows.length > options.limit;
     const pageRows = hasMore ? rows.slice(0, options.limit) : rows;
+    const lastRow = pageRows.at(-1);
 
     return ok({
       data: pageRows.map((r) => inviteLinkSchema.parse({
@@ -178,7 +248,9 @@ export class AdminService {
         created_at: r.createdAt,
         revoked_at: r.revokedAt,
       })),
-      next_cursor: hasMore ? String(options.cursor + options.limit) : null,
+      next_cursor: hasMore && lastRow
+        ? encodeInviteCursor({ created_at: lastRow.createdAt, id: lastRow.id })
+        : null,
       total: Number(countRows[0]?.total ?? 0),
     });
   }

@@ -78,15 +78,15 @@
 }
 
 .infini-tiptap-surface:focus {
-  border-color: var(--accent-fill);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-fill) 24%, transparent);
+  border-color: var(--brand-fill);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-fill) 24%, transparent);
 }
 
 .infini-tiptap-surface p {
   margin: 0 0 8px;
 }
 
-/* 内容区排版：正文文字用 --text-primary（task-7-addendum.md 编辑器提醒段）。 */
+/* 内容区排版：正文文字用 --text-primary（the token-layer contract 编辑器提醒段）。 */
 .infini-tiptap-surface h1,
 .infini-tiptap-surface h2,
 .infini-tiptap-surface h3 {
@@ -128,7 +128,7 @@
 
 /* 内容区链接：文字用途落在替换表「若作为文字」分支，取 --accent-text。 */
 .infini-tiptap-surface a {
-  color: var(--accent-text);
+  color: var(--brand-text);
   font-weight: 600;
   text-decoration: underline;
   text-decoration-thickness: 1.5px;
@@ -136,7 +136,7 @@
 }
 
 .infini-tiptap-surface a:hover {
-  color: color-mix(in srgb, var(--accent-text) 72%, var(--text-primary));
+  color: color-mix(in srgb, var(--brand-text) 72%, var(--text-primary));
   text-decoration-thickness: 2px;
 }
 
@@ -211,7 +211,7 @@
   top: 0;
   bottom: 0;
   width: 4px;
-  background: var(--accent-fill);
+  background: var(--brand-fill);
   cursor: col-resize;
   z-index: 1;
 }
@@ -279,9 +279,9 @@
 }
 
 .infini-tiptap-link-dialog__input:focus {
-  border-color: var(--accent-fill);
+  border-color: var(--brand-fill);
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-fill) 20%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-fill) 20%, transparent);
 }
 
 .infini-tiptap-lightbox-viewport {
@@ -336,7 +336,7 @@
 }
 
 .infini-tiptap-context-item:hover {
-  background: color-mix(in srgb, var(--accent-fill) 12%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 12%, transparent);
 }
 
 .infini-tiptap-context-item--submenu {
@@ -535,7 +535,7 @@
   }
 }
 
-/* 目录标题是 chrome 的次要文字，取 --text-muted（task-7-addendum.md 编辑器提醒段）。 */
+/* 目录标题是 chrome 的次要文字，取 --text-muted（the token-layer contract 编辑器提醒段）。 */
 .infini-tiptap-toc__title {
   font-size: 12px;
   font-weight: 600;
@@ -562,7 +562,7 @@
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: var(--accent-text);
+  color: var(--brand-text);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -571,7 +571,7 @@
 }
 
 .infini-tiptap-toc__link:hover {
-  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 10%, transparent);
 }
 
 /* ── Drag handle ── */

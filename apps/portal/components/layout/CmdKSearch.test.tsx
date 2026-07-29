@@ -86,8 +86,50 @@ describe("CmdKSearch", () => {
     });
 
     expect(searchMock).toHaveBeenCalledWith("war", 24);
-    expect(
-      screen.getByText((_, element) => element?.textContent === "war history"),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /war.*history/i })).toBeInTheDocument();
+  });
+
+  it("opens with the keyboard shortcut and supports keyboard result selection", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    const user = userEvent.setup();
+
+    render(<CmdKSearch />, { wrapper: createWrapper(queryClient) });
+
+    await user.keyboard("{Control>}k{/Control}");
+    const input = await screen.findByRole("combobox", { name: "Search input" });
+    await user.type(input, "war");
+    await screen.findAllByRole("option");
+
+    await user.keyboard("{ArrowDown}{Enter}");
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith({ to: "/wiki" });
+    });
+  });
+
+  it("keeps initial autofocus visually quiet until focus leaves the search input", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    const user = userEvent.setup();
+
+    render(<CmdKSearch />, { wrapper: createWrapper(queryClient) });
+
+    await user.click(screen.getByRole("button", { name: "Open search" }));
+    const input = await screen.findByRole("combobox", { name: "Search input" });
+
+    await waitFor(() => expect(input).toHaveFocus());
+    expect(input).toHaveAttribute("data-silent-autofocus", "true");
+
+    await user.tab();
+    expect(input).not.toHaveAttribute("data-silent-autofocus");
   });
 });

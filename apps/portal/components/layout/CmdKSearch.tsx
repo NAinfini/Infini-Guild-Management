@@ -1,14 +1,27 @@
-import { ActionIcon, Badge, Button, Group, Highlight, Kbd, Modal, Stack, Text } from "@mantine/core";
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Group,
+  Highlight,
+  Kbd,
+  Modal,
+  NavLink,
+  ScrollArea,
+  Stack,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { useDisclosure, useHotkeys, useLocalStorage } from "@mantine/hooks";
 import { useDebouncedSearch } from "../../hooks/useDebouncedSearch";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Command } from "cmdk";
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../../api/query-keys";
 import { searchGlobal, type SearchResult, type SearchResultType } from "../../services/SearchService";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
+import styles from "./CmdKSearch.module.css";
 import {
   CalendarOutlined,
   FileSearchOutlined,
@@ -68,8 +81,26 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
     key: RECENT_SEARCHES_KEY,
     defaultValue: [],
   });
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [suppressInitialFocusRing, setSuppressInitialFocusRing] = useState(true);
+  const resultsId = useId();
 
-  useHotkeys([["mod+k", openHandlers.toggle]]);
+  const openSearch = () => {
+    setSuppressInitialFocusRing(true);
+    openHandlers.open();
+  };
+
+  const closeSearch = () => {
+    setSuppressInitialFocusRing(true);
+    openHandlers.close();
+  };
+
+  const toggleSearch = () => {
+    setSuppressInitialFocusRing(true);
+    openHandlers.toggle();
+  };
+
+  useHotkeys([["mod+k", toggleSearch]]);
 
   const normalizedQuery = normalizeSearchText(debouncedQuery);
   const searchDataQuery = useQuery({
@@ -106,8 +137,18 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
     }
     return groups;
   }, [visibleItems]);
+  const orderedItems = useMemo(
+    () => Array.from(groupedItems.values()).flat(),
+    [groupedItems],
+  );
 
   const queryIsDebouncing = query !== debouncedQuery;
+  const showingRecent = query.length === 0 && recentSearches.length > 0;
+  const optionCount = showingRecent ? recentSearches.length : orderedItems.length;
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query, optionCount]);
 
   const onSelectItem = (item: SearchItem) => {
     const normalized = normalizeSearchText(query);
@@ -116,7 +157,7 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
         return [normalized, ...previous.filter((value) => value !== normalized)].slice(0, RECENT_LIMIT);
       });
     }
-    openHandlers.close();
+    closeSearch();
     setQuery("");
     if (item.category === "event" && item.entityId) {
       void navigate({
@@ -137,16 +178,52 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
 
   const roleBadgeColor = (role: string | undefined): string => ROLE_BADGE_COLOR[role ?? ""] ?? "blue";
 
+  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (optionCount === 0) {
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((current) => (current + 1) % optionCount);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((current) => (current - 1 + optionCount) % optionCount);
+      return;
+    }
+
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    event.preventDefault();
+    if (showingRecent) {
+      const recent = recentSearches[activeIndex];
+      if (recent) {
+        setQuery(recent);
+      }
+      return;
+    }
+
+    const item = orderedItems[activeIndex];
+    if (item) {
+      onSelectItem(item);
+    }
+  };
+
   return (
     <>
       {asIcon ? (
-        <ActionIcon variant="subtle" onClick={openHandlers.open} aria-label={t("cmdk.aria.openSearch")}>
+        <ActionIcon variant="subtle" onClick={openSearch} aria-label={t("cmdk.aria.openSearch")}>
           <SearchOutlined />
         </ActionIcon>
       ) : (
         /* Search is a utility, not the page's primary action — a gold fill here
            competed with the real primary button on every single page. */
-        <Button variant="default" onClick={openHandlers.open} size="xs" aria-label={t("cmdk.aria.openSearch")} rightSection={
+        <Button variant="default" onClick={openSearch} size="xs" aria-label={t("cmdk.aria.openSearch")} rightSection={
           <Group gap={2} wrap="nowrap">
             <Kbd size="xs">{isMac ? "Cmd" : "Ctrl"}</Kbd>
             <Kbd size="xs">K</Kbd>
@@ -159,72 +236,90 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
       <Modal
         title={t("cmdk.searchTitle")}
         opened={open}
-        onClose={openHandlers.close}
+        onClose={closeSearch}
         size="640px"
         withCloseButton
+        classNames={{ body: styles.modalBody }}
       >
-        <Command shouldFilter={false}>
-          <Command.Input
+        <Stack gap="sm">
+          <TextInput
             value={query}
-            onValueChange={setQuery}
+            onChange={(event) => setQuery(event.currentTarget.value)}
+            onKeyDown={handleSearchKeyDown}
             placeholder={t("cmdk.searchPlaceholder")}
             aria-label={t("cmdk.aria.searchInput")}
-            className="cmdk-search-input"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls={resultsId}
+            aria-expanded={open}
+            aria-activedescendant={optionCount > 0 ? `${resultsId}-option-${activeIndex}` : undefined}
+            leftSection={<SearchOutlined />}
+            data-autofocus
+            data-silent-autofocus={suppressInitialFocusRing ? "true" : undefined}
+            onBlur={() => setSuppressInitialFocusRing(false)}
+            classNames={{ input: styles.searchInput }}
           />
 
-          <Command.List style={{ maxHeight: 360, overflow: "auto" }}>
-            {loading || queryIsDebouncing ? <Text c="dimmed">{t("message.loading")}</Text> : null}
-            {!loading && normalizedQuery.length >= 2 && visibleItems.length === 0 ? <Command.Empty>{t("cmdk.noResults")}</Command.Empty> : null}
+          <ScrollArea.Autosize mah={360} id={resultsId} role="listbox">
+            <Stack gap={4}>
+              {loading || queryIsDebouncing ? <Text c="dimmed" px="sm" py="xs">{t("message.loading")}</Text> : null}
+              {!loading && normalizedQuery.length >= 2 && visibleItems.length === 0
+                ? <Text c="dimmed" px="sm" py="xs">{t("cmdk.noResults")}</Text>
+                : null}
 
-            {query.length === 0 && recentSearches.length > 0 ? (
-              <Command.Group heading={t("cmdk.recent")}>
-                {recentSearches.map((recent) => (
-                  <Command.Item
-                    key={recent}
-                    value={recent}
-                    onSelect={() => setQuery(recent)}
-                    style={{ borderRadius: 8, padding: "8px 10px", cursor: "pointer" }}
-                  >
-                    <Group gap={8}>
-                      <SearchOutlined />
-                      <Text>{recent}</Text>
-                    </Group>
-                  </Command.Item>
-                ))}
-              </Command.Group>
-            ) : null}
+              {showingRecent ? (
+                <Stack gap={4}>
+                  <Text size="xs" fw={600} c="dimmed" px="sm">
+                    {t("cmdk.recent")}
+                  </Text>
+                  {recentSearches.map((recent, index) => (
+                    <NavLink
+                      key={recent}
+                      id={`${resultsId}-option-${index}`}
+                      role="option"
+                      aria-selected={activeIndex === index}
+                      active={activeIndex === index}
+                      label={recent}
+                      leftSection={<SearchOutlined />}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      onClick={() => setQuery(recent)}
+                    />
+                  ))}
+                </Stack>
+              ) : null}
 
-            {Array.from(groupedItems.entries()).map(([category, group]) => (
-              <Command.Group key={category} heading={categoryLabel(category)}>
-                {group.map((item) => (
-                  <Command.Item
-                    key={item.id}
-                    value={`${item.category} ${item.title} ${item.subtitle}`}
-                    onSelect={() => onSelectItem(item)}
-                    style={{
-                      borderRadius: 8,
-                      padding: "8px 10px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <Stack gap={2} style={{ width: "100%" }}>
-                      <Group align="center">
-                        {categoryIcon(item.category)}
-                        <Highlight highlight={query} fw={600}>{item.title}</Highlight>
-                        <Badge color={item.category === "user" ? roleBadgeColor(item.role) : undefined}>
-                          {item.category === "user" && item.role ? item.role : categoryLabel(item.category)}
-                        </Badge>
-                      </Group>
-                      <Highlight highlight={query} c="dimmed" size="sm">
-                        {item.subtitle}
-                      </Highlight>
-                    </Stack>
-                  </Command.Item>
-                ))}
-              </Command.Group>
-            ))}
-          </Command.List>
-        </Command>
+              {Array.from(groupedItems.entries()).map(([category, group]) => (
+                <Stack key={category} gap={4}>
+                  <Text size="xs" fw={600} c="dimmed" px="sm" pt="xs">
+                    {categoryLabel(category)}
+                  </Text>
+                  {group.map((item) => {
+                    const itemIndex = orderedItems.indexOf(item);
+                    return (
+                      <NavLink
+                        key={item.id}
+                        id={`${resultsId}-option-${itemIndex}`}
+                        role="option"
+                        aria-selected={activeIndex === itemIndex}
+                        active={activeIndex === itemIndex}
+                        label={<Highlight highlight={query} fw={600}>{item.title}</Highlight>}
+                        description={<Highlight highlight={query}>{item.subtitle}</Highlight>}
+                        leftSection={categoryIcon(item.category)}
+                        rightSection={(
+                          <Badge color={item.category === "user" ? roleBadgeColor(item.role) : undefined}>
+                            {item.category === "user" && item.role ? item.role : categoryLabel(item.category)}
+                          </Badge>
+                        )}
+                        onMouseEnter={() => setActiveIndex(itemIndex)}
+                        onClick={() => onSelectItem(item)}
+                      />
+                    );
+                  })}
+                </Stack>
+              ))}
+            </Stack>
+          </ScrollArea.Autosize>
+        </Stack>
       </Modal>
     </>
   );

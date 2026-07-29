@@ -23,6 +23,8 @@ import { createPasswordHash } from "../services/auth";
 import { errorLog } from "../db/schema/error-log";
 import { buildError, getDb, handleResult, parseJsonBody, parsePage } from "./_shared";
 import { getSiteConfigService } from "./site-config";
+import { SystemTestService, getSystemTestRunId } from "../services/SystemTestService";
+import { SYSTEM_TEST_RUN_ID_HEADER } from "@guild/shared/config/system-test";
 
 const generateInviteCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 16);
 const generateTemporaryPassword = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", 12);
@@ -85,7 +87,7 @@ function buildArchiveDownloadUrl(c: Context, token: string): string {
 adminRoutes.get("/invite-links", async (c) => {
   const sessionUser = await requirePermission(c, "admin.invite.view");
   const canManage = sessionUser.permissions.has("admin.invite.manage");
-  const cursorRaw = Number.parseInt(c.req.query("cursor") ?? "", 10);
+  const cursor = c.req.query("cursor");
   const limitRaw = Number.parseInt(c.req.query("limit") ?? "", 10);
   const visibilityRaw = c.req.query("visibility");
   const visibility = visibilityRaw === "expired" || visibilityRaw === "revoked"
@@ -93,7 +95,7 @@ adminRoutes.get("/invite-links", async (c) => {
     : "active";
   const search = (c.req.query("search") ?? "").trim().slice(0, 200);
   const result = await getAdminService(c).listInviteLinks({
-    cursor: Number.isFinite(cursorRaw) && cursorRaw >= 0 ? cursorRaw : 0,
+    cursor: cursor && cursor.length > 0 ? cursor : undefined,
     limit: Number.isFinite(limitRaw) && limitRaw > 0
       ? Math.min(limitRaw, 100)
       : LIMITS.pagination.admin,
@@ -298,16 +300,43 @@ adminRoutes.get("/status", async (c) => {
   return handleResult(c, result);
 });
 
+adminRoutes.post("/status/system-test-runs", async (c) => {
+  const sessionUser = await requirePermission(c, "admin.status.view", { freshPermissions: false });
+  const runId = await new SystemTestService(c.env as Bindings).createRun(sessionUser.id);
+  return c.json({ run_id: runId, fixture_id: crypto.randomUUID() }, 201);
+});
+
+adminRoutes.post("/status/system-test-runs/:runId/cleanup", async (c) => {
+  const sessionUser = await requirePermission(c, "admin.status.view", { freshPermissions: false });
+  try {
+    const result = await new SystemTestService(c.env as Bindings).cleanupRun(c.req.param("runId"), sessionUser.id);
+    return c.json({ ok: result.status === "completed", ...result }, result.status === "completed" ? 200 : 409);
+  } catch (error) {
+    return buildError(c, "FORBIDDEN", error instanceof Error ? error.message : "System test cleanup denied");
+  }
+});
+
+adminRoutes.post("/status/system-test-runs/:runId/finalize", async (c) => {
+  const sessionUser = await requirePermission(c, "admin.status.view", { freshPermissions: false });
+  try {
+    await new SystemTestService(c.env as Bindings).finalizeRun(c.req.param("runId"), sessionUser.id);
+    return c.json({ ok: true });
+  } catch (error) {
+    return buildError(c, "CONFLICT", error instanceof Error ? error.message : "System test run is not ready to finalize");
+  }
+});
+
 adminRoutes.post("/status/system-test-audit", async (c) => {
   const sessionUser = await requirePermission(c, "admin.status.view", { freshPermissions: false });
+  const runId = c.req.header(SYSTEM_TEST_RUN_ID_HEADER) ?? getSystemTestRunId(c);
+  if (!runId) return buildError(c, "FORBIDDEN", "A valid active system-test run is required");
+  if (!(await new SystemTestService(c.env as Bindings).isRunOwnedBy(runId, sessionUser.id))) {
+    return buildError(c, "FORBIDDEN", "System test run belongs to another actor");
+  }
   const parsed = systemTestSummarySchema.safeParse(await parseJsonBody(c));
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid system test summary", parsed.error.flatten());
   const { total, passed, failed, errors } = parsed.data;
-  await writeAuditLogDurable(c, {
-    entityType: "system_test",
-    action: "run",
-    actorId: sessionUser.id,
-    entityId: "admin-console-api",
+  await new SystemTestService(c.env as Bindings).finalizeRun(runId, sessionUser.id, {
     diffTitle: `Full system test: ${passed}/${total} passed`,
     detailText: JSON.stringify({ total, passed, failed, errors }),
   });

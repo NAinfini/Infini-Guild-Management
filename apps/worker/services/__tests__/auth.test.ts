@@ -2,10 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   drizzle: vi.fn(),
+  eq: vi.fn(),
   getCookie: vi.fn(),
   deleteCookie: vi.fn(),
   setCookie: vi.fn(),
 }));
+
+vi.mock("drizzle-orm", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("drizzle-orm")>();
+  return {
+    ...actual,
+    eq: mocks.eq,
+  };
+});
 
 vi.mock("drizzle-orm/d1", () => ({
   drizzle: mocks.drizzle,
@@ -17,7 +26,12 @@ vi.mock("hono/cookie", () => ({
   setCookie: mocks.setCookie,
 }));
 
-const { resolveSession, SESSION_COOKIE_NAME, SESSION_MODE_COOKIE_NAME } = await import("../auth");
+const {
+  destroySessionById,
+  resolveSession,
+  SESSION_COOKIE_NAME,
+  SESSION_MODE_COOKIE_NAME,
+} = await import("../auth");
 
 function createContext() {
   const values = new Map<string, unknown>();
@@ -32,6 +46,7 @@ function createContext() {
 describe("resolveSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.eq.mockImplementation((_column, value) => ({ value }));
     mocks.getCookie.mockImplementation((_c, name: string) => {
       if (name === SESSION_COOKIE_NAME) return "sess-1";
       if (name === SESSION_MODE_COOKIE_NAME) return "0";
@@ -131,5 +146,25 @@ describe("resolveSession", () => {
     expect(fresh?.user.permissions.has("events.create")).toBe(true);
     // Each context issues exactly one joined query
     expect(select).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("destroySessionById", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.eq.mockImplementation((_column, value) => ({ value }));
+  });
+
+  it("deletes the already-hashed database id without hashing it again", async () => {
+    const where = vi.fn().mockResolvedValue(undefined);
+    const deleteRow = vi.fn(() => ({ where }));
+    mocks.drizzle.mockReturnValue({ delete: deleteRow });
+
+    await destroySessionById(createContext() as never, "stored-session-id");
+
+    expect(mocks.eq).toHaveBeenCalledWith(expect.anything(), "stored-session-id");
+    expect(where).toHaveBeenCalledWith({ value: "stored-session-id" });
+    expect(mocks.getCookie).not.toHaveBeenCalled();
+    expect(mocks.deleteCookie).toHaveBeenCalledTimes(2);
   });
 });

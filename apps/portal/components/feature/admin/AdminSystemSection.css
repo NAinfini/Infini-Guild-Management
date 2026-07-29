@@ -14,17 +14,16 @@
   justify-content: center;
   gap: 6px;
   padding: 14px 16px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
   background: color-mix(in srgb, var(--surface-base) 97%, var(--text-primary));
   min-width: 80px;
   flex: 1;
-  transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+  transition: border-color 200ms ease, background 200ms ease;
 }
 
 .system-health-tile:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--text-primary) 8%, transparent);
+  border-color: var(--border-strong);
 }
 
 .system-health-tile--ok {
@@ -33,7 +32,6 @@
 
 .system-health-tile--ok:hover {
   border-color: color-mix(in srgb, var(--status-success) 40%, transparent);
-  box-shadow: 0 4px 16px color-mix(in srgb, var(--status-success) 12%, transparent);
 }
 
 .system-health-tile--error {
@@ -43,7 +41,6 @@
 
 .system-health-tile--error:hover {
   border-color: color-mix(in srgb, var(--status-danger) 45%, transparent);
-  box-shadow: 0 4px 16px color-mix(in srgb, var(--status-danger) 12%, transparent);
 }
 
 .system-health-tile--latency {
@@ -69,7 +66,7 @@
 }
 
 /* 服务图标色调，替代 AdminSystemSection.tsx 里 style={{ color }} 拼字符串
-   （task-8-addendum.md B 节类 2，Task 8 批 C 收敛）。这三条是本文件里唯一
+   （the inline-style migration contract B 节类 2，Task 8 批 C 收敛）。这三条是本文件里唯一
    给 .system-health-tile__icon 设 color 的规则，无同名/同选择器冲突。 */
 .system-health-tile__icon--ok { color: var(--status-success); }
 .system-health-tile__icon--warning { color: var(--status-warning); }
@@ -92,7 +89,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px 18px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   border: 1px solid;
   flex: 1;
   min-width: 120px;
@@ -119,19 +116,10 @@
 
 .system-health-overall__dot--ok {
   background: var(--status-success);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--status-success) 40%, transparent);
-  animation: healthPulse 2s ease-in-out infinite;
 }
 
 .system-health-overall__dot--warn {
   background: var(--status-warning);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--status-warning) 40%, transparent);
-  animation: healthPulse 1.5s ease-in-out infinite;
-}
-
-@keyframes healthPulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 6px currentColor; }
-  50% { opacity: 0.6; box-shadow: 0 0 12px currentColor; }
 }
 
 /* ── Health Log Table ── */
@@ -171,7 +159,7 @@
 }
 
 .health-log-table tr:hover td {
-  background: color-mix(in srgb, var(--accent-fill) 3%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 3%, transparent);
 }
 
 .health-log-dot {
@@ -196,7 +184,6 @@
 .health-log-latency-bar {
   height: 4px;
   border-radius: 2px;
-  transition: width 300ms ease;
 }
 
 /* AdminStatusTab.tsx's latency column, moved out of style={{}} (task-8 批 B).
@@ -207,7 +194,7 @@
 }
 
 /* 三态穷举（good/warn/bad），来自 AdminSystemSection.tsx 的
-   LATENCY_BAND_COLOR_VAR（latencyBand() 分档，task-8-addendum.md B 节类 2）。
+   LATENCY_BAND_COLOR_VAR（latencyBand() 分档，the inline-style migration contract B 节类 2）。
    同一个常量对象还以字面 var() 字符串的形式喂给这个组件里 RingProgress 的
    color prop（延迟环），因为该 prop 只吃字面字符串、不认 className，这条例外
    走的是 AdminApiTest.css:282-286 记录过的同一条通道。这三条与下面

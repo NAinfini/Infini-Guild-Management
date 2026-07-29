@@ -1,6 +1,5 @@
-import { PortalCard } from "../../shared/PortalCard";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { Grid, Group, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
+import { SectionHeader } from "../../shared/SectionHeader";
+import { Button, Grid, Group, Paper, PasswordInput, Stack, TextInput } from "@mantine/core";
 import { SaveIcon, LogOutIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
@@ -81,69 +80,71 @@ export function ProfileAccountTab({
     <Stack gap={16}>
       <Grid gutter={16}>
         <Grid.Col span={{ base: 12, sm: 6 }}>
-          <PortalCard interactive={false} style={{ height: "100%" }}>
+          <Paper withBorder radius="md" p="var(--card-padding)">
+            <div>
             <form onSubmit={(event) => { event.preventDefault(); handleChangePassword(); }}>
-            <Stack gap={10} p="1.2rem">
-              <Text fw={600} size="sm">{changePasswordLabel}</Text>
+            <SectionHeader title={changePasswordLabel} />
+            {/* 三个框此前只有 placeholder，一开始输入就没有任何提示说明当前
+                填的是哪一个。改密码场景下这不是审美问题。 */}
+            <Stack gap={12}>
               <PasswordInput
                 size="sm"
+                label={t("account.field.currentPassword")}
                 value={currentPassword}
                 onChange={(event) => onCurrentPasswordChange(event.currentTarget.value)}
-                placeholder={t("account.field.currentPassword")}
                 autoComplete="current-password"
-                aria-label={t("account.aria.currentPassword")}
               />
               <PasswordInput
                 size="sm"
+                label={t("account.field.newPassword")}
                 value={newPassword}
                 onChange={(event) => onNewPasswordChange(event.currentTarget.value)}
-                placeholder={t("account.field.newPassword")}
                 autoComplete="new-password"
-                aria-label={t("account.aria.newPassword")}
               />
               <PasswordInput
                 size="sm"
+                label={t("account.field.confirmNewPassword")}
                 value={confirmNewPassword}
                 onChange={(event) => onConfirmNewPasswordChange(event.currentTarget.value)}
-                placeholder={t("account.field.confirmNewPassword")}
                 autoComplete="new-password"
-                aria-label={t("account.aria.confirmNewPassword")}
               />
-              <DepthButton htmlType="submit" type="primary" size="sm" loading={changePasswordPending} before={<SaveIcon size={14} />}>{changePasswordLabel}</DepthButton>
+              <Button type="submit" size="sm" loading={changePasswordPending} leftSection={<SaveIcon size={14} />}>{changePasswordLabel}</Button>
             </Stack>
             </form>
-          </PortalCard>
+            </div>
+          </Paper>
         </Grid.Col>
 
         <Grid.Col span={{ base: 12, sm: 6 }}>
-          <PortalCard interactive={false} style={{ height: "100%" }}>
-            <Stack gap={10} p="1.2rem">
-              <Text fw={600} size="sm">{changeUsernameLabel}</Text>
+          <Paper withBorder radius="md" p="var(--card-padding)">
+            <div>
+              <SectionHeader title={changeUsernameLabel} />
+              <Stack gap={12}>
               <PasswordInput
                 size="sm"
+                label={t("account.field.currentPassword")}
                 value={currentPasswordForUsername}
                 onChange={(event) => onCurrentPasswordForUsernameChange(event.currentTarget.value)}
-                placeholder={t("account.field.currentPassword")}
-                aria-label={t("account.aria.currentPasswordUsername")}
+                autoComplete="current-password"
               />
               <TextInput
                 size="sm"
+                label={t("account.field.newUsername")}
                 value={newUsername}
                 onChange={(event) => onNewUsernameChange(event.currentTarget.value)}
-                placeholder={t("account.field.newUsername")}
-                aria-label={t("account.aria.newUsername")}
                 error={usernameError}
               />
-              <DepthButton type="primary" size="sm" onClick={handleChangeUsername} loading={changeUsernamePending} disabled={isUsernameInvalid} before={<SaveIcon size={14} />}>{changeUsernameLabel}</DepthButton>
-            </Stack>
-          </PortalCard>
+                <Button size="sm" onClick={handleChangeUsername} loading={changeUsernamePending} disabled={isUsernameInvalid} leftSection={<SaveIcon size={14} />}>{changeUsernameLabel}</Button>
+              </Stack>
+            </div>
+          </Paper>
         </Grid.Col>
       </Grid>
 
       <Group>
-        <DepthButton type="warning" size="sm" onClick={onLogout} before={<LogOutIcon size={14} />}>
+        <Button color="orange" size="sm" onClick={onLogout} leftSection={<LogOutIcon size={14} />}>
           {t("action.logout")}
-        </DepthButton>
+        </Button>
       </Group>
     </Stack>
   );

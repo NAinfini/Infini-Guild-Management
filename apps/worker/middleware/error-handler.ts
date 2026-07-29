@@ -2,8 +2,9 @@ import type { ErrorCode, StandardErrorResponse } from "@guild/shared";
 import { HTTPException } from "hono/http-exception";
 import type { Context } from "hono";
 import { createLogger } from "../utils/logger";
-import { writeErrorLog } from "../services/ErrorLogService";
+import { writeErrorLog, writeSystemTestErrorLog } from "../services/ErrorLogService";
 import type { Bindings } from "../index";
+import { getSystemTestRunId } from "../services/SystemTestService";
 
 type ErrorStatusCode = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
 
@@ -39,25 +40,35 @@ function buildErrorBody(c: Context, status: number, message: string, details?: u
   };
 }
 
-function persistError(c: Context, message: string, stack?: string): void {
+async function persistError(c: Context, message: string, stack?: string): Promise<void> {
+  const input = {
+    source: "request" as const,
+    message,
+    requestPath: c.req.path,
+    requestMethod: c.req.method,
+    requestId: c.get("requestId") as string | undefined,
+    stack,
+  };
   try {
     const env = c.env as Bindings;
+    const runId = getSystemTestRunId(c);
+    if (runId) {
+      await writeSystemTestErrorLog(env.DB, runId, input);
+      return;
+    }
     c.executionCtx.waitUntil(
-      writeErrorLog(env.DB, {
-        source: "request",
-        message,
-        requestPath: c.req.path,
-        requestMethod: c.req.method,
-        requestId: c.get("requestId") as string | undefined,
-        stack,
-      }),
+      writeErrorLog(env.DB, input),
     );
-  } catch {
-    // executionCtx may be unavailable in tests — silently skip
+  } catch (error) {
+    // executionCtx may be unavailable in tests. A system-test batch failure is
+    // also non-recursive: D1 rolls back both inserts, so no untracked UUID exists.
+    createLogger(c.get("requestId") as string | undefined).error("Failed to persist request error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
-export function handleAppError(error: unknown, c: Context): Response {
+export async function handleAppError(error: unknown, c: Context): Promise<Response> {
   const log = createLogger(c.get("requestId") as string | undefined);
 
   if (error instanceof HTTPException) {
@@ -65,25 +76,25 @@ export function handleAppError(error: unknown, c: Context): Response {
     // error envelope (see throwError in routes/_shared.ts) — return it as-is.
     if (error.res) {
       if (error.status >= 500) {
-        persistError(c, error.message || "HTTPException 5xx", error.stack);
+        await persistError(c, error.message || "HTTPException 5xx", error.stack);
       }
       return error.res;
     }
     const status = toStatusCode(error.status);
     const message = status >= 500 ? "Internal server error" : error.message || "Request failed";
     if (status >= 500) {
-      persistError(c, error.message || "HTTPException 5xx", error.stack);
+      await persistError(c, error.message || "HTTPException 5xx", error.stack);
     }
     return c.json(buildErrorBody(c, status, message), status);
   }
 
   if (error instanceof Error) {
     log.error("Unhandled error", { method: c.req.method, path: c.req.path, error: error.message, stack: error.stack });
-    persistError(c, error.message, error.stack);
+    await persistError(c, error.message, error.stack);
     return c.json(buildErrorBody(c, 500, "Internal server error"), 500);
   }
 
   log.error("Non-Error thrown", { method: c.req.method, path: c.req.path, error: String(error) });
-  persistError(c, String(error));
+  await persistError(c, String(error));
   return c.json(buildErrorBody(c, 500, "Internal server error"), 500);
 }

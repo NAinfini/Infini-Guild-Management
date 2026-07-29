@@ -1,11 +1,20 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
 import { EVENT_TYPE_COLORS, UNKNOWN_EVENT_TYPE_COLOR } from "@portal/utils/event-colors";
-import { Badge, Group, HoverCard, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { DepthToggle } from "@portal/components/shared/DepthToggle";
-import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
-import { PortalCard } from "../../shared/PortalCard";
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Group,
+  HoverCard,
+  Menu,
+  Paper,
+  Stack,
+  Text,
+  ThemeIcon,
+  Tooltip,
+  UnstyledButton,
+} from "@mantine/core";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import {
   ArchiveIcon,
   ArchiveOffIcon,
@@ -162,7 +171,7 @@ export function EventCard({
   const participantMembers = eventMembersMap.get(event.id) ?? [];
   const isPoll = event.type === "poll";
   const isRaffle = event.type === "raffle";
-  const hasEnded = event.end_at != null && new Date(event.end_at) < now;
+  const hasEnded = event.end_at != null && new Date(event.end_at) <= now;
   const raffleHasDrawn = isRaffle && (event.raffle_winners?.length ?? 0) > 0;
   const pollVoterMembers = isPoll && event.poll
     ? (() => {
@@ -217,7 +226,7 @@ export function EventCard({
       ) : null}
       {event.pinned ? (
         <EventStatusIndicator
-          color="portal-accent"
+          color="portal-brand"
           icon={<PinIcon size={16} />}
           title={t("tooltip.pinned.title")}
           description={t("tooltip.pinned.desc")}
@@ -276,7 +285,7 @@ export function EventCard({
    * the title below is the focusable affordance that opens the detail.
    */
   return (
-    <PortalCard className={`event-card${isFocused ? " event-card--focused" : ""}`} onClick={() => onOpenDetail(event)} style={{ cursor: "pointer" }}>
+    <Paper withBorder className={`event-card${isFocused ? " event-card--focused" : ""}`} onClick={() => onOpenDetail(event)} style={{ cursor: "pointer" }}>
       {/* ── Header ── */}
       <div className={`event-card__header ${getTypeGradientClass(event.type)}`}>
         <div className="event-card__header-left">
@@ -293,15 +302,19 @@ export function EventCard({
         <div className="event-card__header-right">
           {canInteract && !isPoll ? (
             <div className="event-card__header-actions" onClick={(clickEvent) => clickEvent.stopPropagation()}>
-              <DepthButton
-                onClick={() => onCopyMentions(event)}
-                type="secondary"
-                size="sm"
-                disabled={members.length === 0}
-                tooltip={t("card.copyMentions")}
-                iconOnly
-                before={<CopyIcon size={14} />}
-              />
+              <Tooltip label={t("card.copyMentions")}>
+                <span data-disabled-tooltip-target>
+                  <ActionIcon
+                    onClick={() => onCopyMentions(event)}
+                    variant="default"
+                    size="sm"
+                    disabled={members.length === 0}
+                    aria-label={t("card.copyMentions")}
+                  >
+                    <CopyIcon size={14} />
+                  </ActionIcon>
+                </span>
+              </Tooltip>
               <div className="event-card__capacity">
                 <UsersIcon size={13} />
                 <span>{joinedCount}/{event.capacity ?? "∞"}</span>
@@ -314,33 +327,33 @@ export function EventCard({
             </div>
           )}
           {canManage ? (
-            <InfiniMenu position="bottom-end">
-              <InfiniMenu.Target>
-                <button type="button" className="event-card__menu-btn" aria-label={t("menu.actions")} onClick={(clickEvent) => clickEvent.stopPropagation()}>
+            <Menu position="bottom-end">
+              <Menu.Target>
+                <ActionIcon variant="subtle" className="event-card__menu-btn" aria-label={t("menu.actions")} onClick={(clickEvent) => clickEvent.stopPropagation()}>
                   <DotsIcon size={16} />
-                </button>
-              </InfiniMenu.Target>
-              <InfiniMenu.Dropdown onClick={(clickEvent) => clickEvent.stopPropagation()}>
-                <InfiniMenu.Item leftSection={<PencilIcon size={14} />} onClick={() => onEditEvent(event)}>
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown onClick={(clickEvent) => clickEvent.stopPropagation()}>
+                <Menu.Item leftSection={<PencilIcon size={14} />} onClick={() => onEditEvent(event)}>
                   {t("menu.edit")}
-                </InfiniMenu.Item>
-                <InfiniMenu.Item leftSection={<CopyIcon size={14} />} onClick={() => onDuplicateEvent(event)}>
+                </Menu.Item>
+                <Menu.Item leftSection={<CopyIcon size={14} />} onClick={() => onDuplicateEvent(event)}>
                   {t("menu.duplicate")}
-                </InfiniMenu.Item>
-                <InfiniMenu.Item
+                </Menu.Item>
+                <Menu.Item
                   leftSection={event.pinned ? <PinnedOffIcon size={14} /> : <PinIcon size={14} />}
                   onClick={() => onTogglePinEvent(event)}
                 >
                   {event.pinned ? t("menu.unpin") : t("menu.pin")}
-                </InfiniMenu.Item>
-                <InfiniMenu.Item
+                </Menu.Item>
+                <Menu.Item
                   leftSection={event.signup_locked ? <LockOpenIcon size={14} /> : <LockIcon size={14} />}
                   onClick={() => onToggleLockEvent(event)}
                 >
                   {event.signup_locked ? t("menu.unlockSignup") : t("menu.lockSignup")}
-                </InfiniMenu.Item>
-                <InfiniMenu.Divider />
-                <InfiniMenu.Item
+                </Menu.Item>
+                <Menu.Divider />
+                <Menu.Item
                   leftSection={event.archived_at ? <ArchiveOffIcon size={14} /> : <ArchiveIcon size={14} />}
                   onClick={() => {
                     if (event.archived_at) {
@@ -351,17 +364,16 @@ export function EventCard({
                   }}
                 >
                   {event.archived_at ? t("menu.unarchive") : t("menu.archive")}
-                </InfiniMenu.Item>
-                <InfiniMenu.Item
-                  className="infini-menu-item--danger"
+                </Menu.Item>
+                <Menu.Item
                   color="red"
                   leftSection={<TrashIcon size={14} />}
                   onClick={() => onDeleteEvent(event)}
                 >
                   {t("menu.delete")}
-                </InfiniMenu.Item>
-              </InfiniMenu.Dropdown>
-            </InfiniMenu>
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
           ) : null}
         </div>
       </div>
@@ -427,27 +439,31 @@ export function EventCard({
           {/* ── Footer: Sign-up button ── */}
           {canInteract && !isPoll ? (
             <div className="event-card__footer" onClick={(clickEvent) => clickEvent.stopPropagation()}>
-              <DepthToggle
-                pressed={isJoined}
-                onToggle={(joined) => {
-                  if (joined) {
+              <Tooltip label={t(participantActionDisabledReasonKey ?? (isJoined ? "button.leave" : "button.join"))}>
+                <span data-disabled-tooltip-target>
+                <Button
+                aria-pressed={isJoined}
+                onClick={() => {
+                  if (!isJoined) {
                     onJoinEvent(event.id);
                   } else {
                     onLeaveEvent(event.id);
                   }
                 }}
-                type={isJoined ? "danger" : "success"}
+                color={isJoined ? "red" : "portal-brand"}
+                variant={isJoined ? "light" : "filled"}
                 size="xs"
                 disabled={participantActionDisabled}
-                tooltip={t(participantActionDisabledReasonKey ?? (isJoined ? "button.leave" : "button.join"))}
+                leftSection={isJoined ? <UserMinusIcon size={14} /> : <UserPlusIcon size={14} />}
               >
-                {isJoined ? <UserMinusIcon size={14} /> : <UserPlusIcon size={14} />}
                 {isJoined ? t("button.leave") : t("button.join")}
-              </DepthToggle>
+              </Button>
+              </span>
+              </Tooltip>
             </div>
           ) : null}
         </Stack>
       </div>
-    </PortalCard>
+    </Paper>
   );
 }

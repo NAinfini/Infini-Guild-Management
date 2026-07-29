@@ -1,8 +1,7 @@
 import { useCallback } from "react";
-import { SimpleGrid, Stack, Text, Title } from "@mantine/core";
-import { LanguageIcon, MoonIcon, SettingsIcon, SunIcon } from "@portal/components/icons";
+import { Fieldset, SimpleGrid, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
+import { LanguageIcon, MoonIcon, SunIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
-import { ShinyText } from "@portal/components/effects";
 
 import { PageLayout } from "../layout/PageLayout";
 import { usePreferencesStore } from "../../stores/preferences";
@@ -27,13 +26,13 @@ function OptionCard({ active, onClick, label, description, icon }: OptionCardPro
   ].filter(Boolean).join(" ");
 
   return (
-    <button type="button" className={cls} onClick={onClick}>
-      {icon ? <div className="settings-option-card__icon">{icon}</div> : null}
+    <UnstyledButton type="button" className={cls} onClick={onClick} aria-pressed={active}>
+      {icon ? <ThemeIcon variant="light" radius="md" className="settings-option-card__icon">{icon}</ThemeIcon> : null}
       <div className="settings-option-card__content">
         <Text size="sm" fw={active ? 600 : 400}>{label}</Text>
         {description ? <Text size="xs" c="dimmed">{description}</Text> : null}
       </div>
-    </button>
+    </UnstyledButton>
   );
 }
 
@@ -49,7 +48,7 @@ const ACCENT_OPTIONS: { value: Accent; labelKey: string; descKey: string }[] = [
 ];
 
 export function SettingsPage() {
-  const { t, i18n } = useTranslation("settings");
+  const { t } = useTranslation("settings");
 
   const { locale, setLocale } = usePreferencesStore();
 
@@ -58,23 +57,13 @@ export function SettingsPage() {
   const handleLocaleChange = useCallback((nextLocale: "en" | "zh") => {
     if (nextLocale === locale) return;
     setLocale(nextLocale);
-    void i18n.changeLanguage(nextLocale);
-  }, [locale, setLocale, i18n]);
+  }, [locale, setLocale]);
 
   return (
-    <PageLayout
-      title={t("title")}
-      subtitle={
-        <ShinyText duration={4} style={{ fontSize: 14, opacity: 0.8 }}>
-          {t("subtitle")}
-        </ShinyText>
-      }
-      icon={<SettingsIcon size={22} />}
-    >
+    <PageLayout>
       <Stack gap="xl">
         {/* ── Appearance ── */}
-        <div className="settings-section">
-          <Title order={2} className="settings-section__title">{t("section.appearance")}</Title>
+        <Fieldset legend={t("section.appearance")} className="settings-section">
           <Stack gap="lg">
             {/* Theme */}
             <div>
@@ -114,11 +103,10 @@ export function SettingsPage() {
               </SimpleGrid>
             </div>
           </Stack>
-        </div>
+        </Fieldset>
 
         {/* ── Preferences ── */}
-        <div className="settings-section">
-          <Title order={2} className="settings-section__title">{t("section.preferences")}</Title>
+        <Fieldset legend={t("section.preferences")} className="settings-section">
           <Stack gap="lg">
             {/* Language */}
             <div>
@@ -141,7 +129,7 @@ export function SettingsPage() {
               </SimpleGrid>
             </div>
           </Stack>
-        </div>
+        </Fieldset>
       </Stack>
     </PageLayout>
   );

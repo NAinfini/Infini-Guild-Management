@@ -1,11 +1,11 @@
 import { CLASS_NAMES, type AdminRole } from "@guild/shared";
 import { AbsenceManagerCard } from "../../shared/AbsenceManagerCard";
-import { PortalCard } from "../../shared/PortalCard";
 import {
   Badge,
   Button,
   Group,
   Modal,
+  Paper,
   MultiSelect,
   NumberInput,
   Select,
@@ -78,7 +78,7 @@ export function AdminMemberDetailModal({
             {/* Overview: Identity + Combat */}
             <Tabs.Panel value="overview">
               <Stack gap={16}>
-                <PortalCard interactive={false}>
+                <Paper withBorder radius="md">
                   <div className={styles.sectionBody}>
                     <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.identity")}</Text>
                     <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm">
@@ -116,9 +116,9 @@ export function AdminMemberDetailModal({
                       </FieldSection>
                     </SimpleGrid>
                   </div>
-                </PortalCard>
+                </Paper>
 
-                <PortalCard interactive={false}>
+                <Paper withBorder radius="md">
                   <div className={styles.sectionBody}>
                     <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.combat")}</Text>
                     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
@@ -143,14 +143,14 @@ export function AdminMemberDetailModal({
                       />
                     </SimpleGrid>
                   </div>
-                </PortalCard>
+                </Paper>
               </Stack>
             </Tabs.Panel>
 
             {/* Profile: Title, Bio */}
             <Tabs.Panel value="profile">
               <Stack gap={16}>
-                <PortalCard interactive={false}>
+                <Paper withBorder radius="md">
                   <div className={styles.sectionBody}>
                     <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.profile")}</Text>
                     <Stack gap="sm">
@@ -172,21 +172,21 @@ export function AdminMemberDetailModal({
                       />
                     </Stack>
                   </div>
-                </PortalCard>
+                </Paper>
               </Stack>
             </Tabs.Panel>
 
             {/* Status: Absences + Notes */}
             <Tabs.Panel value="status">
               <Stack gap={16}>
-                <PortalCard interactive={false}>
+                <Paper withBorder radius="md">
                   <div className={styles.sectionBody}>
                     <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.vacation")}</Text>
                     <AbsenceManagerCard userId={member.user.id} />
                   </div>
-                </PortalCard>
+                </Paper>
 
-                <PortalCard interactive={false}>
+                <Paper withBorder radius="md">
                   <div className={styles.sectionBody}>
                     <Text fw={600} size="sm" className={styles.sectionTitle}>{t("detail.section.notes")}</Text>
                     <Textarea
@@ -197,7 +197,7 @@ export function AdminMemberDetailModal({
                       autosize
                     />
                   </div>
-                </PortalCard>
+                </Paper>
               </Stack>
             </Tabs.Panel>
 

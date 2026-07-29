@@ -163,9 +163,19 @@ describe("EventCardsView", () => {
     })).toBe("button.disabled.ended");
     expect(getParticipantActionDisabledReasonKey({
       ...base,
+      isJoined: true,
+      hasEnded: true,
+    })).toBe("button.disabled.ended");
+    expect(getParticipantActionDisabledReasonKey({
+      ...base,
       signupLocked: true,
       isFull: true,
       pending: true,
+    })).toBe("button.disabled.locked");
+    expect(getParticipantActionDisabledReasonKey({
+      ...base,
+      isJoined: true,
+      signupLocked: true,
     })).toBe("button.disabled.locked");
     expect(getParticipantActionDisabledReasonKey({
       ...base,
@@ -244,6 +254,19 @@ describe("EventCardsView", () => {
     expect(leaveButton).toBeDisabled();
     expect(leaveButton.parentElement).toHaveAttribute("data-disabled-tooltip-target");
     expect(onLeaveEvent).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["ended", { end_at: "2000-01-01T00:00:00.000Z" }],
+    ["signup-locked", { end_at: "2099-12-31T23:59:59.000Z", signup_locked: true }],
+  ])("disables leaving an %s event from the card", (_state, eventOverrides) => {
+    renderCardsView(1, {
+      eventOverrides,
+      canInteract: true,
+      currentUserId: "user-1",
+    });
+
+    expect(screen.getByRole("button", { name: /button\.leave/i })).toBeDisabled();
   });
 
   it("shows poll without card voting controls", () => {

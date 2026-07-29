@@ -1,6 +1,6 @@
-import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Button } from "@mantine/core";
+import { Button, Center, Stack, Text, Title } from "@mantine/core";
 import i18n from "i18next";
+import { Component, type ErrorInfo, type ReactNode } from "react";
 
 const INTERNAL_ERROR_PATTERN = /D1_ERROR|SQLITE|no such table|no such column|ECONNREFUSED|chunk|module|import|Cannot read prop/i;
 
@@ -51,19 +51,19 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (this.state.hasError) {
       if (this.props.fallback) return this.props.fallback;
       return (
-        <div role="alert" className="flex flex-col items-center justify-center p-8 text-center">
-          <h2 className="text-lg font-semibold text-red-600 dark:text-red-400">{i18n.t("common:errors.somethingWentWrong", { defaultValue: "Something went wrong" })}</h2>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+        <Center role="alert" p="xl" mih={240}>
+          <Stack align="center" gap="xs">
+            <Title order={2} size="h3" c="red" ta="center">
+              {i18n.t("common:errors.somethingWentWrong", { defaultValue: "Something went wrong" })}
+            </Title>
+            <Text size="sm" c="dimmed" ta="center">
             {this.getSafeMessage()}
-          </p>
-          <Button
-            type="button"
-            onClick={this.handleReload}
-            mt="md"
-          >
-            {i18n.t("common:action.reloadPage", { defaultValue: "Reload page" })}
-          </Button>
-        </div>
+            </Text>
+            <Button type="button" onClick={this.handleReload} mt="sm">
+              {i18n.t("common:action.reloadPage", { defaultValue: "Reload page" })}
+            </Button>
+          </Stack>
+        </Center>
       );
     }
     return this.props.children;

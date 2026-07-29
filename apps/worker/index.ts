@@ -28,6 +28,7 @@ import { usersRoutes } from "./routes/users";
 import { wikiRoutes } from "./routes/wiki";
 import { badgeRoutes } from "./routes/badges";
 import { gameDataRoutes } from "./routes/game-data";
+import { systemTestTrackingMiddleware } from "./middleware/system-test-tracking";
 
 export type Bindings = {
   DB: D1Database;
@@ -152,7 +153,7 @@ app.use(
       if (origin !== allowedOrigin) return null;
       return origin;
     },
-    allowHeaders: ["Content-Type", "If-None-Match", "If-Match", "X-Signature", "X-Timestamp", "X-Request-Id", "X-Requested-With", "X-System-Test", "X-System-Test-Audit"],
+    allowHeaders: ["Content-Type", "If-None-Match", "If-Match", "X-Signature", "X-Timestamp", "X-Request-Id", "X-Requested-With", "X-System-Test", "X-System-Test-Audit", "X-System-Test-Run-Id"],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
     maxAge: 86400,
@@ -187,6 +188,9 @@ app.get("/api/health", async (c) => {
   return c.json({ ok: true, request_id: c.get("requestId") });
 });
 
+// Wrap every downstream API middleware so a test-triggered 5xx can register
+// its exact error-log UUID before the run lease is released.
+app.use("/api/*", systemTestTrackingMiddleware);
 app.use("/api/auth/login", authRateLimit);
 app.use("/api/auth/register/*", authRateLimit);
 app.use("/api/auth/check-username", checkUsernameRateLimit);
@@ -300,7 +304,6 @@ export default {
     }
     const assetResponse = await env.ASSETS.fetch(request);
     const contentType = assetResponse.headers.get("content-type") ?? "";
-    const selfHost = url.host;
     if (contentType.includes("text/html")) {
       let html = await assetResponse.text();
       html = html.replaceAll("{{SITE_NAME}}", env.SITE_NAME);
@@ -312,7 +315,7 @@ export default {
       response.headers.set("Strict-Transport-Security", HSTS_VALUE);
       response.headers.set("Referrer-Policy", REFERRER_POLICY_VALUE);
       response.headers.set("Permissions-Policy", PERMISSIONS_POLICY_VALUE);
-      response.headers.set("Content-Security-Policy", buildSpaHtmlCsp(selfHost));
+      response.headers.set("Content-Security-Policy", buildSpaHtmlCsp(url));
       return response;
     }
     if (isImmutableBuildAssetPath(url.pathname)) {

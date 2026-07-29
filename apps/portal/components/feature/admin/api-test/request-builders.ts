@@ -1,5 +1,4 @@
 import {
-  type CleanupStep,
   type EndpointDef,
   type PreparedEndpointRequest,
   type TestRunContext,
@@ -54,220 +53,6 @@ function isMutableMethod(method: EndpointDef["method"]): boolean {
 
 export function skipEndpoint(path: string, reason: string, optionalSkip = false): PreparedEndpointRequest {
   return { path, skipReason: reason, optionalSkip };
-}
-
-export function buildCleanupSteps(ctx: TestRunContext): CleanupStep[] {
-  const cleanupSteps: CleanupStep[] = [];
-  const disposableUserId = disposableMemberId(ctx);
-
-  if (ctx.createdStorageImageId && ctx.createdStorageItemId) {
-    cleanupSteps.push({
-      label: "Cleanup: Storage Image",
-      method: "DELETE",
-      path: `/api/storage/items/${encodeURIComponent(ctx.createdStorageItemId)}/images/${encodeURIComponent(ctx.createdStorageImageId)}`,
-      clearContext: { createdStorageImageId: null, storageImageKey: null },
-    });
-  }
-  if (ctx.createdStorageItemId) {
-    cleanupSteps.push({
-      label: "Cleanup: Storage Item",
-      method: "DELETE",
-      path: `/api/storage/items/${encodeURIComponent(ctx.createdStorageItemId)}`,
-      clearContext: { createdStorageItemId: null },
-    });
-  }
-  if (ctx.createdStorageCategoryId && ctx.createdStorageId) {
-    cleanupSteps.push({
-      label: "Cleanup: Storage Category",
-      method: "DELETE",
-      path: `/api/storage/storages/${encodeURIComponent(ctx.createdStorageId)}/categories/${encodeURIComponent(ctx.createdStorageCategoryId)}`,
-      clearContext: { createdStorageCategoryId: null },
-    });
-  }
-  if (ctx.createdStorageId) {
-    cleanupSteps.push({
-      label: "Cleanup: Storage",
-      method: "DELETE",
-      path: `/api/storage/storages/${encodeURIComponent(ctx.createdStorageId)}`,
-      clearContext: { createdStorageId: null },
-    });
-  }
-
-  if (ctx.createdBadgeId) {
-    cleanupSteps.push({
-      label: "Cleanup: Badge",
-      method: "DELETE",
-      path: `/api/badges/${encodeURIComponent(ctx.createdBadgeId)}`,
-      clearContext: { createdBadgeId: null },
-    });
-  }
-  if (ctx.createdGalleryVideoId) {
-    cleanupSteps.push({
-      label: "Cleanup: Gallery Video",
-      method: "DELETE",
-      path: `/api/gallery/${encodeURIComponent(ctx.createdGalleryVideoId)}`,
-      clearContext: { createdGalleryVideoId: null },
-    });
-  }
-  if (ctx.createdGalleryImageId) {
-    cleanupSteps.push({
-      label: "Cleanup: Gallery Image",
-      method: "DELETE",
-      path: `/api/gallery/${encodeURIComponent(ctx.createdGalleryImageId)}`,
-      clearContext: { createdGalleryImageId: null },
-    });
-  }
-  if (ctx.createdAnnouncementId) {
-    cleanupSteps.push({
-      label: "Cleanup: Announcement",
-      method: "DELETE",
-      path: `/api/announcements/${encodeURIComponent(ctx.createdAnnouncementId)}/permanent`,
-      clearContext: { createdAnnouncementId: null },
-    });
-  }
-  if (ctx.createdWikiArticleId) {
-    cleanupSteps.push({
-      label: "Cleanup: Wiki Article",
-      method: "DELETE",
-      path: `/api/wiki/articles/${encodeURIComponent(ctx.createdWikiArticleId)}/permanent`,
-      clearContext: { createdWikiArticleId: null },
-    });
-  }
-  if (ctx.createdWikiCategoryId) {
-    cleanupSteps.push({
-      label: "Cleanup: Wiki Category",
-      method: "DELETE",
-      path: `/api/wiki/categories/${encodeURIComponent(ctx.createdWikiCategoryId)}`,
-      clearContext: { createdWikiCategoryId: null },
-    });
-  }
-  if (ctx.createdWarHistoryId) {
-    cleanupSteps.push({
-      label: "Cleanup: War History",
-      method: "DELETE",
-      path: `/api/guild-war/history/${encodeURIComponent(ctx.createdWarHistoryId)}`,
-      clearContext: {
-        createdWarHistoryId: null,
-      },
-    });
-  }
-  if (ctx.createdConcludedWarHistoryId) {
-    cleanupSteps.push({
-      label: "Cleanup: Concluded War History",
-      method: "DELETE",
-      path: `/api/guild-war/history/${encodeURIComponent(ctx.createdConcludedWarHistoryId)}`,
-      clearContext: { createdConcludedWarHistoryId: null },
-    });
-  }
-  if (ctx.createdTemplateId) {
-    cleanupSteps.push({
-      label: "Cleanup: Event Template",
-      method: "DELETE",
-      path: `/api/events/templates/${encodeURIComponent(ctx.createdTemplateId)}`,
-      clearContext: { createdTemplateId: null },
-    });
-  }
-  if (ctx.createdGuildWarEventId && ctx.createdGuildWarEventId !== ctx.createdEventId) {
-    cleanupSteps.push({
-      label: "Cleanup: Archive Guild War Event",
-      method: "DELETE",
-      path: `/api/events/${encodeURIComponent(ctx.createdGuildWarEventId)}`,
-    });
-    cleanupSteps.push({
-      label: "Cleanup: Destroy Guild War Event",
-      method: "DELETE",
-      path: `/api/events/${encodeURIComponent(ctx.createdGuildWarEventId)}/destroy`,
-      clearContext: { createdGuildWarEventId: null },
-    });
-  }
-  if (ctx.createdPollEventId) {
-    cleanupSteps.push({
-      label: "Cleanup: Poll Event",
-      method: "DELETE",
-      path: `/api/events/${encodeURIComponent(ctx.createdPollEventId)}/destroy`,
-      clearContext: { createdPollEventId: null, pollOptionId: null },
-    });
-  }
-  if (ctx.createdRaffleEventId) {
-    cleanupSteps.push({
-      label: "Cleanup: Raffle Event",
-      method: "DELETE",
-      path: `/api/events/${encodeURIComponent(ctx.createdRaffleEventId)}/destroy`,
-      clearContext: { createdRaffleEventId: null },
-    });
-  }
-  if (ctx.createdEventId) {
-    cleanupSteps.push({
-      label: "Cleanup: Archive Event",
-      method: "DELETE",
-      path: `/api/events/${encodeURIComponent(ctx.createdEventId)}`,
-    });
-    cleanupSteps.push({
-      label: "Cleanup: Destroy Event",
-      method: "DELETE",
-      path: `/api/events/${encodeURIComponent(ctx.createdEventId)}/destroy`,
-      clearContext: { createdEventId: null },
-    });
-  }
-  if (ctx.createdInviteLinkId) {
-    cleanupSteps.push({
-      label: "Cleanup: Invite Link",
-      method: "DELETE",
-      path: `/api/admin/invite-links/${encodeURIComponent(ctx.createdInviteLinkId)}/permanent`,
-      clearContext: { createdInviteLinkId: null },
-    });
-  }
-  if (ctx.createdRoleId) {
-    cleanupSteps.push({
-      label: "Cleanup: Admin Role",
-      method: "DELETE",
-      path: `/api/admin/roles/${encodeURIComponent(ctx.createdRoleId)}`,
-      clearContext: { createdRoleId: null },
-    });
-  }
-  if (disposableUserId && ctx.targetProfileSnapshot) {
-    cleanupSteps.push({
-      label: "Cleanup: Restore Profile",
-      method: "PATCH",
-      path: `/api/users/${encodeURIComponent(disposableUserId)}/profile`,
-      jsonBody: ctx.targetProfileSnapshot,
-      clearContext: { targetProfileSnapshot: null },
-    });
-  }
-  if (disposableUserId && ctx.uploadedImageKey) {
-    cleanupSteps.push({
-      label: "Cleanup: Test Image",
-      method: "DELETE",
-      path: `/api/users/${encodeURIComponent(disposableUserId)}/media/images`,
-      jsonBody: { keys: [ctx.uploadedImageKey] },
-      clearContext: { uploadedImageKey: null },
-    });
-  }
-  if (ctx.registeredUserId) {
-    cleanupSteps.push({
-      label: "Cleanup: Registered User",
-      method: "PATCH",
-      path: "/api/admin/users/batch/delete",
-      jsonBody: { user_ids: [ctx.registeredUserId] },
-      clearContext: {
-        registeredUserId: null,
-        ...(ctx.adminCreatedUserId === ctx.registeredUserId
-          ? { adminCreatedUserId: null, adminCreatedUsername: null, adminCreatedUserPassword: null }
-          : {}),
-      },
-    });
-  }
-  if (ctx.adminCreatedUserId && ctx.adminCreatedUserId !== ctx.registeredUserId) {
-    cleanupSteps.push({
-      label: "Cleanup: Admin Created User",
-      method: "PATCH",
-      path: "/api/admin/users/batch/delete",
-      jsonBody: { user_ids: [ctx.adminCreatedUserId] },
-      clearContext: { adminCreatedUserId: null, adminCreatedUsername: null, adminCreatedUserPassword: null },
-    });
-  }
-
-  return cleanupSteps;
 }
 
 export function replacePathParam(path: string, key: string, value: string | null): string | null {
@@ -635,17 +420,24 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
   }
 
   if (endpoint.method === "GET") {
+    if (endpoint.path === "/api/auth/me") {
+      return skipEndpoint(
+        path,
+        "Skipping auth profile read because the endpoint may lazily create a production admin profile",
+        true,
+      );
+    }
     return { path };
   }
 
-  const nowId = Date.now();
+  const nowId = context.fixtureId?.replaceAll("-", "") ?? "missingfixture";
   switch (`${endpoint.method} ${endpoint.path}`) {
     case "PATCH /api/admin/analytics-settings":
       return skipEndpoint(path, "Skipping global analytics settings mutation to avoid touching existing database state", true);
 
     case "POST /api/auth/register/:inviteCode":
       {
-        const username = `systemtest_${nowId}`;
+        const username = `apitest_${nowId.slice(0, 32)}`;
         context.registeredUsername = username;
         context.registeredUserPassword = "Passw0rd!";
         return {
@@ -720,19 +512,21 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         user_ids: [testMemberId],
       });
 
-    case "POST /api/events/templates":
+    case "POST /api/events/templates": {
+      const start = new Date(Date.now() + 4 * 60 * 60 * 1000);
       return buildJsonRequest(path, {
         type: "social",
         title: `[systemtest] API Template ${nowId}`,
         description: "[systemtest] Recurring template from API tester",
-        start_at: toIso(4),
-        end_at: toIso(5),
+        start_time: start.toISOString().slice(11, 16),
+        duration_minutes: 60,
         recurrence_rule: {
           frequency: "weekly",
           interval: 1,
-          daysOfWeek: [1],
+          daysOfWeek: [start.getUTCDay()],
         },
       });
+    }
 
     case "PATCH /api/events/templates/:id":
       return buildJsonRequest(path, {
@@ -875,8 +669,11 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/guild-war/history":
+      if (!context.createdGuildWarEventId) {
+        return skipEndpoint(path, "Missing created guild war event for history");
+      }
       return buildJsonRequest(path, {
-        event_id: context.createdGuildWarEventId ?? context.createdEventId ?? context.eventId ?? context.warEventId ?? undefined,
+        event_id: context.createdGuildWarEventId,
         war_name: `[systemtest] API Test War ${nowId}`,
         result: "win",
       });
@@ -934,7 +731,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
 
     case "POST /api/admin/users":
       return buildJsonRequest(path, {
-        username: `systemtest_admin_${nowId}`,
+        username: `apitestadmin_${nowId.slice(0, 32)}`,
       });
 
     case "PATCH /api/admin/users/batch/role":
@@ -1005,16 +802,28 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
 
     case "POST /api/auth/login":
       {
-        const username = context.adminCreatedUsername ?? context.registeredUsername;
-        const password = context.adminCreatedUserPassword ?? context.registeredUserPassword;
-        if (!username || !password) {
+        const adminCredentials = context.adminCreatedUserId
+          && context.adminCreatedUsername
+          && context.adminCreatedUserPassword
+          ? {
+              username: context.adminCreatedUsername,
+              password: context.adminCreatedUserPassword,
+            }
+          : null;
+        const registeredCredentials = context.registeredUserId
+          && context.registeredUsername
+          && context.registeredUserPassword
+          ? {
+              username: context.registeredUsername,
+              password: context.registeredUserPassword,
+            }
+          : null;
+        const credentials = adminCredentials ?? registeredCredentials;
+        if (!credentials) {
           return skipEndpoint(path, "Requires test user credentials");
         }
         return {
-          ...buildJsonRequest(path, {
-            username,
-            password,
-          }),
+          ...buildJsonRequest(path, credentials),
           credentials: "omit",
         };
       }

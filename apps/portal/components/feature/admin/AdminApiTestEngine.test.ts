@@ -1,11 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  STALE_ARTIFACT_PROBES,
   buildJsonRequest,
-  buildCleanupSteps,
   buildApiCategories,
   captureContextFromResponse,
-  countStaleSystemTestArtifacts,
   createInitialTestRunContext,
   filterApiCategoriesForPermissions,
   prepareEndpointRequest,
@@ -22,102 +19,31 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("AdminApiTestEngine cleanup planning", () => {
-  it("permanently deletes test-created content before parent records", () => {
-    const steps = buildCleanupSteps(contextWith({
-      createdAnnouncementId: "announcement-1",
-      createdWikiArticleId: "article-1",
-      createdWikiCategoryId: "category-1",
-      createdEventId: "event-1",
-      createdTemplateId: "template-1",
-    }));
-
-    expect(steps.map((step) => step.label)).toEqual([
-      "Cleanup: Announcement",
-      "Cleanup: Wiki Article",
-      "Cleanup: Wiki Category",
-      "Cleanup: Event Template",
-      "Cleanup: Archive Event",
-      "Cleanup: Destroy Event",
-    ]);
-    expect(steps.map((step) => step.path)).toEqual([
-      "/api/announcements/announcement-1/permanent",
-      "/api/wiki/articles/article-1/permanent",
-      "/api/wiki/categories/category-1",
-      "/api/events/templates/template-1",
-      "/api/events/event-1",
-      "/api/events/event-1/destroy",
-    ]);
-  });
-
-  it("builds user cleanup with batch deletion", () => {
-    const steps = buildCleanupSteps(contextWith({
-      meId: "admin-1",
-      registeredUserId: "registered-1",
-      adminCreatedUserId: "created-1",
-      adminCreatedUserPassword: "TempPass123!",
-    }));
-
-    expect(steps).toEqual([
-      {
-        label: "Cleanup: Registered User",
-        method: "PATCH",
-        path: "/api/admin/users/batch/delete",
-        jsonBody: { user_ids: ["registered-1"] },
-        clearContext: { registeredUserId: null },
-      },
-      {
-        label: "Cleanup: Admin Created User",
-        method: "PATCH",
-        path: "/api/admin/users/batch/delete",
-        jsonBody: { user_ids: ["created-1"] },
-        clearContext: { adminCreatedUserId: null, adminCreatedUsername: null, adminCreatedUserPassword: null },
-      },
-    ]);
-  });
-
-  it("cleans up storage fixtures from item to category to storage", () => {
-    const steps = buildCleanupSteps(contextWith({
-      createdStorageId: "storage-1",
-      createdStorageCategoryId: "category-1",
-      createdStorageItemId: "item-1",
-      createdStorageImageId: "image-1",
-    } as Partial<TestRunContext>));
-
-    expect(steps.slice(0, 4)).toEqual([
-      {
-        label: "Cleanup: Storage Image",
-        method: "DELETE",
-        path: "/api/storage/items/item-1/images/image-1",
-        clearContext: { createdStorageImageId: null, storageImageKey: null },
-      },
-      {
-        label: "Cleanup: Storage Item",
-        method: "DELETE",
-        path: "/api/storage/items/item-1",
-        clearContext: { createdStorageItemId: null },
-      },
-      {
-        label: "Cleanup: Storage Category",
-        method: "DELETE",
-        path: "/api/storage/storages/storage-1/categories/category-1",
-        clearContext: { createdStorageCategoryId: null },
-      },
-      {
-        label: "Cleanup: Storage",
-        method: "DELETE",
-        path: "/api/storage/storages/storage-1",
-        clearContext: { createdStorageId: null },
-      },
-    ]);
-  });
-});
-
 describe("AdminApiTestEngine request preparation", () => {
   function parseJsonBody(prepared: { body?: BodyInit }): unknown {
     expect(typeof prepared.body).toBe("string");
     return JSON.parse(prepared.body as string) as unknown;
   }
+
+  it("uses a public fixture UID without exposing the cleanup run UID", () => {
+    const runId = "014f27f1-6ca1-4c5e-924f-f111b76b9efd";
+    const fixtureId = "488488b7-b293-4149-88ba-5eef4f202dcb";
+    const registerContext = contextWith({ runId, fixtureId, registerInviteCode: "INVITE" });
+    const adminContext = contextWith({ runId, fixtureId });
+
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Register", method: "POST", path: "/api/auth/register/:inviteCode" },
+      registerContext,
+    ))).toMatchObject({
+      username: "apitest_488488b7b293414988ba5eef4f202dcb",
+    });
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Create Member", method: "POST", path: "/api/admin/users" },
+      adminContext,
+    ))).toMatchObject({
+      username: "apitestadmin_488488b7b293414988ba5eef4f202dcb",
+    });
+  });
 
   it("uses the captured admin-created username for login smoke tests", () => {
     const endpoint = { label: "Login", method: "POST" as const, path: "/api/auth/login" };
@@ -139,6 +65,7 @@ describe("AdminApiTestEngine request preparation", () => {
   it("falls back to the registered test user for login smoke tests", () => {
     const endpoint = { label: "Login", method: "POST" as const, path: "/api/auth/login" };
     const ctx = contextWith({
+      registeredUserId: "user-2",
       registeredUsername: "systemtest_123",
       registeredUserPassword: "Passw0rd!",
     });
@@ -152,6 +79,18 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(prepared.credentials).toBe("omit");
   });
 
+  it("does not attempt login when user creation did not return an exact user id", () => {
+    const prepared = prepareEndpointRequest(
+      { label: "Login", method: "POST", path: "/api/auth/login" },
+      contextWith({
+        registeredUsername: "systemtest_failed",
+        registeredUserPassword: "Passw0rd!",
+      }),
+    );
+
+    expect(prepared.skipReason).toBe("Requires test user credentials");
+  });
+
   it("creates badges with the backend schema fields", () => {
     const endpoint = { label: "Create Badge", method: "POST" as const, path: "/api/badges" };
 
@@ -160,6 +99,25 @@ describe("AdminApiTestEngine request preparation", () => {
 
     expect(body.label_html).toBeTypeOf("string");
     expect(body.icon).toBeUndefined();
+  });
+
+  it("uses the recurring-template contract and never writes a profile during auth read smoke tests", () => {
+    const template = prepareEndpointRequest(
+      { label: "Create Template", method: "POST", path: "/api/events/templates" },
+      contextWith({ fixtureId: "488488b7-b293-4149-88ba-5eef4f202dcb" }),
+    );
+    const templateBody = parseJsonBody(template) as Record<string, unknown>;
+    const currentUser = prepareEndpointRequest(
+      { label: "Current User", method: "GET", path: "/api/auth/me" },
+      createInitialTestRunContext(),
+    );
+
+    expect(templateBody.start_time).toEqual(expect.stringMatching(/^\d{2}:\d{2}$/));
+    expect(templateBody.duration_minutes).toBe(60);
+    expect(templateBody).not.toHaveProperty("start_at");
+    expect(templateBody).not.toHaveProperty("end_at");
+    expect(currentUser.skipReason).toContain("production admin profile");
+    expect(currentUser.optionalSkip).toBe(true);
   });
 
   it("sends guild war member stats in the nested route contract shape", () => {
@@ -299,6 +257,21 @@ describe("AdminApiTestEngine request preparation", () => {
     ).body).toBe(JSON.stringify({ ids: ["created-war"] }));
   });
 
+  it("creates guild-war history only for the guild-war event made by this run", () => {
+    const endpoint = { label: "Create History", method: "POST" as const, path: "/api/guild-war/history" };
+    const unsafe = prepareEndpointRequest(endpoint, contextWith({
+      eventId: "seed-event",
+      warEventId: "live-war-event",
+      createdEventId: "other-test-event",
+    }));
+    const safe = prepareEndpointRequest(endpoint, contextWith({
+      createdGuildWarEventId: "test-guild-war-event",
+    }));
+
+    expect(unsafe.skipReason).toContain("created guild war event");
+    expect(parseJsonBody(safe)).toMatchObject({ event_id: "test-guild-war-event" });
+  });
+
   it("resolves uploaded media keys for image retrieval endpoints", () => {
     expect(resolveEndpointPath(
       { label: "Event Image", method: "GET", path: "/api/events/image" },
@@ -353,7 +326,7 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(imageCtx.galleryImageKey).toBe("gallery/images/user-1/key");
   });
 
-  it("captures an invite code from the cursor response envelope", () => {
+  it("never reuses an existing invite from the cursor response", () => {
     const next = captureContextFromResponse(
       createInitialTestRunContext(),
       { label: "Invites", method: "GET", path: "/api/admin/invite-links" },
@@ -371,7 +344,11 @@ describe("AdminApiTestEngine request preparation", () => {
       },
     );
 
-    expect(next.registerInviteCode).toBe("CURSOR-INVITE-CODE");
+    expect(next.registerInviteCode).toBeNull();
+    expect(prepareEndpointRequest(
+      { label: "Register", method: "POST", path: "/api/auth/register/:inviteCode" },
+      next,
+    ).skipReason).toContain("register invite code");
   });
 
   it("does not capture seeded mock image paths as profile media keys", () => {
@@ -596,38 +573,6 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(detail.path).toBe("/api/users/:id");
     expect(detail.skipReason).toContain("test member");
     expect(safeDetail.path).toBe("/api/users/disposable-member");
-  });
-
-  it("cleans up profile media against disposable members only", () => {
-    expect(buildCleanupSteps(contextWith({
-      meId: "real-admin",
-      targetProfileSnapshot: { bio: "admin bio", classes: ["admin-class"] },
-      uploadedImageKey: "members/real-admin/images/systemtest.png",
-    }))).toEqual([]);
-
-    const steps = buildCleanupSteps(contextWith({
-      meId: "real-admin",
-      registeredUserId: "disposable-member",
-      targetProfileSnapshot: { bio: "test bio", classes: ["test-class"] },
-      uploadedImageKey: "members/disposable-member/images/systemtest.png",
-    }));
-
-    expect(steps).toContainEqual({
-      label: "Cleanup: Restore Profile",
-      method: "PATCH",
-      path: "/api/users/disposable-member/profile",
-      jsonBody: { bio: "test bio", classes: ["test-class"] },
-      clearContext: { targetProfileSnapshot: null },
-    });
-    expect(steps).toContainEqual({
-      label: "Cleanup: Test Image",
-      method: "DELETE",
-      path: "/api/users/disposable-member/media/images",
-      jsonBody: { keys: ["members/disposable-member/images/systemtest.png"] },
-      clearContext: { uploadedImageKey: null },
-    });
-    expect(steps.map((step) => step.path)).not.toContain("/api/users/real-admin/profile");
-    expect(steps.map((step) => step.path)).not.toContain("/api/users/real-admin/media/images");
   });
 
   it("uses disposable members for participant, guild-war, and badge mutation payloads", () => {
@@ -1212,17 +1157,6 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(parseJsonBody(prepared)).toEqual({ user_ids: ["created-user"] });
   });
 
-  it("permanently deletes created invite links during cleanup", () => {
-    const steps = buildCleanupSteps(contextWith({ createdInviteLinkId: "invite-1" }));
-
-    expect(steps).toContainEqual({
-      label: "Cleanup: Invite Link",
-      method: "DELETE",
-      path: "/api/admin/invite-links/invite-1/permanent",
-      clearContext: { createdInviteLinkId: null },
-    });
-  });
-
   it("resolves invite cleanup against the created invite instead of a seeded invite", () => {
     const resolved = resolveEndpointPath(
       { label: "Delete Invite", method: "DELETE", path: "/api/admin/invite-links/:id/permanent" },
@@ -1487,6 +1421,7 @@ describe("AdminApiTestEngine request preparation", () => {
     await runEndpointTest(
       { label: "Create Event", method: "POST", path: "/api/events" },
       buildJsonRequest("/api/events", { title: "[systemtest] Event" }),
+      "014f27f1-6ca1-4c5e-924f-f111b76b9efd",
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -1495,53 +1430,9 @@ describe("AdminApiTestEngine request preparation", () => {
         headers: expect.objectContaining({
           "X-System-Test": "admin-console-api",
           "X-System-Test-Audit": "suppress",
+          "X-System-Test-Run-Id": "014f27f1-6ca1-4c5e-924f-f111b76b9efd",
         }),
       }),
     );
-  });
-
-});
-
-describe("stale [systemtest] artifact probes", () => {
-  function probe(label: string): string {
-    const found = STALE_ARTIFACT_PROBES.find((p) => p.label === label);
-    if (!found) throw new Error(`no probe named ${label}`);
-    return found.path;
-  }
-
-  /*
-   * A leaked fixture is by definition one teardown never touched, so it is still
-   * active and still unarchived. Every one of these probes previously narrowed by
-   * exactly the state a leak cannot be in, which made them report a clean run
-   * over a database that still held test rows.
-   */
-  it("does not narrow the leak probes by a state a leaked fixture cannot be in", () => {
-    expect(probe("Users")).not.toContain("active=");
-    expect(probe("Events")).not.toContain("archived=");
-    expect(probe("Announcements")).not.toContain("archived=");
-  });
-
-  it("searches users by the username the engine actually generates", () => {
-    const context = createInitialTestRunContext();
-    context.registerInviteCode = "invite-code";
-    prepareEndpointRequest(
-      { label: "Register", method: "POST", path: "/api/auth/register/:inviteCode" },
-      context,
-    );
-
-    const searchTerm = decodeURIComponent(new URL(probe("Users"), "http://x").searchParams.get("search") ?? "");
-    expect(searchTerm).not.toBe("");
-    /*
-     * The users query matches `search` against the username column alone, so a
-     * term that is not a substring of the generated username can never match —
-     * which is how `[systemtest]` came to be searched against `systemtest_<ts>`.
-     */
-    expect(context.registeredUsername).toContain(searchTerm);
-  });
-
-  it("counts both fixture naming schemes as stale artifacts", () => {
-    expect(countStaleSystemTestArtifacts({ data: [{ user: { username: "systemtest_1785085457897" } }] })).toBe(1);
-    expect(countStaleSystemTestArtifacts({ data: [{ title: "[systemtest] API Poll Event" }] })).toBe(1);
-    expect(countStaleSystemTestArtifacts({ data: [{ user: { username: "admin" } }, { title: "Guild meeting" }] })).toBe(0);
   });
 });

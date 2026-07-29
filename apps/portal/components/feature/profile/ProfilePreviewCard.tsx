@@ -1,5 +1,4 @@
-import { PortalCard } from "../../shared/PortalCard";
-import { Avatar, Badge, Group, Spoiler, Stack, Text } from "@mantine/core";
+import { Avatar, Badge, Group, Paper, Spoiler, Stack, Text } from "@mantine/core";
 import { PhotoIcon, VideoIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { resolveProfileMediaUrl } from "../../../utils/media";
@@ -32,14 +31,15 @@ export function ProfilePreviewCard({
   const powerLabel = power >= 1_000_000 ? `${(power / 1_000_000).toFixed(1)}M` : power >= 1_000 ? `${(power / 1_000).toFixed(0)}K` : String(power);
 
   return (
-    <PortalCard interactive={false}>
-      <Stack gap={0} p="1rem">
+    <Paper withBorder radius="md" p="var(--card-padding)">
+      <div>
+        <Stack gap={0}>
         {/* Avatar + name row */}
         <Group gap={12} align="center" wrap="nowrap">
           <Avatar
             size={56}
             radius="xl"
-            color="portal-accent"
+            color="portal-brand"
             src={avatarKey ? resolveProfileMediaUrl(avatarKey) : undefined}
             style={{ flexShrink: 0 }}
             className="profile-preview-avatar"
@@ -98,7 +98,8 @@ export function ProfilePreviewCard({
             <Text size="sm" c="dimmed" style={{ whiteSpace: "pre-wrap" }} lh={1.5}>{bio}</Text>
           </Spoiler>
         ) : null}
-      </Stack>
-    </PortalCard>
+        </Stack>
+      </div>
+    </Paper>
   );
 }

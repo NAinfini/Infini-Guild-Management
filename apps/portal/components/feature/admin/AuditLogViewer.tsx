@@ -418,7 +418,7 @@ export function AuditLogViewer({
                         {row.summary}
                       </Text>
                       {row.entityName ? (
-                        <Text size="xs" fw={600} c="var(--accent-text)" lineClamp={1} className="audit-log-row__entity-name">
+                        <Text size="xs" fw={600} c="var(--brand-text)" lineClamp={1} className="audit-log-row__entity-name">
                           {row.entityName}
                         </Text>
                       ) : null}

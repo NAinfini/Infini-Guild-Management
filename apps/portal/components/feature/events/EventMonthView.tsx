@@ -1,7 +1,6 @@
 import type { Event as GuildEvent } from "@guild/shared";
 import { EVENT_TYPE_COLORS, UNKNOWN_EVENT_TYPE_COLOR } from "@portal/utils/event-colors";
-import { PortalCard } from "../../shared/PortalCard";
-import { Badge, Button, Group, HoverCard, Popover, Stack, Text, ThemeIcon } from "@mantine/core";
+import { Badge, Button, Group, HoverCard, Paper, Popover, Stack, Text, ThemeIcon } from "@mantine/core";
 import { addDays, format, getDate, getDay, getMonth, isSameDay, startOfMonth, startOfWeek } from "date-fns";
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -108,8 +107,9 @@ export function EventMonthView({
   const { t } = useTranslation("events");
 
   return (
-    <PortalCard interactive={false}>
-      <MonthCalendar
+    <Paper withBorder radius="md">
+      <div>
+        <MonthCalendar
         onSelect={(value) => onSelectDate(format(value, "yyyy-MM-dd"))}
         cellRender={(value: Date) => {
           const key = format(value, "yyyy-MM-dd");
@@ -221,7 +221,8 @@ export function EventMonthView({
             </div>
           );
         }}
-      />
-    </PortalCard>
+        />
+      </div>
+    </Paper>
   );
 }

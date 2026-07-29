@@ -1,6 +1,5 @@
 import type { AuditLogEntry } from "@guild/shared";
-import { Button, Group, Stack, TextInput } from "@mantine/core";
-import { PortalCard } from "../../shared/PortalCard";
+import { Button, Group, Paper, Stack, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
 import { formatDateTime, maskIdentifier } from "../../../utils/admin";
@@ -71,8 +70,8 @@ export function AdminAuditSection({
 
   return (
     <Stack gap={12}>
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+      <Paper withBorder radius="md">
+        <div style={{ padding: "var(--card-padding)" }}>
           <Group wrap="wrap" gap={8}>
             <TextInput
               placeholder={t("audit.search")}
@@ -114,7 +113,7 @@ export function AdminAuditSection({
             </Button>
           </Group>
         </div>
-      </PortalCard>
+      </Paper>
 
       <AuditLogViewer
         auditLoading={auditLoading}

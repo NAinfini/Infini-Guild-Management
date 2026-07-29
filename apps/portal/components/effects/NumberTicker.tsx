@@ -1,5 +1,5 @@
+import { Text } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
-import { cn } from "@portal/utils/cn";
 
 export interface NumberTickerProps {
   value: number;
@@ -37,9 +37,13 @@ export function NumberTicker({ value, className, duration = 800, decimals = 0, s
   }, [value, duration]);
 
   return (
-    <span className={cn("tabular-nums", className)}>
+    <Text
+      component="span"
+      inherit
+      className={["portal-kpi-value", className].filter(Boolean).join(" ")}
+    >
       {decimals > 0 ? display.toFixed(decimals) : display.toLocaleString()}
       {suffix}
-    </span>
+    </Text>
   );
 }

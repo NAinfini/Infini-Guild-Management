@@ -57,6 +57,7 @@ export type TemplateServiceDeps = {
   getTemplateById: (templateId: string) => Promise<TemplateRow | null>;
   materializeRecurringSeries: (templateId: string) => Promise<void>;
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
+  systemTestRunId?: string | null;
   now?: () => string;
   createId?: () => string;
 };
@@ -236,7 +237,28 @@ export class EventTemplateService {
   }
 
   async deleteTemplate(actorId: string, templateId: string, existing: TemplateRow): Promise<void> {
+    const systemTestStatements = this.deps.systemTestRunId
+      ? [
+          this.rawDb.prepare(
+            `INSERT INTO system_test_artifacts (run_id, artifact_type, artifact_key)
+             VALUES (
+               (SELECT id FROM system_test_runs WHERE id = ?1 AND status = 'running'),
+               'event_template',
+               ?2
+             )
+             ON CONFLICT(run_id, artifact_type, artifact_key)
+             DO UPDATE SET artifact_key = excluded.artifact_key`,
+          ).bind(this.deps.systemTestRunId, templateId),
+          this.rawDb.prepare(
+            `INSERT INTO system_test_artifacts (run_id, artifact_type, artifact_key)
+             SELECT ?1, 'event', id FROM events WHERE series_id = ?2
+             ON CONFLICT(run_id, artifact_type, artifact_key)
+             DO UPDATE SET artifact_key = excluded.artifact_key`,
+          ).bind(this.deps.systemTestRunId, templateId),
+        ]
+      : [];
     await this.rawDb.batch([
+      ...systemTestStatements,
       this.rawDb.prepare("UPDATE events SET series_id = NULL WHERE series_id = ?1").bind(templateId),
       this.rawDb.prepare("DELETE FROM recurring_templates WHERE id = ?1").bind(templateId),
     ]);

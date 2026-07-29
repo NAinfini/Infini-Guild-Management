@@ -34,4 +34,26 @@ describe("announcement image staging tokens", () => {
     expect(put).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`^announcement/${ID}/images/`)), expect.any(ArrayBuffer), expect.anything());
     expect((db as unknown as { prepare: ReturnType<typeof vi.fn> }).prepare).toHaveBeenCalledTimes(1);
   });
+
+  it("removes every attempted staging key when a later R2 write fails", async () => {
+    const failure = new Error("second R2 upload failed");
+    const put = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(failure);
+    const deleteObject = vi.fn().mockResolvedValue(undefined);
+    const service = new AnnouncementImageStagingService({
+      media: { put, delete: deleteObject, list: vi.fn().mockResolvedValue({ objects: [] }) } as unknown as R2Bucket,
+      rawDb: rawDb(),
+      signingSecret: "secret",
+      now: () => NOW,
+      generateId: () => ID,
+    });
+
+    await expect(service.stage("actor-1", [
+      { data: new Uint8Array([1]).buffer, contentType: "image/png" },
+      { data: new Uint8Array([2]).buffer, contentType: "image/png" },
+    ], undefined, 5)).rejects.toBe(failure);
+
+    expect(deleteObject).toHaveBeenCalledTimes(2);
+  });
 });

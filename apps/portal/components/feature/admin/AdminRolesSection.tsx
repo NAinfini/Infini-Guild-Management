@@ -1,10 +1,11 @@
 import { PERMISSIONS, type AdminRole, type Permission } from "@guild/shared";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
-import { DepthToggle } from "@portal/components/shared/DepthToggle";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
+import { SectionHeader } from "@portal/components/shared/SectionHeader";
 import {
   ActionIcon,
   Alert,
   Badge,
+  Button,
   ColorInput,
   ColorSwatch,
   Group,
@@ -362,7 +363,7 @@ export function AdminRolesSection({
                 <ActionIcon
                   size="sm"
                   variant="filled"
-                  color="portal-accent"
+                  color="portal-brand"
                   onClick={() => { void handleCreateRole(); }}
                   loading={createRolePending}
                   aria-label={t("roles.create")}
@@ -484,7 +485,7 @@ export function AdminRolesSection({
                         </ActionIcon>
                       ) : null}
                       <ActionIcon
-                        color="portal-accent"
+                        color="portal-brand"
                         variant="filled"
                         size="lg"
                         onClick={() => {
@@ -510,9 +511,7 @@ export function AdminRolesSection({
                   <Stack gap={20}>
                     {PERMISSION_CATEGORIES.map((category) => (
                       <div key={category.labelKey} className="admin-roles-perm-category">
-                        <Text fw={700} size="sm" mb={8} c="dimmed" tt="uppercase" lts={0.5}>
-                          {t(category.labelKey)}
-                        </Text>
+                        <SectionHeader title={t(category.labelKey)} />
                         <div className="admin-roles-perm-grid">
                           {category.permissions.map((permission) => {
                             const isReadOnly = selectedRole.is_builtin;
@@ -521,18 +520,19 @@ export function AdminRolesSection({
                             const tooltipText = t(`roles.tooltip.${permission}`, { defaultValue: "" });
 
                             const toggle = (
-                              <DepthToggle
+                              <Button
                                 key={`${selectedRole.id}-${permission}`}
-                                pressed={isGranted}
-                                onToggle={() => {
+                                aria-pressed={isGranted}
+                                variant={isGranted ? "light" : "default"}
+                                color={isGranted ? "portal-brand" : "gray"}
+                                onClick={() => {
                                   if (!isReadOnly) {
                                     togglePermission(selectedRole.id, permission);
                                   }
                                 }}
-                                type="secondary"
                                 size="sm"
                                 disabled={isReadOnly}
-                                before={
+                                leftSection={
                                   isGranted ? (
                                     <CheckIcon size={14} className="admin-roles-perm-icon--granted" />
                                   ) : (
@@ -541,7 +541,7 @@ export function AdminRolesSection({
                                 }
                               >
                                 {t(`roles.permission.${permission}`, { defaultValue: permission })}
-                              </DepthToggle>
+                              </Button>
                             );
 
                             if (!tooltipText) return toggle;

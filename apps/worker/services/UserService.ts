@@ -21,6 +21,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { memberProfileClasses, memberProfiles, sessions, userAuthPassword, users } from "../db/schema";
 import { captureUploadValidation } from "./media";
+import { deleteUploadedMedia, rethrowAfterUploadFailure } from "./media-upload-compensation";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, parseStringArray, parseRecord, usernameEquals } from "./helpers";
 import { logger } from "../utils/logger";
@@ -103,6 +104,7 @@ export type UserServiceDeps = {
   verifyPassword: (password: string, salt: string, hash: string) => Promise<boolean>;
   createPasswordHash: (password: string) => Promise<{ passwordHash: string; salt: string }>;
   destroySession: () => Promise<void>;
+  clearSessionCookie: () => void;
   getMediaPolicy?: () => Promise<SiteMediaPolicy>;
 };
 
@@ -529,18 +531,37 @@ export class UserService {
     if (existing.length + avatarCount + files.length > mediaPolicy.quotas.profile)
       return err("CONFLICT", "Profile image quota exceeded");
 
-    const stored = await captureUploadValidation(() => Promise.all(files.map((file) => this.deps.storeProfileImage(targetUserId, file))));
-    if (!stored.ok) return stored;
-    const keys: string[] = stored.data;
+    const keys: string[] = [];
+    for (const file of files) {
+      const stored = await captureUploadValidation(() => this.deps.storeProfileImage(targetUserId, file));
+      if (!stored.ok) {
+        await deleteUploadedMedia((key) => this.deps.deleteMediaObject(key), keys);
+        return stored;
+      }
+      keys.push(stored.data);
+    }
 
-    await this.db.update(memberProfiles)
-      .set({ images: JSON.stringify([...existing, ...keys]), updatedAt: new Date().toISOString() })
-      .where(eq(memberProfiles.userId, targetUserId));
-    await this.deps.writeAuditLog({
-      entityType: "member_profile", action: "upload_images", actorId: sessionUser.id,
-      entityId: targetUserId, diffTitle: access.username,
-      detailText: JSON.stringify({ keys, count: keys.length }),
-    });
+    try {
+      await this.db.update(memberProfiles)
+        .set({ images: JSON.stringify([...existing, ...keys]), updatedAt: new Date().toISOString() })
+        .where(eq(memberProfiles.userId, targetUserId));
+      await this.deps.writeAuditLog({
+        entityType: "member_profile", action: "upload_images", actorId: sessionUser.id,
+        entityId: targetUserId, diffTitle: access.username,
+        detailText: JSON.stringify({ keys, count: keys.length }),
+      });
+    } catch (error) {
+      await rethrowAfterUploadFailure(
+        error,
+        (key) => this.deps.deleteMediaObject(key),
+        keys,
+        async () => {
+          await this.db.update(memberProfiles)
+            .set({ images: profile.images, updatedAt: profile.updatedAt })
+            .where(eq(memberProfiles.userId, targetUserId));
+        },
+      );
+    }
     return ok({ keys });
   }
 
@@ -591,16 +612,28 @@ export class UserService {
     const stored = await captureUploadValidation(() => this.deps.storeProfileImage(targetUserId, file));
     if (!stored.ok) return stored;
     const key = stored.data;
-    if (profile.avatarKey) await this.deps.deleteMediaObject(profile.avatarKey);
-
-    await this.db.update(memberProfiles)
-      .set({ avatarKey: key, updatedAt: new Date().toISOString() })
-      .where(eq(memberProfiles.userId, targetUserId));
-    await this.deps.writeAuditLog({
-      entityType: "member_profile", action: "upload_avatar", actorId: sessionUser.id,
-      entityId: targetUserId, diffTitle: access.username,
-      detailText: JSON.stringify({ key, replaced: profile.avatarKey ?? null }),
-    });
+    try {
+      await this.db.update(memberProfiles)
+        .set({ avatarKey: key, updatedAt: new Date().toISOString() })
+        .where(eq(memberProfiles.userId, targetUserId));
+      await this.deps.writeAuditLog({
+        entityType: "member_profile", action: "upload_avatar", actorId: sessionUser.id,
+        entityId: targetUserId, diffTitle: access.username,
+        detailText: JSON.stringify({ key, replaced: profile.avatarKey ?? null }),
+      });
+      if (profile.avatarKey) await this.deps.deleteMediaObject(profile.avatarKey);
+    } catch (error) {
+      await rethrowAfterUploadFailure(
+        error,
+        (uploadedKey) => this.deps.deleteMediaObject(uploadedKey),
+        [key],
+        async () => {
+          await this.db.update(memberProfiles)
+            .set({ avatarKey: profile.avatarKey, updatedAt: profile.updatedAt })
+            .where(eq(memberProfiles.userId, targetUserId));
+        },
+      );
+    }
     return ok({ key });
   }
 
@@ -639,16 +672,28 @@ export class UserService {
     const stored = await captureUploadValidation(() => this.deps.storeProfileAudio(targetUserId, audioFile));
     if (!stored.ok) return stored;
     const key = stored.data;
-    if (profile.audioKey) await this.deps.deleteMediaObject(profile.audioKey);
-
-    await this.db.update(memberProfiles)
-      .set({ audioKey: key, updatedAt: new Date().toISOString() })
-      .where(eq(memberProfiles.userId, targetUserId));
-    await this.deps.writeAuditLog({
-      entityType: "member_profile", action: "upload_audio", actorId: sessionUser.id,
-      entityId: targetUserId, diffTitle: access.username,
-      detailText: JSON.stringify({ key, replaced: profile.audioKey ?? null }),
-    });
+    try {
+      await this.db.update(memberProfiles)
+        .set({ audioKey: key, updatedAt: new Date().toISOString() })
+        .where(eq(memberProfiles.userId, targetUserId));
+      await this.deps.writeAuditLog({
+        entityType: "member_profile", action: "upload_audio", actorId: sessionUser.id,
+        entityId: targetUserId, diffTitle: access.username,
+        detailText: JSON.stringify({ key, replaced: profile.audioKey ?? null }),
+      });
+      if (profile.audioKey) await this.deps.deleteMediaObject(profile.audioKey);
+    } catch (error) {
+      await rethrowAfterUploadFailure(
+        error,
+        (uploadedKey) => this.deps.deleteMediaObject(uploadedKey),
+        [key],
+        async () => {
+          await this.db.update(memberProfiles)
+            .set({ audioKey: profile.audioKey, updatedAt: profile.updatedAt })
+            .where(eq(memberProfiles.userId, targetUserId));
+        },
+      );
+    }
     return ok({ key });
   }
 
@@ -686,12 +731,12 @@ export class UserService {
       return err("UNAUTHORIZED", "Current password is incorrect");
 
     const next = await this.deps.createPasswordHash(parsed.data.newPassword);
-    await this.db.update(userAuthPassword)
+    const passwordUpdate = this.db.update(userAuthPassword)
       .set({ passwordHash: next.passwordHash, salt: next.salt, updatedAt: new Date().toISOString() })
       .where(eq(userAuthPassword.userId, targetUserId));
-
-    await this.db.delete(sessions).where(eq(sessions.userId, targetUserId));
-    await this.deps.destroySession();
+    const sessionDeletion = this.db.delete(sessions).where(eq(sessions.userId, targetUserId));
+    await this.db.batch([passwordUpdate, sessionDeletion]);
+    this.deps.clearSessionCookie();
     const targetUser = (await this.db.select({ username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     await this.deps.writeAuditLog({ entityType: "user_auth", action: "change_password", actorId: sessionUser.id, entityId: targetUserId, diffTitle: targetUser?.username ?? null });
     return ok({ ok: true });

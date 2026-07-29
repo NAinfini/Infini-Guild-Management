@@ -157,6 +157,23 @@ function createMarkerStatement(
   );
 }
 
+function createMarkerArtifactStatement(
+  context: StorageBatchContext,
+): D1PreparedStatement | null {
+  const runId = context.deps.systemTestRunId;
+  if (!runId) return null;
+  return context.deps.rawDb.prepare(
+    `INSERT INTO system_test_artifacts (run_id, artifact_type, artifact_key)
+     VALUES (
+       (SELECT id FROM system_test_runs WHERE id = ? AND status = 'running'),
+       'audit_log',
+       ?
+     )
+     ON CONFLICT(run_id, artifact_type, artifact_key)
+     DO UPDATE SET artifact_key = excluded.artifact_key`,
+  ).bind(runId, context.markerId);
+}
+
 function createItemStatements(
   context: StorageBatchContext,
   transaction: StorageTransaction,
@@ -206,8 +223,10 @@ async function commitBatch(
     data: transactions,
     replayed: false,
   });
+  const markerArtifact = createMarkerArtifactStatement(context);
   const statements = [
     createMarkerStatement(context, response, createdAt),
+    ...(markerArtifact ? [markerArtifact] : []),
     ...transactions.flatMap((transaction) =>
       createItemStatements(context, transaction, createdAt)),
   ];

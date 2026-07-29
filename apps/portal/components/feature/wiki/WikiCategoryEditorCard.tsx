@@ -1,9 +1,7 @@
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { PortalCard } from "../../shared/PortalCard";
-import { ActionIcon, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Button, Group, Paper, Select, Stack, Text, TextInput } from "@mantine/core";
 import { PlusIcon, SaveIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { IconGripVertical } from "@tabler/icons-react";
 import type { WikiCategoryDraft } from "@portal/types/wiki";
@@ -238,30 +236,29 @@ export function WikiCategoryEditorCard({
   );
 
   return (
-    <PortalCard interactive={false}>
-      <div style={{ padding: "1.2rem" }}>
+    <Paper withBorder radius="md" p="var(--card-padding)">
+      <div>
         <Stack gap={12}>
           <Group justify="space-between" align="center" wrap="wrap">
             <Text fw={700}>{t("categoryEditor.title")}</Text>
             <Group gap={8}>
-              <DepthButton
-                type="primary"
+              <Button
                 size="sm"
-                before={<SaveIcon size={14} />}
+                leftSection={<SaveIcon size={14} />}
                 onClick={onSaveDrafts}
                 disabled={!canSaveDrafts || isSavingDrafts}
               >
                 {t("articleEditor.save")}
-              </DepthButton>
-              <DepthButton
-                type="secondary"
+              </Button>
+              <Button
+                variant="default"
                 size="sm"
-                before={<XIcon size={14} />}
+                leftSection={<XIcon size={14} />}
                 onClick={onCloseEditor}
                 disabled={isSavingDrafts}
               >
                 {t("editor.closeNoSave")}
-              </DepthButton>
+              </Button>
             </Group>
           </Group>
 
@@ -282,15 +279,14 @@ export function WikiCategoryEditorCard({
                 aria-label={t("aria.categoryName")}
               />
             </div>
-            <DepthButton
-              type="primary"
+            <Button
               size="sm"
-              before={<PlusIcon size={14} />}
+              leftSection={<PlusIcon size={14} />}
               onClick={onCreateCategory}
               disabled={categoryName.trim().length === 0 || isCreating}
             >
               {t("categoryEditor.create")}
-            </DepthButton>
+            </Button>
           </Group>
 
           <Stack gap={8}>
@@ -361,6 +357,6 @@ export function WikiCategoryEditorCard({
           </Stack>
         </Stack>
       </div>
-    </PortalCard>
+    </Paper>
   );
 }

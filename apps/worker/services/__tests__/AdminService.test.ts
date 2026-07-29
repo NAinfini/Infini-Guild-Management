@@ -1,5 +1,21 @@
+import type { SQL } from "drizzle-orm";
+import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import { describe, expect, it, vi } from "vitest";
 import { AdminService } from "../AdminService";
+
+const sqliteDialect = new SQLiteSyncDialect();
+
+function encodeInviteCursor(createdAt: string, id: string): string {
+  return btoa(JSON.stringify({ created_at: createdAt, id }))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/u, "");
+}
+
+function decodeInviteCursor(value: string): { created_at: string; id: string } {
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  return JSON.parse(atob(base64)) as { created_at: string; id: string };
+}
 
 function siteConfigRow(analyticsSettingsJson: string) {
   return {
@@ -76,7 +92,7 @@ function createService(db: unknown, rawDb: unknown = { batch: vi.fn(), prepare: 
 }
 
 describe("AdminService role assignment guardrails", () => {
-  it("paginates invite links and reports an uncapped total", async () => {
+  it("paginates invite links with a stable keyset cursor and reports an uncapped total", async () => {
     const inviteRows = [
       {
         id: "invite-3",
@@ -99,11 +115,19 @@ describe("AdminService role assignment guardrails", () => {
         revokedAt: null,
       },
     ];
-    const offset = vi.fn().mockResolvedValue(inviteRows);
-    const limit = vi.fn(() => ({ offset }));
+    const cursor = encodeInviteCursor("2026-05-19T00:00:00.000Z", "invite-4");
+    let listPredicate: SQL | undefined;
+    let countPredicate: SQL | undefined;
+    const limit = vi.fn().mockResolvedValue(inviteRows);
     const orderBy = vi.fn(() => ({ limit }));
-    const listWhere = vi.fn(() => ({ orderBy }));
-    const countWhere = vi.fn().mockResolvedValue([{ total: 12 }]);
+    const listWhere = vi.fn((predicate: SQL) => {
+      listPredicate = predicate;
+      return { orderBy };
+    });
+    const countWhere = vi.fn((predicate: SQL) => {
+      countPredicate = predicate;
+      return Promise.resolve([{ total: 12 }]);
+    });
     const select = vi
       .fn()
       .mockReturnValueOnce({ from: vi.fn(() => ({ where: listWhere })) })
@@ -111,7 +135,7 @@ describe("AdminService role assignment guardrails", () => {
     const service = createService({ select });
 
     const result = await service.listInviteLinks({
-      cursor: 4,
+      cursor,
       limit: 1,
       visibility: "active",
       search: "three",
@@ -119,15 +143,47 @@ describe("AdminService role assignment guardrails", () => {
     });
 
     expect(limit).toHaveBeenCalledWith(2);
-    expect(offset).toHaveBeenCalledWith(4);
+    const listQuery = sqliteDialect.sqlToQuery(listPredicate!);
+    const countQuery = sqliteDialect.sqlToQuery(countPredicate!);
+    expect(listQuery.sql).toContain("created_at");
+    expect(listQuery.sql).toContain("id");
+    expect(listQuery.params).toEqual(expect.arrayContaining([
+      "2026-05-19T00:00:00.000Z",
+      "invite-4",
+    ]));
+    expect(countQuery.params).not.toContain("invite-4");
     expect(result).toEqual({
       ok: true,
       data: {
         data: [expect.objectContaining({ id: "invite-3", code: "THREE" })],
-        next_cursor: "5",
+        next_cursor: expect.any(String),
         total: 12,
       },
     });
+    if (!result.ok || !result.data.next_cursor) return;
+    expect(decodeInviteCursor(result.data.next_cursor)).toEqual({
+      created_at: "2026-05-18T00:00:00.000Z",
+      id: "invite-3",
+    });
+  });
+
+  it("rejects an invalid invite cursor instead of silently restarting at page one", async () => {
+    const select = vi.fn();
+    const service = createService({ select });
+
+    const result = await service.listInviteLinks({
+      cursor: "not base64url",
+      limit: 50,
+      visibility: "active",
+      searchCodes: true,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      message: "Invalid invite cursor",
+    });
+    expect(select).not.toHaveBeenCalled();
   });
 
   it("aggregates invite stats in SQL without a 100-row cap", async () => {

@@ -14,7 +14,6 @@ import {
   Textarea,
 } from "@mantine/core";
 import { CalendarRepeatIcon, PlayerPauseIcon, PlayerPlayIcon, SaveIcon, PlusIcon, TrashIcon, XIcon } from "@portal/components/icons";
-import { DepthButton } from "@portal/components/shared/DepthButton";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
@@ -533,12 +532,12 @@ export function RecurringTemplateFormModal({
             </Group>
           )}
           <Group gap={8}>
-            <DepthButton type="secondary" onClick={onCancel} before={<XIcon size={16} />}>
+            <Button variant="default" onClick={onCancel} leftSection={<XIcon size={16} />}>
               {t("button.cancel")}
-            </DepthButton>
-            <DepthButton type="primary" onClick={handleSave} loading={confirmLoading} before={mode === "create" ? <PlusIcon size={16} /> : <SaveIcon size={16} />}>
+            </Button>
+            <Button onClick={handleSave} loading={confirmLoading} leftSection={mode === "create" ? <PlusIcon size={16} /> : <SaveIcon size={16} />}>
               {mode === "create" ? t("recurring.create") : t("button.save")}
-            </DepthButton>
+            </Button>
           </Group>
         </Group>
       </Stack>

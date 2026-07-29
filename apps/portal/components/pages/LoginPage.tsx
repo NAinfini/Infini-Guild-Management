@@ -4,19 +4,14 @@ import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Anchor,
+  Button,
   Checkbox,
+  Paper,
   Stack,
   Text,
   TextInput,
+  Title,
 } from "@mantine/core";
-import {
-  BubbleBackground,
-  GlassEffect,
-  GradientText,
-  LampHeading,
-
-} from "@portal/components/effects";
-import { DepthButton } from "@portal/components/shared/DepthButton";
 import { AlertTriangleIcon, ArrowLeftIcon, EyeIcon, EyeOffIcon, InfoCircleIcon, KeyboardIcon } from "@portal/components/icons";
 import { useState, type ReactNode } from "react";
 import { useDisclosure } from "@mantine/hooks";
@@ -159,33 +154,20 @@ export function LoginPage() {
 
   return (
     <div className="login-page">
-      <div className="login-page__bg" />
-      <BubbleBackground
-        count={24}
-        minSize={4}
-        maxSize={40}
-        speed={0.6}
-        className="login-page__bubbles"
-      />
-
       <div className="login-page__content">
-        <div className="login-page__heading">
-          <LampHeading coneWidth={320} coneHeight={140} animated>
-            <div className="login-page__brand">
-              {siteLogoUrl ? (
-                <img src={siteLogoUrl} alt="" aria-hidden className="login-page__brand-logo" />
-              ) : null}
-              <GradientText animated duration={4} className="login-page__brand-text">
-                {siteName}
-              </GradientText>
-            </div>
-          </LampHeading>
+        <header className="login-page__heading">
+          <div className="login-page__brand">
+            {siteLogoUrl ? (
+              <img src={siteLogoUrl} alt="" aria-hidden className="login-page__brand-logo" />
+            ) : null}
+            <Title order={1} className="login-page__brand-text">{siteName}</Title>
+          </div>
           <Text c="dimmed" size="sm" ta="center" className="login-page__subtitle">
             {t("login.subtitle")}
           </Text>
-        </div>
+        </header>
 
-        <GlassEffect className="login-page__card">
+        <Paper withBorder shadow="sm" radius="md" className="login-page__card">
           {search.reason === "expired" ? (
             <LoginNotice tone="warning">{t("sessionExpired")}</LoginNotice>
           ) : null}
@@ -242,9 +224,9 @@ export function LoginPage() {
 
               <Checkbox {...register("stay_logged_in")} label={t("field.stayLoggedIn")} />
 
-              <DepthButton htmlType="submit" disabled={loginMutation.isPending}>
+              <Button type="submit" loading={loginMutation.isPending}>
                 {t("button.login")}
-              </DepthButton>
+              </Button>
 
               <div className="login-page__back-link">
                 <Anchor
@@ -267,7 +249,7 @@ export function LoginPage() {
               </div>
             </Stack>
           </form>
-        </GlassEffect>
+        </Paper>
       </div>
     </div>
   );

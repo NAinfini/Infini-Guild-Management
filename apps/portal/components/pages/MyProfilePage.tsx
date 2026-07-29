@@ -1,6 +1,6 @@
-import { Grid, Skeleton, Stack } from "@mantine/core";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { UserCircleIcon } from "@portal/components/icons";
+import { Button, Grid, Skeleton, Stack, Tabs } from "@mantine/core";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { uploadProfileAudio, uploadProfileImages } from "../../services/UserService";
 import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
@@ -14,12 +14,12 @@ import { useAuthStore } from "../../stores/auth";
 import { useAppError } from "../../hooks/useAppError";
 import { ProfileAccountTab } from "../feature/profile/ProfileAccountTab";
 import { ProfileAvailabilityTab } from "../feature/profile/ProfileAvailabilityTab";
+import { ProfileMediaTab } from "../feature/profile/ProfileMediaTab";
 import { ProfilePreviewCard } from "../feature/profile/ProfilePreviewCard";
 import { ProfileProfileTab } from "../feature/profile/ProfileProfileTab";
 import { EmptyState } from "../shared/EmptyState";
-import { FloatingSaveBar } from "../shared/FloatingSaveBar";
+import { UnsavedChangesAffix } from "../shared/UnsavedChangesAffix";
 import { PageLayout } from "../layout/PageLayout";
-import { PageTabPanel, PageTabs } from "../layout/PageTabs";
 import "./MyProfilePage.css";
 
 function moveListItem<T>(list: T[], index: number, delta: number): T[] {
@@ -39,6 +39,9 @@ function moveListItem<T>(list: T[], index: number, delta: number): T[] {
 
 export function MyProfilePage() {
   const { t } = useTranslation("profile");
+  const navigate = useNavigate();
+  const search = useSearch({ strict: false }) as { tab?: "profile" | "availability" | "account" };
+  const [activeTab, setActiveTab] = useState<"profile" | "media" | "availability" | "account">(search.tab ?? "profile");
   const user = useAuthStore((state) => state.user);
 
   const { profileQuery } = useProfileData({
@@ -101,12 +104,7 @@ export function MyProfilePage() {
   const profile = profileQuery.data?.profile;
 
   return (
-    <PageLayout
-      title={t("title")}
-      subtitle={t("subtitle")}
-      icon={<UserCircleIcon size={22} />}
-      className="my-profile-page"
-    >
+    <PageLayout className="my-profile-page">
       {profileQuery.isLoading ? (
         <Grid gutter="md">
           <Grid.Col span={{ base: 12, lg: 3 }}>
@@ -128,21 +126,20 @@ export function MyProfilePage() {
           title={t("common:loadError")}
           description={t("common:errors.connectionIssue")}
           actions={(
-            <DepthButton
-              type="primary"
+            <Button
               loading={profileQuery.isFetching}
               onClick={() => {
                 void profileQuery.refetch();
               }}
             >
               {t("common:action.retry")}
-            </DepthButton>
+            </Button>
           )}
         />
       ) : (
       <Grid gutter="md">
         <Grid.Col span={{ base: 12, lg: 3 }}>
-          <div style={{ position: "sticky", top: 16 }}>
+          <div className="my-profile-preview-rail">
             <ProfilePreviewCard
               username={user?.username ?? "-"}
               avatarKey={profile?.avatar_key ?? null}
@@ -156,16 +153,29 @@ export function MyProfilePage() {
           </div>
         </Grid.Col>
         <Grid.Col span={{ base: 12, lg: 9 }}>
-          <PageTabs
-            defaultValue="profile"
-            tabs={[
-              { value: "profile", label: t("tab.profile") },
-              { value: "availability", label: t("tab.availability") },
-              { value: "account", label: t("tab.account") },
-            ]}
+          <Tabs
+            value={activeTab}
+            keepMounted={false}
+            className="my-profile-page__tabs"
+            onChange={(nextTab) => {
+              const tab = (nextTab as "profile" | "media" | "availability" | "account" | null) ?? "profile";
+              setActiveTab(tab);
+              void navigate({
+                to: "/profile",
+                search: { tab: tab === "availability" || tab === "account" ? tab : undefined },
+                replace: true,
+                viewTransition: false,
+              });
+            }}
           >
+            <Tabs.List>
+              <Tabs.Tab value="profile">{t("tab.profile")}</Tabs.Tab>
+              <Tabs.Tab value="media">{t("tab.media")}</Tabs.Tab>
+              <Tabs.Tab value="availability">{t("tab.availability")}</Tabs.Tab>
+              <Tabs.Tab value="account">{t("tab.account")}</Tabs.Tab>
+            </Tabs.List>
 
-            <PageTabPanel value="profile" pt="md">
+            <Tabs.Panel value="profile" pt="md">
               <ProfileProfileTab
                 power={form.power}
                 classDraft={form.classDraft}
@@ -180,14 +190,26 @@ export function MyProfilePage() {
                 onClassDragEnd={form.handleClassDragEnd}
                 onRemoveClass={form.removeClass}
                 onBioChange={form.setBio}
-                videoDraft={form.videoDraft}
-                videoList={form.videoList}
-                imageList={form.imageList}
+              />
+            </Tabs.Panel>
+
+            <Tabs.Panel value="media" pt="md">
+              <ProfileMediaTab
                 avatarKey={profile?.avatar_key ?? null}
                 profileAudioKey={profile?.audio_key ?? null}
+                imageList={form.imageList}
+                videoDraft={form.videoDraft}
+                videoList={form.videoList}
                 imageUploader={imageUploader}
                 audioUploader={audioUploader}
                 avatarUploading={avatarUploadMutation.isPending}
+                onUploadAvatar={(file) => avatarUploadMutation.mutate(file)}
+                onRemoveAvatar={() => avatarDeleteMutation.mutate()}
+                onReorderImages={form.setImageList}
+                onRemoveImage={mutations.removeImage}
+                onUploadImages={() => {
+                  void mutations.uploadImages();
+                }}
                 onVideoDraftChange={form.setVideoDraft}
                 onAddVideoUrl={form.addVideoUrl}
                 onMoveVideo={(index, delta) =>
@@ -196,29 +218,22 @@ export function MyProfilePage() {
                 onRemoveVideo={(index) =>
                   form.setVideoList((current) => current.filter((_, valueIndex) => valueIndex !== index))
                 }
-                onUploadImages={() => {
-                  void mutations.uploadImages();
-                }}
                 onUploadAudio={() => {
                   void mutations.uploadAudio();
                 }}
-                onUploadAvatar={(file) => avatarUploadMutation.mutate(file)}
-                onRemoveAvatar={() => avatarDeleteMutation.mutate()}
-                onReorderImages={form.setImageList}
-                onRemoveImage={mutations.removeImage}
                 onRemoveAudio={mutations.removeAudio}
               />
-            </PageTabPanel>
+            </Tabs.Panel>
 
-            <PageTabPanel value="availability" pt="md">
+            <Tabs.Panel value="availability" pt="md">
               <ProfileAvailabilityTab
                 userId={user?.id}
                 availabilityData={form.availabilityData}
                 onAvailabilityChange={form.setAvailabilityData}
               />
-            </PageTabPanel>
+            </Tabs.Panel>
 
-            <PageTabPanel value="account" pt="md">
+            <Tabs.Panel value="account" pt="md">
               <ProfileAccountTab
                 currentPassword={form.currentPassword}
                 newPassword={form.newPassword}
@@ -236,9 +251,9 @@ export function MyProfilePage() {
                 changePasswordPending={mutations.changePasswordMutation.isPending}
                 changeUsernamePending={mutations.changeUsernameMutation.isPending}
               />
-            </PageTabPanel>
-          </PageTabs>
-          <FloatingSaveBar
+            </Tabs.Panel>
+          </Tabs>
+          <UnsavedChangesAffix
             isDirty={form.isDirty}
             saving={mutations.saveProfileMutation.isPending}
             onSave={mutations.saveProfile}

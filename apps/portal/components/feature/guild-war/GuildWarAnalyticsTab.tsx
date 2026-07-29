@@ -181,7 +181,7 @@ export function GuildWarAnalyticsTab({
             </Text>
           ))}
           {analytics.analyticsWarSummary.winRate !== null ? (
-            <Text size="sm" fw={600} c="var(--accent-text)">
+            <Text size="sm" fw={600} c="var(--domain-war)">
               {t("analytics.wars.winRate", { rate: analytics.analyticsWarSummary.winRate })}
             </Text>
           ) : null}
@@ -566,7 +566,7 @@ export function GuildWarAnalyticsTab({
                             if (heatmapRange && typeof val === "number") {
                               const ratio = (val - heatmapRange.min) / (heatmapRange.max - heatmapRange.min);
                               cellStyle = {
-                                background: `color-mix(in srgb, var(--accent-fill) ${Math.round(ratio * 35)}%, transparent)`,
+                                background: `color-mix(in srgb, var(--domain-war) ${Math.round(ratio * 35)}%, transparent)`,
                               };
                             }
                             return (

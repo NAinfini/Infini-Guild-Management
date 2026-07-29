@@ -198,7 +198,7 @@ describe("portal data hooks", () => {
     serviceMocks.fetchAdminInviteLinks.mockImplementation(
       ({ cursor }: { cursor?: string }) => Promise.resolve({
         data: [],
-        next_cursor: cursor ? null : "50",
+        next_cursor: cursor ? null : "eyJjcmVhdGVkX2F0IjoiMjAyNi0wNS0xOFQwMDowMDowMC4wMDBaIiwiaWQiOiJpbnZpdGUtNTAifQ",
         total: 75,
       }),
     );
@@ -268,7 +268,7 @@ describe("portal data hooks", () => {
       await result.current.inviteLinksQuery.fetchNextPage();
     });
     expect(serviceMocks.fetchAdminInviteLinks).toHaveBeenCalledWith({
-      cursor: "50",
+      cursor: "eyJjcmVhdGVkX2F0IjoiMjAyNi0wNS0xOFQwMDowMDowMC4wMDBaIiwiaWQiOiJpbnZpdGUtNTAifQ",
       limit: 50,
       visibility: "active",
       search: undefined,

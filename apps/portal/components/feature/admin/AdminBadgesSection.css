@@ -13,14 +13,14 @@
 
 .admin-badges-sidebar {
   border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-overlay);
   padding: 12px;
   background: var(--surface-base);
 }
 
 .admin-badges-detail {
   border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-overlay);
   padding: 16px;
   background: var(--surface-base);
 }
@@ -31,7 +31,7 @@
   min-height: 44px;
   padding: 8px 10px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -41,16 +41,16 @@
 }
 
 .admin-badge-item:hover {
-  background: color-mix(in srgb, var(--accent-fill) 8%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 8%, transparent);
 }
 
 .admin-badge-item--active {
-  background: color-mix(in srgb, var(--accent-fill) 12%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 12%, transparent);
 }
 
 .admin-badge-assignment-row {
   padding: 6px 8px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   transition: background 120ms ease;
 }
 
@@ -62,7 +62,7 @@
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--shape-pill);
   font-size: 12px;
   line-height: 1.4;
   /* --badge-color 运行期由 AdminBadgesSection.tsx:194/231 的内联 style 无条件
@@ -90,7 +90,7 @@
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 
@@ -98,7 +98,7 @@
   display: inline-flex;
   align-items: center;
   padding: 4px 12px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--shape-pill);
   font-size: 14px;
   line-height: 1.4;
   /* --badge-color 运行期由 AdminBadgesSection.tsx:102 的内联 style 无条件写入
@@ -118,7 +118,7 @@
   width: 44px;
   height: 44px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   padding: 0;
   cursor: pointer;
   background: none;
@@ -131,7 +131,7 @@
 
 .admin-badge-color-picker::-webkit-color-swatch {
   border: 1px solid color-mix(in srgb, var(--text-primary) 16%, transparent);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
 }
 
 .admin-badge-swatches {

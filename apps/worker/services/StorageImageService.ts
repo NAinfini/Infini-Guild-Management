@@ -4,7 +4,8 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { storageItemImages, storageItems } from "../db/schema";
 import type { WriteAuditLogInput } from "./audit";
-import { replaceMediaRefs } from "./media-references";
+import { buildReplaceMediaRefsStatements, replaceMediaRefs } from "./media-references";
+import { rethrowAfterUploadFailure } from "./media-upload-compensation";
 import { err, ok, type ServiceResult } from "./result";
 import type { StorageImageRow, StorageItemRow } from "./StorageServicePayloads";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
@@ -39,17 +40,34 @@ export async function uploadStorageImages(db: DrizzleDb, deps: StorageImageDeps,
   const maxImages = policy.images_per_item;
   if (existing.length + files.length > maxImages) return err("VALIDATION_ERROR", `Maximum ${maxImages} images per item`);
   const inserted: StorageImageRow[] = [];
-  for (const file of files) {
-    const imageId = nanoid();
-    const key = `storage/items/${itemId}/${imageId}`;
-    await deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
-    await db.insert(storageItemImages).values({ id: imageId, itemId, r2Key: key });
-    inserted.push({ id: imageId, itemId, r2Key: key, createdAt: nowIso() });
+  const attempted: Array<{ imageId: string; key: string }> = [];
+  try {
+    for (const file of files) {
+      const imageId = nanoid();
+      const key = `storage/items/${itemId}/${imageId}`;
+      attempted.push({ imageId, key });
+      await deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
+      await db.insert(storageItemImages).values({ id: imageId, itemId, r2Key: key });
+      inserted.push({ id: imageId, itemId, r2Key: key, createdAt: nowIso() });
+    }
+    const allKeys = [...existing.map((image) => image.r2Key), ...inserted.map((image) => image.r2Key)];
+    await replaceMediaRefs(deps.rawDb, "storage_item", itemId, allKeys);
+    await deps.writeAuditLog({ entityType: "storage_item", action: "upload_images", actorId, entityId: itemId, diffTitle: item.name, detailText: JSON.stringify({ count: files.length }) });
+    await deps.publishEntityChanged({ entityType: "storage", entityId: itemId, hint: "storage_updated" });
+  } catch (error) {
+    await rethrowAfterUploadFailure(
+      error,
+      (key) => deps.media.delete(key),
+      attempted.map((image) => image.key),
+      async () => {
+        if (attempted.length === 0) return;
+        await deps.rawDb.batch([
+          ...attempted.map(({ imageId }) => deps.rawDb.prepare("DELETE FROM storage_item_images WHERE id = ?1").bind(imageId)),
+          ...buildReplaceMediaRefsStatements(deps.rawDb, "storage_item", itemId, existing.map((image) => image.r2Key)),
+        ]);
+      },
+    );
   }
-  const allKeys = [...existing.map((image) => image.r2Key), ...inserted.map((image) => image.r2Key)];
-  await replaceMediaRefs(deps.rawDb, "storage_item", itemId, allKeys);
-  await deps.writeAuditLog({ entityType: "storage_item", action: "upload_images", actorId, entityId: itemId, diffTitle: item.name, detailText: JSON.stringify({ count: files.length }) });
-  await deps.publishEntityChanged({ entityType: "storage", entityId: itemId, hint: "storage_updated" });
   return ok(inserted.map((image) => ({ id: image.id, r2_key: image.r2Key })));
 }
 

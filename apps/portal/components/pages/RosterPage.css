@@ -1,28 +1,9 @@
-.roster-filter-card.roster-filter-card {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-sticky);
-  margin-bottom: 12px;
-  overflow: visible;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-}
-
-/* Real dark-mode variant, not a pure recolor: the light rule above defines no
-   background/border-color at all, so this block adds a translucent backdrop
-   tint that only exists in dark mode. Selector keeps the self-repeated class
-   (task-6 addendum E) to preserve its specificity. */
-[data-theme="dark"] .roster-filter-card.roster-filter-card {
-  background: color-mix(in srgb, var(--surface-base) 85%, transparent);
-  border-color: color-mix(in srgb, var(--accent-fill) 10%, transparent);
-}
-
 .roster-filter-controls {
   width: 100%;
 }
 
 .roster-filter-padding {
-  padding: 1.2rem;
+  padding: var(--card-padding);
 }
 
 .roster-search-input {
@@ -102,8 +83,9 @@
 }
 
 /*
- * 悬停时卡片放大到 1.1 并做三维倾斜，而网格间距只有 8px，所以它一定会压到
- * 左右邻居身上——被压的那张必须在下面，否则邻卡的边框会横穿抬起来的卡面。
+ * 悬停时卡片放大（MemberCard.tsx 的 HOVER_SCALE）并做三维倾斜，越界量已经小于
+ * 网格的 8px 间距，但倾斜本身仍会让卡角探到邻居上方——被压的那张必须在下面，
+ * 否则邻卡的边框会横穿抬起来的卡面。
  *
  * z-index 提在网格项上，不是提在卡片上：卡片的父级 .member-card__frame 带
  * perspective，那是一个层叠上下文，在它内部提 z-index 出不去这个格子。
@@ -181,6 +163,12 @@
   .roster-card-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 8px;
+  }
+
+  .roster-card-grid,
+  .roster-virtual-scroll {
+    padding: var(--space-md);
+    margin: calc(-1 * var(--space-md));
   }
 
   .roster-virtual-scroll {

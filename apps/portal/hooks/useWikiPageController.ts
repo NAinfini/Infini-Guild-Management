@@ -1,5 +1,5 @@
 import { type PaginatedResponse, type WikiArticle } from "@guild/shared";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import {

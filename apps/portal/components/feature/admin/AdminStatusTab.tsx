@@ -3,13 +3,12 @@ import {
   Badge,
   Button,
   Group,
+  Paper,
   ScrollArea,
   SimpleGrid,
   Stack,
   Text,
 } from "@mantine/core";
-import { ProgressButton } from "@portal/components/effects";
-import { PortalCard } from "../../shared/PortalCard";
 import { ClipboardIcon, PlayIcon } from "@portal/components/icons";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -106,8 +105,8 @@ export function AdminStatusTab({
 
       {/* ── System Health ─────────────────────────── */}
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-        <PortalCard interactive={false}>
-          <div style={{ padding: "1.2rem" }}>
+        <Paper withBorder radius="md">
+          <div style={{ padding: "var(--card-padding)" }}>
             <Text fw={600} size="sm" mb={12}>{t("status.section.health")}</Text>
             <AdminSystemSection
               statusLoading={statusLoading}
@@ -117,10 +116,10 @@ export function AdminStatusTab({
               statusLatencyMs={statusLatencyMs}
             />
           </div>
-        </PortalCard>
+        </Paper>
 
-        <PortalCard interactive={false}>
-          <div style={{ padding: "1.2rem" }}>
+        <Paper withBorder radius="md">
+          <div style={{ padding: "var(--card-padding)" }}>
             <Group justify="space-between" mb={12}>
               <Text fw={600} size="sm">{t("status.healthLogs.title")}</Text>
               <Button
@@ -152,10 +151,10 @@ export function AdminStatusTab({
                     {statusHealthLogs.map((row, index) => {
                       const latency = row.latencyMs ?? 0;
                       const barWidth = Math.min(100, (latency / 500) * 100);
-                      // 三段离散状态（好/警/差），按 task-8-brief.md Step 3.4 的要求
+                      // 三段离散状态（好/警/差），按 the inline-style migration brief Step 3.4 的要求
                       // 切换预定义类，不拼接颜色字符串。200/400ms 阈值来自
                       // utils/latency-thresholds.ts——与 AdminSystemSection.tsx 共用
-                      // 同一份定义，不再各自维护一份数值（task-8-addendum.md B 节，
+                      // 同一份定义，不再各自维护一份数值（the inline-style migration contract B 节，
                       // Task 8 批 C 收敛）。
                       const band = latencyBand(latency);
                       return (
@@ -181,7 +180,7 @@ export function AdminStatusTab({
                 )}
               </ScrollArea>
           </div>
-        </PortalCard>
+        </Paper>
       </SimpleGrid>
 
       {/* ── API Test Console ────────────────────────── */}
@@ -222,20 +221,15 @@ export function AdminStatusTab({
                 {t("status.api.stop")}
               </Button>
             ) : null}
-            <ProgressButton
+            <Button
               className="api-console__run-all"
-              onPress={runAllCategories}
-              loadingLabel={t("status.api.runAll")}
-              successLabel={t("status.api.runAll")}
-              errorLabel={t("status.api.runAll")}
-              indicator="spinner"
+              onClick={() => { void runAllCategories(); }}
+              leftSection={<PlayIcon size={14} />}
+              loading={runningAll}
               disabled={isRunning}
             >
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <PlayIcon size={14} />
-                <span>{t("status.api.runAll")}</span>
-              </span>
-            </ProgressButton>
+              {t("status.api.runAll")}
+            </Button>
           </div>
         </div>
 

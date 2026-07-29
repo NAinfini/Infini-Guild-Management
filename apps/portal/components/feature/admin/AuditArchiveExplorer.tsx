@@ -8,12 +8,12 @@ import {
   Button,
   Collapse,
   Group,
+  Paper,
   Select,
   Skeleton,
   Stack,
   Text,
 } from "@mantine/core";
-import { PortalCard } from "../../shared/PortalCard";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArchiveIcon } from "@portal/components/icons";
@@ -57,7 +57,7 @@ export function AuditArchiveExplorer({
   };
 
   return (
-    <PortalCard interactive={false} padding="1.2rem">
+    <Paper withBorder radius="md" p="md">
       <Stack gap={12}>
         <Group justify="space-between" align="center">
           <Group gap={8}>
@@ -102,6 +102,6 @@ export function AuditArchiveExplorer({
           </Stack>
         </Collapse>
       </Stack>
-    </PortalCard>
+    </Paper>
   );
 }

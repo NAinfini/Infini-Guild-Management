@@ -1,4 +1,3 @@
-import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { Buffer } from "node:buffer";
 import { dirname, resolve } from "node:path";
@@ -108,7 +107,6 @@ export default defineConfig(({ mode }) => {
         },
       },
       echartsBundleBudgetPlugin(),
-      tailwindcss(),
       react(),
     ],
     build: {
@@ -217,7 +215,6 @@ export default defineConfig(({ mode }) => {
         "react-dom",
         "@mantine/core",
         "@mantine/hooks",
-        "mantine-contextmenu",
       ],
     },
     server: {

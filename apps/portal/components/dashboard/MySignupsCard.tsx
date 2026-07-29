@@ -1,6 +1,5 @@
 import type { Event } from "@guild/shared";
-import { PortalCard } from "../shared/PortalCard";
-import { HoverCard, ThemeIcon, Text, Badge, Group } from "@mantine/core";
+import { HoverCard, ThemeIcon, Text, Badge, Group, Paper } from "@mantine/core";
 import { CalendarEventIcon } from "@portal/components/icons";
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -49,8 +48,9 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
   const isToday = (date: Date) => isSameDay(date, now);
 
   return (
-    <PortalCard className="dashboard-card" interactive={false}>
-      {cardHeading(t("card.mySignups.title"), <UserCheckOutlined size={18} />)}
+    <Paper withBorder radius="md" className="dashboard-card">
+      <div>
+        {cardHeading(t("card.mySignups.title"), <UserCheckOutlined size={18} />)}
       {/* With no signups the strip was eight identical boxes of "—" taking a full
           card of vertical space and saying nothing. */}
       {mySignupEvents.length === 0 ? (
@@ -72,7 +72,7 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
                   <span className="signup-box-empty">—</span>
                 ) : (
                   day.events.map((item) => {
-                    const color = `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--accent-fill))`;
+                    const color = `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--brand-fill))`;
 
                     return (
                       <HoverCard key={item.event.id} width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
@@ -118,7 +118,8 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
           );
         })}
       </div>
-      )}
-    </PortalCard>
+        )}
+      </div>
+    </Paper>
   );
 });

@@ -6,6 +6,7 @@ import { events, recurringTemplates } from "../db/schema";
 import type { Bindings } from "../index";
 import { logger } from "../utils/logger";
 import { replaceMediaRefs, extractAttachmentKeys } from "../services/media-references";
+import { SystemTestService } from "../services/SystemTestService";
 
 type RecurrenceRule = {
   frequency: "daily" | "weekly" | "monthly";
@@ -99,7 +100,10 @@ export function computeHorizon(now: Date, offsetMinutes = 0): Date {
   return horizon;
 }
 
-export async function runEventInstanceGenerationCron(env: Bindings, options: { templateId?: string } = {}): Promise<void> {
+export async function runEventInstanceGenerationCron(
+  env: Bindings,
+  options: { templateId?: string; systemTestRunId?: string } = {},
+): Promise<void> {
   const db = drizzle(env.DB);
   const now = new Date();
   const MAX_CATCHUP = 10;
@@ -262,16 +266,37 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
     const batchResults = await db.batch(insertStmts);
 
     let lastDateKey: string | null = null;
+    const insertedEventIds: string[] = [];
     const mediaRefPromises: Promise<void>[] = [];
     for (let i = 0; i < pendingInserts.length; i++) {
       const result = batchResults[i] as D1Result;
       if (result.meta.changes > 0) {
         generationCount += 1;
         lastDateKey = pendingInserts[i]!.dateKey;
+        insertedEventIds.push(pendingInserts[i]!.eventId);
         const keys = extractAttachmentKeys(pendingInserts[i]!.attachments);
         if (keys.length > 0) {
           mediaRefPromises.push(replaceMediaRefs(env.DB, "event", pendingInserts[i]!.eventId, keys));
         }
+      }
+    }
+    const templateStillActive = await env.DB.prepare(
+      "SELECT id FROM recurring_templates WHERE id = ? AND paused = 0",
+    ).bind(template.id).first<{ id: string }>();
+    if (!templateStillActive) {
+      await new SystemTestService(env).cleanupExactArtifacts(
+        insertedEventIds.map((key) => ({ type: "event", key })),
+      );
+      continue;
+    }
+    if (options.systemTestRunId && insertedEventIds.length > 0) {
+      const systemTests = new SystemTestService(env);
+      const artifacts = insertedEventIds.map((key) => ({ type: "event" as const, key }));
+      try {
+        await systemTests.registerArtifacts(options.systemTestRunId, artifacts);
+      } catch (error) {
+        await systemTests.cleanupExactArtifacts(artifacts);
+        throw error;
       }
     }
     await Promise.all(mediaRefPromises);

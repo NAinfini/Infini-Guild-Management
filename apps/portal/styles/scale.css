@@ -1,3 +1,34 @@
+/* Saira Semi Condensed is used only for Latin display headings and KPI values.
+ * The local files preserve the upstream Latin / Latin-Ext coverage, with hinting
+ * removed to keep the two-file payload below the 30 KiB design budget. */
+@font-face {
+  font-family: "Saira Semi Condensed";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  size-adjust: 98%;
+  src: url("/fonts/saira-semi-condensed-latin-ext-700.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
+    U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF,
+    U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Saira Semi Condensed";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  size-adjust: 98%;
+  src: url("/fonts/saira-semi-condensed-latin-700.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+    U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+    U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
 /* ═══════════════════════════════════════════════════════════════
  * L3 · 尺寸标度 —— 不随模式或主色变化
  *
@@ -6,11 +37,14 @@
  * ═══════════════════════════════════════════════════════════════ */
 :root {
   /* 布局 */
-  --header-height: 64px;
-  --header-height-mobile: 56px;
+  --header-height: 48px;
+  --header-height-mobile: 48px;
   --sidebar-width: 236px;
   --sidebar-collapsed-width: 84px;
   --bottom-nav-height: 64px;
+  --content-width-reading: 1120px;
+  --content-width-standard: 1800px;
+  --content-width-wide: 2200px;
   /* 原名 --portal-scrollbar-size，去掉 portal- 前缀以与本层其余 token 一致，
    * 值不变。 */
   --scrollbar-size: 10px;
@@ -22,30 +56,27 @@
   --z-modal: 200;
   --z-toast: 300;
 
-  /* 圆角 —— 六档，来源是两处而不是一处：
-   * sm/md/lg/pill 原是 styles.css 的 :root 定义，随本次标度层迁移一起搬到
-   * 这里，styles.css 里已经不再重复这四个值；
-   * xs(4px) 与 xl(24px) 搬自 ThemeProvider.tsx:49,53 的 createTheme radius，
-   * 它们此前只存在于 Mantine 那一份重复定义里。Mantine 的 radius 需要
-   * xs..xl 五个键齐全，所以这两档不能省，否则 radius="xs" 会取不到值。
-   * （复审 T3：此前这里写的是 styles.css:33-36 与 ThemeProvider.tsx:53,57，
-   * 前者现在是 .star-border 的变量定义，后者的 57 行落在 shadows.xs 而不是
-   * radius.xs——两处都已核实并改成当前实际行号。） */
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
-  --radius-pill: 999px;
+  /* 三档通用形状。Mantine 的 xs…xl 映射到这三档，不再形成第二套圆角标度。 */
+  --radius-control: 6px;
+  --radius-surface: 10px;
+  --radius-overlay: 14px;
+  /* Pill 只用于状态、标签与紧凑选择，不属于通用表面圆角。 */
+  --shape-pill: 999px;
 
-  /* 字号标度 —— 五档，靠字号与字重承担层次，不靠颜色 */
-  --text-page: 20px;
-  --text-section: 18px;
-  --text-card: 16px;
+  /* 字号标度 */
+  --text-display: 40px;
+  --text-h1: 28px;
+  --text-h2: 22px;
+  --text-h3: 18px;
   --text-body: 14px;
+  --text-sm: 13px;
   --text-meta: 12px;
-  --lh-tight: 1.25;
-  --lh-normal: 1.5;
+  --text-micro: 11px;
+  --text-page: var(--text-h1);
+  --text-section: var(--text-h2);
+  --text-card: var(--text-h3);
+  --lh-tight: 1.2;
+  --lh-normal: 1.6;
   --fw-medium: 600;
   --fw-strong: 700;
 
@@ -56,6 +87,12 @@
   --space-lg: 16px;
   --space-xl: 24px;
   --space-2xl: 32px;
+  --space-3xl: 48px;
+
+  /* 卡片内边距。此前每个调用点各写各的，全站散着 `p="1.2rem"`（19.2px）和
+   * `p="1rem"`（16px）两种字面量，都不在上面的间距标度上。统一收到 16px：
+   * 它已经在标度里，且 19.2 本来就是「1.2rem 顺手一写」的产物，不是设计过的值。 */
+  --card-padding: var(--space-lg);
 
   /* 控件标度。文本控件统一为 32 / 44 / 52；图标控件保留 22 / 28 / 40
    * 的视觉密度，由独立的 44px 透明命中区补足触控面积。 */
@@ -67,19 +104,27 @@
   --control-icon-size-large: 40px;
   --control-hit-area: 44px;
 
-  /* 过渡 */
-  --transition-fast: 120ms ease;
-  --transition-normal: 160ms ease;
-  --transition-smooth: 180ms ease;
+  /* 状态与浮层动效。只允许 transform、opacity 与颜色状态消费。 */
+  --motion-state: 120ms cubic-bezier(.2, .8, .2, 1);
+  --motion-overlay: 180ms cubic-bezier(.2, .8, .2, 1);
+  --motion-panel: 240ms cubic-bezier(.2, .8, .2, 1);
+  --transition-fast: var(--motion-state);
+  --transition-normal: var(--motion-overlay);
+  --transition-smooth: var(--motion-panel);
 
-  /* 字体 ──
-   * 刻意不叫 --font-sans：那个名字属于 Tailwind 的 @theme 命名空间，
-   * 在 @theme 里写 `--font-sans: var(--font-sans)` 是循环引用。
-   * L3 用 --font-body / --font-code，@theme 侧再转发。 */
+  /* 字体。L3 使用站点语义名称，ThemeProvider 再桥接给 Mantine。 */
   --font-body: "Inter", system-ui, sans-serif;
+  --font-display: "Saira Semi Condensed", var(--font-body);
   --font-code: "JetBrains Mono", "Fira Code", monospace;
 }
 
 html[data-locale="zh"] {
   --font-body: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+.portal-kpi-value {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-weight: var(--fw-strong);
 }

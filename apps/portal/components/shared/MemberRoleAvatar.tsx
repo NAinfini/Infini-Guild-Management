@@ -1,5 +1,5 @@
 import { activeGame } from "@guild/shared/games";
-import { Avatar, Group, HoverCard, Stack, Text } from "@mantine/core";
+import { Avatar, Group, HoverCard, Stack, Text, UnstyledButton } from "@mantine/core";
 import { ShieldIcon, SwordIcon, HeartbeatIcon, BoltIcon } from "@portal/components/icons";
 import { resolveProfileMediaUrl } from "../../utils/media";
 
@@ -113,7 +113,11 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
 
   return (
     <HoverCard width={220} shadow="md" position="top" withArrow openDelay={200} closeDelay={100}>
-      <HoverCard.Target>{avatar}</HoverCard.Target>
+      <HoverCard.Target>
+        <UnstyledButton aria-label={user.username}>
+          {avatar}
+        </UnstyledButton>
+      </HoverCard.Target>
       <HoverCard.Dropdown style={{ padding: "12px" }}>
         <Group gap={10} wrap="nowrap" align="flex-start">
           <Avatar size={40} radius="xl" color={avatarColor} src={avatarSrc}>

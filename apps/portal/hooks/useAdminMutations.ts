@@ -1,4 +1,4 @@
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createElement, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
